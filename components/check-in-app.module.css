@@ -257,10 +257,11 @@
 }
 
 .checkInButton span {
-  font-size: clamp(43px, 13vw, 78px);
+  font-size: clamp(34px, 10vw, 64px);
   font-weight: 950;
-  letter-spacing: -0.07em;
+  letter-spacing: -0.065em;
   line-height: 0.9;
+  white-space: nowrap;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.13);
 }
 
@@ -354,6 +355,12 @@
   margin: 8px 0 0;
   color: #8e9488;
   font-size: 12px;
+}
+
+.checkInCount {
+  margin: 5px 0 0;
+  color: #6f756a;
+  font-size: 11px;
 }
 
 .footer {

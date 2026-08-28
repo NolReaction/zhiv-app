@@ -68,6 +68,8 @@ erDiagram
         uuid id PK
         string kind
         string title
+        string emoji
+        uuid creation_idempotency_key UK
         uuid direct_user_low_id
         uuid direct_user_high_id
     }
@@ -97,6 +99,8 @@ erDiagram
     CIRCLE_INVITES {
         uuid id PK
         uuid circle_id FK
+        uuid invitee_user_id FK
+        uuid idempotency_key UK
         bytea token_hash UK
         timestamptz expires_at
         string status
@@ -112,12 +116,12 @@ erDiagram
 
 `DIRECT` хранит неизменяемую отсортированную пару пользователей прямо в `circles`, поэтому связь физически не может получить третьего участника. `GROUP` использует непересекающиеся исторические membership-строки: повторное вступление создаёт новую строку. Аудитория события содержит конкретного получателя и конкретный период membership — это исключает ретроактивную утечку истории. Requests и invites начинают только с `PENDING` и после терминального перехода не переписываются.
 
-## HTTP 0.2
+## HTTP 0.3
 
 | Метод | Путь | Назначение |
 |---|---|---|
 | `POST` | `/api/v1/bootstrap` | создать пользователя и cookie-сессию; нужен `Idempotency-Key` |
-| `GET` | `/api/v1/me` | получить себя и последнюю отметку |
+| `GET` | `/api/v1/me` | получить себя, последнюю отметку и подтверждённый счётчик |
 | `POST` | `/api/v1/check-ins` | создать отметку; нужен `Idempotency-Key` |
 | `GET` | `/api/v1/users/{publicId}` | найти пользователя и состояние связи |
 | `GET` | `/api/v1/people` | люди, заявки и число получателей следующей отметки |
@@ -125,9 +129,18 @@ erDiagram
 | `POST` | `/api/v1/direct-requests/{id}/{action}` | `accept`, `reject` или `cancel` |
 | `PATCH` | `/api/v1/people/{circleId}/sharing` | включить или выключить новые отметки |
 | `DELETE` | `/api/v1/people/{circleId}` | архивировать личную связь |
+| `GET` | `/api/v1/groups` | группы, участники и входящие/исходящие приглашения |
+| `POST` | `/api/v1/groups` | создать группу и начальные приглашения |
+| `PATCH` | `/api/v1/groups/{groupId}` | изменить название и emoji; только владелец |
+| `DELETE` | `/api/v1/groups/{groupId}` | закрыть membership-периоды и архивировать группу |
+| `PATCH` | `/api/v1/groups/{groupId}/sharing` | включить или выключить новые отметки через группу |
+| `POST` | `/api/v1/groups/{groupId}/invites` | пригласить подтверждённый личный контакт |
+| `DELETE` | `/api/v1/groups/{groupId}/invites/{inviteId}` | отозвать приглашение |
+| `POST` | `/api/v1/group-invites/{inviteId}/{action}` | `accept` или `reject` |
+| `DELETE` | `/api/v1/groups/{groupId}/members/{membershipId}` | выйти или удалить участника |
 | `GET` | `/healthz` | liveness процесса |
 
-Все identity/check-in ответы имеют `Cache-Control: no-store`. Записывающие запросы сверяют `Origin`, bootstrap ограничен по размеру и частоте. Сырой session token не логируется; запросы выполняются через same-origin Caddy. Встроенный Next API — только in-memory dev-адаптер и в production fail-closed без явного `ENABLE_DEV_API=true`.
+Все API-ответы с личными данными имеют `Cache-Control: no-store`. Записывающие запросы сверяют `Origin` и требуют UUIDv4 `Idempotency-Key`. Сырой session token не логируется; запросы выполняются через same-origin Caddy. Встроенный Next API — только in-memory dev-адаптер и в production fail-closed без явного `ENABLE_DEV_API=true`.
 
 Повтор bootstrap с тем же случайным UUIDv4 не создаёт новые годовые сессии: в течение десяти минут он ротирует токен одной связанной session-строки. В PWA незавершённые bootstrap/check-in ключи и неизменный payload временно лежат в `sessionStorage`, чтобы reload после потерянного ответа не создавал дубль.
 
@@ -141,3 +154,5 @@ erDiagram
 6. Закоммитить всё одной транзакцией.
 
 Дополнительно exclusion constraint в PostgreSQL запрещает пересекающиеся cooldown-интервалы даже при ошибке прикладного кода.
+
+Снимки для групп берутся из активного membership-периода и `circle_sharing_preferences`. Получатель записывается вместе с конкретным `recipient_membership_id`; поэтому вступление заново не открывает прежнюю историю. `check_ins` и `check_in_audiences` append-only. Отображаемый счётчик отметок вычисляется по этим событиям, а idempotent replay возвращает порядковый номер исходного события.

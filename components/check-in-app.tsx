@@ -3,12 +3,18 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, HeartPulse, Share2, Users } from "lucide-react";
-import type { CooldownResponse, MeResponse, PeopleResponse } from "@/lib/check-in-contract";
-import { ApiError, bootstrap, createCheckIn, getMe, getPeople } from "@/lib/check-in-api";
+import type {
+  CooldownResponse,
+  GroupsResponse,
+  MeResponse,
+  PeopleResponse,
+} from "@/lib/check-in-contract";
+import { ApiError, bootstrap, createCheckIn, getGroups, getMe, getPeople } from "@/lib/check-in-api";
 import {
   BURST_RESET_MS,
   formatLastCheckIn,
   getBurstMessage,
+  getCheckInMilestone,
   getCheckInAgeMs,
   getCheckInColor,
   isValidDisplayName,
@@ -150,6 +156,7 @@ export function CheckInApp() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [systemError, setSystemError] = useState<string | null>(null);
   const [lastCheckInAt, setLastCheckInAt] = useState<string | null>(null);
+  const [checkInCount, setCheckInCount] = useState(0);
   const [nextAllowedAt, setNextAllowedAt] = useState<string | null>(null);
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [clientNowMs, setClientNowMs] = useState(() => Date.now());
@@ -164,6 +171,9 @@ export function CheckInApp() {
   const [people, setPeople] = useState<PeopleResponse | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleError, setPeopleError] = useState<string | null>(null);
+  const [groups, setGroups] = useState<GroupsResponse | null>(null);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
   const [identityNotice, setIdentityNotice] = useState<string | null>(null);
   const [isIdentityActionPending, setIsIdentityActionPending] = useState(false);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,6 +209,7 @@ export function CheckInApp() {
     clearPendingBootstrap();
     resetTransientCheckIn();
     setPeople(null);
+    setGroups(null);
     setActiveView("check-in");
     setScreen("session-lost");
   }, [clearPendingBootstrap, clearPendingCheckIn, resetTransientCheckIn]);
@@ -221,6 +232,24 @@ export function CheckInApp() {
     }
   }, [loseSession]);
 
+  const refreshGroups = useCallback(async (signal?: AbortSignal) => {
+    setGroupsLoading(true);
+    try {
+      const response = await getGroups(signal);
+      setGroups(response);
+      setGroupsError(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (error instanceof ApiError && error.status === 401) {
+        loseSession();
+        return;
+      }
+      setGroupsError(error instanceof Error ? error.message : "Не удалось загрузить группы");
+    } finally {
+      setGroupsLoading(false);
+    }
+  }, [loseSession]);
+
   const adoptMe = useCallback((identity: MeResponse) => {
     const unresolvedCheckIn = pendingCheckIn.current;
     if (
@@ -233,6 +262,7 @@ export function CheckInApp() {
     resetTransientCheckIn();
     setMe(identity);
     setLastCheckInAt(identity.lastCheckInAt);
+    setCheckInCount(identity.checkInCount);
     setClockOffsetMs(serverOffset(identity.serverTime));
     setClientNowMs(Date.now());
     setNameError(null);
@@ -295,10 +325,16 @@ export function CheckInApp() {
   useEffect(() => {
     if (screen !== "home") return;
     const controller = new AbortController();
-    const initialRefresh = window.setTimeout(() => void refreshPeople(controller.signal), 0);
+    const initialRefresh = window.setTimeout(() => {
+      void refreshPeople(controller.signal);
+      void refreshGroups(controller.signal);
+    }, 0);
 
     const refresh = () => {
-      if (!document.hidden && navigator.onLine) void refreshPeople();
+      if (!document.hidden && navigator.onLine) {
+        void refreshPeople();
+        void refreshGroups();
+      }
     };
     const poll = window.setInterval(refresh, 30_000);
     window.addEventListener("focus", refresh);
@@ -314,7 +350,7 @@ export function CheckInApp() {
       window.removeEventListener("online", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [refreshPeople, screen]);
+  }, [refreshGroups, refreshPeople, screen]);
 
   async function retryIdentity() {
     setScreen("loading");
@@ -343,10 +379,10 @@ export function CheckInApp() {
   }, []);
 
   const registerTap = useCallback(
-    (firstAccepted = false) => {
+    (firstAccepted = false, milestone: string | null = null) => {
       const next = firstAccepted ? 1 : Math.max(2, tapCount + 1);
       setTapCount(next);
-      setNotice(getBurstMessage(next));
+      setNotice(milestone ?? getBurstMessage(next));
       if (next === 5) setConfettiBurst((value) => value + 1);
       resetBurstLater();
     },
@@ -437,10 +473,11 @@ export function CheckInApp() {
       const response = await createCheckIn(pendingCheckIn.current.idempotencyKey);
       clearPendingCheckIn();
       setLastCheckInAt(response.checkedAt);
+      setCheckInCount(response.checkInCount);
       setNextAllowedAt(response.nextAllowedAt);
       setClockOffsetMs(serverOffset(response.serverTime));
       setClientNowMs(Date.now());
-      registerTap(true);
+      registerTap(true, getCheckInMilestone(response.checkInCount));
     } catch (error) {
       if (error instanceof ApiError && error.status === 429 && error.body) {
         const cooldown = error.body as CooldownResponse;
@@ -499,7 +536,7 @@ export function CheckInApp() {
     return (
       <main className={styles.centered} aria-busy="true">
         <div className={styles.loadingMark} role="status" aria-label="Загрузка приложения">
-          Ж
+          Я
         </div>
       </main>
     );
@@ -509,7 +546,7 @@ export function CheckInApp() {
     return (
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="load-error-title">
-          <p className={styles.eyebrow}>ЖИВ</p>
+          <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="load-error-title">Сервер молчит</h1>
           <p className={styles.intro}>
             Профиль не изменён. Проверим связь ещё раз — без создания нового пользователя.
@@ -526,7 +563,7 @@ export function CheckInApp() {
     return (
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="session-lost-title">
-          <p className={styles.eyebrow}>ЖИВ</p>
+          <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="session-lost-title">Сессия закончилась</h1>
           <p className={styles.intro}>
             Отметка не потеряна и не дублировалась. Восстановление старого профиля подключим
@@ -548,7 +585,7 @@ export function CheckInApp() {
     return (
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="welcome-title">
-          <p className={styles.eyebrow}>ЖИВ</p>
+          <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="welcome-title">Как тебя зовут?</h1>
           <p className={styles.intro}>Только имя. Остальное приложение сделает само.</p>
           <form onSubmit={handleBootstrap} className={styles.form} noValidate>
@@ -594,7 +631,7 @@ export function CheckInApp() {
   return (
     <main className={styles.shell}>
       <header className={styles.header}>
-        <span className={styles.wordmark}>ЖИВ</span>
+        <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>
           <button
             type="button"
@@ -632,7 +669,7 @@ export function CheckInApp() {
               onClick={handleCheckIn}
               aria-busy={isSending}
             >
-              <span>Я ЖИВ</span>
+              <span>Я ЖИВОЙ</span>
             </button>
             {tapCount >= 2 ? (
               <span className={styles.tapCounter} aria-hidden="true">
@@ -669,16 +706,23 @@ export function CheckInApp() {
                   : `Новую отметку увидят: ${people.audienceCount}`}
               </p>
             ) : null}
+            {checkInCount > 0 ? (
+              <p className={styles.checkInCount}>Всего отметок: {checkInCount}</p>
+            ) : null}
             {!isOnline ? <p className={styles.offline}>Данные могут быть устаревшими</p> : null}
           </div>
         </section>
       ) : (
         <PeopleView
           data={people}
+          groups={groups}
           error={peopleError}
+          groupsError={groupsError}
           loading={peopleLoading}
+          groupsLoading={groupsLoading}
           nowMs={adjustedNow}
           onRefresh={() => refreshPeople()}
+          onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
         />
       )}
@@ -695,7 +739,7 @@ export function CheckInApp() {
             onClick={() => setActiveView("check-in")}
           >
             <HeartPulse size={20} />
-            <span>Я жив</span>
+            <span>Я живой</span>
           </button>
           <button
             type="button"
@@ -705,8 +749,11 @@ export function CheckInApp() {
           >
             <span className={styles.navIcon}>
               <Users size={20} />
-              {people && people.incomingRequests.length > 0 ? (
-                <i>{Math.min(people.incomingRequests.length, 9)}</i>
+              {(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0) > 0 ? (
+                <i>{Math.min(
+                  (people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0),
+                  9,
+                )}</i>
               ) : null}
             </span>
             <span>Свои</span>

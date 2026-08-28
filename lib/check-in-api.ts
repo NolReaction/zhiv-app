@@ -5,6 +5,8 @@ import type {
   CooldownResponse,
   DirectRequestActionResponse,
   DirectRequestResponse,
+  GroupMutationResponse,
+  GroupsResponse,
   MeResponse,
   PeopleResponse,
   SharingMode,
@@ -20,12 +22,14 @@ const userSchema = z.object({
 const meSchema: z.ZodType<MeResponse> = z.object({
   user: userSchema,
   lastCheckInAt: z.string().datetime().nullable(),
+  checkInCount: z.number().int().nonnegative().safe(),
   serverTime: z.string().datetime(),
 });
 
 const checkInSchema: z.ZodType<CheckInResponse> = z.object({
   eventId: z.string().uuid(),
   checkedAt: z.string().datetime(),
+  checkInCount: z.number().int().nonnegative().safe(),
   serverTime: z.string().datetime(),
   nextAllowedAt: z.string().datetime(),
   replayed: z.boolean(),
@@ -87,6 +91,54 @@ const directRequestActionSchema: z.ZodType<DirectRequestActionResponse> = z.obje
 const sharingResponseSchema: z.ZodType<SharingResponse> = z.object({
   circleId: z.string().uuid(),
   sharingMode: sharingModeSchema,
+  serverTime: z.string().datetime(),
+});
+const groupTitleSchema = z.string().min(1).refine(
+  (value) => Array.from(value).length <= 64,
+  "Group title is too long",
+);
+const groupEmojiSchema = z.string().refine(
+  (value) => Array.from(value).length <= 16,
+  "Group emoji is too long",
+).nullable();
+const groupInviteSchema = z.object({
+  inviteId: z.string().uuid(),
+  direction: z.enum(["INCOMING", "OUTGOING"]),
+  groupId: z.string().uuid(),
+  groupTitle: groupTitleSchema,
+  groupEmoji: groupEmojiSchema,
+  user: userSchema,
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+});
+const groupMemberSchema = z.object({
+  membershipId: z.string().uuid(),
+  user: userSchema,
+  role: z.enum(["OWNER", "ADMIN", "MEMBER"]),
+  sharingMode: sharingModeSchema,
+  lastCheckInAt: z.string().datetime().nullable(),
+  joinedAt: z.string().datetime(),
+  isMe: z.boolean(),
+});
+const groupSchema = z.object({
+  groupId: z.string().uuid(),
+  title: groupTitleSchema,
+  emoji: groupEmojiSchema,
+  myRole: z.enum(["OWNER", "ADMIN", "MEMBER"]),
+  mySharingMode: sharingModeSchema,
+  createdAt: z.string().datetime(),
+  members: z.array(groupMemberSchema),
+  pendingInvites: z.array(groupInviteSchema),
+});
+const groupsSchema: z.ZodType<GroupsResponse> = z.object({
+  groups: z.array(groupSchema),
+  incomingInvites: z.array(groupInviteSchema),
+  outgoingInvites: z.array(groupInviteSchema),
+  serverTime: z.string().datetime(),
+});
+const groupMutationSchema: z.ZodType<GroupMutationResponse> = z.object({
+  groupId: z.string().uuid(),
+  replayed: z.boolean(),
   serverTime: z.string().datetime(),
 });
 
@@ -230,6 +282,109 @@ export function updatePersonSharing(
 
 export function removePerson(circleId: string, idempotencyKey: string): Promise<void> {
   return request<void>(`/api/v1/people/${circleId}`, z.void(), {
+    method: "DELETE",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+export function getGroups(signal?: AbortSignal): Promise<GroupsResponse> {
+  return request<GroupsResponse>("/api/v1/groups", groupsSchema, { signal });
+}
+
+export function createGroup(
+  title: string,
+  emoji: string | null,
+  inviteeCircleIds: string[],
+  idempotencyKey: string,
+): Promise<GroupMutationResponse> {
+  return request<GroupMutationResponse>("/api/v1/groups", groupMutationSchema, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ title, emoji, inviteeCircleIds }),
+  });
+}
+
+export function updateGroup(
+  groupId: string,
+  title: string,
+  emoji: string | null,
+  idempotencyKey: string,
+): Promise<GroupMutationResponse> {
+  return request<GroupMutationResponse>(`/api/v1/groups/${groupId}`, groupMutationSchema, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ title, emoji }),
+  });
+}
+
+export function updateGroupSharing(
+  groupId: string,
+  sharingMode: SharingMode,
+  idempotencyKey: string,
+): Promise<GroupMutationResponse> {
+  return request<GroupMutationResponse>(
+    `/api/v1/groups/${groupId}/sharing`,
+    groupMutationSchema,
+    {
+      method: "PATCH",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ sharingMode }),
+    },
+  );
+}
+
+export function inviteToGroup(
+  groupId: string,
+  personCircleId: string,
+  idempotencyKey: string,
+): Promise<GroupMutationResponse> {
+  return request<GroupMutationResponse>(
+    `/api/v1/groups/${groupId}/invites`,
+    groupMutationSchema,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ personCircleId }),
+    },
+  );
+}
+
+export function actOnGroupInvite(
+  inviteId: string,
+  action: "accept" | "reject",
+  idempotencyKey: string,
+): Promise<GroupMutationResponse> {
+  return request<GroupMutationResponse>(
+    `/api/v1/group-invites/${inviteId}/${action}`,
+    groupMutationSchema,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey } },
+  );
+}
+
+export function revokeGroupInvite(
+  groupId: string,
+  inviteId: string,
+  idempotencyKey: string,
+): Promise<void> {
+  return request<void>(`/api/v1/groups/${groupId}/invites/${inviteId}`, z.void(), {
+    method: "DELETE",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+export function removeGroupMember(
+  groupId: string,
+  membershipId: string,
+  idempotencyKey: string,
+): Promise<void> {
+  return request<void>(`/api/v1/groups/${groupId}/members/${membershipId}`, z.void(), {
+    method: "DELETE",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+export function deleteGroup(groupId: string, idempotencyKey: string): Promise<void> {
+  return request<void>(`/api/v1/groups/${groupId}`, z.void(), {
     method: "DELETE",
     headers: { "Idempotency-Key": idempotencyKey },
   });

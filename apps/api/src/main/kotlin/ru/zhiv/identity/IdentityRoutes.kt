@@ -107,5 +107,6 @@ fun Route.identityRoutes(
 private fun UserSnapshot.toResponse() = MeResponse(
     user = PublicUserDto(publicId = publicId, displayName = displayName),
     lastCheckInAt = lastCheckInAt?.toInstant()?.toString(),
+    checkInCount = checkInCount,
     serverTime = serverTime.toInstant().toString(),
 )

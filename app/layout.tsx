@@ -3,9 +3,9 @@ import { ServiceWorkerRegistration } from "@/components/service-worker-registrat
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Жив",
-  description: "Одна кнопка, чтобы сохранить подтверждённое время отметки.",
-  applicationName: "Жив",
+  title: "Я живой",
+  description: "Одна кнопка, чтобы близкие знали: вы живы и на связи.",
+  applicationName: "Я живой",
   other: {
     "codex-preview": "development",
     "mobile-web-app-capable": "yes",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Жив",
+    title: "Я живой",
   },
   formatDetection: {
     telephone: false,

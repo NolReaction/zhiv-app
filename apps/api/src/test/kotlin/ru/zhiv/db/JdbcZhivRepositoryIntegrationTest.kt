@@ -94,12 +94,14 @@ class JdbcZhivRepositoryIntegrationTest {
             repository.record(secondSession.hash, eventKey),
         )
         assertEquals(false, accepted.replayed)
+        assertEquals(1, accepted.checkInCount)
 
         val replay = assertIs<CheckInResult.Accepted>(
             repository.record(secondSession.hash, eventKey),
         )
         assertTrue(replay.replayed)
         assertEquals(accepted.eventId, replay.eventId)
+        assertEquals(accepted.checkInCount, replay.checkInCount)
 
         assertIs<CheckInResult.Cooldown>(
             repository.record(secondSession.hash, UUID.randomUUID()),

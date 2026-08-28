@@ -163,8 +163,8 @@ export function shareIdentity(
   environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
 ): Promise<IdentitySharingResult> {
   const shareData: ShareData = {
-    title: "Жив",
-    text: `Добавь меня в «Жив» по ID: ${publicId}`,
+    title: "Я живой",
+    text: `Добавь меня в «Я живой» по ID: ${publicId}`,
   };
 
   // Both privileged browser actions must start in the same trusted click.

@@ -3,6 +3,11 @@ import type {
   DirectRequest,
   DirectRequestActionResponse,
   DirectRequestResponse,
+  Group,
+  GroupInvite,
+  GroupMember,
+  GroupMutationResponse,
+  GroupsResponse,
   MeResponse,
   PeopleResponse,
   Person,
@@ -45,8 +50,38 @@ type AudienceRecord = {
   actorUserId: string;
   recipientUserId: string;
   circleId: string;
+  recipientMembershipId: string | null;
 };
 type SharingRecord = { mode: SharingMode; enabledSince: string | null };
+type GroupRecord = {
+  id: string;
+  title: string;
+  emoji: string | null;
+  createdByUserId: string;
+  creationIdempotencyKey: string;
+  createdAt: string;
+  archivedAt: string | null;
+};
+type GroupMembershipRecord = {
+  id: string;
+  groupId: string;
+  userId: string;
+  role: "OWNER" | "ADMIN" | "MEMBER";
+  joinedAt: string;
+  leftAt: string | null;
+};
+type GroupInviteRecord = {
+  id: string;
+  groupId: string;
+  inviterUserId: string;
+  inviteeUserId: string;
+  idempotencyKey: string;
+  status: "PENDING" | "ACCEPTED" | "REVOKED";
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+};
 
 type Store = {
   users: Map<string, UserRecord>;
@@ -59,6 +94,9 @@ type Store = {
   directRequests: Map<string, DirectRequestRecord>;
   sharing: Map<string, SharingRecord>;
   audiences: AudienceRecord[];
+  groups: Map<string, GroupRecord>;
+  groupMemberships: Map<string, GroupMembershipRecord>;
+  groupInvites: Map<string, GroupInviteRecord>;
 };
 
 export type DevResult<T> =
@@ -85,6 +123,9 @@ function store(): Store {
     directRequests: new Map(),
     sharing: new Map(),
     audiences: [],
+    groups: new Map(),
+    groupMemberships: new Map(),
+    groupInvites: new Map(),
   };
   return globalStore.__zhivDevStore;
 }
@@ -116,6 +157,7 @@ function asMe(user: UserRecord): MeResponse {
   return {
     user: publicUser(user),
     lastCheckInAt: user.lastCheckInAt,
+    checkInCount: [...store().checkIns.values()].filter((event) => event.userId === user.id).length,
     serverTime: new Date().toISOString(),
   };
 }
@@ -154,6 +196,22 @@ function activeCirclesForUser(userId: string): DirectCircleRecord[] {
       circle.archivedAt === null &&
       (circle.lowUserId === userId || circle.highUserId === userId),
   );
+}
+
+function activeGroupMemberships(groupId: string): GroupMembershipRecord[] {
+  return [...store().groupMemberships.values()].filter(
+    (membership) => membership.groupId === groupId && membership.leftAt === null,
+  );
+}
+
+function activeGroupMembershipsForUser(userId: string): GroupMembershipRecord[] {
+  return [...store().groupMemberships.values()].filter(
+    (membership) => membership.userId === userId && membership.leftAt === null,
+  );
+}
+
+function activeGroupMembership(groupId: string, userId: string): GroupMembershipRecord | null {
+  return activeGroupMemberships(groupId).find((membership) => membership.userId === userId) ?? null;
 }
 
 function otherUserId(circle: DirectCircleRecord, userId: string): string {
@@ -198,6 +256,7 @@ function latestAudienceCheckIn(
   actorUserId: string,
   recipientUserId: string,
   enabledSince: string | null,
+  recipientMembershipId?: string,
 ): string | null {
   if (!enabledSince) return null;
   const currentStore = store();
@@ -206,7 +265,9 @@ function latestAudienceCheckIn(
     if (
       audience.circleId !== circleId ||
       audience.actorUserId !== actorUserId ||
-      audience.recipientUserId !== recipientUserId
+      audience.recipientUserId !== recipientUserId ||
+      (recipientMembershipId !== undefined &&
+        audience.recipientMembershipId !== recipientMembershipId)
     ) continue;
     const event = currentStore.checkIns.get(audience.eventId);
     if (
@@ -216,6 +277,127 @@ function latestAudienceCheckIn(
     ) latest = event.checkedAt;
   }
   return latest;
+}
+
+function expireGroupInvites(nowMs = Date.now()) {
+  for (const invite of store().groupInvites.values()) {
+    if (invite.status === "PENDING" && Date.parse(invite.expiresAt) <= nowMs) {
+      invite.status = "REVOKED";
+      invite.revokedAt = new Date(nowMs).toISOString();
+    }
+  }
+}
+
+function groupInviteDto(invite: GroupInviteRecord, currentUserId: string): GroupInvite {
+  const group = store().groups.get(invite.groupId);
+  if (!group) throw new Error("Dev invite references a missing group");
+  const incoming = invite.inviteeUserId === currentUserId;
+  const relatedUser = store().users.get(incoming ? invite.inviterUserId : invite.inviteeUserId);
+  if (!relatedUser) throw new Error("Dev invite references a missing user");
+  return {
+    inviteId: invite.id,
+    direction: incoming ? "INCOMING" : "OUTGOING",
+    groupId: group.id,
+    groupTitle: group.title,
+    groupEmoji: group.emoji,
+    user: publicUser(relatedUser),
+    createdAt: invite.createdAt,
+    expiresAt: invite.expiresAt,
+  };
+}
+
+function groupMemberDto(
+  membership: GroupMembershipRecord,
+  currentUserId: string,
+  recipientMembershipId: string,
+): GroupMember {
+  const user = store().users.get(membership.userId);
+  if (!user) throw new Error("Dev membership references a missing user");
+  const sharing = store().sharing.get(sharingKey(membership.groupId, membership.userId)) ?? {
+    mode: "OFF" as const,
+    enabledSince: null,
+  };
+  return {
+    membershipId: membership.id,
+    user: publicUser(user),
+    role: membership.role,
+    sharingMode: sharing.mode,
+    lastCheckInAt:
+      membership.userId === currentUserId || sharing.mode === "OFF"
+        ? null
+        : latestAudienceCheckIn(
+            membership.groupId,
+            membership.userId,
+            currentUserId,
+            sharing.enabledSince,
+            recipientMembershipId,
+          ),
+    joinedAt: membership.joinedAt,
+    isMe: membership.userId === currentUserId,
+  };
+}
+
+function groupDto(group: GroupRecord, currentUserId: string): Group | null {
+  const mine = activeGroupMembership(group.id, currentUserId);
+  if (!mine || group.archivedAt !== null) return null;
+  const mySharing = store().sharing.get(sharingKey(group.id, currentUserId)) ?? {
+    mode: "OFF" as const,
+    enabledSince: null,
+  };
+  const pendingInvites = [...store().groupInvites.values()]
+    .filter(
+      (invite) =>
+        invite.groupId === group.id &&
+        invite.inviterUserId === currentUserId &&
+        invite.status === "PENDING",
+    )
+    .map((invite) => groupInviteDto(invite, currentUserId));
+  return {
+    groupId: group.id,
+    title: group.title,
+    emoji: group.emoji,
+    myRole: mine.role,
+    mySharingMode: mySharing.mode,
+    createdAt: group.createdAt,
+    members: activeGroupMemberships(group.id)
+      .map((membership) => groupMemberDto(membership, currentUserId, mine.id))
+      .sort((first, second) => Number(second.isMe) - Number(first.isMe)
+        || first.user.displayName.localeCompare(second.user.displayName, "ru")),
+    pendingInvites,
+  };
+}
+
+function targetFromDirectCircle(personCircleId: string, currentUserId: string): string | null {
+  const circle = store().circles.get(personCircleId);
+  if (
+    !circle ||
+    circle.archivedAt !== null ||
+    (circle.lowUserId !== currentUserId && circle.highUserId !== currentUserId)
+  ) return null;
+  return otherUserId(circle, currentUserId);
+}
+
+function createGroupInviteRecord(
+  groupId: string,
+  inviterUserId: string,
+  inviteeUserId: string,
+  idempotencyKey: string,
+  now: Date,
+): GroupInviteRecord {
+  const invite: GroupInviteRecord = {
+    id: crypto.randomUUID(),
+    groupId,
+    inviterUserId,
+    inviteeUserId,
+    idempotencyKey,
+    status: "PENDING",
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + REQUEST_TTL_MS).toISOString(),
+    acceptedAt: null,
+    revokedAt: null,
+  };
+  store().groupInvites.set(invite.id, invite);
+  return invite;
 }
 
 function personDto(circle: DirectCircleRecord, currentUserId: string): Person {
@@ -328,6 +510,8 @@ export function createDevCheckIn(
   const response: CheckInResponse = {
     eventId: crypto.randomUUID(),
     checkedAt,
+    checkInCount:
+      [...currentStore.checkIns.values()].filter((event) => event.userId === user.id).length + 1,
     serverTime: checkedAt,
     nextAllowedAt: new Date(serverTime.getTime() + COOLDOWN_MS).toISOString(),
     replayed: false,
@@ -350,7 +534,30 @@ export function createDevCheckIn(
       actorUserId: user.id,
       recipientUserId: otherUserId(circle, user.id),
       circleId: circle.id,
+      recipientMembershipId: null,
     });
+  }
+
+  for (const membership of activeGroupMembershipsForUser(user.id)) {
+    const group = currentStore.groups.get(membership.groupId);
+    const sharing = currentStore.sharing.get(sharingKey(membership.groupId, user.id));
+    if (
+      !group ||
+      group.archivedAt !== null ||
+      sharing?.mode === "OFF" ||
+      !sharing?.enabledSince ||
+      sharing.enabledSince > checkedAt
+    ) continue;
+    for (const recipient of activeGroupMemberships(membership.groupId)) {
+      if (recipient.userId === user.id) continue;
+      currentStore.audiences.push({
+        eventId: response.eventId,
+        actorUserId: user.id,
+        recipientUserId: recipient.userId,
+        circleId: membership.groupId,
+        recipientMembershipId: recipient.id,
+      });
+    }
   }
 
   currentStore.idempotency.set(replayKey, response);
@@ -402,6 +609,21 @@ export function listDevPeople(token: string | undefined): DevResult<PeopleRespon
       request.status === "PENDING" &&
       (request.requesterUserId === currentUser.id || request.recipientUserId === currentUser.id),
   );
+  const audienceUserIds = new Set(
+    activeCirclesForUser(currentUser.id)
+      .filter((circle) =>
+        (currentStore.sharing.get(sharingKey(circle.id, currentUser.id))?.mode
+          ?? "LATEST_ONLY") !== "OFF")
+      .map((circle) => otherUserId(circle, currentUser.id)),
+  );
+  for (const membership of activeGroupMembershipsForUser(currentUser.id)) {
+    const group = currentStore.groups.get(membership.groupId);
+    const preference = currentStore.sharing.get(sharingKey(membership.groupId, currentUser.id));
+    if (!group || group.archivedAt !== null || preference?.mode === "OFF") continue;
+    for (const recipient of activeGroupMemberships(membership.groupId)) {
+      if (recipient.userId !== currentUser.id) audienceUserIds.add(recipient.userId);
+    }
+  }
 
   return {
     kind: "ok",
@@ -413,7 +635,7 @@ export function listDevPeople(token: string | undefined): DevResult<PeopleRespon
       outgoingRequests: pending
         .filter((request) => request.requesterUserId === currentUser.id)
         .map((request) => requestDto(request, currentUser.id)),
-      audienceCount: people.filter((person) => person.mySharingMode !== "OFF").length,
+      audienceCount: audienceUserIds.size,
       serverTime: new Date().toISOString(),
     },
   };
@@ -609,4 +831,341 @@ export function removeDevPerson(
   }
   circle.archivedAt = new Date().toISOString();
   return { kind: "ok", value: { serverTime: circle.archivedAt } };
+}
+
+export function listDevGroups(token: string | undefined): DevResult<GroupsResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  expireGroupInvites();
+  const currentStore = store();
+  const groups = [...currentStore.groups.values()]
+    .map((group) => groupDto(group, currentUser.id))
+    .filter((group): group is Group => group !== null)
+    .sort((first, second) => first.title.localeCompare(second.title, "ru"));
+  const pending = [...currentStore.groupInvites.values()].filter(
+    (invite) =>
+      invite.status === "PENDING" &&
+      (invite.inviterUserId === currentUser.id || invite.inviteeUserId === currentUser.id),
+  );
+  return {
+    kind: "ok",
+    value: {
+      groups,
+      incomingInvites: pending
+        .filter((invite) => invite.inviteeUserId === currentUser.id)
+        .map((invite) => groupInviteDto(invite, currentUser.id)),
+      outgoingInvites: pending
+        .filter((invite) => invite.inviterUserId === currentUser.id)
+        .map((invite) => groupInviteDto(invite, currentUser.id)),
+      serverTime: new Date().toISOString(),
+    },
+  };
+}
+
+export function createDevGroup(
+  token: string | undefined,
+  title: string,
+  emoji: string | null,
+  inviteeCircleIds: string[],
+  idempotencyKey: string,
+): DevResult<GroupMutationResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const replay = [...store().groups.values()].find(
+    (group) =>
+      group.createdByUserId === currentUser.id &&
+      group.creationIdempotencyKey === idempotencyKey,
+  );
+  if (replay) {
+    return {
+      kind: "ok",
+      value: {
+        groupId: replay.id,
+        replayed: true,
+        serverTime: new Date().toISOString(),
+      },
+    };
+  }
+
+  const activeOwnedGroups = [...store().groups.values()].filter(
+    (group) => group.createdByUserId === currentUser.id && group.archivedAt === null,
+  ).length;
+  if (activeOwnedGroups >= 20) return { kind: "conflict" };
+
+  const targets = [...new Set(inviteeCircleIds.map(
+    (circleId) => targetFromDirectCircle(circleId, currentUser.id),
+  ))];
+  if (targets.some((target) => target === null)) return { kind: "forbidden" };
+  if (targets.length > 20) return { kind: "conflict" };
+
+  const now = new Date();
+  const group: GroupRecord = {
+    id: crypto.randomUUID(),
+    title,
+    emoji,
+    createdByUserId: currentUser.id,
+    creationIdempotencyKey: idempotencyKey,
+    createdAt: now.toISOString(),
+    archivedAt: null,
+  };
+  const ownerMembership: GroupMembershipRecord = {
+    id: crypto.randomUUID(),
+    groupId: group.id,
+    userId: currentUser.id,
+    role: "OWNER",
+    joinedAt: group.createdAt,
+    leftAt: null,
+  };
+  store().groups.set(group.id, group);
+  store().groupMemberships.set(ownerMembership.id, ownerMembership);
+  store().sharing.set(sharingKey(group.id, currentUser.id), {
+    mode: "LATEST_ONLY",
+    enabledSince: group.createdAt,
+  });
+  for (const target of targets) {
+    if (target) createGroupInviteRecord(
+      group.id,
+      currentUser.id,
+      target,
+      crypto.randomUUID(),
+      now,
+    );
+  }
+  return {
+    kind: "ok",
+    value: { groupId: group.id, replayed: false, serverTime: group.createdAt },
+  };
+}
+
+export function updateDevGroup(
+  token: string | undefined,
+  groupId: string,
+  title: string,
+  emoji: string | null,
+): DevResult<GroupMutationResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const group = store().groups.get(groupId);
+  const membership = activeGroupMembership(groupId, currentUser.id);
+  if (!group || group.archivedAt !== null || !membership) return { kind: "not-found" };
+  if (membership.role !== "OWNER") return { kind: "forbidden" };
+  group.title = title;
+  group.emoji = emoji;
+  return {
+    kind: "ok",
+    value: { groupId, replayed: false, serverTime: new Date().toISOString() },
+  };
+}
+
+export function updateDevGroupSharing(
+  token: string | undefined,
+  groupId: string,
+  sharingMode: SharingMode,
+): DevResult<GroupMutationResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const group = store().groups.get(groupId);
+  if (!group || group.archivedAt !== null || !activeGroupMembership(groupId, currentUser.id)) {
+    return { kind: "not-found" };
+  }
+  const previous = store().sharing.get(sharingKey(groupId, currentUser.id));
+  const latestStoredCheckIn = Math.max(
+    0,
+    ...[...store().checkIns.values()].map((event) => Date.parse(event.checkedAt)),
+  );
+  store().sharing.set(sharingKey(groupId, currentUser.id), {
+    mode: sharingMode,
+    enabledSince:
+      sharingMode === "OFF"
+        ? null
+        : previous?.mode === "LATEST_ONLY" && previous.enabledSince
+          ? previous.enabledSince
+          : new Date(Math.max(Date.now(), latestStoredCheckIn + 1)).toISOString(),
+  });
+  return {
+    kind: "ok",
+    value: { groupId, replayed: false, serverTime: new Date().toISOString() },
+  };
+}
+
+export function inviteDevGroupMember(
+  token: string | undefined,
+  groupId: string,
+  personCircleId: string,
+  idempotencyKey: string,
+): DevResult<GroupMutationResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const group = store().groups.get(groupId);
+  const membership = activeGroupMembership(groupId, currentUser.id);
+  if (!group || group.archivedAt !== null || !membership) return { kind: "not-found" };
+  if (membership.role !== "OWNER") return { kind: "forbidden" };
+  const targetUserId = targetFromDirectCircle(personCircleId, currentUser.id);
+  if (!targetUserId) return { kind: "forbidden" };
+  if (activeGroupMembership(groupId, targetUserId)) return { kind: "conflict" };
+
+  const replay = [...store().groupInvites.values()].find(
+    (invite) =>
+      invite.inviterUserId === currentUser.id && invite.idempotencyKey === idempotencyKey,
+  );
+  if (replay) {
+    if (replay.groupId !== groupId || replay.inviteeUserId !== targetUserId) {
+      return { kind: "conflict" };
+    }
+    return {
+      kind: "ok",
+      value: { groupId, replayed: true, serverTime: new Date().toISOString() },
+    };
+  }
+  expireGroupInvites();
+  const existing = [...store().groupInvites.values()].find(
+    (invite) =>
+      invite.groupId === groupId &&
+      invite.inviteeUserId === targetUserId &&
+      invite.status === "PENDING",
+  );
+  if (existing) {
+    return {
+      kind: "ok",
+      value: { groupId, replayed: true, serverTime: new Date().toISOString() },
+    };
+  }
+  const activeMembersAndInvites = activeGroupMemberships(groupId).length
+    + [...store().groupInvites.values()].filter(
+      (invite) => invite.groupId === groupId && invite.status === "PENDING",
+    ).length;
+  if (activeMembersAndInvites >= 50) return { kind: "conflict" };
+  const now = new Date();
+  createGroupInviteRecord(groupId, currentUser.id, targetUserId, idempotencyKey, now);
+  return {
+    kind: "ok",
+    value: { groupId, replayed: false, serverTime: now.toISOString() },
+  };
+}
+
+export function actOnDevGroupInvite(
+  token: string | undefined,
+  inviteId: string,
+  action: "ACCEPTED" | "REVOKED",
+): DevResult<GroupMutationResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const invite = store().groupInvites.get(inviteId);
+  if (!invite) return { kind: "not-found" };
+  if (invite.inviteeUserId !== currentUser.id) return { kind: "forbidden" };
+  if (invite.status !== "PENDING") {
+    if (invite.status !== action) return { kind: "conflict" };
+    return {
+      kind: "ok",
+      value: { groupId: invite.groupId, replayed: true, serverTime: new Date().toISOString() },
+    };
+  }
+  if (Date.parse(invite.expiresAt) <= Date.now()) {
+    invite.status = "REVOKED";
+    invite.revokedAt = new Date().toISOString();
+    return { kind: "expired" };
+  }
+  const group = store().groups.get(invite.groupId);
+  if (!group || group.archivedAt !== null) return { kind: "not-found" };
+  const now = new Date().toISOString();
+  invite.status = action;
+  if (action === "ACCEPTED") {
+    invite.acceptedAt = now;
+    if (!activeGroupMembership(invite.groupId, currentUser.id)) {
+      const membership: GroupMembershipRecord = {
+        id: crypto.randomUUID(),
+        groupId: invite.groupId,
+        userId: currentUser.id,
+        role: "MEMBER",
+        joinedAt: now,
+        leftAt: null,
+      };
+      store().groupMemberships.set(membership.id, membership);
+      store().sharing.set(sharingKey(invite.groupId, currentUser.id), {
+        mode: "LATEST_ONLY",
+        enabledSince: now,
+      });
+    }
+  } else {
+    invite.revokedAt = now;
+  }
+  return {
+    kind: "ok",
+    value: { groupId: invite.groupId, replayed: false, serverTime: now },
+  };
+}
+
+export function revokeDevGroupInvite(
+  token: string | undefined,
+  groupId: string,
+  inviteId: string,
+): DevResult<{ serverTime: string }> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const membership = activeGroupMembership(groupId, currentUser.id);
+  const invite = store().groupInvites.get(inviteId);
+  if (!membership || !invite || invite.groupId !== groupId) return { kind: "not-found" };
+  if (membership.role !== "OWNER" || invite.inviterUserId !== currentUser.id) {
+    return { kind: "forbidden" };
+  }
+  if (invite.status === "PENDING") {
+    invite.status = "REVOKED";
+    invite.revokedAt = new Date().toISOString();
+  }
+  return { kind: "ok", value: { serverTime: new Date().toISOString() } };
+}
+
+export function removeDevGroupMember(
+  token: string | undefined,
+  groupId: string,
+  membershipId: string,
+): DevResult<{ serverTime: string }> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const target = store().groupMemberships.get(membershipId);
+  if (!target || target.groupId !== groupId) {
+    return { kind: "not-found" };
+  }
+  const removingSelf = target.userId === currentUser.id;
+  const mine = activeGroupMembership(groupId, currentUser.id);
+  if (target.leftAt !== null) {
+    if (removingSelf || (mine?.role === "OWNER" && target.role !== "OWNER")) {
+      return { kind: "ok", value: { serverTime: target.leftAt } };
+    }
+    return mine ? { kind: "forbidden" } : { kind: "not-found" };
+  }
+  if (!mine) return { kind: "not-found" };
+  if ((!removingSelf && mine.role !== "OWNER") || target.role === "OWNER") {
+    return { kind: "forbidden" };
+  }
+  const now = new Date().toISOString();
+  store().sharing.set(sharingKey(groupId, target.userId), { mode: "OFF", enabledSince: null });
+  target.leftAt = now;
+  return { kind: "ok", value: { serverTime: now } };
+}
+
+export function deleteDevGroup(
+  token: string | undefined,
+  groupId: string,
+): DevResult<{ serverTime: string }> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const group = store().groups.get(groupId);
+  const mine = activeGroupMembership(groupId, currentUser.id);
+  if (!group || (!mine && group.archivedAt === null)) return { kind: "not-found" };
+  if (group.createdByUserId !== currentUser.id) return { kind: "forbidden" };
+  if (group.archivedAt) return { kind: "ok", value: { serverTime: group.archivedAt } };
+  const now = new Date().toISOString();
+  for (const membership of activeGroupMemberships(groupId)) {
+    store().sharing.set(sharingKey(groupId, membership.userId), { mode: "OFF", enabledSince: null });
+    membership.leftAt = now;
+  }
+  for (const invite of store().groupInvites.values()) {
+    if (invite.groupId === groupId && invite.status === "PENDING") {
+      invite.status = "REVOKED";
+      invite.revokedAt = now;
+    }
+  }
+  group.archivedAt = now;
+  return { kind: "ok", value: { serverTime: now } };
 }
