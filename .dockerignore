@@ -1,0 +1,9 @@
+.git
+.next
+.sites-runtime
+.wrangler
+node_modules
+apps/api/.gradle
+apps/api/build
+deploy/.env
+npm-debug.log

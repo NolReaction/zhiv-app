@@ -1,0 +1,17 @@
+{$DOMAIN:localhost} {
+    encode zstd gzip
+
+    @api path /api/* /healthz
+    reverse_proxy @api api:8080
+    reverse_proxy web:3000
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+}
