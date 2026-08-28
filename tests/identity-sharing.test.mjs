@@ -1,0 +1,202 @@
+import assert from "node:assert/strict";
+import test, { after } from "node:test";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const vite = await createServer({
+  appType: "custom",
+  configFile: false,
+  root,
+  resolve: { alias: { "@": root } },
+  server: { middlewareMode: true, hmr: false },
+});
+
+const sharing = await vite.ssrLoadModule("/lib/identity-sharing.ts");
+
+after(async () => {
+  await vite.close();
+});
+
+function createLegacyDocument(events, copyResult = true) {
+  const field = {
+    readOnly: false,
+    style: {},
+    value: "",
+    focus() {
+      events.push("field-focus");
+    },
+    remove() {
+      events.push("field-remove");
+    },
+    select() {
+      events.push("field-select");
+    },
+    setAttribute() {},
+    setSelectionRange(start, end) {
+      events.push(`field-range:${start}-${end}`);
+    },
+  };
+
+  return {
+    activeElement: {
+      focus() {
+        events.push("focus-restored");
+      },
+    },
+    body: {
+      appendChild() {
+        events.push("field-appended");
+      },
+    },
+    createElement(tagName) {
+      assert.equal(tagName, "textarea");
+      return field;
+    },
+    execCommand(command) {
+      events.push(`exec:${command}`);
+      return copyResult;
+    },
+    getSelection() {
+      return {
+        addRange() {},
+        getRangeAt() {
+          throw new Error("No ranges expected");
+        },
+        rangeCount: 0,
+        removeAllRanges() {},
+      };
+    },
+  };
+}
+
+test("copies the ID through the Safari fallback on LAN HTTP", async () => {
+  const events = [];
+  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
+    document: createLegacyDocument(events),
+    navigator: {
+      share() {
+        events.push("share-start");
+        return Promise.resolve();
+      },
+    },
+    secureContext: false,
+  });
+
+  assert.deepEqual(result, { copied: true, shareOutcome: "unavailable" });
+  assert.ok(events.includes("exec:copy"));
+  assert.equal(events.includes("share-start"), false);
+  assert.equal(sharing.getIdentitySharingNotice(result), "ID скопирован");
+});
+
+test("turns a synchronous DOM fallback failure into a normal result", async () => {
+  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
+    document: {
+      body: {},
+      execCommand() {
+        return true;
+      },
+      getSelection() {
+        throw new Error("selection unavailable");
+      },
+    },
+    navigator: {},
+    secureContext: false,
+  });
+
+  assert.deepEqual(result, { copied: false, shareOutcome: "unavailable" });
+  assert.equal(
+    sharing.getIdentitySharingNotice(result),
+    "Не скопировано — зажмите ID",
+  );
+});
+
+test("starts copying before native share without awaiting either action", async () => {
+  const events = [];
+  let resolveCopy;
+  let resolveShare;
+
+  const pending = sharing.shareIdentity("YD4H-0SQF-N72K", {
+    document: {},
+    navigator: {
+      clipboard: {
+        writeText(text) {
+          events.push(`copy:${text}`);
+          return new Promise((resolve) => {
+            resolveCopy = resolve;
+          });
+        },
+      },
+      canShare(data) {
+        events.push(`can-share:${data.text}`);
+        return true;
+      },
+      share(data) {
+        events.push(`share:${data.title}:${data.text}`);
+        return new Promise((resolve) => {
+          resolveShare = resolve;
+        });
+      },
+    },
+    secureContext: true,
+  });
+
+  assert.deepEqual(events, [
+    "copy:YD4H-0SQF-N72K",
+    "can-share:Добавь меня в «Жив» по ID: YD4H-0SQF-N72K",
+    "share:Жив:Добавь меня в «Жив» по ID: YD4H-0SQF-N72K",
+  ]);
+
+  resolveCopy();
+  resolveShare();
+  assert.deepEqual(await pending, { copied: true, shareOutcome: "shared" });
+});
+
+test("treats closing the share sheet as a normal copied result", async () => {
+  const abortError = Object.assign(new Error("cancelled"), { name: "AbortError" });
+  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
+    document: {},
+    navigator: {
+      clipboard: { writeText: () => Promise.resolve() },
+      share: () => Promise.reject(abortError),
+    },
+    secureContext: true,
+  });
+
+  assert.deepEqual(result, { copied: true, shareOutcome: "cancelled" });
+  assert.equal(sharing.getIdentitySharingNotice(result), "ID скопирован");
+});
+
+test("reports copy failure honestly even when native share succeeds", async () => {
+  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
+    document: {},
+    navigator: {
+      clipboard: { writeText: () => Promise.reject(new Error("denied")) },
+      share: () => Promise.resolve(),
+    },
+    secureContext: true,
+  });
+
+  assert.deepEqual(result, { copied: false, shareOutcome: "shared" });
+  assert.equal(
+    sharing.getIdentitySharingNotice(result),
+    "Поделиться удалось, но ID не скопирован",
+  );
+});
+
+test("offers a manual fallback when both browser actions fail", async () => {
+  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
+    document: {},
+    navigator: {
+      clipboard: { writeText: () => Promise.reject(new Error("denied")) },
+      share: () => Promise.reject(new Error("blocked")),
+    },
+    secureContext: true,
+  });
+
+  assert.deepEqual(result, { copied: false, shareOutcome: "failed" });
+  assert.equal(
+    sharing.getIdentitySharingNotice(result),
+    "Не скопировано — зажмите ID",
+  );
+});

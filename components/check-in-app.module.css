@@ -164,6 +164,11 @@
   cursor: pointer;
 }
 
+.identity:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .identityText {
   display: grid;
   justify-items: end;
@@ -185,6 +190,8 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   letter-spacing: 0.04em;
+  -webkit-user-select: all;
+  user-select: all;
 }
 
 .identity > svg {
@@ -198,7 +205,9 @@
   right: 7px;
   color: #b7d8a2;
   font-size: 10px;
-  white-space: nowrap;
+  max-width: min(70vw, 280px);
+  line-height: 1.35;
+  text-align: right;
 }
 
 .action {
