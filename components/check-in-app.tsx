@@ -17,6 +17,7 @@ import {
 import { PeopleView } from "./people-view";
 import styles from "./check-in-app.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { getIdentitySharingNotice, shareIdentity } from "@/lib/identity-sharing";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = "check-in" | "people";
@@ -164,7 +165,10 @@ export function CheckInApp() {
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleError, setPeopleError] = useState<string | null>(null);
   const [identityNotice, setIdentityNotice] = useState<string | null>(null);
+  const [isIdentityActionPending, setIsIdentityActionPending] = useState(false);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const identityNoticeTimer = useRef<number | null>(null);
+  const identityActionPending = useRef(false);
   const pendingCheckIn = useRef<PendingCheckIn | null>(null);
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
   const homeHeading = useRef<HTMLHeadingElement | null>(null);
@@ -280,6 +284,7 @@ export function CheckInApp() {
       window.removeEventListener("offline", markOffline);
       window.clearInterval(clock);
       if (burstTimer.current) clearTimeout(burstTimer.current);
+      if (identityNoticeTimer.current) clearTimeout(identityNoticeTimer.current);
     };
   }, [adoptMe, clearPendingCheckIn, resetTransientCheckIn]);
 
@@ -465,23 +470,29 @@ export function CheckInApp() {
     [buttonColor],
   );
 
-  async function shareIdentity() {
-    if (!me) return;
-    const text = `${me.user.displayName} в «Жив» · ${me.user.publicId}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: "Мой ID в «Жив»", text });
-        setIdentityNotice("ID отправлен");
-      } else {
-        await navigator.clipboard.writeText(me.user.publicId);
-        setIdentityNotice("ID скопирован");
-      }
-      window.setTimeout(() => setIdentityNotice(null), 1_800);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setIdentityNotice("Не удалось поделиться");
-      window.setTimeout(() => setIdentityNotice(null), 1_800);
-    }
+  function showIdentityNotice(message: string) {
+    if (identityNoticeTimer.current) window.clearTimeout(identityNoticeTimer.current);
+    setIdentityNotice(message);
+    identityNoticeTimer.current = window.setTimeout(() => {
+      setIdentityNotice(null);
+      identityNoticeTimer.current = null;
+    }, 2_400);
+  }
+
+  function handleIdentityAction() {
+    if (!me || identityActionPending.current) return;
+
+    identityActionPending.current = true;
+    setIsIdentityActionPending(true);
+    setIdentityNotice(null);
+
+    void shareIdentity(me.user.publicId)
+      .then((result) => showIdentityNotice(getIdentitySharingNotice(result)))
+      .catch(() => showIdentityNotice("Не скопировано — зажмите ID"))
+      .finally(() => {
+        identityActionPending.current = false;
+        setIsIdentityActionPending(false);
+      });
   }
 
   if (screen === "loading") {
@@ -588,8 +599,10 @@ export function CheckInApp() {
           <button
             type="button"
             className={styles.identity}
-            aria-label="Поделиться своим ID"
-            onClick={() => void shareIdentity()}
+            aria-label="Скопировать ID и поделиться"
+            aria-busy={isIdentityActionPending}
+            disabled={isIdentityActionPending}
+            onClick={handleIdentityAction}
           >
             <span className={styles.identityText}>
               <strong>{me?.user.displayName}</strong>
