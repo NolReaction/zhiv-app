@@ -239,6 +239,8 @@ test("ships installable PNG icons for iOS and Android", async () => {
   assert.match(manifest, /icon-192\.png/);
   assert.match(manifest, /icon-512\.png/);
   assert.match(layout, /apple-touch-icon\.png/);
+  assert.match(manifest, /name:\s*["']Я живой["']/);
+  assert.match(layout, /title:\s*["']Я живой["']/);
 });
 
 test("applies clickjacking protection to the root page and nested routes", async () => {

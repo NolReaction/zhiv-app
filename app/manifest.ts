@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Жив",
-    short_name: "Жив",
-    description: "Одна кнопка, чтобы сохранить подтверждённое время отметки.",
+    name: "Я живой",
+    short_name: "Я живой",
+    description: "Одна кнопка, чтобы близкие знали: вы живы и на связи.",
     start_url: "/",
     scope: "/",
     display: "standalone",

@@ -6,12 +6,14 @@ export type PublicUser = {
 export type MeResponse = {
   user: PublicUser;
   lastCheckInAt: string | null;
+  checkInCount: number;
   serverTime: string;
 };
 
 export type CheckInResponse = {
   eventId: string;
   checkedAt: string;
+  checkInCount: number;
   serverTime: string;
   nextAllowedAt: string;
   replayed: boolean;
@@ -88,5 +90,54 @@ export type DirectRequestActionResponse = {
 export type SharingResponse = {
   circleId: string;
   sharingMode: SharingMode;
+  serverTime: string;
+};
+
+export type GroupRole = "OWNER" | "ADMIN" | "MEMBER";
+
+export type GroupMember = {
+  membershipId: string;
+  user: PublicUser;
+  role: GroupRole;
+  sharingMode: SharingMode;
+  lastCheckInAt: string | null;
+  joinedAt: string;
+  isMe: boolean;
+};
+
+export type GroupInviteDirection = "INCOMING" | "OUTGOING";
+
+export type GroupInvite = {
+  inviteId: string;
+  direction: GroupInviteDirection;
+  groupId: string;
+  groupTitle: string;
+  groupEmoji: string | null;
+  user: PublicUser;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type Group = {
+  groupId: string;
+  title: string;
+  emoji: string | null;
+  myRole: GroupRole;
+  mySharingMode: SharingMode;
+  createdAt: string;
+  members: GroupMember[];
+  pendingInvites: GroupInvite[];
+};
+
+export type GroupsResponse = {
+  groups: Group[];
+  incomingInvites: GroupInvite[];
+  outgoingInvites: GroupInvite[];
+  serverTime: string;
+};
+
+export type GroupMutationResponse = {
+  groupId: string;
+  replayed: boolean;
   serverTime: string;
 };

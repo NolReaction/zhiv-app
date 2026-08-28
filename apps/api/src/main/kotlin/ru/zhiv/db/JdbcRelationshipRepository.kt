@@ -77,7 +77,7 @@ class JdbcRelationshipRepository(
                     people = people,
                     incomingRequests = requests.filter { it.direction == RequestDirection.INCOMING },
                     outgoingRequests = requests.filter { it.direction == RequestDirection.OUTGOING },
-                    audienceCount = people.count { it.mySharingMode != SharingMode.OFF },
+                    audienceCount = countAudienceRecipients(connection, currentUserId),
                     serverTime = responseTime,
                 ),
             )
@@ -643,6 +643,51 @@ class JdbcRelationshipRepository(
                 buildList {
                     while (result.next()) add(result.toPersonSnapshot())
                 }
+            }
+        }
+
+    private fun countAudienceRecipients(connection: Connection, currentUserId: UUID): Int =
+        connection.prepareStatement(
+            """
+            SELECT count(DISTINCT recipients.user_id)
+              FROM (
+                    SELECT CASE WHEN circle.direct_user_low_id = ?
+                                THEN circle.direct_user_high_id
+                                ELSE circle.direct_user_low_id END AS user_id
+                      FROM circles circle
+                      JOIN circle_sharing_preferences preference
+                        ON preference.circle_id = circle.id
+                       AND preference.user_id = ?
+                       AND preference.sharing_mode <> 'OFF'
+                     WHERE circle.kind = 'DIRECT' AND circle.archived_at IS NULL
+                       AND ? IN (circle.direct_user_low_id, circle.direct_user_high_id)
+                    UNION ALL
+                    SELECT recipient.user_id
+                      FROM circle_memberships actor
+                      JOIN circles circle
+                        ON circle.id = actor.circle_id
+                       AND circle.kind = 'GROUP'
+                       AND circle.archived_at IS NULL
+                      JOIN circle_sharing_preferences preference
+                        ON preference.circle_id = circle.id
+                       AND preference.user_id = actor.user_id
+                       AND preference.sharing_mode <> 'OFF'
+                      JOIN circle_memberships recipient
+                        ON recipient.circle_id = circle.id
+                       AND recipient.left_at IS NULL
+                       AND recipient.history_visibility <> 'NONE'
+                       AND recipient.user_id <> actor.user_id
+                     WHERE actor.user_id = ? AND actor.left_at IS NULL
+              ) recipients
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setObject(1, currentUserId)
+            statement.setObject(2, currentUserId)
+            statement.setObject(3, currentUserId)
+            statement.setObject(4, currentUserId)
+            statement.executeQuery().use { result ->
+                check(result.next())
+                result.getInt(1)
             }
         }
 

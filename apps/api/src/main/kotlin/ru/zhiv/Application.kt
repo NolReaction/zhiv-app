@@ -25,10 +25,13 @@ import ru.zhiv.checkins.checkInRoutes
 import ru.zhiv.config.AppConfig
 import ru.zhiv.db.DatabaseFactory
 import ru.zhiv.db.JdbcRelationshipRepository
+import ru.zhiv.db.JdbcGroupRepository
 import ru.zhiv.db.JdbcZhivRepository
 import ru.zhiv.http.ApiErrorResponse
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.identityRoutes
+import ru.zhiv.groups.GroupRepository
+import ru.zhiv.groups.groupRoutes
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
@@ -40,11 +43,18 @@ fun Application.module() {
     DatabaseFactory.migrate(dataSource)
     val repository = JdbcZhivRepository(dataSource)
     val relationships = JdbcRelationshipRepository(dataSource)
+    val groups = JdbcGroupRepository(dataSource)
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         dataSource.close()
     }
-    installZhivApi(repository, repository, config, relationships = relationships)
+    installZhivApi(
+        repository,
+        repository,
+        config,
+        relationships = relationships,
+        groups = groups,
+    )
 }
 
 fun Application.installZhivApi(
@@ -53,6 +63,7 @@ fun Application.installZhivApi(
     config: AppConfig,
     tokenCodec: TokenCodec = TokenCodec(),
     relationships: RelationshipRepository? = null,
+    groups: GroupRepository? = null,
 ) {
     install(DefaultHeaders)
     install(ForwardedHeaders)
@@ -123,5 +134,6 @@ fun Application.installZhivApi(
         identityRoutes(identities, tokenCodec, config)
         checkInRoutes(checkIns, tokenCodec, config)
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
+        groups?.let { groupRoutes(it, tokenCodec, config) }
     }
 }

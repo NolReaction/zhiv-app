@@ -143,8 +143,8 @@ test("starts copying before native share without awaiting either action", async 
 
   assert.deepEqual(events, [
     "copy:YD4H-0SQF-N72K",
-    "can-share:Добавь меня в «Жив» по ID: YD4H-0SQF-N72K",
-    "share:Жив:Добавь меня в «Жив» по ID: YD4H-0SQF-N72K",
+    "can-share:Добавь меня в «Я живой» по ID: YD4H-0SQF-N72K",
+    "share:Я живой:Добавь меня в «Я живой» по ID: YD4H-0SQF-N72K",
   ]);
 
   resolveCopy();

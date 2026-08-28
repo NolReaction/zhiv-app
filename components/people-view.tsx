@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Check, Copy, Plus, RefreshCw, Search, Trash2, UserRound, X } from "lucide-react";
 import type {
   DirectRequest,
+  GroupsResponse,
   PeopleResponse,
   Person,
   UserLookupResponse,
@@ -44,13 +45,18 @@ import {
 import { Switch } from "@/components/ui/switch";
 import styles from "./people-view.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { GroupsSection } from "./groups-section";
 
 type PeopleViewProps = {
   data: PeopleResponse | null;
+  groups: GroupsResponse | null;
   error: string | null;
+  groupsError: string | null;
   loading: boolean;
+  groupsLoading: boolean;
   nowMs: number;
   onRefresh: () => Promise<void>;
+  onGroupsRefresh: () => Promise<void>;
   onSessionLost: () => void;
 };
 
@@ -80,10 +86,14 @@ function stateMessage(result: UserLookupResponse): string | null {
 
 export function PeopleView({
   data,
+  groups,
   error,
+  groupsError,
   loading,
+  groupsLoading,
   nowMs,
   onRefresh,
+  onGroupsRefresh,
   onSessionLost,
 }: PeopleViewProps) {
   const [addOpen, setAddOpen] = useState(false);
@@ -94,7 +104,7 @@ export function PeopleView({
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const incomingCount = data?.incomingRequests.length ?? 0;
+  const incomingCount = (data?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0);
   const title = incomingCount > 0 ? `Свои · ${incomingCount}` : "Свои";
 
   function handleApiError(cause: unknown, fallback: string) {
@@ -230,6 +240,17 @@ export function PeopleView({
 
       {data ? (
         <div className={styles.sections}>
+          <GroupsSection
+            data={groups}
+            people={data}
+            error={groupsError}
+            loading={groupsLoading}
+            nowMs={nowMs}
+            onRefresh={onGroupsRefresh}
+            onAudienceRefresh={onRefresh}
+            onSessionLost={onSessionLost}
+          />
+
           {data.incomingRequests.length > 0 ? (
             <section className={styles.section} aria-labelledby="incoming-title">
               <h2 id="incoming-title">Хотят быть своими</h2>
@@ -340,7 +361,7 @@ export function PeopleView({
                       <div className={styles.personBottom}>
                         <label className={styles.sharingLabel}>
                           <span>
-                            <strong>Видит мои отметки</strong>
+                            <strong>Показывать через личную связь</strong>
                             <small>{isSharing ? "Новые отметки доступны" : "Новые отметки скрыты"}</small>
                           </span>
                           <Switch

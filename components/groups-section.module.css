@@ -1,0 +1,517 @@
+.section {
+  display: grid;
+  gap: 12px;
+}
+
+.headingRow,
+.titleRow,
+.inviteCard,
+.groupSummary,
+.sharingLabel,
+.memberRow,
+.groupActions,
+.inviteActions {
+  display: flex;
+  align-items: center;
+}
+
+.headingRow {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.titleRow {
+  gap: 9px;
+}
+
+.titleRow h2 {
+  margin: 0;
+  color: #d9ddd4;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.titleRow > span {
+  display: grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(183, 216, 162, 0.12);
+  color: #b7d8a2;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.createButton,
+.primaryButton,
+.acceptButton,
+.iconButton,
+.groupActions button,
+.pendingList button,
+.presetRow button,
+.invitePicker button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.createButton {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(183, 216, 162, 0.16);
+  border-radius: 12px;
+  background: rgba(183, 216, 162, 0.09);
+  color: #cfe6c1;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inviteCard,
+.groupCard,
+.empty,
+.state {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.038);
+}
+
+.inviteCard {
+  gap: 12px;
+  padding: 13px;
+}
+
+.groupIcon {
+  display: grid;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid rgba(183, 216, 162, 0.16);
+  border-radius: 15px;
+  background: rgba(183, 216, 162, 0.08);
+  font-size: 21px;
+}
+
+.cardText {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+  text-align: left;
+}
+
+.cardText strong {
+  overflow: hidden;
+  color: #f1f3ed;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardText span {
+  overflow: hidden;
+  color: #858b80;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inviteActions {
+  gap: 7px;
+}
+
+.acceptButton,
+.iconButton {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 13px;
+}
+
+.acceptButton {
+  background: #b7d8a2;
+  color: #172312;
+}
+
+.iconButton {
+  background: rgba(255, 255, 255, 0.065);
+  color: #c3c8bd;
+}
+
+.empty,
+.state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 28px 22px;
+  color: #858b80;
+  text-align: center;
+}
+
+.empty strong {
+  color: #d9ddd4;
+}
+
+.empty p {
+  max-width: 400px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.groupList {
+  display: grid;
+  gap: 10px;
+}
+
+.groupCard {
+  overflow: hidden;
+}
+
+.groupSummary {
+  width: 100%;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 13px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.groupSummary > svg {
+  color: #7f8579;
+  transition: transform 180ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.groupDetails {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.09);
+}
+
+.sharingLabel {
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+}
+
+.sharingLabel > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sharingLabel strong {
+  color: #d9ddd4;
+  font-size: 12px;
+}
+
+.sharingLabel small {
+  color: #7f8579;
+  font-size: 10px;
+}
+
+.sharingLabel button {
+  width: 38px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: #41463e;
+}
+
+.sharingLabel button[data-state="checked"] {
+  background: #4b8d48;
+}
+
+.members {
+  display: grid;
+  gap: 8px;
+}
+
+.memberRow {
+  gap: 10px;
+  min-height: 46px;
+}
+
+.avatar {
+  --member-color: #58724b;
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--member-color), white 16%);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--member-color), transparent 72%);
+  color: #f5f6f1;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.memberRow .iconButton {
+  width: 36px;
+  height: 36px;
+}
+
+.pendingList {
+  display: grid;
+  gap: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 13px;
+}
+
+.pendingList > strong {
+  color: #9da398;
+  font-size: 11px;
+}
+
+.pendingList > div {
+  display: flex;
+  justify-content: space-between;
+  color: #c7cbc2;
+  font-size: 12px;
+}
+
+.pendingList button {
+  background: transparent;
+  color: #92988d;
+  font-size: 11px;
+}
+
+.groupActions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.groupActions button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 5px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #b8bdb3;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.groupActions .dangerText {
+  color: #dd8d87;
+}
+
+.error,
+.dialogError {
+  margin: 2px 0 0;
+  color: #ff9c98;
+  font-size: 12px;
+}
+
+.dialog,
+.confirmDialog {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 24px !important;
+  background: #151913 !important;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5) !important;
+  color: #f4f5ef !important;
+}
+
+.dialogDescription {
+  color: #92988d !important;
+  line-height: 1.5;
+}
+
+.presetRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.presetRow button {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #aeb3a9;
+  padding: 10px 6px;
+  font-size: 10px;
+}
+
+.presetRow button span {
+  font-size: 22px;
+}
+
+.presetRow .presetActive {
+  border-color: rgba(183, 216, 162, 0.5);
+  background: rgba(183, 216, 162, 0.1);
+  color: #dff1d4;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  color: #a6ab9f;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.field input {
+  width: 100%;
+  height: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 15px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.055);
+  color: white;
+  padding: 0 14px;
+  font-size: 16px;
+}
+
+.field input:focus {
+  border-color: #b7d8a2;
+}
+
+.peoplePicker {
+  display: grid;
+  max-height: 230px;
+  gap: 5px;
+  overflow-y: auto;
+  border: 0;
+  padding: 0;
+}
+
+.peoplePicker legend {
+  margin-bottom: 7px;
+  color: #a6ab9f;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.peoplePicker label {
+  display: grid;
+  grid-template-columns: auto 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border-radius: 12px;
+  padding: 7px;
+  cursor: pointer;
+}
+
+.peoplePicker label:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.peoplePicker label > span,
+.invitePicker button > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 11px;
+  background: rgba(183, 216, 162, 0.1);
+  color: #dff1d4;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.peoplePicker label strong {
+  font-size: 13px;
+}
+
+.primaryButton {
+  min-height: 48px;
+  border-radius: 15px;
+  background: #e9f4e2;
+  color: #14200f;
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.helper {
+  margin: 0;
+  color: #8d9387;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.invitePicker {
+  display: grid;
+  gap: 7px;
+}
+
+.invitePicker button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d9ddd4;
+  padding: 8px;
+  text-align: left;
+}
+
+.invitePicker button strong {
+  font-size: 13px;
+}
+
+.cancelButton,
+.dangerButton {
+  min-height: 42px !important;
+  border-radius: 12px !important;
+  font-weight: 780 !important;
+}
+
+.cancelButton {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #e0e3dc !important;
+}
+
+.dangerButton {
+  background: #c95750 !important;
+  color: white !important;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.createButton:focus-visible,
+.groupSummary:focus-visible,
+.acceptButton:focus-visible,
+.iconButton:focus-visible,
+.groupActions button:focus-visible,
+.primaryButton:focus-visible,
+.presetRow button:focus-visible,
+.invitePicker button:focus-visible,
+.field input:focus-visible {
+  outline: 3px solid #f5e85b;
+  outline-offset: 3px;
+}
+
+@media (max-width: 430px) {
+  .presetRow {
+    grid-template-columns: 1fr;
+  }
+
+  .presetRow button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+  }
+}

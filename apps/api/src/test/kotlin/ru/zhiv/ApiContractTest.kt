@@ -37,6 +37,7 @@ class ApiContractTest {
         }
         assertEquals(HttpStatusCode.Created, created.status)
         assertContains(created.bodyAsText(), "\"lastCheckInAt\":null")
+        assertContains(created.bodyAsText(), "\"checkInCount\":0")
         val setCookie = assertNotNull(created.headers[HttpHeaders.SetCookie])
         assertContains(setCookie, "HttpOnly")
         assertContains(setCookie, "SameSite=Lax")
@@ -48,6 +49,7 @@ class ApiContractTest {
         }
         assertEquals(HttpStatusCode.OK, checkedIn.status)
         assertContains(checkedIn.bodyAsText(), "\"replayed\":false")
+        assertContains(checkedIn.bodyAsText(), "\"checkInCount\":1")
     }
 
     @Test
@@ -118,6 +120,7 @@ class ApiContractTest {
                 publicId = "7K3P-2Q9M-W8ZR",
                 displayName = displayName,
                 lastCheckInAt = null,
+                checkInCount = 0,
                 serverTime = OffsetDateTime.now(ZoneOffset.UTC),
             ).also { user = it }
         }
@@ -134,6 +137,7 @@ class ApiContractTest {
             return CheckInResult.Accepted(
                 eventId = UUID.randomUUID(),
                 checkedAt = now,
+                checkInCount = 1,
                 serverTime = now,
                 nextAllowedAt = now.plusSeconds(30),
                 replayed = false,

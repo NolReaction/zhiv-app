@@ -9,6 +9,7 @@ sealed interface CheckInResult {
     data class Accepted(
         val eventId: UUID,
         val checkedAt: OffsetDateTime,
+        val checkInCount: Long,
         val serverTime: OffsetDateTime,
         val nextAllowedAt: OffsetDateTime,
         val replayed: Boolean,

@@ -53,6 +53,7 @@ fun Route.checkInRoutes(
                 CheckInResponse(
                     eventId = result.eventId.toString(),
                     checkedAt = result.checkedAt.toInstant().toString(),
+                    checkInCount = result.checkInCount,
                     serverTime = result.serverTime.toInstant().toString(),
                     nextAllowedAt = result.nextAllowedAt.toInstant().toString(),
                     replayed = result.replayed,

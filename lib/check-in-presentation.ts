@@ -12,6 +12,16 @@ export const BURST_MESSAGES = [
   "Бессмертие подтверждено",
 ] as const;
 
+const CHECK_IN_MILESTONES = new Map<number, string>([
+  [10, "Первая десятка. Полёт нормальный."],
+  [20, "20 отметок. Уже входит в привычку."],
+  [50, "Полтинник. Стабильно живой."],
+  [100, "Сотая отметка. Это уже традиция."],
+  [200, "200 отметок. Бессмертие набирает стаж."],
+  [500, "500 отметок. Железно на связи."],
+  [1_000, "Тысячная. Бессмертие подтверждено документально."],
+]);
+
 export function normalizeDisplayName(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -33,6 +43,14 @@ export function isValidPublicId(value: string): boolean {
 export function getBurstMessage(tapCount: number): string {
   const index = Math.max(0, Math.min(tapCount, BURST_MESSAGES.length) - 1);
   return BURST_MESSAGES[index];
+}
+
+export function getCheckInMilestone(checkInCount: number): string | null {
+  if (!Number.isSafeInteger(checkInCount) || checkInCount < 1) return null;
+  return CHECK_IN_MILESTONES.get(checkInCount)
+    ?? (checkInCount > 1_000 && checkInCount % 1_000 === 0
+      ? `${checkInCount} отметок. Легендарная стабильность.`
+      : null);
 }
 
 export function getCheckInAgeMs(

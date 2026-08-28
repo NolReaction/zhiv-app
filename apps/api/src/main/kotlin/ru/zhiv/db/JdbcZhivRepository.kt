@@ -93,6 +93,7 @@ class JdbcZhivRepository(
                         publicId = publicId,
                         displayName = displayName,
                         lastCheckInAt = null,
+                        checkInCount = 0,
                         serverTime = user.second,
                     )
                 }
@@ -121,6 +122,7 @@ class JdbcZhivRepository(
     ): BootstrapReplay? = connection.prepareStatement(
         """
         SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+               (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
                b.session_id, b.expires_at, clock_timestamp() AS server_time
         FROM identity_bootstrap_keys b
         JOIN app_users u ON u.id = b.user_id
@@ -198,6 +200,7 @@ class JdbcZhivRepository(
                 connection.prepareStatement(
                     """
                     SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+                           (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
                            clock_timestamp() AS server_time
                     FROM app_sessions s
                     JOIN app_users u ON u.id = s.user_id
@@ -273,9 +276,12 @@ class JdbcZhivRepository(
                 statement.executeUpdate()
             }
 
+            val checkInCount = countCheckIns(connection, user.userId)
+
             CheckInResult.Accepted(
                 eventId = eventId,
                 checkedAt = user.serverTime,
+                checkInCount = checkInCount,
                 serverTime = user.serverTime,
                 nextAllowedAt = acceptedNextAllowedAt,
                 replayed = false,
@@ -338,14 +344,20 @@ class JdbcZhivRepository(
                 recipient_user_id, recipient_membership_id, access_level
             )
             SELECT ?, ?, c.id, 'GROUP', recipient.user_id,
-                   recipient.id, 'LATEST_ONLY'
+                   recipient.id, preference.sharing_mode
               FROM circles c
               JOIN circle_memberships actor
                 ON actor.circle_id = c.id
                AND actor.user_id = ?
                AND actor.joined_at <= ?
                AND actor.left_at IS NULL
-               AND actor.share_latest
+              JOIN circle_sharing_preferences preference
+                ON preference.circle_id = c.id
+               AND preference.user_id = ?
+               AND preference.sharing_mode <> 'OFF'
+               AND preference.enabled_since IS NOT NULL
+               AND preference.enabled_since <= ?
+               AND preference.updated_at <= ?
               JOIN circle_memberships recipient
                 ON recipient.circle_id = c.id
                AND recipient.user_id <> ?
@@ -355,7 +367,7 @@ class JdbcZhivRepository(
              WHERE c.kind = 'GROUP'
                AND c.archived_at IS NULL
                AND c.created_at <= ?
-             FOR SHARE OF c, actor, recipient
+             FOR SHARE OF c, actor, preference, recipient
             """.trimIndent(),
         ).use { statement ->
             statement.setObject(1, eventId)
@@ -365,6 +377,9 @@ class JdbcZhivRepository(
             statement.setObject(5, user.userId)
             statement.setObject(6, user.serverTime)
             statement.setObject(7, user.serverTime)
+            statement.setObject(8, user.userId)
+            statement.setObject(9, user.serverTime)
+            statement.setObject(10, user.serverTime)
             statement.executeUpdate()
         }
     }
@@ -421,9 +436,18 @@ class JdbcZhivRepository(
         serverTime: OffsetDateTime,
     ): CheckInResult.Accepted? = connection.prepareStatement(
         """
-        SELECT id, checked_at, next_allowed_at
-        FROM check_ins
-        WHERE user_id = ? AND idempotency_key = ?
+        SELECT event.id, event.checked_at, event.next_allowed_at,
+               (
+                   SELECT count(*)
+                     FROM check_ins previous
+                    WHERE previous.user_id = event.user_id
+                      AND (
+                          previous.checked_at < event.checked_at
+                          OR (previous.checked_at = event.checked_at AND previous.id <= event.id)
+                      )
+               ) AS check_in_count
+          FROM check_ins event
+         WHERE event.user_id = ? AND event.idempotency_key = ?
         """.trimIndent(),
     ).use { statement ->
         statement.setObject(1, userId)
@@ -435,6 +459,7 @@ class JdbcZhivRepository(
                 CheckInResult.Accepted(
                     eventId = result.getObject("id", UUID::class.java),
                     checkedAt = result.getObject("checked_at", OffsetDateTime::class.java),
+                    checkInCount = result.getLong("check_in_count"),
                     serverTime = serverTime,
                     nextAllowedAt = result.getObject("next_allowed_at", OffsetDateTime::class.java),
                     replayed = true,
@@ -442,6 +467,15 @@ class JdbcZhivRepository(
             }
         }
     }
+
+    private fun countCheckIns(connection: Connection, userId: UUID): Long =
+        connection.prepareStatement("SELECT count(*) FROM check_ins WHERE user_id = ?").use { statement ->
+            statement.setObject(1, userId)
+            statement.executeQuery().use { result ->
+                check(result.next())
+                result.getLong(1)
+            }
+        }
 
     private fun <T> inTransaction(block: (Connection) -> T): T = dataSource.connection.use { connection ->
         try {
@@ -459,6 +493,7 @@ class JdbcZhivRepository(
         publicId = getString("public_id"),
         displayName = getString("display_name"),
         lastCheckInAt = getObject("last_check_in_at", OffsetDateTime::class.java),
+        checkInCount = getLong("check_in_count"),
         serverTime = getObject("server_time", OffsetDateTime::class.java)
             .withOffsetSameInstant(ZoneOffset.UTC),
     )

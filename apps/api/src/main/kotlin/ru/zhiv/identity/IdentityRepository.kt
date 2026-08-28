@@ -8,6 +8,7 @@ data class UserSnapshot(
     val publicId: String,
     val displayName: String,
     val lastCheckInAt: OffsetDateTime?,
+    val checkInCount: Long,
     val serverTime: OffsetDateTime,
 )
 

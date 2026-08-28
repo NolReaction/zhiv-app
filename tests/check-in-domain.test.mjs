@@ -81,6 +81,23 @@ test("keeps the agreed meme sequence", () => {
   assert.equal(presentation.getBurstMessage(99), "Бессмертие подтверждено");
 });
 
+test("shows durable milestone copy only at sparse server-confirmed counts", () => {
+  assert.equal(presentation.getCheckInMilestone(9), null);
+  assert.equal(presentation.getCheckInMilestone(10), "Первая десятка. Полёт нормальный.");
+  assert.equal(presentation.getCheckInMilestone(20), "20 отметок. Уже входит в привычку.");
+  assert.equal(presentation.getCheckInMilestone(50), "Полтинник. Стабильно живой.");
+  assert.equal(presentation.getCheckInMilestone(100), "Сотая отметка. Это уже традиция.");
+  assert.equal(presentation.getCheckInMilestone(200), "200 отметок. Бессмертие набирает стаж.");
+  assert.equal(presentation.getCheckInMilestone(500), "500 отметок. Железно на связи.");
+  assert.equal(
+    presentation.getCheckInMilestone(1_000),
+    "Тысячная. Бессмертие подтверждено документально.",
+  );
+  assert.equal(presentation.getCheckInMilestone(2_000), "2000 отметок. Легендарная стабильность.");
+  assert.equal(presentation.getCheckInMilestone(2_001), null);
+  assert.equal(presentation.getCheckInMilestone(-1), null);
+});
+
 test("trusts the browser-facing localhost origin when Next binds to 0.0.0.0", () => {
   const browserRequest = new Request("http://0.0.0.0:3000/api/v1/bootstrap", {
     method: "POST",
