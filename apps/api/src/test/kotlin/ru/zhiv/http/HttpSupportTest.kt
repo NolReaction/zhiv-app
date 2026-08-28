@@ -22,4 +22,11 @@ class HttpSupportTest {
         assertNull(parseCanonicalUuidV4("00000000-0000-0000-0000-000000000000"))
         assertNull(parseCanonicalUuidV4("01993e7a-3f00-7abc-8def-1234567890ab"))
     }
+
+    @Test
+    fun `public ID parser never truncates trailing garbage`() {
+        assertEquals("7K3P-2Q9M-W8ZR", parsePublicId("7k3p 2q9m w8zr"))
+        assertNull(parsePublicId("7K3P-2Q9M-W8ZR-X"))
+        assertNull(parsePublicId("7K3P-2Q9M-W8ZO"))
+    }
 }

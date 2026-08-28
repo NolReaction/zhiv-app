@@ -29,6 +29,8 @@ erDiagram
     CIRCLES ||--o{ CIRCLE_MEMBERSHIPS : "содержит"
     CIRCLES ||--o{ CIRCLE_INVITES : "приглашает"
     APP_USERS ||--o{ DIRECT_REQUESTS : "запрашивает"
+    APP_USERS ||--o{ CIRCLE_SHARING_PREFERENCES : "настраивает"
+    CIRCLES ||--o{ CIRCLE_SHARING_PREFERENCES : "ограничивает"
     CHECK_INS ||--o{ CHECK_IN_AUDIENCES : "доступен"
     CIRCLES ||--o{ CHECK_IN_AUDIENCES : "контекст"
     APP_USERS ||--o{ CHECK_IN_AUDIENCES : "получает"
@@ -82,6 +84,15 @@ erDiagram
         uuid requester_user_id FK
         uuid recipient_user_id FK
         string status
+        uuid idempotency_key UK
+        timestamptz expires_at
+    }
+    CIRCLE_SHARING_PREFERENCES {
+        uuid circle_id PK
+        uuid user_id PK
+        string sharing_mode
+        timestamptz enabled_since
+        timestamptz updated_at
     }
     CIRCLE_INVITES {
         uuid id PK
@@ -95,18 +106,25 @@ erDiagram
         uuid circle_id FK
         uuid recipient_user_id FK
         uuid recipient_membership_id FK
+        string access_level
     }
 ```
 
 `DIRECT` хранит неизменяемую отсортированную пару пользователей прямо в `circles`, поэтому связь физически не может получить третьего участника. `GROUP` использует непересекающиеся исторические membership-строки: повторное вступление создаёт новую строку. Аудитория события содержит конкретного получателя и конкретный период membership — это исключает ретроактивную утечку истории. Requests и invites начинают только с `PENDING` и после терминального перехода не переписываются.
 
-## HTTP 0.1
+## HTTP 0.2
 
 | Метод | Путь | Назначение |
 |---|---|---|
 | `POST` | `/api/v1/bootstrap` | создать пользователя и cookie-сессию; нужен `Idempotency-Key` |
 | `GET` | `/api/v1/me` | получить себя и последнюю отметку |
 | `POST` | `/api/v1/check-ins` | создать отметку; нужен `Idempotency-Key` |
+| `GET` | `/api/v1/users/{publicId}` | найти пользователя и состояние связи |
+| `GET` | `/api/v1/people` | люди, заявки и число получателей следующей отметки |
+| `POST` | `/api/v1/direct-requests` | отправить взаимную заявку |
+| `POST` | `/api/v1/direct-requests/{id}/{action}` | `accept`, `reject` или `cancel` |
+| `PATCH` | `/api/v1/people/{circleId}/sharing` | включить или выключить новые отметки |
+| `DELETE` | `/api/v1/people/{circleId}` | архивировать личную связь |
 | `GET` | `/healthz` | liveness процесса |
 
 Все identity/check-in ответы имеют `Cache-Control: no-store`. Записывающие запросы сверяют `Origin`, bootstrap ограничен по размеру и частоте. Сырой session token не логируется; запросы выполняются через same-origin Caddy. Встроенный Next API — только in-memory dev-адаптер и в production fail-closed без явного `ENABLE_DEV_API=true`.
@@ -119,7 +137,7 @@ erDiagram
 2. Проверить повтор `Idempotency-Key`.
 3. Взять `clock_timestamp()` из PostgreSQL.
 4. Проверить 30-секундное окно.
-5. Вставить событие, обновить `last_check_in_at`, позже — вставить снимки получателей.
+5. Вставить событие и снимки разрешённых получателей, обновить `last_check_in_at`.
 6. Закоммитить всё одной транзакцией.
 
 Дополнительно exclusion constraint в PostgreSQL запрещает пересекающиеся cooldown-интервалы даже при ошибке прикладного кода.

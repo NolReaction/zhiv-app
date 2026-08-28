@@ -2,8 +2,9 @@
 
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CooldownResponse, MeResponse } from "@/lib/check-in-contract";
-import { ApiError, bootstrap, createCheckIn, getMe } from "@/lib/check-in-api";
+import { Check, HeartPulse, Share2, Users } from "lucide-react";
+import type { CooldownResponse, MeResponse, PeopleResponse } from "@/lib/check-in-contract";
+import { ApiError, bootstrap, createCheckIn, getMe, getPeople } from "@/lib/check-in-api";
 import {
   BURST_RESET_MS,
   formatLastCheckIn,
@@ -13,9 +14,12 @@ import {
   isValidDisplayName,
   normalizeDisplayName,
 } from "@/lib/check-in-presentation";
+import { PeopleView } from "./people-view";
 import styles from "./check-in-app.module.css";
+import { createUuidV4 } from "@/lib/browser-uuid";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
+type ActiveView = "check-in" | "people";
 
 type PendingBootstrap = {
   version: 1;
@@ -155,6 +159,11 @@ export function CheckInApp() {
   const [tapCount, setTapCount] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [confettiBurst, setConfettiBurst] = useState(0);
+  const [activeView, setActiveView] = useState<ActiveView>("check-in");
+  const [people, setPeople] = useState<PeopleResponse | null>(null);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleError, setPeopleError] = useState<string | null>(null);
+  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCheckIn = useRef<PendingCheckIn | null>(null);
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
@@ -181,6 +190,33 @@ export function CheckInApp() {
     setConfettiBurst(0);
   }, []);
 
+  const loseSession = useCallback(() => {
+    clearPendingCheckIn();
+    clearPendingBootstrap();
+    resetTransientCheckIn();
+    setPeople(null);
+    setActiveView("check-in");
+    setScreen("session-lost");
+  }, [clearPendingBootstrap, clearPendingCheckIn, resetTransientCheckIn]);
+
+  const refreshPeople = useCallback(async (signal?: AbortSignal) => {
+    setPeopleLoading(true);
+    try {
+      const response = await getPeople(signal);
+      setPeople(response);
+      setPeopleError(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (error instanceof ApiError && error.status === 401) {
+        loseSession();
+        return;
+      }
+      setPeopleError(error instanceof Error ? error.message : "Не удалось загрузить своих");
+    } finally {
+      setPeopleLoading(false);
+    }
+  }, [loseSession]);
+
   const adoptMe = useCallback((identity: MeResponse) => {
     const unresolvedCheckIn = pendingCheckIn.current;
     if (
@@ -197,6 +233,7 @@ export function CheckInApp() {
     setClientNowMs(Date.now());
     setNameError(null);
     setSystemError(null);
+    setActiveView("check-in");
     setScreen("home");
   }, [clearPendingBootstrap, clearPendingCheckIn, resetTransientCheckIn]);
 
@@ -247,8 +284,32 @@ export function CheckInApp() {
   }, [adoptMe, clearPendingCheckIn, resetTransientCheckIn]);
 
   useEffect(() => {
-    if (screen === "home") homeHeading.current?.focus();
-  }, [screen]);
+    if (screen === "home" && activeView === "check-in") homeHeading.current?.focus();
+  }, [activeView, screen]);
+
+  useEffect(() => {
+    if (screen !== "home") return;
+    const controller = new AbortController();
+    const initialRefresh = window.setTimeout(() => void refreshPeople(controller.signal), 0);
+
+    const refresh = () => {
+      if (!document.hidden && navigator.onLine) void refreshPeople();
+    };
+    const poll = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      controller.abort();
+      window.clearTimeout(initialRefresh);
+      window.clearInterval(poll);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [refreshPeople, screen]);
 
   async function retryIdentity() {
     setScreen("loading");
@@ -312,7 +373,7 @@ export function CheckInApp() {
         pendingBootstrap.current = {
           version: 1,
           kind: "bootstrap",
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createUuidV4(),
           displayName,
           createdAt,
           expiresAt: createdAt + PENDING_BOOTSTRAP_TTL_MS,
@@ -360,7 +421,7 @@ export function CheckInApp() {
         pendingCheckIn.current = {
           version: 1,
           kind: "check-in",
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createUuidV4(),
           previousLastCheckInAt: lastCheckInAt,
           createdAt,
           expiresAt: createdAt + PENDING_CHECK_IN_TTL_MS,
@@ -384,9 +445,7 @@ export function CheckInApp() {
         setClockOffsetMs(serverOffset(cooldown.serverTime));
         registerTap(false);
       } else if (error instanceof ApiError && error.status === 401) {
-        clearPendingCheckIn();
-        resetTransientCheckIn();
-        setScreen("session-lost");
+        loseSession();
       } else {
         setNotice("Связь оборвалась · нажмите ещё раз для проверки");
         resetBurstLater();
@@ -405,6 +464,25 @@ export function CheckInApp() {
     () => ({ "--check-in-color": buttonColor }) as CSSProperties,
     [buttonColor],
   );
+
+  async function shareIdentity() {
+    if (!me) return;
+    const text = `${me.user.displayName} в «Жив» · ${me.user.publicId}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Мой ID в «Жив»", text });
+        setIdentityNotice("ID отправлен");
+      } else {
+        await navigator.clipboard.writeText(me.user.publicId);
+        setIdentityNotice("ID скопирован");
+      }
+      window.setTimeout(() => setIdentityNotice(null), 1_800);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setIdentityNotice("Не удалось поделиться");
+      window.setTimeout(() => setIdentityNotice(null), 1_800);
+    }
+  }
 
   if (screen === "loading") {
     return (
@@ -506,65 +584,121 @@ export function CheckInApp() {
     <main className={styles.shell}>
       <header className={styles.header}>
         <span className={styles.wordmark}>ЖИВ</span>
-        <div className={styles.identity} aria-label="Ваш профиль">
-          <strong>{me?.user.displayName}</strong>
-          <span>{me?.user.publicId}</span>
+        <div className={styles.identityWrap}>
+          <button
+            type="button"
+            className={styles.identity}
+            aria-label="Поделиться своим ID"
+            onClick={() => void shareIdentity()}
+          >
+            <span className={styles.identityText}>
+              <strong>{me?.user.displayName}</strong>
+              <span>{me?.user.publicId}</span>
+            </span>
+            {identityNotice === "ID скопирован" ? <Check size={16} /> : <Share2 size={16} />}
+          </button>
+          {identityNotice ? <small role="status">{identityNotice}</small> : null}
         </div>
       </header>
 
-      <section className={styles.action} aria-labelledby="main-action-title">
-        <h1
-          id="main-action-title"
-          className={styles.srOnly}
-          ref={homeHeading}
-          tabIndex={-1}
-        >
-          Отметиться
-        </h1>
-        <div className={styles.buttonStage}>
-          <button
-            type="button"
-            className={`${styles.checkInButton} ${pulseClass}`}
-            style={buttonStyle}
-            onClick={handleCheckIn}
-            aria-busy={isSending}
+      {activeView === "check-in" ? (
+        <section className={styles.action} aria-labelledby="main-action-title">
+          <h1
+            id="main-action-title"
+            className={styles.srOnly}
+            ref={homeHeading}
+            tabIndex={-1}
           >
-            <span>Я ЖИВ</span>
-          </button>
-          {tapCount >= 2 ? (
-            <span className={styles.tapCounter} aria-hidden="true">
-              ×{tapCount}
-            </span>
-          ) : null}
-          {confettiBurst > 0 && tapCount === 5 ? (
-            <div key={confettiBurst} className={styles.confetti} aria-hidden="true">
-              {CONFETTI.map((piece, index) => (
-                <i
-                  key={index}
-                  style={
-                    {
-                      "--x": `${piece.x}px`,
-                      "--y": `${piece.y}px`,
-                      "--r": `${piece.r}deg`,
-                      "--piece": piece.color,
-                    } as CSSProperties
-                  }
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
+            Отметиться
+          </h1>
+          <div className={styles.buttonStage}>
+            <button
+              type="button"
+              className={`${styles.checkInButton} ${pulseClass}`}
+              style={buttonStyle}
+              onClick={handleCheckIn}
+              aria-busy={isSending}
+            >
+              <span>Я ЖИВ</span>
+            </button>
+            {tapCount >= 2 ? (
+              <span className={styles.tapCounter} aria-hidden="true">
+                ×{tapCount}
+              </span>
+            ) : null}
+            {confettiBurst > 0 && tapCount === 5 ? (
+              <div key={confettiBurst} className={styles.confetti} aria-hidden="true">
+                {CONFETTI.map((piece, index) => (
+                  <i
+                    key={index}
+                    style={
+                      {
+                        "--x": `${piece.x}px`,
+                        "--y": `${piece.y}px`,
+                        "--r": `${piece.r}deg`,
+                        "--piece": piece.color,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
 
-        <div className={styles.statusBlock}>
-          <p className={styles.status} role="status" aria-live="polite">
-            {status}
-          </p>
-          {!isOnline ? <p className={styles.offline}>Данные могут быть устаревшими</p> : null}
-        </div>
-      </section>
+          <div className={styles.statusBlock}>
+            <p className={styles.status} role="status" aria-live="polite">
+              {status}
+            </p>
+            {people ? (
+              <p className={styles.audience}>
+                {people.audienceCount === 0
+                  ? "Эту отметку пока видите только вы"
+                  : `Новую отметку увидят: ${people.audienceCount}`}
+              </p>
+            ) : null}
+            {!isOnline ? <p className={styles.offline}>Данные могут быть устаревшими</p> : null}
+          </div>
+        </section>
+      ) : (
+        <PeopleView
+          data={people}
+          error={peopleError}
+          loading={peopleLoading}
+          nowMs={adjustedNow}
+          onRefresh={() => refreshPeople()}
+          onSessionLost={loseSession}
+        />
+      )}
 
       <footer className={styles.footer}>
-        Цвет меняется от зелёного к красному за 24 часа
+        {activeView === "check-in" ? (
+          <span className={styles.colorHint}>Цвет меняется от зелёного к красному за 24 часа</span>
+        ) : null}
+        <nav className={styles.bottomNav} aria-label="Основные разделы">
+          <button
+            type="button"
+            className={activeView === "check-in" ? styles.navActive : undefined}
+            aria-current={activeView === "check-in" ? "page" : undefined}
+            onClick={() => setActiveView("check-in")}
+          >
+            <HeartPulse size={20} />
+            <span>Я жив</span>
+          </button>
+          <button
+            type="button"
+            className={activeView === "people" ? styles.navActive : undefined}
+            aria-current={activeView === "people" ? "page" : undefined}
+            onClick={() => setActiveView("people")}
+          >
+            <span className={styles.navIcon}>
+              <Users size={20} />
+              {people && people.incomingRequests.length > 0 ? (
+                <i>{Math.min(people.incomingRequests.length, 9)}</i>
+              ) : null}
+            </span>
+            <span>Свои</span>
+          </button>
+        </nav>
       </footer>
     </main>
   );

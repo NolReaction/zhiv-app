@@ -9,7 +9,7 @@ const vite = await createServer({
   configFile: false,
   root,
   resolve: { alias: { "@": root } },
-  server: { middlewareMode: true },
+  server: { middlewareMode: true, hmr: false },
 });
 
 const presentation = await vite.ssrLoadModule("/lib/check-in-presentation.ts");
@@ -23,6 +23,28 @@ test("normalizes a human name without making it an identifier", () => {
   assert.equal(presentation.normalizeDisplayName("  Анна   Мария  "), "Анна Мария");
   assert.equal(presentation.isValidDisplayName("Я"), true);
   assert.equal(presentation.isValidDisplayName(" "), false);
+});
+
+test("formats an exact public ID without accepting trailing symbols", () => {
+  assert.equal(presentation.normalizePublicId("7k3p 2q9m w8zr"), "7K3P-2Q9M-W8ZR");
+  assert.equal(presentation.isValidPublicId("7K3P-2Q9M-W8ZR"), true);
+  assert.equal(presentation.isValidPublicId("7K3P-2Q9M-W8ZRO"), false);
+  assert.equal(
+    presentation.isValidPublicId(presentation.normalizePublicId("7K3P-2Q9M-W8ZR-X")),
+    false,
+  );
+});
+
+test("describes another person's check-in without leaking a hidden timestamp", () => {
+  const now = Date.parse("2026-08-28T14:00:00.000Z");
+  assert.equal(
+    presentation.formatPersonCheckIn("2026-08-28T13:55:00.000Z", now, true),
+    "5 мин назад",
+  );
+  assert.equal(
+    presentation.formatPersonCheckIn("2026-08-28T13:55:00.000Z", now, false),
+    "Отметки недоступны",
+  );
 });
 
 test("moves from neutral to green, amber and red over 24 hours", () => {

@@ -145,7 +145,26 @@
   gap: 18px;
 }
 
+.identityWrap {
+  position: relative;
+  display: grid;
+  justify-items: end;
+}
+
 .identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 14px;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+.identityText {
   display: grid;
   justify-items: end;
   gap: 3px;
@@ -153,7 +172,7 @@
   text-align: right;
 }
 
-.identity strong {
+.identityText strong {
   overflow: hidden;
   max-width: 100%;
   font-size: 15px;
@@ -161,11 +180,25 @@
   white-space: nowrap;
 }
 
-.identity span {
+.identityText > span {
   color: #82877b;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   letter-spacing: 0.04em;
+}
+
+.identity > svg {
+  flex: 0 0 auto;
+  color: #8d9387;
+}
+
+.identityWrap > small {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 7px;
+  color: #b7d8a2;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .action {
@@ -308,11 +341,90 @@
   font-size: 13px;
 }
 
+.audience {
+  margin: 8px 0 0;
+  color: #8e9488;
+  font-size: 12px;
+}
+
 .footer {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.colorHint {
   color: #8a8f83;
   font-size: 12px;
   line-height: 1.4;
   text-align: center;
+}
+
+.bottomNav {
+  display: grid;
+  width: min(100%, 330px);
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  background: rgba(22, 26, 20, 0.86);
+  padding: 5px;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.bottomNav button {
+  position: relative;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 15px;
+  outline: none;
+  background: transparent;
+  color: #81877b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 780;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.bottomNav .navActive {
+  background: rgba(183, 216, 162, 0.12);
+  color: #dff1d4;
+}
+
+.navIcon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.navIcon i {
+  position: absolute;
+  top: -7px;
+  right: -9px;
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  border: 2px solid #171b15;
+  border-radius: 999px;
+  background: #e6665f;
+  color: white;
+  padding: 0 3px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.identity:focus-visible,
+.bottomNav button:focus-visible {
+  outline: 3px solid #f5e85b;
+  outline-offset: 3px;
 }
 
 @keyframes breathe {
@@ -368,6 +480,10 @@
   .continueButton,
   .retryButton {
     border: 3px solid ButtonText;
+  }
+
+  .identity {
+    border: 2px solid ButtonText;
   }
 }
 

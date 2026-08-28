@@ -261,6 +261,9 @@ class JdbcZhivRepository(
                 }
             }
 
+            snapshotDirectAudiences(connection, eventId, user)
+            snapshotGroupAudiences(connection, eventId, user)
+
             connection.prepareStatement(
                 "UPDATE app_users SET last_check_in_at = ?, updated_at = ? WHERE id = ?",
             ).use { statement ->
@@ -277,6 +280,92 @@ class JdbcZhivRepository(
                 nextAllowedAt = acceptedNextAllowedAt,
                 replayed = false,
             )
+        }
+    }
+
+    private fun snapshotDirectAudiences(
+        connection: Connection,
+        eventId: UUID,
+        user: LockedUser,
+    ) {
+        connection.prepareStatement(
+            """
+            INSERT INTO check_in_audiences (
+                check_in_id, actor_user_id, circle_id, circle_kind,
+                recipient_user_id, recipient_membership_id, access_level
+            )
+            SELECT ?, ?, c.id, 'DIRECT',
+                   CASE WHEN c.direct_user_low_id = ?
+                        THEN c.direct_user_high_id
+                        ELSE c.direct_user_low_id END,
+                   NULL, preference.sharing_mode
+              FROM circles c
+              JOIN circle_sharing_preferences preference
+                ON preference.circle_id = c.id
+               AND preference.user_id = ?
+               AND preference.sharing_mode <> 'OFF'
+               AND preference.enabled_since IS NOT NULL
+               AND preference.enabled_since <= ?
+               AND preference.updated_at <= ?
+             WHERE c.kind = 'DIRECT'
+               AND c.archived_at IS NULL
+               AND c.created_at <= ?
+               AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
+             FOR SHARE OF c, preference
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setObject(1, eventId)
+            statement.setObject(2, user.userId)
+            statement.setObject(3, user.userId)
+            statement.setObject(4, user.userId)
+            statement.setObject(5, user.serverTime)
+            statement.setObject(6, user.serverTime)
+            statement.setObject(7, user.serverTime)
+            statement.setObject(8, user.userId)
+            statement.executeUpdate()
+        }
+    }
+
+    private fun snapshotGroupAudiences(
+        connection: Connection,
+        eventId: UUID,
+        user: LockedUser,
+    ) {
+        connection.prepareStatement(
+            """
+            INSERT INTO check_in_audiences (
+                check_in_id, actor_user_id, circle_id, circle_kind,
+                recipient_user_id, recipient_membership_id, access_level
+            )
+            SELECT ?, ?, c.id, 'GROUP', recipient.user_id,
+                   recipient.id, 'LATEST_ONLY'
+              FROM circles c
+              JOIN circle_memberships actor
+                ON actor.circle_id = c.id
+               AND actor.user_id = ?
+               AND actor.joined_at <= ?
+               AND actor.left_at IS NULL
+               AND actor.share_latest
+              JOIN circle_memberships recipient
+                ON recipient.circle_id = c.id
+               AND recipient.user_id <> ?
+               AND recipient.joined_at <= ?
+               AND recipient.left_at IS NULL
+               AND recipient.history_visibility <> 'NONE'
+             WHERE c.kind = 'GROUP'
+               AND c.archived_at IS NULL
+               AND c.created_at <= ?
+             FOR SHARE OF c, actor, recipient
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setObject(1, eventId)
+            statement.setObject(2, user.userId)
+            statement.setObject(3, user.userId)
+            statement.setObject(4, user.serverTime)
+            statement.setObject(5, user.userId)
+            statement.setObject(6, user.serverTime)
+            statement.setObject(7, user.serverTime)
+            statement.executeUpdate()
         }
     }
 

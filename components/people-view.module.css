@@ -1,0 +1,449 @@
+.view {
+  min-height: 0;
+  padding: 34px 0 22px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #4f554a transparent;
+}
+
+.headingRow,
+.sectionTitleRow,
+.personTop,
+.personBottom,
+.requestCard,
+.lookupCard,
+.searchRow,
+.sharingLabel {
+  display: flex;
+  align-items: center;
+}
+
+.headingRow {
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 30px;
+}
+
+.kicker {
+  margin: 0 0 5px;
+  color: #8a9083;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.17em;
+}
+
+.headingRow h1 {
+  margin: 0;
+  font-size: clamp(34px, 8vw, 48px);
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.addButton,
+.secondaryButton,
+.acceptButton,
+.iconButton,
+.textButton,
+.removeButton,
+.sendButton,
+.searchRow button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.addButton,
+.secondaryButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  background: #e9f4e2;
+  color: #14200f;
+  padding: 0 15px;
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.sections {
+  display: grid;
+  gap: 34px;
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+}
+
+.section h2 {
+  margin: 0;
+  color: #d9ddd4;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.sectionTitleRow {
+  justify-content: space-between;
+}
+
+.sectionTitleRow > span {
+  display: grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(183, 216, 162, 0.12);
+  color: #b7d8a2;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.requestCard,
+.personCard,
+.lookupCard,
+.empty,
+.state {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.038);
+}
+
+.requestCard {
+  gap: 12px;
+  padding: 13px;
+}
+
+.avatar {
+  --person-color: #58724b;
+  display: grid;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--person-color), white 16%);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--person-color), transparent 72%);
+  color: #f5f6f1;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.avatarMuted {
+  --person-color: #4e524b;
+}
+
+.cardText {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.cardText strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardText > span {
+  overflow: hidden;
+  color: #8e9488;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requestActions {
+  display: flex;
+  gap: 7px;
+}
+
+.acceptButton,
+.iconButton {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 13px;
+}
+
+.acceptButton {
+  background: #b7d8a2;
+  color: #172312;
+}
+
+.iconButton {
+  background: rgba(255, 255, 255, 0.065);
+  color: #c3c8bd;
+}
+
+.textButton,
+.removeButton {
+  background: transparent;
+  color: #a3a99e;
+  font-size: 12px;
+}
+
+.personCard {
+  overflow: hidden;
+}
+
+.personTop {
+  gap: 13px;
+  padding: 15px;
+}
+
+.personStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.personStatus i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.personBottom {
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 13px 15px;
+  background: rgba(0, 0, 0, 0.09);
+}
+
+.sharingLabel {
+  min-width: 0;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.sharingLabel > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sharingLabel strong {
+  color: #d9ddd4;
+  font-size: 12px;
+}
+
+.sharingLabel small {
+  color: #7f8579;
+  font-size: 10px;
+}
+
+.sharingLabel button {
+  width: 38px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: #41463e;
+}
+
+.sharingLabel button[data-state="checked"] {
+  background: #4b8d48;
+}
+
+.removeButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.empty,
+.state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 34px 24px;
+  color: #848a7e;
+  text-align: center;
+}
+
+.empty strong {
+  color: #d9ddd4;
+  font-size: 16px;
+}
+
+.empty p,
+.state p {
+  max-width: 430px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.privacyNote {
+  max-width: 500px;
+  margin: -8px auto 0;
+  color: #747a6f;
+  font-size: 11px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.pageError,
+.dialogError {
+  margin: 14px 2px 0;
+  color: #ff9c98;
+  font-size: 12px;
+}
+
+.dialog,
+.confirmDialog {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 24px !important;
+  background: #151913 !important;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5) !important;
+  color: #f4f5ef !important;
+}
+
+.dialogTitle {
+  font-size: 22px !important;
+  letter-spacing: -0.035em;
+}
+
+.dialogDescription {
+  color: #92988d !important;
+  line-height: 1.5;
+}
+
+.searchForm {
+  display: grid;
+  gap: 8px;
+}
+
+.searchForm label {
+  color: #a6ab9f;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.searchRow {
+  gap: 8px;
+}
+
+.searchRow input {
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 15px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.055);
+  color: white;
+  padding: 0 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+}
+
+.searchRow input:focus {
+  border-color: #b7d8a2;
+}
+
+.searchRow button {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  place-items: center;
+  border-radius: 15px;
+  background: #e9f4e2;
+  color: #14200f;
+}
+
+.lookupCard {
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 13px;
+}
+
+.sendButton {
+  min-height: 38px;
+  border-radius: 12px;
+  background: #b7d8a2;
+  color: #172312;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.lookupState {
+  width: 100%;
+  margin: 1px 0 0 56px;
+  color: #a6ab9f;
+  font-size: 12px;
+}
+
+.cancelButton,
+.dangerButton {
+  min-height: 42px !important;
+  border-radius: 12px !important;
+  font-weight: 780 !important;
+}
+
+.cancelButton {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #e0e3dc !important;
+}
+
+.dangerButton {
+  background: #c95750 !important;
+  color: white !important;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.addButton:focus-visible,
+.secondaryButton:focus-visible,
+.acceptButton:focus-visible,
+.iconButton:focus-visible,
+.textButton:focus-visible,
+.removeButton:focus-visible,
+.sendButton:focus-visible,
+.searchRow button:focus-visible,
+.searchRow input:focus-visible {
+  outline: 3px solid #f5e85b;
+  outline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .view {
+    padding-top: 24px;
+  }
+
+  .headingRow {
+    margin-bottom: 24px;
+  }
+
+  .personBottom {
+    align-items: flex-end;
+  }
+
+  .sharingLabel {
+    align-items: flex-start;
+    flex-direction: column-reverse;
+  }
+
+  .removeButton {
+    padding-bottom: 2px;
+  }
+}

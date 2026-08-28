@@ -37,3 +37,74 @@ data class CooldownResponse(
 
 @Serializable
 data class ApiErrorResponse(val code: String, val message: String)
+
+@Serializable
+data class UserLookupResponse(
+    val user: PublicUserDto,
+    val relationshipState: String,
+    val serverTime: String,
+)
+
+@Serializable
+data class CreateDirectRequestRequest(val publicId: String)
+
+@Serializable
+data class UpdateSharingRequest(val sharingMode: String)
+
+@Serializable
+data class DirectRequestDto(
+    val requestId: String,
+    val direction: String,
+    val user: PublicUserDto,
+    val createdAt: String,
+    val expiresAt: String,
+)
+
+@Serializable
+data class PersonDto(
+    val circleId: String,
+    val user: PublicUserDto,
+    val connectedAt: String,
+    val mySharingMode: String,
+    val theirSharingMode: String,
+    val lastCheckInAt: String?,
+)
+
+@Serializable
+data class PeopleResponse(
+    val people: List<PersonDto>,
+    val incomingRequests: List<DirectRequestDto>,
+    val outgoingRequests: List<DirectRequestDto>,
+    val audienceCount: Int,
+    val serverTime: String,
+)
+
+@Serializable
+data class DirectRequestsResponse(
+    val incomingRequests: List<DirectRequestDto>,
+    val outgoingRequests: List<DirectRequestDto>,
+    val serverTime: String,
+)
+
+@Serializable
+data class DirectRequestResponse(
+    val request: DirectRequestDto,
+    val replayed: Boolean,
+    val serverTime: String,
+)
+
+@Serializable
+data class DirectRequestActionResponse(
+    val requestId: String,
+    val status: String,
+    val person: PersonDto?,
+    val replayed: Boolean,
+    val serverTime: String,
+)
+
+@Serializable
+data class SharingResponse(
+    val circleId: String,
+    val sharingMode: String,
+    val serverTime: String,
+)

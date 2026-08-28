@@ -12,6 +12,9 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.checkins.CheckInResult
 import ru.zhiv.config.AppConfig
 import ru.zhiv.identity.PublicIdGenerator
+import ru.zhiv.relationships.RelationshipResult
+import ru.zhiv.relationships.RequestAction
+import ru.zhiv.relationships.SharingMode
 import ru.zhiv.security.TokenCodec
 import java.sql.SQLException
 import java.util.UUID
@@ -27,8 +30,7 @@ class JdbcZhivRepositoryIntegrationTest {
 
     companion object {
         @Container
-        @JvmField
-        val postgres = Postgres("postgres:18-alpine")
+        private val postgres = Postgres("postgres:18-alpine")
     }
 
     private lateinit var dataSource: HikariDataSource
@@ -56,7 +58,7 @@ class JdbcZhivRepositoryIntegrationTest {
     }
 
     @Test
-    fun `bootstrap retry keeps one identity and check-in is idempotent`() = runBlocking {
+    fun `bootstrap retry keeps one identity and check-in is idempotent`() = runBlocking<Unit> {
         val bootstrapHash = tokens.hash(UUID.randomUUID().toString())
         val firstSession = tokens.issue()
         val firstUser = repository.bootstrap("Дима", bootstrapHash, firstSession.hash, 365)
@@ -67,12 +69,16 @@ class JdbcZhivRepositoryIntegrationTest {
         assertEquals("Дима", replayedUser.displayName)
 
         dataSource.connection.use { connection ->
-            connection.createStatement().use { statement ->
-                statement.executeQuery("SELECT count(*) FROM app_users").use { result ->
+            connection.prepareStatement("SELECT count(*) FROM app_users WHERE id = ?").use { statement ->
+                statement.setObject(1, firstUser.id)
+                statement.executeQuery().use { result ->
                     assertTrue(result.next())
                     assertEquals(1, result.getInt(1))
                 }
-                statement.executeQuery("SELECT count(*) FROM app_sessions").use { result ->
+            }
+            connection.prepareStatement("SELECT count(*) FROM app_sessions WHERE user_id = ?").use { statement ->
+                statement.setObject(1, firstUser.id)
+                statement.executeQuery().use { result ->
                     assertTrue(result.next())
                     assertEquals(1, result.getInt(1))
                 }
@@ -212,5 +218,73 @@ class JdbcZhivRepositoryIntegrationTest {
             }
         }
         assertEquals("23P01", overlap.sqlState)
+    }
+
+    @Test
+    fun `direct sharing exposes only audience snapshots from the active sharing period`() = runBlocking {
+        val relationships = JdbcRelationshipRepository(dataSource)
+        val dimaSession = tokens.issue()
+        val mamaSession = tokens.issue()
+        val dima = repository.bootstrap(
+            "Дима privacy",
+            tokens.hash(UUID.randomUUID().toString()),
+            dimaSession.hash,
+            365,
+        )
+        val mama = repository.bootstrap(
+            "Мама privacy",
+            tokens.hash(UUID.randomUUID().toString()),
+            mamaSession.hash,
+            365,
+        )
+
+        assertIs<CheckInResult.Accepted>(
+            repository.record(dimaSession.hash, UUID.randomUUID()),
+        )
+
+        val request = assertIs<RelationshipResult.Success<*>>(
+            relationships.sendRequest(dimaSession.hash, mama.publicId, UUID.randomUUID()),
+        ).value as ru.zhiv.relationships.DirectRequestMutationSnapshot
+        val accepted = assertIs<RelationshipResult.Success<*>>(
+            relationships.actOnRequest(
+                mamaSession.hash,
+                request.request.requestId,
+                RequestAction.ACCEPTED,
+            ),
+        ).value as ru.zhiv.relationships.DirectRequestActionSnapshot
+        val circleId = requireNotNull(accepted.person).circleId
+        assertEquals(null, accepted.person.lastCheckInAt)
+
+        val mamaMark = assertIs<CheckInResult.Accepted>(
+            repository.record(mamaSession.hash, UUID.randomUUID()),
+        )
+        val visible = assertIs<RelationshipResult.Success<*>>(
+            relationships.listPeople(dimaSession.hash),
+        ).value as ru.zhiv.relationships.PeopleSnapshot
+        assertEquals(mamaMark.checkedAt, visible.people.single().lastCheckInAt)
+
+        assertIs<RelationshipResult.Success<*>>(
+            relationships.updateSharing(mamaSession.hash, circleId, SharingMode.OFF),
+        )
+        val hidden = assertIs<RelationshipResult.Success<*>>(
+            relationships.listPeople(dimaSession.hash),
+        ).value as ru.zhiv.relationships.PeopleSnapshot
+        assertEquals(null, hidden.people.single().lastCheckInAt)
+
+        assertIs<RelationshipResult.Success<*>>(
+            relationships.updateSharing(mamaSession.hash, circleId, SharingMode.LATEST_ONLY),
+        )
+        val reenabled = assertIs<RelationshipResult.Success<*>>(
+            relationships.listPeople(dimaSession.hash),
+        ).value as ru.zhiv.relationships.PeopleSnapshot
+        assertEquals(null, reenabled.people.single().lastCheckInAt)
+
+        assertIs<RelationshipResult.Success<*>>(
+            relationships.removePerson(dimaSession.hash, circleId),
+        )
+        val removed = assertIs<RelationshipResult.Success<*>>(
+            relationships.listPeople(mamaSession.hash),
+        ).value as ru.zhiv.relationships.PeopleSnapshot
+        assertTrue(removed.people.isEmpty())
     }
 }

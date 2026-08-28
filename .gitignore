@@ -46,6 +46,3 @@ next-env.d.ts
 /apps/api/.gradle/
 /apps/api/build/
 .idea/
-
-# Project exclude paths
-/build/

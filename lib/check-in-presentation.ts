@@ -2,6 +2,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 
 export const CHECK_IN_COOLDOWN_MS = 30_000;
 export const BURST_RESET_MS = 8_000;
+export const PUBLIC_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/;
 
 export const BURST_MESSAGES = [
   "Отметка сохранена · только что",
@@ -18,6 +19,15 @@ export function normalizeDisplayName(value: string): string {
 export function isValidDisplayName(value: string): boolean {
   const length = Array.from(normalizeDisplayName(value)).length;
   return length >= 1 && length <= 50;
+}
+
+export function normalizePublicId(value: string): string {
+  const compact = value.toUpperCase().replace(/[^0-9A-Z]/g, "");
+  return compact.match(/.{1,4}/g)?.join("-") ?? "";
+}
+
+export function isValidPublicId(value: string): boolean {
+  return PUBLIC_ID_PATTERN.test(value);
 }
 
 export function getBurstMessage(tapCount: number): string {
@@ -67,4 +77,33 @@ export function formatLastCheckIn(checkedAt: string | null, nowMs: number): stri
     month: "short",
   }).format(checkedAtMs);
   return `Последняя отметка · ${date}, ${time}`;
+}
+
+export function formatPersonCheckIn(
+  checkedAt: string | null,
+  nowMs: number,
+  sharingEnabled: boolean,
+): string {
+  if (!sharingEnabled) return "Отметки недоступны";
+  if (!checkedAt) return "После добавления ещё не отмечался";
+
+  const checkedAtMs = Date.parse(checkedAt);
+  const ageMs = Math.max(0, nowMs - checkedAtMs);
+  const minutes = Math.floor(ageMs / 60_000);
+
+  if (minutes < 1) return "Только что";
+  if (minutes < 60) return `${minutes} мин назад`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ч назад`;
+
+  const time = new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(checkedAtMs);
+  const date = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+  }).format(checkedAtMs);
+  return `${date}, ${time}`;
 }

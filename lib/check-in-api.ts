@@ -3,7 +3,13 @@ import type {
   ApiErrorResponse,
   CheckInResponse,
   CooldownResponse,
+  DirectRequestActionResponse,
+  DirectRequestResponse,
   MeResponse,
+  PeopleResponse,
+  SharingMode,
+  SharingResponse,
+  UserLookupResponse,
 } from "@/lib/check-in-contract";
 
 const userSchema = z.object({
@@ -30,6 +36,58 @@ const cooldownSchema: z.ZodType<CooldownResponse> = z.object({
   checkedAt: z.string().datetime(),
   serverTime: z.string().datetime(),
   nextAllowedAt: z.string().datetime(),
+});
+
+const sharingModeSchema = z.enum(["OFF", "LATEST_ONLY"]);
+const directRequestSchema = z.object({
+  requestId: z.string().uuid(),
+  direction: z.enum(["INCOMING", "OUTGOING"]),
+  user: userSchema,
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+});
+const personSchema = z.object({
+  circleId: z.string().uuid(),
+  user: userSchema,
+  connectedAt: z.string().datetime(),
+  mySharingMode: sharingModeSchema,
+  theirSharingMode: sharingModeSchema,
+  lastCheckInAt: z.string().datetime().nullable(),
+});
+const peopleSchema: z.ZodType<PeopleResponse> = z.object({
+  people: z.array(personSchema),
+  incomingRequests: z.array(directRequestSchema),
+  outgoingRequests: z.array(directRequestSchema),
+  audienceCount: z.number().int().nonnegative(),
+  serverTime: z.string().datetime(),
+});
+const lookupSchema: z.ZodType<UserLookupResponse> = z.object({
+  user: userSchema,
+  relationshipState: z.enum([
+    "SELF",
+    "NONE",
+    "CONNECTED",
+    "INCOMING_REQUEST",
+    "OUTGOING_REQUEST",
+  ]),
+  serverTime: z.string().datetime(),
+});
+const directRequestResponseSchema: z.ZodType<DirectRequestResponse> = z.object({
+  request: directRequestSchema,
+  replayed: z.boolean(),
+  serverTime: z.string().datetime(),
+});
+const directRequestActionSchema: z.ZodType<DirectRequestActionResponse> = z.object({
+  requestId: z.string().uuid(),
+  status: z.enum(["ACCEPTED", "REJECTED", "CANCELLED"]),
+  person: personSchema.nullable(),
+  replayed: z.boolean(),
+  serverTime: z.string().datetime(),
+});
+const sharingResponseSchema: z.ZodType<SharingResponse> = z.object({
+  circleId: z.string().uuid(),
+  sharingMode: sharingModeSchema,
+  serverTime: z.string().datetime(),
 });
 
 const errorSchema: z.ZodType<ApiErrorResponse> = z.object({
@@ -109,6 +167,70 @@ export function bootstrap(displayName: string, idempotencyKey: string): Promise<
 export function createCheckIn(idempotencyKey: string): Promise<CheckInResponse> {
   return request<CheckInResponse>("/api/v1/check-ins", checkInSchema, {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+export function lookupUser(publicId: string): Promise<UserLookupResponse> {
+  return request<UserLookupResponse>(
+    `/api/v1/users/${encodeURIComponent(publicId)}`,
+    lookupSchema,
+  );
+}
+
+export function getPeople(signal?: AbortSignal): Promise<PeopleResponse> {
+  return request<PeopleResponse>("/api/v1/people", peopleSchema, { signal });
+}
+
+export function sendDirectRequest(
+  publicId: string,
+  idempotencyKey: string,
+): Promise<DirectRequestResponse> {
+  return request<DirectRequestResponse>(
+    "/api/v1/direct-requests",
+    directRequestResponseSchema,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ publicId }),
+    },
+  );
+}
+
+export function actOnDirectRequest(
+  requestId: string,
+  action: "accept" | "reject" | "cancel",
+  idempotencyKey: string,
+): Promise<DirectRequestActionResponse> {
+  return request<DirectRequestActionResponse>(
+    `/api/v1/direct-requests/${requestId}/${action}`,
+    directRequestActionSchema,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+    },
+  );
+}
+
+export function updatePersonSharing(
+  circleId: string,
+  sharingMode: SharingMode,
+  idempotencyKey: string,
+): Promise<SharingResponse> {
+  return request<SharingResponse>(
+    `/api/v1/people/${circleId}/sharing`,
+    sharingResponseSchema,
+    {
+      method: "PATCH",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ sharingMode }),
+    },
+  );
+}
+
+export function removePerson(circleId: string, idempotencyKey: string): Promise<void> {
+  return request<void>(`/api/v1/people/${circleId}`, z.void(), {
+    method: "DELETE",
     headers: { "Idempotency-Key": idempotencyKey },
   });
 }

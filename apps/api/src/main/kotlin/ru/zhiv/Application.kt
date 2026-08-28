@@ -24,22 +24,27 @@ import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.checkInRoutes
 import ru.zhiv.config.AppConfig
 import ru.zhiv.db.DatabaseFactory
+import ru.zhiv.db.JdbcRelationshipRepository
 import ru.zhiv.db.JdbcZhivRepository
 import ru.zhiv.http.ApiErrorResponse
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.identityRoutes
+import ru.zhiv.relationships.RelationshipRepository
+import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
+import io.ktor.server.application.log
 
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
     val dataSource = DatabaseFactory.create(config)
     DatabaseFactory.migrate(dataSource)
     val repository = JdbcZhivRepository(dataSource)
+    val relationships = JdbcRelationshipRepository(dataSource)
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         dataSource.close()
     }
-    installZhivApi(repository, repository, config)
+    installZhivApi(repository, repository, config, relationships = relationships)
 }
 
 fun Application.installZhivApi(
@@ -47,6 +52,7 @@ fun Application.installZhivApi(
     checkIns: CheckInRepository,
     config: AppConfig,
     tokenCodec: TokenCodec = TokenCodec(),
+    relationships: RelationshipRepository? = null,
 ) {
     install(DefaultHeaders)
     install(ForwardedHeaders)
@@ -58,6 +64,14 @@ fun Application.installZhivApi(
     install(RateLimit) {
         register(RateLimitName("bootstrap")) {
             rateLimiter(limit = 10, refillPeriod = 1.hours)
+            requestKey { call ->
+                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
+                    ?: call.request.headers["X-Real-IP"]
+                    ?: "direct-client"
+            }
+        }
+        register(RateLimitName("relationships")) {
+            rateLimiter(limit = 2_400, refillPeriod = 1.hours)
             requestKey { call ->
                 call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
                     ?: call.request.headers["X-Real-IP"]
@@ -80,7 +94,7 @@ fun Application.installZhivApi(
             )
         }
         exception<SQLException> { call, cause ->
-            if (cause.sqlState in setOf("55P03", "57014")) {
+            if (cause.sqlState in setOf("40001", "40P01", "55P03", "57014")) {
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
                     ApiErrorResponse("DATABASE_BUSY", "Сервер занят, повторите запрос"),
@@ -108,5 +122,6 @@ fun Application.installZhivApi(
         }
         identityRoutes(identities, tokenCodec, config)
         checkInRoutes(checkIns, tokenCodec, config)
+        relationships?.let { relationshipRoutes(it, tokenCodec, config) }
     }
 }

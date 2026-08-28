@@ -14,7 +14,16 @@ const securityHeaders = [
   },
 ];
 
+const allowedDevOrigins = (
+    process.env.NEXT_ALLOWED_DEV_ORIGINS ?? ""
+)
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
 const nextConfig: NextConfig = {
+  allowedDevOrigins,
+
   async headers() {
     return [
       {

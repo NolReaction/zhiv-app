@@ -28,10 +28,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yml up --build
 
 ```bash
 npm ci
-npm run dev:local
+npm run dev:vps
 ```
-
-Для проверки с телефона в той же локальной сети используйте `npm run dev:lan`.
 
 Dev-адаптер повторяет HTTP-контракт Ktor, но стирает данные после перезапуска. В production Caddy отправляет `/api/**` в Ktor/PostgreSQL.
 

@@ -47,3 +47,19 @@ fun parseCanonicalUuid(raw: String?): UUID? {
 
 fun parseCanonicalUuidV4(raw: String?): UUID? =
     parseCanonicalUuid(raw)?.takeIf { it.version() == 4 && it.variant() == 2 }
+
+private val publicIdPattern = Regex(
+    "^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$",
+)
+
+fun normalizePublicId(raw: String): String = raw
+    .uppercase()
+    .filter { it.isLetterOrDigit() }
+    .chunked(4)
+    .joinToString("-")
+
+fun parsePublicId(raw: String?): String? {
+    if (raw == null) return null
+    val normalized = normalizePublicId(raw)
+    return normalized.takeIf(publicIdPattern::matches)
+}
