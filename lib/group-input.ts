@@ -18,3 +18,15 @@ export function isValidGroupEmoji(value: string | null): boolean {
     Array.from(value).length <= 16 && !/[\u0000-\u001f\u007f]/.test(value)
   );
 }
+
+export function matchesGroupPeopleSearch(displayName: string, query: string): boolean {
+  const normalizeSearchText = (value: string) => normalizeGroupTitle(value.normalize("NFKC"))
+    .toLocaleLowerCase("ru-RU")
+    .replaceAll("ё", "е");
+  const normalizedName = normalizeSearchText(displayName);
+  const queryTokens = normalizeSearchText(query)
+    .split(" ")
+    .filter(Boolean);
+
+  return queryTokens.every((token) => normalizedName.includes(token));
+}

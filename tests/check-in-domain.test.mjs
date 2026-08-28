@@ -14,6 +14,7 @@ const vite = await createServer({
 
 const presentation = await vite.ssrLoadModule("/lib/check-in-presentation.ts");
 const devApiOrigin = await vite.ssrLoadModule("/lib/dev-api-origin.ts");
+const groupInput = await vite.ssrLoadModule("/lib/group-input.ts");
 
 after(async () => {
   await vite.close();
@@ -33,6 +34,24 @@ test("formats an exact public ID without accepting trailing symbols", () => {
     presentation.isValidPublicId(presentation.normalizePublicId("7K3P-2Q9M-W8ZR-X")),
     false,
   );
+});
+
+test("makes public ID separators optional without hiding input mistakes", () => {
+  assert.equal(presentation.formatPublicIdInput("4htd-"), "4HTD-");
+  assert.equal(presentation.formatPublicIdInput("4htdx"), "4HTD-X");
+  assert.equal(presentation.formatPublicIdInput("4HTD-XTP7-"), "4HTD-XTP7-");
+  assert.equal(presentation.formatPublicIdInput("4HTD"), "4HTD");
+
+  const overlong = presentation.formatPublicIdInput("7K3P2Q9MW8ZRX");
+  assert.equal(overlong, "7K3P-2Q9M-W8ZR-X");
+  assert.equal(presentation.isValidPublicId(overlong), false);
+});
+
+test("filters group invitees by a forgiving display-name search", () => {
+  assert.equal(groupInput.matchesGroupPeopleSearch("Алёна Смирнова", "алена"), true);
+  assert.equal(groupInput.matchesGroupPeopleSearch("Анна Мария", "  МАРИЯ   анна "), true);
+  assert.equal(groupInput.matchesGroupPeopleSearch("Анна Мария", "марина"), false);
+  assert.equal(groupInput.matchesGroupPeopleSearch("Любой человек", ""), true);
 });
 
 test("describes another person's check-in without leaking a hidden timestamp", () => {

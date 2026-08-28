@@ -2,6 +2,8 @@
   min-height: 0;
   padding: 34px 0 22px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: #4f554a transparent;
 }
@@ -330,6 +332,13 @@
   color: #a6ab9f;
   font-size: 11px;
   font-weight: 750;
+}
+
+.searchHint {
+  margin: -1px 1px 0;
+  color: #858b80;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .searchRow {

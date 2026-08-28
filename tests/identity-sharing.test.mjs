@@ -70,6 +70,46 @@ function createLegacyDocument(events, copyResult = true) {
   };
 }
 
+test("copies a person's ID without opening share on Safari over LAN HTTP", async () => {
+  const events = [];
+  const copied = await sharing.copyText("YD4H-0SQF-N72K", {
+    document: createLegacyDocument(events),
+    navigator: {
+      share() {
+        events.push("share-start");
+        return Promise.resolve();
+      },
+    },
+    secureContext: false,
+  });
+
+  assert.equal(copied, true);
+  assert.ok(events.includes("exec:copy"));
+  assert.equal(events.includes("share-start"), false);
+});
+
+test("falls back to legacy copy when the secure Clipboard API refuses access", async () => {
+  const events = [];
+  const copied = await sharing.copyText("YD4H-0SQF-N72K", {
+    document: createLegacyDocument(events),
+    navigator: {
+      clipboard: {
+        writeText() {
+          events.push("clipboard-refused");
+          return Promise.reject(new Error("denied"));
+        },
+      },
+    },
+    secureContext: true,
+  });
+
+  assert.equal(copied, true);
+  assert.deepEqual(events.filter((event) => event === "clipboard-refused" || event === "exec:copy"), [
+    "clipboard-refused",
+    "exec:copy",
+  ]);
+});
+
 test("copies the ID through the Safari fallback on LAN HTTP", async () => {
   const events = [];
   const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {

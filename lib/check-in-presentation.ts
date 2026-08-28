@@ -36,6 +36,15 @@ export function normalizePublicId(value: string): string {
   return compact.match(/.{1,4}/g)?.join("-") ?? "";
 }
 
+export function formatPublicIdInput(value: string): string {
+  const compact = value.toUpperCase().replace(/[^0-9A-Z]/g, "");
+  const formatted = compact.match(/.{1,4}/g)?.join("-") ?? "";
+  const manuallyTypedSeparator =
+    /[-\s]$/.test(value) && (compact.length === 4 || compact.length === 8);
+
+  return manuallyTypedSeparator ? `${formatted}-` : formatted;
+}
+
 export function isValidPublicId(value: string): boolean {
   return PUBLIC_ID_PATTERN.test(value);
 }
