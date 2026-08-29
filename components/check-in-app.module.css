@@ -498,23 +498,38 @@
 @media (max-width: 700px), (hover: none) and (pointer: coarse) {
   .shell {
     --floating-nav-clearance: 110px;
+    position: relative;
     grid-template-rows: auto minmax(0, 1fr);
   }
 
   .action {
     padding-bottom: var(--floating-nav-clearance);
     scroll-padding-bottom: var(--floating-nav-clearance);
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+    -ms-overflow-style: none;
+  }
+
+  .action::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   .footer {
-    position: fixed;
+    position: absolute;
     z-index: 40;
-    right: max(14px, calc(env(safe-area-inset-right) + 10px));
+    right: 0;
     bottom: max(10px, calc(env(safe-area-inset-bottom) + 6px));
-    left: max(14px, calc(env(safe-area-inset-left) + 10px));
+    left: 0;
+    width: min(
+      calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right) - 28px),
+      316px
+    );
     display: flex;
     justify-content: center;
     border: 0;
+    margin-inline: auto;
     background: transparent;
     pointer-events: none;
   }
@@ -525,7 +540,7 @@
 
   .bottomNav {
     position: relative;
-    width: min(100%, 316px);
+    width: 100%;
     min-height: 64px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0;

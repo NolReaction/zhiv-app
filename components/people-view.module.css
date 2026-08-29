@@ -461,5 +461,14 @@ button:disabled {
   .view {
     padding-bottom: var(--floating-nav-clearance, 110px);
     scroll-padding-bottom: var(--floating-nav-clearance, 110px);
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+    -ms-overflow-style: none;
+  }
+
+  .view::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 }
