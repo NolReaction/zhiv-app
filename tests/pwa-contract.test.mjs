@@ -252,12 +252,27 @@ test("applies clickjacking protection to the root page and nested routes", async
   assert.match(config, /frame-ancestors 'none'/);
 });
 
-test("floats an iOS-safe glass navigation above scrollable mobile content", async () => {
+test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrome", async () => {
   const [app, appStyles, peopleStyles] = await Promise.all([
     readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
     readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
   ]);
+
+  const mobileQuery = "@media (max-width: 700px), (hover: none) and (pointer: coarse)";
+  const appMobileStart = appStyles.indexOf(mobileQuery);
+  const appMobileEnd = appStyles.indexOf("@supports not", appMobileStart);
+  const peopleMobileStart = peopleStyles.indexOf(mobileQuery);
+
+  assert.notEqual(appMobileStart, -1);
+  assert.notEqual(appMobileEnd, -1);
+  assert.notEqual(peopleMobileStart, -1);
+
+  const mobileAppStyles = appStyles.slice(appMobileStart, appMobileEnd);
+  const mobilePeopleStyles = peopleStyles.slice(peopleMobileStart);
+  const mobileShell = mobileAppStyles.match(/\.shell\s*\{[^}]*\}/s)?.[0] ?? "";
+  const mobileFooter = mobileAppStyles.match(/\.footer\s*\{[^}]*\}/s)?.[0] ?? "";
+  const mobileBottomNav = mobileAppStyles.match(/\.bottomNav\s*\{[^}]*\}/s)?.[0] ?? "";
 
   assert.match(app, /data-active-view=\{activeView\}/);
   assert.match(app, /className=\{styles\.navLens\}/);
@@ -267,21 +282,49 @@ test("floats an iOS-safe glass navigation above scrollable mobile content", asyn
   );
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
-  assert.match(appStyles, /grid-template-rows:\s*auto minmax\(0, 1fr\);/);
+  assert.match(appStyles, /\.action\s*\{[^}]*overflow-y:\s*auto;/s);
+  assert.match(peopleStyles, /^\.view\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*thin;/s);
+
+  assert.match(mobileShell, /position:\s*relative;/);
+  assert.match(mobileShell, /grid-template-rows:\s*auto minmax\(0, 1fr\);/);
+
+  assert.match(mobileFooter, /position:\s*absolute;/);
+  assert.match(mobileFooter, /right:\s*0;/);
+  assert.match(mobileFooter, /left:\s*0;/);
+  assert.match(mobileFooter, /width:\s*min\(/);
+  assert.match(mobileFooter, /safe-area-inset-left/);
+  assert.match(mobileFooter, /safe-area-inset-right/);
+  assert.match(mobileFooter, /316px/);
+  assert.match(mobileFooter, /margin-inline:\s*auto;/);
+  assert.match(mobileFooter, /bottom:[^;]*safe-area-inset-bottom[^;]*;/);
+  assert.match(mobileFooter, /background:\s*transparent;/);
+  assert.match(mobileFooter, /pointer-events:\s*none;/);
+  assert.doesNotMatch(mobileFooter, /transform\s*:/);
+
+  assert.match(mobileBottomNav, /width:\s*100%;/);
+  assert.match(mobileBottomNav, /overflow:\s*hidden;/);
   assert.match(
-    appStyles,
-    /\.footer\s*\{[^}]*position:\s*fixed;[^}]*bottom:[^;]*safe-area-inset-bottom[^}]*background:\s*transparent;[^}]*pointer-events:\s*none;/s,
+    mobileBottomNav,
+    /-webkit-backdrop-filter:\s*blur\(26px\) saturate\(180%\);/,
   );
-  assert.match(
-    appStyles,
-    /\.bottomNav\s*\{[^}]*-webkit-backdrop-filter:\s*blur\(26px\) saturate\(180%\);[^}]*pointer-events:\s*auto;/s,
-  );
-  assert.match(appStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
+  assert.match(mobileBottomNav, /pointer-events:\s*auto;/);
+  assert.match(mobileAppStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
   assert.match(appStyles, /@supports not \(\(-webkit-backdrop-filter:/);
 
-  assert.match(peopleStyles, /\.view\s*\{[^}]*overflow-y:\s*auto;/s);
   assert.match(
-    peopleStyles,
-    /\.view\s*\{[^}]*padding-bottom:\s*var\(--floating-nav-clearance,[^}]*scroll-padding-bottom:/s,
+    mobileAppStyles,
+    /\.action\s*\{(?=[^}]*padding-bottom:\s*var\(--floating-nav-clearance\);)(?=[^}]*scroll-padding-bottom:\s*var\(--floating-nav-clearance\);)(?=[^}]*scrollbar-width:\s*none;)[^}]*\}/s,
+  );
+  assert.match(
+    mobileAppStyles,
+    /\.action::-webkit-scrollbar\s*\{(?=[^}]*display:\s*none;)(?=[^}]*width:\s*0;)(?=[^}]*height:\s*0;)[^}]*\}/s,
+  );
+  assert.match(
+    mobilePeopleStyles,
+    /\.view\s*\{(?=[^}]*padding-bottom:\s*var\(--floating-nav-clearance,\s*110px\);)(?=[^}]*scroll-padding-bottom:\s*var\(--floating-nav-clearance,\s*110px\);)(?=[^}]*scrollbar-width:\s*none;)[^}]*\}/s,
+  );
+  assert.match(
+    mobilePeopleStyles,
+    /\.view::-webkit-scrollbar\s*\{(?=[^}]*display:\s*none;)(?=[^}]*width:\s*0;)(?=[^}]*height:\s*0;)[^}]*\}/s,
   );
 });
