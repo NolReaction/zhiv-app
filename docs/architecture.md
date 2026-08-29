@@ -128,6 +128,7 @@ erDiagram
 | `GET` | `/api/v1/me` | получить себя, последнюю отметку, стрик, профиль и подтверждённый счётчик |
 | `PATCH` | `/api/v1/me` | изменить отображаемое имя раз в 24 часа; нужен `Idempotency-Key` |
 | `POST` | `/api/v1/check-ins` | создать отметку; нужен `Idempotency-Key` |
+| `POST` | `/api/v1/game-events` | принять один агрегированный итог локальной игровой серии; ответ `204` |
 | `GET` | `/api/v1/users/{publicId}` | найти пользователя и состояние связи |
 | `GET` | `/api/v1/people` | люди, заявки и число получателей следующей отметки |
 | `POST` | `/api/v1/direct-requests` | отправить взаимную заявку |
@@ -146,6 +147,8 @@ erDiagram
 | `GET` | `/healthz` | liveness процесса |
 
 Все API-ответы с личными данными имеют `Cache-Control: no-store`. Записывающие запросы сверяют `Origin` и требуют UUIDv4 `Idempotency-Key`. Сырой session token не логируется; запросы выполняются через same-origin Caddy. Встроенный Next API — только in-memory dev-адаптер и в production fail-closed без явного `ENABLE_DEV_API=true`.
+
+Кликер остаётся локальной развлекательной механикой: текущая серия и рекорд не входят в модель безопасности и не изменяют `check_ins`. В начале серии создаётся UUIDv4 события и сохраняется вместе с активной серией; после 30 секунд покоя клиент отправляет один строго валидируемый `CLICKER_SERIES_FINISHED`, а bounded in-memory дедупликация подавляет повтор этого UUID после reload или из второй вкладки. Сам UUID в operational log не записывается. Сервер помечает значения как `client_reported=true` и отдельно пишет privacy-safe исходы `check_in_accepted`, `check_in_replayed` и `check_in_cooldown`. Access-log не содержит URI, поэтому публичный ID из lookup-пути не попадает в журналы. Ошибка телеметрии игнорируется клиентом и не влияет на отметку.
 
 Каждый элемент `GET /api/v1/people` содержит `checkInState`: `HIDDEN`, `WAITING_INITIAL`, `WAITING_AFTER_REENABLE` или `AVAILABLE`. Состояние вычисляет сервер по текущему sharing-периоду и audience snapshot; клиент не угадывает причину `lastCheckInAt = null` и не получает точный момент переключения доступа.
 

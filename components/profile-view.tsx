@@ -2,8 +2,9 @@
 
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
-import { Camera, Check, Clock3, Flame, Trophy, UserRound } from "lucide-react";
+import { Camera, Check, Clock3, Flame, Gamepad2, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
+import type { ClickerLevel } from "@/lib/clicker-story";
 import {
   ApiError,
   isDisplayNameCooldownResponse,
@@ -21,6 +22,10 @@ type ProfileViewProps = {
   me: MeResponse;
   nowMs: number;
   isOnline: boolean;
+  clickerStats: {
+    bestSeries: number;
+    level: ClickerLevel;
+  };
   onUpdated: (response: MeResponse) => void;
   onSessionLost: () => void;
 };
@@ -44,6 +49,7 @@ export function ProfileView({
   me,
   nowMs,
   isOnline,
+  clickerStats,
   onUpdated,
   onSessionLost,
 }: ProfileViewProps) {
@@ -156,6 +162,18 @@ export function ProfileView({
           <Check size={17} aria-hidden="true" />
           <strong>{me.checkInCount}</strong>
           <span>отметок</span>
+        </div>
+      </div>
+
+      <div className={styles.gameStats} aria-label="Игровой прогресс">
+        <span aria-hidden="true"><Gamepad2 size={20} /></span>
+        <div>
+          <small>Уровень {clickerStats.level.level}</small>
+          <strong>{clickerStats.level.title}</strong>
+        </div>
+        <div>
+          <small>Лучшая серия</small>
+          <strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong>
         </div>
       </div>
 

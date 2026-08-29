@@ -356,7 +356,7 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   );
 });
 
-test("keeps the permanent clicker lightweight and motion-safe", async () => {
+test("keeps the thirty-second clicker lightweight and motion-safe", async () => {
   const [app, appStyles, clicker] = await Promise.all([
     readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
@@ -364,6 +364,9 @@ test("keeps the permanent clicker lightweight and motion-safe", async () => {
   ]);
 
   assert.doesNotMatch(clicker, /CLICKER_FINAL_TAP|rotateClickerStory/);
+  assert.match(clicker, /CLICKER_MAX_TAP_COUNT\s*=\s*100_000/);
+  assert.match(clicker, /bestSeries/);
+  assert.match(clicker, /activeSeries/);
   assert.doesNotMatch(app, /navigator\.vibrate|AudioContext|new Audio/);
   assert.match(app, /localStorage\.setItem\([^,]+,\s*serializeClickerProgress\(/);
 
@@ -404,6 +407,14 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(globals, /button\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(appStyles, /\.shell\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(
+    appStyles,
+    /\.shell\[data-active-view="check-in"\]\s*\{(?=[^}]*position:\s*fixed;)(?=[^}]*height:\s*100svh;)(?=[^}]*overflow:\s*hidden;)(?=[^}]*overscroll-behavior:\s*none;)(?=[^}]*touch-action:\s*none;)[^}]*\}/s,
+  );
+  assert.match(
+    appStyles,
+    /\.shell\[data-active-view="check-in"\] \.action\s*\{(?=[^}]*overflow:\s*hidden;)(?=[^}]*touch-action:\s*none;)[^}]*\}/s,
+  );
   assert.match(peopleStyles, /\.view\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(groupStyles, /\.dialog\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(groupStyles, /\.peoplePicker\s*\{[^}]*touch-action:\s*pan-y;/s);
@@ -417,6 +428,11 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(checkInLabel, /-webkit-touch-callout:\s*none;/);
   assert.match(checkInLabel, /-webkit-user-select:\s*none;/);
   assert.match(checkInLabel, /(?<!-webkit-)user-select:\s*none;/);
+
+  assert.doesNotMatch(app, /Следующая сцена|Большой рубеж|Сервер ·|Всего отметок/);
+  assert.doesNotMatch(app, /Цвет меняется от зелёного к красному/);
+  assert.doesNotMatch(app, />\s*подряд\s*</);
+  assert.match(app, /formatDayCount\(streak\.currentDays\)/);
 
   assert.match(app, /<span>Люди<\/span>/);
   assert.doesNotMatch(app, /<span>Свои<\/span>/);

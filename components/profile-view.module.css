@@ -28,9 +28,50 @@
 .profileCard,
 .formCard,
 .futureCard,
+.gameStats,
 .stats {
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.038);
+}
+
+.gameStats {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  border-radius: 20px;
+  padding: 15px 17px;
+}
+
+.gameStats > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(183, 216, 162, 0.08);
+  color: #b7d8a2;
+}
+
+.gameStats > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.gameStats small {
+  color: #777d72;
+  font-size: 9px;
+}
+
+.gameStats strong {
+  overflow: hidden;
+  color: #eef1ea;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stats {
@@ -343,6 +384,7 @@
   .formCard,
   .futureCard,
   .avatar,
+  .gameStats,
   .stats,
   .formCard input,
   .formCard button {

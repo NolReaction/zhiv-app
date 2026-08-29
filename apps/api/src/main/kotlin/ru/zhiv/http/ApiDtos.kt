@@ -60,6 +60,18 @@ data class CooldownResponse(
 )
 
 @Serializable
+data class ClickerSeriesEventRequest(
+    val eventId: String,
+    val type: String,
+    val tapCount: Long,
+    val bestSeries: Long,
+    val level: Int,
+    val storyId: String,
+    val durationMs: Long,
+    val reason: String,
+)
+
+@Serializable
 data class DisplayNameCooldownResponse(
     val code: String = "DISPLAY_NAME_COOLDOWN",
     val message: String = "Имя можно менять раз в 24 часа",

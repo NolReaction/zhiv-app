@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   ApiErrorResponse,
   CheckInResponse,
+  ClickerSeriesEvent,
   CooldownResponse,
   DisplayNameCooldownResponse,
   DirectRequestActionResponse,
@@ -267,6 +268,24 @@ export function createCheckIn(idempotencyKey: string): Promise<CheckInResponse> 
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
   });
+}
+
+export async function reportClickerSeries(event: ClickerSeriesEvent): Promise<void> {
+  const response = await fetch("/api/v1/game-events", {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    keepalive: true,
+    signal: AbortSignal.timeout(4_000),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(event),
+  });
+  if (!response.ok) {
+    throw new ApiError("Не удалось записать игровое событие", response.status);
+  }
 }
 
 export function updateMyDisplayName(

@@ -17,10 +17,10 @@ import {
   getMe,
   getPeople,
   isCheckInCooldownResponse,
+  reportClickerSeries,
 } from "@/lib/check-in-api";
 import {
   formatLastCheckIn,
-  getCheckInMilestone,
   getCheckInAgeMs,
   getCheckInColor,
   isValidDisplayName,
@@ -31,15 +31,18 @@ import {
   advanceClickerRun,
   CLICKER_IDLE_RESET_MS,
   CLICKER_MAX_TAP_COUNT,
-  CLICKER_REWARDS,
+  clickerSeedFromPublicId,
   createClickerRun,
   expireClickerSeries,
   getClickerFrame,
-  getClickerTransitionEffect,
+  getClickerLevel,
+  mergeClickerProgress,
   parseClickerProgress,
   planClickerTap,
   serializeClickerProgress,
   type ClickerEffect,
+  type ClickerExpiry,
+  type ClickerFinishedSeries,
   type ClickerRun,
 } from "@/lib/clicker-story";
 import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
@@ -72,7 +75,8 @@ type PendingCheckIn = {
 
 const PENDING_BOOTSTRAP_STORAGE_KEY = "zhiv.pending-bootstrap.v1";
 const PENDING_CHECK_IN_STORAGE_KEY = "zhiv.pending-check-in.v1";
-const CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v1";
+const CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v2";
+const LEGACY_CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v1";
 const PENDING_BOOTSTRAP_TTL_MS = 10 * 60_000;
 const PENDING_CHECK_IN_TTL_MS = 24 * 60 * 60_000;
 const UUID_PATTERN =
@@ -174,20 +178,26 @@ function persistPending(storageKey: string, value: PendingBootstrap | PendingChe
   }
 }
 
-function clickerStorageKey(publicId: string): string {
-  return `${CLICKER_PROGRESS_STORAGE_PREFIX}:${publicId}`;
+function clickerStorageKey(publicId: string, prefix = CLICKER_PROGRESS_STORAGE_PREFIX): string {
+  return `${prefix}:${publicId}`;
 }
 
-function restoreClickerRun(publicId: string, storySeed: number): ClickerRun {
-  if (typeof window === "undefined") return createClickerRun(storySeed);
+function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
+  if (typeof window === "undefined") {
+    return { progress: createClickerRun(storySeed), finishedSeries: null };
+  }
   try {
     const stored = window.localStorage.getItem(clickerStorageKey(publicId));
-    const progress = stored ? parseClickerProgress(stored) : null;
-    return progress
-      ? { ...progress, lastTapAtMs: null }
-      : createClickerRun(storySeed);
+    const legacy = stored
+      ? null
+      : window.localStorage.getItem(
+          clickerStorageKey(publicId, LEGACY_CLICKER_PROGRESS_STORAGE_PREFIX),
+        );
+    const progress = parseClickerProgress(stored ?? legacy ?? "", storySeed)
+      ?? createClickerRun(storySeed);
+    return expireClickerSeries(progress, Date.now());
   } catch {
-    return createClickerRun(storySeed);
+    return { progress: createClickerRun(storySeed), finishedSeries: null };
   }
 }
 
@@ -198,7 +208,6 @@ export function CheckInApp() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [systemError, setSystemError] = useState<string | null>(null);
   const [lastCheckInAt, setLastCheckInAt] = useState<string | null>(null);
-  const [checkInCount, setCheckInCount] = useState(0);
   const [streak, setStreak] = useState<DailyStreak | null>(null);
   const [nextAllowedAt, setNextAllowedAt] = useState<string | null>(null);
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
@@ -208,6 +217,7 @@ export function CheckInApp() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clickerRun, setClickerRun] = useState<ClickerRun>(() => createClickerRun());
+  const [seriesSummary, setSeriesSummary] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [storyEffect, setStoryEffect] = useState<{
     type: ClickerEffect;
@@ -242,7 +252,7 @@ export function CheckInApp() {
     try {
       const key = clickerStorageKey(publicId);
       const stored = parseClickerProgress(window.localStorage.getItem(key) ?? "");
-      const progress = stored && stored.totalTaps > run.totalTaps ? stored : run;
+      const progress = stored ? mergeClickerProgress(stored, run) : run;
       window.localStorage.setItem(key, serializeClickerProgress(progress));
     } catch {
       // Local clicker progress is decorative; storage failure must never block check-in.
@@ -259,6 +269,29 @@ export function CheckInApp() {
       clickerPersistTimer.current = null;
     }, 650);
   }, [persistClickerRun]);
+
+  const reportFinishedSeries = useCallback((
+    finished: ClickerFinishedSeries,
+    progress: ClickerRun,
+  ) => {
+    setSeriesSummary(
+      finished.isRecord
+        ? `Забег завершён · рекорд ×${finished.tapCount.toLocaleString("ru-RU")}`
+        : `Забег завершён · результат ×${finished.tapCount.toLocaleString("ru-RU")}`,
+    );
+    void reportClickerSeries({
+      eventId: finished.eventId ?? createUuidV4(),
+      type: "CLICKER_SERIES_FINISHED",
+      tapCount: finished.tapCount,
+      bestSeries: progress.bestSeries,
+      level: getClickerLevel(progress.bestSeries).level,
+      storyId: finished.storyId,
+      durationMs: finished.durationMs,
+      reason: "IDLE_TIMEOUT",
+    }).catch(() => {
+      // Diagnostic telemetry is best-effort and never changes the game or check-in.
+    });
+  }, []);
 
   const clearStoryEffect = useCallback(() => {
     if (storyEffectTimer.current) {
@@ -289,6 +322,7 @@ export function CheckInApp() {
     commitClickerRun(createClickerRun(), false);
     setStreak(null);
     setNotice(null);
+    setSeriesSummary(null);
   }, [clearStoryEffect, commitClickerRun]);
 
   const loseSession = useCallback(() => {
@@ -315,7 +349,6 @@ export function CheckInApp() {
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
     setMe(identity);
     setLastCheckInAt(identity.lastCheckInAt);
-    setCheckInCount(identity.checkInCount);
     setStreak(identity.streak);
     setClockOffsetMs(serverOffset(identity.serverTime));
     setClientNowMs(Date.now());
@@ -368,10 +401,15 @@ export function CheckInApp() {
     clearPendingBootstrap();
     resetTransientCheckIn();
     clickerOwnerPublicId.current = identity.user.publicId;
-    commitClickerRun(
-      restoreClickerRun(identity.user.publicId, identity.checkInCount),
-      false,
+    const restored = restoreClickerRun(
+      identity.user.publicId,
+      clickerSeedFromPublicId(identity.user.publicId),
     );
+    commitClickerRun(restored.progress, false);
+    if (restored.finishedSeries) {
+      persistClickerRun(restored.progress);
+      reportFinishedSeries(restored.finishedSeries, restored.progress);
+    }
     syncMeSnapshot(identity);
     setNameError(null);
     setSystemError(null);
@@ -381,6 +419,8 @@ export function CheckInApp() {
     clearPendingBootstrap,
     clearPendingCheckIn,
     commitClickerRun,
+    persistClickerRun,
+    reportFinishedSeries,
     resetTransientCheckIn,
     syncMeSnapshot,
   ]);
@@ -542,28 +582,104 @@ export function CheckInApp() {
 
   const resetClickerLater = useCallback(() => {
     if (burstTimer.current) clearTimeout(burstTimer.current);
-    burstTimer.current = setTimeout(() => {
-      commitClickerRun(expireClickerSeries(clickerRunRef.current, Date.now()));
+    const active = clickerRunRef.current.activeSeries;
+    if (!active) {
+      burstTimer.current = null;
+      return;
+    }
+    const remaining = Math.max(
+      0,
+      active.lastTapAtMs + CLICKER_IDLE_RESET_MS - Date.now(),
+    );
+    const finishWhenIdle = () => {
+      const expired = expireClickerSeries(clickerRunRef.current, Date.now());
+      if (!expired.finishedSeries) {
+        const currentActive = clickerRunRef.current.activeSeries;
+        if (currentActive) {
+          const nextRemaining = Math.max(
+            0,
+            currentActive.lastTapAtMs + CLICKER_IDLE_RESET_MS - Date.now(),
+          );
+          burstTimer.current = setTimeout(finishWhenIdle, nextRemaining + 20);
+        }
+        return;
+      }
+      commitClickerRun(expired.progress);
+      persistClickerRun(expired.progress);
+      reportFinishedSeries(expired.finishedSeries, expired.progress);
       setNotice(null);
       clearStoryEffect();
       burstTimer.current = null;
-    }, CLICKER_IDLE_RESET_MS);
-  }, [clearStoryEffect, commitClickerRun]);
+    };
+    burstTimer.current = setTimeout(finishWhenIdle, remaining + 20);
+  }, [
+    clearStoryEffect,
+    commitClickerRun,
+    persistClickerRun,
+    reportFinishedSeries,
+  ]);
 
   const registerTap = useCallback(
-    (steps = 1) => {
+    (steps = 1, tappedAtMs = Date.now()) => {
       const current = clickerRunRef.current;
-      const next = advanceClickerRun(current, Date.now(), steps);
-      const latestEffect = getClickerTransitionEffect(current.totalTaps, next.totalTaps);
-      commitClickerRun(next);
-      if (CLICKER_REWARDS.some((reward) => reward.at > current.totalTaps && reward.at <= next.totalTaps)) {
-        persistClickerRun(next);
+      const transition = advanceClickerRun(current, tappedAtMs, steps, createUuidV4());
+      if (transition.finishedSeries) {
+        reportFinishedSeries(transition.finishedSeries, transition.progress);
       }
-      if (latestEffect) triggerStoryEffect(latestEffect);
+      commitClickerRun(transition.progress);
+      setSeriesSummary(null);
+      if (
+        transition.crossedMilestones.length > 0 ||
+        transition.levelAfter.level > transition.levelBefore.level
+      ) persistClickerRun(transition.progress);
+      if (transition.effect) triggerStoryEffect(transition.effect);
       resetClickerLater();
     },
-    [commitClickerRun, persistClickerRun, resetClickerLater, triggerStoryEffect],
+    [
+      commitClickerRun,
+      persistClickerRun,
+      reportFinishedSeries,
+      resetClickerLater,
+      triggerStoryEffect,
+    ],
   );
+
+  useEffect(() => {
+    if (screen !== "home" || !clickerRun.activeSeries) return;
+    resetClickerLater();
+  }, [clickerRun.activeSeries, resetClickerLater, screen]);
+
+  useEffect(() => {
+    if (screen !== "home") return;
+    const reconcileSeries = () => {
+      if (document.hidden) return;
+      const expired = expireClickerSeries(clickerRunRef.current, Date.now());
+      if (!expired.finishedSeries) return;
+      if (burstTimer.current) {
+        clearTimeout(burstTimer.current);
+        burstTimer.current = null;
+      }
+      commitClickerRun(expired.progress);
+      persistClickerRun(expired.progress);
+      reportFinishedSeries(expired.finishedSeries, expired.progress);
+      clearStoryEffect();
+      setNotice(null);
+    };
+    window.addEventListener("pageshow", reconcileSeries);
+    window.addEventListener("focus", reconcileSeries);
+    document.addEventListener("visibilitychange", reconcileSeries);
+    return () => {
+      window.removeEventListener("pageshow", reconcileSeries);
+      window.removeEventListener("focus", reconcileSeries);
+      document.removeEventListener("visibilitychange", reconcileSeries);
+    };
+  }, [
+    clearStoryEffect,
+    commitClickerRun,
+    persistClickerRun,
+    reportFinishedSeries,
+    screen,
+  ]);
 
   async function handleBootstrap(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -620,23 +736,30 @@ export function CheckInApp() {
   }
 
   async function handleCheckIn() {
-    const currentRun = expireClickerSeries(clickerRunRef.current, Date.now());
-    if (currentRun !== clickerRunRef.current) {
+    const tappedAtMs = Date.now();
+    if (pendingCheckIn.current?.expiresAt && pendingCheckIn.current.expiresAt <= tappedAtMs) {
+      clearPendingCheckIn();
+    }
+    const expired = expireClickerSeries(clickerRunRef.current, tappedAtMs);
+    const currentRun = expired.progress;
+    if (expired.finishedSeries) {
       if (burstTimer.current) {
         clearTimeout(burstTimer.current);
         burstTimer.current = null;
       }
       commitClickerRun(currentRun);
+      reportFinishedSeries(expired.finishedSeries, currentRun);
       clearStoryEffect();
       setNotice(null);
     }
-    const adjustedNow = Date.now() + clockOffsetMs;
+    const adjustedNow = tappedAtMs + clockOffsetMs;
     const tapPlan = planClickerTap(
       currentRun,
       Boolean(nextAllowedAt && adjustedNow < Date.parse(nextAllowedAt)),
-      Date.now(),
+      tappedAtMs,
+      Boolean(pendingCheckIn.current),
     );
-    registerTap();
+    registerTap(1, tappedAtMs);
     if (tapPlan !== "REQUEST_SERVER") {
       if (tapPlan === "START_LOCAL") setNotice(null);
       return;
@@ -647,9 +770,6 @@ export function CheckInApp() {
     setIsSending(true);
     setNotice("Проверяем сервер · тапы уже считаются");
     try {
-      if (pendingCheckIn.current?.expiresAt && pendingCheckIn.current.expiresAt <= Date.now()) {
-        clearPendingCheckIn();
-      }
       if (!pendingCheckIn.current) {
         const createdAt = Date.now();
         pendingCheckIn.current = {
@@ -666,13 +786,10 @@ export function CheckInApp() {
       const response = await createCheckIn(pendingCheckIn.current.idempotencyKey);
       clearPendingCheckIn();
       setLastCheckInAt(response.checkedAt);
-      setCheckInCount(response.checkInCount);
       setNextAllowedAt(response.nextAllowedAt);
       setClockOffsetMs(serverOffset(response.serverTime));
       setClientNowMs(Date.now());
-      setNotice(
-        getCheckInMilestone(response.checkInCount) ?? "Отметка сохранена · только что",
-      );
+      setNotice(null);
       setStreak(response.streak);
       setMe((current) => current ? {
         ...current,
@@ -704,8 +821,6 @@ export function CheckInApp() {
         loseSession();
       } else {
         setNotice("Связь оборвалась · нажмите ещё раз для проверки");
-        commitClickerRun({ ...clickerRunRef.current, lastTapAtMs: null });
-        resetClickerLater();
       }
     } finally {
       checkInSending.current = false;
@@ -717,17 +832,20 @@ export function CheckInApp() {
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonColor = getCheckInColor(ageMs);
   const storyFrame = getClickerFrame(clickerRun);
+  const clickerLevel = getClickerLevel(clickerRun.bestSeries);
   const serverStatus = notice ?? formatLastCheckIn(lastCheckInAt, adjustedNow);
-  const status = storyFrame?.message ?? serverStatus;
   const earlyTapClass =
-    storyFrame && storyFrame.storyTap >= 2 && storyFrame.storyTap <= 4
-      ? styles[`tap${storyFrame.storyTap}`]
+    storyFrame && storyFrame.tapCount >= 2 && storyFrame.tapCount <= 4
+      ? styles[`tap${storyFrame.tapCount}`]
       : "";
   const effectClass = storyEffect
     ? styles[`effect${storyEffect.type[0].toUpperCase()}${storyEffect.type.slice(1)}`]
     : "";
   const pulseClass = effectClass || earlyTapClass;
-  const visualTapCount = Math.min(clickerRun.totalTaps, CLICKER_MAX_TAP_COUNT);
+  const visualTapCount = Math.min(
+    clickerRun.activeSeries?.tapCount ?? 0,
+    CLICKER_MAX_TAP_COUNT,
+  );
   const buttonStyle = useMemo(
     () => ({ "--check-in-color": buttonColor }) as CSSProperties,
     [buttonColor],
@@ -854,7 +972,7 @@ export function CheckInApp() {
   }
 
   return (
-    <main className={styles.shell}>
+    <main className={styles.shell} data-active-view={activeView}>
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>
@@ -900,9 +1018,7 @@ export function CheckInApp() {
                 aria-label={`${formatDayCount(streak.currentDays)} подряд. ${getDailyStreakMessage(streak)}`}
               >
                 <Flame size={18} aria-hidden="true" />
-                <strong>{streak.currentDays}</strong>
-                <span>{formatDayCount(streak.currentDays).replace(/^\d+\s+/, "")} подряд</span>
-                <small>{getDailyStreakMessage(streak)}</small>
+                <strong>{formatDayCount(streak.currentDays)}</strong>
               </div>
             ) : null}
             <div className={styles.buttonStage}>
@@ -912,16 +1028,16 @@ export function CheckInApp() {
               style={buttonStyle}
               onClick={handleCheckIn}
               aria-busy={isSending}
-              aria-describedby={visualTapCount >= 2 ? "clicker-total" : undefined}
+              aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
             >
               <span>Я ЖИВОЙ</span>
             </button>
-            {visualTapCount >= 2 ? (
+            {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
-                Игровой счёт: {visualTapCount.toLocaleString("ru-RU")}
+                Текущая серия: {visualTapCount.toLocaleString("ru-RU")}
               </span>
             ) : null}
-            {visualTapCount >= 2 ? (
+            {visualTapCount >= 1 ? (
               <span className={styles.tapCounter} aria-hidden="true">
                 ×{visualTapCount.toLocaleString("ru-RU")}
               </span>
@@ -1016,59 +1132,21 @@ export function CheckInApp() {
             {storyFrame ? (
               <p className={styles.storyLabel}>СЮЖЕТ · {storyFrame.storyTitle}</p>
             ) : null}
-            {storyFrame ? (
-              <p className={styles.srOnly} role="status" aria-live="polite">
-                {`Сюжет «${storyFrame.storyTitle}». ${status}. ${
-                  storyFrame.reachedReward
-                    ? `${storyFrame.reachedReward.title}. ${storyFrame.reachedReward.message}. `
-                    : ""
-                }${serverStatus}`}
-              </p>
-            ) : null}
             <p
               className={styles.status}
-              role={storyFrame ? undefined : "status"}
-              aria-live={storyFrame ? undefined : "polite"}
+              role="status"
+              aria-live="polite"
             >
-              {status}
+              {!isOnline
+                ? "Офлайн · серия считается на устройстве"
+                : notice
+                  ? notice
+                  : storyFrame?.message ?? seriesSummary ?? serverStatus}
             </p>
-            {storyFrame ? (
-              <>
-                <div
-                  className={styles.storyProgress}
-                  style={{ "--story-progress": `${storyFrame.progress * 100}%` } as CSSProperties}
-                >
-                  <span>
-                    {storyFrame.isStoryFinal
-                      ? `Новый сюжет · ×${storyFrame.nextSceneAt.toLocaleString("ru-RU")}`
-                      : `Следующая сцена · ×${storyFrame.nextSceneAt.toLocaleString("ru-RU")}`}
-                  </span>
-                  <i aria-hidden="true" />
-                </div>
-                {storyFrame.latestReward ? (
-                  <p className={styles.storyReward}>
-                    <strong>{storyFrame.latestReward.title}</strong>
-                    <span>{storyFrame.latestReward.message}</span>
-                  </p>
-                ) : storyFrame.nextRewardAt ? (
-                  <p className={styles.rewardHint}>
-                    Большой рубеж · ×{storyFrame.nextRewardAt.toLocaleString("ru-RU")}
-                  </p>
-                ) : null}
-                <p className={styles.serverFact}>Сервер · {serverStatus}</p>
-              </>
-            ) : null}
-            {people ? (
-              <p className={styles.audience}>
-                {people.audienceCount === 0
-                  ? "Эту отметку пока видите только вы"
-                  : `Новую отметку увидят: ${people.audienceCount}`}
-              </p>
-            ) : null}
-            {checkInCount > 0 ? (
-              <p className={styles.checkInCount}>Всего отметок: {checkInCount}</p>
-            ) : null}
-            {!isOnline ? <p className={styles.offline}>Данные могут быть устаревшими</p> : null}
+            <span className={styles.srOnly}>
+              Лучший результат: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
+              Серверная отметка: {serverStatus}.
+            </span>
           </div>
         </section>
       ) : activeView === "people" ? (
@@ -1089,6 +1167,10 @@ export function CheckInApp() {
           me={me}
           nowMs={adjustedNow}
           isOnline={isOnline}
+          clickerStats={{
+            bestSeries: clickerRun.bestSeries,
+            level: clickerLevel,
+          }}
           onUpdated={(identity) => {
             syncMeSnapshot(identity);
             void refreshPeople();
@@ -1099,9 +1181,6 @@ export function CheckInApp() {
       ) : null}
 
       <footer className={styles.footer}>
-        {activeView === "check-in" ? (
-          <span className={styles.colorHint}>Цвет меняется от зелёного к красному за 24 часа</span>
-        ) : null}
         <nav
           className={styles.bottomNav}
           data-active-view={activeView}

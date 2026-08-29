@@ -233,16 +233,15 @@
 }
 
 .streakPill {
-  display: grid;
-  min-height: 38px;
-  grid-template-columns: auto auto auto;
+  display: inline-flex;
+  min-height: 32px;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.035);
   color: #959b90;
-  padding: 7px 13px;
+  padding: 6px 11px;
   font-size: 11px;
   line-height: 1;
 }
@@ -253,20 +252,9 @@
 
 .streakPill strong {
   color: #e8ebe4;
-  font-size: 15px;
+  font-size: 12px;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-}
-
-.streakPill > span {
-  font-weight: 760;
-}
-
-.streakPill small {
-  grid-column: 1 / -1;
-  color: #747a70;
-  font-size: 9px;
-  line-height: 1.25;
-  text-align: center;
 }
 
 .streakPill[data-state="complete"] {
@@ -309,6 +297,7 @@
     inset 0 -12px 30px rgba(0, 0, 0, 0.12);
   color: white;
   cursor: pointer;
+  touch-action: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
@@ -512,12 +501,14 @@
 }
 
 .statusBlock {
-  min-height: 52px;
+  display: grid;
+  min-height: 76px;
+  align-content: start;
   text-align: center;
 }
 
 .statusBlock[data-story-active="true"] {
-  min-height: 174px;
+  min-height: 76px;
 }
 
 .storyLabel {
@@ -530,11 +521,18 @@
 }
 
 .status {
-  margin: 0;
+  display: -webkit-box;
+  max-width: min(88vw, 430px);
+  min-height: 2.7em;
+  margin: 0 auto;
+  overflow: hidden;
   color: #f4f5ef;
-  font-size: clamp(17px, 4.4vw, 21px);
+  font-size: clamp(15px, 4vw, 19px);
   font-weight: 720;
+  line-height: 1.35;
   letter-spacing: -0.02em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .storyProgress {
@@ -830,6 +828,18 @@
     touch-action: pan-y;
   }
 
+  .shell[data-active-view="check-in"] {
+    position: fixed;
+    inset: 0;
+    width: min(100%, 760px);
+    height: 100svh;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    margin: 0 auto;
+    touch-action: none;
+  }
+
   .action {
     padding-bottom: var(--floating-nav-clearance);
     scroll-padding-bottom: var(--floating-nav-clearance);
@@ -837,6 +847,41 @@
     scrollbar-color: transparent transparent;
     -ms-overflow-style: none;
     touch-action: pan-y;
+  }
+
+  .shell[data-active-view="check-in"] .action {
+    grid-template-rows: minmax(0, 1fr) 82px;
+    align-content: stretch;
+    gap: 8px;
+    overflow: hidden;
+    overscroll-behavior: none;
+    padding: 6px 0 var(--floating-nav-clearance);
+    touch-action: none;
+  }
+
+  .shell[data-active-view="check-in"] .checkInCluster {
+    align-self: center;
+    gap: 8px;
+  }
+
+  .shell[data-active-view="check-in"] .buttonStage,
+  .shell[data-active-view="check-in"] .checkInButton {
+    touch-action: none;
+  }
+
+  .shell[data-active-view="check-in"] .action,
+  .shell[data-active-view="check-in"] .action * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .shell[data-active-view="check-in"] .statusBlock,
+  .shell[data-active-view="check-in"] .statusBlock[data-story-active="true"] {
+    width: 100%;
+    height: 82px;
+    min-height: 82px;
+    overflow: hidden;
   }
 
   .action::-webkit-scrollbar {
@@ -957,6 +1002,13 @@
   .bottomNav button:focus-visible {
     outline-width: 2px;
     outline-offset: -3px;
+  }
+}
+
+@media (display-mode: standalone) and (max-width: 700px),
+  (display-mode: standalone) and (hover: none) and (pointer: coarse) {
+  .shell[data-active-view="check-in"] {
+    height: 100dvh;
   }
 }
 
