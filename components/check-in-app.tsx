@@ -226,7 +226,7 @@ export function CheckInApp() {
         loseSession();
         return;
       }
-      setPeopleError(error instanceof Error ? error.message : "Не удалось загрузить своих");
+      setPeopleError(error instanceof Error ? error.message : "Не удалось загрузить личные связи");
     } finally {
       setPeopleLoading(false);
     }
@@ -761,7 +761,7 @@ export function CheckInApp() {
                 )}</i>
               ) : null}
             </span>
-            <span>Свои</span>
+            <span>Люди</span>
           </button>
         </nav>
       </footer>

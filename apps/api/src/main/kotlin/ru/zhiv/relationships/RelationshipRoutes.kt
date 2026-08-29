@@ -237,7 +237,7 @@ private suspend fun ApplicationCall.respondRelationshipError(result: Relationshi
         RelationshipResult.AlreadyConnected -> respondError(
             HttpStatusCode.Conflict,
             "ALREADY_CONNECTED",
-            "Этот человек уже в ваших",
+            "Вы уже на связи с этим человеком",
         )
         RelationshipResult.Forbidden -> respondError(
             HttpStatusCode.Forbidden,

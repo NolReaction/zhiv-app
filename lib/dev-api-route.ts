@@ -35,7 +35,7 @@ export function devResultError<T>(result: Exclude<DevResult<T>, { kind: "ok" }>)
     unauthorized: [401, "UNAUTHORIZED", "Сессия не найдена"],
     "not-found": [404, "NOT_FOUND", "Объект не найден"],
     self: [409, "CANNOT_ADD_SELF", "Это ваш ID 😄"],
-    "already-connected": [409, "ALREADY_CONNECTED", "Этот человек уже в ваших"],
+    "already-connected": [409, "ALREADY_CONNECTED", "Вы уже на связи с этим человеком"],
     forbidden: [403, "FORBIDDEN", "Действие недоступно"],
     expired: [409, "DIRECT_REQUEST_EXPIRED", "Срок заявки истёк"],
     conflict: [409, "RELATIONSHIP_CONFLICT", "Состояние уже изменилось"],

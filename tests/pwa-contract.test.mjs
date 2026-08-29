@@ -303,6 +303,14 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
 
   assert.match(mobileBottomNav, /width:\s*100%;/);
   assert.match(mobileBottomNav, /overflow:\s*hidden;/);
+  const mobileNavShadow = mobileBottomNav.match(/box-shadow:\s*([^;]+);/s)?.[1] ?? "";
+  const mobileShadowLayers = mobileNavShadow
+    .replace(/rgba?\([^)]*\)/g, "")
+    .split(",")
+    .map((shadow) => shadow.trim())
+    .filter(Boolean);
+  assert.ok(mobileShadowLayers.length > 0);
+  assert.ok(mobileShadowLayers.every((shadow) => shadow.startsWith("inset ")));
   assert.match(
     mobileBottomNav,
     /-webkit-backdrop-filter:\s*blur\(26px\) saturate\(180%\);/,
@@ -327,4 +335,53 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
     mobilePeopleStyles,
     /\.view::-webkit-scrollbar\s*\{(?=[^}]*display:\s*none;)(?=[^}]*width:\s*0;)(?=[^}]*height:\s*0;)[^}]*\}/s,
   );
+});
+
+test("locks the iPhone app surface while preserving vertical touch scrolling", async () => {
+  const [layout, globals, config, app, appStyles, people, peopleStyles, groups, groupStyles] =
+    await Promise.all([
+      readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+      readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
+      readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../components/people-view.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../components/groups-section.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../components/groups-section.module.css", import.meta.url), "utf8"),
+    ]);
+
+  assert.match(layout, /minimumScale:\s*1/);
+  assert.match(layout, /maximumScale:\s*1/);
+  assert.match(layout, /userScalable:\s*false/);
+  assert.match(layout, /viewportFit:\s*["']cover["']/);
+  assert.match(config, /devIndicators:\s*false/);
+
+  assert.match(globals, /html\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(globals, /body\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(globals, /button\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(appStyles, /\.shell\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(appStyles, /\.action\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(peopleStyles, /\.view\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(groupStyles, /\.dialog\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(groupStyles, /\.peoplePicker\s*\{[^}]*touch-action:\s*pan-y;/s);
+
+  const checkInButton = appStyles.match(/\.checkInButton\s*\{[^}]*\}/s)?.[0] ?? "";
+  const checkInLabel = appStyles.match(/\.checkInButton span\s*\{[^}]*\}/s)?.[0] ?? "";
+  assert.match(checkInButton, /-webkit-touch-callout:\s*none;/);
+  assert.match(checkInButton, /-webkit-user-select:\s*none;/);
+  assert.match(checkInButton, /(?<!-webkit-)user-select:\s*none;/);
+  assert.match(checkInLabel, /pointer-events:\s*none;/);
+  assert.match(checkInLabel, /-webkit-touch-callout:\s*none;/);
+  assert.match(checkInLabel, /-webkit-user-select:\s*none;/);
+  assert.match(checkInLabel, /(?<!-webkit-)user-select:\s*none;/);
+
+  assert.match(app, /<span>Люди<\/span>/);
+  assert.doesNotMatch(app, /<span>Свои<\/span>/);
+  assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
+  assert.match(people, /aria-labelledby="people-title"/);
+  assert.equal((people.match(/<h1\b/g) ?? []).length, 1);
+  assert.doesNotMatch(people, /styles\.kicker/);
+  assert.doesNotMatch(`${app}\n${people}\n${groups}`, />\s*Свои\s*</);
+  assert.doesNotMatch(`${app}\n${people}\n${groups}`, /["'`]Свои(?=["'`\s·])/);
 });

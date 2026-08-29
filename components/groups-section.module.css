@@ -330,6 +330,7 @@
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .dialogDescription {
@@ -416,6 +417,7 @@
   max-height: 230px;
   gap: 5px;
   overflow-y: auto;
+  touch-action: pan-y;
   border: 0;
   padding: 0;
 }

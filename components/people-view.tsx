@@ -76,7 +76,7 @@ function stateMessage(result: UserLookupResponse): string | null {
     case "SELF":
       return "Это вы 😄";
     case "CONNECTED":
-      return "Уже в ваших";
+      return "Вы уже на связи";
     case "INCOMING_REQUEST":
       return "Этот человек уже отправил вам заявку";
     case "OUTGOING_REQUEST":
@@ -105,9 +105,6 @@ export function PeopleView({
   const [pending, setPending] = useState<string | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const incomingCount = (data?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0);
-  const title = incomingCount > 0 ? `Свои · ${incomingCount}` : "Свои";
 
   function handleApiError(cause: unknown, fallback: string) {
     if (cause instanceof ApiError && cause.status === 401) {
@@ -206,7 +203,7 @@ export function PeopleView({
 
   const content = useMemo(() => {
     if (loading && !data) {
-      return <div className={styles.state}>Загружаем своих…</div>;
+      return <div className={styles.state}>Загружаем личные связи…</div>;
     }
     if (error && !data) {
       return (
@@ -224,10 +221,7 @@ export function PeopleView({
   return (
     <section className={styles.view} aria-labelledby="people-title">
       <div className={styles.headingRow}>
-        <div>
-          <p className={styles.kicker}>ЛИЧНЫЕ СВЯЗИ</p>
-          <h1 id="people-title">{title}</h1>
-        </div>
+        <h1 id="people-title">Личные связи</h1>
         <button
           className={styles.addButton}
           type="button"
@@ -257,7 +251,7 @@ export function PeopleView({
 
           {data.incomingRequests.length > 0 ? (
             <section className={styles.section} aria-labelledby="incoming-title">
-              <h2 id="incoming-title">Хотят быть своими</h2>
+              <h2 id="incoming-title">Хотят добавить вас</h2>
               <div className={styles.list}>
                 {data.incomingRequests.map((request) => (
                   <article className={styles.requestCard} key={request.requestId}>

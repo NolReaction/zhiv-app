@@ -561,7 +561,7 @@ export function GroupsSection({
               </fieldset>
             </div>
           ) : (
-            <p className={styles.helper}>Сначала добавьте людей в «Свои» — группу можно создать и без них.</p>
+            <p className={styles.helper}>Сначала добавьте людей — группу можно создать и без них.</p>
           )}
           <button className={styles.primaryButton} type="button" disabled={Boolean(pending)} onClick={() => void handleCreate()}>
             {pending === "create" ? "Создаём…" : "Создать группу"}
