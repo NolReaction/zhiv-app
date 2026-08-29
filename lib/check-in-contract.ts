@@ -35,6 +35,17 @@ export type CheckInResponse = {
   replayed: boolean;
 };
 
+export type ClickerSeriesEvent = {
+  eventId: string;
+  type: "CLICKER_SERIES_FINISHED";
+  tapCount: number;
+  bestSeries: number;
+  level: number;
+  storyId: string;
+  durationMs: number;
+  reason: "IDLE_TIMEOUT";
+};
+
 export type CooldownResponse = {
   code: "CHECK_IN_COOLDOWN";
   checkedAt: string;

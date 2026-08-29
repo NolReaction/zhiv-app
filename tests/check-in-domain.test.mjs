@@ -118,99 +118,151 @@ test("never reports a negative age when client clock is ahead or behind", () => 
   );
 });
 
-test("offers twenty-four complete clicker stories with one sparse scene rhythm", () => {
+test("offers twenty-four complete stories on the exact series milestones", () => {
   assert.equal(clicker.CLICKER_STORIES.length, 24);
-  const expectedMilestones = [1, 5, 10, 20, 35, 50, 75, 100];
+  const expectedMilestones = [1, 5, 10, 20, 50, 100, 500, 1_000, 10_000, 100_000];
   const titles = new Set();
+  const ids = new Set();
 
   for (const story of clicker.CLICKER_STORIES) {
     titles.add(story.title);
+    ids.add(story.id);
     assert.deepEqual(story.scenes.map((scene) => scene.at), expectedMilestones);
     assert.equal(new Set(story.scenes.map((scene) => scene.message)).size, story.scenes.length);
   }
   assert.equal(titles.size, clicker.CLICKER_STORIES.length);
+  assert.equal(ids.size, clicker.CLICKER_STORIES.length);
 });
 
-test("keeps story copy stable between milestones and triggers effects only on a scene", () => {
-  const run = clicker.createClickerRun(0);
-  const at10 = clicker.getClickerFrame({ ...run, totalTaps: 10 });
-  const at19 = clicker.getClickerFrame({ ...run, totalTaps: 19 });
-  const at20 = clicker.getClickerFrame({ ...run, totalTaps: 20 });
-  const at21 = clicker.getClickerFrame({ ...run, totalTaps: 21 });
+test("keeps one linear story through 1, 5, 10, 20, 50, 100, 500 and beyond", () => {
+  const initial = clicker.createClickerRun(0);
+  const at100 = clicker.advanceClickerRun(initial, 1_000, 100).progress;
+  const at499 = clicker.advanceClickerRun(at100, 1_100, 399).progress;
+  const at500 = clicker.advanceClickerRun(at499, 1_200).progress;
 
-  assert.equal(at10.message, "Двигатели запущены");
-  assert.equal(at19.message, at10.message);
-  assert.equal(at19.nextSceneAt, 20);
-  assert.equal(at19.effect, null);
-  assert.equal(at20.message, "Орбита достигнута");
-  assert.equal(at20.effect, "rings");
-  assert.equal(at21.message, at20.message);
-  assert.equal(at21.effect, null);
+  assert.equal(clicker.getClickerFrame(at100).storyId, "space");
+  assert.equal(clicker.getClickerFrame(at100).nextMilestone, 500);
+  assert.equal(clicker.getClickerFrame(at499).message, clicker.getClickerFrame(at100).message);
+  assert.equal(clicker.getClickerFrame(at500).storyId, "space");
+  assert.equal(clicker.getClickerFrame(at500).nextMilestone, 1_000);
+  assert.equal(clicker.getClickerTransitionEffect(499, 500), "rings");
 });
 
 test("keeps an active clicker run local even after server cooldown ends", () => {
   const idle = clicker.createClickerRun();
   assert.equal(clicker.planClickerTap(idle, false, 1_000), "REQUEST_SERVER");
   assert.equal(clicker.planClickerTap(idle, true, 1_000), "START_LOCAL");
-  assert.equal(
-    clicker.planClickerTap({ ...idle, totalTaps: 100_000, lastTapAtMs: 900 }, false, 1_000),
-    "ADVANCE_LOCAL",
+  const active = clicker.advanceClickerRun(idle, 900).progress;
+  assert.equal(clicker.planClickerTap(active, false, 1_000), "ADVANCE_LOCAL");
+  assert.equal(clicker.planClickerTap(active, false, 1_000, true), "REQUEST_SERVER");
+});
+
+test("ends a series exactly after thirty idle seconds and starts the next at one", () => {
+  const eventId = "4a272b65-8ada-4b0d-aad8-6a6ef845f41b";
+  const started = clicker.advanceClickerRun(
+    clicker.createClickerRun(0),
+    1_000,
+    12,
+    eventId,
+  ).progress;
+  const beforeDeadline = clicker.expireClickerSeries(
+    started,
+    1_000 + clicker.CLICKER_IDLE_RESET_MS - 1,
   );
-});
+  assert.equal(beforeDeadline.progress, started);
+  assert.equal(beforeDeadline.finishedSeries, null);
 
-test("opens the next story without resetting the global counter", () => {
-  const finished = { storySeed: 0, totalTaps: 100, lastTapAtMs: 900 };
-  const next = clicker.advanceClickerRun(finished, 1_000);
-  const frame = clicker.getClickerFrame(next);
-
-  assert.deepEqual(next, { storySeed: 0, totalTaps: 101, lastTapAtMs: 1_000 });
-  assert.equal(frame.storyId, "lab");
-  assert.equal(frame.message, "Опыт начался");
-});
-
-test("expires only the network series while preserving clicker progress", () => {
-  const active = { storySeed: 2, totalTaps: 12_345, lastTapAtMs: 1_000 };
-  assert.equal(
-    clicker.expireClickerSeries(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS - 1),
-    active,
+  const atDeadline = clicker.expireClickerSeries(
+    started,
+    1_000 + clicker.CLICKER_IDLE_RESET_MS,
   );
-  assert.deepEqual(
-    clicker.expireClickerSeries(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS),
-    { storySeed: 2, totalTaps: 12_345, lastTapAtMs: null },
-  );
+  assert.equal(atDeadline.progress.activeSeries, null);
+  assert.equal(atDeadline.progress.bestSeries, 12);
+  assert.equal(atDeadline.finishedSeries.tapCount, 12);
+  assert.equal(atDeadline.finishedSeries.eventId, eventId);
+
+  const restarted = clicker.advanceClickerRun(
+    atDeadline.progress,
+    1_000 + clicker.CLICKER_IDLE_RESET_MS + 1,
+  ).progress;
+  assert.equal(restarted.activeSeries.tapCount, 1);
+  assert.notEqual(restarted.activeSeries.storyId, started.activeSeries.storyId);
 });
 
-test("keeps going through one hundred thousand and prioritizes champion rewards", () => {
-  const before = { storySeed: 0, totalTaps: 99_999, lastTapAtMs: 900 };
-  const champion = clicker.advanceClickerRun(before, 1_000);
-  const after = clicker.advanceClickerRun(champion, 1_100);
-
-  assert.equal(champion.totalTaps, 100_000);
-  assert.equal(clicker.getClickerFrame(champion).reachedReward.id, "champion");
-  assert.equal(after.totalTaps, 100_001);
-  assert.equal(clicker.getClickerFrame(after).storyTap, 1);
-  assert.equal(clicker.getClickerTransitionEffect(99_999, 100_005), "champion");
+test("keeps the best series across weaker and stronger attempts", () => {
+  let progress = clicker.advanceClickerRun(clicker.createClickerRun(4), 1_000, 12).progress;
+  progress = clicker.expireClickerSeries(progress, 31_000).progress;
+  progress = clicker.advanceClickerRun(progress, 32_000, 8).progress;
+  progress = clicker.expireClickerSeries(progress, 62_000).progress;
+  assert.equal(progress.bestSeries, 12);
+  progress = clicker.advanceClickerRun(progress, 63_000, 13).progress;
+  assert.equal(progress.bestSeries, 13);
 });
 
-test("recognizes all sparse clicker rewards without resetting between them", () => {
-  for (const at of [100, 500, 1_000, 10_000, 100_000]) {
-    const frame = clicker.getClickerFrame({ storySeed: 0, totalTaps: at, lastTapAtMs: at });
-    assert.equal(frame.reachedReward.at, at);
-    assert.equal(
-      clicker.advanceClickerRun({ storySeed: 0, totalTaps: at, lastTapAtMs: at }, at + 1).totalTaps,
-      at + 1,
-    );
+test("caps one uninterrupted series at one hundred thousand", () => {
+  const before = clicker.advanceClickerRun(clicker.createClickerRun(), 1_000, 99_999).progress;
+  const champion = clicker.advanceClickerRun(before, 1_100);
+  const after = clicker.advanceClickerRun(champion.progress, 1_200);
+
+  assert.equal(champion.progress.activeSeries.tapCount, 100_000);
+  assert.equal(champion.progress.bestSeries, 100_000);
+  assert.equal(champion.effect, "champion");
+  assert.equal(after.progress.activeSeries.tapCount, 100_000);
+  assert.equal(after.effect, null);
+  assert.equal(clicker.getClickerFrame(after.progress).nextMilestone, null);
+
+  const expired = clicker.expireClickerSeries(after.progress, 31_200).progress;
+  const restored = clicker.parseClickerProgress(clicker.serializeClickerProgress(expired));
+  const restarted = clicker.advanceClickerRun(restored, 31_201).progress;
+  assert.equal(restored.activeSeries, null);
+  assert.equal(restored.bestSeries, 100_000);
+  assert.equal(restarted.activeSeries.tapCount, 1);
+  assert.notEqual(restarted.activeSeries.storyId, after.progress.activeSeries.storyId);
+});
+
+test("derives ten durable levels from the honest personal best", () => {
+  const boundaries = [
+    [0, 1], [4, 1], [5, 2], [10, 3], [20, 4], [50, 5], [100, 6],
+    [500, 7], [1_000, 8], [10_000, 9], [100_000, 10],
+  ];
+  for (const [best, level] of boundaries) {
+    assert.equal(clicker.getClickerLevel(best).level, level);
   }
 });
 
-test("stores permanent clicker progress without the transient network gate", () => {
-  const serialized = clicker.serializeClickerProgress({ totalTaps: 100_000, storySeed: 4 });
-  assert.deepEqual(clicker.parseClickerProgress(serialized), {
-    totalTaps: 100_000,
-    storySeed: 4,
-  });
-  assert.doesNotMatch(serialized, /lastTapAtMs/);
+test("round-trips v2 progress and never fabricates a record from v1 lifetime taps", () => {
+  const active = clicker.advanceClickerRun(
+    clicker.createClickerRun(4),
+    1_000,
+    19,
+    "f38c672e-1106-486c-887b-160d3aa13f8b",
+  ).progress;
+  const serialized = clicker.serializeClickerProgress(active);
+  assert.deepEqual(clicker.parseClickerProgress(serialized), active);
+  const migrated = clicker.parseClickerProgress(
+    JSON.stringify({ version: 1, totalTaps: 651, storySeed: 6 }),
+    4_242,
+  );
+  assert.equal(migrated.activeSeries, null);
+  assert.equal(migrated.bestSeries, 0);
+  assert.equal(migrated.storySeed, 4_242);
   assert.equal(clicker.parseClickerProgress("{}"), null);
+});
+
+test("gives each user a stable full story rotation without early repeats", () => {
+  const seed = clicker.clickerSeedFromPublicId("7K3P-2Q9M-W8ZR");
+  const firstPass = Array.from(
+    { length: clicker.CLICKER_STORIES.length },
+    (_, index) => clicker.getStoryForSeries(seed, index).id,
+  );
+  assert.equal(new Set(firstPass).size, clicker.CLICKER_STORIES.length);
+  assert.deepEqual(
+    firstPass,
+    Array.from(
+      { length: clicker.CLICKER_STORIES.length },
+      (_, index) => clicker.getStoryForSeries(seed, index).id,
+    ),
+  );
 });
 
 test("calculates a daily streak from distinct local dates and breaks after a missed day", () => {

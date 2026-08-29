@@ -13,7 +13,9 @@ import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.ContentTransformationException
+import io.ktor.server.request.httpMethod
 import io.ktor.server.response.respond
+import io.ktor.server.response.status
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
@@ -32,6 +34,9 @@ import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.identityRoutes
 import ru.zhiv.groups.GroupRepository
 import ru.zhiv.groups.groupRoutes
+import ru.zhiv.game.gameEventRoutes
+import ru.zhiv.observability.GameEventSink
+import ru.zhiv.observability.Slf4jGameEventSink
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
@@ -64,6 +69,7 @@ fun Application.installZhivApi(
     tokenCodec: TokenCodec = TokenCodec(),
     relationships: RelationshipRepository? = null,
     groups: GroupRepository? = null,
+    gameEvents: GameEventSink = Slf4jGameEventSink(),
 ) {
     install(DefaultHeaders)
     install(ForwardedHeaders)
@@ -71,6 +77,9 @@ fun Application.installZhivApi(
     install(CallLogging) {
         level = Level.INFO
         disableDefaultColors()
+        format { call ->
+            "http_request method=${call.request.httpMethod.value} status=${call.response.status()?.value ?: 0}"
+        }
     }
     install(RateLimit) {
         register(RateLimitName("bootstrap")) {
@@ -82,6 +91,14 @@ fun Application.installZhivApi(
             }
         }
         register(RateLimitName("relationships")) {
+            rateLimiter(limit = 2_400, refillPeriod = 1.hours)
+            requestKey { call ->
+                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
+                    ?: call.request.headers["X-Real-IP"]
+                    ?: "direct-client"
+            }
+        }
+        register(RateLimitName("game-events")) {
             rateLimiter(limit = 2_400, refillPeriod = 1.hours)
             requestKey { call ->
                 call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
@@ -133,6 +150,7 @@ fun Application.installZhivApi(
         }
         identityRoutes(identities, tokenCodec, config)
         checkInRoutes(checkIns, tokenCodec, config)
+        gameEventRoutes(identities, tokenCodec, config, gameEvents)
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
     }

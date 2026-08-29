@@ -2,6 +2,7 @@ package ru.zhiv.checkins
 
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.log
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -50,22 +51,41 @@ fun Route.checkInRoutes(
                 ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"),
             )
 
-            is CheckInResult.Accepted -> call.respond(
-                CheckInResponse(
-                    eventId = result.eventId.toString(),
-                    checkedAt = result.checkedAt.toInstant().toString(),
-                    checkInCount = result.checkInCount,
-                    streak = result.streak.toDto(),
-                    serverTime = result.serverTime.toInstant().toString(),
-                    nextAllowedAt = result.nextAllowedAt.toInstant().toString(),
-                    replayed = result.replayed,
-                ),
-            )
+            is CheckInResult.Accepted -> {
+                call.application.log.atInfo()
+                    .addKeyValue("schema_version", 1)
+                    .addKeyValue(
+                        "event",
+                        if (result.replayed) "check_in_replayed" else "check_in_accepted",
+                    )
+                    .addKeyValue("source", "ktor")
+                    .addKeyValue("check_in_count", result.checkInCount)
+                    .addKeyValue("daily_streak", result.streak.currentDays)
+                    .log("domain_event")
+                call.respond(
+                    CheckInResponse(
+                        eventId = result.eventId.toString(),
+                        checkedAt = result.checkedAt.toInstant().toString(),
+                        checkInCount = result.checkInCount,
+                        streak = result.streak.toDto(),
+                        serverTime = result.serverTime.toInstant().toString(),
+                        nextAllowedAt = result.nextAllowedAt.toInstant().toString(),
+                        replayed = result.replayed,
+                    ),
+                )
+            }
 
             is CheckInResult.Cooldown -> {
                 val remainingMillis = Duration.between(result.serverTime, result.nextAllowedAt)
                     .toMillis().coerceAtLeast(1)
                 val retryAfter = ((remainingMillis + 999) / 1_000).coerceAtLeast(1)
+                call.application.log.atInfo()
+                    .addKeyValue("schema_version", 1)
+                    .addKeyValue("event", "check_in_cooldown")
+                    .addKeyValue("source", "ktor")
+                    .addKeyValue("retry_after_seconds", retryAfter)
+                    .addKeyValue("daily_streak", result.streak.currentDays)
+                    .log("domain_event")
                 call.response.header(HttpHeaders.RetryAfter, retryAfter.toString())
                 call.respond(
                     HttpStatusCode.TooManyRequests,
