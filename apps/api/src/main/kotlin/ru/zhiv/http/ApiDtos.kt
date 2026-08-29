@@ -69,6 +69,7 @@ data class PersonDto(
     val connectedAt: String,
     val mySharingMode: String,
     val theirSharingMode: String,
+    val checkInState: String,
     val lastCheckInAt: String?,
 )
 

@@ -6,6 +6,7 @@ import ru.zhiv.relationships.DirectRequestActionSnapshot
 import ru.zhiv.relationships.DirectRequestMutationSnapshot
 import ru.zhiv.relationships.DirectRequestSnapshot
 import ru.zhiv.relationships.PeopleSnapshot
+import ru.zhiv.relationships.PersonCheckInState
 import ru.zhiv.relationships.PersonSnapshot
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.RelationshipResult
@@ -606,6 +607,13 @@ class JdbcRelationshipRepository(
                    other.public_id, other.display_name,
                    mine.sharing_mode AS my_sharing_mode,
                    theirs.sharing_mode AS their_sharing_mode,
+                   CASE
+                       WHEN theirs.sharing_mode = 'OFF' THEN 'HIDDEN'
+                       WHEN latest.checked_at IS NOT NULL THEN 'AVAILABLE'
+                       WHEN theirs.enabled_since > theirs.created_at
+                           THEN 'WAITING_AFTER_REENABLE'
+                       ELSE 'WAITING_INITIAL'
+                   END AS check_in_state,
                    latest.checked_at AS last_check_in_at
               FROM direct_people
               JOIN app_users other
@@ -751,6 +759,13 @@ class JdbcRelationshipRepository(
                other.public_id, other.display_name,
                mine.sharing_mode AS my_sharing_mode,
                theirs.sharing_mode AS their_sharing_mode,
+               CASE
+                   WHEN theirs.sharing_mode = 'OFF' THEN 'HIDDEN'
+                   WHEN latest.checked_at IS NOT NULL THEN 'AVAILABLE'
+                   WHEN theirs.enabled_since > theirs.created_at
+                       THEN 'WAITING_AFTER_REENABLE'
+                   ELSE 'WAITING_INITIAL'
+               END AS check_in_state,
                latest.checked_at AS last_check_in_at
           FROM direct_person
           JOIN app_users other
@@ -860,6 +875,7 @@ class JdbcRelationshipRepository(
         connectedAt = getObject("created_at", OffsetDateTime::class.java),
         mySharingMode = SharingMode.valueOf(getString("my_sharing_mode")),
         theirSharingMode = SharingMode.valueOf(getString("their_sharing_mode")),
+        checkInState = PersonCheckInState.valueOf(getString("check_in_state")),
         lastCheckInAt = getObject("last_check_in_at", OffsetDateTime::class.java),
     )
 

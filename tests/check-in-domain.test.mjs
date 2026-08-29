@@ -13,6 +13,7 @@ const vite = await createServer({
 });
 
 const presentation = await vite.ssrLoadModule("/lib/check-in-presentation.ts");
+const clicker = await vite.ssrLoadModule("/lib/clicker-story.ts");
 const devApiOrigin = await vite.ssrLoadModule("/lib/dev-api-origin.ts");
 const groupInput = await vite.ssrLoadModule("/lib/group-input.ts");
 
@@ -64,6 +65,26 @@ test("describes another person's check-in without leaking a hidden timestamp", (
     presentation.formatPersonCheckIn("2026-08-28T13:55:00.000Z", now, false),
     "Отметки недоступны",
   );
+  assert.equal(
+    presentation.formatDirectPersonCheckIn(null, now, "WAITING_INITIAL"),
+    "После добавления ещё не отмечался",
+  );
+  assert.equal(
+    presentation.formatDirectPersonCheckIn(null, now, "WAITING_AFTER_REENABLE"),
+    "Ждём новую отметку после включения доступа",
+  );
+  assert.equal(
+    presentation.formatDirectPersonCheckIn(null, now, "HIDDEN"),
+    "Отметки недоступны",
+  );
+  assert.equal(
+    presentation.formatDirectPersonCheckIn(
+      "2026-08-28T13:55:00.000Z",
+      now,
+      "AVAILABLE",
+    ),
+    "5 мин назад",
+  );
 });
 
 test("moves from neutral to green, amber and red over 24 hours", () => {
@@ -91,13 +112,70 @@ test("never reports a negative age when client clock is ahead or behind", () => 
   );
 });
 
-test("keeps the agreed meme sequence", () => {
-  assert.equal(presentation.getBurstMessage(1), "Отметка сохранена · только что");
-  assert.equal(presentation.getBurstMessage(2), "Всё ещё жив 😄");
-  assert.equal(presentation.getBurstMessage(3), "Очень жив");
-  assert.equal(presentation.getBurstMessage(4), "Подозрительно жив");
-  assert.equal(presentation.getBurstMessage(5), "Бессмертие подтверждено");
-  assert.equal(presentation.getBurstMessage(99), "Бессмертие подтверждено");
+test("offers five complete clicker stories with the same sparse scene rhythm", () => {
+  assert.equal(clicker.CLICKER_STORIES.length, 5);
+  const expectedMilestones = [1, 5, 10, 20, 35, 50, 75, 100];
+  const titles = new Set();
+
+  for (const story of clicker.CLICKER_STORIES) {
+    titles.add(story.title);
+    assert.deepEqual(story.scenes.map((scene) => scene.at), expectedMilestones);
+    assert.equal(new Set(story.scenes.map((scene) => scene.message)).size, story.scenes.length);
+  }
+  assert.equal(titles.size, clicker.CLICKER_STORIES.length);
+});
+
+test("keeps story copy stable between milestones and triggers effects only on a scene", () => {
+  const run = clicker.createClickerRun(0);
+  const at10 = clicker.getClickerFrame({ ...run, tapCount: 10 });
+  const at19 = clicker.getClickerFrame({ ...run, tapCount: 19 });
+  const at20 = clicker.getClickerFrame({ ...run, tapCount: 20 });
+  const at21 = clicker.getClickerFrame({ ...run, tapCount: 21 });
+
+  assert.equal(at10.message, "Двигатели запущены");
+  assert.equal(at19.message, at10.message);
+  assert.equal(at19.nextSceneAt, 20);
+  assert.equal(at19.effect, null);
+  assert.equal(at20.message, "Орбита достигнута");
+  assert.equal(at20.effect, "rings");
+  assert.equal(at21.message, at20.message);
+  assert.equal(at21.effect, null);
+});
+
+test("keeps an active clicker run local even after server cooldown ends", () => {
+  const idle = clicker.createClickerRun();
+  assert.equal(clicker.planClickerTap(idle, false), "REQUEST_SERVER");
+  assert.equal(clicker.planClickerTap(idle, true), "START_LOCAL");
+  assert.equal(
+    clicker.planClickerTap({ ...idle, tapCount: 42 }, false),
+    "ADVANCE_LOCAL",
+  );
+});
+
+test("opens the next story locally after the hundredth tap", () => {
+  const finished = { storyIndex: 0, tapCount: 100, lastTapAtMs: 900 };
+  const next = clicker.advanceClickerRun(finished, 1_000);
+  const frame = clicker.getClickerFrame(next);
+
+  assert.deepEqual(next, { storyIndex: 1, tapCount: 1, lastTapAtMs: 1_000 });
+  assert.equal(frame.storyId, "lab");
+  assert.equal(frame.message, "Опыт начался");
+  assert.deepEqual(
+    clicker.rotateClickerStory({ storyIndex: clicker.CLICKER_STORIES.length - 1, tapCount: 7 }),
+    { storyIndex: 0, tapCount: 0, lastTapAtMs: null },
+  );
+});
+
+test("expires a suspended iPhone clicker run on the next tap boundary", () => {
+  const active = { storyIndex: 2, tapCount: 35, lastTapAtMs: 1_000 };
+  assert.equal(
+    clicker.resetExpiredClickerRun(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS - 1),
+    active,
+  );
+  assert.deepEqual(
+    clicker.resetExpiredClickerRun(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS),
+    { storyIndex: 3, tapCount: 0, lastTapAtMs: null },
+  );
 });
 
 test("shows durable milestone copy only at sparse server-confirmed counts", () => {

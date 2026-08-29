@@ -56,6 +56,12 @@ const personSchema = z.object({
   connectedAt: z.string().datetime(),
   mySharingMode: sharingModeSchema,
   theirSharingMode: sharingModeSchema,
+  checkInState: z.enum([
+    "HIDDEN",
+    "WAITING_INITIAL",
+    "WAITING_AFTER_REENABLE",
+    "AVAILABLE",
+  ]),
   lastCheckInAt: z.string().datetime().nullable(),
 });
 const peopleSchema: z.ZodType<PeopleResponse> = z.object({

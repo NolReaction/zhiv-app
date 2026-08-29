@@ -13,6 +13,7 @@ import ru.zhiv.checkins.CheckInResult
 import ru.zhiv.config.AppConfig
 import ru.zhiv.identity.PublicIdGenerator
 import ru.zhiv.relationships.RelationshipResult
+import ru.zhiv.relationships.PersonCheckInState
 import ru.zhiv.relationships.RequestAction
 import ru.zhiv.relationships.SharingMode
 import ru.zhiv.security.TokenCodec
@@ -256,6 +257,7 @@ class JdbcZhivRepositoryIntegrationTest {
         ).value as ru.zhiv.relationships.DirectRequestActionSnapshot
         val circleId = requireNotNull(accepted.person).circleId
         assertEquals(null, accepted.person.lastCheckInAt)
+        assertEquals(PersonCheckInState.WAITING_INITIAL, accepted.person.checkInState)
 
         val mamaMark = assertIs<CheckInResult.Accepted>(
             repository.record(mamaSession.hash, UUID.randomUUID()),
@@ -264,6 +266,7 @@ class JdbcZhivRepositoryIntegrationTest {
             relationships.listPeople(dimaSession.hash),
         ).value as ru.zhiv.relationships.PeopleSnapshot
         assertEquals(mamaMark.checkedAt, visible.people.single().lastCheckInAt)
+        assertEquals(PersonCheckInState.AVAILABLE, visible.people.single().checkInState)
 
         assertIs<RelationshipResult.Success<*>>(
             relationships.updateSharing(mamaSession.hash, circleId, SharingMode.OFF),
@@ -272,6 +275,7 @@ class JdbcZhivRepositoryIntegrationTest {
             relationships.listPeople(dimaSession.hash),
         ).value as ru.zhiv.relationships.PeopleSnapshot
         assertEquals(null, hidden.people.single().lastCheckInAt)
+        assertEquals(PersonCheckInState.HIDDEN, hidden.people.single().checkInState)
 
         assertIs<RelationshipResult.Success<*>>(
             relationships.updateSharing(mamaSession.hash, circleId, SharingMode.LATEST_ONLY),
@@ -280,6 +284,53 @@ class JdbcZhivRepositoryIntegrationTest {
             relationships.listPeople(dimaSession.hash),
         ).value as ru.zhiv.relationships.PeopleSnapshot
         assertEquals(null, reenabled.people.single().lastCheckInAt)
+        assertEquals(
+            PersonCheckInState.WAITING_AFTER_REENABLE,
+            reenabled.people.single().checkInState,
+        )
+
+        val dedSession = tokens.issue()
+        val ded = repository.bootstrap(
+            "Дед privacy",
+            tokens.hash(UUID.randomUUID().toString()),
+            dedSession.hash,
+            365,
+        )
+        val dedRequest = assertIs<RelationshipResult.Success<*>>(
+            relationships.sendRequest(dimaSession.hash, ded.publicId, UUID.randomUUID()),
+        ).value as ru.zhiv.relationships.DirectRequestMutationSnapshot
+        val dedAccepted = assertIs<RelationshipResult.Success<*>>(
+            relationships.actOnRequest(
+                dedSession.hash,
+                dedRequest.request.requestId,
+                RequestAction.ACCEPTED,
+            ),
+        ).value as ru.zhiv.relationships.DirectRequestActionSnapshot
+        val dedCircleId = requireNotNull(dedAccepted.person).circleId
+
+        assertIs<RelationshipResult.Success<*>>(
+            relationships.updateSharing(dedSession.hash, dedCircleId, SharingMode.OFF),
+        )
+        assertIs<RelationshipResult.Success<*>>(
+            relationships.updateSharing(dedSession.hash, dedCircleId, SharingMode.LATEST_ONLY),
+        )
+        val dedWaiting = assertIs<RelationshipResult.Success<*>>(
+            relationships.listPeople(dimaSession.hash),
+        ).value as ru.zhiv.relationships.PeopleSnapshot
+        assertEquals(
+            PersonCheckInState.WAITING_AFTER_REENABLE,
+            dedWaiting.people.single { it.circleId == dedCircleId }.checkInState,
+        )
+
+        val dedMark = assertIs<CheckInResult.Accepted>(
+            repository.record(dedSession.hash, UUID.randomUUID()),
+        )
+        val dedVisible = assertIs<RelationshipResult.Success<*>>(
+            relationships.listPeople(dimaSession.hash),
+        ).value as ru.zhiv.relationships.PeopleSnapshot
+        val visibleDed = dedVisible.people.single { it.circleId == dedCircleId }
+        assertEquals(PersonCheckInState.AVAILABLE, visibleDed.checkInState)
+        assertEquals(dedMark.checkedAt, visibleDed.lastCheckInAt)
 
         assertIs<RelationshipResult.Success<*>>(
             relationships.removePerson(dimaSession.hash, circleId),

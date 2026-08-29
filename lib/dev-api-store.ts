@@ -52,7 +52,11 @@ type AudienceRecord = {
   circleId: string;
   recipientMembershipId: string | null;
 };
-type SharingRecord = { mode: SharingMode; enabledSince: string | null };
+type SharingRecord = {
+  mode: SharingMode;
+  enabledSince: string | null;
+  resumed?: boolean;
+};
 type GroupRecord = {
   id: string;
   title: string;
@@ -412,21 +416,30 @@ function personDto(circle: DirectCircleRecord, currentUserId: string): Person {
     mode: "LATEST_ONLY" as const,
     enabledSince: circle.createdAt,
   };
+  const lastCheckInAt =
+    theirSharing.mode === "OFF"
+      ? null
+      : latestAudienceCheckIn(
+          circle.id,
+          relatedUserId,
+          currentUserId,
+          theirSharing.enabledSince,
+        );
   return {
     circleId: circle.id,
     user: publicUser(relatedUser),
     connectedAt: circle.createdAt,
     mySharingMode: mySharing.mode,
     theirSharingMode: theirSharing.mode,
-    lastCheckInAt:
+    checkInState:
       theirSharing.mode === "OFF"
-        ? null
-        : latestAudienceCheckIn(
-            circle.id,
-            relatedUserId,
-            currentUserId,
-            theirSharing.enabledSince,
-          ),
+        ? "HIDDEN"
+        : lastCheckInAt
+          ? "AVAILABLE"
+          : theirSharing.resumed
+            ? "WAITING_AFTER_REENABLE"
+            : "WAITING_INITIAL",
+    lastCheckInAt,
   };
 }
 
@@ -802,6 +815,10 @@ export function updateDevSharing(
   );
   store().sharing.set(sharingKey(circle.id, currentUser.id), {
     mode: sharingMode,
+    resumed:
+      previous?.mode === "OFF"
+        ? sharingMode !== "OFF"
+        : previous?.resumed ?? false,
     enabledSince:
       sharingMode === "OFF"
         ? null

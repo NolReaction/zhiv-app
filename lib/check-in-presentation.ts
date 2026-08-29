@@ -1,16 +1,9 @@
+import type { PersonCheckInState } from "./check-in-contract";
+
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 export const CHECK_IN_COOLDOWN_MS = 30_000;
-export const BURST_RESET_MS = 8_000;
 export const PUBLIC_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/;
-
-export const BURST_MESSAGES = [
-  "Отметка сохранена · только что",
-  "Всё ещё жив 😄",
-  "Очень жив",
-  "Подозрительно жив",
-  "Бессмертие подтверждено",
-] as const;
 
 const CHECK_IN_MILESTONES = new Map<number, string>([
   [10, "Первая десятка. Полёт нормальный."],
@@ -47,11 +40,6 @@ export function formatPublicIdInput(value: string): string {
 
 export function isValidPublicId(value: string): boolean {
   return PUBLIC_ID_PATTERN.test(value);
-}
-
-export function getBurstMessage(tapCount: number): string {
-  const index = Math.max(0, Math.min(tapCount, BURST_MESSAGES.length) - 1);
-  return BURST_MESSAGES[index];
 }
 
 export function getCheckInMilestone(checkInCount: number): string | null {
@@ -133,4 +121,19 @@ export function formatPersonCheckIn(
     month: "short",
   }).format(checkedAtMs);
   return `${date}, ${time}`;
+}
+
+export function formatDirectPersonCheckIn(
+  checkedAt: string | null,
+  nowMs: number,
+  state: PersonCheckInState,
+): string {
+  if (state === "HIDDEN") return "Отметки недоступны";
+  if (state === "WAITING_AFTER_REENABLE") {
+    return "Ждём новую отметку после включения доступа";
+  }
+  if (state === "WAITING_INITIAL" || !checkedAt) {
+    return "После добавления ещё не отмечался";
+  }
+  return formatPersonCheckIn(checkedAt, nowMs, true);
 }
