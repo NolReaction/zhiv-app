@@ -23,6 +23,7 @@ const allowedDevOrigins = (
 
 const nextConfig: NextConfig = {
   allowedDevOrigins,
+  devIndicators: false,
 
   async headers() {
     return [

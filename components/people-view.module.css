@@ -26,19 +26,13 @@
   margin-bottom: 30px;
 }
 
-.kicker {
-  margin: 0 0 5px;
-  color: #8a9083;
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.17em;
-}
-
 .headingRow h1 {
   margin: 0;
-  font-size: clamp(34px, 8vw, 48px);
-  line-height: 1;
-  letter-spacing: -0.055em;
+  color: #f4f5ef;
+  font-size: clamp(30px, 7vw, 44px);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
 }
 
 .addButton,
@@ -464,6 +458,7 @@ button:disabled {
     scrollbar-width: none;
     scrollbar-color: transparent transparent;
     -ms-overflow-style: none;
+    touch-action: pan-y;
   }
 
   .view::-webkit-scrollbar {
