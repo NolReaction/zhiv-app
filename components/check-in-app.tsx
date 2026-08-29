@@ -731,7 +731,12 @@ export function CheckInApp() {
         {activeView === "check-in" ? (
           <span className={styles.colorHint}>Цвет меняется от зелёного к красному за 24 часа</span>
         ) : null}
-        <nav className={styles.bottomNav} aria-label="Основные разделы">
+        <nav
+          className={styles.bottomNav}
+          data-active-view={activeView}
+          aria-label="Основные разделы"
+        >
+          <span className={styles.navLens} aria-hidden="true" />
           <button
             type="button"
             className={activeView === "check-in" ? styles.navActive : undefined}
