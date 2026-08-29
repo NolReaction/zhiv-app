@@ -252,17 +252,36 @@ test("applies clickjacking protection to the root page and nested routes", async
   assert.match(config, /frame-ancestors 'none'/);
 });
 
-test("keeps primary navigation visible while long people lists scroll", async () => {
-  const appStyles = await readFile(
-    new URL("../components/check-in-app.module.css", import.meta.url),
-    "utf8",
-  );
-  const peopleStyles = await readFile(
-    new URL("../components/people-view.module.css", import.meta.url),
-    "utf8",
+test("floats an iOS-safe glass navigation above scrollable mobile content", async () => {
+  const [app, appStyles, peopleStyles] = await Promise.all([
+    readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /data-active-view=\{activeView\}/);
+  assert.match(app, /className=\{styles\.navLens\}/);
+  assert.equal(
+    (app.match(/aria-current=\{activeView === "[^"]+" \? "page" : undefined\}/g) ?? []).length,
+    2,
   );
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
-  assert.match(appStyles, /grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/);
+  assert.match(appStyles, /grid-template-rows:\s*auto minmax\(0, 1fr\);/);
+  assert.match(
+    appStyles,
+    /\.footer\s*\{[^}]*position:\s*fixed;[^}]*bottom:[^;]*safe-area-inset-bottom[^}]*background:\s*transparent;[^}]*pointer-events:\s*none;/s,
+  );
+  assert.match(
+    appStyles,
+    /\.bottomNav\s*\{[^}]*-webkit-backdrop-filter:\s*blur\(26px\) saturate\(180%\);[^}]*pointer-events:\s*auto;/s,
+  );
+  assert.match(appStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
+  assert.match(appStyles, /@supports not \(\(-webkit-backdrop-filter:/);
+
   assert.match(peopleStyles, /\.view\s*\{[^}]*overflow-y:\s*auto;/s);
+  assert.match(
+    peopleStyles,
+    /\.view\s*\{[^}]*padding-bottom:\s*var\(--floating-nav-clearance,[^}]*scroll-padding-bottom:/s,
+  );
 });

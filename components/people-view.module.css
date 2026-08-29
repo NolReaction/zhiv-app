@@ -456,3 +456,10 @@ button:disabled {
     padding-bottom: 2px;
   }
 }
+
+@media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  .view {
+    padding-bottom: var(--floating-nav-clearance, 110px);
+    scroll-padding-bottom: var(--floating-nav-clearance, 110px);
+  }
+}
