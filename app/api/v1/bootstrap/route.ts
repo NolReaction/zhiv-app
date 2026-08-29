@@ -30,11 +30,10 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as { displayName?: unknown } | null;
-  const displayName = typeof body?.displayName === "string"
-    ? normalizeDisplayName(body.displayName)
-    : "";
+  const rawDisplayName = typeof body?.displayName === "string" ? body.displayName : "";
+  const displayName = normalizeDisplayName(rawDisplayName);
 
-  if (!isValidDisplayName(displayName)) {
+  if (!isValidDisplayName(rawDisplayName)) {
     return NextResponse.json(
       { code: "INVALID_DISPLAY_NAME", message: "Введите имя длиной до 50 символов" },
       { status: 400, headers: { "Cache-Control": "no-store" } },

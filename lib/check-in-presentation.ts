@@ -3,6 +3,7 @@ import type { PersonCheckInState } from "./check-in-contract";
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 export const CHECK_IN_COOLDOWN_MS = 30_000;
+export const DISPLAY_NAME_MAX_CODE_POINTS = 50;
 export const PUBLIC_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/;
 
 const CHECK_IN_MILESTONES = new Map<number, string>([
@@ -21,7 +22,11 @@ export function normalizeDisplayName(value: string): string {
 
 export function isValidDisplayName(value: string): boolean {
   const length = Array.from(normalizeDisplayName(value)).length;
-  return length >= 1 && length <= 50;
+  return length >= 1 && length <= DISPLAY_NAME_MAX_CODE_POINTS && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
+}
+
+export function limitDisplayNameInput(value: string): string {
+  return Array.from(value).slice(0, DISPLAY_NAME_MAX_CODE_POINTS).join("");
 }
 
 export function normalizePublicId(value: string): string {

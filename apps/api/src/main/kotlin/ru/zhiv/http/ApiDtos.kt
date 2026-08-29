@@ -13,17 +13,38 @@ data class MeResponse(
     val user: PublicUserDto,
     val lastCheckInAt: String?,
     val checkInCount: Long,
+    val streak: DailyStreakDto,
+    val profile: ProfileStateDto,
     val serverTime: String,
+)
+
+@Serializable
+data class DailyStreakDto(
+    val currentDays: Long,
+    val longestDays: Long,
+    val checkedInToday: Boolean,
+    val nextDayAt: String,
+)
+
+@Serializable
+data class ProfileStateDto(
+    val avatarUrl: String?,
+    val displayNameChangedAt: String?,
+    val displayNameChangeAvailableAt: String?,
 )
 
 @Serializable
 data class BootstrapRequest(val displayName: String)
 
 @Serializable
+data class UpdateDisplayNameRequest(val displayName: String)
+
+@Serializable
 data class CheckInResponse(
     val eventId: String,
     val checkedAt: String,
     val checkInCount: Long,
+    val streak: DailyStreakDto,
     val serverTime: String,
     val nextAllowedAt: String,
     val replayed: Boolean,
@@ -33,8 +54,17 @@ data class CheckInResponse(
 data class CooldownResponse(
     val code: String = "CHECK_IN_COOLDOWN",
     val checkedAt: String,
+    val streak: DailyStreakDto,
     val serverTime: String,
     val nextAllowedAt: String,
+)
+
+@Serializable
+data class DisplayNameCooldownResponse(
+    val code: String = "DISPLAY_NAME_COOLDOWN",
+    val message: String = "Имя можно менять раз в 24 часа",
+    val availableAt: String,
+    val serverTime: String,
 )
 
 @Serializable

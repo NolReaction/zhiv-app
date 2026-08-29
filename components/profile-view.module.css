@@ -1,0 +1,351 @@
+.view {
+  min-height: 0;
+  padding: 34px 0 22px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #4f554a transparent;
+}
+
+.heading p {
+  margin: 0 0 8px;
+  color: #858b80;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.heading h1 {
+  margin: 0;
+  color: #f4f5ef;
+  font-size: clamp(30px, 7vw, 44px);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+}
+
+.profileCard,
+.formCard,
+.futureCard,
+.stats {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.038);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.stats > div {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 4px;
+  padding: 13px 7px;
+  background: rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.stats svg {
+  color: #b7d8a2;
+}
+
+.stats > div:first-child svg {
+  color: #f3a24c;
+}
+
+.stats strong {
+  overflow: hidden;
+  max-width: 100%;
+  color: #f0f2ed;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+.stats span {
+  color: #777d72;
+  font-size: 9px;
+}
+
+.profileCard {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 30px;
+  border-radius: 24px;
+  padding: 20px;
+}
+
+.avatar {
+  position: relative;
+  display: grid;
+  width: 88px;
+  height: 88px;
+  flex: 0 0 88px;
+  place-items: center;
+  overflow: visible;
+  border: 1px solid rgba(223, 241, 212, 0.22);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(223, 241, 212, 0.14), transparent 48%),
+    rgba(183, 216, 162, 0.08);
+  color: #edf8e7;
+}
+
+.avatar strong {
+  font-size: 27px;
+  letter-spacing: -0.04em;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.avatar > span {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 4px solid #11150f;
+  border-radius: 50%;
+  background: #2a3027;
+  color: #aeb5a9;
+}
+
+.identity {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.identity strong {
+  overflow: hidden;
+  color: #f2f4ee;
+  font-size: 21px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity > span {
+  color: #a5aa9f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+.identity small {
+  margin-top: 5px;
+  color: #777d72;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.formCard {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  border-radius: 24px;
+  padding: 20px;
+}
+
+.formHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.formHeading > span,
+.formHeading small {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.formHeading > span {
+  color: #dfe3da;
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.formHeading small {
+  color: #8d9488;
+  font-size: 10px;
+}
+
+.formCard label {
+  color: #9da397;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.formCard input {
+  width: 100%;
+  min-height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 16px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.052);
+  color: #fff;
+  padding: 0 15px;
+  font: inherit;
+  font-size: 16px;
+}
+
+.formCard input:focus-visible,
+.formCard button:focus-visible {
+  outline: 3px solid #f5e85b;
+  outline-offset: 3px;
+}
+
+.formCard input:disabled {
+  color: #aeb3a8;
+  opacity: 0.72;
+}
+
+.hint {
+  margin: 0 1px 3px;
+  color: #747a6f;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.formCard button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 15px;
+  background: #e9f4e2;
+  color: #14200f;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.formCard button:disabled {
+  cursor: default;
+  opacity: 0.43;
+}
+
+.feedback {
+  min-height: 20px;
+}
+
+.feedback p {
+  margin: 1px 1px 0;
+  font-size: 11px;
+}
+
+.error {
+  color: #ff9c98;
+}
+
+.success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #b7d8a2;
+}
+
+.offline {
+  color: #d6b37b;
+}
+
+.futureCard {
+  display: flex;
+  gap: 13px;
+  margin-top: 14px;
+  border-radius: 20px;
+  padding: 16px;
+  color: #a4aa9e;
+}
+
+.futureCard > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(183, 216, 162, 0.08);
+  color: #b7d8a2;
+}
+
+.futureCard strong {
+  color: #dfe2dc;
+  font-size: 12px;
+}
+
+.futureCard p {
+  margin: 4px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 520px) {
+  .view {
+    padding-top: 24px;
+  }
+
+  .profileCard,
+  .formCard {
+    padding: 17px;
+  }
+
+  .avatar {
+    width: 76px;
+    height: 76px;
+    flex-basis: 76px;
+    border-radius: 24px;
+  }
+
+  .formHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  .view {
+    padding-bottom: var(--floating-nav-clearance, 110px);
+    scroll-padding-bottom: var(--floating-nav-clearance, 110px);
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+    -ms-overflow-style: none;
+    touch-action: pan-y;
+  }
+
+  .view::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .profileCard,
+  .formCard,
+  .futureCard,
+  .avatar,
+  .stats,
+  .formCard input,
+  .formCard button {
+    border: 2px solid ButtonText;
+  }
+}

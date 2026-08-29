@@ -3,6 +3,7 @@ import type {
   ApiErrorResponse,
   CheckInResponse,
   CooldownResponse,
+  DisplayNameCooldownResponse,
   DirectRequestActionResponse,
   DirectRequestResponse,
   GroupMutationResponse,
@@ -16,13 +17,31 @@ import type {
 
 const userSchema = z.object({
   publicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
-  displayName: z.string().min(1).max(50),
+  displayName: z.string().refine((value) => {
+    const length = Array.from(value).length;
+    return length >= 1 && length <= 50;
+  }),
+});
+
+const dailyStreakSchema = z.object({
+  currentDays: z.number().int().nonnegative().safe(),
+  longestDays: z.number().int().nonnegative().safe(),
+  checkedInToday: z.boolean(),
+  nextDayAt: z.string().datetime(),
+});
+
+const profileStateSchema = z.object({
+  avatarUrl: z.string().url().nullable(),
+  displayNameChangedAt: z.string().datetime().nullable(),
+  displayNameChangeAvailableAt: z.string().datetime().nullable(),
 });
 
 const meSchema: z.ZodType<MeResponse> = z.object({
   user: userSchema,
   lastCheckInAt: z.string().datetime().nullable(),
   checkInCount: z.number().int().nonnegative().safe(),
+  streak: dailyStreakSchema,
+  profile: profileStateSchema,
   serverTime: z.string().datetime(),
 });
 
@@ -30,6 +49,7 @@ const checkInSchema: z.ZodType<CheckInResponse> = z.object({
   eventId: z.string().uuid(),
   checkedAt: z.string().datetime(),
   checkInCount: z.number().int().nonnegative().safe(),
+  streak: dailyStreakSchema,
   serverTime: z.string().datetime(),
   nextAllowedAt: z.string().datetime(),
   replayed: z.boolean(),
@@ -38,8 +58,16 @@ const checkInSchema: z.ZodType<CheckInResponse> = z.object({
 const cooldownSchema: z.ZodType<CooldownResponse> = z.object({
   code: z.literal("CHECK_IN_COOLDOWN"),
   checkedAt: z.string().datetime(),
+  streak: dailyStreakSchema,
   serverTime: z.string().datetime(),
   nextAllowedAt: z.string().datetime(),
+});
+
+const displayNameCooldownSchema: z.ZodType<DisplayNameCooldownResponse> = z.object({
+  code: z.literal("DISPLAY_NAME_COOLDOWN"),
+  message: z.string(),
+  availableAt: z.string().datetime(),
+  serverTime: z.string().datetime(),
 });
 
 const sharingModeSchema = z.enum(["OFF", "LATEST_ONLY"]);
@@ -157,10 +185,20 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly body?: ApiErrorResponse | CooldownResponse,
+    readonly body?: ApiErrorResponse | CooldownResponse | DisplayNameCooldownResponse,
   ) {
     super(message);
   }
+}
+
+export function isCheckInCooldownResponse(value: unknown): value is CooldownResponse {
+  return cooldownSchema.safeParse(value).success;
+}
+
+export function isDisplayNameCooldownResponse(
+  value: unknown,
+): value is DisplayNameCooldownResponse {
+  return displayNameCooldownSchema.safeParse(value).success;
 }
 
 async function request<T>(
@@ -188,9 +226,11 @@ async function request<T>(
   if (!response.ok) {
     const knownError = cooldownSchema.safeParse(body).success
       ? cooldownSchema.parse(body)
-      : errorSchema.safeParse(body).success
-        ? errorSchema.parse(body)
-        : undefined;
+      : displayNameCooldownSchema.safeParse(body).success
+        ? displayNameCooldownSchema.parse(body)
+        : errorSchema.safeParse(body).success
+          ? errorSchema.parse(body)
+          : undefined;
     const message =
       knownError && "message" in knownError
         ? knownError.message
@@ -226,6 +266,17 @@ export function createCheckIn(idempotencyKey: string): Promise<CheckInResponse> 
   return request<CheckInResponse>("/api/v1/check-ins", checkInSchema, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+export function updateMyDisplayName(
+  displayName: string,
+  idempotencyKey: string,
+): Promise<MeResponse> {
+  return request<MeResponse>("/api/v1/me", meSchema, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ displayName }),
   });
 }
 

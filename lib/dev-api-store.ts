@@ -1,5 +1,6 @@
 import type {
   CheckInResponse,
+  DailyStreak,
   DirectRequest,
   DirectRequestActionResponse,
   DirectRequestResponse,
@@ -17,15 +18,27 @@ import type {
   UserLookupResponse,
 } from "@/lib/check-in-contract";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
+import {
+  calculateDailyStreak,
+  formatLocalDate,
+  nextLocalDayAt,
+} from "@/lib/daily-streak";
 
 export const SESSION_COOKIE = "zhiv_session_dev";
 const COOLDOWN_MS = 30_000;
 const REQUEST_TTL_MS = 7 * 24 * 60 * 60_000;
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
-type UserRecord = PublicUser & { id: string; lastCheckInAt: string | null };
+type UserRecord = PublicUser & {
+  id: string;
+  timezoneId: string;
+  lastCheckInAt: string | null;
+  displayNameChangedAt: string | null;
+  displayNameChangeKey: string | null;
+  avatarUrl: string | null;
+};
 type SessionRecord = { userId: string; expiresAt: number };
-type CheckInRecord = { id: string; userId: string; checkedAt: string };
+type CheckInRecord = { id: string; userId: string; checkedAt: string; localDate: string };
 type DirectCircleRecord = {
   id: string;
   lowUserId: string;
@@ -157,12 +170,35 @@ function publicUser(user: UserRecord): PublicUser {
   return { publicId: user.publicId, displayName: user.displayName };
 }
 
-function asMe(user: UserRecord): MeResponse {
+function streakForUser(user: UserRecord, serverTime: Date): DailyStreak {
+  const currentStore = store();
+  return calculateDailyStreak(
+    [...currentStore.checkIns.values()]
+      .filter((event) => event.userId === user.id)
+      .map((event) => event.localDate),
+    formatLocalDate(serverTime, user.timezoneId),
+    nextLocalDayAt(serverTime, user.timezoneId),
+  );
+}
+
+function asMe(user: UserRecord, serverTime = new Date()): MeResponse {
+  const availableAt = user.displayNameChangedAt
+    ? new Date(Date.parse(user.displayNameChangedAt) + 24 * 60 * 60_000)
+    : null;
   return {
     user: publicUser(user),
     lastCheckInAt: user.lastCheckInAt,
     checkInCount: [...store().checkIns.values()].filter((event) => event.userId === user.id).length,
-    serverTime: new Date().toISOString(),
+    streak: streakForUser(user, serverTime),
+    profile: {
+      avatarUrl: user.avatarUrl,
+      displayNameChangedAt: user.displayNameChangedAt,
+      displayNameChangeAvailableAt:
+        availableAt && availableAt.getTime() > serverTime.getTime()
+          ? availableAt.toISOString()
+          : null,
+    },
+    serverTime: serverTime.toISOString(),
   };
 }
 
@@ -463,7 +499,11 @@ export function createDevIdentity(
     id: crypto.randomUUID(),
     publicId: newPublicId(),
     displayName: normalizeDisplayName(displayName),
+    timezoneId: "Europe/Moscow",
     lastCheckInAt: null,
+    displayNameChangedAt: null,
+    displayNameChangeKey: null,
+    avatarUrl: null,
   };
   const token = randomToken();
 
@@ -483,11 +523,50 @@ export function getDevIdentity(token: string | undefined): MeResponse | null {
   return user ? asMe(user) : null;
 }
 
+export type DevDisplayNameUpdateResult =
+  | { kind: "ok"; value: MeResponse }
+  | { kind: "unauthorized" }
+  | { kind: "conflict" }
+  | { kind: "cooldown"; availableAt: string; serverTime: string };
+
+export function updateDevDisplayName(
+  token: string | undefined,
+  displayName: string,
+  idempotencyKey: string,
+  now = new Date(),
+): DevDisplayNameUpdateResult {
+  const user = sessionUser(token);
+  if (!user) return { kind: "unauthorized" };
+  const normalized = normalizeDisplayName(displayName);
+
+  if (normalized === user.displayName) {
+    return { kind: "ok", value: asMe(user, now) };
+  }
+  if (user.displayNameChangeKey === idempotencyKey) return { kind: "conflict" };
+
+  const availableAt = user.displayNameChangedAt
+    ? Date.parse(user.displayNameChangedAt) + 24 * 60 * 60_000
+    : 0;
+  if (availableAt > now.getTime()) {
+    return {
+      kind: "cooldown",
+      availableAt: new Date(availableAt).toISOString(),
+      serverTime: now.toISOString(),
+    };
+  }
+
+  user.displayName = normalized;
+  user.displayNameChangedAt = now.toISOString();
+  user.displayNameChangeKey = idempotencyKey;
+  return { kind: "ok", value: asMe(user, now) };
+}
+
 export type DevCheckInResult =
   | { kind: "accepted"; value: CheckInResponse }
   | {
       kind: "cooldown";
       checkedAt: string;
+      streak: DailyStreak;
       serverTime: string;
       nextAllowedAt: string;
     }
@@ -503,7 +582,18 @@ export function createDevCheckIn(
 
   const replayKey = `${user.id}:${idempotencyKey}`;
   const replay = currentStore.idempotency.get(replayKey);
-  if (replay) return { kind: "accepted", value: { ...replay, replayed: true } };
+  if (replay) {
+    const replayedAt = new Date();
+    return {
+      kind: "accepted",
+      value: {
+        ...replay,
+        streak: streakForUser(user, replayedAt),
+        serverTime: replayedAt.toISOString(),
+        replayed: true,
+      },
+    };
+  }
 
   const serverTime = new Date();
   const nextAllowedMs = user.lastCheckInAt
@@ -514,27 +604,31 @@ export function createDevCheckIn(
     return {
       kind: "cooldown",
       checkedAt: user.lastCheckInAt!,
+      streak: streakForUser(user, serverTime),
       serverTime: serverTime.toISOString(),
       nextAllowedAt: new Date(nextAllowedMs).toISOString(),
     };
   }
 
   const checkedAt = serverTime.toISOString();
+  const eventId = crypto.randomUUID();
+  user.lastCheckInAt = checkedAt;
+  currentStore.checkIns.set(eventId, {
+    id: eventId,
+    userId: user.id,
+    checkedAt,
+    localDate: formatLocalDate(serverTime, user.timezoneId),
+  });
   const response: CheckInResponse = {
-    eventId: crypto.randomUUID(),
+    eventId,
     checkedAt,
     checkInCount:
-      [...currentStore.checkIns.values()].filter((event) => event.userId === user.id).length + 1,
+      [...currentStore.checkIns.values()].filter((event) => event.userId === user.id).length,
+    streak: streakForUser(user, serverTime),
     serverTime: checkedAt,
     nextAllowedAt: new Date(serverTime.getTime() + COOLDOWN_MS).toISOString(),
     replayed: false,
   };
-  user.lastCheckInAt = checkedAt;
-  currentStore.checkIns.set(response.eventId, {
-    id: response.eventId,
-    userId: user.id,
-    checkedAt,
-  });
 
   for (const circle of activeCirclesForUser(user.id)) {
     const sharing = currentStore.sharing.get(sharingKey(circle.id, user.id)) ?? {

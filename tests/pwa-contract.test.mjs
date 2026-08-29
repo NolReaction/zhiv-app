@@ -253,23 +253,27 @@ test("applies clickjacking protection to the root page and nested routes", async
 });
 
 test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrome", async () => {
-  const [app, appStyles, peopleStyles] = await Promise.all([
+  const [app, appStyles, peopleStyles, profileStyles] = await Promise.all([
     readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
     readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../components/profile-view.module.css", import.meta.url), "utf8"),
   ]);
 
   const mobileQuery = "@media (max-width: 700px), (hover: none) and (pointer: coarse)";
   const appMobileStart = appStyles.indexOf(mobileQuery);
   const appMobileEnd = appStyles.indexOf("@supports not", appMobileStart);
   const peopleMobileStart = peopleStyles.indexOf(mobileQuery);
+  const profileMobileStart = profileStyles.indexOf(mobileQuery);
 
   assert.notEqual(appMobileStart, -1);
   assert.notEqual(appMobileEnd, -1);
   assert.notEqual(peopleMobileStart, -1);
+  assert.notEqual(profileMobileStart, -1);
 
   const mobileAppStyles = appStyles.slice(appMobileStart, appMobileEnd);
   const mobilePeopleStyles = peopleStyles.slice(peopleMobileStart);
+  const mobileProfileStyles = profileStyles.slice(profileMobileStart);
   const mobileShell = mobileAppStyles.match(/\.shell\s*\{[^}]*\}/s)?.[0] ?? "";
   const mobileFooter = mobileAppStyles.match(/\.footer\s*\{[^}]*\}/s)?.[0] ?? "";
   const mobileBottomNav = mobileAppStyles.match(/\.bottomNav\s*\{[^}]*\}/s)?.[0] ?? "";
@@ -278,12 +282,13 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   assert.match(app, /className=\{styles\.navLens\}/);
   assert.equal(
     (app.match(/aria-current=\{activeView === "[^"]+" \? "page" : undefined\}/g) ?? []).length,
-    2,
+    3,
   );
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*overflow-y:\s*auto;/s);
   assert.match(peopleStyles, /^\.view\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*thin;/s);
+  assert.match(profileStyles, /^\.view\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*thin;/s);
 
   assert.match(mobileShell, /position:\s*relative;/);
   assert.match(mobileShell, /grid-template-rows:\s*auto minmax\(0, 1fr\);/);
@@ -317,6 +322,12 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   );
   assert.match(mobileBottomNav, /pointer-events:\s*auto;/);
   assert.match(mobileAppStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
+  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/);
+  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 3\);/);
+  assert.match(
+    mobileAppStyles,
+    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(200%, 0, 0\)/s,
+  );
   assert.match(appStyles, /@supports not \(\(-webkit-backdrop-filter:/);
 
   assert.match(
@@ -335,6 +346,37 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
     mobilePeopleStyles,
     /\.view::-webkit-scrollbar\s*\{(?=[^}]*display:\s*none;)(?=[^}]*width:\s*0;)(?=[^}]*height:\s*0;)[^}]*\}/s,
   );
+  assert.match(
+    mobileProfileStyles,
+    /\.view\s*\{(?=[^}]*padding-bottom:\s*var\(--floating-nav-clearance,\s*110px\);)(?=[^}]*scroll-padding-bottom:\s*var\(--floating-nav-clearance,\s*110px\);)(?=[^}]*scrollbar-width:\s*none;)[^}]*\}/s,
+  );
+  assert.match(
+    mobileProfileStyles,
+    /\.view::-webkit-scrollbar\s*\{(?=[^}]*display:\s*none;)(?=[^}]*width:\s*0;)(?=[^}]*height:\s*0;)[^}]*\}/s,
+  );
+});
+
+test("keeps the permanent clicker lightweight and motion-safe", async () => {
+  const [app, appStyles, clicker] = await Promise.all([
+    readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../lib/clicker-story.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.doesNotMatch(clicker, /CLICKER_FINAL_TAP|rotateClickerStory/);
+  assert.doesNotMatch(app, /navigator\.vibrate|AudioContext|new Audio/);
+  assert.match(app, /localStorage\.setItem\([^,]+,\s*serializeClickerProgress\(/);
+
+  const counterRule = appStyles.match(/\.tapCounter\s*\{[^}]*\}/s)?.[0] ?? "";
+  assert.match(counterRule, /font-variant-numeric:\s*tabular-nums;/);
+  assert.match(counterRule, /white-space:\s*nowrap;/);
+  assert.match(counterRule, /max-width:/);
+
+  const reducedMotion = appStyles.slice(
+    appStyles.indexOf("@media (prefers-reduced-motion: reduce)"),
+  );
+  assert.match(reducedMotion, /\.championBurst/);
+  assert.match(reducedMotion, /display:\s*none;/);
 });
 
 test("locks the iPhone app surface while preserving vertical touch scrolling", async () => {

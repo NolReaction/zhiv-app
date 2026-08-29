@@ -2,41 +2,55 @@
 
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, HeartPulse, Share2, Users } from "lucide-react";
+import { Check, Flame, HeartPulse, Share2, UserRound, Users } from "lucide-react";
 import type {
-  CooldownResponse,
+  DailyStreak,
   GroupsResponse,
   MeResponse,
   PeopleResponse,
 } from "@/lib/check-in-contract";
-import { ApiError, bootstrap, createCheckIn, getGroups, getMe, getPeople } from "@/lib/check-in-api";
+import {
+  ApiError,
+  bootstrap,
+  createCheckIn,
+  getGroups,
+  getMe,
+  getPeople,
+  isCheckInCooldownResponse,
+} from "@/lib/check-in-api";
 import {
   formatLastCheckIn,
   getCheckInMilestone,
   getCheckInAgeMs,
   getCheckInColor,
   isValidDisplayName,
+  limitDisplayNameInput,
   normalizeDisplayName,
 } from "@/lib/check-in-presentation";
 import {
   advanceClickerRun,
-  CLICKER_FINAL_TAP,
   CLICKER_IDLE_RESET_MS,
+  CLICKER_MAX_TAP_COUNT,
+  CLICKER_REWARDS,
   createClickerRun,
+  expireClickerSeries,
   getClickerFrame,
+  getClickerTransitionEffect,
+  parseClickerProgress,
   planClickerTap,
-  resetExpiredClickerRun,
-  rotateClickerStory,
+  serializeClickerProgress,
   type ClickerEffect,
   type ClickerRun,
 } from "@/lib/clicker-story";
+import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "./people-view";
+import { ProfileView } from "./profile-view";
 import styles from "./check-in-app.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { getIdentitySharingNotice, shareIdentity } from "@/lib/identity-sharing";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
-type ActiveView = "check-in" | "people";
+type ActiveView = "check-in" | "people" | "profile";
 
 type PendingBootstrap = {
   version: 1;
@@ -58,6 +72,7 @@ type PendingCheckIn = {
 
 const PENDING_BOOTSTRAP_STORAGE_KEY = "zhiv.pending-bootstrap.v1";
 const PENDING_CHECK_IN_STORAGE_KEY = "zhiv.pending-check-in.v1";
+const CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v1";
 const PENDING_BOOTSTRAP_TTL_MS = 10 * 60_000;
 const PENDING_CHECK_IN_TTL_MS = 24 * 60 * 60_000;
 const UUID_PATTERN =
@@ -159,6 +174,23 @@ function persistPending(storageKey: string, value: PendingBootstrap | PendingChe
   }
 }
 
+function clickerStorageKey(publicId: string): string {
+  return `${CLICKER_PROGRESS_STORAGE_PREFIX}:${publicId}`;
+}
+
+function restoreClickerRun(publicId: string, storySeed: number): ClickerRun {
+  if (typeof window === "undefined") return createClickerRun(storySeed);
+  try {
+    const stored = window.localStorage.getItem(clickerStorageKey(publicId));
+    const progress = stored ? parseClickerProgress(stored) : null;
+    return progress
+      ? { ...progress, lastTapAtMs: null }
+      : createClickerRun(storySeed);
+  } catch {
+    return createClickerRun(storySeed);
+  }
+}
+
 export function CheckInApp() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -167,6 +199,7 @@ export function CheckInApp() {
   const [systemError, setSystemError] = useState<string | null>(null);
   const [lastCheckInAt, setLastCheckInAt] = useState<string | null>(null);
   const [checkInCount, setCheckInCount] = useState(0);
+  const [streak, setStreak] = useState<DailyStreak | null>(null);
   const [nextAllowedAt, setNextAllowedAt] = useState<string | null>(null);
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [clientNowMs, setClientNowMs] = useState(() => Date.now());
@@ -175,7 +208,6 @@ export function CheckInApp() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clickerRun, setClickerRun] = useState<ClickerRun>(() => createClickerRun());
-  const [queuedTapCount, setQueuedTapCount] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [storyEffect, setStoryEffect] = useState<{
     type: ClickerEffect;
@@ -195,36 +227,45 @@ export function CheckInApp() {
   const identityActionPending = useRef(false);
   const checkInSending = useRef(false);
   const clickerRunRef = useRef(clickerRun);
-  const queuedTapCountRef = useRef(0);
   const storyEffectBurst = useRef(0);
+  const storyEffectType = useRef<ClickerEffect | null>(null);
   const storyEffectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCheckIn = useRef<PendingCheckIn | null>(null);
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
   const homeHeading = useRef<HTMLHeadingElement | null>(null);
+  const clickerOwnerPublicId = useRef<string | null>(null);
+  const clickerPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const commitClickerRun = useCallback((run: ClickerRun) => {
+  const persistClickerRun = useCallback((run: ClickerRun) => {
+    const publicId = clickerOwnerPublicId.current;
+    if (!publicId || typeof window === "undefined") return;
+    try {
+      const key = clickerStorageKey(publicId);
+      const stored = parseClickerProgress(window.localStorage.getItem(key) ?? "");
+      const progress = stored && stored.totalTaps > run.totalTaps ? stored : run;
+      window.localStorage.setItem(key, serializeClickerProgress(progress));
+    } catch {
+      // Local clicker progress is decorative; storage failure must never block check-in.
+    }
+  }, []);
+
+  const commitClickerRun = useCallback((run: ClickerRun, persist = true) => {
     clickerRunRef.current = run;
     setClickerRun(run);
-  }, []);
-
-  const clearQueuedTaps = useCallback(() => {
-    queuedTapCountRef.current = 0;
-    setQueuedTapCount(0);
-  }, []);
-
-  const queueTap = useCallback(() => {
-    queuedTapCountRef.current = Math.min(
-      queuedTapCountRef.current + 1,
-      CLICKER_FINAL_TAP,
-    );
-    setQueuedTapCount(queuedTapCountRef.current);
-  }, []);
+    if (!persist) return;
+    if (clickerPersistTimer.current) clearTimeout(clickerPersistTimer.current);
+    clickerPersistTimer.current = setTimeout(() => {
+      persistClickerRun(clickerRunRef.current);
+      clickerPersistTimer.current = null;
+    }, 650);
+  }, [persistClickerRun]);
 
   const clearStoryEffect = useCallback(() => {
     if (storyEffectTimer.current) {
       clearTimeout(storyEffectTimer.current);
       storyEffectTimer.current = null;
     }
+    storyEffectType.current = null;
     setStoryEffect(null);
   }, []);
 
@@ -244,21 +285,41 @@ export function CheckInApp() {
       burstTimer.current = null;
     }
     clearStoryEffect();
-    clearQueuedTaps();
     setNextAllowedAt(null);
-    commitClickerRun(createClickerRun());
+    commitClickerRun(createClickerRun(), false);
+    setStreak(null);
     setNotice(null);
-  }, [clearQueuedTaps, clearStoryEffect, commitClickerRun]);
+  }, [clearStoryEffect, commitClickerRun]);
 
   const loseSession = useCallback(() => {
+    if (clickerPersistTimer.current) {
+      clearTimeout(clickerPersistTimer.current);
+      clickerPersistTimer.current = null;
+    }
+    persistClickerRun(clickerRunRef.current);
     clearPendingCheckIn();
     clearPendingBootstrap();
+    clickerOwnerPublicId.current = null;
     resetTransientCheckIn();
     setPeople(null);
     setGroups(null);
     setActiveView("check-in");
     setScreen("session-lost");
-  }, [clearPendingBootstrap, clearPendingCheckIn, resetTransientCheckIn]);
+  }, [
+    clearPendingBootstrap,
+    clearPendingCheckIn,
+    persistClickerRun,
+    resetTransientCheckIn,
+  ]);
+
+  const syncMeSnapshot = useCallback((identity: MeResponse) => {
+    setMe(identity);
+    setLastCheckInAt(identity.lastCheckInAt);
+    setCheckInCount(identity.checkInCount);
+    setStreak(identity.streak);
+    setClockOffsetMs(serverOffset(identity.serverTime));
+    setClientNowMs(Date.now());
+  }, []);
 
   const refreshPeople = useCallback(async (signal?: AbortSignal) => {
     setPeopleLoading(true);
@@ -306,17 +367,36 @@ export function CheckInApp() {
     }
     clearPendingBootstrap();
     resetTransientCheckIn();
-    commitClickerRun(createClickerRun(identity.checkInCount));
-    setMe(identity);
-    setLastCheckInAt(identity.lastCheckInAt);
-    setCheckInCount(identity.checkInCount);
-    setClockOffsetMs(serverOffset(identity.serverTime));
-    setClientNowMs(Date.now());
+    clickerOwnerPublicId.current = identity.user.publicId;
+    commitClickerRun(
+      restoreClickerRun(identity.user.publicId, identity.checkInCount),
+      false,
+    );
+    syncMeSnapshot(identity);
     setNameError(null);
     setSystemError(null);
     setActiveView("check-in");
     setScreen("home");
-  }, [clearPendingBootstrap, clearPendingCheckIn, commitClickerRun, resetTransientCheckIn]);
+  }, [
+    clearPendingBootstrap,
+    clearPendingCheckIn,
+    commitClickerRun,
+    resetTransientCheckIn,
+    syncMeSnapshot,
+  ]);
+
+  const refreshSelf = useCallback(async () => {
+    try {
+      const identity = await getMe();
+      if (!identity) {
+        loseSession();
+        return;
+      }
+      syncMeSnapshot(identity);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) loseSession();
+    }
+  }, [loseSession, syncMeSnapshot]);
 
   useEffect(() => {
     let active = true;
@@ -350,8 +430,14 @@ export function CheckInApp() {
 
     const markOnline = () => setIsOnline(true);
     const markOffline = () => setIsOnline(false);
+    const flushClickerProgress = () => persistClickerRun(clickerRunRef.current);
+    const flushHiddenClickerProgress = () => {
+      if (document.hidden) flushClickerProgress();
+    };
     window.addEventListener("online", markOnline);
     window.addEventListener("offline", markOffline);
+    window.addEventListener("pagehide", flushClickerProgress);
+    document.addEventListener("visibilitychange", flushHiddenClickerProgress);
 
     const clock = window.setInterval(() => setClientNowMs(Date.now()), 60_000);
 
@@ -359,12 +445,16 @@ export function CheckInApp() {
       active = false;
       window.removeEventListener("online", markOnline);
       window.removeEventListener("offline", markOffline);
+      window.removeEventListener("pagehide", flushClickerProgress);
+      document.removeEventListener("visibilitychange", flushHiddenClickerProgress);
       window.clearInterval(clock);
       if (burstTimer.current) clearTimeout(burstTimer.current);
       if (storyEffectTimer.current) clearTimeout(storyEffectTimer.current);
       if (identityNoticeTimer.current) clearTimeout(identityNoticeTimer.current);
+      if (clickerPersistTimer.current) clearTimeout(clickerPersistTimer.current);
+      flushClickerProgress();
     };
-  }, [adoptMe, clearPendingCheckIn, resetTransientCheckIn]);
+  }, [adoptMe, clearPendingCheckIn, persistClickerRun, resetTransientCheckIn]);
 
   useEffect(() => {
     if (screen === "home" && activeView === "check-in") homeHeading.current?.focus();
@@ -374,12 +464,14 @@ export function CheckInApp() {
     if (screen !== "home") return;
     const controller = new AbortController();
     const initialRefresh = window.setTimeout(() => {
+      void refreshSelf();
       void refreshPeople(controller.signal);
       void refreshGroups(controller.signal);
     }, 0);
 
     const refresh = () => {
       if (!document.hidden && navigator.onLine) {
+        void refreshSelf();
         void refreshPeople();
         void refreshGroups();
       }
@@ -398,7 +490,24 @@ export function CheckInApp() {
       window.removeEventListener("online", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [refreshGroups, refreshPeople, screen]);
+  }, [refreshGroups, refreshPeople, refreshSelf, screen]);
+
+  useEffect(() => {
+    if (screen !== "home" || !streak) return;
+    const delay = Date.parse(streak.nextDayAt) - (Date.now() + clockOffsetMs);
+    if (!Number.isFinite(delay)) return;
+    const timer = window.setTimeout(() => void refreshSelf(), Math.max(250, delay + 250));
+    return () => window.clearTimeout(timer);
+  }, [clockOffsetMs, refreshSelf, screen, streak]);
+
+  useEffect(() => {
+    const availableAt = me?.profile.displayNameChangeAvailableAt;
+    if (screen !== "home" || !availableAt) return;
+    const delay = Date.parse(availableAt) - (Date.now() + clockOffsetMs);
+    if (!Number.isFinite(delay) || delay <= 0) return;
+    const timer = window.setTimeout(() => setClientNowMs(Date.now()), delay + 100);
+    return () => window.clearTimeout(timer);
+  }, [clockOffsetMs, me?.profile.displayNameChangeAvailableAt, screen]);
 
   async function retryIdentity() {
     setScreen("loading");
@@ -419,19 +528,22 @@ export function CheckInApp() {
   }
 
   const triggerStoryEffect = useCallback((type: ClickerEffect) => {
+    if (storyEffectType.current === "champion" && type !== "champion") return;
     if (storyEffectTimer.current) clearTimeout(storyEffectTimer.current);
     storyEffectBurst.current += 1;
+    storyEffectType.current = type;
     setStoryEffect({ type, burst: storyEffectBurst.current });
     storyEffectTimer.current = setTimeout(() => {
+      storyEffectType.current = null;
       setStoryEffect(null);
       storyEffectTimer.current = null;
-    }, type === "finale" ? 1_900 : type === "rings" ? 1_400 : 1_150);
+    }, type === "champion" ? 2_500 : type === "finale" ? 1_900 : type === "rings" ? 1_400 : 1_150);
   }, []);
 
   const resetClickerLater = useCallback(() => {
     if (burstTimer.current) clearTimeout(burstTimer.current);
     burstTimer.current = setTimeout(() => {
-      commitClickerRun(rotateClickerStory(clickerRunRef.current));
+      commitClickerRun(expireClickerSeries(clickerRunRef.current, Date.now()));
       setNotice(null);
       clearStoryEffect();
       burstTimer.current = null;
@@ -439,19 +551,18 @@ export function CheckInApp() {
   }, [clearStoryEffect, commitClickerRun]);
 
   const registerTap = useCallback(
-    (restartStory = false, steps = 1) => {
+    (steps = 1) => {
       const current = clickerRunRef.current;
-      let next = restartStory ? { ...current, tapCount: 0 } : current;
-      let latestEffect: ClickerEffect | null = null;
-      for (let step = 0; step < Math.max(1, steps); step += 1) {
-        next = advanceClickerRun(next, Date.now());
-        latestEffect = getClickerFrame(next)?.effect ?? latestEffect;
-      }
+      const next = advanceClickerRun(current, Date.now(), steps);
+      const latestEffect = getClickerTransitionEffect(current.totalTaps, next.totalTaps);
       commitClickerRun(next);
+      if (CLICKER_REWARDS.some((reward) => reward.at > current.totalTaps && reward.at <= next.totalTaps)) {
+        persistClickerRun(next);
+      }
       if (latestEffect) triggerStoryEffect(latestEffect);
       resetClickerLater();
     },
-    [commitClickerRun, resetClickerLater, triggerStoryEffect],
+    [commitClickerRun, persistClickerRun, resetClickerLater, triggerStoryEffect],
   );
 
   async function handleBootstrap(event: FormEvent<HTMLFormElement>) {
@@ -509,7 +620,7 @@ export function CheckInApp() {
   }
 
   async function handleCheckIn() {
-    const currentRun = resetExpiredClickerRun(clickerRunRef.current);
+    const currentRun = expireClickerSeries(clickerRunRef.current, Date.now());
     if (currentRun !== clickerRunRef.current) {
       if (burstTimer.current) {
         clearTimeout(burstTimer.current);
@@ -523,22 +634,15 @@ export function CheckInApp() {
     const tapPlan = planClickerTap(
       currentRun,
       Boolean(nextAllowedAt && adjustedNow < Date.parse(nextAllowedAt)),
+      Date.now(),
     );
-    if (tapPlan === "ADVANCE_LOCAL") {
-      registerTap();
+    registerTap();
+    if (tapPlan !== "REQUEST_SERVER") {
+      if (tapPlan === "START_LOCAL") setNotice(null);
       return;
     }
-    if (tapPlan === "START_LOCAL") {
-      setNotice(null);
-      registerTap();
-      return;
-    }
-    if (checkInSending.current) {
-      queueTap();
-      return;
-    }
+    if (checkInSending.current) return;
 
-    queueTap();
     checkInSending.current = true;
     setIsSending(true);
     setNotice("Проверяем сервер · тапы уже считаются");
@@ -569,24 +673,41 @@ export function CheckInApp() {
       setNotice(
         getCheckInMilestone(response.checkInCount) ?? "Отметка сохранена · только что",
       );
-      registerTap(true, queuedTapCountRef.current);
+      setStreak(response.streak);
+      setMe((current) => current ? {
+        ...current,
+        lastCheckInAt: response.checkedAt,
+        checkInCount: response.checkInCount,
+        streak: response.streak,
+        serverTime: response.serverTime,
+      } : current);
     } catch (error) {
-      if (error instanceof ApiError && error.status === 429 && error.body) {
-        const cooldown = error.body as CooldownResponse;
+      if (
+        error instanceof ApiError &&
+        error.status === 429 &&
+        isCheckInCooldownResponse(error.body)
+      ) {
+        const cooldown = error.body;
         clearPendingCheckIn();
         setLastCheckInAt(cooldown.checkedAt);
         setNextAllowedAt(cooldown.nextAllowedAt);
         setClockOffsetMs(serverOffset(cooldown.serverTime));
+        setStreak(cooldown.streak);
+        setMe((current) => current ? {
+          ...current,
+          lastCheckInAt: cooldown.checkedAt,
+          streak: cooldown.streak,
+          serverTime: cooldown.serverTime,
+        } : current);
         setNotice(null);
-        registerTap(true, queuedTapCountRef.current);
       } else if (error instanceof ApiError && error.status === 401) {
         loseSession();
       } else {
         setNotice("Связь оборвалась · нажмите ещё раз для проверки");
+        commitClickerRun({ ...clickerRunRef.current, lastTapAtMs: null });
         resetClickerLater();
       }
     } finally {
-      clearQueuedTaps();
       checkInSending.current = false;
       setIsSending(false);
     }
@@ -599,13 +720,14 @@ export function CheckInApp() {
   const serverStatus = notice ?? formatLastCheckIn(lastCheckInAt, adjustedNow);
   const status = storyFrame?.message ?? serverStatus;
   const earlyTapClass =
-    clickerRun.tapCount >= 2 && clickerRun.tapCount <= 4
-      ? styles[`tap${clickerRun.tapCount}`]
+    storyFrame && storyFrame.storyTap >= 2 && storyFrame.storyTap <= 4
+      ? styles[`tap${storyFrame.storyTap}`]
       : "";
   const effectClass = storyEffect
     ? styles[`effect${storyEffect.type[0].toUpperCase()}${storyEffect.type.slice(1)}`]
     : "";
   const pulseClass = effectClass || earlyTapClass;
+  const visualTapCount = Math.min(clickerRun.totalTaps, CLICKER_MAX_TAP_COUNT);
   const buttonStyle = useMemo(
     () => ({ "--check-in-color": buttonColor }) as CSSProperties,
     [buttonColor],
@@ -699,12 +821,11 @@ export function CheckInApp() {
             <input
               id="display-name"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => setName(limitDisplayNameInput(event.target.value))}
               placeholder="Например, Дима"
               autoComplete="name"
               autoFocus
               required
-              maxLength={50}
               className={styles.input}
               aria-invalid={Boolean(nameError)}
               aria-describedby={
@@ -756,7 +877,7 @@ export function CheckInApp() {
       </header>
 
       {activeView === "check-in" ? (
-        <section className={styles.action} aria-labelledby="main-action-title">
+        <section id="check-in-panel" className={styles.action} aria-labelledby="main-action-title">
           <h1
             id="main-action-title"
             className={styles.srOnly}
@@ -765,30 +886,55 @@ export function CheckInApp() {
           >
             Отметиться
           </h1>
-          <div className={styles.buttonStage}>
+          <div className={styles.checkInCluster}>
+            {streak ? (
+              <div
+                className={styles.streakPill}
+                data-state={
+                  streak.checkedInToday
+                    ? "complete"
+                    : streak.currentDays > 0
+                      ? "waiting"
+                      : "empty"
+                }
+                aria-label={`${formatDayCount(streak.currentDays)} подряд. ${getDailyStreakMessage(streak)}`}
+              >
+                <Flame size={18} aria-hidden="true" />
+                <strong>{streak.currentDays}</strong>
+                <span>{formatDayCount(streak.currentDays).replace(/^\d+\s+/, "")} подряд</span>
+                <small>{getDailyStreakMessage(streak)}</small>
+              </div>
+            ) : null}
+            <div className={styles.buttonStage}>
             <button
               type="button"
               className={`${styles.checkInButton} ${pulseClass}`}
               style={buttonStyle}
               onClick={handleCheckIn}
               aria-busy={isSending}
+              aria-describedby={visualTapCount >= 2 ? "clicker-total" : undefined}
             >
               <span>Я ЖИВОЙ</span>
             </button>
-            {storyFrame && clickerRun.tapCount >= 2 ? (
-              <span className={styles.tapCounter} aria-hidden="true">
-                ×{storyFrame.tapCount}
-              </span>
-            ) : queuedTapCount >= 2 ? (
-              <span className={styles.tapCounter} aria-hidden="true">
-                ×{queuedTapCount}
+            {visualTapCount >= 2 ? (
+              <span id="clicker-total" className={styles.srOnly}>
+                Игровой счёт: {visualTapCount.toLocaleString("ru-RU")}
               </span>
             ) : null}
-            {storyEffect?.type === "rings" || storyEffect?.type === "finale" ? (
+            {visualTapCount >= 2 ? (
+              <span className={styles.tapCounter} aria-hidden="true">
+                ×{visualTapCount.toLocaleString("ru-RU")}
+              </span>
+            ) : null}
+            {storyEffect?.type === "rings" ||
+            storyEffect?.type === "finale" ||
+            storyEffect?.type === "champion" ? (
               <div
                 key={`rings-${storyEffect.burst}`}
                 className={`${styles.storyRings} ${
-                  storyEffect.type === "finale" ? styles.storyRingsFinale : ""
+                  storyEffect.type === "finale" || storyEffect.type === "champion"
+                    ? styles.storyRingsFinale
+                    : ""
                 }`}
                 aria-hidden="true"
               >
@@ -797,7 +943,9 @@ export function CheckInApp() {
                 <i />
               </div>
             ) : null}
-            {storyEffect?.type === "sparks" || storyEffect?.type === "finale" ? (
+            {storyEffect?.type === "sparks" ||
+            storyEffect?.type === "finale" ||
+            storyEffect?.type === "champion" ? (
               <div
                 key={`sparks-${storyEffect.burst}`}
                 className={styles.storySparks}
@@ -818,11 +966,15 @@ export function CheckInApp() {
                 ))}
               </div>
             ) : null}
-            {storyEffect?.type === "confetti" || storyEffect?.type === "finale" ? (
+            {storyEffect?.type === "confetti" ||
+            storyEffect?.type === "finale" ||
+            storyEffect?.type === "champion" ? (
               <div
                 key={`confetti-${storyEffect.burst}`}
                 className={`${styles.confetti} ${
-                  storyEffect.type === "finale" ? styles.finaleConfetti : ""
+                  storyEffect.type === "finale" || storyEffect.type === "champion"
+                    ? styles.finaleConfetti
+                    : ""
                 }`}
                 aria-hidden="true"
               >
@@ -841,13 +993,23 @@ export function CheckInApp() {
                 ))}
               </div>
             ) : null}
-            {storyEffect?.type === "finale" ? (
+            {storyEffect?.type === "finale" || storyEffect?.type === "champion" ? (
               <div
                 key={`finale-${storyEffect.burst}`}
                 className={styles.finaleGlow}
                 aria-hidden="true"
               />
             ) : null}
+            {storyEffect?.type === "champion" ? (
+              <span
+                key={`champion-${storyEffect.burst}`}
+                className={styles.championBurst}
+                aria-hidden="true"
+              >
+                100 000
+              </span>
+            ) : null}
+            </div>
           </div>
 
           <div className={styles.statusBlock} data-story-active={storyFrame ? "true" : "false"}>
@@ -856,7 +1018,11 @@ export function CheckInApp() {
             ) : null}
             {storyFrame ? (
               <p className={styles.srOnly} role="status" aria-live="polite">
-                {`Сюжет «${storyFrame.storyTitle}». ${status}. ${serverStatus}`}
+                {`Сюжет «${storyFrame.storyTitle}». ${status}. ${
+                  storyFrame.reachedReward
+                    ? `${storyFrame.reachedReward.title}. ${storyFrame.reachedReward.message}. `
+                    : ""
+                }${serverStatus}`}
               </p>
             ) : null}
             <p
@@ -873,12 +1039,22 @@ export function CheckInApp() {
                   style={{ "--story-progress": `${storyFrame.progress * 100}%` } as CSSProperties}
                 >
                   <span>
-                    {storyFrame.nextSceneAt
-                      ? `Следующая сцена · ×${storyFrame.nextSceneAt}`
-                      : "Финал открыт · ещё тап — новый сюжет"}
+                    {storyFrame.isStoryFinal
+                      ? `Новый сюжет · ×${storyFrame.nextSceneAt.toLocaleString("ru-RU")}`
+                      : `Следующая сцена · ×${storyFrame.nextSceneAt.toLocaleString("ru-RU")}`}
                   </span>
                   <i aria-hidden="true" />
                 </div>
+                {storyFrame.latestReward ? (
+                  <p className={styles.storyReward}>
+                    <strong>{storyFrame.latestReward.title}</strong>
+                    <span>{storyFrame.latestReward.message}</span>
+                  </p>
+                ) : storyFrame.nextRewardAt ? (
+                  <p className={styles.rewardHint}>
+                    Большой рубеж · ×{storyFrame.nextRewardAt.toLocaleString("ru-RU")}
+                  </p>
+                ) : null}
                 <p className={styles.serverFact}>Сервер · {serverStatus}</p>
               </>
             ) : null}
@@ -895,7 +1071,7 @@ export function CheckInApp() {
             {!isOnline ? <p className={styles.offline}>Данные могут быть устаревшими</p> : null}
           </div>
         </section>
-      ) : (
+      ) : activeView === "people" ? (
         <PeopleView
           data={people}
           groups={groups}
@@ -908,7 +1084,19 @@ export function CheckInApp() {
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
         />
-      )}
+      ) : me ? (
+        <ProfileView
+          me={me}
+          nowMs={adjustedNow}
+          isOnline={isOnline}
+          onUpdated={(identity) => {
+            syncMeSnapshot(identity);
+            void refreshPeople();
+            void refreshGroups();
+          }}
+          onSessionLost={loseSession}
+        />
+      ) : null}
 
       <footer className={styles.footer}>
         {activeView === "check-in" ? (
@@ -945,6 +1133,15 @@ export function CheckInApp() {
               ) : null}
             </span>
             <span>Люди</span>
+          </button>
+          <button
+            type="button"
+            className={activeView === "profile" ? styles.navActive : undefined}
+            aria-current={activeView === "profile" ? "page" : undefined}
+            onClick={() => setActiveView("profile")}
+          >
+            <UserRound size={20} />
+            <span>Профиль</span>
           </button>
         </nav>
       </footer>

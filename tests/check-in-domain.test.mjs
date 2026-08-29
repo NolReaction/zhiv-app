@@ -14,6 +14,7 @@ const vite = await createServer({
 
 const presentation = await vite.ssrLoadModule("/lib/check-in-presentation.ts");
 const clicker = await vite.ssrLoadModule("/lib/clicker-story.ts");
+const dailyStreak = await vite.ssrLoadModule("/lib/daily-streak.ts");
 const devApiOrigin = await vite.ssrLoadModule("/lib/dev-api-origin.ts");
 const groupInput = await vite.ssrLoadModule("/lib/group-input.ts");
 
@@ -23,8 +24,13 @@ after(async () => {
 
 test("normalizes a human name without making it an identifier", () => {
   assert.equal(presentation.normalizeDisplayName("  Анна   Мария  "), "Анна Мария");
+  assert.equal(presentation.normalizeDisplayName("Анна\u00a0Мария"), "Анна Мария");
   assert.equal(presentation.isValidDisplayName("Я"), true);
   assert.equal(presentation.isValidDisplayName(" "), false);
+  assert.equal(presentation.isValidDisplayName("Дима\nАдмин"), false);
+  assert.equal(presentation.isValidDisplayName("🙂".repeat(50)), true);
+  assert.equal(presentation.isValidDisplayName("🙂".repeat(51)), false);
+  assert.equal(presentation.limitDisplayNameInput("🙂".repeat(51)), "🙂".repeat(50));
 });
 
 test("formats an exact public ID without accepting trailing symbols", () => {
@@ -112,8 +118,8 @@ test("never reports a negative age when client clock is ahead or behind", () => 
   );
 });
 
-test("offers five complete clicker stories with the same sparse scene rhythm", () => {
-  assert.equal(clicker.CLICKER_STORIES.length, 5);
+test("offers twenty-four complete clicker stories with one sparse scene rhythm", () => {
+  assert.equal(clicker.CLICKER_STORIES.length, 24);
   const expectedMilestones = [1, 5, 10, 20, 35, 50, 75, 100];
   const titles = new Set();
 
@@ -127,10 +133,10 @@ test("offers five complete clicker stories with the same sparse scene rhythm", (
 
 test("keeps story copy stable between milestones and triggers effects only on a scene", () => {
   const run = clicker.createClickerRun(0);
-  const at10 = clicker.getClickerFrame({ ...run, tapCount: 10 });
-  const at19 = clicker.getClickerFrame({ ...run, tapCount: 19 });
-  const at20 = clicker.getClickerFrame({ ...run, tapCount: 20 });
-  const at21 = clicker.getClickerFrame({ ...run, tapCount: 21 });
+  const at10 = clicker.getClickerFrame({ ...run, totalTaps: 10 });
+  const at19 = clicker.getClickerFrame({ ...run, totalTaps: 19 });
+  const at20 = clicker.getClickerFrame({ ...run, totalTaps: 20 });
+  const at21 = clicker.getClickerFrame({ ...run, totalTaps: 21 });
 
   assert.equal(at10.message, "Двигатели запущены");
   assert.equal(at19.message, at10.message);
@@ -144,38 +150,101 @@ test("keeps story copy stable between milestones and triggers effects only on a 
 
 test("keeps an active clicker run local even after server cooldown ends", () => {
   const idle = clicker.createClickerRun();
-  assert.equal(clicker.planClickerTap(idle, false), "REQUEST_SERVER");
-  assert.equal(clicker.planClickerTap(idle, true), "START_LOCAL");
+  assert.equal(clicker.planClickerTap(idle, false, 1_000), "REQUEST_SERVER");
+  assert.equal(clicker.planClickerTap(idle, true, 1_000), "START_LOCAL");
   assert.equal(
-    clicker.planClickerTap({ ...idle, tapCount: 42 }, false),
+    clicker.planClickerTap({ ...idle, totalTaps: 100_000, lastTapAtMs: 900 }, false, 1_000),
     "ADVANCE_LOCAL",
   );
 });
 
-test("opens the next story locally after the hundredth tap", () => {
-  const finished = { storyIndex: 0, tapCount: 100, lastTapAtMs: 900 };
+test("opens the next story without resetting the global counter", () => {
+  const finished = { storySeed: 0, totalTaps: 100, lastTapAtMs: 900 };
   const next = clicker.advanceClickerRun(finished, 1_000);
   const frame = clicker.getClickerFrame(next);
 
-  assert.deepEqual(next, { storyIndex: 1, tapCount: 1, lastTapAtMs: 1_000 });
+  assert.deepEqual(next, { storySeed: 0, totalTaps: 101, lastTapAtMs: 1_000 });
   assert.equal(frame.storyId, "lab");
   assert.equal(frame.message, "Опыт начался");
-  assert.deepEqual(
-    clicker.rotateClickerStory({ storyIndex: clicker.CLICKER_STORIES.length - 1, tapCount: 7 }),
-    { storyIndex: 0, tapCount: 0, lastTapAtMs: null },
-  );
 });
 
-test("expires a suspended iPhone clicker run on the next tap boundary", () => {
-  const active = { storyIndex: 2, tapCount: 35, lastTapAtMs: 1_000 };
+test("expires only the network series while preserving clicker progress", () => {
+  const active = { storySeed: 2, totalTaps: 12_345, lastTapAtMs: 1_000 };
   assert.equal(
-    clicker.resetExpiredClickerRun(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS - 1),
+    clicker.expireClickerSeries(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS - 1),
     active,
   );
   assert.deepEqual(
-    clicker.resetExpiredClickerRun(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS),
-    { storyIndex: 3, tapCount: 0, lastTapAtMs: null },
+    clicker.expireClickerSeries(active, 1_000 + clicker.CLICKER_IDLE_RESET_MS),
+    { storySeed: 2, totalTaps: 12_345, lastTapAtMs: null },
   );
+});
+
+test("keeps going through one hundred thousand and prioritizes champion rewards", () => {
+  const before = { storySeed: 0, totalTaps: 99_999, lastTapAtMs: 900 };
+  const champion = clicker.advanceClickerRun(before, 1_000);
+  const after = clicker.advanceClickerRun(champion, 1_100);
+
+  assert.equal(champion.totalTaps, 100_000);
+  assert.equal(clicker.getClickerFrame(champion).reachedReward.id, "champion");
+  assert.equal(after.totalTaps, 100_001);
+  assert.equal(clicker.getClickerFrame(after).storyTap, 1);
+  assert.equal(clicker.getClickerTransitionEffect(99_999, 100_005), "champion");
+});
+
+test("recognizes all sparse clicker rewards without resetting between them", () => {
+  for (const at of [100, 500, 1_000, 10_000, 100_000]) {
+    const frame = clicker.getClickerFrame({ storySeed: 0, totalTaps: at, lastTapAtMs: at });
+    assert.equal(frame.reachedReward.at, at);
+    assert.equal(
+      clicker.advanceClickerRun({ storySeed: 0, totalTaps: at, lastTapAtMs: at }, at + 1).totalTaps,
+      at + 1,
+    );
+  }
+});
+
+test("stores permanent clicker progress without the transient network gate", () => {
+  const serialized = clicker.serializeClickerProgress({ totalTaps: 100_000, storySeed: 4 });
+  assert.deepEqual(clicker.parseClickerProgress(serialized), {
+    totalTaps: 100_000,
+    storySeed: 4,
+  });
+  assert.doesNotMatch(serialized, /lastTapAtMs/);
+  assert.equal(clicker.parseClickerProgress("{}"), null);
+});
+
+test("calculates a daily streak from distinct local dates and breaks after a missed day", () => {
+  const nextDayAt = "2026-08-30T21:00:00.000Z";
+  assert.deepEqual(
+    dailyStreak.calculateDailyStreak(
+      ["2026-08-27", "2026-08-28", "2026-08-28", "2026-08-29"],
+      "2026-08-29",
+      nextDayAt,
+    ),
+    {
+      currentDays: 3,
+      longestDays: 3,
+      checkedInToday: true,
+      nextDayAt,
+    },
+  );
+  assert.equal(
+    dailyStreak.calculateDailyStreak(["2026-08-27"], "2026-08-29", nextDayAt).currentDays,
+    0,
+  );
+});
+
+test("keeps yesterday's streak alive until the current local day ends", () => {
+  const streak = dailyStreak.calculateDailyStreak(
+    ["2026-08-27", "2026-08-28"],
+    "2026-08-29",
+    "2026-08-29T21:00:00.000Z",
+  );
+  assert.equal(streak.currentDays, 2);
+  assert.equal(streak.checkedInToday, false);
+  assert.equal(dailyStreak.formatDayCount(1), "1 день");
+  assert.equal(dailyStreak.formatDayCount(22), "22 дня");
+  assert.equal(dailyStreak.formatDayCount(15), "15 дней");
 });
 
 test("shows durable milestone copy only at sparse server-confirmed counts", () => {
