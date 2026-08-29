@@ -221,6 +221,7 @@
   justify-items: center;
   gap: clamp(28px, 6vh, 50px);
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior-y: contain;
   padding: 24px 0;
 }
@@ -307,6 +308,22 @@
   animation: tap-five 500ms ease;
 }
 
+.effectConfetti {
+  animation: tap-five 500ms ease;
+}
+
+.effectRings {
+  animation: story-button-ring 620ms ease;
+}
+
+.effectSparks {
+  animation: story-button-spark 650ms ease;
+}
+
+.effectFinale {
+  animation: story-button-finale 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 .tapCounter {
   position: absolute;
   z-index: 3;
@@ -346,9 +363,89 @@
   animation: confetti 900ms cubic-bezier(0.18, 0.67, 0.25, 1) forwards;
 }
 
+.finaleConfetti i {
+  animation-duration: 1.35s;
+}
+
+.storyRings {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.storyRings i {
+  position: absolute;
+  width: 96%;
+  aspect-ratio: 1;
+  border: 2px solid rgba(183, 216, 162, 0.55);
+  border-radius: 50%;
+  opacity: 0;
+  animation: story-ring 1.05s ease-out forwards;
+}
+
+.storyRings i:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.storyRings i:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.storyRingsFinale i {
+  border-color: rgba(245, 232, 91, 0.62);
+  animation-duration: 1.45s;
+}
+
+.storySparks {
+  position: absolute;
+  z-index: 4;
+  inset: 50%;
+  pointer-events: none;
+}
+
+.storySparks i {
+  --x: 0px;
+  --y: -120px;
+  --r: 90deg;
+  --piece: #f5e85b;
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--piece);
+  box-shadow: 0 0 14px var(--piece);
+  animation: story-spark 1.05s ease-out forwards;
+}
+
+.finaleGlow {
+  position: absolute;
+  z-index: 1;
+  inset: -8%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 232, 91, 0.3), transparent 68%);
+  pointer-events: none;
+  animation: finale-glow 1.6s ease-out forwards;
+}
+
 .statusBlock {
   min-height: 52px;
   text-align: center;
+}
+
+.statusBlock[data-story-active="true"] {
+  min-height: 132px;
+}
+
+.storyLabel {
+  margin: 0 0 7px;
+  color: #b7d8a2;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .status {
@@ -357,6 +454,45 @@
   font-size: clamp(17px, 4.4vw, 21px);
   font-weight: 720;
   letter-spacing: -0.02em;
+}
+
+.storyProgress {
+  --story-progress: 0%;
+  display: grid;
+  width: min(260px, 70vw);
+  gap: 7px;
+  margin: 10px auto 0;
+}
+
+.storyProgress span {
+  color: #8e9488;
+  font-size: 10px;
+}
+
+.storyProgress > i {
+  position: relative;
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.storyProgress > i::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--story-progress);
+  border-radius: inherit;
+  background: linear-gradient(90deg, #79a962, #dff1d4);
+  content: "";
+  transition: width 140ms ease-out;
+}
+
+.serverFact {
+  margin: 9px 0 0;
+  color: #9ca294;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .offline {
@@ -490,6 +626,22 @@
   65% { transform: scale(0.985); }
 }
 
+@keyframes story-button-ring {
+  45% { transform: scale(1.035); }
+  78% { transform: scale(0.99); }
+}
+
+@keyframes story-button-spark {
+  35% { transform: rotate(-0.8deg) scale(1.045); }
+  70% { transform: rotate(0.8deg) scale(0.99); }
+}
+
+@keyframes story-button-finale {
+  28% { transform: scale(1.055); }
+  54% { transform: scale(0.985); }
+  78% { transform: scale(1.025); }
+}
+
 @keyframes confetti {
   0% {
     opacity: 1;
@@ -499,6 +651,41 @@
   100% {
     opacity: 0;
     transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1) rotate(var(--r));
+  }
+}
+
+@keyframes story-ring {
+  0% {
+    opacity: 0.75;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+}
+
+@keyframes story-spark {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+  70% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1.15);
+  }
+}
+
+@keyframes finale-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  36% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: scale(1.16);
   }
 }
 
@@ -681,7 +868,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .confetti {
+  .confetti,
+  .storyRings,
+  .storySparks,
+  .finaleGlow {
     display: none;
+  }
+
+  .checkInButton,
+  .storyProgress > i::after {
+    animation: none !important;
+    transition: none;
   }
 }

@@ -19,8 +19,8 @@ import {
   updatePersonSharing,
 } from "@/lib/check-in-api";
 import {
+  formatDirectPersonCheckIn,
   formatPublicIdInput,
-  formatPersonCheckIn,
   getCheckInAgeMs,
   getCheckInColor,
   isValidPublicId,
@@ -344,7 +344,11 @@ export function PeopleView({
                           <strong>{person.user.displayName}</strong>
                           <span className={styles.personStatus}>
                             <i style={{ background: statusColor }} />
-                            {formatPersonCheckIn(person.lastCheckInAt, nowMs, theirSharing)}
+                            {formatDirectPersonCheckIn(
+                              person.lastCheckInAt,
+                              nowMs,
+                              person.checkInState,
+                            )}
                           </span>
                         </div>
                         <button

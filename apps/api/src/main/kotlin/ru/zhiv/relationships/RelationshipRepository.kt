@@ -8,6 +8,13 @@ enum class SharingMode {
     LATEST_ONLY,
 }
 
+enum class PersonCheckInState {
+    HIDDEN,
+    WAITING_INITIAL,
+    WAITING_AFTER_REENABLE,
+    AVAILABLE,
+}
+
 enum class RelationshipState {
     SELF,
     NONE,
@@ -52,6 +59,7 @@ data class PersonSnapshot(
     val connectedAt: OffsetDateTime,
     val mySharingMode: SharingMode,
     val theirSharingMode: SharingMode,
+    val checkInState: PersonCheckInState,
     val lastCheckInAt: OffsetDateTime?,
 )
 

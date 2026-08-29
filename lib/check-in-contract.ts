@@ -32,6 +32,11 @@ export type ApiErrorResponse = {
 };
 
 export type SharingMode = "OFF" | "LATEST_ONLY";
+export type PersonCheckInState =
+  | "HIDDEN"
+  | "WAITING_INITIAL"
+  | "WAITING_AFTER_REENABLE"
+  | "AVAILABLE";
 
 export type RelationshipState =
   | "SELF"
@@ -62,6 +67,7 @@ export type Person = {
   connectedAt: string;
   mySharingMode: SharingMode;
   theirSharingMode: SharingMode;
+  checkInState: PersonCheckInState;
   lastCheckInAt: string | null;
 };
 

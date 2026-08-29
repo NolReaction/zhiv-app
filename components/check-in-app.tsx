@@ -11,15 +11,25 @@ import type {
 } from "@/lib/check-in-contract";
 import { ApiError, bootstrap, createCheckIn, getGroups, getMe, getPeople } from "@/lib/check-in-api";
 import {
-  BURST_RESET_MS,
   formatLastCheckIn,
-  getBurstMessage,
   getCheckInMilestone,
   getCheckInAgeMs,
   getCheckInColor,
   isValidDisplayName,
   normalizeDisplayName,
 } from "@/lib/check-in-presentation";
+import {
+  advanceClickerRun,
+  CLICKER_FINAL_TAP,
+  CLICKER_IDLE_RESET_MS,
+  createClickerRun,
+  getClickerFrame,
+  planClickerTap,
+  resetExpiredClickerRun,
+  rotateClickerStory,
+  type ClickerEffect,
+  type ClickerRun,
+} from "@/lib/clicker-story";
 import { PeopleView } from "./people-view";
 import styles from "./check-in-app.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
@@ -164,9 +174,13 @@ export function CheckInApp() {
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
-  const [tapCount, setTapCount] = useState(0);
+  const [clickerRun, setClickerRun] = useState<ClickerRun>(() => createClickerRun());
+  const [queuedTapCount, setQueuedTapCount] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  const [confettiBurst, setConfettiBurst] = useState(0);
+  const [storyEffect, setStoryEffect] = useState<{
+    type: ClickerEffect;
+    burst: number;
+  } | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>("check-in");
   const [people, setPeople] = useState<PeopleResponse | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
@@ -179,9 +193,40 @@ export function CheckInApp() {
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityNoticeTimer = useRef<number | null>(null);
   const identityActionPending = useRef(false);
+  const checkInSending = useRef(false);
+  const clickerRunRef = useRef(clickerRun);
+  const queuedTapCountRef = useRef(0);
+  const storyEffectBurst = useRef(0);
+  const storyEffectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCheckIn = useRef<PendingCheckIn | null>(null);
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
   const homeHeading = useRef<HTMLHeadingElement | null>(null);
+
+  const commitClickerRun = useCallback((run: ClickerRun) => {
+    clickerRunRef.current = run;
+    setClickerRun(run);
+  }, []);
+
+  const clearQueuedTaps = useCallback(() => {
+    queuedTapCountRef.current = 0;
+    setQueuedTapCount(0);
+  }, []);
+
+  const queueTap = useCallback(() => {
+    queuedTapCountRef.current = Math.min(
+      queuedTapCountRef.current + 1,
+      CLICKER_FINAL_TAP,
+    );
+    setQueuedTapCount(queuedTapCountRef.current);
+  }, []);
+
+  const clearStoryEffect = useCallback(() => {
+    if (storyEffectTimer.current) {
+      clearTimeout(storyEffectTimer.current);
+      storyEffectTimer.current = null;
+    }
+    setStoryEffect(null);
+  }, []);
 
   const clearPendingBootstrap = useCallback(() => {
     pendingBootstrap.current = null;
@@ -198,11 +243,12 @@ export function CheckInApp() {
       clearTimeout(burstTimer.current);
       burstTimer.current = null;
     }
+    clearStoryEffect();
+    clearQueuedTaps();
     setNextAllowedAt(null);
-    setTapCount(0);
+    commitClickerRun(createClickerRun());
     setNotice(null);
-    setConfettiBurst(0);
-  }, []);
+  }, [clearQueuedTaps, clearStoryEffect, commitClickerRun]);
 
   const loseSession = useCallback(() => {
     clearPendingCheckIn();
@@ -260,6 +306,7 @@ export function CheckInApp() {
     }
     clearPendingBootstrap();
     resetTransientCheckIn();
+    commitClickerRun(createClickerRun(identity.checkInCount));
     setMe(identity);
     setLastCheckInAt(identity.lastCheckInAt);
     setCheckInCount(identity.checkInCount);
@@ -269,7 +316,7 @@ export function CheckInApp() {
     setSystemError(null);
     setActiveView("check-in");
     setScreen("home");
-  }, [clearPendingBootstrap, clearPendingCheckIn, resetTransientCheckIn]);
+  }, [clearPendingBootstrap, clearPendingCheckIn, commitClickerRun, resetTransientCheckIn]);
 
   useEffect(() => {
     let active = true;
@@ -314,6 +361,7 @@ export function CheckInApp() {
       window.removeEventListener("offline", markOffline);
       window.clearInterval(clock);
       if (burstTimer.current) clearTimeout(burstTimer.current);
+      if (storyEffectTimer.current) clearTimeout(storyEffectTimer.current);
       if (identityNoticeTimer.current) clearTimeout(identityNoticeTimer.current);
     };
   }, [adoptMe, clearPendingCheckIn, resetTransientCheckIn]);
@@ -370,23 +418,40 @@ export function CheckInApp() {
     }
   }
 
-  const resetBurstLater = useCallback(() => {
-    if (burstTimer.current) clearTimeout(burstTimer.current);
-    burstTimer.current = setTimeout(() => {
-      setTapCount(0);
-      setNotice(null);
-    }, BURST_RESET_MS);
+  const triggerStoryEffect = useCallback((type: ClickerEffect) => {
+    if (storyEffectTimer.current) clearTimeout(storyEffectTimer.current);
+    storyEffectBurst.current += 1;
+    setStoryEffect({ type, burst: storyEffectBurst.current });
+    storyEffectTimer.current = setTimeout(() => {
+      setStoryEffect(null);
+      storyEffectTimer.current = null;
+    }, type === "finale" ? 1_900 : type === "rings" ? 1_400 : 1_150);
   }, []);
 
+  const resetClickerLater = useCallback(() => {
+    if (burstTimer.current) clearTimeout(burstTimer.current);
+    burstTimer.current = setTimeout(() => {
+      commitClickerRun(rotateClickerStory(clickerRunRef.current));
+      setNotice(null);
+      clearStoryEffect();
+      burstTimer.current = null;
+    }, CLICKER_IDLE_RESET_MS);
+  }, [clearStoryEffect, commitClickerRun]);
+
   const registerTap = useCallback(
-    (firstAccepted = false, milestone: string | null = null) => {
-      const next = firstAccepted ? 1 : Math.max(2, tapCount + 1);
-      setTapCount(next);
-      setNotice(milestone ?? getBurstMessage(next));
-      if (next === 5) setConfettiBurst((value) => value + 1);
-      resetBurstLater();
+    (restartStory = false, steps = 1) => {
+      const current = clickerRunRef.current;
+      let next = restartStory ? { ...current, tapCount: 0 } : current;
+      let latestEffect: ClickerEffect | null = null;
+      for (let step = 0; step < Math.max(1, steps); step += 1) {
+        next = advanceClickerRun(next, Date.now());
+        latestEffect = getClickerFrame(next)?.effect ?? latestEffect;
+      }
+      commitClickerRun(next);
+      if (latestEffect) triggerStoryEffect(latestEffect);
+      resetClickerLater();
     },
-    [resetBurstLater, tapCount],
+    [commitClickerRun, resetClickerLater, triggerStoryEffect],
   );
 
   async function handleBootstrap(event: FormEvent<HTMLFormElement>) {
@@ -444,15 +509,39 @@ export function CheckInApp() {
   }
 
   async function handleCheckIn() {
+    const currentRun = resetExpiredClickerRun(clickerRunRef.current);
+    if (currentRun !== clickerRunRef.current) {
+      if (burstTimer.current) {
+        clearTimeout(burstTimer.current);
+        burstTimer.current = null;
+      }
+      commitClickerRun(currentRun);
+      clearStoryEffect();
+      setNotice(null);
+    }
     const adjustedNow = Date.now() + clockOffsetMs;
-    if (nextAllowedAt && adjustedNow < Date.parse(nextAllowedAt)) {
-      registerTap(false);
+    const tapPlan = planClickerTap(
+      currentRun,
+      Boolean(nextAllowedAt && adjustedNow < Date.parse(nextAllowedAt)),
+    );
+    if (tapPlan === "ADVANCE_LOCAL") {
+      registerTap();
       return;
     }
-    if (isSending) return;
+    if (tapPlan === "START_LOCAL") {
+      setNotice(null);
+      registerTap();
+      return;
+    }
+    if (checkInSending.current) {
+      queueTap();
+      return;
+    }
 
+    queueTap();
+    checkInSending.current = true;
     setIsSending(true);
-    setNotice("Отправляю…");
+    setNotice("Проверяем сервер · тапы уже считаются");
     try {
       if (pendingCheckIn.current?.expiresAt && pendingCheckIn.current.expiresAt <= Date.now()) {
         clearPendingCheckIn();
@@ -477,7 +566,10 @@ export function CheckInApp() {
       setNextAllowedAt(response.nextAllowedAt);
       setClockOffsetMs(serverOffset(response.serverTime));
       setClientNowMs(Date.now());
-      registerTap(true, getCheckInMilestone(response.checkInCount));
+      setNotice(
+        getCheckInMilestone(response.checkInCount) ?? "Отметка сохранена · только что",
+      );
+      registerTap(true, queuedTapCountRef.current);
     } catch (error) {
       if (error instanceof ApiError && error.status === 429 && error.body) {
         const cooldown = error.body as CooldownResponse;
@@ -485,14 +577,17 @@ export function CheckInApp() {
         setLastCheckInAt(cooldown.checkedAt);
         setNextAllowedAt(cooldown.nextAllowedAt);
         setClockOffsetMs(serverOffset(cooldown.serverTime));
-        registerTap(false);
+        setNotice(null);
+        registerTap(true, queuedTapCountRef.current);
       } else if (error instanceof ApiError && error.status === 401) {
         loseSession();
       } else {
         setNotice("Связь оборвалась · нажмите ещё раз для проверки");
-        resetBurstLater();
+        resetClickerLater();
       }
     } finally {
+      clearQueuedTaps();
+      checkInSending.current = false;
       setIsSending(false);
     }
   }
@@ -500,8 +595,17 @@ export function CheckInApp() {
   const adjustedNow = clientNowMs + clockOffsetMs;
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonColor = getCheckInColor(ageMs);
-  const status = notice ?? formatLastCheckIn(lastCheckInAt, adjustedNow);
-  const pulseClass = tapCount >= 2 ? styles[`tap${Math.min(tapCount, 5)}`] : "";
+  const storyFrame = getClickerFrame(clickerRun);
+  const serverStatus = notice ?? formatLastCheckIn(lastCheckInAt, adjustedNow);
+  const status = storyFrame?.message ?? serverStatus;
+  const earlyTapClass =
+    clickerRun.tapCount >= 2 && clickerRun.tapCount <= 4
+      ? styles[`tap${clickerRun.tapCount}`]
+      : "";
+  const effectClass = storyEffect
+    ? styles[`effect${storyEffect.type[0].toUpperCase()}${storyEffect.type.slice(1)}`]
+    : "";
+  const pulseClass = effectClass || earlyTapClass;
   const buttonStyle = useMemo(
     () => ({ "--check-in-color": buttonColor }) as CSSProperties,
     [buttonColor],
@@ -671,13 +775,34 @@ export function CheckInApp() {
             >
               <span>Я ЖИВОЙ</span>
             </button>
-            {tapCount >= 2 ? (
+            {storyFrame && clickerRun.tapCount >= 2 ? (
               <span className={styles.tapCounter} aria-hidden="true">
-                ×{tapCount}
+                ×{storyFrame.tapCount}
+              </span>
+            ) : queuedTapCount >= 2 ? (
+              <span className={styles.tapCounter} aria-hidden="true">
+                ×{queuedTapCount}
               </span>
             ) : null}
-            {confettiBurst > 0 && tapCount === 5 ? (
-              <div key={confettiBurst} className={styles.confetti} aria-hidden="true">
+            {storyEffect?.type === "rings" || storyEffect?.type === "finale" ? (
+              <div
+                key={`rings-${storyEffect.burst}`}
+                className={`${styles.storyRings} ${
+                  storyEffect.type === "finale" ? styles.storyRingsFinale : ""
+                }`}
+                aria-hidden="true"
+              >
+                <i />
+                <i />
+                <i />
+              </div>
+            ) : null}
+            {storyEffect?.type === "sparks" || storyEffect?.type === "finale" ? (
+              <div
+                key={`sparks-${storyEffect.burst}`}
+                className={styles.storySparks}
+                aria-hidden="true"
+              >
                 {CONFETTI.map((piece, index) => (
                   <i
                     key={index}
@@ -693,12 +818,70 @@ export function CheckInApp() {
                 ))}
               </div>
             ) : null}
+            {storyEffect?.type === "confetti" || storyEffect?.type === "finale" ? (
+              <div
+                key={`confetti-${storyEffect.burst}`}
+                className={`${styles.confetti} ${
+                  storyEffect.type === "finale" ? styles.finaleConfetti : ""
+                }`}
+                aria-hidden="true"
+              >
+                {CONFETTI.map((piece, index) => (
+                  <i
+                    key={index}
+                    style={
+                      {
+                        "--x": `${piece.x}px`,
+                        "--y": `${piece.y}px`,
+                        "--r": `${piece.r}deg`,
+                        "--piece": piece.color,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+            {storyEffect?.type === "finale" ? (
+              <div
+                key={`finale-${storyEffect.burst}`}
+                className={styles.finaleGlow}
+                aria-hidden="true"
+              />
+            ) : null}
           </div>
 
-          <div className={styles.statusBlock}>
-            <p className={styles.status} role="status" aria-live="polite">
+          <div className={styles.statusBlock} data-story-active={storyFrame ? "true" : "false"}>
+            {storyFrame ? (
+              <p className={styles.storyLabel}>СЮЖЕТ · {storyFrame.storyTitle}</p>
+            ) : null}
+            {storyFrame ? (
+              <p className={styles.srOnly} role="status" aria-live="polite">
+                {`Сюжет «${storyFrame.storyTitle}». ${status}. ${serverStatus}`}
+              </p>
+            ) : null}
+            <p
+              className={styles.status}
+              role={storyFrame ? undefined : "status"}
+              aria-live={storyFrame ? undefined : "polite"}
+            >
               {status}
             </p>
+            {storyFrame ? (
+              <>
+                <div
+                  className={styles.storyProgress}
+                  style={{ "--story-progress": `${storyFrame.progress * 100}%` } as CSSProperties}
+                >
+                  <span>
+                    {storyFrame.nextSceneAt
+                      ? `Следующая сцена · ×${storyFrame.nextSceneAt}`
+                      : "Финал открыт · ещё тап — новый сюжет"}
+                  </span>
+                  <i aria-hidden="true" />
+                </div>
+                <p className={styles.serverFact}>Сервер · {serverStatus}</p>
+              </>
+            ) : null}
             {people ? (
               <p className={styles.audience}>
                 {people.audienceCount === 0

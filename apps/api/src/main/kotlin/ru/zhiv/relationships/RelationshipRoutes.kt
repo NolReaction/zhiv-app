@@ -288,6 +288,7 @@ private fun PersonSnapshot.toDto() = PersonDto(
     connectedAt = connectedAt.toInstant().toString(),
     mySharingMode = mySharingMode.name,
     theirSharingMode = theirSharingMode.name,
+    checkInState = checkInState.name,
     lastCheckInAt = lastCheckInAt?.toInstant()?.toString(),
 )
 
