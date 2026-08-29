@@ -8,6 +8,7 @@ import {
   LogOut,
   Pencil,
   Plus,
+  Search,
   Trash2,
   UserMinus,
   UsersRound,
@@ -30,6 +31,7 @@ import { formatPersonCheckIn, getCheckInAgeMs, getCheckInColor } from "@/lib/che
 import {
   isValidGroupEmoji,
   isValidGroupTitle,
+  matchesGroupPeopleSearch,
   normalizeGroupEmoji,
   normalizeGroupTitle,
 } from "@/lib/group-input";
@@ -150,6 +152,7 @@ export function GroupsSection({
   const [title, setTitle] = useState("Семья");
   const [emoji, setEmoji] = useState<string | null>("👨‍👩‍👧‍👦");
   const [selectedPeople, setSelectedPeople] = useState<Set<string>>(new Set());
+  const [peopleQuery, setPeopleQuery] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
@@ -186,6 +189,7 @@ export function GroupsSection({
     setTitle("Семья");
     setEmoji("👨‍👩‍👧‍👦");
     setSelectedPeople(new Set());
+    setPeopleQuery("");
     setLocalError(null);
   }
 
@@ -262,6 +266,12 @@ export function GroupsSection({
     ]);
     return people.people.filter((person) => !unavailable.has(person.user.publicId));
   }, [inviteGroup, people]);
+
+  const visibleCreatePeople = useMemo(() => {
+    if (!people) return [];
+    return people.people.filter((person) =>
+      matchesGroupPeopleSearch(person.user.displayName, peopleQuery));
+  }, [people, peopleQuery]);
 
   return (
     <section className={styles.section} aria-labelledby="groups-title">
@@ -508,25 +518,48 @@ export function GroupsSection({
             <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={64} />
           </label>
           {people && people.people.length > 0 ? (
-            <fieldset className={styles.peoplePicker}>
-              <legend>Кого пригласить</legend>
-              {people.people.map((person) => (
-                <label key={person.circleId}>
+            <div className={styles.peopleSelection}>
+              <label className={styles.field}>
+                <span>Поиск по имени</span>
+                <span className={styles.peopleSearch}>
+                  <Search size={17} aria-hidden="true" />
                   <input
-                    type="checkbox"
-                    checked={selectedPeople.has(person.circleId)}
-                    onChange={(event) => setSelectedPeople((current) => {
-                      const next = new Set(current);
-                      if (event.target.checked) next.add(person.circleId);
-                      else next.delete(person.circleId);
-                      return next;
-                    })}
+                    type="search"
+                    value={peopleQuery}
+                    onChange={(event) => setPeopleQuery(event.target.value)}
+                    placeholder="Начните вводить имя"
+                    autoComplete="off"
+                    aria-controls="new-group-people"
                   />
-                  <span>{initials(person.user.displayName)}</span>
-                  <strong>{person.user.displayName}</strong>
-                </label>
-              ))}
-            </fieldset>
+                </span>
+              </label>
+              <fieldset className={styles.peoplePicker} id="new-group-people">
+                <legend>
+                  Кого пригласить{selectedPeople.size > 0 ? ` · выбрано ${selectedPeople.size}` : ""}
+                </legend>
+                {visibleCreatePeople.map((person) => (
+                  <label key={person.circleId}>
+                    <input
+                      type="checkbox"
+                      checked={selectedPeople.has(person.circleId)}
+                      onChange={(event) => setSelectedPeople((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) next.add(person.circleId);
+                        else next.delete(person.circleId);
+                        return next;
+                      })}
+                    />
+                    <span>{initials(person.user.displayName)}</span>
+                    <strong>{person.user.displayName}</strong>
+                  </label>
+                ))}
+                {visibleCreatePeople.length === 0 ? (
+                  <p className={styles.noPeopleFound} role="status">
+                    По этому имени никого не нашли.
+                  </p>
+                ) : null}
+              </fieldset>
+            </div>
           ) : (
             <p className={styles.helper}>Сначала добавьте людей в «Свои» — группу можно создать и без них.</p>
           )}

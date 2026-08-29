@@ -251,3 +251,18 @@ test("applies clickjacking protection to the root page and nested routes", async
   assert.match(config, /X-Frame-Options["'],\s*value:\s*["']DENY/);
   assert.match(config, /frame-ancestors 'none'/);
 });
+
+test("keeps primary navigation visible while long people lists scroll", async () => {
+  const appStyles = await readFile(
+    new URL("../components/check-in-app.module.css", import.meta.url),
+    "utf8",
+  );
+  const peopleStyles = await readFile(
+    new URL("../components/people-view.module.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
+  assert.match(appStyles, /grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/);
+  assert.match(peopleStyles, /\.view\s*\{[^}]*overflow-y:\s*auto;/s);
+});

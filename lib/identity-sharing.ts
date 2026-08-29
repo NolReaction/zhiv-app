@@ -111,7 +111,7 @@ function copyTextFromUserGesture(
     try {
       return clipboard.writeText(text).then(
         () => true,
-        () => false,
+        () => copyWithLegacyCommand(environment.document, text),
       );
     } catch {
       // A synchronous Clipboard API failure can still use the legacy user-gesture path.
@@ -119,6 +119,13 @@ function copyTextFromUserGesture(
   }
 
   return Promise.resolve(copyWithLegacyCommand(environment.document, text));
+}
+
+export function copyText(
+  text: string,
+  environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
+): Promise<boolean> {
+  return copyTextFromUserGesture(text, environment);
 }
 
 function isAbortError(error: unknown): boolean {
@@ -169,7 +176,7 @@ export function shareIdentity(
 
   // Both privileged browser actions must start in the same trusted click.
   // Do not place an await between these calls: Safari would lose transient activation.
-  const copyPromise = copyTextFromUserGesture(publicId, environment);
+  const copyPromise = copyText(publicId, environment);
   const sharePromise = startNativeShare(shareData, environment);
 
   return Promise.all([copyPromise, sharePromise]).then(([copied, shareOutcome]) => ({

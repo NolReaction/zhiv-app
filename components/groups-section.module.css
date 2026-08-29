@@ -326,6 +326,12 @@
   color: #f4f5ef !important;
 }
 
+.dialog {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .dialogDescription {
   color: #92988d !important;
   line-height: 1.5;
@@ -383,6 +389,28 @@
   border-color: #b7d8a2;
 }
 
+.peopleSelection {
+  display: grid;
+  gap: 12px;
+}
+
+.peopleSearch {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.peopleSearch svg {
+  position: absolute;
+  left: 14px;
+  color: #858b80;
+  pointer-events: none;
+}
+
+.peopleSearch input {
+  padding-left: 42px;
+}
+
 .peoplePicker {
   display: grid;
   max-height: 230px;
@@ -428,6 +456,13 @@
 
 .peoplePicker label strong {
   font-size: 13px;
+}
+
+.noPeopleFound {
+  margin: 6px 2px 0;
+  color: #8d9387;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .primaryButton {

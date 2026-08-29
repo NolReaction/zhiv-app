@@ -133,7 +133,11 @@
 
 .shell {
   display: grid;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
   width: min(100%, 760px);
   margin: 0 auto;
 }
@@ -212,9 +216,12 @@
 
 .action {
   display: grid;
+  min-height: 0;
   align-content: center;
   justify-items: center;
   gap: clamp(28px, 6vh, 50px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 24px 0;
 }
 
@@ -364,6 +371,8 @@
 }
 
 .footer {
+  position: relative;
+  z-index: 10;
   display: grid;
   justify-items: center;
   gap: 12px;

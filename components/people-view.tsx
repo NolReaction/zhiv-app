@@ -19,12 +19,14 @@ import {
   updatePersonSharing,
 } from "@/lib/check-in-api";
 import {
+  formatPublicIdInput,
   formatPersonCheckIn,
   getCheckInAgeMs,
   getCheckInColor,
   isValidPublicId,
   normalizePublicId,
 } from "@/lib/check-in-presentation";
+import { copyText } from "@/lib/identity-sharing";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -190,14 +192,16 @@ export function PeopleView({
     });
   }
 
-  async function copyId(id: string) {
-    try {
-      await navigator.clipboard.writeText(id);
+  function copyId(id: string) {
+    setDialogError(null);
+    void copyText(id).then((copied) => {
+      if (!copied) {
+        setDialogError("Не удалось скопировать ID");
+        return;
+      }
       setCopiedId(id);
       window.setTimeout(() => setCopiedId((value) => (value === id ? null : value)), 1_600);
-    } catch {
-      setDialogError("Не удалось скопировать ID");
-    }
+    });
   }
 
   const content = useMemo(() => {
@@ -353,7 +357,7 @@ export function PeopleView({
                           className={styles.iconButton}
                           type="button"
                           aria-label={`Скопировать ID ${person.user.displayName}`}
-                          onClick={() => void copyId(person.user.publicId)}
+                          onClick={() => copyId(person.user.publicId)}
                         >
                           {copiedId === person.user.publicId ? <Check size={17} /> : <Copy size={17} />}
                         </button>
@@ -412,11 +416,12 @@ export function PeopleView({
                 id="person-public-id"
                 value={publicId}
                 onChange={(event) => {
-                  setPublicId(normalizePublicId(event.target.value));
+                  setPublicId(formatPublicIdInput(event.target.value));
                   setLookup(null);
                   setDialogError(null);
                 }}
                 placeholder="7K3P-2Q9M-W8ZR"
+                aria-describedby="person-public-id-hint"
                 autoCapitalize="characters"
                 autoComplete="off"
                 spellCheck={false}
@@ -427,6 +432,9 @@ export function PeopleView({
                 <Search size={20} />
               </button>
             </div>
+            <p className={styles.searchHint} id="person-public-id-hint">
+              Дефисы можно вводить или пропустить — приложение расставит их само.
+            </p>
           </form>
 
           {lookup ? (
