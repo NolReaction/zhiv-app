@@ -226,6 +226,65 @@
   padding: 24px 0;
 }
 
+.checkInCluster {
+  display: grid;
+  justify-items: center;
+  gap: 11px;
+}
+
+.streakPill {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #959b90;
+  padding: 7px 13px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.streakPill svg {
+  color: #72786e;
+}
+
+.streakPill strong {
+  color: #e8ebe4;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.streakPill > span {
+  font-weight: 760;
+}
+
+.streakPill small {
+  grid-column: 1 / -1;
+  color: #747a70;
+  font-size: 9px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.streakPill[data-state="complete"] {
+  border-color: rgba(248, 164, 72, 0.22);
+  background: rgba(248, 164, 72, 0.08);
+  color: #e7bf8d;
+}
+
+.streakPill[data-state="complete"] svg {
+  fill: #f39b3d;
+  color: #f39b3d;
+  filter: drop-shadow(0 0 7px rgba(243, 155, 61, 0.28));
+}
+
+.streakPill[data-state="waiting"] svg {
+  color: #f0aa5f;
+}
+
 .buttonStage {
   position: relative;
   display: grid;
@@ -324,22 +383,31 @@
   animation: story-button-finale 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+.effectChampion {
+  animation: story-button-champion 1.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 .tapCounter {
   position: absolute;
   z-index: 3;
   top: 7%;
   right: 5%;
   display: grid;
+  width: max-content;
   min-width: 48px;
-  height: 48px;
+  min-height: 48px;
+  max-width: min(58vw, 190px);
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 999px;
   background: rgba(13, 16, 11, 0.78);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   color: white;
+  padding: 0 13px;
   font-size: 15px;
   font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   backdrop-filter: blur(12px);
 }
 
@@ -430,13 +498,26 @@
   animation: finale-glow 1.6s ease-out forwards;
 }
 
+.championBurst {
+  position: absolute;
+  z-index: 6;
+  inset: 50% auto auto 50%;
+  color: #fff4a4;
+  font-size: clamp(26px, 8vw, 46px);
+  font-weight: 950;
+  letter-spacing: -0.05em;
+  text-shadow: 0 4px 26px rgba(245, 232, 91, 0.55);
+  pointer-events: none;
+  animation: champion-burst 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
 .statusBlock {
   min-height: 52px;
   text-align: center;
 }
 
 .statusBlock[data-story-active="true"] {
-  min-height: 132px;
+  min-height: 174px;
 }
 
 .storyLabel {
@@ -495,6 +576,32 @@
   line-height: 1.35;
 }
 
+.storyReward {
+  display: grid;
+  width: min(300px, 78vw);
+  gap: 3px;
+  margin: 10px auto 0;
+  border: 1px solid rgba(245, 232, 91, 0.12);
+  border-radius: 12px;
+  background: rgba(245, 232, 91, 0.045);
+  padding: 7px 11px;
+}
+
+.storyReward strong {
+  color: #efe59b;
+  font-size: 10px;
+}
+
+.storyReward span,
+.rewardHint {
+  color: #7f857a;
+  font-size: 9px;
+}
+
+.rewardHint {
+  margin: 9px 0 0;
+}
+
 .offline {
   margin: 8px 0 0;
   color: #efb3af;
@@ -530,8 +637,8 @@
 
 .bottomNav {
   display: grid;
-  width: min(100%, 330px);
-  grid-template-columns: repeat(2, 1fr);
+  width: min(100%, 410px);
+  grid-template-columns: repeat(3, 1fr);
   gap: 5px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 20px;
@@ -642,6 +749,13 @@
   78% { transform: scale(1.025); }
 }
 
+@keyframes story-button-champion {
+  22% { transform: rotate(-1deg) scale(1.065); }
+  44% { transform: rotate(1deg) scale(0.98); }
+  68% { transform: scale(1.04); }
+  88% { transform: scale(0.995); }
+}
+
 @keyframes confetti {
   0% {
     opacity: 1;
@@ -686,6 +800,25 @@
   100% {
     opacity: 0;
     transform: scale(1.16);
+  }
+}
+
+@keyframes champion-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.65);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -80%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -125%) scale(0.9);
   }
 }
 
@@ -738,7 +871,7 @@
     position: relative;
     width: 100%;
     min-height: 64px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0;
     overflow: hidden;
     isolation: isolate;
@@ -774,7 +907,7 @@
     bottom: 5px;
     left: 5px;
     display: block;
-    width: calc((100% - 10px) / 2);
+    width: calc((100% - 10px) / 3);
     border: 1px solid rgba(223, 241, 212, 0.17);
     border-radius: 999px;
     background:
@@ -793,13 +926,18 @@
     transform: translate3d(100%, 0, 0);
   }
 
+  .bottomNav[data-active-view="profile"] .navLens {
+    transform: translate3d(200%, 0, 0);
+  }
+
   .bottomNav button {
     z-index: 2;
     min-height: 52px;
     border-radius: 999px;
     background: transparent;
     color: #9aa196;
-    font-size: 12px;
+    gap: 6px;
+    font-size: 11px;
     transition:
       color 220ms ease,
       text-shadow 220ms ease,
@@ -849,7 +987,8 @@
 @media (forced-colors: active) {
   .checkInButton,
   .continueButton,
-  .retryButton {
+  .retryButton,
+  .streakPill {
     border: 3px solid ButtonText;
   }
 
@@ -871,7 +1010,8 @@
   .confetti,
   .storyRings,
   .storySparks,
-  .finaleGlow {
+  .finaleGlow,
+  .championBurst {
     display: none;
   }
 

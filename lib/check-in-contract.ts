@@ -3,10 +3,25 @@ export type PublicUser = {
   displayName: string;
 };
 
+export type DailyStreak = {
+  currentDays: number;
+  longestDays: number;
+  checkedInToday: boolean;
+  nextDayAt: string;
+};
+
+export type ProfileState = {
+  avatarUrl: string | null;
+  displayNameChangedAt: string | null;
+  displayNameChangeAvailableAt: string | null;
+};
+
 export type MeResponse = {
   user: PublicUser;
   lastCheckInAt: string | null;
   checkInCount: number;
+  streak: DailyStreak;
+  profile: ProfileState;
   serverTime: string;
 };
 
@@ -14,6 +29,7 @@ export type CheckInResponse = {
   eventId: string;
   checkedAt: string;
   checkInCount: number;
+  streak: DailyStreak;
   serverTime: string;
   nextAllowedAt: string;
   replayed: boolean;
@@ -22,8 +38,16 @@ export type CheckInResponse = {
 export type CooldownResponse = {
   code: "CHECK_IN_COOLDOWN";
   checkedAt: string;
+  streak: DailyStreak;
   serverTime: string;
   nextAllowedAt: string;
+};
+
+export type DisplayNameCooldownResponse = {
+  code: "DISPLAY_NAME_COOLDOWN";
+  message: string;
+  availableAt: string;
+  serverTime: string;
 };
 
 export type ApiErrorResponse = {

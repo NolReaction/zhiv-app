@@ -3,6 +3,13 @@ package ru.zhiv.checkins
 import java.time.OffsetDateTime
 import java.util.UUID
 
+data class DailyStreakSnapshot(
+    val currentDays: Long,
+    val longestDays: Long,
+    val checkedInToday: Boolean,
+    val nextDayAt: OffsetDateTime,
+)
+
 sealed interface CheckInResult {
     data object Unauthorized : CheckInResult
 
@@ -10,6 +17,7 @@ sealed interface CheckInResult {
         val eventId: UUID,
         val checkedAt: OffsetDateTime,
         val checkInCount: Long,
+        val streak: DailyStreakSnapshot,
         val serverTime: OffsetDateTime,
         val nextAllowedAt: OffsetDateTime,
         val replayed: Boolean,
@@ -17,6 +25,7 @@ sealed interface CheckInResult {
 
     data class Cooldown(
         val checkedAt: OffsetDateTime,
+        val streak: DailyStreakSnapshot,
         val serverTime: OffsetDateTime,
         val nextAllowedAt: OffsetDateTime,
     ) : CheckInResult

@@ -10,6 +10,7 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.http.ApiErrorResponse
 import ru.zhiv.http.CheckInResponse
 import ru.zhiv.http.CooldownResponse
+import ru.zhiv.http.DailyStreakDto
 import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.parseCanonicalUuid
 import ru.zhiv.http.sessionCookie
@@ -54,6 +55,7 @@ fun Route.checkInRoutes(
                     eventId = result.eventId.toString(),
                     checkedAt = result.checkedAt.toInstant().toString(),
                     checkInCount = result.checkInCount,
+                    streak = result.streak.toDto(),
                     serverTime = result.serverTime.toInstant().toString(),
                     nextAllowedAt = result.nextAllowedAt.toInstant().toString(),
                     replayed = result.replayed,
@@ -69,6 +71,7 @@ fun Route.checkInRoutes(
                     HttpStatusCode.TooManyRequests,
                     CooldownResponse(
                         checkedAt = result.checkedAt.toInstant().toString(),
+                        streak = result.streak.toDto(),
                         serverTime = result.serverTime.toInstant().toString(),
                         nextAllowedAt = result.nextAllowedAt.toInstant().toString(),
                     ),
@@ -77,3 +80,10 @@ fun Route.checkInRoutes(
         }
     }
 }
+
+private fun DailyStreakSnapshot.toDto() = DailyStreakDto(
+    currentDays = currentDays,
+    longestDays = longestDays,
+    checkedInToday = checkedInToday,
+    nextDayAt = nextDayAt.toInstant().toString(),
+)

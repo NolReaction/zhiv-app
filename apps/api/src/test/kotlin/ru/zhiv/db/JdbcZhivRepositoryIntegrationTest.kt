@@ -12,16 +12,19 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.checkins.CheckInResult
 import ru.zhiv.config.AppConfig
 import ru.zhiv.identity.PublicIdGenerator
+import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.relationships.RelationshipResult
 import ru.zhiv.relationships.PersonCheckInState
 import ru.zhiv.relationships.RequestAction
 import ru.zhiv.relationships.SharingMode
 import ru.zhiv.security.TokenCodec
 import java.sql.SQLException
+import java.time.OffsetDateTime
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -96,6 +99,8 @@ class JdbcZhivRepositoryIntegrationTest {
         )
         assertEquals(false, accepted.replayed)
         assertEquals(1, accepted.checkInCount)
+        assertEquals(1, accepted.streak.currentDays)
+        assertTrue(accepted.streak.checkedInToday)
 
         val replay = assertIs<CheckInResult.Accepted>(
             repository.record(secondSession.hash, eventKey),
@@ -107,6 +112,113 @@ class JdbcZhivRepositoryIntegrationTest {
         assertIs<CheckInResult.Cooldown>(
             repository.record(secondSession.hash, UUID.randomUUID()),
         )
+    }
+
+    @Test
+    fun `profile rename keeps identity stable and enforces a rolling cooldown`() = runBlocking<Unit> {
+        val session = tokens.issue()
+        val original = repository.bootstrap(
+            "Старое имя",
+            tokens.hash(UUID.randomUUID().toString()),
+            session.hash,
+            365,
+        )
+        assertEquals(0, original.streak.currentDays)
+        assertEquals(null, original.displayNameChangeAvailableAt)
+
+        val renamed = assertIs<DisplayNameUpdateResult.Success>(
+            repository.updateDisplayName(session.hash, "Новое имя", UUID.randomUUID()),
+        ).user
+        assertEquals(original.id, renamed.id)
+        assertEquals(original.publicId, renamed.publicId)
+        assertEquals("Новое имя", renamed.displayName)
+        assertNotNull(renamed.displayNameChangedAt)
+        assertNotNull(renamed.displayNameChangeAvailableAt)
+
+        val cooldown = assertIs<DisplayNameUpdateResult.Cooldown>(
+            repository.updateDisplayName(session.hash, "Ещё одно имя", UUID.randomUUID()),
+        )
+        assertTrue(cooldown.availableAt.isAfter(cooldown.serverTime))
+
+        val noOp = assertIs<DisplayNameUpdateResult.Success>(
+            repository.updateDisplayName(session.hash, "Новое имя", UUID.randomUUID()),
+        ).user
+        assertEquals(renamed.displayNameChangedAt, noOp.displayNameChangedAt)
+
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "SELECT avatar_storage_key, avatar_updated_at FROM app_users WHERE id = ?",
+            ).use { statement ->
+                statement.setObject(1, original.id)
+                statement.executeQuery().use { result ->
+                    assertTrue(result.next())
+                    assertEquals(null, result.getString("avatar_storage_key"))
+                    assertEquals(null, result.getObject("avatar_updated_at"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `daily streak uses distinct local days and breaks after a missed day`() = runBlocking<Unit> {
+        val session = tokens.issue()
+        val user = repository.bootstrap(
+            "Стрик",
+            tokens.hash(UUID.randomUUID().toString()),
+            session.hash,
+            365,
+        )
+        val sessionId = dataSource.connection.use { connection ->
+            connection.prepareStatement("SELECT id FROM app_sessions WHERE user_id = ?").use { statement ->
+                statement.setObject(1, user.id)
+                statement.executeQuery().use { result ->
+                    assertTrue(result.next())
+                    result.getObject(1, UUID::class.java)
+                }
+            }
+        }
+
+        val checkedAt = listOf(
+            "2026-01-01T10:00:00Z",
+            "2026-01-01T11:00:00Z",
+            "2026-01-02T10:00:00Z",
+            "2026-01-04T10:00:00Z",
+            "2026-01-05T10:00:00Z",
+        ).map(OffsetDateTime::parse)
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                INSERT INTO check_ins (
+                    user_id, session_id, idempotency_key, checked_at,
+                    next_allowed_at, timezone_id, local_date
+                ) VALUES (?, ?, ?, ?, ?, 'UTC', (? AT TIME ZONE 'UTC')::date)
+                """.trimIndent(),
+            ).use { statement ->
+                checkedAt.forEach { instant ->
+                    statement.setObject(1, user.id)
+                    statement.setObject(2, sessionId)
+                    statement.setObject(3, UUID.randomUUID())
+                    statement.setObject(4, instant)
+                    statement.setObject(5, instant.plusSeconds(30))
+                    statement.setObject(6, instant)
+                    statement.addBatch()
+                }
+                statement.executeBatch()
+            }
+        }
+
+        val current = loadSqlStreak(user.id, OffsetDateTime.parse("2026-01-05T12:00:00Z"))
+        assertEquals(2, current.currentDays)
+        assertEquals(2, current.longestDays)
+        assertTrue(current.checkedInToday)
+
+        val yesterday = loadSqlStreak(user.id, OffsetDateTime.parse("2026-01-06T12:00:00Z"))
+        assertEquals(2, yesterday.currentDays)
+        assertEquals(false, yesterday.checkedInToday)
+
+        val broken = loadSqlStreak(user.id, OffsetDateTime.parse("2026-01-07T12:00:00Z"))
+        assertEquals(0, broken.currentDays)
+        assertEquals(2, broken.longestDays)
     }
 
     @Test
@@ -340,4 +452,28 @@ class JdbcZhivRepositoryIntegrationTest {
         ).value as ru.zhiv.relationships.PeopleSnapshot
         assertTrue(removed.people.isEmpty())
     }
+
+    private fun loadSqlStreak(userId: UUID, serverTime: OffsetDateTime): SqlStreak =
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "SELECT * FROM daily_check_in_streak(?, ?, 'UTC')",
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.setObject(2, serverTime)
+                statement.executeQuery().use { result ->
+                    assertTrue(result.next())
+                    SqlStreak(
+                        currentDays = result.getLong("current_days"),
+                        longestDays = result.getLong("longest_days"),
+                        checkedInToday = result.getBoolean("checked_in_today"),
+                    )
+                }
+            }
+        }
+
+    private data class SqlStreak(
+        val currentDays: Long,
+        val longestDays: Long,
+        val checkedInToday: Boolean,
+    )
 }

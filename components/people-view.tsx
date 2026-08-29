@@ -219,7 +219,7 @@ export function PeopleView({
   }, [data, error, loading, onRefresh]);
 
   return (
-    <section className={styles.view} aria-labelledby="people-title">
+    <section id="people-panel" className={styles.view} aria-labelledby="people-title">
       <div className={styles.headingRow}>
         <h1 id="people-title">Личные связи</h1>
         <button
