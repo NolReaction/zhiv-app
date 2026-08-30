@@ -237,13 +237,21 @@ test("ends a series exactly after thirty idle seconds and starts the next at one
   assert.notEqual(restarted.activeSeries.storyId, started.activeSeries.storyId);
 });
 
-test("keeps the best series across weaker and stronger attempts", () => {
-  let progress = clicker.advanceClickerRun(clicker.createClickerRun(4), 1_000, 12).progress;
+test("keeps lifetime taps independent from the best series across attempts", () => {
+  let progress = clicker.advanceClickerRun(clicker.createClickerRun(4), 1_000, 6).progress;
+  assert.equal(progress.lifetimeTaps, 6);
+  assert.equal(progress.bestSeries, 6);
+
   progress = clicker.expireClickerSeries(progress, 31_000).progress;
-  progress = clicker.advanceClickerRun(progress, 32_000, 8).progress;
+  progress = clicker.advanceClickerRun(progress, 32_000, 4).progress;
   progress = clicker.expireClickerSeries(progress, 62_000).progress;
-  assert.equal(progress.bestSeries, 12);
+  assert.equal(progress.lifetimeTaps, 10);
+  assert.equal(progress.bestSeries, 6);
+  assert.equal(clicker.getClickerLevel(progress.lifetimeTaps).level, 2);
+  assert.equal(clicker.getClickerLevel(progress.bestSeries).level, 1);
+
   progress = clicker.advanceClickerRun(progress, 63_000, 13).progress;
+  assert.equal(progress.lifetimeTaps, 23);
   assert.equal(progress.bestSeries, 13);
 });
 
@@ -254,6 +262,7 @@ test("keeps the newest in-memory tap when multi-touch shares one millisecond", (
 
   assert.equal(stored.updatedAtMs, current.updatedAtMs);
   assert.equal(merged.activeSeries.tapCount, 51);
+  assert.equal(merged.lifetimeTaps, 51);
   assert.equal(merged.bestSeries, 51);
 });
 
@@ -263,9 +272,12 @@ test("caps one uninterrupted series at one hundred thousand", () => {
   const after = clicker.advanceClickerRun(champion.progress, 1_200);
 
   assert.equal(champion.progress.activeSeries.tapCount, 100_000);
+  assert.equal(champion.progress.lifetimeTaps, 100_000);
   assert.equal(champion.progress.bestSeries, 100_000);
   assert.equal(champion.effect, "champion");
   assert.equal(after.progress.activeSeries.tapCount, 100_000);
+  assert.equal(after.progress.lifetimeTaps, 100_001);
+  assert.equal(after.progress.bestSeries, 100_000);
   assert.equal(after.effect, null);
   assert.equal(clicker.getClickerFrame(after.progress).nextMilestone, null);
 
@@ -278,17 +290,71 @@ test("caps one uninterrupted series at one hundred thousand", () => {
   assert.notEqual(restarted.activeSeries.storyId, after.progress.activeSeries.storyId);
 });
 
-test("derives ten durable levels from the honest personal best", () => {
-  const boundaries = [
-    [0, 1], [4, 1], [5, 2], [10, 3], [20, 4], [50, 5], [100, 6],
-    [500, 7], [1_000, 8], [10_000, 9], [100_000, 10],
+test("derives ten durable levels from lifetime taps", () => {
+  const levels = [
+    [0, 1, "Новичок"],
+    [10, 2, "Искра"],
+    [25, 3, "Ритм"],
+    [50, 4, "Импульс"],
+    [100, 5, "Сотник"],
+    [250, 6, "Разгон"],
+    [500, 7, "Марафонец"],
+    [1_000, 8, "Тысячник"],
+    [2_500, 9, "Титан"],
+    [5_000, 10, "Чемпион"],
   ];
-  for (const [best, level] of boundaries) {
-    assert.equal(clicker.getClickerLevel(best).level, level);
+
+  assert.deepEqual(
+    clicker.CLICKER_LEVELS.map(({ minimumLifetimeTaps, level, title }) => [
+      minimumLifetimeTaps,
+      level,
+      title,
+    ]),
+    levels,
+  );
+  for (let index = 0; index < levels.length; index += 1) {
+    const [minimum, level, title] = levels[index];
+    assert.equal(clicker.getClickerLevel(minimum).level, level);
+    assert.equal(clicker.getClickerLevel(minimum).title, title);
+    const nextMinimum = levels[index + 1]?.[0];
+    if (nextMinimum !== undefined) {
+      assert.equal(clicker.getClickerLevel(nextMinimum - 1).level, level);
+    }
   }
 });
 
-test("round-trips v2 progress and never fabricates a record from v1 lifetime taps", () => {
+test("calculates level progress inside the current lifetime segment", () => {
+  assert.deepEqual(clicker.getClickerLevelProgress(0), {
+    current: 0,
+    minimum: 0,
+    maximum: 10,
+    ratio: 0,
+    remaining: 10,
+  });
+  assert.deepEqual(clicker.getClickerLevelProgress(20), {
+    current: 20,
+    minimum: 10,
+    maximum: 25,
+    ratio: 2 / 3,
+    remaining: 5,
+  });
+  assert.deepEqual(clicker.getClickerLevelProgress(25), {
+    current: 25,
+    minimum: 25,
+    maximum: 50,
+    ratio: 0,
+    remaining: 25,
+  });
+  assert.deepEqual(clicker.getClickerLevelProgress(5_000), {
+    current: 5_000,
+    minimum: 5_000,
+    maximum: 5_000,
+    ratio: 1,
+    remaining: 0,
+  });
+});
+
+test("round-trips v3 and migrates v1 and v2 progress without inventing taps", () => {
   const active = clicker.advanceClickerRun(
     clicker.createClickerRun(4),
     1_000,
@@ -296,14 +362,52 @@ test("round-trips v2 progress and never fabricates a record from v1 lifetime tap
     "f38c672e-1106-486c-887b-160d3aa13f8b",
   ).progress;
   const serialized = clicker.serializeClickerProgress(active);
+  const versionThree = JSON.parse(serialized);
+  assert.equal(versionThree.version, 3);
+  assert.equal(versionThree.lifetimeTaps, 19);
   assert.deepEqual(clicker.parseClickerProgress(serialized), active);
-  const migrated = clicker.parseClickerProgress(
+
+  const versionTwoPayload = { ...versionThree, version: 2 };
+  delete versionTwoPayload.lifetimeTaps;
+  const versionTwo = clicker.parseClickerProgress(
+    JSON.stringify(versionTwoPayload),
+    4_242,
+  );
+  assert.equal(versionTwo.lifetimeTaps, 19);
+  assert.equal(versionTwo.bestSeries, 19);
+  assert.deepEqual(versionTwo.activeSeries, active.activeSeries);
+  assert.equal(versionTwo.storySeed, 4);
+
+  const versionOne = clicker.parseClickerProgress(
     JSON.stringify({ version: 1, totalTaps: 651, storySeed: 6 }),
     4_242,
   );
-  assert.equal(migrated.activeSeries, null);
-  assert.equal(migrated.bestSeries, 0);
-  assert.equal(migrated.storySeed, 4_242);
+  assert.equal(versionOne.lifetimeTaps, 651);
+  assert.equal(versionOne.activeSeries, null);
+  assert.equal(versionOne.bestSeries, 0);
+  assert.equal(versionOne.storySeed, 4_242);
+
+  const combined = clicker.combineLegacyClickerProgress(versionTwo, versionOne, 4_242);
+  assert.equal(combined.lifetimeTaps, 670);
+  assert.equal(combined.bestSeries, 19);
+  assert.deepEqual(combined.activeSeries, active.activeSeries);
+  assert.equal(combined.storySeed, 4);
+  assert.equal(JSON.parse(clicker.serializeClickerProgress(combined)).version, 3);
+
+  const saturated = clicker.combineLegacyClickerProgress(
+    versionTwo,
+    clicker.parseClickerProgress(JSON.stringify({
+      version: 1,
+      totalTaps: Number.MAX_SAFE_INTEGER,
+      storySeed: 6,
+    })),
+  );
+  assert.equal(saturated.lifetimeTaps, Number.MAX_SAFE_INTEGER);
+
+  assert.equal(clicker.parseClickerProgress(JSON.stringify({
+    ...versionThree,
+    lifetimeTaps: versionThree.bestSeries - 1,
+  })), null);
   assert.equal(clicker.parseClickerProgress("{}"), null);
 });
 
@@ -323,35 +427,88 @@ test("gives each user a stable full story rotation without early repeats", () =>
   );
 });
 
-test("calculates a daily streak from distinct local dates and breaks after a missed day", () => {
-  const nextDayAt = "2026-08-30T21:00:00.000Z";
+test("keeps a rolling streak active through the exact twenty-four-hour boundary", () => {
+  const first = "2026-08-27T12:00:00.000Z";
+  const exactDeadline = "2026-08-28T12:00:00.000Z";
+  const afterDeadline = "2026-08-28T12:00:00.001Z";
+
+  assert.deepEqual(dailyStreak.calculateRollingStreak(
+    [first],
+    new Date(exactDeadline),
+  ), {
+    currentDays: 1,
+    longestDays: 1,
+    isActive: true,
+    renewBy: exactDeadline,
+  });
+  assert.deepEqual(dailyStreak.calculateRollingStreak(
+    [first],
+    new Date(afterDeadline),
+  ), {
+    currentDays: 0,
+    longestDays: 1,
+    isActive: false,
+    renewBy: null,
+  });
+
+  const renewedExactly = dailyStreak.calculateRollingStreak(
+    [first, exactDeadline],
+    new Date(exactDeadline),
+  );
+  assert.equal(renewedExactly.currentDays, 2);
+  assert.equal(renewedExactly.longestDays, 2);
+  assert.equal(renewedExactly.renewBy, "2026-08-29T12:00:00.000Z");
+
+  const restartedLate = dailyStreak.calculateRollingStreak(
+    [first, afterDeadline],
+    new Date(afterDeadline),
+  );
+  assert.equal(restartedLate.currentDays, 1);
+  assert.equal(restartedLate.longestDays, 1);
+});
+
+test("same-day repeats extend the rolling deadline without inflating days", () => {
+  const streak = dailyStreak.calculateRollingStreak([
+    "2026-08-27T12:00:00.000Z",
+    "2026-08-27T12:00:30.000Z",
+    "2026-08-27T18:00:00.000Z",
+    "2026-08-28T11:59:59.999Z",
+    "2026-08-28T11:59:59.999Z",
+  ], new Date("2026-08-28T11:59:59.999Z"));
+
+  assert.deepEqual(streak, {
+    currentDays: 1,
+    longestDays: 1,
+    isActive: true,
+    renewBy: "2026-08-29T11:59:59.999Z",
+  });
+});
+
+test("counts elapsed rolling days and preserves the longest expired run", () => {
+  const checkIns = [
+    "2026-08-27T12:00:00.000Z",
+    "2026-08-28T12:00:00.000Z",
+    "2026-08-29T12:00:00.000Z",
+  ];
   assert.deepEqual(
-    dailyStreak.calculateDailyStreak(
-      ["2026-08-27", "2026-08-28", "2026-08-28", "2026-08-29"],
-      "2026-08-29",
-      nextDayAt,
-    ),
+    dailyStreak.calculateRollingStreak(checkIns, new Date("2026-08-30T12:00:00.000Z")),
     {
       currentDays: 3,
       longestDays: 3,
-      checkedInToday: true,
-      nextDayAt,
+      isActive: true,
+      renewBy: "2026-08-30T12:00:00.000Z",
     },
   );
-  assert.equal(
-    dailyStreak.calculateDailyStreak(["2026-08-27"], "2026-08-29", nextDayAt).currentDays,
-    0,
+  assert.deepEqual(
+    dailyStreak.calculateRollingStreak(checkIns, new Date("2026-08-30T12:00:00.001Z")),
+    {
+      currentDays: 0,
+      longestDays: 3,
+      isActive: false,
+      renewBy: null,
+    },
   );
-});
 
-test("keeps yesterday's streak alive until the current local day ends", () => {
-  const streak = dailyStreak.calculateDailyStreak(
-    ["2026-08-27", "2026-08-28"],
-    "2026-08-29",
-    "2026-08-29T21:00:00.000Z",
-  );
-  assert.equal(streak.currentDays, 2);
-  assert.equal(streak.checkedInToday, false);
   assert.equal(dailyStreak.formatDayCount(1), "1 день");
   assert.equal(dailyStreak.formatDayCount(22), "22 дня");
   assert.equal(dailyStreak.formatDayCount(15), "15 дней");

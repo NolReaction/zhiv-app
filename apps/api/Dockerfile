@@ -1,12 +1,15 @@
-FROM gradle:9.5.0-jdk25 AS build
+FROM gradle:9.6.0-jdk25 AS build
 
 WORKDIR /home/gradle/project
 COPY --chown=gradle:gradle . .
-RUN gradle --no-daemon clean test installDist
+RUN ./gradlew --no-daemon clean test installDist
 
 FROM eclipse-temurin:25-jre
 
-RUN useradd --system --uid 10001 --create-home zhiv
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home zhiv
 WORKDIR /app
 COPY --from=build /home/gradle/project/build/install/zhiv-api/ ./
 USER zhiv

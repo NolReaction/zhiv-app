@@ -1,8 +1,9 @@
 "use client";
 
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMemo, useState } from "react";
-import { Check, Copy, Plus, RefreshCw, Search, Trash2, UserRound, X } from "lucide-react";
+import { Check, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Trash2, UserRound, X } from "lucide-react";
+import QRCode from "react-qr-code";
 import type {
   DirectRequest,
   GroupsResponse,
@@ -13,11 +14,13 @@ import type {
 import {
   actOnDirectRequest,
   ApiError,
+  createDirectInviteLink,
   lookupUser,
   removePerson,
   sendDirectRequest,
   updatePersonSharing,
 } from "@/lib/check-in-api";
+import { capabilityUrl, createCapabilityToken } from "@/lib/capability-token";
 import {
   formatDirectPersonCheckIn,
   formatPublicIdInput,
@@ -26,7 +29,7 @@ import {
   isValidPublicId,
   normalizePublicId,
 } from "@/lib/check-in-presentation";
-import { copyText } from "@/lib/identity-sharing";
+import { copyText, shareTextAndCopy } from "@/lib/identity-sharing";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +64,10 @@ type PeopleViewProps = {
   onGroupsRefresh: () => Promise<void>;
   onSessionLost: () => void;
 };
+
+type PeopleSection = "people" | "groups";
+
+const PEOPLE_SECTIONS: readonly PeopleSection[] = ["people", "groups"];
 
 function initials(name: string): string {
   return Array.from(name.trim())[0]?.toUpperCase() ?? "Ж";
@@ -105,6 +112,32 @@ export function PeopleView({
   const [pending, setPending] = useState<string | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<PeopleSection>("people");
+  const [inviteMode, setInviteMode] = useState<"link" | "qr" | null>(null);
+  const [inviteShare, setInviteShare] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+
+  function selectSection(section: PeopleSection) {
+    setActiveSection(section);
+  }
+
+  function handleSectionKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = PEOPLE_SECTIONS.indexOf(activeSection);
+    const nextSection = event.key === "Home"
+      ? PEOPLE_SECTIONS[0]
+      : event.key === "End"
+        ? PEOPLE_SECTIONS[PEOPLE_SECTIONS.length - 1]
+        : PEOPLE_SECTIONS[
+            (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + PEOPLE_SECTIONS.length)
+              % PEOPLE_SECTIONS.length
+          ];
+    selectSection(nextSection);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`people-section-tab-${nextSection}`)?.focus();
+    });
+  }
 
   function handleApiError(cause: unknown, fallback: string) {
     if (cause instanceof ApiError && cause.status === 401) {
@@ -201,6 +234,48 @@ export function PeopleView({
     });
   }
 
+  async function openInvite(mode: "link" | "qr", forceRegenerate = false) {
+    if (pending) return;
+    setInviteMode(mode);
+    setDialogError(null);
+    setShareNotice(null);
+    if (
+      !forceRegenerate &&
+      inviteShare &&
+      Date.parse(inviteShare.expiresAt) > nowMs
+    ) return;
+    setInviteShare(null);
+    setPending("invite-link");
+    try {
+      const token = createCapabilityToken();
+      const response = await createDirectInviteLink(token, createUuidV4());
+      setInviteShare({ url: capabilityUrl("invite", token), expiresAt: response.expiresAt });
+    } catch (cause) {
+      handleApiError(cause, "Не удалось создать приглашение");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function shareInvite() {
+    if (!inviteShare) return;
+    const result = await shareTextAndCopy(inviteShare.url, {
+      title: "Приглашение в «Я живой»",
+      text: "Добавь меня в личные связи в «Я живой».",
+      url: inviteShare.url,
+    });
+    if (result.copied) {
+      setDialogError(null);
+      setShareNotice("Ссылка скопирована");
+    } else if (result.shareOutcome === "shared") {
+      setDialogError(null);
+      setShareNotice("Приглашение отправлено");
+    } else {
+      setShareNotice(null);
+      setDialogError("Не удалось скопировать ссылку");
+    }
+  }
+
   const content = useMemo(() => {
     if (loading && !data) {
       return <div className={styles.state}>Загружаем личные связи…</div>;
@@ -222,34 +297,77 @@ export function PeopleView({
     <section id="people-panel" className={styles.view} aria-labelledby="people-title">
       <div className={styles.headingRow}>
         <h1 id="people-title">Личные связи</h1>
+      </div>
+
+      <div className={styles.sectionTabs} role="tablist" aria-label="Люди и группы">
         <button
-          className={styles.addButton}
+          id="people-section-tab-people"
           type="button"
-          onClick={() => {
-            resetLookup();
-            setAddOpen(true);
-          }}
+          role="tab"
+          aria-controls="people-section-panel-people"
+          aria-selected={activeSection === "people"}
+          tabIndex={activeSection === "people" ? 0 : -1}
+          className={activeSection === "people" ? styles.sectionTabActive : undefined}
+          onClick={() => selectSection("people")}
+          onKeyDown={handleSectionKeyDown}
         >
-          <Plus size={19} /> Добавить
+          Люди {data?.incomingRequests.length ? <span>{data.incomingRequests.length}</span> : null}
+        </button>
+        <button
+          id="people-section-tab-groups"
+          type="button"
+          role="tab"
+          aria-controls="people-section-panel-groups"
+          aria-selected={activeSection === "groups"}
+          tabIndex={activeSection === "groups" ? 0 : -1}
+          className={activeSection === "groups" ? styles.sectionTabActive : undefined}
+          onClick={() => selectSection("groups")}
+          onKeyDown={handleSectionKeyDown}
+        >
+          Группы {groups?.incomingInvites.length ? <span>{groups.incomingInvites.length}</span> : null}
         </button>
       </div>
 
-      {content}
+      {activeSection === "people" ? (
+        <div
+          id="people-section-panel-people"
+          className={styles.tabPanel}
+          role="tabpanel"
+          aria-labelledby="people-section-tab-people"
+          aria-busy={loading && !data}
+        >
+          <div className={styles.quickActions} role="group" aria-label="Способы добавить человека">
+            <button
+              className={styles.addButton}
+              type="button"
+              disabled={Boolean(pending)}
+              onClick={() => { resetLookup(); setAddOpen(true); }}
+            >
+              <Plus size={18} /> <span>По ID</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Пригласить человека по ссылке"
+              onClick={() => void openInvite("link")}
+              disabled={Boolean(pending)}
+            >
+              <Link2 size={18} /> <span>Ссылка</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Показать QR-код приглашения"
+              onClick={() => void openInvite("qr")}
+              disabled={Boolean(pending)}
+            >
+              <QrCode size={18} /> <span>QR</span>
+            </button>
+          </div>
 
-      {data ? (
-        <div className={styles.sections}>
-          <GroupsSection
-            data={groups}
-            people={data}
-            error={groupsError}
-            loading={groupsLoading}
-            nowMs={nowMs}
-            onRefresh={onGroupsRefresh}
-            onAudienceRefresh={onRefresh}
-            onSessionLost={onSessionLost}
-          />
+          {content}
 
-          {data.incomingRequests.length > 0 ? (
+          {data ? (
+            <div className={styles.sections}>
+              {data.incomingRequests.length > 0 ? (
             <section className={styles.section} aria-labelledby="incoming-title">
               <h2 id="incoming-title">Хотят добавить вас</h2>
               <div className={styles.list}>
@@ -398,10 +516,33 @@ export function PeopleView({
           <p className={styles.privacyNote}>
             Старые отметки не открываются задним числом. Вы в любой момент решаете, кто видит новые.
           </p>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <div
+          id="people-section-panel-groups"
+          className={`${styles.tabPanel} ${styles.sections}`}
+          role="tabpanel"
+          aria-labelledby="people-section-tab-groups"
+          aria-busy={groupsLoading && !groups}
+        >
+          <GroupsSection
+            data={groups}
+            people={data}
+            error={groupsError}
+            loading={groupsLoading}
+            nowMs={nowMs}
+            onRefresh={onGroupsRefresh}
+            onAudienceRefresh={onRefresh}
+            onSessionLost={onSessionLost}
+          />
+        </div>
+      )}
 
-      {dialogError && !addOpen ? <p className={styles.pageError} role="alert">{dialogError}</p> : null}
+      {dialogError && !addOpen && inviteMode === null ? (
+        <p className={styles.pageError} role="alert">{dialogError}</p>
+      ) : null}
 
       <Dialog open={addOpen} onOpenChange={(open) => {
         setAddOpen(open);
@@ -464,6 +605,72 @@ export function PeopleView({
               ) : null}
             </div>
           ) : null}
+          {dialogError ? <p className={styles.dialogError} role="alert">{dialogError}</p> : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={inviteMode !== null} onOpenChange={(open) => {
+        if (!open) {
+          setInviteMode(null);
+          setDialogError(null);
+          setShareNotice(null);
+        }
+      }}>
+        <DialogContent className={styles.dialog}>
+          <DialogHeader>
+            <DialogTitle className={styles.dialogTitle}>
+              {inviteMode === "qr" ? "Приглашение по QR-коду" : "Приглашение по ссылке"}
+            </DialogTitle>
+            <DialogDescription className={styles.dialogDescription}>
+              Один человек сможет принять приглашение. Ссылка действует 7 дней. После подтверждения будут видны только новые отметки.
+            </DialogDescription>
+          </DialogHeader>
+          {!inviteShare && pending === "invite-link" ? (
+            <div className={styles.inviteLoading} role="status">Готовим безопасную ссылку…</div>
+          ) : !inviteShare ? (
+            <button
+              type="button"
+              className={styles.shareButton}
+              onClick={() => inviteMode && void openInvite(inviteMode)}
+            >
+              <RefreshCw size={18} /> Повторить
+            </button>
+          ) : (
+            <div className={styles.inviteShare}>
+              {inviteMode === "qr" ? (
+                <div className={styles.qrFrame} role="img" aria-label="QR-код одноразового приглашения">
+                  <QRCode
+                    value={inviteShare.url}
+                    size={212}
+                    bgColor="#ffffff"
+                    fgColor="#11150f"
+                    aria-hidden="true"
+                  />
+                </div>
+              ) : (
+                <code>{inviteShare.url}</code>
+              )}
+              <button type="button" className={styles.shareButton} onClick={() => void shareInvite()}>
+                <Share2 size={18} /> Поделиться / скопировать
+              </button>
+              <small>Одно использование · до {new Intl.DateTimeFormat("ru-RU", {
+                day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+              }).format(Date.parse(inviteShare.expiresAt))}</small>
+              <button
+                type="button"
+                className={styles.regenerateButton}
+                aria-describedby="invite-regenerate-hint"
+                disabled={Boolean(pending)}
+                onClick={() => inviteMode && void openInvite(inviteMode, true)}
+              >
+                <RefreshCw size={15} /> Создать новую ссылку
+              </button>
+              <small id="invite-regenerate-hint" className={styles.regenerateHint}>
+                Прежняя ссылка сразу перестанет работать.
+              </small>
+            </div>
+          )}
+          {shareNotice ? <p className={styles.dialogNotice} role="status">{shareNotice}</p> : null}
           {dialogError ? <p className={styles.dialogError} role="alert">{dialogError}</p> : null}
         </DialogContent>
       </Dialog>

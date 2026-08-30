@@ -67,12 +67,34 @@ export function getCheckInAgeMs(
 export function getCheckInColor(ageMs: number | null): string {
   if (ageMs === null) return "#4a4e45";
 
-  const ratio = Math.max(0, Math.min(ageMs / DAY_MS, 1));
-  const hue = ratio <= 0.5
-    ? 140 + (45 - 140) * ratio * 2
-    : 45 + (0 - 45) * (ratio - 0.5) * 2;
+  const hue = getCheckInHue(ageMs);
 
   return `hsl(${hue.toFixed(1)} 68% 34%)`;
+}
+
+function getCheckInHue(ageMs: number): number {
+  const ratio = Math.max(0, Math.min(ageMs / DAY_MS, 1));
+  return ratio <= 0.5
+    ? 140 + (45 - 140) * ratio * 2
+    : 45 + (0 - 45) * (ratio - 0.5) * 2;
+}
+
+export function getCheckInPalette(ageMs: number | null) {
+  if (ageMs === null) {
+    return {
+      base: "#4a4e45",
+      highlight: "#62675c",
+      shadow: "#343831",
+      glow: "#555b50",
+    };
+  }
+  const hue = getCheckInHue(ageMs).toFixed(1);
+  return {
+    base: `hsl(${hue} 68% 34%)`,
+    highlight: `hsl(${hue} 72% 41%)`,
+    shadow: `hsl(${hue} 72% 25%)`,
+    glow: `hsl(${hue} 76% 38%)`,
+  };
 }
 
 export function formatLastCheckIn(checkedAt: string | null, nowMs: number): string {

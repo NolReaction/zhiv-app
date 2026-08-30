@@ -6,8 +6,8 @@ export type PublicUser = {
 export type DailyStreak = {
   currentDays: number;
   longestDays: number;
-  checkedInToday: boolean;
-  nextDayAt: string;
+  isActive: boolean;
+  renewBy: string | null;
 };
 
 export type ProfileState = {
@@ -40,6 +40,7 @@ export type ClickerSeriesEvent = {
   type: "CLICKER_SERIES_FINISHED";
   tapCount: number;
   bestSeries: number;
+  lifetimeTaps?: number;
   level: number;
   storyId: string;
   durationMs: number;
@@ -180,5 +181,52 @@ export type GroupsResponse = {
 export type GroupMutationResponse = {
   groupId: string;
   replayed: boolean;
+  serverTime: string;
+};
+
+export type DirectInviteLink = {
+  inviteId: string;
+  expiresAt: string;
+  replayed: boolean;
+  serverTime: string;
+};
+
+export type DirectInvitePreview = {
+  inviter: PublicUser;
+  expiresAt: string;
+  serverTime: string;
+};
+
+export type DirectInviteRedeemResponse = {
+  person: Person;
+  replayed: boolean;
+  serverTime: string;
+};
+
+export type RecoveryContact = {
+  contactId: string;
+  circleId: string;
+  user: PublicUser;
+};
+
+export type RecoveryContactsResponse = {
+  contacts: RecoveryContact[];
+  eligible: Array<{ circleId: string; user: PublicUser }>;
+  trustedBy: RecoveryContact[];
+  serverTime: string;
+};
+
+export type RecoveryAttempt = {
+  attemptId: string;
+  status: "PENDING" | "APPROVED" | "COMPLETED";
+  expiresAt: string;
+  target: PublicUser | null;
+  replayed: boolean;
+  serverTime: string;
+};
+
+export type RecoveryApprovalPreview = {
+  eligible: Array<{ contactId: string; target: PublicUser }>;
+  expiresAt: string;
   serverTime: string;
 };

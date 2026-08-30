@@ -4,6 +4,9 @@ import type {
   DirectRequest,
   DirectRequestActionResponse,
   DirectRequestResponse,
+  DirectInviteLink,
+  DirectInvitePreview,
+  DirectInviteRedeemResponse,
   Group,
   GroupInvite,
   GroupMember,
@@ -15,18 +18,20 @@ import type {
   PublicUser,
   SharingMode,
   SharingResponse,
+  RecoveryContactsResponse,
   UserLookupResponse,
 } from "@/lib/check-in-contract";
+import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
 import {
-  calculateDailyStreak,
+  calculateRollingStreak,
   formatLocalDate,
-  nextLocalDayAt,
 } from "@/lib/daily-streak";
 
 export const SESSION_COOKIE = "zhiv_session_dev";
 const COOLDOWN_MS = 30_000;
 const REQUEST_TTL_MS = 7 * 24 * 60 * 60_000;
+const RECOVERY_ATTEMPT_TTL_MS = 10 * 60_000;
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 type UserRecord = PublicUser & {
@@ -99,6 +104,44 @@ type GroupInviteRecord = {
   acceptedAt: string | null;
   revokedAt: string | null;
 };
+type DirectInviteLinkRecord = {
+  id: string;
+  inviterUserId: string;
+  token: string;
+  idempotencyKey: string;
+  status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
+  acceptedByUserId: string | null;
+  acceptedIdempotencyKey: string | null;
+  resultCircleId: string | null;
+  createdAt: string;
+  expiresAt: string;
+};
+type RecoveryContactRecord = {
+  id: string;
+  ownerUserId: string;
+  trusteeUserId: string;
+  circleId: string;
+  idempotencyKey: string;
+  revocationIdempotencyKey: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+};
+type RecoveryAttemptRecord = {
+  id: string;
+  approvalToken: string;
+  claimToken: string;
+  claimantSessionToken: string | null;
+  creationIdempotencyKey: string;
+  status: "PENDING" | "APPROVED" | "COMPLETED" | "CANCELLED" | "EXPIRED";
+  contactId: string | null;
+  targetUserId: string | null;
+  approvedByUserId: string | null;
+  approvalIdempotencyKey: string | null;
+  completionIdempotencyKey: string | null;
+  completedSessionToken: string | null;
+  createdAt: string;
+  expiresAt: string;
+};
 
 type Store = {
   users: Map<string, UserRecord>;
@@ -114,6 +157,10 @@ type Store = {
   groups: Map<string, GroupRecord>;
   groupMemberships: Map<string, GroupMembershipRecord>;
   groupInvites: Map<string, GroupInviteRecord>;
+  directInviteLinks: Map<string, DirectInviteLinkRecord>;
+  recoveryContacts: Map<string, RecoveryContactRecord>;
+  recoveryContactRemovals: Map<string, string>;
+  recoveryAttempts: Map<string, RecoveryAttemptRecord>;
 };
 
 export type DevResult<T> =
@@ -124,7 +171,8 @@ export type DevResult<T> =
   | { kind: "already-connected" }
   | { kind: "forbidden" }
   | { kind: "expired" }
-  | { kind: "conflict" };
+  | { kind: "conflict" }
+  | { kind: "limit-reached" };
 
 const globalStore = globalThis as typeof globalThis & { __zhivDevStore?: Store };
 
@@ -143,7 +191,15 @@ function store(): Store {
     groups: new Map(),
     groupMemberships: new Map(),
     groupInvites: new Map(),
+    directInviteLinks: new Map(),
+    recoveryContacts: new Map(),
+    recoveryContactRemovals: new Map(),
+    recoveryAttempts: new Map(),
   };
+  globalStore.__zhivDevStore.directInviteLinks ??= new Map();
+  globalStore.__zhivDevStore.recoveryContacts ??= new Map();
+  globalStore.__zhivDevStore.recoveryContactRemovals ??= new Map();
+  globalStore.__zhivDevStore.recoveryAttempts ??= new Map();
   return globalStore.__zhivDevStore;
 }
 
@@ -154,6 +210,11 @@ export function resetDevStoreForTests() {
 function randomToken(bytesCount = 32): string {
   const bytes = crypto.getRandomValues(new Uint8Array(bytesCount));
   return Buffer.from(bytes).toString("base64url");
+}
+
+function deterministicRecoveryClaimToken(approvalToken: string, idempotencyKey: string): string {
+  const input = `zhiv.account-recovery.claim.v1\u0000${approvalToken}\u0000${idempotencyKey.toLowerCase()}`;
+  return createHash("sha256").update(input, "utf8").digest("base64url");
 }
 
 function newPublicId(): string {
@@ -172,12 +233,11 @@ function publicUser(user: UserRecord): PublicUser {
 
 function streakForUser(user: UserRecord, serverTime: Date): DailyStreak {
   const currentStore = store();
-  return calculateDailyStreak(
+  return calculateRollingStreak(
     [...currentStore.checkIns.values()]
       .filter((event) => event.userId === user.id)
-      .map((event) => event.localDate),
-    formatLocalDate(serverTime, user.timezoneId),
-    nextLocalDayAt(serverTime, user.timezoneId),
+      .map((event) => event.checkedAt),
+    serverTime,
   );
 }
 
@@ -941,6 +1001,9 @@ export function removeDevPerson(
     return { kind: "ok", value: { serverTime: circle.archivedAt } };
   }
   circle.archivedAt = new Date().toISOString();
+  for (const contact of store().recoveryContacts.values()) {
+    if (contact.circleId === circleId) cancelApprovedRecoveryAttemptsForContact(contact.id);
+  }
   return { kind: "ok", value: { serverTime: circle.archivedAt } };
 }
 
@@ -1279,4 +1342,540 @@ export function deleteDevGroup(
   }
   group.archivedAt = now;
   return { kind: "ok", value: { serverTime: now } };
+}
+
+function ensureDevDirectCircle(firstUserId: string, secondUserId: string, now: string) {
+  let circle = activeCircleForPair(firstUserId, secondUserId);
+  if (circle) return circle;
+  const [lowUserId, highUserId] = orderedPair(firstUserId, secondUserId);
+  circle = { id: crypto.randomUUID(), lowUserId, highUserId, createdAt: now, archivedAt: null };
+  store().circles.set(circle.id, circle);
+  store().sharing.set(sharingKey(circle.id, lowUserId), { mode: "LATEST_ONLY", enabledSince: now });
+  store().sharing.set(sharingKey(circle.id, highUserId), { mode: "LATEST_ONLY", enabledSince: now });
+  return circle;
+}
+
+function expireDevCapabilityLinks(nowMs = Date.now()) {
+  for (const link of store().directInviteLinks.values()) {
+    if (link.status === "PENDING" && Date.parse(link.expiresAt) <= nowMs) link.status = "EXPIRED";
+  }
+  for (const attempt of store().recoveryAttempts.values()) {
+    if (
+      (attempt.status === "PENDING" || attempt.status === "APPROVED") &&
+      Date.parse(attempt.expiresAt) <= nowMs
+    ) attempt.status = "EXPIRED";
+  }
+}
+
+export function createDevDirectInviteLink(
+  sessionToken: string | undefined,
+  capabilityToken: string,
+  idempotencyKey: string,
+  now = new Date(),
+): DevResult<DirectInviteLink> {
+  const inviter = sessionUser(sessionToken);
+  if (!inviter) return { kind: "unauthorized" };
+  expireDevCapabilityLinks(now.getTime());
+  const replay = [...store().directInviteLinks.values()].find(
+    (link) => link.inviterUserId === inviter.id && link.idempotencyKey === idempotencyKey,
+  );
+  if (replay) {
+    if (replay.token !== capabilityToken) return { kind: "conflict" };
+    return { kind: "ok", value: {
+      inviteId: replay.id, expiresAt: replay.expiresAt, replayed: true, serverTime: now.toISOString(),
+    } };
+  }
+  for (const link of store().directInviteLinks.values()) {
+    if (link.inviterUserId === inviter.id && link.status === "PENDING") link.status = "REVOKED";
+  }
+  const link: DirectInviteLinkRecord = {
+    id: crypto.randomUUID(), inviterUserId: inviter.id, token: capabilityToken, idempotencyKey,
+    status: "PENDING", acceptedByUserId: null, acceptedIdempotencyKey: null, resultCircleId: null,
+    createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + REQUEST_TTL_MS).toISOString(),
+  };
+  store().directInviteLinks.set(link.id, link);
+  return { kind: "ok", value: {
+    inviteId: link.id, expiresAt: link.expiresAt, replayed: false, serverTime: link.createdAt,
+  } };
+}
+
+export function previewDevDirectInvite(
+  capabilityToken: string,
+  now = new Date(),
+): DevResult<DirectInvitePreview> {
+  expireDevCapabilityLinks(now.getTime());
+  const link = [...store().directInviteLinks.values()].find((item) => item.token === capabilityToken);
+  if (!link) return { kind: "not-found" };
+  if (link.status !== "PENDING") return { kind: "expired" };
+  const inviter = store().users.get(link.inviterUserId);
+  if (!inviter) return { kind: "not-found" };
+  return { kind: "ok", value: {
+    inviter: publicUser(inviter), expiresAt: link.expiresAt, serverTime: now.toISOString(),
+  } };
+}
+
+export function redeemDevDirectInvite(
+  sessionToken: string | undefined,
+  capabilityToken: string,
+  idempotencyKey: string,
+  now = new Date(),
+): DevResult<DirectInviteRedeemResponse> {
+  const recipient = sessionUser(sessionToken);
+  if (!recipient) return { kind: "unauthorized" };
+  expireDevCapabilityLinks(now.getTime());
+  const keyedLink = [...store().directInviteLinks.values()].find(
+    (item) =>
+      item.acceptedByUserId === recipient.id &&
+      item.acceptedIdempotencyKey === idempotencyKey,
+  );
+  const link = [...store().directInviteLinks.values()].find((item) => item.token === capabilityToken);
+  if (keyedLink && keyedLink.id !== link?.id) return { kind: "conflict" };
+  if (!link) return { kind: "not-found" };
+  if (link.inviterUserId === recipient.id) return { kind: "self" };
+  if (link.status === "ACCEPTED") {
+    if (
+      link.acceptedByUserId !== recipient.id ||
+      link.acceptedIdempotencyKey !== idempotencyKey ||
+      !link.resultCircleId
+    ) return { kind: "conflict" };
+    const circle = store().circles.get(link.resultCircleId);
+    if (!circle) return { kind: "conflict" };
+    return { kind: "ok", value: {
+      person: personDto(circle, recipient.id), replayed: true, serverTime: now.toISOString(),
+    } };
+  }
+  if (link.status !== "PENDING") return { kind: "expired" };
+  const acceptedAt = now.toISOString();
+  const circle = ensureDevDirectCircle(link.inviterUserId, recipient.id, acceptedAt);
+  const pending = pendingRequestForPair(link.inviterUserId, recipient.id);
+  if (pending) { pending.status = "CANCELLED"; pending.respondedAt = acceptedAt; }
+  link.status = "ACCEPTED";
+  link.acceptedByUserId = recipient.id;
+  link.acceptedIdempotencyKey = idempotencyKey;
+  link.resultCircleId = circle.id;
+  return {
+    kind: "ok",
+    value: { person: personDto(circle, recipient.id), replayed: false, serverTime: acceptedAt },
+  };
+}
+
+function devRecoveryContacts(userId: string): RecoveryContactsResponse {
+  const active = [...store().recoveryContacts.values()].filter((contact) => {
+    const circle = store().circles.get(contact.circleId);
+    return contact.revokedAt === null && circle?.archivedAt === null;
+  });
+  const asContact = (contact: RecoveryContactRecord, otherId: string) => {
+    const user = store().users.get(otherId);
+    if (!user) throw new Error("Recovery contact references a missing user");
+    return { contactId: contact.id, circleId: contact.circleId, user: publicUser(user) };
+  };
+  const contacts = active.filter((contact) => contact.ownerUserId === userId)
+    .map((contact) => asContact(contact, contact.trusteeUserId));
+  const selected = new Set(contacts.map((contact) => contact.circleId));
+  return {
+    contacts,
+    eligible: activeCirclesForUser(userId).filter((circle) => !selected.has(circle.id)).map((circle) => {
+      const other = store().users.get(otherUserId(circle, userId));
+      if (!other) throw new Error("Direct circle references a missing user");
+      return { circleId: circle.id, user: publicUser(other) };
+    }),
+    trustedBy: active.filter((contact) => contact.trusteeUserId === userId)
+      .map((contact) => asContact(contact, contact.ownerUserId)),
+    serverTime: new Date().toISOString(),
+  };
+}
+
+export function listDevRecoveryContacts(token: string | undefined): DevResult<RecoveryContactsResponse> {
+  const user = sessionUser(token);
+  return user ? { kind: "ok", value: devRecoveryContacts(user.id) } : { kind: "unauthorized" };
+}
+
+export function addDevRecoveryContact(
+  token: string | undefined,
+  circleId: string,
+  idempotencyKey: string,
+): DevResult<RecoveryContactsResponse> {
+  const owner = sessionUser(token);
+  if (!owner) return { kind: "unauthorized" };
+  const circle = store().circles.get(circleId);
+  if (!circle || circle.archivedAt !== null || ![circle.lowUserId, circle.highUserId].includes(owner.id)) {
+    return { kind: "not-found" };
+  }
+  const replay = [...store().recoveryContacts.values()].find(
+    (contact) => contact.ownerUserId === owner.id && contact.idempotencyKey === idempotencyKey,
+  );
+  if (!replay) {
+    const active = [...store().recoveryContacts.values()].filter(
+      (contact) => contact.ownerUserId === owner.id && contact.revokedAt === null,
+    );
+    const trusteeUserId = otherUserId(circle, owner.id);
+    if (active.some((contact) => contact.trusteeUserId === trusteeUserId)) return { kind: "conflict" };
+    if (active.length >= 3) return { kind: "limit-reached" };
+    const contact: RecoveryContactRecord = {
+      id: crypto.randomUUID(), ownerUserId: owner.id, trusteeUserId, circleId,
+      idempotencyKey, revocationIdempotencyKey: null,
+      createdAt: new Date().toISOString(), revokedAt: null,
+    };
+    store().recoveryContacts.set(contact.id, contact);
+  } else if (replay.circleId !== circleId) return { kind: "conflict" };
+  return { kind: "ok", value: devRecoveryContacts(owner.id) };
+}
+
+export function removeDevRecoveryContact(
+  token: string | undefined,
+  contactId: string,
+  idempotencyKey: string,
+): DevResult<RecoveryContactsResponse> {
+  const owner = sessionUser(token);
+  if (!owner) return { kind: "unauthorized" };
+  const contact = store().recoveryContacts.get(contactId);
+  if (!contact || contact.ownerUserId !== owner.id) return { kind: "not-found" };
+  const removalKey = `${owner.id}:${idempotencyKey}`;
+  const priorContactId = store().recoveryContactRemovals.get(removalKey);
+  if (priorContactId && priorContactId !== contactId) return { kind: "conflict" };
+  store().recoveryContactRemovals.set(removalKey, contactId);
+  if (contact.revokedAt === null) {
+    contact.revokedAt = new Date().toISOString();
+    contact.revocationIdempotencyKey = idempotencyKey;
+    cancelApprovedRecoveryAttemptsForContact(contact.id);
+  }
+  return { kind: "ok", value: devRecoveryContacts(owner.id) };
+}
+
+export type DevRecoveryAttempt = {
+  attemptId: string;
+  status: "PENDING" | "APPROVED" | "COMPLETED";
+  expiresAt: string;
+  target: PublicUser | null;
+  replayed: boolean;
+  serverTime: string;
+};
+
+export type DevRecoveryApprovalPreview = {
+  eligible: Array<{ contactId: string; target: PublicUser }>;
+  expiresAt: string;
+  serverTime: string;
+};
+
+function activeRecoveryContact(contactId: string): RecoveryContactRecord | null {
+  const contact = store().recoveryContacts.get(contactId);
+  if (!contact || contact.revokedAt !== null) return null;
+  const circle = store().circles.get(contact.circleId);
+  if (!circle || circle.archivedAt !== null) return null;
+  const circleUsers = new Set([circle.lowUserId, circle.highUserId]);
+  return circleUsers.has(contact.ownerUserId) && circleUsers.has(contact.trusteeUserId)
+    ? contact
+    : null;
+}
+
+function cancelApprovedRecoveryAttemptsForContact(contactId: string) {
+  for (const attempt of store().recoveryAttempts.values()) {
+    if (attempt.contactId === contactId && attempt.status === "APPROVED") {
+      attempt.status = "CANCELLED";
+    }
+  }
+}
+
+function recoveryAttemptDto(
+  attempt: RecoveryAttemptRecord,
+  replayed: boolean,
+  now: Date,
+): DevRecoveryAttempt {
+  if (attempt.status !== "PENDING" && attempt.status !== "APPROVED" && attempt.status !== "COMPLETED") {
+    throw new Error("An inactive recovery attempt cannot be serialized");
+  }
+  const target = attempt.targetUserId ? store().users.get(attempt.targetUserId) : null;
+  if (attempt.targetUserId && !target) throw new Error("Recovery attempt references a missing user");
+  return {
+    attemptId: attempt.id,
+    status: attempt.status,
+    expiresAt: attempt.expiresAt,
+    target: target ? publicUser(target) : null,
+    replayed,
+    serverTime: now.toISOString(),
+  };
+}
+
+function isInactiveRecoveryAttempt(attempt: RecoveryAttemptRecord, now: Date): boolean {
+  if (Date.parse(attempt.expiresAt) <= now.getTime()) {
+    if (attempt.status === "PENDING" || attempt.status === "APPROVED") attempt.status = "EXPIRED";
+    return true;
+  }
+  return attempt.status === "EXPIRED" || attempt.status === "CANCELLED";
+}
+
+function recoveryAttemptByApprovalToken(approvalToken: string): RecoveryAttemptRecord | null {
+  return [...store().recoveryAttempts.values()].find(
+    (attempt) => attempt.approvalToken === approvalToken,
+  ) ?? null;
+}
+
+function recoveryAttemptByClaimToken(claimToken: string): RecoveryAttemptRecord | null {
+  return [...store().recoveryAttempts.values()].find(
+    (attempt) => attempt.claimToken === claimToken,
+  ) ?? null;
+}
+
+export function createDevRecoveryAttempt(
+  approvalToken: string,
+  idempotencyKey: string,
+  claimantSessionToken?: string,
+  now = new Date(),
+): DevResult<{ attempt: DevRecoveryAttempt; claimToken: string }> {
+  expireDevCapabilityLinks(now.getTime());
+  const activeClaimantSessionToken = sessionUser(claimantSessionToken)
+    ? claimantSessionToken ?? null
+    : null;
+  const replay = [...store().recoveryAttempts.values()].find(
+    (attempt) => attempt.creationIdempotencyKey === idempotencyKey,
+  );
+  if (replay) {
+    if (
+      replay.approvalToken !== approvalToken ||
+      replay.claimantSessionToken !== activeClaimantSessionToken
+    ) return { kind: "conflict" };
+    if (isInactiveRecoveryAttempt(replay, now)) return { kind: "expired" };
+    if (replay.status !== "PENDING") return { kind: "conflict" };
+    return {
+      kind: "ok",
+      value: {
+        attempt: recoveryAttemptDto(replay, true, now),
+        claimToken: replay.claimToken,
+      },
+    };
+  }
+
+  const sameApproval = recoveryAttemptByApprovalToken(approvalToken);
+  if (sameApproval) return { kind: "conflict" };
+
+  const claimToken = deterministicRecoveryClaimToken(approvalToken, idempotencyKey);
+  const attempt: RecoveryAttemptRecord = {
+    id: crypto.randomUUID(),
+    approvalToken,
+    claimToken,
+    claimantSessionToken: activeClaimantSessionToken,
+    creationIdempotencyKey: idempotencyKey,
+    status: "PENDING",
+    contactId: null,
+    targetUserId: null,
+    approvedByUserId: null,
+    approvalIdempotencyKey: null,
+    completionIdempotencyKey: null,
+    completedSessionToken: null,
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + RECOVERY_ATTEMPT_TTL_MS).toISOString(),
+  };
+  store().recoveryAttempts.set(attempt.id, attempt);
+  return {
+    kind: "ok",
+    value: { attempt: recoveryAttemptDto(attempt, false, now), claimToken },
+  };
+}
+
+export function getDevRecoveryAttempt(
+  claimToken: string,
+  now = new Date(),
+): DevResult<DevRecoveryAttempt> {
+  const attempt = recoveryAttemptByClaimToken(claimToken);
+  if (!attempt) return { kind: "not-found" };
+  if (isInactiveRecoveryAttempt(attempt, now)) return { kind: "expired" };
+  return { kind: "ok", value: recoveryAttemptDto(attempt, false, now) };
+}
+
+export function cancelDevRecoveryAttempt(
+  claimToken: string,
+): DevResult<null> {
+  const attempt = recoveryAttemptByClaimToken(claimToken);
+  if (!attempt) return { kind: "not-found" };
+  if (attempt.status === "COMPLETED") return { kind: "conflict" };
+  if (attempt.status === "CANCELLED" || attempt.status === "EXPIRED") {
+    return { kind: "ok", value: null };
+  }
+  attempt.status = "CANCELLED";
+  return { kind: "ok", value: null };
+}
+
+export function previewDevRecoveryApproval(
+  sessionToken: string | undefined,
+  approvalToken: string,
+  now = new Date(),
+): DevResult<DevRecoveryApprovalPreview> {
+  const trustee = sessionUser(sessionToken);
+  if (!trustee) return { kind: "unauthorized" };
+  const attempt = recoveryAttemptByApprovalToken(approvalToken);
+  if (!attempt) return { kind: "not-found" };
+  if (isInactiveRecoveryAttempt(attempt, now)) return { kind: "expired" };
+  if (attempt.status !== "PENDING") return { kind: "conflict" };
+
+  const eligible = [...store().recoveryContacts.values()]
+    .filter((contact) => contact.trusteeUserId === trustee.id)
+    .map((contact) => activeRecoveryContact(contact.id))
+    .filter((contact): contact is RecoveryContactRecord => contact !== null)
+    .map((contact) => {
+      const target = store().users.get(contact.ownerUserId);
+      if (!target) throw new Error("Recovery contact references a missing user");
+      return { contactId: contact.id, target: publicUser(target) };
+    });
+
+  return {
+    kind: "ok",
+    value: { eligible, expiresAt: attempt.expiresAt, serverTime: now.toISOString() },
+  };
+}
+
+export function confirmDevRecoveryApproval(
+  sessionToken: string | undefined,
+  approvalToken: string,
+  contactId: string,
+  idempotencyKey: string,
+  now = new Date(),
+): DevResult<DevRecoveryAttempt> {
+  const trustee = sessionUser(sessionToken);
+  if (!trustee) return { kind: "unauthorized" };
+  const attempt = recoveryAttemptByApprovalToken(approvalToken);
+  if (!attempt) return { kind: "not-found" };
+  if (isInactiveRecoveryAttempt(attempt, now)) return { kind: "expired" };
+
+  const keyedAttempt = [...store().recoveryAttempts.values()].find(
+    (candidate) =>
+      candidate.approvedByUserId === trustee.id &&
+      candidate.approvalIdempotencyKey === idempotencyKey,
+  );
+  if (keyedAttempt) {
+    if (
+      keyedAttempt.id !== attempt.id ||
+      keyedAttempt.contactId !== contactId ||
+      (keyedAttempt.status !== "APPROVED" && keyedAttempt.status !== "COMPLETED")
+    ) return { kind: "conflict" };
+    const contact = activeRecoveryContact(contactId);
+    if (!contact || contact.trusteeUserId !== trustee.id) return { kind: "forbidden" };
+    return { kind: "ok", value: recoveryAttemptDto(keyedAttempt, true, now) };
+  }
+
+  if (attempt.status !== "PENDING") return { kind: "conflict" };
+  const contact = activeRecoveryContact(contactId);
+  if (!contact || contact.trusteeUserId !== trustee.id) return { kind: "forbidden" };
+  const target = store().users.get(contact.ownerUserId);
+  if (!target) return { kind: "not-found" };
+
+  for (const candidate of store().recoveryAttempts.values()) {
+    if (
+      candidate.id !== attempt.id &&
+      candidate.targetUserId === target.id &&
+      candidate.status === "APPROVED"
+    ) candidate.status = "CANCELLED";
+  }
+
+  attempt.status = "APPROVED";
+  attempt.contactId = contact.id;
+  attempt.targetUserId = target.id;
+  attempt.approvedByUserId = trustee.id;
+  attempt.approvalIdempotencyKey = idempotencyKey;
+  return { kind: "ok", value: recoveryAttemptDto(attempt, false, now) };
+}
+
+function issueDevSession(userId: string, now: Date, token = randomToken()): string {
+  store().sessions.set(token, {
+    userId,
+    expiresAt: now.getTime() + 365 * 24 * 60 * 60_000,
+  });
+  return token;
+}
+
+export function completeDevRecoveryAttempt(
+  claimToken: string,
+  idempotencyKey: string,
+  now = new Date(),
+): DevResult<{ attempt: DevRecoveryAttempt; sessionToken: string; me: MeResponse }> {
+  const attempt = recoveryAttemptByClaimToken(claimToken);
+  if (!attempt) return { kind: "not-found" };
+  if (isInactiveRecoveryAttempt(attempt, now)) return { kind: "expired" };
+
+  if (attempt.status === "COMPLETED") {
+    if (attempt.completionIdempotencyKey !== idempotencyKey || !attempt.targetUserId) {
+      return { kind: "conflict" };
+    }
+    const target = store().users.get(attempt.targetUserId);
+    if (!target) return { kind: "not-found" };
+    const completedSession = attempt.completedSessionToken
+      ? store().sessions.get(attempt.completedSessionToken)
+      : null;
+    if (
+      !attempt.completedSessionToken ||
+      !completedSession ||
+      completedSession.userId !== target.id ||
+      completedSession.expiresAt <= now.getTime()
+    ) return { kind: "conflict" };
+    return {
+      kind: "ok",
+      value: {
+        attempt: recoveryAttemptDto(attempt, true, now),
+        sessionToken: attempt.completedSessionToken,
+        me: asMe(target, now),
+      },
+    };
+  }
+
+  if (attempt.status !== "APPROVED" || !attempt.contactId || !attempt.targetUserId) {
+    return { kind: "conflict" };
+  }
+  const contact = activeRecoveryContact(attempt.contactId);
+  if (
+    !contact ||
+    contact.ownerUserId !== attempt.targetUserId ||
+    contact.trusteeUserId !== attempt.approvedByUserId
+  ) return { kind: "forbidden" };
+  const target = store().users.get(attempt.targetUserId);
+  if (!target) return { kind: "not-found" };
+
+  for (const contact of store().recoveryContacts.values()) {
+    if (
+      contact.ownerUserId === target.id &&
+      contact.id !== attempt.contactId &&
+      contact.revokedAt === null
+    ) {
+      contact.revokedAt = now.toISOString();
+      cancelApprovedRecoveryAttemptsForContact(contact.id);
+    }
+  }
+  for (const link of store().directInviteLinks.values()) {
+    if (link.inviterUserId === target.id && link.status === "PENDING") {
+      link.status = "REVOKED";
+    }
+  }
+  for (const request of store().directRequests.values()) {
+    if (request.requesterUserId === target.id && request.status === "PENDING") {
+      request.status = Date.parse(request.expiresAt) <= now.getTime() ? "EXPIRED" : "CANCELLED";
+      request.respondedAt = now.toISOString();
+    }
+  }
+  for (const invite of store().groupInvites.values()) {
+    if (invite.inviterUserId === target.id && invite.status === "PENDING") {
+      invite.status = "REVOKED";
+      invite.revokedAt = now.toISOString();
+    }
+  }
+  for (const approvedAttempt of store().recoveryAttempts.values()) {
+    if (
+      approvedAttempt.id !== attempt.id &&
+      approvedAttempt.approvedByUserId === target.id &&
+      approvedAttempt.status === "APPROVED"
+    ) {
+      approvedAttempt.status = "CANCELLED";
+    }
+  }
+
+  for (const [sessionToken, session] of store().sessions.entries()) {
+    if (session.userId === target.id) store().sessions.delete(sessionToken);
+  }
+  if (attempt.claimantSessionToken) store().sessions.delete(attempt.claimantSessionToken);
+
+  const sessionToken = issueDevSession(target.id, now, claimToken);
+  attempt.status = "COMPLETED";
+  attempt.completionIdempotencyKey = idempotencyKey;
+  attempt.completedSessionToken = sessionToken;
+  return {
+    kind: "ok",
+    value: { attempt: recoveryAttemptDto(attempt, false, now), sessionToken, me: asMe(target, now) },
+  };
 }

@@ -19,12 +19,13 @@ export function logDevClickerSeries(
     if (oldest) recentEventIds.delete(oldest);
   }
   sink(JSON.stringify({
-    schema_version: 1,
+    schema_version: event.lifetimeTaps === undefined ? 1 : 2,
     event: "clicker_series_finished",
     source: "next_dev",
     client_reported: true,
     tap_count: event.tapCount,
     best_series: event.bestSeries,
+    ...(event.lifetimeTaps === undefined ? {} : { lifetime_taps: event.lifetimeTaps }),
     level: event.level,
     story_id: event.storyId,
     duration_ms: event.durationMs,

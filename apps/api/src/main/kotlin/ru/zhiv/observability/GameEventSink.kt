@@ -9,6 +9,7 @@ data class ClickerSeriesFinishedEvent(
     val eventId: UUID,
     val tapCount: Long,
     val bestSeries: Long,
+    val lifetimeTaps: Long?,
     val level: Int,
     val storyId: String,
     val durationMs: Long,
@@ -31,12 +32,13 @@ class Slf4jGameEventSink : GameEventSink {
             recentEventOrder.poll()?.let(recentEventIds::remove) ?: break
         }
         logger.atInfo()
-            .addKeyValue("schema_version", 1)
+            .addKeyValue("schema_version", if (event.lifetimeTaps == null) 1 else 2)
             .addKeyValue("event", "clicker_series_finished")
             .addKeyValue("source", "ktor")
             .addKeyValue("client_reported", true)
             .addKeyValue("tap_count", event.tapCount)
             .addKeyValue("best_series", event.bestSeries)
+            .addKeyValue("lifetime_taps", event.lifetimeTaps)
             .addKeyValue("level", event.level)
             .addKeyValue("story_id", event.storyId)
             .addKeyValue("duration_ms", event.durationMs)

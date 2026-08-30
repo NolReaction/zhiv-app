@@ -1,6 +1,6 @@
 {
   "name": "zhiv-app",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -16,6 +16,8 @@
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "start:vps": "next start --hostname 0.0.0.0",
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test:web": "node --test --test-concurrency=1 tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
@@ -38,6 +40,7 @@
     "react-day-picker": "^10.0.1",
     "react-dom": "19.2.6",
     "react-hook-form": "^7.85.0",
+    "react-qr-code": "^2.0.18",
     "react-resizable-panels": "^4.12.2",
     "recharts": "^3.8.0",
     "sonner": "^2.0.8",

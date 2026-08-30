@@ -365,9 +365,15 @@ test("keeps the thirty-second clicker lightweight and motion-safe", async () => 
 
   assert.doesNotMatch(clicker, /CLICKER_FINAL_TAP|rotateClickerStory/);
   assert.match(clicker, /CLICKER_MAX_TAP_COUNT\s*=\s*100_000/);
+  assert.match(clicker, /version:\s*3/);
+  assert.match(clicker, /lifetimeTaps/);
   assert.match(clicker, /bestSeries/);
   assert.match(clicker, /activeSeries/);
   assert.doesNotMatch(app, /navigator\.vibrate|AudioContext|new Audio/);
+  assert.match(app, /zhiv\.clicker-progress\.v3/);
+  assert.match(app, /zhiv\.clicker-progress\.v2/);
+  assert.match(app, /zhiv\.clicker-progress\.v1/);
+  assert.match(app, /combineLegacyClickerProgress\(legacyV2, legacyV1, storySeed\)/);
   assert.match(app, /localStorage\.setItem\([^,]+,\s*serializeClickerProgress\(/);
 
   const counterRule = appStyles.match(/\.tapCounter\s*\{[^}]*\}/s)?.[0] ?? "";
@@ -457,10 +463,15 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(checkInLabel, /-webkit-touch-callout:\s*none;/);
   assert.match(checkInLabel, /-webkit-user-select:\s*none;/);
   assert.match(checkInLabel, /(?<!-webkit-)user-select:\s*none;/);
-  assert.match(app, /onPointerDown=\{handleGamePointerDown\}/);
+  assert.match(app, /onPointerDown=\{handleGameAreaPointerDown\}/);
+  assert.match(app, /onPointerDown=\{handlePrimaryPointerDown\}/);
   assert.match(app, /if \(!shouldCountGamePointer\(event\.pointerType\)\) return;/);
+  assert.match(app, /if \(mainButton\.current\?\.contains\(event\.target as Node\)\) return;/);
+  assert.match(
+    app,
+    /if \(!active \|\| tappedAtMs < active\.lastTapAtMs\s*\|\| tappedAtMs - active\.lastTapAtMs >= CLICKER_IDLE_RESET_MS\) return;/,
+  );
   assert.match(app, /lastGameTouchAt\.current = performance\.now\(\);/);
-  assert.doesNotMatch(app, /isPrimary/);
   assert.match(app, /onClick=\{handleGameClick\}/);
   assert.match(app, /shouldCountGameClick\(event\.detail, nowMs, lastGameTouchAt\.current\)/);
   assert.match(
@@ -470,7 +481,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
 
   const checkInFlow = app.slice(
     app.indexOf("async function handleCheckIn"),
-    app.indexOf("function handleGamePointerDown"),
+    app.indexOf("function handleGameAreaPointerDown"),
   );
   assert.ok(checkInFlow.indexOf("registerTap(1, tappedAtMs)") < checkInFlow.indexOf("await createCheckIn"));
 

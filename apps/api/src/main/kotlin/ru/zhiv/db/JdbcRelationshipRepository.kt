@@ -37,6 +37,10 @@ class JdbcRelationshipRepository(
                 ?: return@inTransaction RelationshipResult.Unauthorized
             val target = findUserByPublicId(connection, publicId)
                 ?: return@inTransaction RelationshipResult.NotFound
+            lockUsers(connection, setOf(currentUserId, target.id))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
             val now = serverTime(connection)
             if (target.id != currentUserId) {
                 expirePairRequests(connection, currentUserId, target.id, now)
@@ -68,6 +72,10 @@ class JdbcRelationshipRepository(
         inTransaction { connection ->
             val currentUserId = findCurrentUser(connection, sessionTokenHash)
                 ?: return@inTransaction RelationshipResult.Unauthorized
+            lockUsers(connection, setOf(currentUserId))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
             val expiryTime = serverTime(connection)
             expireUserRequests(connection, currentUserId, expiryTime)
             val people = listPeople(connection, currentUserId)
@@ -97,7 +105,10 @@ class JdbcRelationshipRepository(
                 ?: return@inTransaction RelationshipResult.NotFound
             if (target.id == currentUserId) return@inTransaction RelationshipResult.Self
 
-            lockUserPair(connection, currentUserId, target.id)
+            lockUsers(connection, setOf(currentUserId, target.id))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
             val now = serverTime(connection)
             val replay = findRequestReplay(connection, currentUserId, idempotencyKey)
             if (replay != null) {
@@ -177,7 +188,10 @@ class JdbcRelationshipRepository(
             }
             if (!authorized) return@inTransaction RelationshipResult.Forbidden
 
-            lockUserPair(connection, request.requesterUserId, request.recipientUserId)
+            lockUsers(connection, setOf(request.requesterUserId, request.recipientUserId))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
             request = findRequestForUpdate(connection, requestId)
                 ?: return@inTransaction RelationshipResult.NotFound
             authorized = if (action == RequestAction.CANCELLED) {
@@ -274,8 +288,17 @@ class JdbcRelationshipRepository(
         inTransaction { connection ->
             val currentUserId = findCurrentUser(connection, sessionTokenHash)
                 ?: return@inTransaction RelationshipResult.Unauthorized
+            val initialCircle = findCircleForUser(connection, circleId, currentUserId, lock = false)
+                ?: return@inTransaction RelationshipResult.NotFound
+            lockUsers(connection, setOf(initialCircle.lowUserId, initialCircle.highUserId))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
             val circle = findCircleForUser(connection, circleId, currentUserId, lock = true)
                 ?: return@inTransaction RelationshipResult.NotFound
+            if (circle.lowUserId != initialCircle.lowUserId
+                || circle.highUserId != initialCircle.highUserId
+            ) return@inTransaction RelationshipResult.Conflict
             if (circle.archivedAt != null) return@inTransaction RelationshipResult.NotFound
             connection.prepareStatement(
                 """
@@ -310,8 +333,17 @@ class JdbcRelationshipRepository(
         inTransaction { connection ->
             val currentUserId = findCurrentUser(connection, sessionTokenHash)
                 ?: return@inTransaction RelationshipResult.Unauthorized
+            val initialCircle = findCircleForUser(connection, circleId, currentUserId, lock = false)
+                ?: return@inTransaction RelationshipResult.NotFound
+            lockUsers(connection, setOf(initialCircle.lowUserId, initialCircle.highUserId))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
             val circle = findCircleForUser(connection, circleId, currentUserId, lock = true)
                 ?: return@inTransaction RelationshipResult.NotFound
+            if (circle.lowUserId != initialCircle.lowUserId
+                || circle.highUserId != initialCircle.highUserId
+            ) return@inTransaction RelationshipResult.Conflict
             val now = serverTime(connection)
             if (circle.archivedAt == null) {
                 connection.prepareStatement(
@@ -344,6 +376,9 @@ class JdbcRelationshipRepository(
             }
         }
 
+    private fun sessionBelongsToUser(connection: Connection, tokenHash: ByteArray, expectedUserId: UUID): Boolean =
+        findCurrentUser(connection, tokenHash) == expectedUserId
+
     private fun findUserByPublicId(connection: Connection, publicId: String): UserRow? =
         connection.prepareStatement(
             "SELECT id, public_id, display_name FROM app_users WHERE public_id = ? AND deleted_at IS NULL",
@@ -365,16 +400,18 @@ class JdbcRelationshipRepository(
             }
         }
 
-    private fun lockUserPair(connection: Connection, firstUserId: UUID, secondUserId: UUID) {
+    private fun lockUsers(connection: Connection, userIds: Set<UUID>) {
+        if (userIds.isEmpty()) return
+        val ordered = userIds.sorted()
+        val placeholders = ordered.joinToString(",") { "?" }
         connection.prepareStatement(
-            "SELECT id FROM app_users WHERE id IN (?, ?) ORDER BY id FOR UPDATE",
+            "SELECT id FROM app_users WHERE id IN ($placeholders) ORDER BY id FOR NO KEY UPDATE",
         ).use { statement ->
-            statement.setObject(1, firstUserId)
-            statement.setObject(2, secondUserId)
+            ordered.forEachIndexed { index, userId -> statement.setObject(index + 1, userId) }
             statement.executeQuery().use { result ->
                 var count = 0
                 while (result.next()) count++
-                check(count == 2)
+                check(count == ordered.size)
             }
         }
     }
@@ -813,7 +850,7 @@ class JdbcRelationshipRepository(
         val suffix = if (lock) " FOR UPDATE" else ""
         return connection.prepareStatement(
             """
-            SELECT id, archived_at
+            SELECT id, direct_user_low_id, direct_user_high_id, archived_at
               FROM circles
              WHERE id = ? AND kind = 'DIRECT'
                AND ? IN (direct_user_low_id, direct_user_high_id)
@@ -826,6 +863,8 @@ class JdbcRelationshipRepository(
                 if (result.next()) {
                     CircleRow(
                         id = result.getObject("id", UUID::class.java),
+                        lowUserId = result.getObject("direct_user_low_id", UUID::class.java),
+                        highUserId = result.getObject("direct_user_high_id", UUID::class.java),
                         archivedAt = result.getObject("archived_at", OffsetDateTime::class.java),
                     )
                 } else null
@@ -904,5 +943,10 @@ class JdbcRelationshipRepository(
         val idempotencyKey: UUID,
     )
 
-    private data class CircleRow(val id: UUID, val archivedAt: OffsetDateTime?)
+    private data class CircleRow(
+        val id: UUID,
+        val lowUserId: UUID,
+        val highUserId: UUID,
+        val archivedAt: OffsetDateTime?,
+    )
 }

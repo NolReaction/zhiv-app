@@ -21,18 +21,26 @@ const validEvent = {
   type: "CLICKER_SERIES_FINISHED",
   tapCount: 20,
   bestSeries: 50,
+  lifetimeTaps: 100,
   level: 5,
   storyId: "space",
   durationMs: 12_345,
   reason: "IDLE_TIMEOUT",
 };
 
-test("accepts only a consistent aggregate clicker event", () => {
+test("accepts only a consistent lifetime clicker event", () => {
   assert.deepEqual(gameEvents.parseClickerSeriesEvent(validEvent), validEvent);
   assert.equal(gameEvents.parseClickerSeriesEvent({ ...validEvent, tapCount: 0 }), null);
   assert.equal(gameEvents.parseClickerSeriesEvent({ ...validEvent, level: 4 }), null);
+  assert.equal(gameEvents.parseClickerSeriesEvent({ ...validEvent, lifetimeTaps: 49 }), null);
   assert.equal(gameEvents.parseClickerSeriesEvent({ ...validEvent, storyId: "../../token" }), null);
   assert.equal(gameEvents.parseClickerSeriesEvent({ ...validEvent, cookie: "secret" }), null);
+});
+
+test("keeps accepting an in-flight v0.4.2 aggregate without lifetime taps", () => {
+  const { lifetimeTaps, ...legacyEvent } = validEvent;
+  assert.equal(lifetimeTaps, 100);
+  assert.deepEqual(gameEvents.parseClickerSeriesEvent(legacyEvent), legacyEvent);
 });
 
 test("writes a strict privacy-safe development log line", () => {
@@ -46,6 +54,7 @@ test("writes a strict privacy-safe development log line", () => {
     "duration_ms",
     "event",
     "level",
+    "lifetime_taps",
     "reason",
     "schema_version",
     "source",

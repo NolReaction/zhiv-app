@@ -1,6 +1,7 @@
 package ru.zhiv
 
 import io.ktor.client.request.header
+import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -17,6 +18,7 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.identity.UserSnapshot
+import ru.zhiv.health.ReadinessProbe
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -26,6 +28,29 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class ApiContractTest {
+    @Test
+    fun `health stays live while readiness hides database details`() = testApplication {
+        val repository = FakeRepository()
+        application {
+            installZhivApi(
+                repository,
+                repository,
+                testConfig(),
+                readiness = ReadinessProbe { false },
+            )
+        }
+
+        val live = client.get("/healthz")
+        assertEquals(HttpStatusCode.OK, live.status)
+        assertEquals("no-store", live.headers[HttpHeaders.CacheControl])
+        assertEquals("{\"status\":\"ok\"}", live.bodyAsText())
+
+        val notReady = client.get("/readyz")
+        assertEquals(HttpStatusCode.ServiceUnavailable, notReady.status)
+        assertEquals("no-store", notReady.headers[HttpHeaders.CacheControl])
+        assertEquals("{\"status\":\"unavailable\"}", notReady.bodyAsText())
+    }
+
     @Test
     fun `bootstrap sets an http-only cookie and check-in returns server time`() = testApplication {
         val repository = FakeRepository()
@@ -42,6 +67,8 @@ class ApiContractTest {
         assertContains(created.bodyAsText(), "\"lastCheckInAt\":null")
         assertContains(created.bodyAsText(), "\"checkInCount\":0")
         assertContains(created.bodyAsText(), "\"currentDays\":0")
+        assertContains(created.bodyAsText(), "\"isActive\":false")
+        assertContains(created.bodyAsText(), "\"renewBy\":null")
         assertContains(created.bodyAsText(), "\"displayNameChangeAvailableAt\":null")
         val setCookie = assertNotNull(created.headers[HttpHeaders.SetCookie])
         assertContains(setCookie, "HttpOnly")
@@ -56,6 +83,7 @@ class ApiContractTest {
         assertContains(checkedIn.bodyAsText(), "\"replayed\":false")
         assertContains(checkedIn.bodyAsText(), "\"checkInCount\":1")
         assertContains(checkedIn.bodyAsText(), "\"currentDays\":1")
+        assertContains(checkedIn.bodyAsText(), "\"isActive\":true")
     }
 
     @Test
@@ -150,11 +178,11 @@ class ApiContractTest {
         private var user: UserSnapshot? = null
         private var displayNameChangedAt: OffsetDateTime? = null
 
-        private fun streak(currentDays: Long, checkedInToday: Boolean) = DailyStreakSnapshot(
+        private fun streak(currentDays: Long, isActive: Boolean) = DailyStreakSnapshot(
             currentDays = currentDays,
             longestDays = currentDays,
-            checkedInToday = checkedInToday,
-            nextDayAt = OffsetDateTime.now(ZoneOffset.UTC).plusDays(1),
+            isActive = isActive,
+            renewBy = if (isActive) OffsetDateTime.now(ZoneOffset.UTC).plusDays(1) else null,
         )
 
         override suspend fun bootstrap(

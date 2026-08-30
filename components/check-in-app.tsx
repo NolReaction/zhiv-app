@@ -27,7 +27,7 @@ import {
 import {
   formatLastCheckIn,
   getCheckInAgeMs,
-  getCheckInColor,
+  getCheckInPalette,
   isValidDisplayName,
   limitDisplayNameInput,
   normalizeDisplayName,
@@ -37,10 +37,12 @@ import {
   CLICKER_IDLE_RESET_MS,
   CLICKER_MAX_TAP_COUNT,
   clickerSeedFromPublicId,
+  combineLegacyClickerProgress,
   createClickerRun,
   expireClickerSeries,
   getClickerFrame,
   getClickerLevel,
+  getClickerLevelProgress,
   getClickerSeriesTimer,
   mergeClickerProgress,
   parseClickerProgress,
@@ -58,6 +60,8 @@ import {
 import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "./people-view";
 import { ProfileView } from "./profile-view";
+import { CapabilityLanding } from "./capability-landing";
+import { RecoveryStarter } from "./recovery-starter";
 import styles from "./check-in-app.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { getIdentitySharingNotice, shareIdentity } from "@/lib/identity-sharing";
@@ -75,22 +79,26 @@ type PendingBootstrap = {
 };
 
 type PendingCheckIn = {
-  version: 1;
+  version: 2;
   kind: "check-in";
   idempotencyKey: string;
+  ownerPublicId: string;
   previousLastCheckInAt: string | null;
   createdAt: number;
   expiresAt: number;
 };
 
 const PENDING_BOOTSTRAP_STORAGE_KEY = "zhiv.pending-bootstrap.v1";
-const PENDING_CHECK_IN_STORAGE_KEY = "zhiv.pending-check-in.v1";
-const CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v2";
-const LEGACY_CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v1";
+const PENDING_CHECK_IN_STORAGE_KEY = "zhiv.pending-check-in.v2";
+const LEGACY_PENDING_CHECK_IN_STORAGE_KEY = "zhiv.pending-check-in.v1";
+const CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v3";
+const LEGACY_V2_CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v2";
+const LEGACY_V1_CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v1";
 const PENDING_BOOTSTRAP_TTL_MS = 10 * 60_000;
 const PENDING_CHECK_IN_TTL_MS = 24 * 60 * 60_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PUBLIC_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/;
 
 const CONFETTI = [
   { x: -118, y: -118, r: -100, color: "#f5e85b" },
@@ -126,9 +134,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function hasValidPendingEnvelope(value: Record<string, unknown>): boolean {
+function hasValidPendingEnvelope(
+  value: Record<string, unknown>,
+  version: 1 | 2,
+): boolean {
   return (
-    value.version === 1 &&
+    value.version === version &&
     typeof value.idempotencyKey === "string" &&
     UUID_PATTERN.test(value.idempotencyKey) &&
     typeof value.createdAt === "number" &&
@@ -142,7 +153,7 @@ function hasValidPendingEnvelope(value: Record<string, unknown>): boolean {
 function isPendingBootstrap(value: unknown): value is PendingBootstrap {
   return (
     isRecord(value) &&
-    hasValidPendingEnvelope(value) &&
+    hasValidPendingEnvelope(value, 1) &&
     value.kind === "bootstrap" &&
     typeof value.displayName === "string" &&
     value.displayName === normalizeDisplayName(value.displayName) &&
@@ -153,8 +164,10 @@ function isPendingBootstrap(value: unknown): value is PendingBootstrap {
 function isPendingCheckIn(value: unknown): value is PendingCheckIn {
   return (
     isRecord(value) &&
-    hasValidPendingEnvelope(value) &&
+    hasValidPendingEnvelope(value, 2) &&
     value.kind === "check-in" &&
+    typeof value.ownerPublicId === "string" &&
+    PUBLIC_ID_PATTERN.test(value.ownerPublicId) &&
     (value.previousLastCheckInAt === null ||
       typeof value.previousLastCheckInAt === "string")
   );
@@ -208,14 +221,29 @@ function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
     return { progress: createClickerRun(storySeed), finishedSeries: null };
   }
   try {
-    const stored = window.localStorage.getItem(clickerStorageKey(publicId));
-    const legacy = stored
-      ? null
-      : window.localStorage.getItem(
-          clickerStorageKey(publicId, LEGACY_CLICKER_PROGRESS_STORAGE_PREFIX),
-        );
-    const progress = parseClickerProgress(stored ?? legacy ?? "", storySeed)
-      ?? createClickerRun(storySeed);
+    const stored = parseClickerProgress(
+      window.localStorage.getItem(clickerStorageKey(publicId)) ?? "",
+      storySeed,
+    );
+    const legacyV2 = stored ? null : parseClickerProgress(
+      window.localStorage.getItem(
+        clickerStorageKey(publicId, LEGACY_V2_CLICKER_PROGRESS_STORAGE_PREFIX),
+      ) ?? "",
+      storySeed,
+    );
+    const legacyV1 = stored ? null : parseClickerProgress(
+      window.localStorage.getItem(
+        clickerStorageKey(publicId, LEGACY_V1_CLICKER_PROGRESS_STORAGE_PREFIX),
+      ) ?? "",
+      storySeed,
+    );
+    const progress = stored ?? combineLegacyClickerProgress(legacyV2, legacyV1, storySeed);
+    if (!stored) {
+      window.localStorage.setItem(
+        clickerStorageKey(publicId),
+        serializeClickerProgress(progress),
+      );
+    }
     return expireClickerSeries(progress, Date.now());
   } catch {
     return { progress: createClickerRun(storySeed), finishedSeries: null };
@@ -310,6 +338,7 @@ export function CheckInApp() {
   const pendingCheckIn = useRef<PendingCheckIn | null>(null);
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
   const homeHeading = useRef<HTMLHeadingElement | null>(null);
+  const mainButton = useRef<HTMLButtonElement | null>(null);
   const clickerOwnerPublicId = useRef<string | null>(null);
   const clickerPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -351,7 +380,8 @@ export function CheckInApp() {
       type: "CLICKER_SERIES_FINISHED",
       tapCount: finished.tapCount,
       bestSeries: progress.bestSeries,
-      level: getClickerLevel(progress.bestSeries).level,
+      lifetimeTaps: progress.lifetimeTaps,
+      level: getClickerLevel(progress.lifetimeTaps).level,
       storyId: finished.storyId,
       durationMs: finished.durationMs,
       reason: "IDLE_TIMEOUT",
@@ -414,6 +444,7 @@ export function CheckInApp() {
   const clearPendingCheckIn = useCallback(() => {
     pendingCheckIn.current = null;
     removePending(PENDING_CHECK_IN_STORAGE_KEY);
+    removePending(LEGACY_PENDING_CHECK_IN_STORAGE_KEY);
   }, []);
 
   const resetTransientCheckIn = useCallback(() => {
@@ -503,14 +534,26 @@ export function CheckInApp() {
 
   const adoptMe = useCallback((identity: MeResponse) => {
     const unresolvedCheckIn = pendingCheckIn.current;
+    const isAccountSwitch = Boolean(
+      clickerOwnerPublicId.current &&
+      clickerOwnerPublicId.current !== identity.user.publicId,
+    );
     if (
-      unresolvedCheckIn &&
-      identity.lastCheckInAt !== unresolvedCheckIn.previousLastCheckInAt
+      isAccountSwitch ||
+      (
+        unresolvedCheckIn &&
+        (
+          unresolvedCheckIn.ownerPublicId !== identity.user.publicId ||
+          identity.lastCheckInAt !== unresolvedCheckIn.previousLastCheckInAt
+        )
+      )
     ) {
       clearPendingCheckIn();
     }
     clearPendingBootstrap();
     resetTransientCheckIn();
+    setPeople(null);
+    setGroups(null);
     clickerOwnerPublicId.current = identity.user.publicId;
     const restored = restoreClickerRun(
       identity.user.publicId,
@@ -560,6 +603,7 @@ export function CheckInApp() {
       PENDING_CHECK_IN_STORAGE_KEY,
       isPendingCheckIn,
     );
+    removePending(LEGACY_PENDING_CHECK_IN_STORAGE_KEY);
     pendingBootstrap.current = restoredBootstrap;
     pendingCheckIn.current = restoredCheckIn;
 
@@ -590,7 +634,7 @@ export function CheckInApp() {
     window.addEventListener("pagehide", flushClickerProgress);
     document.addEventListener("visibilitychange", flushHiddenClickerProgress);
 
-    const clock = window.setInterval(() => setClientNowMs(Date.now()), 60_000);
+    const clock = window.setInterval(() => setClientNowMs(Date.now()), 15_000);
 
     return () => {
       active = false;
@@ -647,7 +691,8 @@ export function CheckInApp() {
 
   useEffect(() => {
     if (screen !== "home" || !streak) return;
-    const delay = Date.parse(streak.nextDayAt) - (Date.now() + clockOffsetMs);
+    if (!streak.renewBy) return;
+    const delay = Date.parse(streak.renewBy) - (Date.now() + clockOffsetMs);
     if (!Number.isFinite(delay)) return;
     const timer = window.setTimeout(() => void refreshSelf(), Math.max(250, delay + 250));
     return () => window.clearTimeout(timer);
@@ -891,12 +936,17 @@ export function CheckInApp() {
     checkInSending.current = true;
     setIsSending(true);
     try {
+      if (!me) {
+        loseSession();
+        return;
+      }
       if (!pendingCheckIn.current) {
         const createdAt = Date.now();
         pendingCheckIn.current = {
-          version: 1,
+          version: 2,
           kind: "check-in",
           idempotencyKey: createUuidV4(),
+          ownerPublicId: me.user.publicId,
           previousLastCheckInAt: lastCheckInAt,
           createdAt,
           expiresAt: createdAt + PENDING_CHECK_IN_TTL_MS,
@@ -949,8 +999,21 @@ export function CheckInApp() {
     }
   }
 
-  function handleGamePointerDown(event: ReactPointerEvent<HTMLElement>) {
+  function handleGameAreaPointerDown(event: ReactPointerEvent<HTMLElement>) {
     if (!shouldCountGamePointer(event.pointerType)) return;
+    if (mainButton.current?.contains(event.target as Node)) return;
+    const active = clickerRunRef.current.activeSeries;
+    const tappedAtMs = Date.now();
+    if (!active || tappedAtMs < active.lastTapAtMs
+      || tappedAtMs - active.lastTapAtMs >= CLICKER_IDLE_RESET_MS) return;
+    event.preventDefault();
+    lastGameTouchAt.current = performance.now();
+    registerTap(1, tappedAtMs);
+  }
+
+  function handlePrimaryPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!shouldCountGamePointer(event.pointerType)) return;
+    event.stopPropagation();
     event.preventDefault();
     lastGameTouchAt.current = performance.now();
     void handleCheckIn();
@@ -967,10 +1030,16 @@ export function CheckInApp() {
 
   const adjustedNow = clientNowMs + clockOffsetMs;
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
-  const buttonColor = getCheckInColor(ageMs);
+  const buttonPalette = getCheckInPalette(ageMs);
   const storyFrame = getClickerFrame(clickerRun);
-  const clickerLevel = getClickerLevel(clickerRun.bestSeries);
-  const serverStatus = notice ?? formatLastCheckIn(lastCheckInAt, adjustedNow);
+  const clickerLevel = getClickerLevel(clickerRun.lifetimeTaps);
+  const clickerLevelProgress = getClickerLevelProgress(clickerRun.lifetimeTaps);
+  const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
+  const primaryStatus = !isOnline
+    ? "Офлайн · серия считается на устройстве"
+    : notice
+      ? notice
+      : storyFrame?.message ?? seriesSummary ?? serverStatus;
   const earlyTapClass =
     storyFrame && storyFrame.tapCount >= 2 && storyFrame.tapCount <= 4
       ? styles[`tap${storyFrame.tapCount}`]
@@ -997,8 +1066,13 @@ export function CheckInApp() {
     CLICKER_MAX_TAP_COUNT,
   );
   const buttonStyle = useMemo(
-    () => ({ "--check-in-color": buttonColor }) as CSSProperties,
-    [buttonColor],
+    () => ({
+      "--check-in-color": buttonPalette.base,
+      "--check-in-highlight": buttonPalette.highlight,
+      "--check-in-shadow": buttonPalette.shadow,
+      "--check-in-glow": buttonPalette.glow,
+    }) as CSSProperties,
+    [buttonPalette],
   );
 
   function showIdentityNotice(message: string) {
@@ -1060,17 +1134,26 @@ export function CheckInApp() {
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="session-lost-title">Сессия закончилась</h1>
           <p className={styles.intro}>
-            Отметка не потеряна и не дублировалась. Восстановление старого профиля подключим
-            отдельным безопасным способом.
+            Создайте запрос здесь и отправьте его заранее выбранному доверенному человеку.
+            Он только подтвердит запрос — возврат профиля завершится на этом устройстве.
           </p>
+          <RecoveryStarter
+            context="session-lost"
+            isOnline={isOnline}
+            onRecovered={adoptMe}
+          />
           <button
-            className={styles.retryButton}
+            className={`${styles.retryButton} ${styles.newProfileButton}`}
             type="button"
             onClick={() => setScreen("onboarding")}
           >
             Создать новый профиль
           </button>
         </section>
+        <CapabilityLanding
+          authenticated={false}
+          onInviteAccepted={() => undefined}
+        />
       </main>
     );
   }
@@ -1082,6 +1165,15 @@ export function CheckInApp() {
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="welcome-title">Как тебя зовут?</h1>
           <p className={styles.intro}>Только имя. Остальное приложение сделает само.</p>
+          <p className={styles.recoveryHint}>
+            Уже был профиль? Сначала запросите подтверждение у доверенного человека — так вы не
+            создадите случайный новый аккаунт.
+          </p>
+          <RecoveryStarter
+            context="onboarding"
+            isOnline={isOnline}
+            onRecovered={adoptMe}
+          />
           <form onSubmit={handleBootstrap} className={styles.form} noValidate>
             <label htmlFor="display-name" className={styles.srOnly}>
               Имя
@@ -1117,6 +1209,10 @@ export function CheckInApp() {
             </p>
           ) : null}
         </section>
+        <CapabilityLanding
+          authenticated={false}
+          onInviteAccepted={() => undefined}
+        />
       </main>
     );
   }
@@ -1149,7 +1245,7 @@ export function CheckInApp() {
           id="check-in-panel"
           className={styles.action}
           aria-labelledby="main-action-title"
-          onPointerDown={handleGamePointerDown}
+          onPointerDown={handleGameAreaPointerDown}
         >
           <h1
             id="main-action-title"
@@ -1164,11 +1260,7 @@ export function CheckInApp() {
               <div
                 className={styles.streakPill}
                 data-state={
-                  streak.checkedInToday
-                    ? "complete"
-                    : streak.currentDays > 0
-                      ? "waiting"
-                      : "empty"
+                  streak.isActive && streak.currentDays > 0 ? "complete" : "empty"
                 }
                 aria-label={`${formatDayCount(streak.currentDays)} подряд. ${getDailyStreakMessage(streak)}`}
               >
@@ -1185,6 +1277,8 @@ export function CheckInApp() {
               type="button"
               className={`${styles.checkInButton} ${pulseClass}`}
               style={buttonStyle}
+              ref={mainButton}
+              onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
               aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
@@ -1308,16 +1402,15 @@ export function CheckInApp() {
               role="status"
               aria-live="polite"
             >
-              {!isOnline
-                ? "Офлайн · серия считается на устройстве"
-                : notice
-                  ? notice
-                  : storyFrame?.message ?? seriesSummary ?? serverStatus}
+              {primaryStatus}
             </p>
             <span className={styles.srOnly}>
               Лучшая серия: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.
             </span>
+            {primaryStatus !== serverStatus ? (
+              <p className={styles.serverFact}>{serverStatus}</p>
+            ) : null}
           </div>
         </section>
       ) : activeView === "people" ? (
@@ -1340,10 +1433,17 @@ export function CheckInApp() {
           isOnline={isOnline}
           clickerStats={{
             bestSeries: clickerRun.bestSeries,
+            lifetimeTaps: clickerRun.lifetimeTaps,
             level: clickerLevel,
+            levelProgress: clickerLevelProgress,
           }}
           onUpdated={(identity) => {
             syncMeSnapshot(identity);
+            void refreshPeople();
+            void refreshGroups();
+          }}
+          onRecovered={(identity) => {
+            adoptMe(identity);
             void refreshPeople();
             void refreshGroups();
           }}
@@ -1395,6 +1495,14 @@ export function CheckInApp() {
           </button>
         </nav>
       </footer>
+      <CapabilityLanding
+        authenticated={true}
+        onInviteAccepted={() => {
+          setActiveView("people");
+          void refreshPeople();
+          void refreshGroups();
+        }}
+      />
     </main>
   );
 }

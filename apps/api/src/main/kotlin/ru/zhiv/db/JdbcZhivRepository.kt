@@ -124,8 +124,8 @@ class JdbcZhivRepository(
         )
         SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
                (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
-               streak.current_days, streak.longest_days, streak.checked_in_today,
-               streak.next_day_at, u.display_name_changed_at,
+               streak.current_days, streak.longest_days, streak.is_active,
+               streak.renew_by, u.display_name_changed_at,
                CASE
                    WHEN u.display_name_changed_at + interval '24 hours' > clock.server_time
                    THEN u.display_name_changed_at + interval '24 hours'
@@ -134,9 +134,7 @@ class JdbcZhivRepository(
         FROM identity_bootstrap_keys b
         JOIN app_users u ON u.id = b.user_id
         CROSS JOIN request_clock clock
-        CROSS JOIN LATERAL daily_check_in_streak(
-            u.id, clock.server_time, u.timezone_id
-        ) streak
+        CROSS JOIN LATERAL rolling_check_in_streak(u.id, clock.server_time) streak
         WHERE b.idempotency_hash = ?
         FOR UPDATE OF b, u
         """.trimIndent(),
@@ -215,8 +213,8 @@ class JdbcZhivRepository(
                     )
                     SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
                            (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
-                           streak.current_days, streak.longest_days, streak.checked_in_today,
-                           streak.next_day_at, u.display_name_changed_at,
+                           streak.current_days, streak.longest_days, streak.is_active,
+                           streak.renew_by, u.display_name_changed_at,
                            CASE
                                WHEN u.display_name_changed_at + interval '24 hours' > clock.server_time
                                THEN u.display_name_changed_at + interval '24 hours'
@@ -225,9 +223,7 @@ class JdbcZhivRepository(
                     FROM app_sessions s
                     JOIN app_users u ON u.id = s.user_id
                     CROSS JOIN request_clock clock
-                    CROSS JOIN LATERAL daily_check_in_streak(
-                        u.id, clock.server_time, u.timezone_id
-                    ) streak
+                    CROSS JOIN LATERAL rolling_check_in_streak(u.id, clock.server_time) streak
                     WHERE s.token_hash = ?
                       AND s.revoked_at IS NULL
                       AND s.expires_at > clock.server_time
@@ -305,7 +301,6 @@ class JdbcZhivRepository(
                 user.userId,
                 idempotencyKey,
                 user.serverTime,
-                user.timezoneId,
             )?.let {
                 return@inTransaction it
             }
@@ -318,7 +313,6 @@ class JdbcZhivRepository(
                         connection,
                         user.userId,
                         user.serverTime,
-                        user.timezoneId,
                     ),
                     serverTime = user.serverTime,
                     nextAllowedAt = nextAllowedAt,
@@ -372,7 +366,6 @@ class JdbcZhivRepository(
                     connection,
                     user.userId,
                     user.serverTime,
-                    user.timezoneId,
                 ),
                 serverTime = user.serverTime,
                 nextAllowedAt = acceptedNextAllowedAt,
@@ -477,59 +470,87 @@ class JdbcZhivRepository(
     }
 
     private fun lockUser(connection: Connection, tokenHash: ByteArray): LockedUser? {
-        val locked = connection.prepareStatement(
+        val session = connection.prepareStatement(
             """
-            SELECT u.id AS user_id, s.id AS session_id, u.display_name,
-                   u.display_name_changed_at, u.display_name_change_key,
-                   u.last_check_in_at, u.timezone_id, u.deleted_at,
-                   s.expires_at, s.revoked_at
-            FROM app_sessions s
-            JOIN app_users u ON u.id = s.user_id
-            WHERE s.token_hash = ?
-              AND s.revoked_at IS NULL
-              AND s.expires_at > clock_timestamp()
-              AND u.deleted_at IS NULL
-            FOR UPDATE OF u, s
+            SELECT session.id AS session_id, session.user_id
+              FROM app_sessions session
+              JOIN app_users user_account ON user_account.id = session.user_id
+             WHERE session.token_hash = ?
+               AND session.revoked_at IS NULL
+               AND session.expires_at > clock_timestamp()
+               AND user_account.deleted_at IS NULL
             """.trimIndent(),
         ).use { statement ->
             statement.setBytes(1, tokenHash)
             statement.executeQuery().use { result ->
-                if (!result.next()) {
-                    null
-                } else {
-                    LockedUser(
-                        userId = result.getObject("user_id", UUID::class.java),
-                        sessionId = result.getObject("session_id", UUID::class.java),
-                        displayName = result.getString("display_name"),
-                        displayNameChangedAt = result.getObject(
-                            "display_name_changed_at",
-                            OffsetDateTime::class.java,
-                        ),
-                        displayNameChangeKey = result.getObject(
-                            "display_name_change_key",
-                            UUID::class.java,
-                        ),
-                        lastCheckInAt = result.getObject("last_check_in_at", OffsetDateTime::class.java),
-                        timezoneId = result.getString("timezone_id"),
-                        expiresAt = result.getObject("expires_at", OffsetDateTime::class.java),
-                        revokedAt = result.getObject("revoked_at", OffsetDateTime::class.java),
-                        deletedAt = result.getObject("deleted_at", OffsetDateTime::class.java),
-                    )
-                }
+                if (!result.next()) null else SessionIdentity(
+                    sessionId = result.getObject("session_id", UUID::class.java),
+                    userId = result.getObject("user_id", UUID::class.java),
+                )
             }
         }
+        if (session == null) return null
 
-        if (locked == null) return null
+        val activeUser = connection.prepareStatement(
+            "SELECT id FROM app_users WHERE id = ? AND deleted_at IS NULL FOR NO KEY UPDATE",
+        ).use { statement ->
+            statement.setObject(1, session.userId)
+            statement.executeQuery().use { result ->
+                result.next()
+            }
+        }
+        if (!activeUser) return null
+
         val serverTime = connection.prepareStatement("SELECT clock_timestamp() AS server_time").use { statement ->
             statement.executeQuery().use { result ->
                 check(result.next())
                 result.getObject("server_time", OffsetDateTime::class.java)
             }
         }
-        if (locked.revokedAt != null || locked.deletedAt != null || !locked.expiresAt.isAfter(serverTime)) {
-            return null
+        return connection.prepareStatement(
+            """
+            SELECT user_account.display_name,
+                   user_account.display_name_changed_at,
+                   user_account.display_name_change_key,
+                   user_account.last_check_in_at,
+                   user_account.timezone_id,
+                   session.expires_at
+              FROM app_sessions session
+              JOIN app_users user_account ON user_account.id = session.user_id
+             WHERE session.id = ?
+               AND session.user_id = ?
+               AND session.token_hash = ?
+               AND session.revoked_at IS NULL
+               AND session.expires_at > ?
+               AND user_account.deleted_at IS NULL
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setObject(1, session.sessionId)
+            statement.setObject(2, session.userId)
+            statement.setBytes(3, tokenHash)
+            statement.setObject(4, serverTime)
+            statement.executeQuery().use { result ->
+                if (!result.next()) null else LockedUser(
+                    userId = session.userId,
+                    sessionId = session.sessionId,
+                    displayName = result.getString("display_name"),
+                    displayNameChangedAt = result.getObject(
+                        "display_name_changed_at",
+                        OffsetDateTime::class.java,
+                    ),
+                    displayNameChangeKey = result.getObject(
+                        "display_name_change_key",
+                        UUID::class.java,
+                    ),
+                    lastCheckInAt = result.getObject("last_check_in_at", OffsetDateTime::class.java),
+                    timezoneId = result.getString("timezone_id"),
+                    expiresAt = result.getObject("expires_at", OffsetDateTime::class.java),
+                    revokedAt = null,
+                    deletedAt = null,
+                    serverTime = serverTime,
+                )
+            }
         }
-        return locked.copy(serverTime = serverTime)
     }
 
     private fun findReplay(
@@ -537,7 +558,6 @@ class JdbcZhivRepository(
         userId: UUID,
         idempotencyKey: UUID,
         serverTime: OffsetDateTime,
-        timezoneId: String,
     ): CheckInResult.Accepted? {
         val replay = connection.prepareStatement(
             """
@@ -575,7 +595,7 @@ class JdbcZhivRepository(
             eventId = replay.eventId,
             checkedAt = replay.checkedAt,
             checkInCount = replay.checkInCount,
-            streak = loadStreak(connection, userId, serverTime, timezoneId),
+            streak = loadStreak(connection, userId, serverTime),
             serverTime = serverTime,
             nextAllowedAt = replay.nextAllowedAt,
             replayed = true,
@@ -593,8 +613,8 @@ class JdbcZhivRepository(
         )
         SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
                (SELECT count(*) FROM check_ins event WHERE event.user_id = u.id) AS check_in_count,
-               streak.current_days, streak.longest_days, streak.checked_in_today,
-               streak.next_day_at, u.display_name_changed_at,
+               streak.current_days, streak.longest_days, streak.is_active,
+               streak.renew_by, u.display_name_changed_at,
                CASE
                    WHEN u.display_name_changed_at + interval '24 hours' > clock.server_time
                    THEN u.display_name_changed_at + interval '24 hours'
@@ -602,9 +622,7 @@ class JdbcZhivRepository(
                clock.server_time
           FROM request_clock clock
           JOIN app_users u ON u.id = ?
-          CROSS JOIN LATERAL daily_check_in_streak(
-              u.id, clock.server_time, u.timezone_id
-          ) streak
+          CROSS JOIN LATERAL rolling_check_in_streak(u.id, clock.server_time) streak
          WHERE u.deleted_at IS NULL
         """.trimIndent(),
     ).use { statement ->
@@ -619,13 +637,11 @@ class JdbcZhivRepository(
         connection: Connection,
         userId: UUID,
         serverTime: OffsetDateTime,
-        timezoneId: String,
     ): DailyStreakSnapshot = connection.prepareStatement(
-        "SELECT * FROM daily_check_in_streak(?, ?, ?)",
+        "SELECT * FROM rolling_check_in_streak(?, ?)",
     ).use { statement ->
         statement.setObject(1, userId)
         statement.setObject(2, serverTime)
-        statement.setString(3, timezoneId)
         statement.executeQuery().use { result ->
             check(result.next())
             result.toDailyStreakSnapshot()
@@ -671,9 +687,9 @@ class JdbcZhivRepository(
     private fun ResultSet.toDailyStreakSnapshot() = DailyStreakSnapshot(
         currentDays = getLong("current_days"),
         longestDays = getLong("longest_days"),
-        checkedInToday = getBoolean("checked_in_today"),
-        nextDayAt = getObject("next_day_at", OffsetDateTime::class.java)
-            .withOffsetSameInstant(ZoneOffset.UTC),
+        isActive = getBoolean("is_active"),
+        renewBy = getObject("renew_by", OffsetDateTime::class.java)
+            ?.withOffsetSameInstant(ZoneOffset.UTC),
     )
 
     private data class LockedUser(
@@ -688,6 +704,11 @@ class JdbcZhivRepository(
         val revokedAt: OffsetDateTime?,
         val deletedAt: OffsetDateTime?,
         val serverTime: OffsetDateTime = OffsetDateTime.MIN,
+    )
+
+    private data class SessionIdentity(
+        val sessionId: UUID,
+        val userId: UUID,
     )
 
     private data class BootstrapReplay(

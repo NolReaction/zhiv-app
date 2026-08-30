@@ -31,7 +31,7 @@ class JdbcGroupRepository(
         sessionTokenHash: ByteArray,
     ): GroupResult<GroupsSnapshot> = io {
         inTransaction { connection ->
-            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+            val currentUserId = authenticateForUpdate(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
             val now = serverTime(connection)
             expireInvites(connection, currentUserId, now)
@@ -80,23 +80,48 @@ class JdbcGroupRepository(
         inTransaction { connection ->
             val currentUserId = findCurrentUser(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
-            lockUser(connection, currentUserId)
-            val now = serverTime(connection)
-            findGroupCreationReplay(connection, currentUserId, idempotencyKey)?.let { groupId ->
+            findGroupCreationReplay(connection, currentUserId, idempotencyKey)?.let {
+                lockUsers(connection, setOf(currentUserId))
+                if (findCurrentUser(connection, sessionTokenHash) != currentUserId) {
+                    return@inTransaction GroupResult.Unauthorized
+                }
+                val groupId = findGroupCreationReplay(connection, currentUserId, idempotencyKey)
+                    ?: return@inTransaction GroupResult.Conflict
                 return@inTransaction GroupResult.Success(
-                    GroupMutationSnapshot(groupId, replayed = true, serverTime = now),
+                    GroupMutationSnapshot(groupId, replayed = true, serverTime = serverTime(connection)),
                 )
             }
-            if (countOwnedGroups(connection, currentUserId) >= 20) {
-                return@inTransaction GroupResult.Conflict
-            }
-            val targetUserIds = linkedSetOf<UUID>()
+
+            val initialTargets = linkedMapOf<UUID, UUID>()
             inviteeCircleIds.forEach { personCircleId ->
                 val target = targetFromDirectCircle(connection, personCircleId, currentUserId)
                     ?: return@inTransaction GroupResult.Forbidden
-                targetUserIds += target
+                initialTargets[personCircleId] = target
             }
-            if (targetUserIds.size > 20) return@inTransaction GroupResult.Conflict
+            val initialTargetUserIds = initialTargets.values.toSet()
+            if (initialTargetUserIds.size > 20) return@inTransaction GroupResult.Conflict
+
+            lockUsers(connection, initialTargetUserIds + currentUserId)
+            if (findCurrentUser(connection, sessionTokenHash) != currentUserId) {
+                return@inTransaction GroupResult.Unauthorized
+            }
+            findGroupCreationReplay(connection, currentUserId, idempotencyKey)?.let { groupId ->
+                return@inTransaction GroupResult.Success(
+                    GroupMutationSnapshot(groupId, replayed = true, serverTime = serverTime(connection)),
+                )
+            }
+            val targetUserIds = inviteeCircleIds.map { personCircleId ->
+                val target = targetFromDirectCircle(connection, personCircleId, currentUserId)
+                    ?: return@inTransaction GroupResult.Forbidden
+                if (target != initialTargets[personCircleId]) {
+                    return@inTransaction GroupResult.Conflict
+                }
+                target
+            }.toSet()
+            val now = serverTime(connection)
+            if (countOwnedGroups(connection, currentUserId) >= 20) {
+                return@inTransaction GroupResult.Conflict
+            }
 
             val groupId = connection.prepareStatement(
                 """
@@ -143,7 +168,7 @@ class JdbcGroupRepository(
         emoji: String?,
     ): GroupResult<GroupMutationSnapshot> = io {
         inTransaction { connection ->
-            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+            val currentUserId = authenticateForUpdate(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
             val membership = findActiveMembership(connection, groupId, currentUserId, lock = true)
                 ?: return@inTransaction GroupResult.NotFound
@@ -167,7 +192,7 @@ class JdbcGroupRepository(
         sharingMode: SharingMode,
     ): GroupResult<GroupMutationSnapshot> = io {
         inTransaction { connection ->
-            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+            val currentUserId = authenticateForUpdate(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
             findActiveMembership(connection, groupId, currentUserId, lock = true)
                 ?: return@inTransaction GroupResult.NotFound
@@ -190,11 +215,21 @@ class JdbcGroupRepository(
         inTransaction { connection ->
             val currentUserId = findCurrentUser(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
+            val initialTargetUserId = targetFromDirectCircle(
+                connection,
+                personCircleId,
+                currentUserId,
+            ) ?: return@inTransaction GroupResult.Forbidden
+            lockUsers(connection, setOf(currentUserId, initialTargetUserId))
+            if (findCurrentUser(connection, sessionTokenHash) != currentUserId) {
+                return@inTransaction GroupResult.Unauthorized
+            }
             val membership = findActiveMembership(connection, groupId, currentUserId, lock = true)
                 ?: return@inTransaction GroupResult.NotFound
             if (membership.role != GroupRole.OWNER) return@inTransaction GroupResult.Forbidden
             val targetUserId = targetFromDirectCircle(connection, personCircleId, currentUserId)
                 ?: return@inTransaction GroupResult.Forbidden
+            if (targetUserId != initialTargetUserId) return@inTransaction GroupResult.Conflict
             val now = serverTime(connection)
             findInviteReplay(connection, currentUserId, idempotencyKey)?.let { replay ->
                 if (replay.groupId != groupId || replay.inviteeUserId != targetUserId) {
@@ -227,7 +262,7 @@ class JdbcGroupRepository(
         action: GroupInviteAction,
     ): GroupResult<GroupMutationSnapshot> = io {
         inTransaction { connection ->
-            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+            val currentUserId = authenticateForUpdate(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
             val invite = findInvite(connection, inviteId, lock = true)
                 ?: return@inTransaction GroupResult.NotFound
@@ -278,7 +313,7 @@ class JdbcGroupRepository(
         inviteId: UUID,
     ): GroupResult<GroupRemovedSnapshot> = io {
         inTransaction { connection ->
-            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+            val currentUserId = authenticateForUpdate(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
             val membership = findActiveMembership(connection, groupId, currentUserId, lock = true)
                 ?: return@inTransaction GroupResult.NotFound
@@ -299,7 +334,7 @@ class JdbcGroupRepository(
         membershipId: UUID,
     ): GroupResult<GroupRemovedSnapshot> = io {
         inTransaction { connection ->
-            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+            val currentUserId = authenticateForUpdate(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
             val target = findMembershipForRemoval(connection, groupId, membershipId)
                 ?: return@inTransaction GroupResult.NotFound
@@ -327,7 +362,7 @@ class JdbcGroupRepository(
         groupId: UUID,
     ): GroupResult<GroupRemovedSnapshot> = io {
         inTransaction { connection ->
-            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+            val currentUserId = authenticateForUpdate(connection, sessionTokenHash)
                 ?: return@inTransaction GroupResult.Unauthorized
             val group = findGroupForCreator(connection, groupId, currentUserId)
                 ?: return@inTransaction GroupResult.NotFound
@@ -550,10 +585,25 @@ class JdbcGroupRepository(
             }
         }
 
-    private fun lockUser(connection: Connection, userId: UUID) {
-        connection.prepareStatement("SELECT id FROM app_users WHERE id = ? FOR UPDATE").use { statement ->
-            statement.setObject(1, userId)
-            statement.executeQuery().use { result -> check(result.next()) }
+    private fun authenticateForUpdate(connection: Connection, tokenHash: ByteArray): UUID? {
+        val userId = findCurrentUser(connection, tokenHash) ?: return null
+        lockUsers(connection, setOf(userId))
+        return findCurrentUser(connection, tokenHash)?.takeIf { it == userId }
+    }
+
+    private fun lockUsers(connection: Connection, userIds: Set<UUID>) {
+        if (userIds.isEmpty()) return
+        val ordered = userIds.sorted()
+        val placeholders = ordered.joinToString(",") { "?" }
+        connection.prepareStatement(
+            "SELECT id FROM app_users WHERE id IN ($placeholders) ORDER BY id FOR NO KEY UPDATE",
+        ).use { statement ->
+            ordered.forEachIndexed { index, userId -> statement.setObject(index + 1, userId) }
+            statement.executeQuery().use { result ->
+                var count = 0
+                while (result.next()) count++
+                check(count == ordered.size)
+            }
         }
     }
 
