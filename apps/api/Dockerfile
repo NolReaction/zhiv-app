@@ -2,7 +2,10 @@ FROM gradle:9.6.0-jdk25 AS build
 
 WORKDIR /home/gradle/project
 COPY --chown=gradle:gradle . .
-RUN ./gradlew --no-daemon clean test installDist
+RUN ./gradlew --no-daemon clean test installDist \
+    && NETTY_JAR="$(find build/install/zhiv-api/lib -maxdepth 1 -type f -name 'ktor-server-netty-jvm-*.jar' -print -quit)" \
+    && test -n "${NETTY_JAR}" \
+    && jar tf "${NETTY_JAR}" | grep --quiet --line-regexp 'io/ktor/server/netty/EngineMain.class'
 
 FROM eclipse-temurin:25-jre
 
@@ -14,4 +17,4 @@ WORKDIR /app
 COPY --from=build /home/gradle/project/build/install/zhiv-api/ ./
 USER zhiv
 EXPOSE 8080
-ENTRYPOINT ["/app/bin/zhiv-api"]
+ENTRYPOINT ["java", "-cp", "/app/lib/*", "io.ktor.server.netty.EngineMain"]
