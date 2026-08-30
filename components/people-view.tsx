@@ -113,7 +113,8 @@ export function PeopleView({
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<PeopleSection>("people");
-  const [inviteMode, setInviteMode] = useState<"link" | "qr" | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteMode, setInviteMode] = useState<"link" | "qr">("link");
   const [inviteShare, setInviteShare] = useState<{ url: string; expiresAt: string } | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
 
@@ -237,6 +238,7 @@ export function PeopleView({
   async function openInvite(mode: "link" | "qr", forceRegenerate = false) {
     if (pending) return;
     setInviteMode(mode);
+    setInviteOpen(true);
     setDialogError(null);
     setShareNotice(null);
     if (
@@ -540,7 +542,7 @@ export function PeopleView({
         </div>
       )}
 
-      {dialogError && !addOpen && inviteMode === null ? (
+      {dialogError && !addOpen && !inviteOpen ? (
         <p className={styles.pageError} role="alert">{dialogError}</p>
       ) : null}
 
@@ -609,9 +611,9 @@ export function PeopleView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={inviteMode !== null} onOpenChange={(open) => {
+      <Dialog open={inviteOpen} onOpenChange={(open) => {
+        setInviteOpen(open);
         if (!open) {
-          setInviteMode(null);
           setDialogError(null);
           setShareNotice(null);
         }
@@ -631,7 +633,7 @@ export function PeopleView({
             <button
               type="button"
               className={styles.shareButton}
-              onClick={() => inviteMode && void openInvite(inviteMode)}
+              onClick={() => void openInvite(inviteMode)}
             >
               <RefreshCw size={18} /> Повторить
             </button>
@@ -661,7 +663,7 @@ export function PeopleView({
                 className={styles.regenerateButton}
                 aria-describedby="invite-regenerate-hint"
                 disabled={Boolean(pending)}
-                onClick={() => inviteMode && void openInvite(inviteMode, true)}
+                onClick={() => void openInvite(inviteMode, true)}
               >
                 <RefreshCw size={15} /> Создать новую ссылку
               </button>

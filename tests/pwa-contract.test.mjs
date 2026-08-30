@@ -509,3 +509,19 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(`${app}\n${people}\n${groups}`, />\s*Свои\s*</);
   assert.doesNotMatch(`${app}\n${people}\n${groups}`, /["'`]Свои(?=["'`\s·])/);
 });
+
+test("keeps invite content stable while the dialog closes", async () => {
+  const people = await readFile(
+    new URL("../components/people-view.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(people, /const \[inviteOpen, setInviteOpen\] = useState\(false\);/);
+  assert.match(
+    people,
+    /const \[inviteMode, setInviteMode\] = useState<"link" \| "qr">\("link"\);/,
+  );
+  assert.match(people, /<Dialog open=\{inviteOpen\}/);
+  assert.match(people, /onOpenChange=\{\(open\) => \{\s*setInviteOpen\(open\);/);
+  assert.doesNotMatch(people, /setInviteMode\(null\)/);
+});

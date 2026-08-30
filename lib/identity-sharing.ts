@@ -35,6 +35,11 @@ function attemptLegacyCopy(documentApi: Document, text: string): boolean {
   if (!documentApi.body || typeof documentApi.execCommand !== "function") return false;
 
   const previousFocus = documentApi.activeElement;
+  const activeDialog = previousFocus?.closest?.('[role="dialog"]');
+  const openDialog = documentApi.querySelector?.<Element>(
+    '[role="dialog"][data-state="open"]',
+  );
+  const copyRoot = activeDialog ?? openDialog ?? documentApi.body;
   const selection = documentApi.getSelection();
   const savedRanges: Range[] = [];
 
@@ -59,7 +64,11 @@ function attemptLegacyCopy(documentApi: Document, text: string): boolean {
   field.style.fontSize = "16px";
   field.style.pointerEvents = "none";
 
-  documentApi.body.appendChild(field);
+  // Radix dialogs keep focus inside their content. Mounting the temporary field
+  // in document.body lets the focus trap steal focus before iOS copies it, while
+  // execCommand("copy") may still report success. Keep the field in the active
+  // dialog so the selected value reaches the pasteboard on Safari over LAN HTTP.
+  copyRoot.appendChild(field);
 
   let copied = false;
   try {

@@ -84,6 +84,7 @@ test("copies a person's ID without opening share on Safari over LAN HTTP", async
   });
 
   assert.equal(copied, true);
+  assert.ok(events.includes("field-appended"));
   assert.ok(events.includes("exec:copy"));
   assert.equal(events.includes("share-start"), false);
 });
@@ -108,6 +109,59 @@ test("falls back to legacy copy when the secure Clipboard API refuses access", a
     "clipboard-refused",
     "exec:copy",
   ]);
+});
+
+test("mounts the Safari fallback inside an active dialog", async () => {
+  const events = [];
+  const documentApi = createLegacyDocument(events);
+  const dialog = {
+    appendChild() {
+      events.push("dialog-field-appended");
+    },
+  };
+  documentApi.activeElement.closest = (selector) => {
+    events.push(`closest:${selector}`);
+    return dialog;
+  };
+
+  const copied = await sharing.copyText("https://zhiv.example/#/invite/token", {
+    document: documentApi,
+    navigator: {},
+    secureContext: false,
+  });
+
+  assert.equal(copied, true);
+  assert.ok(events.includes('closest:[role="dialog"]'));
+  assert.ok(events.includes("dialog-field-appended"));
+  assert.equal(events.includes("field-appended"), false);
+  assert.ok(events.indexOf("dialog-field-appended") < events.indexOf("field-focus"));
+  assert.ok(events.indexOf("field-focus") < events.indexOf("exec:copy"));
+});
+
+test("finds the open dialog when iOS does not focus the tapped button", async () => {
+  const events = [];
+  const documentApi = createLegacyDocument(events);
+  const dialog = {
+    appendChild() {
+      events.push("open-dialog-field-appended");
+    },
+  };
+  documentApi.activeElement.closest = () => null;
+  documentApi.querySelector = (selector) => {
+    events.push(`query:${selector}`);
+    return dialog;
+  };
+
+  const copied = await sharing.copyText("https://zhiv.example/#/invite/token", {
+    document: documentApi,
+    navigator: {},
+    secureContext: false,
+  });
+
+  assert.equal(copied, true);
+  assert.ok(events.includes('query:[role="dialog"][data-state="open"]'));
+  assert.ok(events.includes("open-dialog-field-appended"));
+  assert.equal(events.includes("field-appended"), false);
 });
 
 test("copies the ID through the Safari fallback on LAN HTTP", async () => {
