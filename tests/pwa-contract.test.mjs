@@ -502,10 +502,18 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /<Dialog open=\{inviteDialog\.open\}/);
   assert.match(people, /dispatchInviteDialog\(\{ type: "close" \}\)/);
   assert.doesNotMatch(people, /setInviteMode\(null\)/);
-  assert.match(people, /> Скопировать\s*<\/button>/);
+  assert.match(people, /inviteShare\.url \? "Скопировать" : "Копировать код"/);
   assert.match(people, /> Поделиться\s*<\/button>/);
-  assert.match(people, /copyTextFromVisibleField\(\s*inviteShare\.url,\s*inviteLinkField\.current/);
-  assert.match(people, /aria-label="Ссылка приглашения"/);
+  assert.match(people, /const copied = await copyText\(value\);/);
+  assert.doesNotMatch(people, /copyTextFromVisibleField/);
+  assert.match(people, /aria-label="Принять приглашение по ссылке или коду"/);
+  assert.match(people, /parseInviteToken\(inviteImportValue\)/);
+  assert.match(people, /window\.setTimeout\(\(\) => \{[\s\S]*window\.dispatchEvent\(new Event\(INVITE_IMPORT_EVENT\)\);[\s\S]*\}, DIALOG_EXIT_MS\);/);
+  assert.match(people, /inviteDialog\.mode === "qr" && inviteShare\.url/);
+  assert.match(people, /Ссылка и QR с localhost не откроются на другом устройстве/);
+  assert.match(people, /aria-label=\{inviteShare\.url \? "Ссылка приглашения" : "Одноразовый код приглашения"\}/);
+  assert.match(people, /aria-describedby=\{inviteImportError[\s\S]*\? "invite-import-hint invite-import-error"[\s\S]*: "invite-import-hint"\}/);
+  assert.match(people, /aria-invalid=\{Boolean\(inviteImportError\)\}/);
   assert.match(people, /inviteDialog\.mode === "qr" \? styles\.inviteLinkFieldCompact/);
   assert.match(peopleStyles, /\.inviteLinkField\s*\{[^}]*user-select:\s*text;/s);
   assert.match(peopleStyles, /\.sharingSwitch\s*\{[^}]*width:\s*48px !important;/s);
@@ -518,4 +526,55 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(people, /styles\.kicker/);
   assert.doesNotMatch(`${app}\n${people}\n${groups}`, />\s*Свои\s*</);
   assert.doesNotMatch(`${app}\n${people}\n${groups}`, /["'`]Свои(?=["'`\s·])/);
+});
+
+test("uses a wide desktop dashboard without changing the mobile navigation contract", async () => {
+  const [appStyles, peopleStyles, profileStyles] = await Promise.all([
+    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../components/profile-view.module.css", import.meta.url), "utf8"),
+  ]);
+
+  const desktopQuery = "@media (min-width: 960px) and (hover: hover) and (pointer: fine)";
+  const desktopApp = appStyles.slice(appStyles.indexOf(desktopQuery));
+  const desktopPeople = peopleStyles.slice(peopleStyles.indexOf(desktopQuery));
+  const desktopProfile = profileStyles.slice(profileStyles.indexOf(desktopQuery));
+
+  assert.match(desktopApp, /\.shell\s*\{[^}]*width:\s*min\(100%, 1120px\);/s);
+  assert.match(desktopPeople, /grid-template-columns:\s*minmax\(260px, 0\.72fr\) minmax\(420px, 1\.28fr\);/);
+  assert.match(desktopPeople, /grid-template-columns:\s*minmax\(240px, 1fr\) repeat\(3, 112px\);/);
+  assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
+  assert.match(desktopProfile, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(desktopProfile, /\.recoveryCard\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
+
+  const narrowQuery = "@media (max-width: 360px)";
+  const narrowPeople = peopleStyles.slice(peopleStyles.indexOf(narrowQuery));
+  assert.match(narrowPeople, /\.quickActions\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s);
+  assert.match(narrowPeople, /\.inviteActions\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s);
+  assert.match(peopleStyles, /\.dialog,\s*\.confirmDialog\s*\{(?=[^}]*max-height:\s*calc\(100dvh - 24px\);)(?=[^}]*overflow-y:\s*auto;)[^}]*\}/s);
+});
+
+test("keeps local development origins out of production Docker builds", async () => {
+  const [dockerIgnore, dockerfile] = await Promise.all([
+    readFile(new URL("../.dockerignore", import.meta.url), "utf8"),
+    readFile(new URL("../deploy/web.Dockerfile", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(dockerIgnore, /^\.env\*$/m);
+  assert.match(dockerIgnore, /^\*\*\/\.env\*$/m);
+  assert.match(dockerfile, /COPY \. \.[\s\S]*RUN npm run build:vps/);
+});
+
+test("bridges an invite from an external iOS browser into the authenticated PWA", async () => {
+  const [landing, landingStyles] = await Promise.all([
+    readFile(new URL("../components/capability-landing.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/capability-landing.module.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT, readAndOpenCapability\)/);
+  assert.match(landing, /На этом адресе и в этом браузере активной сессии нет/);
+  assert.match(landing, /Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана/);
+  assert.match(landing, /copyText\(inviteCode\(pending\.token\)\)/);
+  assert.match(landing, /«Люди» → «Принять»/);
+  assert.match(landingStyles, /\.inviteCode\s*\{[^}]*user-select:\s*text;/s);
 });

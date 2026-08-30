@@ -266,7 +266,15 @@ export function RecoveryStarter({
     if (!approvalToken || busy) return;
     setError(null);
     setNotice(null);
-    const url = capabilityUrl("recover", approvalToken);
+    const link = capabilityUrl("recover", approvalToken);
+    if (!link.url) {
+      setError(
+        link.reason === "loopback-origin"
+          ? "Ссылка с localhost не откроется у друга. Откройте приложение по LAN-адресу или задайте NEXT_PUBLIC_APP_ORIGIN."
+          : "Не удалось определить безопасный адрес приложения для ссылки восстановления.",
+      );
+      return;
+    }
     if (typeof navigator.share !== "function") {
       setNotice("Системная отправка недоступна. Используйте отдельную кнопку копирования ниже.");
       return;
@@ -275,7 +283,7 @@ export function RecoveryStarter({
       await navigator.share({
         title: "Подтвердить восстановление «Я живой»",
         text: "Открой ссылку в своём авторизованном приложении «Я живой» и подтверди, что это мой запрос.",
-        url,
+        url: link.url,
       });
       setNotice("Запрос отправлен. Ждём подтверждение друга.");
     } catch (cause) {
@@ -287,7 +295,17 @@ export function RecoveryStarter({
   async function copyApprovalRequest() {
     if (!approvalToken || busy) return;
     setError(null);
-    const copied = await copyText(capabilityUrl("recover", approvalToken));
+    const link = capabilityUrl("recover", approvalToken);
+    if (!link.url) {
+      setNotice(null);
+      setError(
+        link.reason === "loopback-origin"
+          ? "Ссылка с localhost не откроется у друга. Откройте приложение по LAN-адресу или задайте NEXT_PUBLIC_APP_ORIGIN."
+          : "Не удалось определить безопасный адрес приложения для ссылки восстановления.",
+      );
+      return;
+    }
+    const copied = await copyText(link.url);
     setNotice(copied ? "Ссылка скопирована" : null);
     if (!copied) setError("Не удалось скопировать ссылку");
   }

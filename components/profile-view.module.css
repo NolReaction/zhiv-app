@@ -486,6 +486,62 @@
   line-height: 1.5;
 }
 
+@media (min-width: 960px) and (hover: hover) and (pointer: fine) {
+  .view {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto auto auto auto auto;
+    align-content: start;
+    gap: 14px 20px;
+    scrollbar-gutter: stable;
+  }
+
+  .heading {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    margin-bottom: 12px;
+  }
+
+  .profileCard,
+  .stats,
+  .gameStats,
+  .formCard,
+  .recoveryCard,
+  .futureCard {
+    margin-top: 0;
+  }
+
+  .profileCard {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .stats {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .gameStats {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .futureCard {
+    grid-column: 1 / -1;
+    grid-row: 5;
+  }
+
+  .formCard {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .recoveryCard {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+}
+
 @media (max-width: 520px) {
   .view {
     padding-top: 24px;

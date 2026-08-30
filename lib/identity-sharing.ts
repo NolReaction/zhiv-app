@@ -37,6 +37,11 @@ function attemptLegacyCopy(documentApi: Document, text: string): boolean {
   if (!documentApi.body || typeof documentApi.execCommand !== "function") return false;
 
   const previousFocus = documentApi.activeElement;
+  const activeDialog = previousFocus?.closest?.('[role="dialog"]');
+  const openDialog = documentApi.querySelector?.<Element>(
+    '[role="dialog"][data-state="open"]',
+  );
+  const copyRoot = activeDialog ?? openDialog ?? documentApi.body;
   const selection = documentApi.getSelection();
   const savedRanges: Range[] = [];
 
@@ -51,19 +56,23 @@ function attemptLegacyCopy(documentApi: Document, text: string): boolean {
   field.readOnly = true;
   field.setAttribute("readonly", "");
   field.setAttribute("aria-hidden", "true");
-  field.style.position = "absolute";
-  field.style.top = `${documentApi.defaultView?.pageYOffset ?? documentApi.documentElement?.scrollTop ?? 0}px`;
-  if (documentApi.documentElement?.getAttribute("dir") === "rtl") {
-    field.style.right = "-9999px";
-  } else {
-    field.style.left = "-9999px";
-  }
+  field.style.position = "fixed";
+  field.style.top = "0";
+  field.style.left = "0";
+  field.style.width = "1px";
+  field.style.height = "1px";
   field.style.padding = "0";
   field.style.border = "0";
   field.style.margin = "0";
-  field.style.fontSize = "12pt";
+  field.style.opacity = "0";
+  field.style.fontSize = "16px";
+  field.style.pointerEvents = "none";
 
-  documentApi.body.appendChild(field);
+  // Radix keeps focus inside an open dialog. If the temporary field is mounted
+  // under document.body, its focus can be reclaimed before iOS transfers the
+  // selected value to the pasteboard even though execCommand reports success.
+  // Keep focus, selection and the legacy command synchronous in the original tap.
+  copyRoot.appendChild(field);
 
   let copied = false;
   try {
@@ -130,14 +139,24 @@ function copyTextFromUserGesture(
     : undefined;
 
   if (typeof clipboard?.writeText === "function") {
+    let modernCopy: Promise<void> | null = null;
     try {
-      return clipboard.writeText(text).then(
-        () => true,
-        () => copyWithLegacyCommand(environment.document, text),
-      );
+      modernCopy = clipboard.writeText(text);
     } catch {
       // A synchronous Clipboard API failure can still use the legacy user-gesture path.
     }
+
+    // Safari can reject the standards-based write only after transient activation
+    // has expired. Run the same-text legacy attempt now, inside the original tap,
+    // so an asynchronous rejection cannot make both paths unavailable.
+    const legacyCopied = copyWithLegacyCommand(environment.document, text);
+    if (modernCopy) {
+      return modernCopy.then(
+        () => true,
+        () => legacyCopied,
+      );
+    }
+    return Promise.resolve(legacyCopied);
   }
 
   return Promise.resolve(copyWithLegacyCommand(environment.document, text));

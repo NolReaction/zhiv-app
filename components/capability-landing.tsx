@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link2, ShieldCheck } from "lucide-react";
+import { Copy, Link2, ShieldCheck } from "lucide-react";
 import type {
   DirectInvitePreview,
   RecoveryApprovalPreview,
@@ -15,6 +15,8 @@ import {
 } from "@/lib/check-in-api";
 import { isCapabilityToken } from "@/lib/capability-token";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { copyText } from "@/lib/identity-sharing";
+import { INVITE_IMPORT_EVENT, inviteCode } from "@/lib/invite-import";
 import {
   Dialog,
   DialogContent,
@@ -207,6 +209,7 @@ export function CapabilityLanding({
   const [approvedTarget, setApprovedTarget] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bridgeNotice, setBridgeNotice] = useState<string | null>(null);
   const inviteRedeemResume = useRef<InviteRedeemResume | null>(null);
   const recoveryConfirmResume = useRef<RecoveryConfirmResume | null>(null);
   const onInviteAcceptedRef = useRef(onInviteAccepted);
@@ -220,6 +223,7 @@ export function CapabilityLanding({
     canApproveRecovery: boolean,
   ) => {
     setError(null);
+    setBridgeNotice(null);
     setApprovalDone(false);
     setApprovedTarget(null);
     if (current.kind === "invite") {
@@ -299,12 +303,17 @@ export function CapabilityLanding({
   }, []);
 
   useEffect(() => {
-    const initialize = window.setTimeout(() => {
+    const readAndOpenCapability = () => {
       const current = readCapability();
       setPending(current);
       if (current) void loadPreview(current, authenticated);
-    }, 0);
-    return () => window.clearTimeout(initialize);
+    };
+    const initialize = window.setTimeout(readAndOpenCapability, 0);
+    window.addEventListener(INVITE_IMPORT_EVENT, readAndOpenCapability);
+    return () => {
+      window.clearTimeout(initialize);
+      window.removeEventListener(INVITE_IMPORT_EVENT, readAndOpenCapability);
+    };
   }, [authenticated, loadPreview]);
 
   function dismiss() {
@@ -325,6 +334,17 @@ export function CapabilityLanding({
     // The raw invite or approval token stays in sessionStorage and is offered
     // again after this browser has an authenticated profile.
     setPending(null);
+  }
+
+  async function copyInviteCodeForApp() {
+    if (!pending || pending.kind !== "invite") return;
+    setBridgeNotice(null);
+    const copied = await copyText(inviteCode(pending.token));
+    setBridgeNotice(
+      copied
+        ? "Код скопирован. Вернитесь туда, где профиль уже открыт: «Люди» → «Принять»."
+        : "Автокопирование недоступно. Зажмите код выше и выберите «Скопировать».",
+    );
   }
 
   async function acceptInvite() {
@@ -432,7 +452,7 @@ export function CapabilityLanding({
                     : "Проверяем запрос восстановления…"
                   : "Это ссылка для доверенного друга. Откройте её в «Я живой» на устройстве, где вы уже вошли в свой профиль."
                 : invite
-                  ? `${invite.inviter.displayName} приглашает вас в личные связи.${authenticated ? "" : " Сначала создайте или восстановите профиль — приглашение сохранится."}`
+                  ? `${invite.inviter.displayName} приглашает вас в личные связи.${authenticated ? "" : " На этом адресе и в этом браузере активной сессии нет."}`
                   : "Проверяем приглашение…"}
           </DialogDescription>
         </DialogHeader>
@@ -441,6 +461,27 @@ export function CapabilityLanding({
           <p className={styles.note}>
             После принятия вы увидите только новые отметки друг друга. Старая история не откроется.
           </p>
+        ) : null}
+
+        {pending?.kind === "invite" && invite && !authenticated ? (
+          <div className={styles.appBridge}>
+            <p>
+              Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана. Скопируйте код и выберите «Люди» → «Принять».
+            </p>
+            <textarea
+              className={styles.inviteCode}
+              aria-label="Одноразовый код приглашения"
+              readOnly
+              rows={3}
+              spellCheck={false}
+              value={inviteCode(pending.token)}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <button type="button" className={styles.copyCode} onClick={() => void copyInviteCodeForApp()}>
+              <Copy size={17} /> Скопировать код для приложения
+            </button>
+            {bridgeNotice ? <p className={styles.bridgeNotice} role="status">{bridgeNotice}</p> : null}
+          </div>
         ) : null}
 
         {isRecovery && !authenticated ? (
@@ -532,7 +573,7 @@ export function CapabilityLanding({
               disabled={loading || !invite}
               onClick={deferUntilProfileExists}
             >
-              {loading ? "Проверяем…" : "Продолжить — ссылка сохранится"}
+              {loading ? "Проверяем…" : "Продолжить в этом браузере"}
             </button>
           )
         ) : authenticated ? (

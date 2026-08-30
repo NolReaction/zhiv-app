@@ -1117,6 +1117,18 @@
   }
 }
 
+@media (min-width: 960px) and (hover: hover) and (pointer: fine) {
+  .shell {
+    width: min(100%, 1120px);
+    padding-right: max(36px, env(safe-area-inset-right));
+    padding-left: max(36px, env(safe-area-inset-left));
+  }
+
+  .header {
+    padding-inline: 2px;
+  }
+}
+
 @media (max-width: 700px), (hover: none) and (pointer: coarse) {
   .shell {
     --floating-nav-clearance: 110px;

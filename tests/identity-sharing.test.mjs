@@ -110,6 +110,33 @@ test("falls back to legacy copy when the secure Clipboard API refuses access", a
   ]);
 });
 
+test("runs the Safari fallback before a deferred Clipboard rejection loses activation", async () => {
+  const events = [];
+  let rejectModernCopy;
+  const modernCopy = new Promise((_, reject) => {
+    rejectModernCopy = reject;
+  });
+  const pendingCopy = sharing.copyText("invite-url", {
+    document: createLegacyDocument(events),
+    navigator: {
+      clipboard: {
+        writeText() {
+          events.push("clipboard-start");
+          return modernCopy;
+        },
+      },
+    },
+    secureContext: true,
+  });
+
+  assert.deepEqual(
+    events.filter((event) => event === "clipboard-start" || event === "exec:copy"),
+    ["clipboard-start", "exec:copy"],
+  );
+  rejectModernCopy(new Error("denied after the tap"));
+  assert.equal(await pendingCopy, true);
+});
+
 test("copies the complete invite URL synchronously on iPhone LAN HTTP", async () => {
   const events = [];
   const inviteUrl = "http://192.168.1.232:3000/#/invite/K_Px9NhbG9Y6vnUg3BDnv-o4m5GkSb9uLrv0ptuGSvU";
@@ -129,6 +156,94 @@ test("copies the complete invite URL synchronously on iPhone LAN HTTP", async ()
   assert.ok(events.includes("exec:copy"));
   assert.equal(events.includes("share-start"), false);
   assert.equal(await pendingCopy, true);
+});
+
+test("mounts the synchronous iPhone copy field inside the active dialog", async () => {
+  const events = [];
+  const documentApi = createLegacyDocument(events);
+  const dialog = {
+    appendChild(element) {
+      events.push(`dialog-field-appended:${element.value}`);
+    },
+  };
+  documentApi.activeElement.closest = (selector) => {
+    events.push(`closest:${selector}`);
+    return dialog;
+  };
+
+  const inviteUrl = "http://192.168.1.232:3000/#/invite/K_Px9NhbG9Y6vnUg3BDnv-o4m5GkSb9uLrv0ptuGSvU";
+  const pendingCopy = sharing.copyText(inviteUrl, {
+    document: documentApi,
+    navigator: {},
+    secureContext: false,
+  });
+
+  assert.deepEqual(events.slice(0, 6), [
+    'closest:[role="dialog"]',
+    `dialog-field-appended:${inviteUrl}`,
+    "field-focus",
+    "field-select",
+    `field-range:0-${inviteUrl.length}`,
+    "exec:copy",
+  ]);
+  assert.equal(events.some((event) => event.startsWith("field-appended:")), false);
+  assert.equal(await pendingCopy, true);
+});
+
+test("finds the open dialog when the tapped element is outside its focus scope", async () => {
+  const events = [];
+  const documentApi = createLegacyDocument(events);
+  const dialog = {
+    appendChild(element) {
+      events.push(`open-dialog-field-appended:${element.value}`);
+    },
+  };
+  documentApi.activeElement.closest = () => null;
+  documentApi.querySelector = (selector) => {
+    events.push(`query:${selector}`);
+    return dialog;
+  };
+
+  const pendingCopy = sharing.copyText("invite-url", {
+    document: documentApi,
+    navigator: {},
+    secureContext: false,
+  });
+
+  assert.equal(events[0], 'query:[role="dialog"][data-state="open"]');
+  assert.equal(events[1], "open-dialog-field-appended:invite-url");
+  assert.ok(events.indexOf("field-focus") < events.indexOf("exec:copy"));
+  assert.equal(await pendingCopy, true);
+});
+
+test("uses iOS-safe fixed hidden-field styling for legacy copy", async () => {
+  const events = [];
+  const documentApi = createLegacyDocument(events);
+  let appendedField;
+  documentApi.body.appendChild = (field) => {
+    appendedField = field;
+  };
+
+  assert.equal(await sharing.copyText("invite-url", {
+    document: documentApi,
+    navigator: {},
+    secureContext: false,
+  }), true);
+
+  assert.equal(appendedField.readOnly, true);
+  assert.deepEqual(appendedField.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    width: "1px",
+    height: "1px",
+    padding: "0",
+    border: "0",
+    margin: "0",
+    opacity: "0",
+    fontSize: "16px",
+    pointerEvents: "none",
+  });
 });
 
 test("copies a LAN invite from the visible selected field", async () => {

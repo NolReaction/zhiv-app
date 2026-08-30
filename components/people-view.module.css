@@ -72,9 +72,9 @@
 
 .quickActions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px 64px;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 64px);
   gap: 8px;
-  width: min(380px, 100%);
+  width: min(452px, 100%);
   margin: 0 0 26px auto;
 }
 
@@ -378,6 +378,19 @@
   text-align: center;
 }
 
+.qrUnavailable {
+  width: 100%;
+  margin: 0;
+  border: 1px solid rgba(245, 232, 91, 0.14);
+  border-radius: 15px;
+  background: rgba(245, 232, 91, 0.055);
+  color: #c9c18a;
+  padding: 13px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+}
+
 .inviteShare {
   display: grid;
   justify-items: center;
@@ -404,6 +417,11 @@
 .inviteLinkField:focus {
   border-color: rgba(205, 239, 190, 0.34);
   outline: none;
+}
+
+.inviteLinkField:focus-visible {
+  outline: 3px solid #f5e85b;
+  outline-offset: 3px;
 }
 
 .inviteLinkFieldCompact {
@@ -528,6 +546,10 @@
 
 .dialog,
 .confirmDialog {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   border-color: rgba(255, 255, 255, 0.12) !important;
   border-radius: 24px !important;
   background: #151913 !important;
@@ -548,6 +570,36 @@
 .searchForm {
   display: grid;
   gap: 8px;
+}
+
+.inviteImportForm {
+  display: grid;
+  gap: 10px;
+}
+
+.inviteImportForm label {
+  color: #a6ab9f;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.inviteImportForm textarea {
+  width: 100%;
+  min-height: 104px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 15px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.055);
+  color: #f2f5ed;
+  padding: 13px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.inviteImportForm textarea:focus {
+  border-color: #b7d8a2;
 }
 
 .searchForm label {
@@ -660,6 +712,77 @@ button:disabled {
   outline-offset: 3px;
 }
 
+.inviteImportForm textarea:focus-visible {
+  outline: 3px solid #f5e85b;
+  outline-offset: 3px;
+}
+
+@media (min-width: 960px) and (hover: hover) and (pointer: fine) {
+  .view {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
+    align-content: start;
+    column-gap: 28px;
+    scrollbar-gutter: stable;
+  }
+
+  .headingRow {
+    grid-column: 1;
+    align-self: center;
+    margin-bottom: 24px;
+  }
+
+  .sectionTabs {
+    grid-column: 2;
+    align-self: center;
+    justify-self: end;
+    width: min(440px, 100%);
+    margin-bottom: 24px;
+  }
+
+  .tabPanel,
+  .pageError {
+    grid-column: 1 / -1;
+  }
+
+  .quickActions {
+    width: min(760px, 100%);
+    grid-template-columns: minmax(240px, 1fr) repeat(3, 112px);
+    margin: 0 0 28px auto;
+  }
+
+  .quickActions > button,
+  .quickActions .addButton {
+    height: 72px;
+    min-height: 72px;
+  }
+
+  .quickActions > button {
+    gap: 5px;
+    font-size: 10px;
+  }
+
+  .quickActions .addButton {
+    font-size: 14px;
+  }
+
+  .tabPanel:not(.sections) > .sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    column-gap: 18px;
+  }
+
+  .tabPanel:not(.sections) > .sections > .section:last-of-type,
+  .tabPanel:not(.sections) > .sections > .privacyNote {
+    grid-column: 1 / -1;
+  }
+
+  .empty {
+    min-height: 180px;
+    align-content: center;
+  }
+}
+
 @media (max-width: 520px) {
   .view {
     padding-top: 24px;
@@ -690,12 +813,6 @@ button:disabled {
     justify-self: end;
   }
 
-  .dialog {
-    max-height: calc(100dvh - 24px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
   .qrFrame {
     width: min(100%, 244px);
     aspect-ratio: 1;
@@ -704,6 +821,22 @@ button:disabled {
   .qrFrame > svg {
     width: 100%;
     height: auto;
+  }
+}
+
+@media (max-width: 360px) {
+  .quickActions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quickActions .addButton {
+    display: grid;
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+
+  .inviteActions {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

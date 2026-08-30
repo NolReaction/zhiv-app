@@ -5,6 +5,9 @@
   border-color: rgba(255, 255, 255, 0.12) !important;
   border-radius: 26px !important;
   background: #151913 !important;
+  box-shadow:
+    0 34px 120px rgba(0, 0, 0, 0.76),
+    0 0 0 100vmax rgba(0, 0, 0, 0.18) !important;
   color: #f3f5ef !important;
   touch-action: pan-y;
 }
@@ -27,6 +30,62 @@
 .warning { background: rgba(245, 232, 91, 0.06); color: #c5bd86; }
 .error { background: rgba(255, 94, 91, 0.07); color: #ff9c98; }
 .success { background: rgba(183, 216, 162, 0.08); color: #cfe5c2; }
+
+.appBridge {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(183, 216, 162, 0.13);
+  border-radius: 16px;
+  background: rgba(183, 216, 162, 0.045);
+  padding: 13px;
+}
+
+.appBridge > p,
+.bridgeNotice {
+  margin: 0;
+  color: #9ea89a;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.inviteCode {
+  width: 100%;
+  min-height: 62px;
+  resize: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 13px;
+  outline: none;
+  background: rgba(0, 0, 0, 0.14);
+  color: #d7e7cf;
+  padding: 10px 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.copyCode {
+  display: inline-flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(205, 239, 190, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #d9e1d4;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 820;
+  cursor: pointer;
+}
+
+.bridgeNotice {
+  color: #c1d8b5;
+  text-align: center;
+}
 
 .choices {
   display: grid;
@@ -91,7 +150,25 @@
 .primary { background: #e9f4e2; color: #14200f; }
 .secondary { background: rgba(255, 255, 255, 0.05); color: #b7bdb2; }
 .primary:disabled, .secondary:disabled { opacity: 0.5; cursor: wait; }
-.primary:focus-visible, .secondary:focus-visible { outline: 3px solid #f5e85b; outline-offset: 3px; }
+.primary:focus-visible, .secondary:focus-visible, .copyCode:focus-visible, .inviteCode:focus-visible { outline: 3px solid #f5e85b; outline-offset: 3px; }
+
+@media (min-width: 960px) and (hover: hover) and (pointer: fine) {
+  .dialog {
+    width: min(calc(100% - 40px), 560px) !important;
+    max-width: 560px !important;
+    gap: 18px !important;
+    padding: 30px !important;
+  }
+
+  .title {
+    font-size: 22px !important;
+  }
+
+  .description {
+    max-width: 460px;
+    margin-inline: auto;
+  }
+}
 
 @media (max-width: 420px) {
   .dialog { padding: 22px !important; }
