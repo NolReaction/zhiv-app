@@ -14,6 +14,7 @@ const vite = await createServer({
 
 const presentation = await vite.ssrLoadModule("/lib/check-in-presentation.ts");
 const clicker = await vite.ssrLoadModule("/lib/clicker-story.ts");
+const tapInput = await vite.ssrLoadModule("/lib/tap-input.ts");
 const dailyStreak = await vite.ssrLoadModule("/lib/daily-streak.ts");
 const devApiOrigin = await vite.ssrLoadModule("/lib/dev-api-origin.ts");
 const groupInput = await vite.ssrLoadModule("/lib/group-input.ts");
@@ -145,7 +146,54 @@ test("keeps one linear story through 1, 5, 10, 20, 50, 100, 500 and beyond", () 
   assert.equal(clicker.getClickerFrame(at499).message, clicker.getClickerFrame(at100).message);
   assert.equal(clicker.getClickerFrame(at500).storyId, "space");
   assert.equal(clicker.getClickerFrame(at500).nextMilestone, 1_000);
-  assert.equal(clicker.getClickerTransitionEffect(499, 500), "rings");
+  assert.equal(clicker.getClickerTransitionEffect(499, 500), "orbit");
+});
+
+test("shows an exact clamped idle budget and resets it on every tap", () => {
+  let run = clicker.advanceClickerRun(clicker.createClickerRun(), 1_000, 12).progress;
+  assert.deepEqual(
+    clicker.getClickerSeriesTimer(clicker.createClickerRun(), 1_000),
+    { remainingMs: 0, remainingRatio: 0 },
+  );
+  assert.deepEqual(
+    clicker.getClickerSeriesTimer(run, 1_000),
+    { remainingMs: 30_000, remainingRatio: 1 },
+  );
+  assert.deepEqual(
+    clicker.getClickerSeriesTimer(run, 16_000),
+    { remainingMs: 15_000, remainingRatio: 0.5 },
+  );
+  assert.equal(clicker.getClickerSeriesTimer(run, 30_999).remainingMs, 1);
+  assert.deepEqual(
+    clicker.getClickerSeriesTimer(run, 31_000),
+    { remainingMs: 0, remainingRatio: 0 },
+  );
+  assert.equal(clicker.getClickerSeriesTimer(run, 0).remainingRatio, 1);
+
+  run = clicker.advanceClickerRun(run, 16_000).progress;
+  assert.deepEqual(
+    clicker.getClickerSeriesTimer(run, 16_000),
+    { remainingMs: 30_000, remainingRatio: 1 },
+  );
+});
+
+test("gives every milestone from fifty onward its own celebration", () => {
+  const milestones = [50, 100, 500, 1_000, 10_000, 100_000];
+  const effects = milestones.map((at) => clicker.getClickerTransitionEffect(at - 1, at));
+  assert.deepEqual(effects, ["sparks", "finale", "orbit", "comet", "legend", "champion"]);
+  assert.equal(new Set(effects).size, milestones.length);
+  for (const at of [51, 99, 101, 499, 501, 999, 1_001]) {
+    assert.equal(clicker.getClickerTransitionEffect(at - 1, at), null);
+  }
+});
+
+test("counts every touch contact once without duplicating its compatibility click", () => {
+  assert.equal(tapInput.shouldCountGamePointer("touch"), true);
+  assert.equal(tapInput.shouldCountGamePointer("mouse"), false);
+  assert.equal(tapInput.shouldCountGamePointer("pen"), false);
+  assert.equal(tapInput.shouldCountGameClick(1, 1_500, 1_000), false);
+  assert.equal(tapInput.shouldCountGameClick(1, 1_900, 1_000), true);
+  assert.equal(tapInput.shouldCountGameClick(0, 1_001, 1_000), true);
 });
 
 test("keeps an active clicker run local even after server cooldown ends", () => {
@@ -197,6 +245,16 @@ test("keeps the best series across weaker and stronger attempts", () => {
   assert.equal(progress.bestSeries, 12);
   progress = clicker.advanceClickerRun(progress, 63_000, 13).progress;
   assert.equal(progress.bestSeries, 13);
+});
+
+test("keeps the newest in-memory tap when multi-touch shares one millisecond", () => {
+  const stored = clicker.advanceClickerRun(clicker.createClickerRun(), 1_000, 50).progress;
+  const current = clicker.advanceClickerRun(stored, 1_000).progress;
+  const merged = clicker.mergeClickerProgress(stored, current);
+
+  assert.equal(stored.updatedAtMs, current.updatedAtMs);
+  assert.equal(merged.activeSeries.tapCount, 51);
+  assert.equal(merged.bestSeries, 51);
 });
 
 test("caps one uninterrupted series at one hundred thousand", () => {

@@ -6,7 +6,15 @@ export const CLICKER_MILESTONES = [
 ] as const;
 
 export type ClickerMilestone = (typeof CLICKER_MILESTONES)[number];
-export type ClickerEffect = "confetti" | "rings" | "sparks" | "finale" | "champion";
+export type ClickerEffect =
+  | "confetti"
+  | "rings"
+  | "sparks"
+  | "finale"
+  | "orbit"
+  | "comet"
+  | "legend"
+  | "champion";
 
 type ClickerScene = { at: ClickerMilestone; message: string };
 
@@ -63,6 +71,11 @@ export type ClickerFrame = {
 export type ClickerExpiry = {
   progress: ClickerProgress;
   finishedSeries: ClickerFinishedSeries | null;
+};
+
+export type ClickerSeriesTimer = {
+  remainingMs: number;
+  remainingRatio: number;
 };
 
 export type ClickerAdvance = ClickerExpiry & {
@@ -251,7 +264,7 @@ const STORY_STEPS = [1, 5, 7, 11, 13, 17, 19, 23] as const;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MILESTONE_EFFECTS = new Map<ClickerMilestone, ClickerEffect>([
   [5, "confetti"], [20, "rings"], [50, "sparks"], [100, "finale"],
-  [500, "rings"], [1_000, "sparks"], [10_000, "finale"], [100_000, "champion"],
+  [500, "orbit"], [1_000, "comet"], [10_000, "legend"], [100_000, "champion"],
 ]);
 
 function normalizeCount(value: number): number {
@@ -316,6 +329,22 @@ export function createClickerRun(storySeed = 0): ClickerProgress {
 export function getNextClickerMilestone(tapCount: number): ClickerMilestone | null {
   const count = normalizeCount(tapCount);
   return CLICKER_MILESTONES.find((milestone) => milestone > count) ?? null;
+}
+
+export function getClickerSeriesTimer(
+  progress: ClickerProgress,
+  nowMs = Date.now(),
+): ClickerSeriesTimer {
+  const active = progress.activeSeries;
+  if (!active) return { remainingMs: 0, remainingRatio: 0 };
+  const remainingMs = Math.min(
+    CLICKER_IDLE_RESET_MS,
+    Math.max(0, active.lastTapAtMs + CLICKER_IDLE_RESET_MS - nowMs),
+  );
+  return {
+    remainingMs,
+    remainingRatio: remainingMs / CLICKER_IDLE_RESET_MS,
+  };
 }
 
 export function expireClickerSeries(
@@ -437,7 +466,10 @@ export function mergeClickerProgress(
   first: ClickerProgress,
   second: ClickerProgress,
 ): ClickerProgress {
-  const latest = first.updatedAtMs >= second.updatedAtMs ? first : second;
+  // The caller passes the stored snapshot first and the in-memory snapshot second.
+  // Equal millisecond timestamps are common with multi-touch, so the second snapshot
+  // must win the tie or a later tap can disappear after reload.
+  const latest = first.updatedAtMs > second.updatedAtMs ? first : second;
   return {
     ...latest,
     bestSeries: Math.max(normalizeCount(first.bestSeries), normalizeCount(second.bestSeries)),

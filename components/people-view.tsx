@@ -331,6 +331,7 @@ export function PeopleView({
                   const ageMs = getCheckInAgeMs(person.lastCheckInAt, 0, nowMs);
                   const statusColor = theirSharing ? getCheckInColor(ageMs) : "#5d6258";
                   const isSharing = person.mySharingMode !== "OFF";
+                  const sharingHintId = `sharing-state-${person.circleId}`;
                   return (
                     <article className={styles.personCard} key={person.circleId}>
                       <div className={styles.personTop}>
@@ -364,13 +365,19 @@ export function PeopleView({
                         <label className={styles.sharingLabel}>
                           <span>
                             <strong>Показывать через личную связь</strong>
-                            <small>{isSharing ? "Новые отметки доступны" : "Новые отметки скрыты"}</small>
+                            <small id={sharingHintId}>
+                              {isSharing
+                                ? "Включено · новые отметки доступны"
+                                : "Выключено · новые отметки скрыты"}
+                            </small>
                           </span>
                           <Switch
+                            className={styles.sharingSwitch}
                             checked={isSharing}
                             disabled={Boolean(pending)}
                             onCheckedChange={(checked) => void handleSharing(person, checked)}
                             aria-label={`Показывать мои отметки пользователю ${person.user.displayName}`}
+                            aria-describedby={sharingHintId}
                           />
                         </label>
                         <button

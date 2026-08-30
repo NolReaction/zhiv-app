@@ -155,8 +155,8 @@ export function ProfileView({
         </div>
         <div>
           <Trophy size={17} aria-hidden="true" />
-          <strong>{me.streak.longestDays}</strong>
-          <span>лучший стрик</span>
+          <strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong>
+          <span>лучшая серия</span>
         </div>
         <div>
           <Check size={17} aria-hidden="true" />
@@ -172,8 +172,12 @@ export function ProfileView({
           <strong>{clickerStats.level.title}</strong>
         </div>
         <div>
-          <small>Лучшая серия</small>
-          <strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong>
+          <small>{clickerStats.level.nextMinimumBest ? "Следующий уровень" : "Высший уровень"}</small>
+          <strong>
+            {clickerStats.level.nextMinimumBest
+              ? `×${clickerStats.level.nextMinimumBest.toLocaleString("ru-RU")}`
+              : "Максимум"}
+          </strong>
         </div>
       </div>
 
