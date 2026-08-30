@@ -1,6 +1,11 @@
 "use client";
 
-import type { CSSProperties, FormEvent } from "react";
+import type {
+  CSSProperties,
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Flame, HeartPulse, Share2, UserRound, Users } from "lucide-react";
 import type {
@@ -36,6 +41,7 @@ import {
   expireClickerSeries,
   getClickerFrame,
   getClickerLevel,
+  getClickerSeriesTimer,
   mergeClickerProgress,
   parseClickerProgress,
   planClickerTap,
@@ -45,6 +51,10 @@ import {
   type ClickerFinishedSeries,
   type ClickerRun,
 } from "@/lib/clicker-story";
+import {
+  shouldCountGameClick,
+  shouldCountGamePointer,
+} from "@/lib/tap-input";
 import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "./people-view";
 import { ProfileView } from "./profile-view";
@@ -96,6 +106,17 @@ const CONFETTI = [
   { x: -156, y: 4, r: -60, color: "#e85d75" },
   { x: -146, y: -68, r: 75, color: "#63c7b2" },
 ] as const;
+
+const STORY_EFFECT_DURATION_MS: Record<ClickerEffect, number> = {
+  confetti: 1_150,
+  rings: 1_400,
+  sparks: 1_150,
+  finale: 1_650,
+  orbit: 1_650,
+  comet: 1_750,
+  legend: 2_100,
+  champion: 2_500,
+};
 
 function serverOffset(serverTime: string): number {
   return Date.parse(serverTime) - Date.now();
@@ -201,6 +222,45 @@ function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
   }
 }
 
+function TapCounter({ progress }: { progress: ClickerRun }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const deadlineMs = progress.activeSeries
+    ? progress.activeSeries.lastTapAtMs + CLICKER_IDLE_RESET_MS
+    : null;
+
+  useEffect(() => {
+    if (deadlineMs === null) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 200);
+    return () => window.clearInterval(timer);
+  }, [deadlineMs]);
+
+  const active = progress.activeSeries;
+  if (!active) return null;
+  const timer = getClickerSeriesTimer(progress, nowMs);
+  const seconds = Math.max(0, Math.ceil(timer.remainingMs / 1_000));
+  const urgency = timer.remainingRatio <= 0.2
+    ? "critical"
+    : timer.remainingRatio <= 0.5
+      ? "warning"
+      : "steady";
+  const timerStyle = {
+    "--series-remaining": timer.remainingRatio,
+  } as CSSProperties;
+
+  return (
+    <span
+      className={styles.tapCounter}
+      data-urgency={urgency}
+      style={timerStyle}
+      aria-hidden="true"
+    >
+      <strong>×{active.tapCount.toLocaleString("ru-RU")}</strong>
+      <small>{seconds}с</small>
+      <i className={styles.tapCounterProgress} />
+    </span>
+  );
+}
+
 export function CheckInApp() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -223,6 +283,9 @@ export function CheckInApp() {
     type: ClickerEffect;
     burst: number;
   } | null>(null);
+  const [tapFeedbackBurst, setTapFeedbackBurst] = useState(0);
+  const [tapActive, setTapActive] = useState(false);
+  const [seriesBreakBurst, setSeriesBreakBurst] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>("check-in");
   const [people, setPeople] = useState<PeopleResponse | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
@@ -240,6 +303,10 @@ export function CheckInApp() {
   const storyEffectBurst = useRef(0);
   const storyEffectType = useRef<ClickerEffect | null>(null);
   const storyEffectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seriesBreakTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seriesBreakSequence = useRef(0);
+  const lastGameTouchAt = useRef(Number.NEGATIVE_INFINITY);
   const pendingCheckIn = useRef<PendingCheckIn | null>(null);
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
   const homeHeading = useRef<HTMLHeadingElement | null>(null);
@@ -302,6 +369,43 @@ export function CheckInApp() {
     setStoryEffect(null);
   }, []);
 
+  const clearTapFeedback = useCallback(() => {
+    if (tapFeedbackTimer.current) {
+      clearTimeout(tapFeedbackTimer.current);
+      tapFeedbackTimer.current = null;
+    }
+    setTapActive(false);
+    setTapFeedbackBurst(0);
+  }, []);
+
+  const triggerTapFeedback = useCallback(() => {
+    if (tapFeedbackTimer.current) clearTimeout(tapFeedbackTimer.current);
+    setTapFeedbackBurst((current) => current + 1);
+    setTapActive(true);
+    tapFeedbackTimer.current = setTimeout(() => {
+      setTapActive(false);
+      tapFeedbackTimer.current = null;
+    }, 110);
+  }, []);
+
+  const clearSeriesBreakEffect = useCallback(() => {
+    if (seriesBreakTimer.current) {
+      clearTimeout(seriesBreakTimer.current);
+      seriesBreakTimer.current = null;
+    }
+    setSeriesBreakBurst(null);
+  }, []);
+
+  const triggerSeriesBreakEffect = useCallback(() => {
+    if (seriesBreakTimer.current) clearTimeout(seriesBreakTimer.current);
+    seriesBreakSequence.current += 1;
+    setSeriesBreakBurst(seriesBreakSequence.current);
+    seriesBreakTimer.current = setTimeout(() => {
+      setSeriesBreakBurst(null);
+      seriesBreakTimer.current = null;
+    }, 720);
+  }, []);
+
   const clearPendingBootstrap = useCallback(() => {
     pendingBootstrap.current = null;
     removePending(PENDING_BOOTSTRAP_STORAGE_KEY);
@@ -318,12 +422,19 @@ export function CheckInApp() {
       burstTimer.current = null;
     }
     clearStoryEffect();
+    clearTapFeedback();
+    clearSeriesBreakEffect();
     setNextAllowedAt(null);
     commitClickerRun(createClickerRun(), false);
     setStreak(null);
     setNotice(null);
     setSeriesSummary(null);
-  }, [clearStoryEffect, commitClickerRun]);
+  }, [
+    clearSeriesBreakEffect,
+    clearStoryEffect,
+    clearTapFeedback,
+    commitClickerRun,
+  ]);
 
   const loseSession = useCallback(() => {
     if (clickerPersistTimer.current) {
@@ -490,6 +601,8 @@ export function CheckInApp() {
       window.clearInterval(clock);
       if (burstTimer.current) clearTimeout(burstTimer.current);
       if (storyEffectTimer.current) clearTimeout(storyEffectTimer.current);
+      if (tapFeedbackTimer.current) clearTimeout(tapFeedbackTimer.current);
+      if (seriesBreakTimer.current) clearTimeout(seriesBreakTimer.current);
       if (identityNoticeTimer.current) clearTimeout(identityNoticeTimer.current);
       if (clickerPersistTimer.current) clearTimeout(clickerPersistTimer.current);
       flushClickerProgress();
@@ -577,7 +690,7 @@ export function CheckInApp() {
       storyEffectType.current = null;
       setStoryEffect(null);
       storyEffectTimer.current = null;
-    }, type === "champion" ? 2_500 : type === "finale" ? 1_900 : type === "rings" ? 1_400 : 1_150);
+    }, STORY_EFFECT_DURATION_MS[type]);
   }, []);
 
   const resetClickerLater = useCallback(() => {
@@ -607,6 +720,7 @@ export function CheckInApp() {
       commitClickerRun(expired.progress);
       persistClickerRun(expired.progress);
       reportFinishedSeries(expired.finishedSeries, expired.progress);
+      triggerSeriesBreakEffect();
       setNotice(null);
       clearStoryEffect();
       burstTimer.current = null;
@@ -617,14 +731,17 @@ export function CheckInApp() {
     commitClickerRun,
     persistClickerRun,
     reportFinishedSeries,
+    triggerSeriesBreakEffect,
   ]);
 
   const registerTap = useCallback(
     (steps = 1, tappedAtMs = Date.now()) => {
+      triggerTapFeedback();
       const current = clickerRunRef.current;
       const transition = advanceClickerRun(current, tappedAtMs, steps, createUuidV4());
       if (transition.finishedSeries) {
         reportFinishedSeries(transition.finishedSeries, transition.progress);
+        triggerSeriesBreakEffect();
       }
       commitClickerRun(transition.progress);
       setSeriesSummary(null);
@@ -640,7 +757,9 @@ export function CheckInApp() {
       persistClickerRun,
       reportFinishedSeries,
       resetClickerLater,
+      triggerSeriesBreakEffect,
       triggerStoryEffect,
+      triggerTapFeedback,
     ],
   );
 
@@ -662,6 +781,7 @@ export function CheckInApp() {
       commitClickerRun(expired.progress);
       persistClickerRun(expired.progress);
       reportFinishedSeries(expired.finishedSeries, expired.progress);
+      triggerSeriesBreakEffect();
       clearStoryEffect();
       setNotice(null);
     };
@@ -679,6 +799,7 @@ export function CheckInApp() {
     persistClickerRun,
     reportFinishedSeries,
     screen,
+    triggerSeriesBreakEffect,
   ]);
 
   async function handleBootstrap(event: FormEvent<HTMLFormElement>) {
@@ -749,6 +870,7 @@ export function CheckInApp() {
       }
       commitClickerRun(currentRun);
       reportFinishedSeries(expired.finishedSeries, currentRun);
+      triggerSeriesBreakEffect();
       clearStoryEffect();
       setNotice(null);
     }
@@ -768,7 +890,6 @@ export function CheckInApp() {
 
     checkInSending.current = true;
     setIsSending(true);
-    setNotice("Проверяем сервер · тапы уже считаются");
     try {
       if (!pendingCheckIn.current) {
         const createdAt = Date.now();
@@ -828,6 +949,22 @@ export function CheckInApp() {
     }
   }
 
+  function handleGamePointerDown(event: ReactPointerEvent<HTMLElement>) {
+    if (!shouldCountGamePointer(event.pointerType)) return;
+    event.preventDefault();
+    lastGameTouchAt.current = performance.now();
+    void handleCheckIn();
+  }
+
+  function handleGameClick(event: ReactMouseEvent<HTMLButtonElement>) {
+    const nowMs = performance.now();
+    if (!shouldCountGameClick(event.detail, nowMs, lastGameTouchAt.current)) {
+      event.preventDefault();
+      return;
+    }
+    void handleCheckIn();
+  }
+
   const adjustedNow = clientNowMs + clockOffsetMs;
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonColor = getCheckInColor(ageMs);
@@ -842,6 +979,19 @@ export function CheckInApp() {
     ? styles[`effect${storyEffect.type[0].toUpperCase()}${storyEffect.type.slice(1)}`]
     : "";
   const pulseClass = effectClass || earlyTapClass;
+  const effectType = storyEffect?.type ?? null;
+  const showEffectRings = effectType !== null && [
+    "rings", "finale", "orbit", "legend", "champion",
+  ].includes(effectType);
+  const showEffectSparks = effectType !== null && [
+    "sparks", "finale", "comet", "legend", "champion",
+  ].includes(effectType);
+  const showEffectConfetti = effectType !== null && [
+    "confetti", "finale", "comet", "legend", "champion",
+  ].includes(effectType);
+  const showEffectGlow = effectType !== null && [
+    "finale", "comet", "legend", "champion",
+  ].includes(effectType);
   const visualTapCount = Math.min(
     clickerRun.activeSeries?.tapCount ?? 0,
     CLICKER_MAX_TAP_COUNT,
@@ -995,7 +1145,12 @@ export function CheckInApp() {
       </header>
 
       {activeView === "check-in" ? (
-        <section id="check-in-panel" className={styles.action} aria-labelledby="main-action-title">
+        <section
+          id="check-in-panel"
+          className={styles.action}
+          aria-labelledby="main-action-title"
+          onPointerDown={handleGamePointerDown}
+        >
           <h1
             id="main-action-title"
             className={styles.srOnly}
@@ -1021,12 +1176,16 @@ export function CheckInApp() {
                 <strong>{formatDayCount(streak.currentDays)}</strong>
               </div>
             ) : null}
-            <div className={styles.buttonStage}>
+            <div
+              className={`${styles.buttonStage} ${tapActive ? styles.buttonStageActive : ""} ${
+                seriesBreakBurst !== null ? styles.seriesBreaking : ""
+              }`}
+            >
             <button
               type="button"
               className={`${styles.checkInButton} ${pulseClass}`}
               style={buttonStyle}
-              onClick={handleCheckIn}
+              onClick={handleGameClick}
               aria-busy={isSending}
               aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
             >
@@ -1037,21 +1196,31 @@ export function CheckInApp() {
                 Текущая серия: {visualTapCount.toLocaleString("ru-RU")}
               </span>
             ) : null}
-            {visualTapCount >= 1 ? (
-              <span className={styles.tapCounter} aria-hidden="true">
-                ×{visualTapCount.toLocaleString("ru-RU")}
-              </span>
+            {visualTapCount >= 1 ? <TapCounter progress={clickerRun} /> : null}
+            {tapFeedbackBurst > 0 ? (
+              <i
+                key={`tap-wave-${tapFeedbackBurst}`}
+                className={styles.tapWave}
+                aria-hidden="true"
+              />
             ) : null}
-            {storyEffect?.type === "rings" ||
-            storyEffect?.type === "finale" ||
-            storyEffect?.type === "champion" ? (
+            {seriesBreakBurst !== null ? (
+              <div
+                key={`series-break-${seriesBreakBurst}`}
+                className={styles.seriesBreakBurst}
+                aria-hidden="true"
+              >
+                <i /><i /><i /><i /><i /><i />
+              </div>
+            ) : null}
+            {showEffectRings && storyEffect ? (
               <div
                 key={`rings-${storyEffect.burst}`}
                 className={`${styles.storyRings} ${
-                  storyEffect.type === "finale" || storyEffect.type === "champion"
+                  effectType === "finale" || effectType === "legend" || effectType === "champion"
                     ? styles.storyRingsFinale
                     : ""
-                }`}
+                } ${effectType === "orbit" ? styles.storyRingsOrbit : ""}`}
                 aria-hidden="true"
               >
                 <i />
@@ -1059,12 +1228,12 @@ export function CheckInApp() {
                 <i />
               </div>
             ) : null}
-            {storyEffect?.type === "sparks" ||
-            storyEffect?.type === "finale" ||
-            storyEffect?.type === "champion" ? (
+            {showEffectSparks && storyEffect ? (
               <div
                 key={`sparks-${storyEffect.burst}`}
-                className={styles.storySparks}
+                className={`${styles.storySparks} ${
+                  effectType === "comet" ? styles.storySparksComet : ""
+                }`}
                 aria-hidden="true"
               >
                 {CONFETTI.map((piece, index) => (
@@ -1082,16 +1251,14 @@ export function CheckInApp() {
                 ))}
               </div>
             ) : null}
-            {storyEffect?.type === "confetti" ||
-            storyEffect?.type === "finale" ||
-            storyEffect?.type === "champion" ? (
+            {showEffectConfetti && storyEffect ? (
               <div
                 key={`confetti-${storyEffect.burst}`}
                 className={`${styles.confetti} ${
-                  storyEffect.type === "finale" || storyEffect.type === "champion"
+                  effectType === "finale" || effectType === "legend" || effectType === "champion"
                     ? styles.finaleConfetti
                     : ""
-                }`}
+                } ${effectType === "comet" ? styles.cometConfetti : ""}`}
                 aria-hidden="true"
               >
                 {CONFETTI.map((piece, index) => (
@@ -1109,10 +1276,14 @@ export function CheckInApp() {
                 ))}
               </div>
             ) : null}
-            {storyEffect?.type === "finale" || storyEffect?.type === "champion" ? (
+            {showEffectGlow && storyEffect ? (
               <div
                 key={`finale-${storyEffect.burst}`}
-                className={styles.finaleGlow}
+                className={`${styles.finaleGlow} ${
+                  effectType === "legend" || effectType === "champion"
+                    ? styles.legendGlow
+                    : ""
+                }`}
                 aria-hidden="true"
               />
             ) : null}
@@ -1144,7 +1315,7 @@ export function CheckInApp() {
                   : storyFrame?.message ?? seriesSummary ?? serverStatus}
             </p>
             <span className={styles.srOnly}>
-              Лучший результат: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
+              Лучшая серия: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.
             </span>
           </div>

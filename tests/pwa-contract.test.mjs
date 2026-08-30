@@ -374,16 +374,44 @@ test("keeps the thirty-second clicker lightweight and motion-safe", async () => 
   assert.match(counterRule, /font-variant-numeric:\s*tabular-nums;/);
   assert.match(counterRule, /white-space:\s*nowrap;/);
   assert.match(counterRule, /max-width:/);
+  assert.match(counterRule, /pointer-events:\s*none;/);
+  assert.match(app, /function TapCounter/);
+  assert.match(app, /getClickerSeriesTimer\(progress, nowMs\)/);
+  assert.match(app, /className=\{styles\.tapCounterProgress\}/);
+  assert.doesNotMatch(app, /Проверяем сервер · тапы уже считаются/);
+  assert.ok((app.match(/triggerSeriesBreakEffect\(\);/g) ?? []).length >= 3);
+
+  const timerFill = appStyles.match(/\.tapCounterProgress::after\s*\{[^}]*\}/s)?.[0] ?? "";
+  assert.match(timerFill, /linear-gradient/);
+  assert.match(timerFill, /transform:\s*scaleX\(var\(--series-remaining\)\);/);
+  assert.match(timerFill, /transform-origin:\s*left center;/);
+  assert.doesNotMatch(timerFill, /width:/);
+  assert.match(appStyles, /\.tapWave\s*\{[^}]*pointer-events:\s*none;/s);
+  assert.match(appStyles, /\.seriesBreakBurst\s*\{[^}]*pointer-events:\s*none;/s);
 
   const reducedMotion = appStyles.slice(
     appStyles.indexOf("@media (prefers-reduced-motion: reduce)"),
   );
   assert.match(reducedMotion, /\.championBurst/);
+  assert.match(reducedMotion, /\.tapWave/);
+  assert.match(reducedMotion, /\.seriesBreakBurst/);
+  assert.match(reducedMotion, /\.tapCounterProgress::after/);
   assert.match(reducedMotion, /display:\s*none;/);
 });
 
 test("locks the iPhone app surface while preserving vertical touch scrolling", async () => {
-  const [layout, globals, config, app, appStyles, people, peopleStyles, groups, groupStyles] =
+  const [
+    layout,
+    globals,
+    config,
+    app,
+    appStyles,
+    people,
+    peopleStyles,
+    groups,
+    groupStyles,
+    profile,
+  ] =
     await Promise.all([
       readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -394,6 +422,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
       readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
       readFile(new URL("../components/groups-section.tsx", import.meta.url), "utf8"),
       readFile(new URL("../components/groups-section.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../components/profile-view.tsx", import.meta.url), "utf8"),
     ]);
 
   assert.match(layout, /minimumScale:\s*1/);
@@ -428,6 +457,22 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(checkInLabel, /-webkit-touch-callout:\s*none;/);
   assert.match(checkInLabel, /-webkit-user-select:\s*none;/);
   assert.match(checkInLabel, /(?<!-webkit-)user-select:\s*none;/);
+  assert.match(app, /onPointerDown=\{handleGamePointerDown\}/);
+  assert.match(app, /if \(!shouldCountGamePointer\(event\.pointerType\)\) return;/);
+  assert.match(app, /lastGameTouchAt\.current = performance\.now\(\);/);
+  assert.doesNotMatch(app, /isPrimary/);
+  assert.match(app, /onClick=\{handleGameClick\}/);
+  assert.match(app, /shouldCountGameClick\(event\.detail, nowMs, lastGameTouchAt\.current\)/);
+  assert.match(
+    appStyles,
+    /\.shell\[data-active-view="check-in"\] \.streakPill\s*\{[^}]*translateY\(-6px\)/s,
+  );
+
+  const checkInFlow = app.slice(
+    app.indexOf("async function handleCheckIn"),
+    app.indexOf("function handleGamePointerDown"),
+  );
+  assert.ok(checkInFlow.indexOf("registerTap(1, tappedAtMs)") < checkInFlow.indexOf("await createCheckIn"));
 
   assert.doesNotMatch(app, /Следующая сцена|Большой рубеж|Сервер ·|Всего отметок/);
   assert.doesNotMatch(app, /Цвет меняется от зелёного к красному/);
@@ -438,6 +483,16 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);
+  assert.match(people, /className=\{styles\.sharingSwitch\}/);
+  assert.match(people, /Включено · новые отметки доступны/);
+  assert.match(people, /Выключено · новые отметки скрыты/);
+  assert.match(people, /aria-describedby=\{sharingHintId\}/);
+  assert.match(peopleStyles, /\.sharingSwitch\s*\{[^}]*width:\s*48px !important;/s);
+  assert.match(peopleStyles, /\.sharingSwitch :global\(\[data-slot="switch-thumb"\]\)\s*\{[^}]*background:\s*#f4f7ef !important;/s);
+  assert.match(peopleStyles, /\.sharingSwitch\[data-state="checked"\] :global\(\[data-slot="switch-thumb"\]\)\s*\{[^}]*translateX\(20px\)/s);
+  assert.doesNotMatch(profile, /лучший стрик/i);
+  assert.doesNotMatch(profile, /me\.streak\.longestDays/);
+  assert.equal((profile.match(/>\s*лучшая серия\s*</gi) ?? []).length, 1);
   assert.equal((people.match(/<h1\b/g) ?? []).length, 1);
   assert.doesNotMatch(people, /styles\.kicker/);
   assert.doesNotMatch(`${app}\n${people}\n${groups}`, />\s*Свои\s*</);
