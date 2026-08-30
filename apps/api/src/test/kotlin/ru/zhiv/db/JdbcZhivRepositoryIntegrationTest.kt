@@ -39,7 +39,6 @@ import ru.zhiv.relationships.PersonCheckInState
 import ru.zhiv.relationships.RequestAction
 import ru.zhiv.relationships.SharingMode
 import ru.zhiv.security.TokenCodec
-import java.sql.Connection
 import java.sql.SQLException
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -723,18 +722,20 @@ class JdbcZhivRepositoryIntegrationTest {
         val renameKey = UUID.randomUUID()
         val inviteToken = tokens.issue()
 
-        suspend fun awaitLockWaiters(connection: Connection, minimum: Int) {
+        suspend fun awaitLockWaiters(minimum: Int) {
             withTimeout(10_000) {
                 while (true) {
-                    val count = connection.prepareStatement(
-                        """SELECT count(*) FROM pg_stat_activity
-                            WHERE datname = current_database()
-                              AND application_name = 'zhiv-api'
-                              AND wait_event_type = 'Lock'""",
-                    ).use { statement ->
-                        statement.executeQuery().use { result ->
-                            check(result.next())
-                            result.getInt(1)
+                    val count = dataSource.connection.use { connection ->
+                        connection.prepareStatement(
+                            """SELECT count(*) FROM pg_stat_activity
+                                WHERE datname = current_database()
+                                  AND application_name = 'zhiv-api'
+                                  AND wait_event_type = 'Lock'""",
+                        ).use { statement ->
+                            statement.executeQuery().use { result ->
+                                check(result.next())
+                                result.getInt(1)
+                            }
                         }
                     }
                     if (count >= minimum) return@withTimeout
@@ -754,13 +755,15 @@ class JdbcZhivRepositoryIntegrationTest {
                     statement.setObject(1, owner.id)
                     statement.executeQuery().use { result -> assertTrue(result.next()) }
                 }
-                val baselineWaiters = blocker.prepareStatement(
-                    """SELECT count(*) FROM pg_stat_activity
-                        WHERE datname = current_database()
-                          AND application_name = 'zhiv-api'
-                          AND wait_event_type = 'Lock'""",
-                ).use { statement ->
-                    statement.executeQuery().use { result -> check(result.next()); result.getInt(1) }
+                val baselineWaiters = dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        """SELECT count(*) FROM pg_stat_activity
+                            WHERE datname = current_database()
+                              AND application_name = 'zhiv-api'
+                              AND wait_event_type = 'Lock'""",
+                    ).use { statement ->
+                        statement.executeQuery().use { result -> check(result.next()); result.getInt(1) }
+                    }
                 }
                 coroutineScope {
                     val completion = async {
@@ -774,9 +777,9 @@ class JdbcZhivRepositoryIntegrationTest {
                         }
                     }
                     try {
-                        awaitLockWaiters(blocker, baselineWaiters + 1)
+                        awaitLockWaiters(baselineWaiters + 1)
                         val stale = staleOperations.map { operation -> async { operation() } }
-                        awaitLockWaiters(blocker, baselineWaiters + 1 + stale.size)
+                        awaitLockWaiters(baselineWaiters + 1 + stale.size)
                         releaseBlocker()
                         completion.await() to stale.awaitAll()
                     } finally {
