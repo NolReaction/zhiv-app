@@ -795,13 +795,11 @@ class JdbcZhivRepositoryIntegrationTest {
             listOf(
                 { recovery.add(ownerSession.hash, attackerCircleId, contactKey) },
                 { invites.create(ownerSession.hash, inviteToken.hash, inviteKey) },
-                { relationships.sendRequest(ownerSession.hash, stranger.publicId, requestKey) },
             ),
         )
         assertIs<RecoveryResult.Success<*>>(firstRace.first)
         assertIs<RecoveryResult.Unauthorized>(firstRace.second[0])
         assertIs<DirectInviteResult.Unauthorized>(firstRace.second[1])
-        assertIs<RelationshipResult.Unauthorized>(firstRace.second[2])
 
         val secondApproval = tokens.issue()
         val secondClaim = tokens.issue()
@@ -820,6 +818,7 @@ class JdbcZhivRepositoryIntegrationTest {
             secondClaim.hash,
             UUID.randomUUID(),
             listOf(
+                { relationships.sendRequest(claim.hash, stranger.publicId, requestKey) },
                 {
                     groups.createGroup(
                         claim.hash,
@@ -829,14 +828,36 @@ class JdbcZhivRepositoryIntegrationTest {
                         groupKey,
                     )
                 },
-                { repository.record(claim.hash, checkInKey) },
-                { repository.updateDisplayName(claim.hash, "Stale session rename", renameKey) },
             ),
         )
         assertIs<RecoveryResult.Success<*>>(secondRace.first)
-        assertIs<GroupResult.Unauthorized>(secondRace.second[0])
-        assertIs<CheckInResult.Unauthorized>(secondRace.second[1])
-        assertIs<DisplayNameUpdateResult.Unauthorized>(secondRace.second[2])
+        assertIs<RelationshipResult.Unauthorized>(secondRace.second[0])
+        assertIs<GroupResult.Unauthorized>(secondRace.second[1])
+
+        val thirdApproval = tokens.issue()
+        val thirdClaim = tokens.issue()
+        assertIs<RecoveryResult.Success<*>>(
+            recovery.createAttempt(thirdApproval.hash, thirdClaim.hash, UUID.randomUUID(), null),
+        )
+        assertIs<RecoveryResult.Success<*>>(
+            recovery.confirmApproval(
+                friendSession.hash,
+                thirdApproval.hash,
+                recoveryContact.contactId,
+                UUID.randomUUID(),
+            ),
+        )
+        val thirdRace = runCompletionRace(
+            thirdClaim.hash,
+            UUID.randomUUID(),
+            listOf(
+                { repository.record(secondClaim.hash, checkInKey) },
+                { repository.updateDisplayName(secondClaim.hash, "Stale session rename", renameKey) },
+            ),
+        )
+        assertIs<RecoveryResult.Success<*>>(thirdRace.first)
+        assertIs<CheckInResult.Unauthorized>(thirdRace.second[0])
+        assertIs<DisplayNameUpdateResult.Unauthorized>(thirdRace.second[1])
 
         dataSource.connection.use { connection ->
             val contactCount = connection.prepareStatement(
@@ -891,7 +912,8 @@ class JdbcZhivRepositoryIntegrationTest {
             }
             assertEquals("Stale session owner", displayName)
         }
-        assertEquals(owner.id, repository.findBySession(secondClaim.hash)?.id)
+        assertEquals(owner.id, repository.findBySession(thirdClaim.hash)?.id)
+        assertEquals(null, repository.findBySession(secondClaim.hash))
         assertEquals(null, repository.findBySession(claim.hash))
         assertEquals(null, repository.findBySession(ownerSession.hash))
     }
