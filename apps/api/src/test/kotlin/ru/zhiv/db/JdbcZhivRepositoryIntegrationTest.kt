@@ -743,75 +743,100 @@ class JdbcZhivRepositoryIntegrationTest {
             }
         }
 
-        val blocker = dataSource.connection
-        try {
-            blocker.prepareStatement("SELECT id FROM app_users WHERE id = ? FOR UPDATE").use { statement ->
-                statement.setObject(1, owner.id)
-                statement.executeQuery().use { result -> assertTrue(result.next()) }
-            }
-            val baselineWaiters = blocker.prepareStatement(
-                """SELECT count(*) FROM pg_stat_activity
-                    WHERE datname = current_database()
-                      AND application_name = 'zhiv-api'
-                      AND wait_event_type = 'Lock'""",
-            ).use { statement ->
-                statement.executeQuery().use { result -> check(result.next()); result.getInt(1) }
-            }
-            coroutineScope {
-                val completion = async {
-                    recovery.completeAttempt(claim.hash, completionKey, 365)
+        suspend fun runCompletionRace(
+            claimTokenHash: ByteArray,
+            key: UUID,
+            staleOperations: List<suspend () -> Any>,
+        ): Pair<RecoveryResult<RecoveryCompletionSnapshot>, List<Any>> {
+            val blocker = dataSource.connection
+            return try {
+                blocker.prepareStatement("SELECT id FROM app_users WHERE id = ? FOR UPDATE").use { statement ->
+                    statement.setObject(1, owner.id)
+                    statement.executeQuery().use { result -> assertTrue(result.next()) }
                 }
-                var blockerReleased = false
-                fun releaseBlocker() {
-                    if (!blockerReleased) {
-                        blocker.commit()
-                        blockerReleased = true
+                val baselineWaiters = blocker.prepareStatement(
+                    """SELECT count(*) FROM pg_stat_activity
+                        WHERE datname = current_database()
+                          AND application_name = 'zhiv-api'
+                          AND wait_event_type = 'Lock'""",
+                ).use { statement ->
+                    statement.executeQuery().use { result -> check(result.next()); result.getInt(1) }
+                }
+                coroutineScope {
+                    val completion = async {
+                        recovery.completeAttempt(claimTokenHash, key, 365)
+                    }
+                    var blockerReleased = false
+                    fun releaseBlocker() {
+                        if (!blockerReleased) {
+                            blocker.commit()
+                            blockerReleased = true
+                        }
+                    }
+                    try {
+                        awaitLockWaiters(blocker, baselineWaiters + 1)
+                        val stale = staleOperations.map { operation -> async { operation() } }
+                        awaitLockWaiters(blocker, baselineWaiters + 1 + stale.size)
+                        releaseBlocker()
+                        completion.await() to stale.awaitAll()
+                    } finally {
+                        releaseBlocker()
                     }
                 }
-                try {
-                    awaitLockWaiters(blocker, baselineWaiters + 1)
-                    val staleContactAdd = async {
-                        recovery.add(ownerSession.hash, attackerCircleId, contactKey)
-                    }
-                    val staleInviteCreate = async {
-                        invites.create(ownerSession.hash, inviteToken.hash, inviteKey)
-                    }
-                    val staleRelationshipRequest = async {
-                        relationships.sendRequest(ownerSession.hash, stranger.publicId, requestKey)
-                    }
-                    val staleGroupCreate = async {
-                        groups.createGroup(
-                            ownerSession.hash,
-                            "Stale session group",
-                            null,
-                            emptyList(),
-                            groupKey,
-                        )
-                    }
-                    val staleCheckIn = async {
-                        repository.record(ownerSession.hash, checkInKey)
-                    }
-                    val staleRename = async {
-                        repository.updateDisplayName(ownerSession.hash, "Stale session rename", renameKey)
-                    }
-                    awaitLockWaiters(blocker, baselineWaiters + 7)
-                    releaseBlocker()
-
-                    assertIs<RecoveryResult.Success<*>>(completion.await())
-                    assertIs<RecoveryResult.Unauthorized>(staleContactAdd.await())
-                    assertIs<DirectInviteResult.Unauthorized>(staleInviteCreate.await())
-                    assertIs<RelationshipResult.Unauthorized>(staleRelationshipRequest.await())
-                    assertIs<GroupResult.Unauthorized>(staleGroupCreate.await())
-                    assertIs<CheckInResult.Unauthorized>(staleCheckIn.await())
-                    assertIs<DisplayNameUpdateResult.Unauthorized>(staleRename.await())
-                } finally {
-                    releaseBlocker()
-                }
+            } finally {
+                runCatching { blocker.rollback() }
+                blocker.close()
             }
-        } finally {
-            runCatching { blocker.rollback() }
-            blocker.close()
         }
+
+        val firstRace = runCompletionRace(
+            claim.hash,
+            completionKey,
+            listOf(
+                { recovery.add(ownerSession.hash, attackerCircleId, contactKey) },
+                { invites.create(ownerSession.hash, inviteToken.hash, inviteKey) },
+                { relationships.sendRequest(ownerSession.hash, stranger.publicId, requestKey) },
+            ),
+        )
+        assertIs<RecoveryResult.Success<*>>(firstRace.first)
+        assertIs<RecoveryResult.Unauthorized>(firstRace.second[0])
+        assertIs<DirectInviteResult.Unauthorized>(firstRace.second[1])
+        assertIs<RelationshipResult.Unauthorized>(firstRace.second[2])
+
+        val secondApproval = tokens.issue()
+        val secondClaim = tokens.issue()
+        assertIs<RecoveryResult.Success<*>>(
+            recovery.createAttempt(secondApproval.hash, secondClaim.hash, UUID.randomUUID(), null),
+        )
+        assertIs<RecoveryResult.Success<*>>(
+            recovery.confirmApproval(
+                friendSession.hash,
+                secondApproval.hash,
+                recoveryContact.contactId,
+                UUID.randomUUID(),
+            ),
+        )
+        val secondRace = runCompletionRace(
+            secondClaim.hash,
+            UUID.randomUUID(),
+            listOf(
+                {
+                    groups.createGroup(
+                        claim.hash,
+                        "Stale session group",
+                        null,
+                        emptyList(),
+                        groupKey,
+                    )
+                },
+                { repository.record(claim.hash, checkInKey) },
+                { repository.updateDisplayName(claim.hash, "Stale session rename", renameKey) },
+            ),
+        )
+        assertIs<RecoveryResult.Success<*>>(secondRace.first)
+        assertIs<GroupResult.Unauthorized>(secondRace.second[0])
+        assertIs<CheckInResult.Unauthorized>(secondRace.second[1])
+        assertIs<DisplayNameUpdateResult.Unauthorized>(secondRace.second[2])
 
         dataSource.connection.use { connection ->
             val contactCount = connection.prepareStatement(
@@ -866,7 +891,8 @@ class JdbcZhivRepositoryIntegrationTest {
             }
             assertEquals("Stale session owner", displayName)
         }
-        assertEquals(owner.id, repository.findBySession(claim.hash)?.id)
+        assertEquals(owner.id, repository.findBySession(secondClaim.hash)?.id)
+        assertEquals(null, repository.findBySession(claim.hash))
         assertEquals(null, repository.findBySession(ownerSession.hash))
     }
 
