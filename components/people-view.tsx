@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import { Check, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Trash2, UserRound, X } from "lucide-react";
 import QRCode from "react-qr-code";
 import type {
@@ -29,7 +29,12 @@ import {
   isValidPublicId,
   normalizePublicId,
 } from "@/lib/check-in-presentation";
-import { copyText, shareTextAndCopy } from "@/lib/identity-sharing";
+import { copyText, copyTextFromVisibleField, shareContent } from "@/lib/identity-sharing";
+import {
+  initialInviteDialogState,
+  inviteDialogReducer,
+  type InviteMode,
+} from "@/lib/invite-dialog-state";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -113,9 +118,13 @@ export function PeopleView({
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<PeopleSection>("people");
-  const [inviteMode, setInviteMode] = useState<"link" | "qr" | null>(null);
+  const [inviteDialog, dispatchInviteDialog] = useReducer(
+    inviteDialogReducer,
+    initialInviteDialogState,
+  );
   const [inviteShare, setInviteShare] = useState<{ url: string; expiresAt: string } | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const inviteLinkField = useRef<HTMLTextAreaElement>(null);
 
   function selectSection(section: PeopleSection) {
     setActiveSection(section);
@@ -234,9 +243,9 @@ export function PeopleView({
     });
   }
 
-  async function openInvite(mode: "link" | "qr", forceRegenerate = false) {
+  async function openInvite(mode: InviteMode, forceRegenerate = false) {
     if (pending) return;
-    setInviteMode(mode);
+    dispatchInviteDialog({ type: "open", mode });
     setDialogError(null);
     setShareNotice(null);
     if (
@@ -257,22 +266,45 @@ export function PeopleView({
     }
   }
 
+  async function copyInvite() {
+    if (!inviteShare) return;
+    setDialogError(null);
+    setShareNotice(null);
+    if (!inviteLinkField.current) {
+      setDialogError("Ссылка ещё не готова — попробуйте ещё раз.");
+      return;
+    }
+    const outcome = await copyTextFromVisibleField(
+      inviteShare.url,
+      inviteLinkField.current,
+    );
+    if (outcome === "confirmed") {
+      setShareNotice("Ссылка скопирована");
+      return;
+    }
+    if (outcome === "legacy") {
+      setShareNotice("Ссылка выделена для копирования");
+      return;
+    }
+
+    setDialogError(
+      "Не удалось скопировать автоматически — зажмите ссылку выше и выберите «Скопировать».",
+    );
+  }
+
   async function shareInvite() {
     if (!inviteShare) return;
-    const result = await shareTextAndCopy(inviteShare.url, {
+    setDialogError(null);
+    setShareNotice(null);
+    const outcome = await shareContent({
       title: "Приглашение в «Я живой»",
       text: "Добавь меня в личные связи в «Я живой».",
       url: inviteShare.url,
     });
-    if (result.copied) {
-      setDialogError(null);
-      setShareNotice("Ссылка скопирована");
-    } else if (result.shareOutcome === "shared") {
-      setDialogError(null);
+    if (outcome === "shared") {
       setShareNotice("Приглашение отправлено");
-    } else {
-      setShareNotice(null);
-      setDialogError("Не удалось скопировать ссылку");
+    } else if (outcome !== "cancelled") {
+      setDialogError("Системная отправка недоступна — используйте «Скопировать».");
     }
   }
 
@@ -540,7 +572,7 @@ export function PeopleView({
         </div>
       )}
 
-      {dialogError && !addOpen && inviteMode === null ? (
+      {dialogError && !addOpen && !inviteDialog.open ? (
         <p className={styles.pageError} role="alert">{dialogError}</p>
       ) : null}
 
@@ -609,9 +641,9 @@ export function PeopleView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={inviteMode !== null} onOpenChange={(open) => {
+      <Dialog open={inviteDialog.open} onOpenChange={(open) => {
         if (!open) {
-          setInviteMode(null);
+          dispatchInviteDialog({ type: "close" });
           setDialogError(null);
           setShareNotice(null);
         }
@@ -619,7 +651,7 @@ export function PeopleView({
         <DialogContent className={styles.dialog}>
           <DialogHeader>
             <DialogTitle className={styles.dialogTitle}>
-              {inviteMode === "qr" ? "Приглашение по QR-коду" : "Приглашение по ссылке"}
+              {inviteDialog.mode === "qr" ? "Приглашение по QR-коду" : "Приглашение по ссылке"}
             </DialogTitle>
             <DialogDescription className={styles.dialogDescription}>
               Один человек сможет принять приглашение. Ссылка действует 7 дней. После подтверждения будут видны только новые отметки.
@@ -631,13 +663,13 @@ export function PeopleView({
             <button
               type="button"
               className={styles.shareButton}
-              onClick={() => inviteMode && void openInvite(inviteMode)}
+              onClick={() => void openInvite(inviteDialog.mode)}
             >
               <RefreshCw size={18} /> Повторить
             </button>
           ) : (
             <div className={styles.inviteShare}>
-              {inviteMode === "qr" ? (
+              {inviteDialog.mode === "qr" ? (
                 <div className={styles.qrFrame} role="img" aria-label="QR-код одноразового приглашения">
                   <QRCode
                     value={inviteShare.url}
@@ -647,12 +679,30 @@ export function PeopleView({
                     aria-hidden="true"
                   />
                 </div>
-              ) : (
-                <code>{inviteShare.url}</code>
-              )}
-              <button type="button" className={styles.shareButton} onClick={() => void shareInvite()}>
-                <Share2 size={18} /> Поделиться / скопировать
-              </button>
+              ) : null}
+              <textarea
+                ref={inviteLinkField}
+                className={`${styles.inviteLinkField} ${
+                  inviteDialog.mode === "qr" ? styles.inviteLinkFieldCompact : ""
+                }`}
+                aria-label="Ссылка приглашения"
+                readOnly
+                rows={inviteDialog.mode === "qr" ? 2 : 3}
+                spellCheck={false}
+                value={inviteShare.url}
+              />
+              <div className={styles.inviteActions}>
+                <button type="button" className={styles.shareButton} onClick={() => void copyInvite()}>
+                  <Copy size={17} /> Скопировать
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.shareButton} ${styles.systemShareButton}`}
+                  onClick={() => void shareInvite()}
+                >
+                  <Share2 size={17} /> Поделиться
+                </button>
+              </div>
               <small>Одно использование · до {new Intl.DateTimeFormat("ru-RU", {
                 day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
               }).format(Date.parse(inviteShare.expiresAt))}</small>
@@ -661,7 +711,7 @@ export function PeopleView({
                 className={styles.regenerateButton}
                 aria-describedby="invite-regenerate-hint"
                 disabled={Boolean(pending)}
-                onClick={() => inviteMode && void openInvite(inviteMode, true)}
+                onClick={() => void openInvite(inviteDialog.mode, true)}
               >
                 <RefreshCw size={15} /> Создать новую ссылку
               </button>

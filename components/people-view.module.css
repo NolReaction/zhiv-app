@@ -384,14 +384,33 @@
   gap: 14px;
 }
 
-.inviteShare code {
+.inviteLinkField {
   width: 100%;
+  min-height: 62px;
+  resize: none;
   overflow-wrap: anywhere;
   border-radius: 13px;
+  border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.05);
   padding: 12px;
   color: #c8d8bf;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
+  line-height: 1.45;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.inviteLinkField:focus {
+  border-color: rgba(205, 239, 190, 0.34);
+  outline: none;
+}
+
+.inviteLinkFieldCompact {
+  min-height: 44px;
+  padding: 8px 10px;
+  color: #9fab99;
+  font-size: 8px;
 }
 
 .inviteShare small {
@@ -415,6 +434,13 @@
   padding: 16px;
 }
 
+.inviteActions {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .shareButton {
   display: inline-flex;
   min-height: 48px;
@@ -430,6 +456,12 @@
   font-size: 12px;
   font-weight: 850;
   cursor: pointer;
+}
+
+.systemShareButton {
+  border: 1px solid rgba(205, 239, 190, 0.18);
+  background: rgba(255, 255, 255, 0.055);
+  color: #d8dfd3;
 }
 
 .regenerateButton {

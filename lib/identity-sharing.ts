@@ -5,6 +5,8 @@ export type IdentitySharingResult = {
   shareOutcome: NativeShareOutcome;
 };
 
+export type CopyTextOutcome = "confirmed" | "legacy" | "failed";
+
 type ClipboardLike = {
   writeText(text: string): Promise<void>;
 };
@@ -47,17 +49,19 @@ function attemptLegacyCopy(documentApi: Document, text: string): boolean {
   const field = documentApi.createElement("textarea");
   field.value = text;
   field.readOnly = true;
+  field.setAttribute("readonly", "");
   field.setAttribute("aria-hidden", "true");
-  field.style.position = "fixed";
-  field.style.top = "0";
-  field.style.left = "0";
-  field.style.width = "1px";
-  field.style.height = "1px";
+  field.style.position = "absolute";
+  field.style.top = `${documentApi.defaultView?.pageYOffset ?? documentApi.documentElement?.scrollTop ?? 0}px`;
+  if (documentApi.documentElement?.getAttribute("dir") === "rtl") {
+    field.style.right = "-9999px";
+  } else {
+    field.style.left = "-9999px";
+  }
   field.style.padding = "0";
   field.style.border = "0";
-  field.style.opacity = "0";
-  field.style.fontSize = "16px";
-  field.style.pointerEvents = "none";
+  field.style.margin = "0";
+  field.style.fontSize = "12pt";
 
   documentApi.body.appendChild(field);
 
@@ -97,6 +101,24 @@ function copyWithLegacyCommand(documentApi: Document, text: string): boolean {
   }
 }
 
+function copyWithVisibleField(
+  documentApi: Document,
+  text: string,
+  field: HTMLInputElement | HTMLTextAreaElement,
+): boolean {
+  if (typeof documentApi.execCommand !== "function") return false;
+
+  try {
+    if (field.value !== text) field.value = text;
+    field.focus({ preventScroll: true });
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+    return documentApi.execCommand("copy");
+  } catch {
+    return false;
+  }
+}
+
 function copyTextFromUserGesture(
   text: string,
   environment: IdentitySharingEnvironment | null,
@@ -126,6 +148,39 @@ export function copyText(
   environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
 ): Promise<boolean> {
   return copyTextFromUserGesture(text, environment);
+}
+
+export function copyTextFromVisibleField(
+  text: string,
+  field: HTMLInputElement | HTMLTextAreaElement,
+  environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
+): Promise<CopyTextOutcome> {
+  if (!environment) return Promise.resolve("failed");
+
+  const clipboard = environment.secureContext
+    ? environment.navigator.clipboard
+    : undefined;
+  let modernCopy: Promise<void> | null = null;
+
+  if (typeof clipboard?.writeText === "function") {
+    try {
+      // Start the standards-based write before selection changes. The visible-field
+      // fallback still runs in this same trusted tap for Safari on local HTTP.
+      modernCopy = clipboard.writeText(text);
+    } catch {
+      modernCopy = null;
+    }
+  }
+
+  const legacyCopied = copyWithVisibleField(environment.document, text, field);
+  if (!modernCopy) {
+    return Promise.resolve(legacyCopied ? "legacy" : "failed");
+  }
+
+  return modernCopy.then(
+    () => "confirmed",
+    () => (legacyCopied ? "legacy" : "failed"),
+  );
 }
 
 function isAbortError(error: unknown): boolean {
@@ -163,6 +218,13 @@ function startNativeShare(
   } catch (error) {
     return Promise.resolve(isAbortError(error) ? "cancelled" : "failed");
   }
+}
+
+export function shareContent(
+  data: ShareData,
+  environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
+): Promise<NativeShareOutcome> {
+  return startNativeShare(data, environment);
 }
 
 export function shareIdentity(

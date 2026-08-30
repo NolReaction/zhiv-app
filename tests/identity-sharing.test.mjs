@@ -45,8 +45,8 @@ function createLegacyDocument(events, copyResult = true) {
       },
     },
     body: {
-      appendChild() {
-        events.push("field-appended");
+      appendChild(element) {
+        events.push(`field-appended:${element.value}`);
       },
     },
     createElement(tagName) {
@@ -107,6 +107,157 @@ test("falls back to legacy copy when the secure Clipboard API refuses access", a
   assert.deepEqual(events.filter((event) => event === "clipboard-refused" || event === "exec:copy"), [
     "clipboard-refused",
     "exec:copy",
+  ]);
+});
+
+test("copies the complete invite URL synchronously on iPhone LAN HTTP", async () => {
+  const events = [];
+  const inviteUrl = "http://192.168.1.232:3000/#/invite/K_Px9NhbG9Y6vnUg3BDnv-o4m5GkSb9uLrv0ptuGSvU";
+  const pendingCopy = sharing.copyText(inviteUrl, {
+    document: createLegacyDocument(events),
+    navigator: {
+      share() {
+        events.push("share-start");
+        return Promise.resolve();
+      },
+    },
+    secureContext: false,
+  });
+
+  assert.ok(events.includes(`field-appended:${inviteUrl}`));
+  assert.ok(events.includes(`field-range:0-${inviteUrl.length}`));
+  assert.ok(events.includes("exec:copy"));
+  assert.equal(events.includes("share-start"), false);
+  assert.equal(await pendingCopy, true);
+});
+
+test("copies a LAN invite from the visible selected field", async () => {
+  const events = [];
+  const inviteUrl = "http://192.168.1.232:3000/#/invite/K_Px9NhbG9Y6vnUg3BDnv-o4m5GkSb9uLrv0ptuGSvU";
+  const field = {
+    value: inviteUrl,
+    focus(options) {
+      events.push(`focus:${options?.preventScroll === true}`);
+    },
+    select() {
+      events.push("select");
+    },
+    setSelectionRange(start, end) {
+      events.push(`range:${start}-${end}`);
+    },
+  };
+  const pendingCopy = sharing.copyTextFromVisibleField(inviteUrl, field, {
+    document: {
+      execCommand(command) {
+        events.push(`exec:${command}`);
+        return true;
+      },
+    },
+    navigator: {},
+    secureContext: false,
+  });
+
+  assert.deepEqual(events, [
+    "focus:true",
+    "select",
+    `range:0-${inviteUrl.length}`,
+    "exec:copy",
+  ]);
+  assert.equal(await pendingCopy, "legacy");
+});
+
+test("confirms a visible-field copy when the secure Clipboard API resolves", async () => {
+  const events = [];
+  const field = {
+    value: "https://example.test/#/invite/token",
+    focus() {
+      events.push("focus");
+    },
+    select() {
+      events.push("select");
+    },
+    setSelectionRange() {
+      events.push("range");
+    },
+  };
+  const outcome = await sharing.copyTextFromVisibleField(field.value, field, {
+    document: {
+      execCommand(command) {
+        events.push(`exec:${command}`);
+        return true;
+      },
+    },
+    navigator: {
+      clipboard: {
+        writeText(text) {
+          events.push(`clipboard:${text}`);
+          return Promise.resolve();
+        },
+      },
+    },
+    secureContext: true,
+  });
+
+  assert.equal(outcome, "confirmed");
+  assert.equal(events[0], `clipboard:${field.value}`);
+  assert.ok(events.includes("exec:copy"));
+});
+
+test("copy-only action never opens the native share sheet", async () => {
+  const events = [];
+  const copied = await sharing.copyText("https://example.test/#/invite/token", {
+    document: {},
+    navigator: {
+      clipboard: {
+        writeText(text) {
+          events.push(`copy:${text}`);
+          return Promise.resolve();
+        },
+      },
+      share() {
+        events.push("share-start");
+        return Promise.resolve();
+      },
+    },
+    secureContext: true,
+  });
+
+  assert.equal(copied, true);
+  assert.deepEqual(events, ["copy:https://example.test/#/invite/token"]);
+});
+
+test("share-only action never competes with clipboard access", async () => {
+  const events = [];
+  const data = {
+    title: "Приглашение в «Я живой»",
+    text: "Добавь меня в личные связи в «Я живой».",
+    url: "https://example.test/#/invite/token",
+  };
+  const outcome = await sharing.shareContent(data, {
+    document: {},
+    navigator: {
+      clipboard: {
+        writeText() {
+          events.push("copy-start");
+          return Promise.resolve();
+        },
+      },
+      canShare(shareData) {
+        events.push(`can-share:${shareData.url}`);
+        return true;
+      },
+      share(shareData) {
+        events.push(`share:${shareData.url}`);
+        return Promise.resolve();
+      },
+    },
+    secureContext: true,
+  });
+
+  assert.equal(outcome, "shared");
+  assert.deepEqual(events, [
+    "can-share:https://example.test/#/invite/token",
+    "share:https://example.test/#/invite/token",
   ]);
 });
 

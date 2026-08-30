@@ -498,6 +498,16 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /Включено · новые отметки доступны/);
   assert.match(people, /Выключено · новые отметки скрыты/);
   assert.match(people, /aria-describedby=\{sharingHintId\}/);
+  assert.match(people, /useReducer\(\s*inviteDialogReducer,\s*initialInviteDialogState/);
+  assert.match(people, /<Dialog open=\{inviteDialog\.open\}/);
+  assert.match(people, /dispatchInviteDialog\(\{ type: "close" \}\)/);
+  assert.doesNotMatch(people, /setInviteMode\(null\)/);
+  assert.match(people, /> Скопировать\s*<\/button>/);
+  assert.match(people, /> Поделиться\s*<\/button>/);
+  assert.match(people, /copyTextFromVisibleField\(\s*inviteShare\.url,\s*inviteLinkField\.current/);
+  assert.match(people, /aria-label="Ссылка приглашения"/);
+  assert.match(people, /inviteDialog\.mode === "qr" \? styles\.inviteLinkFieldCompact/);
+  assert.match(peopleStyles, /\.inviteLinkField\s*\{[^}]*user-select:\s*text;/s);
   assert.match(peopleStyles, /\.sharingSwitch\s*\{[^}]*width:\s*48px !important;/s);
   assert.match(peopleStyles, /\.sharingSwitch :global\(\[data-slot="switch-thumb"\]\)\s*\{[^}]*background:\s*#f4f7ef !important;/s);
   assert.match(peopleStyles, /\.sharingSwitch\[data-state="checked"\] :global\(\[data-slot="switch-thumb"\]\)\s*\{[^}]*translateX\(20px\)/s);
