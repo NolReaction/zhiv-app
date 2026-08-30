@@ -1,0 +1,99 @@
+.dialog {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 26px !important;
+  background: #151913 !important;
+  color: #f3f5ef !important;
+  touch-action: pan-y;
+}
+
+.icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 5px;
+  place-items: center;
+  border-radius: 16px;
+  background: rgba(183, 216, 162, 0.11);
+  color: #b7d8a2;
+}
+
+.title { text-align: center; }
+.description { color: #92988d !important; text-align: center; line-height: 1.5; }
+.note, .warning, .error, .success { margin: 0; border-radius: 14px; padding: 11px 13px; font-size: 11px; line-height: 1.5; }
+.note { background: rgba(183, 216, 162, 0.06); color: #aeb8a8; }
+.warning { background: rgba(245, 232, 91, 0.06); color: #c5bd86; }
+.error { background: rgba(255, 94, 91, 0.07); color: #ff9c98; }
+.success { background: rgba(183, 216, 162, 0.08); color: #cfe5c2; }
+
+.choices {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.choices legend {
+  margin-bottom: 7px;
+  color: #8f968a;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.choice {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  border-color: rgba(183, 216, 162, 0.46);
+  background: rgba(183, 216, 162, 0.08);
+}
+
+.choice input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  accent-color: #b7d8a2;
+}
+
+.choice span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.choice strong {
+  overflow: hidden;
+  color: #edf0e9;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choice small {
+  color: #858c80;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.primary, .secondary { width: 100%; min-height: 48px; border: 0; border-radius: 15px; font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; }
+.primary { background: #e9f4e2; color: #14200f; }
+.secondary { background: rgba(255, 255, 255, 0.05); color: #b7bdb2; }
+.primary:disabled, .secondary:disabled { opacity: 0.5; cursor: wait; }
+.primary:focus-visible, .secondary:focus-visible { outline: 3px solid #f5e85b; outline-offset: 3px; }
+
+@media (max-width: 420px) {
+  .dialog { padding: 22px !important; }
+  .title { padding-inline: 8px; font-size: 20px !important; line-height: 1.15; }
+}

@@ -6,8 +6,8 @@ import java.util.UUID
 data class DailyStreakSnapshot(
     val currentDays: Long,
     val longestDays: Long,
-    val checkedInToday: Boolean,
-    val nextDayAt: OffsetDateTime,
+    val isActive: Boolean,
+    val renewBy: OffsetDateTime?,
 )
 
 sealed interface CheckInResult {

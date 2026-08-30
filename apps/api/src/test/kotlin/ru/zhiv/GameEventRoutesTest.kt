@@ -49,6 +49,7 @@ class GameEventRoutesTest {
             "type":"CLICKER_SERIES_FINISHED",
             "tapCount":20,
             "bestSeries":50,
+            "lifetimeTaps":100,
             "level":5,
             "storyId":"space",
             "durationMs":12345,
@@ -63,6 +64,7 @@ class GameEventRoutesTest {
         assertEquals(HttpStatusCode.NoContent, accepted.status)
         assertEquals(1, events.size)
         assertEquals(20L, events.single().tapCount)
+        assertEquals(100L, events.single().lifetimeTaps)
         assertEquals("space", events.single().storyId)
 
         val invalid = client.post("/api/v1/game-events") {
@@ -73,12 +75,37 @@ class GameEventRoutesTest {
         assertEquals(HttpStatusCode.BadRequest, invalid.status)
         assertEquals(1, events.size)
 
+        val inconsistentLifetime = client.post("/api/v1/game-events") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Cookie, cookie)
+            setBody(body.replace("\"lifetimeTaps\":100", "\"lifetimeTaps\":49"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, inconsistentLifetime.status)
+        assertEquals(1, events.size)
+
+        val levelFromWrongCounter = client.post("/api/v1/game-events") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Cookie, cookie)
+            setBody(body.replace("\"lifetimeTaps\":100", "\"lifetimeTaps\":99"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, levelFromWrongCounter.status)
+        assertEquals(1, events.size)
+
+        val legacyPayload = client.post("/api/v1/game-events") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Cookie, cookie)
+            setBody(body.replace("            \"lifetimeTaps\":100,\n", ""))
+        }
+        assertEquals(HttpStatusCode.NoContent, legacyPayload.status)
+        assertEquals(2, events.size)
+        assertEquals(null, events.last().lifetimeTaps)
+
         val anonymous = client.post("/api/v1/game-events") {
             contentType(ContentType.Application.Json)
             setBody(body)
         }
         assertEquals(HttpStatusCode.Unauthorized, anonymous.status)
-        assertEquals(1, events.size)
+        assertEquals(2, events.size)
     }
 
     private fun testConfig() = AppConfig(
@@ -107,7 +134,7 @@ class GameEventRoutesTest {
                 displayName = displayName,
                 lastCheckInAt = null,
                 checkInCount = 0,
-                streak = DailyStreakSnapshot(0, 0, false, now.plusDays(1)),
+                streak = DailyStreakSnapshot(0, 0, false, null),
                 displayNameChangedAt = null,
                 displayNameChangeAvailableAt = null,
                 serverTime = now,

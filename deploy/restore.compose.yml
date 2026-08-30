@@ -1,0 +1,22 @@
+name: zhiv-restore-drill
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: zhiv_restore
+      POSTGRES_USER: zhiv_restore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhiv_restore -d zhiv_restore"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

@@ -7,12 +7,18 @@ import type {
   DisplayNameCooldownResponse,
   DirectRequestActionResponse,
   DirectRequestResponse,
+  DirectInviteLink,
+  DirectInvitePreview,
+  DirectInviteRedeemResponse,
   GroupMutationResponse,
   GroupsResponse,
   MeResponse,
   PeopleResponse,
   SharingMode,
   SharingResponse,
+  RecoveryContactsResponse,
+  RecoveryApprovalPreview,
+  RecoveryAttempt,
   UserLookupResponse,
 } from "@/lib/check-in-contract";
 
@@ -27,8 +33,8 @@ const userSchema = z.object({
 const dailyStreakSchema = z.object({
   currentDays: z.number().int().nonnegative().safe(),
   longestDays: z.number().int().nonnegative().safe(),
-  checkedInToday: z.boolean(),
-  nextDayAt: z.string().datetime(),
+  isActive: z.boolean(),
+  renewBy: z.string().datetime().nullable(),
 });
 
 const profileStateSchema = z.object({
@@ -174,6 +180,47 @@ const groupsSchema: z.ZodType<GroupsResponse> = z.object({
 const groupMutationSchema: z.ZodType<GroupMutationResponse> = z.object({
   groupId: z.string().uuid(),
   replayed: z.boolean(),
+  serverTime: z.string().datetime(),
+});
+
+const directInviteLinkSchema: z.ZodType<DirectInviteLink> = z.object({
+  inviteId: z.string().uuid(),
+  expiresAt: z.string().datetime(),
+  replayed: z.boolean(),
+  serverTime: z.string().datetime(),
+});
+const directInvitePreviewSchema: z.ZodType<DirectInvitePreview> = z.object({
+  inviter: userSchema,
+  expiresAt: z.string().datetime(),
+  serverTime: z.string().datetime(),
+});
+const directInviteRedeemSchema: z.ZodType<DirectInviteRedeemResponse> = z.object({
+  person: personSchema,
+  replayed: z.boolean(),
+  serverTime: z.string().datetime(),
+});
+const recoveryContactSchema = z.object({
+  contactId: z.string().uuid(),
+  circleId: z.string().uuid(),
+  user: userSchema,
+});
+const recoveryContactsSchema: z.ZodType<RecoveryContactsResponse> = z.object({
+  contacts: z.array(recoveryContactSchema),
+  eligible: z.array(z.object({ circleId: z.string().uuid(), user: userSchema })),
+  trustedBy: z.array(recoveryContactSchema),
+  serverTime: z.string().datetime(),
+});
+const recoveryAttemptSchema: z.ZodType<RecoveryAttempt> = z.object({
+  attemptId: z.string().uuid(),
+  status: z.enum(["PENDING", "APPROVED", "COMPLETED"]),
+  expiresAt: z.string().datetime(),
+  target: userSchema.nullable(),
+  replayed: z.boolean(),
+  serverTime: z.string().datetime(),
+});
+const recoveryApprovalPreviewSchema: z.ZodType<RecoveryApprovalPreview> = z.object({
+  eligible: z.array(z.object({ contactId: z.string().uuid(), target: userSchema })),
+  expiresAt: z.string().datetime(),
   serverTime: z.string().datetime(),
 });
 
@@ -464,4 +511,129 @@ export function deleteGroup(groupId: string, idempotencyKey: string): Promise<vo
     method: "DELETE",
     headers: { "Idempotency-Key": idempotencyKey },
   });
+}
+
+export function createDirectInviteLink(
+  token: string,
+  idempotencyKey: string,
+): Promise<DirectInviteLink> {
+  return request<DirectInviteLink>("/api/v1/direct-invite-links", directInviteLinkSchema, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ token }),
+  });
+}
+
+export function previewDirectInvite(token: string): Promise<DirectInvitePreview> {
+  return request<DirectInvitePreview>(
+    "/api/v1/direct-invite-links/preview",
+    directInvitePreviewSchema,
+    { method: "POST", body: JSON.stringify({ token }) },
+  );
+}
+
+export function redeemDirectInvite(
+  token: string,
+  idempotencyKey: string,
+): Promise<DirectInviteRedeemResponse> {
+  return request<DirectInviteRedeemResponse>(
+    "/api/v1/direct-invite-links/redeem",
+    directInviteRedeemSchema,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ token }),
+    },
+  );
+}
+
+export function getRecoveryContacts(): Promise<RecoveryContactsResponse> {
+  return request<RecoveryContactsResponse>("/api/v1/recovery-contacts", recoveryContactsSchema);
+}
+
+export function addRecoveryContact(
+  circleId: string,
+  idempotencyKey: string,
+): Promise<RecoveryContactsResponse> {
+  return request<RecoveryContactsResponse>("/api/v1/recovery-contacts", recoveryContactsSchema, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ circleId }),
+  });
+}
+
+export function removeRecoveryContact(
+  contactId: string,
+  idempotencyKey: string,
+): Promise<RecoveryContactsResponse> {
+  return request<RecoveryContactsResponse>(
+    `/api/v1/recovery-contacts/${contactId}`,
+    recoveryContactsSchema,
+    { method: "DELETE", headers: { "Idempotency-Key": idempotencyKey } },
+  );
+}
+
+export function startRecoveryAttempt(
+  token: string,
+  idempotencyKey: string,
+): Promise<RecoveryAttempt> {
+  return request<RecoveryAttempt>("/api/v1/account-recovery/attempts", recoveryAttemptSchema, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ token }),
+  });
+}
+
+export function getCurrentRecoveryAttempt(): Promise<RecoveryAttempt> {
+  return request<RecoveryAttempt>(
+    "/api/v1/account-recovery/attempts/current",
+    recoveryAttemptSchema,
+  );
+}
+
+export function cancelCurrentRecoveryAttempt(): Promise<void> {
+  return request<void>(
+    "/api/v1/account-recovery/attempts/current",
+    z.void(),
+    { method: "DELETE" },
+  );
+}
+
+export function completeCurrentRecoveryAttempt(idempotencyKey: string): Promise<MeResponse> {
+  return request<MeResponse>(
+    "/api/v1/account-recovery/attempts/current/complete",
+    meSchema,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function previewRecoveryApproval(token: string): Promise<RecoveryApprovalPreview> {
+  return request<RecoveryApprovalPreview>(
+    "/api/v1/account-recovery/approval/preview",
+    recoveryApprovalPreviewSchema,
+    {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    },
+  );
+}
+
+export function confirmRecoveryApproval(
+  token: string,
+  contactId: string,
+  idempotencyKey: string,
+): Promise<RecoveryAttempt> {
+  return request<RecoveryAttempt>(
+    "/api/v1/account-recovery/approval/confirm",
+    recoveryAttemptSchema,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ token, contactId }),
+    },
+  );
 }

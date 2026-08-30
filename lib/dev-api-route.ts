@@ -5,6 +5,15 @@ import { SESSION_COOKIE } from "@/lib/dev-api-store";
 
 export const NO_STORE_HEADERS = { "Cache-Control": "no-store" } as const;
 
+export function isExactJsonObject(
+  value: unknown,
+  keys: readonly string[],
+): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length && keys.every((key) => actualKeys.includes(key));
+}
+
 export async function devSessionToken(): Promise<string | undefined> {
   return (await cookies()).get(SESSION_COOKIE)?.value;
 }
@@ -39,6 +48,7 @@ export function devResultError<T>(result: Exclude<DevResult<T>, { kind: "ok" }>)
     forbidden: [403, "FORBIDDEN", "Действие недоступно"],
     expired: [409, "DIRECT_REQUEST_EXPIRED", "Срок заявки истёк"],
     conflict: [409, "RELATIONSHIP_CONFLICT", "Состояние уже изменилось"],
+    "limit-reached": [409, "RELATIONSHIP_CONFLICT", "Достигнут лимит"],
   } as const;
   const [status, code, message] = errors[result.kind];
   return NextResponse.json({ code, message }, { status, headers: NO_STORE_HEADERS });

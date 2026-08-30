@@ -28,6 +28,7 @@
 .profileCard,
 .formCard,
 .futureCard,
+.recoveryCard,
 .gameStats,
 .stats {
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -42,6 +43,37 @@
   margin-top: 14px;
   border-radius: 20px;
   padding: 15px 17px;
+}
+
+.levelProgressMeta,
+.levelProgress {
+  grid-column: 1 / -1;
+}
+
+.levelProgressMeta {
+  display: flex !important;
+  grid-template-columns: none !important;
+  flex-direction: row;
+  justify-content: space-between;
+  color: #858b80;
+  font-size: 9px;
+}
+
+.levelProgress {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.levelProgress i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6fa45c, #dff1d4);
+  transform-origin: left center;
+  transition: transform 220ms ease;
 }
 
 .gameStats > span {
@@ -315,6 +347,121 @@
   border-radius: 20px;
   padding: 16px;
   color: #a4aa9e;
+}
+
+.recoveryCard {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.recoveryHeading {
+  display: flex;
+  gap: 12px;
+}
+
+.recoveryHeading > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(183, 216, 162, 0.1);
+  color: #b7d8a2;
+}
+
+.recoveryHeading strong {
+  color: #e7ebe3;
+  font-size: 13px;
+}
+
+.recoveryHeading p,
+.recoveryNote,
+.recoveryEmpty {
+  margin: 4px 0 0;
+  color: #81877c;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.recoveryList {
+  display: grid;
+  gap: 7px;
+}
+
+.recoveryList > div {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0 9px 0 12px;
+}
+
+.recoveryList span,
+.recoveryChoices button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.recoveryList span {
+  color: #dce1d8;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.recoveryList button,
+.recoveryChoices button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.recoveryList button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #b6bbb1;
+}
+
+.recoveryChoices {
+  display: grid;
+  gap: 8px;
+}
+
+.recoveryChoices small {
+  color: #898f84;
+  font-size: 9px;
+}
+
+.recoveryChoices > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.recoveryChoices button {
+  min-height: 36px;
+  border-radius: 12px;
+  background: rgba(183, 216, 162, 0.09);
+  color: #cfe4c3;
+  padding: 0 11px;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.recoveryNote {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 12px;
 }
 
 .futureCard > span {

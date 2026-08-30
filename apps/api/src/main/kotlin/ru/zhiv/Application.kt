@@ -1,6 +1,7 @@
 package ru.zhiv
 
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -14,8 +15,8 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.ContentTransformationException
 import io.ktor.server.request.httpMethod
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
-import io.ktor.server.response.status
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
@@ -28,12 +29,20 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.db.DatabaseFactory
 import ru.zhiv.db.JdbcRelationshipRepository
 import ru.zhiv.db.JdbcGroupRepository
+import ru.zhiv.db.JdbcDirectInviteRepository
+import ru.zhiv.db.JdbcRecoveryRepository
 import ru.zhiv.db.JdbcZhivRepository
 import ru.zhiv.http.ApiErrorResponse
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.identityRoutes
 import ru.zhiv.groups.GroupRepository
 import ru.zhiv.groups.groupRoutes
+import ru.zhiv.health.JdbcReadinessProbe
+import ru.zhiv.health.ReadinessProbe
+import ru.zhiv.invites.DirectInviteRepository
+import ru.zhiv.invites.directInviteRoutes
+import ru.zhiv.recovery.RecoveryRepository
+import ru.zhiv.recovery.recoveryRoutes
 import ru.zhiv.game.gameEventRoutes
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
@@ -49,6 +58,8 @@ fun Application.module() {
     val repository = JdbcZhivRepository(dataSource)
     val relationships = JdbcRelationshipRepository(dataSource)
     val groups = JdbcGroupRepository(dataSource)
+    val directInvites = JdbcDirectInviteRepository(dataSource)
+    val recovery = JdbcRecoveryRepository(dataSource)
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         dataSource.close()
@@ -59,6 +70,9 @@ fun Application.module() {
         config,
         relationships = relationships,
         groups = groups,
+        directInvites = directInvites,
+        recovery = recovery,
+        readiness = JdbcReadinessProbe(dataSource),
     )
 }
 
@@ -69,6 +83,9 @@ fun Application.installZhivApi(
     tokenCodec: TokenCodec = TokenCodec(),
     relationships: RelationshipRepository? = null,
     groups: GroupRepository? = null,
+    directInvites: DirectInviteRepository? = null,
+    recovery: RecoveryRepository? = null,
+    readiness: ReadinessProbe = ReadinessProbe { true },
     gameEvents: GameEventSink = Slf4jGameEventSink(),
 ) {
     install(DefaultHeaders)
@@ -100,6 +117,22 @@ fun Application.installZhivApi(
         }
         register(RateLimitName("game-events")) {
             rateLimiter(limit = 2_400, refillPeriod = 1.hours)
+            requestKey { call ->
+                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
+                    ?: call.request.headers["X-Real-IP"]
+                    ?: "direct-client"
+            }
+        }
+        register(RateLimitName("account-recovery-write")) {
+            rateLimiter(limit = 30, refillPeriod = 1.hours)
+            requestKey { call ->
+                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
+                    ?: call.request.headers["X-Real-IP"]
+                    ?: "direct-client"
+            }
+        }
+        register(RateLimitName("account-recovery-read")) {
+            rateLimiter(limit = 600, refillPeriod = 1.hours)
             requestKey { call ->
                 call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
                     ?: call.request.headers["X-Real-IP"]
@@ -146,12 +179,23 @@ fun Application.installZhivApi(
 
     routing {
         get("/healthz") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respond(mapOf("status" to "ok"))
+        }
+        get("/readyz") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            if (readiness.isReady()) {
+                call.respond(mapOf("status" to "ready"))
+            } else {
+                call.respond(HttpStatusCode.ServiceUnavailable, mapOf("status" to "unavailable"))
+            }
         }
         identityRoutes(identities, tokenCodec, config)
         checkInRoutes(checkIns, tokenCodec, config)
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
+        directInvites?.let { directInviteRoutes(it, tokenCodec, config) }
+        recovery?.let { recoveryRoutes(it, tokenCodec, config) }
     }
 }

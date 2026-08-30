@@ -25,6 +25,7 @@ import ru.zhiv.observability.GameEventSink
 import ru.zhiv.security.TokenCodec
 
 private const val MAX_TAPS = 100_000L
+private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 private const val MAX_DURATION_MS = 7L * 24 * 60 * 60 * 1_000
 private val storyIds = setOf(
     "space", "lab", "hike", "arcade", "garden", "ocean", "magic", "time",
@@ -80,6 +81,7 @@ fun Route.gameEventRoutes(
                             eventId = eventId,
                             tapCount = request.tapCount,
                             bestSeries = request.bestSeries,
+                            lifetimeTaps = request.lifetimeTaps,
                             level = request.level,
                             storyId = request.storyId,
                             durationMs = request.durationMs,
@@ -95,16 +97,38 @@ fun Route.gameEventRoutes(
     }
 }
 
-private fun ClickerSeriesEventRequest.isValid(): Boolean =
-    type == "CLICKER_SERIES_FINISHED" &&
-        tapCount in 1L..MAX_TAPS &&
-        bestSeries in tapCount..MAX_TAPS &&
-        level == levelFor(bestSeries) &&
-        storyId in storyIds &&
-        durationMs in 0L..MAX_DURATION_MS &&
-        reason == "IDLE_TIMEOUT"
+private fun ClickerSeriesEventRequest.isValid(): Boolean {
+    if (
+        type != "CLICKER_SERIES_FINISHED" ||
+        tapCount !in 1L..MAX_TAPS ||
+        bestSeries !in tapCount..MAX_TAPS ||
+        storyId !in storyIds ||
+        durationMs !in 0L..MAX_DURATION_MS ||
+        reason != "IDLE_TIMEOUT"
+    ) return false
 
-private fun levelFor(bestSeries: Long): Int = when {
+    val lifetime = lifetimeTaps
+    return if (lifetime == null) {
+        level == legacyLevelFor(bestSeries)
+    } else {
+        lifetime in bestSeries..MAX_SAFE_INTEGER && level == lifetimeLevelFor(lifetime)
+    }
+}
+
+private fun lifetimeLevelFor(lifetimeTaps: Long): Int = when {
+    lifetimeTaps >= 5_000 -> 10
+    lifetimeTaps >= 2_500 -> 9
+    lifetimeTaps >= 1_000 -> 8
+    lifetimeTaps >= 500 -> 7
+    lifetimeTaps >= 250 -> 6
+    lifetimeTaps >= 100 -> 5
+    lifetimeTaps >= 50 -> 4
+    lifetimeTaps >= 25 -> 3
+    lifetimeTaps >= 10 -> 2
+    else -> 1
+}
+
+private fun legacyLevelFor(bestSeries: Long): Int = when {
     bestSeries >= 100_000 -> 10
     bestSeries >= 10_000 -> 9
     bestSeries >= 1_000 -> 8

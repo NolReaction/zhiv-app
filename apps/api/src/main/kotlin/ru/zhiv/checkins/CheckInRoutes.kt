@@ -60,7 +60,7 @@ fun Route.checkInRoutes(
                     )
                     .addKeyValue("source", "ktor")
                     .addKeyValue("check_in_count", result.checkInCount)
-                    .addKeyValue("daily_streak", result.streak.currentDays)
+                    .addKeyValue("rolling_streak_days", result.streak.currentDays)
                     .log("domain_event")
                 call.respond(
                     CheckInResponse(
@@ -84,7 +84,7 @@ fun Route.checkInRoutes(
                     .addKeyValue("event", "check_in_cooldown")
                     .addKeyValue("source", "ktor")
                     .addKeyValue("retry_after_seconds", retryAfter)
-                    .addKeyValue("daily_streak", result.streak.currentDays)
+                    .addKeyValue("rolling_streak_days", result.streak.currentDays)
                     .log("domain_event")
                 call.response.header(HttpHeaders.RetryAfter, retryAfter.toString())
                 call.respond(
@@ -104,6 +104,6 @@ fun Route.checkInRoutes(
 private fun DailyStreakSnapshot.toDto() = DailyStreakDto(
     currentDays = currentDays,
     longestDays = longestDays,
-    checkedInToday = checkedInToday,
-    nextDayAt = nextDayAt.toInstant().toString(),
+    isActive = isActive,
+    renewBy = renewBy?.toInstant()?.toString(),
 )

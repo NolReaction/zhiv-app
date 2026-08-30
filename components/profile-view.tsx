@@ -1,13 +1,16 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useRef, useState } from "react";
-import { Camera, Check, Clock3, Flame, Gamepad2, Trophy, UserRound } from "lucide-react";
-import type { MeResponse } from "@/lib/check-in-contract";
-import type { ClickerLevel } from "@/lib/clicker-story";
+import { useEffect, useRef, useState } from "react";
+import { Camera, Check, Clock3, Flame, Gamepad2, ShieldCheck, ShieldPlus, Trash2, Trophy, UserRound } from "lucide-react";
+import type { MeResponse, RecoveryContactsResponse } from "@/lib/check-in-contract";
+import type { ClickerLevel, ClickerLevelProgress } from "@/lib/clicker-story";
 import {
   ApiError,
+  addRecoveryContact,
+  getRecoveryContacts,
   isDisplayNameCooldownResponse,
+  removeRecoveryContact,
   updateMyDisplayName,
 } from "@/lib/check-in-api";
 import {
@@ -16,6 +19,7 @@ import {
   normalizeDisplayName,
 } from "@/lib/check-in-presentation";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { RecoveryStarter } from "./recovery-starter";
 import styles from "./profile-view.module.css";
 
 type ProfileViewProps = {
@@ -24,9 +28,12 @@ type ProfileViewProps = {
   isOnline: boolean;
   clickerStats: {
     bestSeries: number;
+    lifetimeTaps: number;
     level: ClickerLevel;
+    levelProgress: ClickerLevelProgress;
   };
   onUpdated: (response: MeResponse) => void;
+  onRecovered: (response: MeResponse) => void;
   onSessionLost: () => void;
 };
 
@@ -45,12 +52,22 @@ function formatRemaining(availableAt: string, nowMs: number): string {
   return `${Math.max(1, minutes)} мин`;
 }
 
+function russianNoun(count: number, one: string, few: string, many: string): string {
+  const mod100 = Math.abs(count) % 100;
+  const mod10 = mod100 % 10;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
 export function ProfileView({
   me,
   nowMs,
   isOnline,
   clickerStats,
   onUpdated,
+  onRecovered,
   onSessionLost,
 }: ProfileViewProps) {
   const [draftState, setDraftState] = useState({
@@ -62,6 +79,24 @@ export function ProfileView({
   const [success, setSuccess] = useState<string | null>(null);
   const [cooldownAvailableAt, setCooldownAvailableAt] = useState<string | null>(null);
   const requestKey = useRef<string | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryContactsResponse | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getRecoveryContacts().then((value) => {
+      if (active) setRecovery(value);
+    }).catch((cause) => {
+      if (!active) return;
+      if (cause instanceof ApiError && cause.status === 401) {
+        onSessionLost();
+        return;
+      }
+      setRecoveryError(cause instanceof Error ? cause.message : "Не удалось загрузить восстановление");
+    });
+    return () => { active = false; };
+  }, [onSessionLost]);
 
   const draft = draftState.sourceName === me.user.displayName
     ? draftState.value
@@ -123,6 +158,39 @@ export function ProfileView({
     }
   }
 
+  async function changeRecoveryContact(kind: "add" | "remove", id: string) {
+    if (recoveryPending) return;
+    setRecoveryPending(`${kind}:${id}`);
+    setRecoveryError(null);
+    try {
+      const response = kind === "add"
+        ? await addRecoveryContact(id, createUuidV4())
+        : await removeRecoveryContact(id, createUuidV4());
+      setRecovery(response);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        onSessionLost();
+        return;
+      }
+      try {
+        const current = await getRecoveryContacts();
+        const desiredStateReached = kind === "add"
+          ? current.contacts.some((contact) => contact.circleId === id)
+          : current.contacts.every((contact) => contact.contactId !== id);
+        setRecovery(current);
+        if (desiredStateReached) return;
+      } catch (refreshCause) {
+        if (refreshCause instanceof ApiError && refreshCause.status === 401) {
+          onSessionLost();
+          return;
+        }
+      }
+      setRecoveryError(cause instanceof Error ? cause.message : "Не удалось изменить настройку");
+    } finally {
+      setRecoveryPending(null);
+    }
+  }
+
   return (
     <section id="profile-panel" className={styles.view} aria-labelledby="profile-title">
       <div className={styles.heading}>
@@ -151,7 +219,7 @@ export function ProfileView({
         <div>
           <Flame size={17} aria-hidden="true" />
           <strong>{me.streak.currentDays}</strong>
-          <span>дней подряд</span>
+          <span>{russianNoun(me.streak.currentDays, "день", "дня", "дней")} подряд</span>
         </div>
         <div>
           <Trophy size={17} aria-hidden="true" />
@@ -161,7 +229,7 @@ export function ProfileView({
         <div>
           <Check size={17} aria-hidden="true" />
           <strong>{me.checkInCount}</strong>
-          <span>отметок</span>
+          <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span>
         </div>
       </div>
 
@@ -172,12 +240,28 @@ export function ProfileView({
           <strong>{clickerStats.level.title}</strong>
         </div>
         <div>
-          <small>{clickerStats.level.nextMinimumBest ? "Следующий уровень" : "Высший уровень"}</small>
+          <small>{clickerStats.level.nextMinimumLifetimeTaps ? "До повышения" : "Высший уровень"}</small>
           <strong>
-            {clickerStats.level.nextMinimumBest
-              ? `×${clickerStats.level.nextMinimumBest.toLocaleString("ru-RU")}`
+            {clickerStats.level.nextMinimumLifetimeTaps
+              ? `${clickerStats.levelProgress.remaining.toLocaleString("ru-RU")} ${russianNoun(clickerStats.levelProgress.remaining, "тап", "тапа", "тапов")}`
               : "Максимум"}
           </strong>
+        </div>
+        <div className={styles.levelProgressMeta}>
+          <span>
+            Всего {clickerStats.lifetimeTaps.toLocaleString("ru-RU")} {russianNoun(clickerStats.lifetimeTaps, "тап", "тапа", "тапов")}
+          </span>
+          <span>{Math.round(clickerStats.levelProgress.ratio * 100)}%</span>
+        </div>
+        <div
+          className={styles.levelProgress}
+          role="progressbar"
+          aria-label="Прогресс игрового уровня"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(clickerStats.levelProgress.ratio * 100)}
+        >
+          <i style={{ transform: `scaleX(${clickerStats.levelProgress.ratio})` }} />
         </div>
       </div>
 
@@ -225,6 +309,56 @@ export function ProfileView({
           {!isOnline && !error ? <p className={styles.offline}>Офлайн · изменения временно недоступны</p> : null}
         </div>
       </form>
+
+      <section className={styles.recoveryCard} aria-labelledby="recovery-title">
+        <div className={styles.recoveryHeading}>
+          <span><ShieldCheck size={20} /></span>
+          <div>
+            <strong id="recovery-title">Восстановление через близкого</strong>
+            <p>Выберите до трёх людей. Только они смогут подтвердить ваш запрос на возврат этого профиля.</p>
+          </div>
+        </div>
+        {recovery?.contacts.length ? (
+          <div className={styles.recoveryList}>
+            {recovery.contacts.map((contact) => (
+              <div key={contact.contactId}>
+                <span><ShieldCheck size={15} /> {contact.user.displayName}</span>
+                <button
+                  type="button"
+                  aria-label={`Убрать ${contact.user.displayName} из доверенных`}
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => void changeRecoveryContact("remove", contact.contactId)}
+                ><Trash2 size={15} /></button>
+              </div>
+            ))}
+          </div>
+        ) : <p className={styles.recoveryEmpty}>Доверенные люди пока не выбраны.</p>}
+        {recovery && recovery.eligible.length > 0 && recovery.contacts.length < 3 ? (
+          <div className={styles.recoveryChoices}>
+            <small>Можно доверить восстановление:</small>
+            <div>
+              {recovery.eligible.map((person) => (
+                <button
+                  type="button"
+                  key={person.circleId}
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => void changeRecoveryContact("add", person.circleId)}
+                ><ShieldPlus size={15} /> {person.user.displayName}</button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <p className={styles.recoveryNote}>
+          Уже создали новый профиль случайно? Начните восстановление здесь. Данные не смешаются:
+          после подтверждения друга приложение переключится на прежний профиль.
+        </p>
+        <RecoveryStarter
+          context="profile"
+          isOnline={isOnline}
+          onRecovered={onRecovered}
+        />
+        {recoveryError ? <p className={styles.error} role="alert">{recoveryError}</p> : null}
+      </section>
 
       <div className={styles.futureCard}>
         <span aria-hidden="true"><UserRound size={20} /></span>

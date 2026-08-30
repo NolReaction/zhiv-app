@@ -1,7 +1,7 @@
 {$DOMAIN:localhost} {
     encode zstd gzip
 
-    @api path /api/* /healthz
+    @api path /api/* /healthz /readyz
     reverse_proxy @api api:8080
     reverse_proxy web:3000
 

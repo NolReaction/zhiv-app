@@ -1,20 +1,29 @@
 name: zhiv
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:18-alpine
     restart: unless-stopped
+    stop_grace_period: 1m
     environment:
       POSTGRES_DB: zhiv
       POSTGRES_USER: zhiv
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zhiv -d zhiv"]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 10s
+    logging: *default-logging
 
   api:
     build:
@@ -29,11 +38,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "5"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    stop_grace_period: 20s
+    logging: *default-logging
 
   web:
     build:
@@ -42,8 +54,18 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+    init: true
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((response)=>{if(!response.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    stop_grace_period: 20s
+    logging: *default-logging
 
   caddy:
     image: caddy:2.10-alpine
@@ -59,8 +81,18 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
-      - web
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --spider http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    stop_grace_period: 10s
+    logging: *default-logging
 
 volumes:
   postgres_data:

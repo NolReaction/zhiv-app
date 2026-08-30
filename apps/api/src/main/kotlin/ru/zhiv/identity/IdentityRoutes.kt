@@ -203,8 +203,8 @@ private fun UserSnapshot.toResponse() = MeResponse(
     streak = DailyStreakDto(
         currentDays = streak.currentDays,
         longestDays = streak.longestDays,
-        checkedInToday = streak.checkedInToday,
-        nextDayAt = streak.nextDayAt.toInstant().toString(),
+        isActive = streak.isActive,
+        renewBy = streak.renewBy?.toInstant()?.toString(),
     ),
     profile = ProfileStateDto(
         avatarUrl = null,

@@ -185,6 +185,19 @@ export function shareIdentity(
   }));
 }
 
+export function shareTextAndCopy(
+  text: string,
+  shareData: ShareData,
+  environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
+): Promise<IdentitySharingResult> {
+  const copyPromise = copyText(text, environment);
+  const sharePromise = startNativeShare(shareData, environment);
+  return Promise.all([copyPromise, sharePromise]).then(([copied, shareOutcome]) => ({
+    copied,
+    shareOutcome,
+  }));
+}
+
 export function getIdentitySharingNotice(result: IdentitySharingResult): string {
   if (result.copied) return "ID скопирован";
   if (result.shareOutcome === "shared") {
