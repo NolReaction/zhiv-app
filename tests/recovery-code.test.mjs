@@ -1,0 +1,46 @@
+
+import assert from "node:assert/strict";
+import {test,after} from "node:test";
+import {createServer} from "vite";
+import {fileURLToPath} from "node:url";
+const root=fileURLToPath(new URL("..",import.meta.url));
+const vite=await createServer({appType:"custom",configFile:false,root,resolve:{alias:{"@":root}},server:{middlewareMode:true,hmr:false}});
+const store=await vite.ssrLoadModule("/lib/dev-api-store.ts");
+const codes=await vite.ssrLoadModule("/lib/recovery-code.ts");
+after(()=>vite.close());
+test("private code lifecycle: no friends, rotation, one use, response retry, session revocation",()=>{
+  store.resetDevStoreForTests();
+  const owner=store.createDevIdentity("Дима",crypto.randomUUID());
+  const stranger=store.createDevIdentity("Ваня",crypto.randomUUID());
+  const first=codes.createRecoveryCode(),second=codes.createRecoveryCode();
+  assert.notEqual(first,second);assert.equal(first.length,51);
+  assert.equal(codes.normalizeRecoveryCode(" "+first+" "),first);
+  for(const raw of ["","Ваня","ZHIV-I-"+first.slice(8),"#/"+first,"https://example.org/"+first])assert.equal(codes.normalizeRecoveryCode(raw),null);
+  assert.equal(store.activateDevRecoveryCode(undefined,first).kind,"unauthorized");
+  assert.equal(store.activateDevRecoveryCode(owner.token,first).kind,"ok");
+  assert.equal(store.activateDevRecoveryCode(stranger.token,first).kind,"conflict");
+  assert.equal(store.activateDevRecoveryCode(owner.token,second).kind,"ok");
+  assert.equal(store.redeemDevRecoveryCode(first,"retry"),null);
+  const recovered=store.redeemDevRecoveryCode(second,"retry");
+  assert.ok(recovered);assert.equal(recovered.me.user.publicId,owner.me.user.publicId);
+  assert.equal(store.getDevIdentity(owner.token),null);
+  assert.ok(store.getDevIdentity(stranger.token));
+  assert.deepEqual(store.devRecoveryCodeState(recovered.token),{active:false});
+  assert.equal(store.redeemDevRecoveryCode(second,"different"),null);
+  assert.equal(store.redeemDevRecoveryCode(second,"retry").token,recovered.token);
+  assert.equal(store.activateDevRecoveryCode(recovered.token,second).kind,"conflict");
+  const third=codes.createRecoveryCode();
+  store.activateDevRecoveryCode(recovered.token,third);
+  const newest=store.redeemDevRecoveryCode(third,"next");
+  assert.ok(newest);
+  assert.equal(store.redeemDevRecoveryCode(second,"retry"),null,"old receipts cannot revive revoked sessions");
+});
+test("lost-response retry expires after ten minutes",t=>{
+  t.mock.timers.enable({apis:["Date"],now:Date.parse("2026-09-05T12:00:00Z")});
+  store.resetDevStoreForTests();
+  const owner=store.createDevIdentity("Дима",crypto.randomUUID()),code=codes.createRecoveryCode();
+  store.activateDevRecoveryCode(owner.token,code);
+  assert.ok(store.redeemDevRecoveryCode(code,"retry"));
+  t.mock.timers.tick(600_000);
+  assert.equal(store.redeemDevRecoveryCode(code,"retry"),null);
+});

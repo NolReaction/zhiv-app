@@ -1,16 +1,13 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
-import { Camera, Check, Clock3, Flame, Gamepad2, ShieldCheck, ShieldPlus, Trash2, Trophy, UserRound } from "lucide-react";
-import type { MeResponse, RecoveryContactsResponse } from "@/lib/check-in-contract";
+import { useRef, useState } from "react";
+import { Camera, Check, Clock3, Flame, Gamepad2, Trophy, UserRound } from "lucide-react";
+import type { MeResponse } from "@/lib/check-in-contract";
 import type { ClickerLevel, ClickerLevelProgress } from "@/lib/clicker-story";
 import {
   ApiError,
-  addRecoveryContact,
-  getRecoveryContacts,
   isDisplayNameCooldownResponse,
-  removeRecoveryContact,
   updateMyDisplayName,
 } from "@/lib/check-in-api";
 import {
@@ -19,6 +16,7 @@ import {
   normalizeDisplayName,
 } from "@/lib/check-in-presentation";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { RecoveryCodeCard } from "./recovery-code-card";
 import { RecoveryStarter } from "./recovery-starter";
 import styles from "./profile-view.module.css";
 
@@ -79,25 +77,6 @@ export function ProfileView({
   const [success, setSuccess] = useState<string | null>(null);
   const [cooldownAvailableAt, setCooldownAvailableAt] = useState<string | null>(null);
   const requestKey = useRef<string | null>(null);
-  const [recovery, setRecovery] = useState<RecoveryContactsResponse | null>(null);
-  const [recoveryPending, setRecoveryPending] = useState<string | null>(null);
-  const [recoveryError, setRecoveryError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void getRecoveryContacts().then((value) => {
-      if (active) setRecovery(value);
-    }).catch((cause) => {
-      if (!active) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        onSessionLost();
-        return;
-      }
-      setRecoveryError(cause instanceof Error ? cause.message : "Не удалось загрузить восстановление");
-    });
-    return () => { active = false; };
-  }, [onSessionLost]);
-
   const draft = draftState.sourceName === me.user.displayName
     ? draftState.value
     : me.user.displayName;
@@ -155,39 +134,6 @@ export function ProfileView({
       setError(cause instanceof Error ? cause.message : "Не удалось сохранить имя");
     } finally {
       setPending(false);
-    }
-  }
-
-  async function changeRecoveryContact(kind: "add" | "remove", id: string) {
-    if (recoveryPending) return;
-    setRecoveryPending(`${kind}:${id}`);
-    setRecoveryError(null);
-    try {
-      const response = kind === "add"
-        ? await addRecoveryContact(id, createUuidV4())
-        : await removeRecoveryContact(id, createUuidV4());
-      setRecovery(response);
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 401) {
-        onSessionLost();
-        return;
-      }
-      try {
-        const current = await getRecoveryContacts();
-        const desiredStateReached = kind === "add"
-          ? current.contacts.some((contact) => contact.circleId === id)
-          : current.contacts.every((contact) => contact.contactId !== id);
-        setRecovery(current);
-        if (desiredStateReached) return;
-      } catch (refreshCause) {
-        if (refreshCause instanceof ApiError && refreshCause.status === 401) {
-          onSessionLost();
-          return;
-        }
-      }
-      setRecoveryError(cause instanceof Error ? cause.message : "Не удалось изменить настройку");
-    } finally {
-      setRecoveryPending(null);
     }
   }
 
@@ -310,55 +256,8 @@ export function ProfileView({
         </div>
       </form>
 
-      <section className={styles.recoveryCard} aria-labelledby="recovery-title">
-        <div className={styles.recoveryHeading}>
-          <span><ShieldCheck size={20} /></span>
-          <div>
-            <strong id="recovery-title">Восстановление через близкого</strong>
-            <p>Выберите до трёх людей. Только они смогут подтвердить ваш запрос на возврат этого профиля.</p>
-          </div>
-        </div>
-        {recovery?.contacts.length ? (
-          <div className={styles.recoveryList}>
-            {recovery.contacts.map((contact) => (
-              <div key={contact.contactId}>
-                <span><ShieldCheck size={15} /> {contact.user.displayName}</span>
-                <button
-                  type="button"
-                  aria-label={`Убрать ${contact.user.displayName} из доверенных`}
-                  disabled={Boolean(recoveryPending)}
-                  onClick={() => void changeRecoveryContact("remove", contact.contactId)}
-                ><Trash2 size={15} /></button>
-              </div>
-            ))}
-          </div>
-        ) : <p className={styles.recoveryEmpty}>Доверенные люди пока не выбраны.</p>}
-        {recovery && recovery.eligible.length > 0 && recovery.contacts.length < 3 ? (
-          <div className={styles.recoveryChoices}>
-            <small>Можно доверить восстановление:</small>
-            <div>
-              {recovery.eligible.map((person) => (
-                <button
-                  type="button"
-                  key={person.circleId}
-                  disabled={Boolean(recoveryPending)}
-                  onClick={() => void changeRecoveryContact("add", person.circleId)}
-                ><ShieldPlus size={15} /> {person.user.displayName}</button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <p className={styles.recoveryNote}>
-          Уже создали новый профиль случайно? Начните восстановление здесь. Данные не смешаются:
-          после подтверждения друга приложение переключится на прежний профиль.
-        </p>
-        <RecoveryStarter
-          context="profile"
-          isOnline={isOnline}
-          onRecovered={onRecovered}
-        />
-        {recoveryError ? <p className={styles.error} role="alert">{recoveryError}</p> : null}
-      </section>
+      <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost}/>
+      <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered}/>
 
       <div className={styles.futureCard}>
         <span aria-hidden="true"><UserRound size={20} /></span>

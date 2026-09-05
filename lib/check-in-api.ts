@@ -16,9 +16,6 @@ import type {
   PeopleResponse,
   SharingMode,
   SharingResponse,
-  RecoveryContactsResponse,
-  RecoveryApprovalPreview,
-  RecoveryAttempt,
   UserLookupResponse,
 } from "@/lib/check-in-contract";
 
@@ -44,6 +41,7 @@ const profileStateSchema = z.object({
 });
 
 const meSchema: z.ZodType<MeResponse> = z.object({
+  status: z.object({ text: z.string().max(240), updatedAt: z.string().datetime() }).nullable().default(null),
   user: userSchema,
   lastCheckInAt: z.string().datetime().nullable(),
   checkInCount: z.number().int().nonnegative().safe(),
@@ -86,6 +84,7 @@ const directRequestSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 const personSchema = z.object({
+  status: z.object({ text: z.string().max(240), updatedAt: z.string().datetime() }).nullable().default(null),
   circleId: z.string().uuid(),
   user: userSchema,
   connectedAt: z.string().datetime(),
@@ -153,6 +152,7 @@ const groupInviteSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 const groupMemberSchema = z.object({
+  status: z.object({ text: z.string().max(240), updatedAt: z.string().datetime() }).nullable().default(null),
   membershipId: z.string().uuid(),
   user: userSchema,
   role: z.enum(["OWNER", "ADMIN", "MEMBER"]),
@@ -162,6 +162,7 @@ const groupMemberSchema = z.object({
   isMe: z.boolean(),
 });
 const groupSchema = z.object({
+  sharingMixed: z.boolean().default(false),
   groupId: z.string().uuid(),
   title: groupTitleSchema,
   emoji: groupEmojiSchema,
@@ -199,31 +200,6 @@ const directInviteRedeemSchema: z.ZodType<DirectInviteRedeemResponse> = z.object
   replayed: z.boolean(),
   serverTime: z.string().datetime(),
 });
-const recoveryContactSchema = z.object({
-  contactId: z.string().uuid(),
-  circleId: z.string().uuid(),
-  user: userSchema,
-});
-const recoveryContactsSchema: z.ZodType<RecoveryContactsResponse> = z.object({
-  contacts: z.array(recoveryContactSchema),
-  eligible: z.array(z.object({ circleId: z.string().uuid(), user: userSchema })),
-  trustedBy: z.array(recoveryContactSchema),
-  serverTime: z.string().datetime(),
-});
-const recoveryAttemptSchema: z.ZodType<RecoveryAttempt> = z.object({
-  attemptId: z.string().uuid(),
-  status: z.enum(["PENDING", "APPROVED", "COMPLETED"]),
-  expiresAt: z.string().datetime(),
-  target: userSchema.nullable(),
-  replayed: z.boolean(),
-  serverTime: z.string().datetime(),
-});
-const recoveryApprovalPreviewSchema: z.ZodType<RecoveryApprovalPreview> = z.object({
-  eligible: z.array(z.object({ contactId: z.string().uuid(), target: userSchema })),
-  expiresAt: z.string().datetime(),
-  serverTime: z.string().datetime(),
-});
-
 const errorSchema: z.ZodType<ApiErrorResponse> = z.object({
   code: z.string(),
   message: z.string(),
@@ -343,6 +319,14 @@ export function updateMyDisplayName(
     method: "PATCH",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify({ displayName }),
+  });
+}
+
+export function updateMyStatus(text: string, idempotencyKey: string): Promise<MeResponse> {
+  return request<MeResponse>("/api/v1/me/status", meSchema, {
+    method: "PUT",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ text }),
   });
 }
 
@@ -547,93 +531,13 @@ export function redeemDirectInvite(
   );
 }
 
-export function getRecoveryContacts(): Promise<RecoveryContactsResponse> {
-  return request<RecoveryContactsResponse>("/api/v1/recovery-contacts", recoveryContactsSchema);
-}
 
-export function addRecoveryContact(
-  circleId: string,
-  idempotencyKey: string,
-): Promise<RecoveryContactsResponse> {
-  return request<RecoveryContactsResponse>("/api/v1/recovery-contacts", recoveryContactsSchema, {
-    method: "POST",
-    headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ circleId }),
-  });
+export function getRecoveryCodeState(): Promise<{ active: boolean }> {
+  return request("/api/v1/recovery-code", z.object({active:z.boolean()}));
 }
-
-export function removeRecoveryContact(
-  contactId: string,
-  idempotencyKey: string,
-): Promise<RecoveryContactsResponse> {
-  return request<RecoveryContactsResponse>(
-    `/api/v1/recovery-contacts/${contactId}`,
-    recoveryContactsSchema,
-    { method: "DELETE", headers: { "Idempotency-Key": idempotencyKey } },
-  );
+export function activateRecoveryCode(code: string): Promise<{ active: boolean }> {
+  return request("/api/v1/recovery-code", z.object({active:z.boolean()}), {method:"PUT",body:JSON.stringify({code})});
 }
-
-export function startRecoveryAttempt(
-  token: string,
-  idempotencyKey: string,
-): Promise<RecoveryAttempt> {
-  return request<RecoveryAttempt>("/api/v1/account-recovery/attempts", recoveryAttemptSchema, {
-    method: "POST",
-    headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ token }),
-  });
-}
-
-export function getCurrentRecoveryAttempt(): Promise<RecoveryAttempt> {
-  return request<RecoveryAttempt>(
-    "/api/v1/account-recovery/attempts/current",
-    recoveryAttemptSchema,
-  );
-}
-
-export function cancelCurrentRecoveryAttempt(): Promise<void> {
-  return request<void>(
-    "/api/v1/account-recovery/attempts/current",
-    z.void(),
-    { method: "DELETE" },
-  );
-}
-
-export function completeCurrentRecoveryAttempt(idempotencyKey: string): Promise<MeResponse> {
-  return request<MeResponse>(
-    "/api/v1/account-recovery/attempts/current/complete",
-    meSchema,
-    {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify({}),
-    },
-  );
-}
-
-export function previewRecoveryApproval(token: string): Promise<RecoveryApprovalPreview> {
-  return request<RecoveryApprovalPreview>(
-    "/api/v1/account-recovery/approval/preview",
-    recoveryApprovalPreviewSchema,
-    {
-      method: "POST",
-      body: JSON.stringify({ token }),
-    },
-  );
-}
-
-export function confirmRecoveryApproval(
-  token: string,
-  contactId: string,
-  idempotencyKey: string,
-): Promise<RecoveryAttempt> {
-  return request<RecoveryAttempt>(
-    "/api/v1/account-recovery/approval/confirm",
-    recoveryAttemptSchema,
-    {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify({ token, contactId }),
-    },
-  );
+export function redeemRecoveryCode(code: string, retrySecret: string): Promise<MeResponse> {
+  return request("/api/v1/recovery-code/redeem", meSchema, {method:"POST",body:JSON.stringify({code,retrySecret})});
 }

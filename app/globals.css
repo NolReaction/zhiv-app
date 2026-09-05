@@ -50,6 +50,32 @@ button {
   background: rgba(245, 232, 91, 0.28);
 }
 
+/* Align modal copy independently of the close button, including iPhone. */
+[data-slot="dialog-content"] > [data-slot="dialog-header"] {
+  padding-right: 0 !important;
+  text-align: left;
+}
+[data-slot="dialog-title"] {
+  padding-right: 28px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-align: left !important;
+}
+[data-slot="dialog-description"] {
+  text-align: left !important;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+[data-slot="dialog-content"] button { white-space: normal; }
+[data-slot="dialog-content"] button svg { flex-shrink: 0; }
+@media (max-width: 700px) {
+  [data-slot="dialog-content"] { padding: 24px 20px !important; }
+  [data-slot="dialog-title"] { font-size: 20px; }
+  [data-slot="dialog-description"] { font-size: 15px; }
+  [data-slot="dialog-content"] input,
+  [data-slot="dialog-content"] textarea { font-size: 16px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

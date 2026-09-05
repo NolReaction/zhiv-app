@@ -5,12 +5,15 @@ import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
+import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.PayloadTooLargeException
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.defaultheaders.DefaultHeaders
 import io.ktor.server.plugins.forwardedheaders.ForwardedHeaders
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.ratelimit.RateLimit
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.ContentTransformationException
@@ -30,7 +33,7 @@ import ru.zhiv.db.DatabaseFactory
 import ru.zhiv.db.JdbcRelationshipRepository
 import ru.zhiv.db.JdbcGroupRepository
 import ru.zhiv.db.JdbcDirectInviteRepository
-import ru.zhiv.db.JdbcRecoveryRepository
+import ru.zhiv.db.JdbcCodeRecoveryRepository
 import ru.zhiv.db.JdbcZhivRepository
 import ru.zhiv.http.ApiErrorResponse
 import ru.zhiv.identity.IdentityRepository
@@ -41,8 +44,8 @@ import ru.zhiv.health.JdbcReadinessProbe
 import ru.zhiv.health.ReadinessProbe
 import ru.zhiv.invites.DirectInviteRepository
 import ru.zhiv.invites.directInviteRoutes
-import ru.zhiv.recovery.RecoveryRepository
-import ru.zhiv.recovery.recoveryRoutes
+import ru.zhiv.recovery.CodeRecoveryRepository
+import ru.zhiv.recovery.codeRecoveryRoutes
 import ru.zhiv.game.gameEventRoutes
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
@@ -54,12 +57,11 @@ import io.ktor.server.application.log
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
     val dataSource = DatabaseFactory.create(config)
-    DatabaseFactory.migrate(dataSource)
     val repository = JdbcZhivRepository(dataSource)
     val relationships = JdbcRelationshipRepository(dataSource)
     val groups = JdbcGroupRepository(dataSource)
     val directInvites = JdbcDirectInviteRepository(dataSource)
-    val recovery = JdbcRecoveryRepository(dataSource)
+    val recovery = JdbcCodeRecoveryRepository(dataSource)
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         dataSource.close()
@@ -84,7 +86,7 @@ fun Application.installZhivApi(
     relationships: RelationshipRepository? = null,
     groups: GroupRepository? = null,
     directInvites: DirectInviteRepository? = null,
-    recovery: RecoveryRepository? = null,
+    recovery: CodeRecoveryRepository? = null,
     readiness: ReadinessProbe = ReadinessProbe { true },
     gameEvents: GameEventSink = Slf4jGameEventSink(),
 ) {
@@ -99,6 +101,15 @@ fun Application.installZhivApi(
         }
     }
     install(RateLimit) {
+        for ((name, limit) in listOf("profile-read" to 600, "check-in-attempt" to 240)) {
+            register(RateLimitName(name)) {
+                rateLimiter(limit = limit, refillPeriod = 1.hours)
+                requestKey { call ->
+                    call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
+                        ?: call.request.headers["X-Real-IP"] ?: "direct-client"
+                }
+            }
+        }
         register(RateLimitName("bootstrap")) {
             rateLimiter(limit = 10, refillPeriod = 1.hours)
             requestKey { call ->
@@ -148,6 +159,12 @@ fun Application.installZhivApi(
         })
     }
     install(StatusPages) {
+        exception<BadRequestException> { call, _ ->
+            call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_REQUEST", "Некорректный запрос"))
+        }
+        exception<PayloadTooLargeException> { call, _ ->
+            call.respond(HttpStatusCode.PayloadTooLarge, ApiErrorResponse("PAYLOAD_TOO_LARGE", "Запрос слишком большой"))
+        }
         exception<ContentTransformationException> { call, _ ->
             call.respond(
                 HttpStatusCode.BadRequest,
@@ -191,11 +208,11 @@ fun Application.installZhivApi(
             }
         }
         identityRoutes(identities, tokenCodec, config)
-        checkInRoutes(checkIns, tokenCodec, config)
+        rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }
-        recovery?.let { recoveryRoutes(it, tokenCodec, config) }
+        recovery?.let { codeRecoveryRoutes(it, identities, tokenCodec, config) }
     }
 }

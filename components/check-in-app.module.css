@@ -784,9 +784,9 @@
 }
 
 .serverFact {
-  margin: 9px 0 0;
+  margin: 0 0 8px;
   color: #9ca294;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.35;
 }
 
@@ -1159,7 +1159,7 @@
   }
 
   .shell[data-active-view="check-in"] .action {
-    grid-template-rows: minmax(0, 1fr) 82px;
+    grid-template-rows: minmax(0, 1fr) auto;
     align-content: stretch;
     gap: 8px;
     overflow: hidden;
@@ -1193,9 +1193,9 @@
   .shell[data-active-view="check-in"] .statusBlock,
   .shell[data-active-view="check-in"] .statusBlock[data-story-active="true"] {
     width: 100%;
-    height: 82px;
+    height: auto;
     min-height: 82px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .action::-webkit-scrollbar {
@@ -1398,4 +1398,25 @@
   .buttonStageActive {
     transform: none;
   }
+}
+
+/* Fit the button into the remaining height, including on short phones. */
+@media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  .shell[data-active-view="check-in"] .checkInCluster {
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    align-self: stretch;
+    grid-template-rows: 32px minmax(0, 1fr);
+  }
+  .shell[data-active-view="check-in"] .buttonStage {
+    min-height: 0;
+    align-self: stretch;
+    justify-self: stretch;
+    container-type: size;
+  }
+  .shell[data-active-view="check-in"] .checkInButton {
+    width: min(82vw, 100cqh, 380px);
+  }
+  .shell[data-active-view="check-in"] .statusBlock { position: relative; z-index: 3; }
 }

@@ -302,16 +302,16 @@ class JdbcRelationshipRepository(
             if (circle.archivedAt != null) return@inTransaction RelationshipResult.NotFound
             connection.prepareStatement(
                 """
-                INSERT INTO circle_sharing_preferences (
-                    circle_id, user_id, sharing_mode, enabled_since
+                INSERT INTO recipient_sharing_preferences (
+                    actor_user_id, recipient_user_id, sharing_mode, enabled_since
                 )
                 VALUES (?, ?, ?, CASE WHEN ? = 'OFF' THEN NULL ELSE clock_timestamp() END)
-                ON CONFLICT (circle_id, user_id) DO UPDATE
+                ON CONFLICT (actor_user_id, recipient_user_id) DO UPDATE
                     SET sharing_mode = EXCLUDED.sharing_mode
                 """.trimIndent(),
             ).use { statement ->
-                statement.setObject(1, circleId)
-                statement.setObject(2, currentUserId)
+                statement.setObject(1, currentUserId)
+                statement.setObject(2, if (circle.lowUserId == currentUserId) circle.highUserId else circle.lowUserId)
                 statement.setString(3, sharingMode.name)
                 statement.setString(4, sharingMode.name)
                 statement.executeUpdate()
@@ -626,6 +626,7 @@ class JdbcRelationshipRepository(
             statement.setObject(10, now)
             statement.executeUpdate()
         }
+        connection.prepareStatement("SELECT preserve_recipient_denies(?)").use { it.setObject(1,firstUserId); it.execute() }
     }
 
     private fun listPeople(connection: Connection, currentUserId: UUID): List<PersonSnapshot> =
@@ -642,6 +643,8 @@ class JdbcRelationshipRepository(
             )
             SELECT direct_people.id AS circle_id, direct_people.created_at,
                    other.public_id, other.display_name,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_text END AS status_text,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_updated_at END AS status_updated_at,
                    mine.sharing_mode AS my_sharing_mode,
                    theirs.sharing_mode AS their_sharing_mode,
                    CASE
@@ -656,11 +659,8 @@ class JdbcRelationshipRepository(
               JOIN app_users other
                 ON other.id = direct_people.other_user_id
                AND other.deleted_at IS NULL
-              JOIN circle_sharing_preferences mine
-                ON mine.circle_id = direct_people.id AND mine.user_id = ?
-              JOIN circle_sharing_preferences theirs
-                ON theirs.circle_id = direct_people.id
-               AND theirs.user_id = direct_people.other_user_id
+              CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid), direct_people.other_user_id) mine
+              CROSS JOIN LATERAL effective_recipient_sharing(direct_people.other_user_id, CAST(? AS uuid)) theirs
               LEFT JOIN LATERAL (
                   SELECT event.checked_at
                     FROM check_in_audiences audience
@@ -684,6 +684,7 @@ class JdbcRelationshipRepository(
             statement.setObject(2, currentUserId)
             statement.setObject(3, currentUserId)
             statement.setObject(4, currentUserId)
+            statement.setObject(5, currentUserId)
             statement.executeQuery().use { result ->
                 buildList {
                     while (result.next()) add(result.toPersonSnapshot())
@@ -694,42 +695,13 @@ class JdbcRelationshipRepository(
     private fun countAudienceRecipients(connection: Connection, currentUserId: UUID): Int =
         connection.prepareStatement(
             """
-            SELECT count(DISTINCT recipients.user_id)
-              FROM (
-                    SELECT CASE WHEN circle.direct_user_low_id = ?
-                                THEN circle.direct_user_high_id
-                                ELSE circle.direct_user_low_id END AS user_id
-                      FROM circles circle
-                      JOIN circle_sharing_preferences preference
-                        ON preference.circle_id = circle.id
-                       AND preference.user_id = ?
-                       AND preference.sharing_mode <> 'OFF'
-                     WHERE circle.kind = 'DIRECT' AND circle.archived_at IS NULL
-                       AND ? IN (circle.direct_user_low_id, circle.direct_user_high_id)
-                    UNION ALL
-                    SELECT recipient.user_id
-                      FROM circle_memberships actor
-                      JOIN circles circle
-                        ON circle.id = actor.circle_id
-                       AND circle.kind = 'GROUP'
-                       AND circle.archived_at IS NULL
-                      JOIN circle_sharing_preferences preference
-                        ON preference.circle_id = circle.id
-                       AND preference.user_id = actor.user_id
-                       AND preference.sharing_mode <> 'OFF'
-                      JOIN circle_memberships recipient
-                        ON recipient.circle_id = circle.id
-                       AND recipient.left_at IS NULL
-                       AND recipient.history_visibility <> 'NONE'
-                       AND recipient.user_id <> actor.user_id
-                     WHERE actor.user_id = ? AND actor.left_at IS NULL
-              ) recipients
+            SELECT count(DISTINCT p.recipient_user_id)
+            FROM active_recipient_sharing_paths p
+            CROSS JOIN LATERAL effective_recipient_sharing(p.actor_user_id,p.recipient_user_id) e
+            WHERE p.actor_user_id=? AND e.sharing_mode<>'OFF'
             """.trimIndent(),
         ).use { statement ->
             statement.setObject(1, currentUserId)
-            statement.setObject(2, currentUserId)
-            statement.setObject(3, currentUserId)
-            statement.setObject(4, currentUserId)
             statement.executeQuery().use { result ->
                 check(result.next())
                 result.getInt(1)
@@ -794,6 +766,8 @@ class JdbcRelationshipRepository(
         )
         SELECT direct_person.id AS circle_id, direct_person.created_at,
                other.public_id, other.display_name,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_text END AS status_text,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_updated_at END AS status_updated_at,
                mine.sharing_mode AS my_sharing_mode,
                theirs.sharing_mode AS their_sharing_mode,
                CASE
@@ -808,11 +782,8 @@ class JdbcRelationshipRepository(
           JOIN app_users other
             ON other.id = direct_person.other_user_id
            AND other.deleted_at IS NULL
-          JOIN circle_sharing_preferences mine
-            ON mine.circle_id = direct_person.id AND mine.user_id = ?
-          JOIN circle_sharing_preferences theirs
-            ON theirs.circle_id = direct_person.id
-           AND theirs.user_id = direct_person.other_user_id
+          CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid), direct_person.other_user_id) mine
+          CROSS JOIN LATERAL effective_recipient_sharing(direct_person.other_user_id, CAST(? AS uuid)) theirs
           LEFT JOIN LATERAL (
               SELECT event.checked_at
                 FROM check_in_audiences audience
@@ -836,6 +807,7 @@ class JdbcRelationshipRepository(
         statement.setObject(3, currentUserId)
         statement.setObject(4, currentUserId)
         statement.setObject(5, currentUserId)
+        statement.setObject(6, currentUserId)
         statement.executeQuery().use { result ->
             if (result.next()) result.toPersonSnapshot() else null
         }
@@ -909,6 +881,8 @@ class JdbcRelationshipRepository(
     )
 
     private fun ResultSet.toPersonSnapshot() = PersonSnapshot(
+        statusText = getString("status_text"),
+        statusUpdatedAt = getObject("status_updated_at", OffsetDateTime::class.java),
         circleId = getObject("circle_id", UUID::class.java),
         user = UserReference(getString("public_id"), getString("display_name")),
         connectedAt = getObject("created_at", OffsetDateTime::class.java),

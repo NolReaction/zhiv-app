@@ -14,7 +14,9 @@ services:
     environment:
       POSTGRES_DB: zhiv
       POSTGRES_USER: zhiv
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin
+    secrets: [db_admin]
+    networks: [backend]
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
@@ -25,6 +27,37 @@ services:
       start_period: 10s
     logging: *default-logging
 
+  provision:
+    image: postgres:18-alpine
+    restart: "no"
+    entrypoint: ["sh", "/provision-roles.sh"]
+    volumes:
+      - ./provision-roles.sh:/provision-roles.sh:ro
+    secrets: [db_admin, db_migration, db_app]
+    networks: [backend]
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *default-logging
+
+  migrate:
+    build:
+      context: ../apps/api
+    restart: "no"
+    command: ["ru.zhiv.db.MigrationMainKt"]
+    environment:
+      APP_ENV: production
+      DATABASE_URL: jdbc:postgresql://db:5432/zhiv
+      DATABASE_USER: zhiv_migrator
+      DATABASE_PASSWORD_FILE: /run/secrets/db_migration
+      ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN}
+    secrets: [db_migration]
+    networks: [backend]
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+    logging: *default-logging
+
   api:
     build:
       context: ../apps/api
@@ -32,12 +65,18 @@ services:
     environment:
       APP_ENV: production
       DATABASE_URL: jdbc:postgresql://db:5432/zhiv
-      DATABASE_USER: zhiv
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      DATABASE_USER: zhiv_app
+      DATABASE_PASSWORD_FILE: /run/secrets/db_app
       ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN}
+    secrets: [db_app]
+    networks: [backend]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8080/readyz"]
       interval: 10s
@@ -55,6 +94,11 @@ services:
     environment:
       NODE_ENV: production
     init: true
+    networks: [backend]
+    read_only: true
+    tmpfs: [/tmp, /app/.next/cache]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     depends_on:
       api:
         condition: service_healthy
@@ -72,6 +116,7 @@ services:
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN}
+    networks: [backend, edge]
     ports:
       - "80:80"
       - "443:443"
@@ -98,3 +143,16 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+
+networks:
+  backend:
+    internal: true
+  edge:
+
+secrets:
+  db_admin:
+    file: ${DB_ADMIN_PASSWORD_FILE:-./.secrets/db_admin}
+  db_migration:
+    file: ${DB_MIGRATION_PASSWORD_FILE:-./.secrets/db_migration}
+  db_app:
+    file: ${DB_APP_PASSWORD_FILE:-./.secrets/db_app}

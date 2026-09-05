@@ -19,4 +19,5 @@ RUN chmod --recursive u=rwX,go=rX /app
 USER zhiv
 RUN test -n "$(find /app/lib -maxdepth 1 -type f -name 'ktor-server-netty-jvm-*.jar' -readable -print -quit)"
 EXPOSE 8080
-ENTRYPOINT ["java", "-cp", "/app/lib/*", "io.ktor.server.netty.EngineMain"]
+ENTRYPOINT ["java", "-cp", "/app/lib/*"]
+CMD ["io.ktor.server.netty.EngineMain"]

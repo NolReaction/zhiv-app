@@ -120,6 +120,8 @@
   white-space: nowrap;
 }
 
+.cardText .userStatus { margin: 3px 0; font-size: 14px; line-height: 1.45; color: #c9ddbd; overflow-wrap: anywhere; white-space: normal; }
+
 .inviteActions {
   gap: 7px;
 }

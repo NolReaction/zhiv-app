@@ -1,5 +1,5 @@
 import type { ClickerSeriesEvent } from "@/lib/check-in-contract";
-import { CLICKER_STORIES, getClickerLevel } from "@/lib/clicker-story";
+import { CLICKER_STORIES, LEGACY_CLICKER_STORY_IDS, getClickerLevel } from "@/lib/clicker-story";
 
 const EVENT_KEYS = [
   "bestSeries",
@@ -15,7 +15,8 @@ const EVENT_KEYS = [
 const LEGACY_EVENT_KEYS = EVENT_KEYS.filter((key) => key !== "lifetimeTaps");
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const STORY_IDS = new Set(CLICKER_STORIES.map((story) => story.id));
+// Only legacy identifiers remain for in-flight aggregates, not narrative text.
+const STORY_IDS = new Set([...CLICKER_STORIES.map(story => story.id), ...LEGACY_CLICKER_STORY_IDS]);
 const MAX_SERIES_DURATION_MS = 7 * 24 * 60 * 60_000;
 
 export function parseClickerSeriesEvent(value: unknown): ClickerSeriesEvent | null {

@@ -320,6 +320,7 @@ private suspend fun ApplicationCall.respondError(
 private fun UserReference.toDto() = PublicUserDto(publicId = publicId, displayName = displayName)
 
 private fun GroupMemberSnapshot.toDto() = GroupMemberDto(
+    status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text,it.toInstant().toString()) } },
     membershipId = membershipId.toString(),
     user = user.toDto(),
     role = role.name,
@@ -341,6 +342,7 @@ private fun GroupInviteSnapshot.toDto() = GroupInviteDto(
 )
 
 private fun GroupSnapshot.toDto() = GroupDto(
+    sharingMixed = sharingMixed,
     groupId = groupId.toString(),
     title = title,
     emoji = emoji,

@@ -594,3 +594,11 @@
     border: 2px solid ButtonText;
   }
 }
+
+@media (max-width:700px) {
+  .profileCard {min-width:0}
+  .formHeading {flex-wrap:wrap;gap:8px}
+  .formCard {min-width:0}
+  .identity {min-width:0;overflow-wrap:anywhere}
+  .stats span, .gameStats small, .formCard p, .formHeading small, .formCard label {font-size:12px;line-height:1.5}
+}

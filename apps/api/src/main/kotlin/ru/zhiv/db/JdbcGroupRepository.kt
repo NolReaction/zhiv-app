@@ -43,6 +43,7 @@ class JdbcGroupRepository(
                     emoji = row.emoji,
                     myRole = row.myRole,
                     mySharingMode = row.mySharingMode,
+                    sharingMixed = row.sharingMixed,
                     createdAt = row.createdAt,
                     members = listMembers(
                         connection,
@@ -197,6 +198,13 @@ class JdbcGroupRepository(
             findActiveMembership(connection, groupId, currentUserId, lock = true)
                 ?: return@inTransaction GroupResult.NotFound
             val now = serverTime(connection)
+            connection.prepareStatement("""
+                INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode)
+                SELECT ?, user_id, ? FROM circle_memberships WHERE circle_id=? AND left_at IS NULL AND user_id<>?
+                ON CONFLICT(actor_user_id,recipient_user_id) DO UPDATE SET sharing_mode=EXCLUDED.sharing_mode
+            """.trimIndent()).use {
+                it.setObject(1,currentUserId); it.setString(2,sharingMode.name); it.setObject(3,groupId); it.setObject(4,currentUserId); it.executeUpdate()
+            }
             if (sharingMode == SharingMode.OFF) {
                 disableSharing(connection, groupId, currentUserId)
             } else {
@@ -298,6 +306,7 @@ class JdbcGroupRepository(
                     statement.setObject(3, invite.id)
                     check(statement.executeUpdate() == 1)
                 }
+                connection.prepareStatement("SELECT preserve_recipient_denies(?)").use { it.setObject(1,currentUserId); it.execute() }
             } else {
                 revokeInviteRow(connection, invite.id, now)
             }
@@ -410,7 +419,8 @@ class JdbcGroupRepository(
             """
             SELECT circle.id AS group_id, circle.title, circle.emoji, circle.created_at,
                    membership.id AS membership_id, membership.role,
-                   preference.sharing_mode
+                   CASE WHEN modes.total=0 THEN preference.sharing_mode WHEN modes.enabled=modes.total THEN 'LATEST_ONLY' ELSE 'OFF' END AS sharing_mode,
+                   (modes.enabled>0 AND modes.enabled<modes.total) AS sharing_mixed
               FROM circle_memberships membership
               JOIN circles circle
                 ON circle.id = membership.circle_id
@@ -419,6 +429,12 @@ class JdbcGroupRepository(
               JOIN circle_sharing_preferences preference
                 ON preference.circle_id = circle.id
                AND preference.user_id = membership.user_id
+              CROSS JOIN LATERAL (
+                SELECT count(*) AS total, count(*) FILTER (WHERE p.sharing_mode<>'OFF') AS enabled
+                FROM circle_memberships recipient
+                CROSS JOIN LATERAL effective_recipient_sharing(membership.user_id,recipient.user_id) p
+                WHERE recipient.circle_id=circle.id AND recipient.left_at IS NULL AND recipient.user_id<>membership.user_id
+              ) modes
              WHERE membership.user_id = ? AND membership.left_at IS NULL
              ORDER BY lower(circle.title), circle.created_at
             """.trimIndent(),
@@ -436,6 +452,7 @@ class JdbcGroupRepository(
                                 myMembershipId = result.getObject("membership_id", UUID::class.java),
                                 myRole = GroupRole.valueOf(result.getString("role")),
                                 mySharingMode = SharingMode.valueOf(result.getString("sharing_mode")),
+                                sharingMixed = result.getBoolean("sharing_mixed"),
                             ),
                         )
                     }
@@ -452,12 +469,12 @@ class JdbcGroupRepository(
         """
         SELECT membership.id AS membership_id, membership.user_id, membership.role,
                membership.joined_at, person.public_id, person.display_name,
+               CASE WHEN membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since) THEN person.status_text END AS status_text,
+               CASE WHEN membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since) THEN person.status_updated_at END AS status_updated_at,
                preference.sharing_mode, latest.checked_at AS last_check_in_at
           FROM circle_memberships membership
           JOIN app_users person ON person.id = membership.user_id AND person.deleted_at IS NULL
-          JOIN circle_sharing_preferences preference
-            ON preference.circle_id = membership.circle_id
-           AND preference.user_id = membership.user_id
+          CROSS JOIN LATERAL effective_recipient_sharing(membership.user_id,CAST(? AS uuid)) preference
           LEFT JOIN LATERAL (
               SELECT event.checked_at
                 FROM check_in_audiences audience
@@ -480,15 +497,20 @@ class JdbcGroupRepository(
                   lower(person.display_name), person.public_id
         """.trimIndent(),
     ).use { statement ->
-        statement.setObject(1, currentUserId)
+        statement.setObject(1, currentMembershipId)
         statement.setObject(2, currentMembershipId)
-        statement.setObject(3, groupId)
+        statement.setObject(3, currentUserId)
         statement.setObject(4, currentUserId)
+        statement.setObject(5, currentMembershipId)
+        statement.setObject(6, groupId)
+        statement.setObject(7, currentUserId)
         statement.executeQuery().use { result ->
             buildList {
                 while (result.next()) {
                     add(
                         GroupMemberSnapshot(
+                            statusText=result.getString("status_text"),
+                            statusUpdatedAt=result.getObject("status_updated_at", OffsetDateTime::class.java),
                             membershipId = result.getObject("membership_id", UUID::class.java),
                             user = UserReference(
                                 result.getString("public_id"),
@@ -1022,6 +1044,7 @@ class JdbcGroupRepository(
         val myMembershipId: UUID,
         val myRole: GroupRole,
         val mySharingMode: SharingMode,
+        val sharingMixed: Boolean,
     )
 
     private data class MembershipRow(val id: UUID, val userId: UUID, val role: GroupRole)

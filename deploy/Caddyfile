@@ -1,4 +1,19 @@
+{
+    servers {
+        max_header_size 32KB
+        timeouts {
+            read_header 10s
+            read_body 15s
+            write 30s
+            idle 2m
+        }
+    }
+}
+
 {$DOMAIN:localhost} {
+    request_body {
+        max_size 16KB
+    }
     encode zstd gzip
 
     @api path /api/* /healthz /readyz

@@ -61,7 +61,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
+import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import styles from "./people-view.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
@@ -556,6 +556,7 @@ export function PeopleView({
                         </div>
                         <div className={styles.cardText}>
                           <strong>{person.user.displayName}</strong>
+                          {person.status ? <p className={styles.userStatus}>{person.status.text}</p> : null}
                           <span className={styles.personStatus}>
                             <i style={{ background: statusColor }} />
                             {formatDirectPersonCheckIn(

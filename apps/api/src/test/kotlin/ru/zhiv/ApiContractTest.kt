@@ -2,6 +2,7 @@ package ru.zhiv
 
 import io.ktor.client.request.header
 import io.ktor.client.request.get
+import io.ktor.client.request.put
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -19,6 +20,8 @@ import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.identity.UserSnapshot
 import ru.zhiv.health.ReadinessProbe
+import ru.zhiv.recovery.CodeRecoveryRepository
+import ru.zhiv.security.TokenCodec
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -163,6 +166,106 @@ class ApiContractTest {
             header("Idempotency-Key", "00000000-0000-0000-0000-000000000000")
         }
         assertEquals(HttpStatusCode.BadRequest, nonRandom.status)
+    }
+
+
+    @Test
+    fun `recovery endpoints reject untrusted origins unauthorized activation and malformed codes`() = testApplication {
+        val repository = FakeRepository()
+        val recovery = RecordingCodeRecovery()
+        val config = testConfig().copy(production = true, allowedOrigins = setOf("https://zhiv.test"))
+        application { installZhivApi(repository, repository, config, recovery = recovery) }
+
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/recovery-code").status)
+        assertEquals(HttpStatusCode.Forbidden, client.post("/api/v1/recovery-code/redeem") {
+            contentType(ContentType.Application.Json)
+            setBody("{}")
+        }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.put("/api/v1/recovery-code") {
+            header(HttpHeaders.Origin, "https://untrusted.test")
+            contentType(ContentType.Application.Json)
+            setBody("{}")
+        }.status)
+        assertEquals(HttpStatusCode.Unauthorized, client.put("/api/v1/recovery-code") {
+            header(HttpHeaders.Origin, "https://zhiv.test")
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"ZHIV-R1-${"A".repeat(43)}"}""")
+        }.status)
+        for (body in listOf(
+            """{"code":"short","retrySecret":"${"B".repeat(43)}"}""",
+            """{"code":"ZHIV-R1-${"A".repeat(43)}","retrySecret":"short"}""",
+            """{"code":"ZHIV-R1-${"A".repeat(43)}","retrySecret":"${"B".repeat(43)}","userId":"forged"}""",
+        )) {
+            assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/recovery-code/redeem") {
+                header(HttpHeaders.Origin, "https://zhiv.test")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }.status)
+        }
+        assertEquals(HttpStatusCode.PayloadTooLarge, client.post("/api/v1/recovery-code/redeem") {
+            header(HttpHeaders.Origin, "https://zhiv.test")
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"${"X".repeat(2048)}","retrySecret":"${"B".repeat(43)}"}""")
+        }.status)
+        assertEquals(0, recovery.redeemCalls)
+        val invalid = client.post("/api/v1/recovery-code/redeem") {
+            header(HttpHeaders.Origin, "https://zhiv.test")
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"ZHIV-R1-${"A".repeat(43)}","retrySecret":"${"B".repeat(43)}"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, invalid.status)
+        assertEquals("no-store", invalid.headers[HttpHeaders.CacheControl])
+        assertEquals(null, invalid.headers[HttpHeaders.SetCookie])
+        assertEquals(1, recovery.redeemCalls)
+        assertEquals(HttpStatusCode.NotFound, client.post("/api/v1/account-recovery/attempts").status)
+    }
+
+    @Test
+    fun `recovery activation passes only a hash and recovery attempts are rate limited`() = testApplication {
+        val repository = FakeRepository()
+        val recovery = RecordingCodeRecovery()
+        val config = testConfig()
+        application { installZhivApi(repository, repository, config, recovery = recovery) }
+        val created = client.post("/api/v1/bootstrap") {
+            contentType(ContentType.Application.Json)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"displayName":"Тест"}""")
+        }
+        val cookie = assertNotNull(created.headers[HttpHeaders.SetCookie]).substringBefore(';')
+        val code = "ZHIV-R1-" + "C".repeat(43)
+        val activated = client.put("/api/v1/recovery-code") {
+            header(HttpHeaders.Cookie, cookie)
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"$code"}""")
+        }
+        assertEquals(HttpStatusCode.OK, activated.status)
+        assertEquals("no-store", activated.headers[HttpHeaders.CacheControl])
+        kotlin.test.assertContentEquals(TokenCodec().hash("zhiv.recovery-code.v1:" + "C".repeat(43)), recovery.activatedHash)
+        // Activation and redemption share the bounded write bucket.
+        repeat(29) {
+            assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/recovery-code/redeem") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"code":"invalid","retrySecret":"invalid"}""")
+            }.status)
+        }
+        assertEquals(HttpStatusCode.TooManyRequests, client.post("/api/v1/recovery-code/redeem") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"invalid","retrySecret":"invalid"}""")
+        }.status)
+    }
+
+    private class RecordingCodeRecovery : CodeRecoveryRepository {
+        var activatedHash: ByteArray? = null
+        var redeemCalls = 0
+        override suspend fun hasCode(sessionHash: ByteArray): Boolean? = activatedHash != null
+        override suspend fun activate(sessionHash: ByteArray, codeHash: ByteArray): Boolean {
+            activatedHash = codeHash
+            return true
+        }
+        override suspend fun redeem(codeHash: ByteArray, retryHash: ByteArray, newSessionHash: ByteArray, sessionDays: Long): Boolean {
+            redeemCalls++
+            return false
+        }
     }
 
     private fun testConfig() = AppConfig(

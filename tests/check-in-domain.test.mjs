@@ -119,8 +119,8 @@ test("never reports a negative age when client clock is ahead or behind", () => 
   );
 });
 
-test("offers twenty-four complete stories on the exact series milestones", () => {
-  assert.equal(clicker.CLICKER_STORIES.length, 24);
+test("retains neutral series milestones without narrative content", () => {
+  assert.equal(clicker.CLICKER_STORIES.length, 1);
   const expectedMilestones = [1, 5, 10, 20, 50, 100, 500, 1_000, 10_000, 100_000];
   const titles = new Set();
   const ids = new Set();
@@ -135,16 +135,16 @@ test("offers twenty-four complete stories on the exact series milestones", () =>
   assert.equal(ids.size, clicker.CLICKER_STORIES.length);
 });
 
-test("keeps one linear story through 1, 5, 10, 20, 50, 100, 500 and beyond", () => {
+test("keeps clicker milestones and effects after removing stories", () => {
   const initial = clicker.createClickerRun(0);
   const at100 = clicker.advanceClickerRun(initial, 1_000, 100).progress;
   const at499 = clicker.advanceClickerRun(at100, 1_100, 399).progress;
   const at500 = clicker.advanceClickerRun(at499, 1_200).progress;
 
-  assert.equal(clicker.getClickerFrame(at100).storyId, "space");
+  assert.equal(clicker.getClickerFrame(at100).storyId, "clicker");
   assert.equal(clicker.getClickerFrame(at100).nextMilestone, 500);
   assert.equal(clicker.getClickerFrame(at499).message, clicker.getClickerFrame(at100).message);
-  assert.equal(clicker.getClickerFrame(at500).storyId, "space");
+  assert.equal(clicker.getClickerFrame(at500).storyId, "clicker");
   assert.equal(clicker.getClickerFrame(at500).nextMilestone, 1_000);
   assert.equal(clicker.getClickerTransitionEffect(499, 500), "orbit");
 });
@@ -234,7 +234,7 @@ test("ends a series exactly after thirty idle seconds and starts the next at one
     1_000 + clicker.CLICKER_IDLE_RESET_MS + 1,
   ).progress;
   assert.equal(restarted.activeSeries.tapCount, 1);
-  assert.notEqual(restarted.activeSeries.storyId, started.activeSeries.storyId);
+  assert.equal(restarted.activeSeries.storyId, started.activeSeries.storyId);
 });
 
 test("keeps lifetime taps independent from the best series across attempts", () => {
@@ -287,7 +287,7 @@ test("caps one uninterrupted series at one hundred thousand", () => {
   assert.equal(restored.activeSeries, null);
   assert.equal(restored.bestSeries, 100_000);
   assert.equal(restarted.activeSeries.tapCount, 1);
-  assert.notEqual(restarted.activeSeries.storyId, after.progress.activeSeries.storyId);
+  assert.equal(restarted.activeSeries.storyId, after.progress.activeSeries.storyId);
 });
 
 test("derives ten durable levels from lifetime taps", () => {
@@ -411,7 +411,7 @@ test("round-trips v3 and migrates v1 and v2 progress without inventing taps", ()
   assert.equal(clicker.parseClickerProgress("{}"), null);
 });
 
-test("gives each user a stable full story rotation without early repeats", () => {
+test("ignores legacy story seeds while preserving neutral series", () => {
   const seed = clicker.clickerSeedFromPublicId("7K3P-2Q9M-W8ZR");
   const firstPass = Array.from(
     { length: clicker.CLICKER_STORIES.length },
@@ -574,4 +574,31 @@ test("still rejects cross-site and mismatched dev API writes", () => {
 
   assert.equal(devApiOrigin.isTrustedDevRequest(crossSite), false);
   assert.equal(devApiOrigin.isTrustedDevRequest(mismatched), false);
+});
+
+test("0.4.5 story identifiers preserve existing counters and active series without narrative text", () => {
+  const current = clicker.advanceClickerRun(clicker.createClickerRun(6), 1000, 19,
+    "f38c672e-1106-486c-887b-160d3aa13f8b").progress;
+  for (const legacy of clicker.LEGACY_CLICKER_STORY_IDS) {
+    for (const version of [2, 3]) {
+      const payload = {
+        ...JSON.parse(clicker.serializeClickerProgress(current)),
+        version, lifetimeTaps: 651, bestSeries: 200, completedSeries: 4,
+        lastStoryId: legacy, activeSeries: { ...current.activeSeries, storyId: legacy },
+      };
+      if (version === 2) delete payload.lifetimeTaps;
+      const restored = clicker.parseClickerProgress(JSON.stringify(payload));
+      assert.ok(restored, legacy);
+      assert.equal(restored.lifetimeTaps, version === 3 ? 651 : 200);
+      assert.equal(restored.bestSeries, 200);
+      assert.equal(restored.completedSeries, 4);
+      assert.equal(restored.activeSeries.tapCount, 19);
+      assert.equal(clicker.getClickerFrame(restored).storyTitle, "Серия");
+      const next = clicker.advanceClickerRun(restored, 2000, 1).progress;
+      assert.equal(next.lifetimeTaps, restored.lifetimeTaps + 1);
+      assert.equal(next.activeSeries.tapCount, 20);
+      assert.equal(next.activeSeries.storyId, "clicker");
+      assert.equal(clicker.parseClickerProgress(clicker.serializeClickerProgress(next)).bestSeries, 200);
+    }
+  }
 });

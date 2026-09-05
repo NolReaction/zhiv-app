@@ -46,3 +46,6 @@ next-env.d.ts
 /apps/api/.gradle/
 /apps/api/build/
 .idea/
+
+# Deployment credentials stay outside git
+deploy/.secrets/

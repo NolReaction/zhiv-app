@@ -9,3 +9,6 @@ apps/api/.gradle
 apps/api/build
 deploy/.env
 npm-debug.log
+
+deploy/.secrets/
+public/__layout-check.html

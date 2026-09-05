@@ -28,6 +28,7 @@ private const val MAX_TAPS = 100_000L
 private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 private const val MAX_DURATION_MS = 7L * 24 * 60 * 60 * 1_000
 private val storyIds = setOf(
+    "clicker", // v0.4.6 neutral series; legacy IDs below accept already queued events
     "space", "lab", "hike", "arcade", "garden", "ocean", "magic", "time",
     "cinema", "future", "observatory", "bakery", "detective", "orchestra",
     "express", "lighthouse", "robots", "polar", "library", "weather", "radio",

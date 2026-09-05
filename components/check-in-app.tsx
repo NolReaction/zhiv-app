@@ -40,7 +40,6 @@ import {
   combineLegacyClickerProgress,
   createClickerRun,
   expireClickerSeries,
-  getClickerFrame,
   getClickerLevel,
   getClickerLevelProgress,
   getClickerSeriesTimer,
@@ -62,6 +61,7 @@ import { PeopleView } from "./people-view";
 import { ProfileView } from "./profile-view";
 import { CapabilityLanding } from "./capability-landing";
 import { RecoveryStarter } from "./recovery-starter";
+import { StatusEditor } from "./status-editor";
 import styles from "./check-in-app.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { getIdentitySharingNotice, shareIdentity } from "@/lib/identity-sharing";
@@ -1031,7 +1031,6 @@ export function CheckInApp() {
   const adjustedNow = clientNowMs + clockOffsetMs;
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonPalette = getCheckInPalette(ageMs);
-  const storyFrame = getClickerFrame(clickerRun);
   const clickerLevel = getClickerLevel(clickerRun.lifetimeTaps);
   const clickerLevelProgress = getClickerLevelProgress(clickerRun.lifetimeTaps);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
@@ -1039,10 +1038,11 @@ export function CheckInApp() {
     ? "Офлайн · серия считается на устройстве"
     : notice
       ? notice
-      : storyFrame?.message ?? seriesSummary ?? serverStatus;
+      : seriesSummary;
+  const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
-    storyFrame && storyFrame.tapCount >= 2 && storyFrame.tapCount <= 4
-      ? styles[`tap${storyFrame.tapCount}`]
+    activeTapCount >= 2 && activeTapCount <= 4
+      ? styles[`tap${activeTapCount}`]
       : "";
   const effectClass = storyEffect
     ? styles[`effect${storyEffect.type[0].toUpperCase()}${storyEffect.type.slice(1)}`]
@@ -1134,8 +1134,7 @@ export function CheckInApp() {
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="session-lost-title">Сессия закончилась</h1>
           <p className={styles.intro}>
-            Создайте запрос здесь и отправьте его заранее выбранному доверенному человеку.
-            Он только подтвердит запрос — возврат профиля завершится на этом устройстве.
+            Введите сохранённый личный код восстановления. Если профиль ещё открыт на другом устройстве, создайте код там.
           </p>
           <RecoveryStarter
             context="session-lost"
@@ -1166,7 +1165,7 @@ export function CheckInApp() {
           <h1 id="welcome-title">Как тебя зовут?</h1>
           <p className={styles.intro}>Только имя. Остальное приложение сделает само.</p>
           <p className={styles.recoveryHint}>
-            Уже был профиль? Сначала запросите подтверждение у доверенного человека — так вы не
+            Уже был профиль? Войдите по сохранённому коду восстановления — так вы не
             создадите случайный новый аккаунт.
           </p>
           <RecoveryStarter
@@ -1393,10 +1392,9 @@ export function CheckInApp() {
             </div>
           </div>
 
-          <div className={styles.statusBlock} data-story-active={storyFrame ? "true" : "false"}>
-            {storyFrame ? (
-              <p className={styles.storyLabel}>СЮЖЕТ · {storyFrame.storyTitle}</p>
-            ) : null}
+          <div className={styles.statusBlock}>
+            <p className={styles.serverFact}>{serverStatus}</p>
+            {me ? <StatusEditor me={me} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
             <p
               className={styles.status}
               role="status"
@@ -1408,9 +1406,6 @@ export function CheckInApp() {
               Лучшая серия: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.
             </span>
-            {primaryStatus !== serverStatus ? (
-              <p className={styles.serverFact}>{serverStatus}</p>
-            ) : null}
           </div>
         </section>
       ) : activeView === "people" ? (

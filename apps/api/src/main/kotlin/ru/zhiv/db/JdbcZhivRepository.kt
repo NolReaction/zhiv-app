@@ -123,6 +123,7 @@ class JdbcZhivRepository(
             SELECT clock_timestamp() AS server_time
         )
         SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+               u.status_text, u.status_updated_at,
                (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
                streak.current_days, streak.longest_days, streak.is_active,
                streak.renew_by, u.display_name_changed_at,
@@ -212,6 +213,7 @@ class JdbcZhivRepository(
                         SELECT clock_timestamp() AS server_time
                     )
                     SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+                           u.status_text, u.status_updated_at,
                            (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
                            streak.current_days, streak.longest_days, streak.is_active,
                            streak.renew_by, u.display_name_changed_at,
@@ -285,6 +287,29 @@ class JdbcZhivRepository(
             val snapshot = loadUserSnapshot(connection, user.userId, user.serverTime)
                 ?: return@inTransaction DisplayNameUpdateResult.Unauthorized
             DisplayNameUpdateResult.Success(snapshot)
+        }
+    }
+
+    override suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID): DisplayNameUpdateResult = withContext(Dispatchers.IO) {
+        inTransaction { connection ->
+            val user = lockUser(connection, sessionTokenHash)
+                ?: return@inTransaction DisplayNameUpdateResult.Unauthorized
+            val previous = connection.prepareStatement("SELECT status_text FROM user_status_write_keys WHERE user_id = ? AND idempotency_key = ?").use {
+                it.setObject(1, user.userId); it.setObject(2, idempotencyKey)
+                it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+            }
+            if (previous != null && previous != text) return@inTransaction DisplayNameUpdateResult.IdempotencyConflict
+            if (previous == null) {
+                connection.prepareStatement("UPDATE app_users SET status_text = NULLIF(?, ''), status_updated_at = CASE WHEN ? = '' THEN NULL ELSE ? END, updated_at = ? WHERE id = ? AND COALESCE(status_text, '') <> ?").use {
+                    it.setString(1, text); it.setString(2, text); it.setObject(3, user.serverTime)
+                    it.setObject(4, user.serverTime); it.setObject(5, user.userId); it.setString(6, text)
+                    it.executeUpdate()
+                }
+                connection.prepareStatement("INSERT INTO user_status_write_keys(user_id, idempotency_key, status_text) VALUES (?, ?, ?)").use {
+                    it.setObject(1, user.userId); it.setObject(2, idempotencyKey); it.setString(3, text); it.executeUpdate()
+                }
+            }
+            DisplayNameUpdateResult.Success(checkNotNull(loadUserSnapshot(connection, user.userId, user.serverTime)))
         }
     }
 
@@ -374,98 +399,41 @@ class JdbcZhivRepository(
         }
     }
 
-    private fun snapshotDirectAudiences(
-        connection: Connection,
-        eventId: UUID,
-        user: LockedUser,
-    ) {
+    private fun snapshotDirectAudiences(connection: Connection, eventId: UUID, user: LockedUser) {
         connection.prepareStatement(
             """
-            INSERT INTO check_in_audiences (
-                check_in_id, actor_user_id, circle_id, circle_kind,
-                recipient_user_id, recipient_membership_id, access_level
-            )
-            SELECT ?, ?, c.id, 'DIRECT',
-                   CASE WHEN c.direct_user_low_id = ?
-                        THEN c.direct_user_high_id
-                        ELSE c.direct_user_low_id END,
-                   NULL, preference.sharing_mode
-              FROM circles c
-              JOIN circle_sharing_preferences preference
-                ON preference.circle_id = c.id
-               AND preference.user_id = ?
-               AND preference.sharing_mode <> 'OFF'
-               AND preference.enabled_since IS NOT NULL
-               AND preference.enabled_since <= ?
-               AND preference.updated_at <= ?
-             WHERE c.kind = 'DIRECT'
-               AND c.archived_at IS NULL
-               AND c.created_at <= ?
-               AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
-             FOR SHARE OF c, preference
+            INSERT INTO check_in_audiences(check_in_id,actor_user_id,circle_id,circle_kind,recipient_user_id,recipient_membership_id,access_level)
+            SELECT ?, actor.id, c.id, 'DIRECT', CASE WHEN c.direct_user_low_id=actor.id THEN c.direct_user_high_id ELSE c.direct_user_low_id END, NULL, p.sharing_mode
+            FROM app_users actor
+            JOIN circles c ON actor.id IN(c.direct_user_low_id,c.direct_user_high_id) AND c.kind='DIRECT' AND c.archived_at IS NULL
+            CROSS JOIN LATERAL effective_recipient_sharing(actor.id,CASE WHEN c.direct_user_low_id=actor.id THEN c.direct_user_high_id ELSE c.direct_user_low_id END) p
+            WHERE actor.id=? AND c.created_at<=? AND p.sharing_mode<>'OFF' AND p.enabled_since<=? AND p.updated_at<=?
+            FOR SHARE OF c
             """.trimIndent(),
-        ).use { statement ->
-            statement.setObject(1, eventId)
-            statement.setObject(2, user.userId)
-            statement.setObject(3, user.userId)
-            statement.setObject(4, user.userId)
-            statement.setObject(5, user.serverTime)
-            statement.setObject(6, user.serverTime)
-            statement.setObject(7, user.serverTime)
-            statement.setObject(8, user.userId)
-            statement.executeUpdate()
+        ).use {
+            it.setObject(1,eventId); it.setObject(2,user.userId)
+            for (index in 3..5) it.setObject(index,user.serverTime)
+            it.executeUpdate()
         }
     }
 
-    private fun snapshotGroupAudiences(
-        connection: Connection,
-        eventId: UUID,
-        user: LockedUser,
-    ) {
+    private fun snapshotGroupAudiences(connection: Connection, eventId: UUID, user: LockedUser) {
         connection.prepareStatement(
             """
-            INSERT INTO check_in_audiences (
-                check_in_id, actor_user_id, circle_id, circle_kind,
-                recipient_user_id, recipient_membership_id, access_level
-            )
-            SELECT ?, ?, c.id, 'GROUP', recipient.user_id,
-                   recipient.id, preference.sharing_mode
-              FROM circles c
-              JOIN circle_memberships actor
-                ON actor.circle_id = c.id
-               AND actor.user_id = ?
-               AND actor.joined_at <= ?
-               AND actor.left_at IS NULL
-              JOIN circle_sharing_preferences preference
-                ON preference.circle_id = c.id
-               AND preference.user_id = ?
-               AND preference.sharing_mode <> 'OFF'
-               AND preference.enabled_since IS NOT NULL
-               AND preference.enabled_since <= ?
-               AND preference.updated_at <= ?
-              JOIN circle_memberships recipient
-                ON recipient.circle_id = c.id
-               AND recipient.user_id <> ?
-               AND recipient.joined_at <= ?
-               AND recipient.left_at IS NULL
-               AND recipient.history_visibility <> 'NONE'
-             WHERE c.kind = 'GROUP'
-               AND c.archived_at IS NULL
-               AND c.created_at <= ?
-             FOR SHARE OF c, actor, preference, recipient
+            INSERT INTO check_in_audiences(check_in_id,actor_user_id,circle_id,circle_kind,recipient_user_id,recipient_membership_id,access_level)
+            SELECT ?, a.user_id, c.id, 'GROUP', r.user_id, r.id, p.sharing_mode
+            FROM circles c
+            JOIN circle_memberships a ON a.circle_id=c.id AND a.user_id=? AND a.left_at IS NULL
+            JOIN circle_memberships r ON r.circle_id=c.id AND r.user_id<>a.user_id AND r.left_at IS NULL AND r.history_visibility<>'NONE'
+            CROSS JOIN LATERAL effective_recipient_sharing(a.user_id,r.user_id) p
+            WHERE c.kind='GROUP' AND c.archived_at IS NULL AND c.created_at<=? AND a.joined_at<=? AND r.joined_at<=?
+              AND p.sharing_mode<>'OFF' AND p.enabled_since<=? AND p.updated_at<=?
+            FOR SHARE OF c,a,r
             """.trimIndent(),
-        ).use { statement ->
-            statement.setObject(1, eventId)
-            statement.setObject(2, user.userId)
-            statement.setObject(3, user.userId)
-            statement.setObject(4, user.serverTime)
-            statement.setObject(5, user.userId)
-            statement.setObject(6, user.serverTime)
-            statement.setObject(7, user.serverTime)
-            statement.setObject(8, user.userId)
-            statement.setObject(9, user.serverTime)
-            statement.setObject(10, user.serverTime)
-            statement.executeUpdate()
+        ).use {
+            it.setObject(1,eventId); it.setObject(2,user.userId)
+            for (index in 3..7) it.setObject(index,user.serverTime)
+            it.executeUpdate()
         }
     }
 
@@ -612,6 +580,7 @@ class JdbcZhivRepository(
             SELECT CAST(? AS timestamptz) AS server_time
         )
         SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+               u.status_text, u.status_updated_at,
                (SELECT count(*) FROM check_ins event WHERE event.user_id = u.id) AS check_in_count,
                streak.current_days, streak.longest_days, streak.is_active,
                streak.renew_by, u.display_name_changed_at,
@@ -669,6 +638,8 @@ class JdbcZhivRepository(
     }
 
     private fun ResultSet.toUserSnapshot() = UserSnapshot(
+        statusText = getString("status_text"),
+        statusUpdatedAt = getObject("status_updated_at", OffsetDateTime::class.java),
         id = getObject("id", UUID::class.java),
         publicId = getString("public_id"),
         displayName = getString("display_name"),

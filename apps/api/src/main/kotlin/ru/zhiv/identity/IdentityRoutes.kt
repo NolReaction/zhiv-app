@@ -12,6 +12,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
+import io.ktor.server.routing.put
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import ru.zhiv.config.AppConfig
@@ -23,6 +24,8 @@ import ru.zhiv.http.MeResponse
 import ru.zhiv.http.ProfileStateDto
 import ru.zhiv.http.PublicUserDto
 import ru.zhiv.http.UpdateDisplayNameRequest
+import ru.zhiv.http.UpdateStatusRequest
+import ru.zhiv.http.UserStatusDto
 import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.parseCanonicalUuidV4
 import ru.zhiv.http.sessionCookie
@@ -35,6 +38,38 @@ fun Route.identityRoutes(
     tokenCodec: TokenCodec,
     config: AppConfig,
 ) {
+    rateLimit(RateLimitName("relationships")) {
+        route("/api/v1/me/status") {
+            install(RequestBodyLimit) { bodyLimit { 2_048 } }
+            put {
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                if (!call.isTrustedWrite(config)) {
+                    call.respond(HttpStatusCode.Forbidden, ApiErrorResponse("UNTRUSTED_ORIGIN", "Источник запроса не разрешён"))
+                    return@put
+                }
+                val rawToken = call.sessionCookie(config)
+                if (rawToken == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
+                    return@put
+                }
+                val key = parseCanonicalUuidV4(call.request.headers["Idempotency-Key"])
+                if (key == null) {
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_IDEMPOTENCY_KEY", "Некорректный ключ запроса"))
+                    return@put
+                }
+                val text = validStatus(call.receive<UpdateStatusRequest>().text)
+                if (text == null) {
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_STATUS", "До 120 символов, без управляющих символов"))
+                    return@put
+                }
+                when (val result = repository.updateStatus(tokenCodec.hash(rawToken), text, key)) {
+                    is DisplayNameUpdateResult.Success -> call.respond(result.user.toResponse())
+                    DisplayNameUpdateResult.Unauthorized -> call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
+                    else -> call.respond(HttpStatusCode.Conflict, ApiErrorResponse("IDEMPOTENCY_CONFLICT", "Повторите сохранение"))
+                }
+            }
+        }
+    }
     rateLimit(RateLimitName("bootstrap")) {
         route("/api/v1/bootstrap") {
             install(RequestBodyLimit) {
@@ -97,6 +132,7 @@ fun Route.identityRoutes(
         }
     }
 
+    rateLimit(RateLimitName("profile-read")) {
     get("/api/v1/me") {
         call.response.header(HttpHeaders.CacheControl, "no-store")
         val rawToken = call.sessionCookie(config)
@@ -106,6 +142,7 @@ fun Route.identityRoutes(
             return@get
         }
         call.respond(user.toResponse())
+    }
     }
 
     rateLimit(RateLimitName("relationships")) {
@@ -196,7 +233,8 @@ fun Route.identityRoutes(
     }
 }
 
-private fun UserSnapshot.toResponse() = MeResponse(
+internal fun UserSnapshot.toResponse() = MeResponse(
+    status = statusText?.let { text -> statusUpdatedAt?.let { UserStatusDto(text, it.toInstant().toString()) } },
     user = PublicUserDto(publicId = publicId, displayName = displayName),
     lastCheckInAt = lastCheckInAt?.toInstant()?.toString(),
     checkInCount = checkInCount,
@@ -223,4 +261,10 @@ private fun validDisplayName(raw: String): String? {
     return normalized.takeIf {
         codePoints in 1..50
     }
+}
+
+internal fun validStatus(raw: String): String? {
+    if (raw.any { it.isISOControl() || it in '\u202a'..'\u202e' || it in '\u2066'..'\u2069' }) return null
+    val text = raw.trim { it.isWhitespace() || Character.isSpaceChar(it) }.replace(Regex("[\\s\\p{Z}]+"), " ")
+    return text.takeIf { it.codePointCount(0, it.length) <= 120 }
 }

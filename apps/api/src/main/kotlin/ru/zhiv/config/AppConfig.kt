@@ -1,6 +1,8 @@
 package ru.zhiv.config
 
 import java.net.URI
+import java.nio.file.Files
+import java.nio.file.Path
 
 data class AppConfig(
     val databaseUrl: String,
@@ -35,7 +37,10 @@ data class AppConfig(
             return AppConfig(
                 databaseUrl = value("DATABASE_URL", "jdbc:postgresql://localhost:5432/zhiv"),
                 databaseUser = value("DATABASE_USER", "zhiv"),
-                databasePassword = value("DATABASE_PASSWORD", "zhiv"),
+                databasePassword = environment["DATABASE_PASSWORD_FILE"]?.let { file ->
+                    require(environment["DATABASE_PASSWORD"].isNullOrEmpty()) { "Use DATABASE_PASSWORD or DATABASE_PASSWORD_FILE, not both" }
+                    Files.readString(Path.of(file)).trim().also { require(it.isNotEmpty()) { "Empty database password file" } }
+                } ?: value("DATABASE_PASSWORD", "zhiv"),
                 production = production,
                 allowedOrigins = allowedOrigins,
             )

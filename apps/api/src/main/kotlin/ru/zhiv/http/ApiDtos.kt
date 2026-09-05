@@ -16,7 +16,14 @@ data class MeResponse(
     val streak: DailyStreakDto,
     val profile: ProfileStateDto,
     val serverTime: String,
+    val status: UserStatusDto? = null,
 )
+
+@Serializable
+data class UserStatusDto(val text: String, val updatedAt: String)
+
+@Serializable
+data class UpdateStatusRequest(val text: String)
 
 @Serializable
 data class DailyStreakDto(
@@ -114,6 +121,7 @@ data class PersonDto(
     val theirSharingMode: String,
     val checkInState: String,
     val lastCheckInAt: String?,
+    val status: UserStatusDto? = null,
 )
 
 @Serializable
@@ -180,6 +188,7 @@ data class GroupMemberDto(
     val lastCheckInAt: String?,
     val joinedAt: String,
     val isMe: Boolean,
+    val status: UserStatusDto? = null,
 )
 
 @Serializable
@@ -204,6 +213,7 @@ data class GroupDto(
     val createdAt: String,
     val members: List<GroupMemberDto>,
     val pendingInvites: List<GroupInviteDto>,
+    val sharingMixed: Boolean = false,
 )
 
 @Serializable
@@ -225,15 +235,6 @@ data class GroupMutationResponse(
 data class CapabilityTokenRequest(val token: String)
 
 @Serializable
-data class CreateRecoveryContactRequest(val circleId: String)
-
-@Serializable
-data class CreateRecoveryAttemptRequest(val token: String)
-
-@Serializable
-data class ConfirmRecoveryApprovalRequest(val token: String, val contactId: String)
-
-@Serializable
 data class DirectInviteLinkResponse(
     val inviteId: String,
     val expiresAt: String,
@@ -252,49 +253,5 @@ data class DirectInvitePreviewResponse(
 data class DirectInviteRedeemResponse(
     val person: PersonDto,
     val replayed: Boolean,
-    val serverTime: String,
-)
-
-@Serializable
-data class RecoveryContactDto(
-    val contactId: String,
-    val circleId: String,
-    val user: PublicUserDto,
-)
-
-@Serializable
-data class RecoveryEligibleDto(
-    val circleId: String,
-    val user: PublicUserDto,
-)
-
-@Serializable
-data class RecoveryContactsResponse(
-    val contacts: List<RecoveryContactDto>,
-    val eligible: List<RecoveryEligibleDto>,
-    val trustedBy: List<RecoveryContactDto>,
-    val serverTime: String,
-)
-
-@Serializable
-data class RecoveryAttemptResponse(
-    val attemptId: String,
-    val status: String,
-    val expiresAt: String,
-    val target: PublicUserDto?,
-    val replayed: Boolean,
-    val serverTime: String,
-)
-
-@Serializable
-data class RecoveryApprovalCandidateDto(
-    val contactId: String,
-    val target: PublicUserDto,
-)
-
-@Serializable
-data class RecoveryApprovalPreviewResponse(
-    val eligible: List<RecoveryApprovalCandidateDto>,
-    val expiresAt: String,
     val serverTime: String,
 )

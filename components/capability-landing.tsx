@@ -1,85 +1,19 @@
+
 "use client";
-
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Link2, ShieldCheck } from "lucide-react";
-import type {
-  DirectInvitePreview,
-  RecoveryApprovalPreview,
-} from "@/lib/check-in-contract";
-import {
-  ApiError,
-  confirmRecoveryApproval,
-  previewDirectInvite,
-  previewRecoveryApproval,
-  redeemDirectInvite,
-} from "@/lib/check-in-api";
-import { isCapabilityToken } from "@/lib/capability-token";
-import { createUuidV4 } from "@/lib/browser-uuid";
-import { copyText } from "@/lib/identity-sharing";
-import { INVITE_IMPORT_EVENT, inviteCode } from "@/lib/invite-import";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import {useEffect,useRef,useState} from "react";
+import {Copy,Link2} from "lucide-react";
+import type {DirectInvitePreview} from "@/lib/check-in-contract";
+import {ApiError,previewDirectInvite,redeemDirectInvite} from "@/lib/check-in-api";
+import {isCapabilityToken} from "@/lib/capability-token";
+import {createUuidV4} from "@/lib/browser-uuid";
+import {copyText} from "@/lib/identity-sharing";
+import {INVITE_IMPORT_EVENT,inviteCode} from "@/lib/invite-import";
+import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from "@/components/ui/dialog";
 import styles from "./capability-landing.module.css";
-
-const INVITE_KEY = "zhiv.pending-direct-invite.v1";
-const INVITE_REDEEM_KEY = "zhiv.pending-direct-invite-redeem.v1";
-const RECOVERY_APPROVAL_KEY = "zhiv.pending-recovery-approval.v2";
-const RECOVERY_CONFIRM_KEY = "zhiv.pending-recovery-confirm.v1";
-const LEGACY_RECOVERY_KEY = "zhiv.pending-recovery-link.v1";
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-type PendingCapability =
-  | { kind: "invite"; token: string }
-  | { kind: "recover"; token: string };
-
-type InviteRedeemResume = {
-  version: 1;
-  token: string;
-  idempotencyKey: string;
-};
-
-type RecoveryConfirmResume = InviteRedeemResume & {
-  contactId: string;
-};
-
-function capabilityStorageKey(kind: PendingCapability["kind"]): string {
-  return kind === "invite" ? INVITE_KEY : RECOVERY_APPROVAL_KEY;
-}
-
-function storeCapability(value: PendingCapability) {
-  try {
-    window.sessionStorage.setItem(capabilityStorageKey(value.kind), value.token);
-  } catch {
-    // The capability remains usable in memory for the current page.
-  }
-}
-
-function storedCapability(kind: PendingCapability["kind"]): PendingCapability | null {
-  try {
-    const key = capabilityStorageKey(kind);
-    const token = window.sessionStorage.getItem(key);
-    if (token && isCapabilityToken(token)) return { kind, token };
-    if (token) window.sessionStorage.removeItem(key);
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function removeStoredCapability(kind: PendingCapability["kind"]) {
-  try {
-    window.sessionStorage.removeItem(capabilityStorageKey(kind));
-  } catch {
-    // An unavailable sessionStorage does not block the in-memory flow.
-  }
-}
-
+const INVITE_KEY="zhiv.pending-direct-invite.v1";
+const INVITE_REDEEM_KEY="zhiv.pending-direct-invite-redeem.v1";
+const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type InviteRedeemResume={version:1;token:string;idempotencyKey:string};
 function readInviteRedeemResume(token: string): InviteRedeemResume | null {
   try {
     const raw = window.sessionStorage.getItem(INVITE_REDEEM_KEY);
@@ -120,487 +54,90 @@ function clearInviteRedeemResume() {
   }
 }
 
-function readRecoveryConfirmResume(token: string): RecoveryConfirmResume | null {
-  try {
-    const raw = window.sessionStorage.getItem(RECOVERY_CONFIRM_KEY);
-    if (!raw) return null;
-    const value: unknown = JSON.parse(raw);
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      "version" in value &&
-      value.version === 1 &&
-      "token" in value &&
-      value.token === token &&
-      "idempotencyKey" in value &&
-      typeof value.idempotencyKey === "string" &&
-      UUID_PATTERN.test(value.idempotencyKey) &&
-      "contactId" in value &&
-      typeof value.contactId === "string" &&
-      UUID_PATTERN.test(value.contactId)
-    ) return value as RecoveryConfirmResume;
-    window.sessionStorage.removeItem(RECOVERY_CONFIRM_KEY);
-    return null;
-  } catch {
-    clearRecoveryConfirmResume();
-    return null;
+
+export function CapabilityLanding({authenticated,onInviteAccepted}:{authenticated:boolean;onInviteAccepted:()=>void}) {
+  const [pending,setPending]=useState<string|null>(null),[invite,setInvite]=useState<DirectInvitePreview|null>(null);
+  const [retired,setRetired]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState<string|null>(null);
+  const [bridgeNotice,setBridgeNotice]=useState<string|null>(null);
+  const inviteRedeemResume=useRef<InviteRedeemResume|null>(null);
+  const accepted=useRef(onInviteAccepted);
+  useEffect(()=>{accepted.current=onInviteAccepted},[onInviteAccepted]);
+  function clearInvite() {
+    try {window.sessionStorage.removeItem(INVITE_KEY)} catch {}
+    clearInviteRedeemResume();inviteRedeemResume.current=null;setPending(null);
   }
-}
-
-function persistRecoveryConfirmResume(value: RecoveryConfirmResume) {
-  try {
-    window.sessionStorage.setItem(RECOVERY_CONFIRM_KEY, JSON.stringify(value));
-  } catch {
-    // The mounted component still reuses its in-memory request key.
-  }
-}
-
-function clearRecoveryConfirmResume() {
-  try {
-    window.sessionStorage.removeItem(RECOVERY_CONFIRM_KEY);
-  } catch {
-    // Storage may be unavailable.
-  }
-}
-
-function stripCapabilityFragment() {
-  try {
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${window.location.search}`,
-    );
-  } catch {
-    // Some embedded browsers can reject history mutations.
-  }
-}
-
-function readCapability(): PendingCapability | null {
-  try {
-    window.sessionStorage.removeItem(LEGACY_RECOVERY_KEY);
-  } catch {
-    // The deprecated credential is also unreachable from the new flow.
-  }
-  const match = /^#\/(invite|recover)\/([A-Za-z0-9_-]{43})$/.exec(window.location.hash);
-  if (match && isCapabilityToken(match[2])) {
-    const value = {
-      kind: match[1] as PendingCapability["kind"],
-      token: match[2],
-    };
-    stripCapabilityFragment();
-    storeCapability(value);
-    return value;
-  }
-  return storedCapability("recover") ?? storedCapability("invite");
-}
-
-export function CapabilityLanding({
-  authenticated,
-  onInviteAccepted,
-}: {
-  authenticated: boolean;
-  onInviteAccepted: () => void;
-}) {
-  const [pending, setPending] = useState<PendingCapability | null>(null);
-  const [invite, setInvite] = useState<DirectInvitePreview | null>(null);
-  const [approval, setApproval] = useState<RecoveryApprovalPreview | null>(null);
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
-  const [approvalDone, setApprovalDone] = useState(false);
-  const [approvedTarget, setApprovedTarget] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [bridgeNotice, setBridgeNotice] = useState<string | null>(null);
-  const inviteRedeemResume = useRef<InviteRedeemResume | null>(null);
-  const recoveryConfirmResume = useRef<RecoveryConfirmResume | null>(null);
-  const onInviteAcceptedRef = useRef(onInviteAccepted);
-
-  useEffect(() => {
-    onInviteAcceptedRef.current = onInviteAccepted;
-  }, [onInviteAccepted]);
-
-  const loadPreview = useCallback(async (
-    current: PendingCapability,
-    canApproveRecovery: boolean,
-  ) => {
-    setError(null);
-    setBridgeNotice(null);
-    setApprovalDone(false);
-    setApprovedTarget(null);
-    if (current.kind === "invite") {
-      inviteRedeemResume.current = readInviteRedeemResume(current.token);
-      setInvite(null);
-      setLoading(true);
+  useEffect(()=>{
+    let alive=true;
+    let generation=0;
+    async function readAndOpenCapability() {
+      const currentGeneration=++generation;
       try {
-        setInvite(await previewDirectInvite(current.token));
-      } catch (cause) {
-        const replay = inviteRedeemResume.current;
-        if (
-          canApproveRecovery &&
-          replay &&
-          cause instanceof ApiError &&
-          (cause.status === 409 || cause.status === 410)
-        ) {
-          try {
-            await redeemDirectInvite(current.token, replay.idempotencyKey);
-            removeStoredCapability("invite");
-            inviteRedeemResume.current = null;
-            clearInviteRedeemResume();
-            setPending(null);
-            onInviteAcceptedRef.current();
-          } catch (replayCause) {
-            setError(
-              replayCause instanceof Error
-                ? replayCause.message
-                : "Не удалось завершить принятие приглашения",
-            );
-          }
-        } else {
-          setError(cause instanceof Error ? cause.message : "Ссылка недействительна");
-        }
-      } finally {
-        setLoading(false);
+        for(const key of ["zhiv.pending-recovery-approval.v2","zhiv.pending-recovery-confirm.v1","zhiv.pending-recovery-link.v1","zhiv.recovery-attempt.v2"])window.sessionStorage.removeItem(key);
+      } catch {}
+      if(window.location.hash.startsWith("#/recover/")) {
+        window.history.replaceState(null,"",window.location.pathname+window.location.search);
+        setRetired(true);return;
       }
-      return;
-    }
-
-    setApproval(null);
-    setSelectedContactId(null);
-    recoveryConfirmResume.current = readRecoveryConfirmResume(current.token);
-    if (!canApproveRecovery) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await previewRecoveryApproval(current.token);
-      setApproval(response);
-      const resumableContactId = recoveryConfirmResume.current?.contactId;
-      if (
-        resumableContactId &&
-        response.eligible.some((candidate) => candidate.contactId === resumableContactId)
-      ) {
-        setSelectedContactId(resumableContactId);
+      const match=/^#\/invite\/([A-Za-z0-9_-]{43})$/.exec(window.location.hash);
+      let token=match?.[1]??null;
+      if(token) {
+        window.history.replaceState(null,"",window.location.pathname+window.location.search);
+        try {window.sessionStorage.setItem(INVITE_KEY,token)} catch {}
       } else {
-        if (recoveryConfirmResume.current) {
-          recoveryConfirmResume.current = null;
-          clearRecoveryConfirmResume();
-        }
-        setSelectedContactId(response.eligible[0]?.contactId ?? null);
+        try {token=window.sessionStorage.getItem(INVITE_KEY)} catch {}
       }
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 409) {
-        removeStoredCapability("recover");
-        recoveryConfirmResume.current = null;
-        clearRecoveryConfirmResume();
-        setApprovalDone(true);
-      } else {
-        setError(cause instanceof Error ? cause.message : "Запрос недействителен");
-      }
-    } finally {
-      setLoading(false);
+      if(!token || !isCapabilityToken(token))return;
+      const value=token;
+      inviteRedeemResume.current=readInviteRedeemResume(value);
+      setPending(value);setInvite(null);setError(null);setLoading(true);
+      try {
+        const response=await previewDirectInvite(value);
+        if(alive && generation===currentGeneration)setInvite(response);
+      } catch(cause) {
+        if(!alive || generation!==currentGeneration)return;
+        const replay=inviteRedeemResume.current;
+        if(authenticated && replay && cause instanceof ApiError && [409,410].includes(cause.status)){
+          try {await redeemDirectInvite(value,replay.idempotencyKey);if(alive){clearInvite();accepted.current()}}
+          catch(e){if(alive)setError(e instanceof Error?e.message:"Не удалось принять приглашение")}
+        } else setError(cause instanceof Error?cause.message:"Ссылка недействительна");
+      } finally {if(alive && generation===currentGeneration)setLoading(false)}
     }
-  }, []);
-
-  useEffect(() => {
-    const readAndOpenCapability = () => {
-      const current = readCapability();
-      setPending(current);
-      if (current) void loadPreview(current, authenticated);
-    };
-    const initialize = window.setTimeout(readAndOpenCapability, 0);
-    window.addEventListener(INVITE_IMPORT_EVENT, readAndOpenCapability);
-    return () => {
-      window.clearTimeout(initialize);
-      window.removeEventListener(INVITE_IMPORT_EVENT, readAndOpenCapability);
-    };
-  }, [authenticated, loadPreview]);
-
-  function dismiss() {
-    if (pending) {
-      removeStoredCapability(pending.kind);
-      if (pending.kind === "invite") {
-        inviteRedeemResume.current = null;
-        clearInviteRedeemResume();
-      } else {
-        recoveryConfirmResume.current = null;
-        clearRecoveryConfirmResume();
-      }
-    }
-    setPending(null);
-  }
-
-  function deferUntilProfileExists() {
-    // The raw invite or approval token stays in sessionStorage and is offered
-    // again after this browser has an authenticated profile.
-    setPending(null);
-  }
-
-  async function copyInviteCodeForApp() {
-    if (!pending || pending.kind !== "invite") return;
-    setBridgeNotice(null);
-    const copied = await copyText(inviteCode(pending.token));
-    setBridgeNotice(
-      copied
-        ? "Код скопирован. Вернитесь туда, где профиль уже открыт: «Люди» → «Принять»."
-        : "Автокопирование недоступно. Зажмите код выше и выберите «Скопировать».",
-    );
-  }
-
+    const initialize=window.setTimeout(()=>void readAndOpenCapability(),0);
+    const handler=()=>void readAndOpenCapability();
+    window.addEventListener(INVITE_IMPORT_EVENT,handler);
+    window.addEventListener("hashchange",handler);
+    return()=>{alive=false;window.clearTimeout(initialize);window.removeEventListener(INVITE_IMPORT_EVENT,handler);window.removeEventListener("hashchange",handler)};
+  },[authenticated]);
   async function acceptInvite() {
-    if (!pending || pending.kind !== "invite" || !authenticated) return;
-    setLoading(true);
-    setError(null);
-    const resume = inviteRedeemResume.current ?? {
-      version: 1 as const,
-      token: pending.token,
-      idempotencyKey: createUuidV4(),
-    };
-    inviteRedeemResume.current = resume;
-    persistInviteRedeemResume(resume);
-    try {
-      await redeemDirectInvite(pending.token, resume.idempotencyKey);
-      removeStoredCapability("invite");
-      inviteRedeemResume.current = null;
-      clearInviteRedeemResume();
-      setPending(null);
-      onInviteAccepted();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось принять приглашение");
-    } finally {
-      setLoading(false);
-    }
+    if(!pending || !authenticated || loading)return;
+    const resume=inviteRedeemResume.current??{version:1 as const,token:pending,idempotencyKey:createUuidV4()};
+    inviteRedeemResume.current=resume;persistInviteRedeemResume(resume);setLoading(true);setError(null);
+    try {await redeemDirectInvite(pending,resume.idempotencyKey);clearInvite();onInviteAccepted()}
+    catch(e){setError(e instanceof Error?e.message:"Не удалось принять приглашение")}
+    finally {setLoading(false)}
   }
-
-  async function approveRecovery() {
-    if (
-      !pending ||
-      pending.kind !== "recover" ||
-      !authenticated ||
-      !selectedContactId
-    ) return;
-
-    setLoading(true);
-    setError(null);
-    const resume = recoveryConfirmResume.current?.token === pending.token &&
-      recoveryConfirmResume.current.contactId === selectedContactId
-      ? recoveryConfirmResume.current
-      : {
-          version: 1 as const,
-          token: pending.token,
-          contactId: selectedContactId,
-          idempotencyKey: createUuidV4(),
-        };
-    recoveryConfirmResume.current = resume;
-    persistRecoveryConfirmResume(resume);
-    try {
-      const response = await confirmRecoveryApproval(
-        pending.token,
-        selectedContactId,
-        resume.idempotencyKey,
-      );
-      const selected = approval?.eligible.find(
-        (candidate) => candidate.contactId === selectedContactId,
-      );
-      removeStoredCapability("recover");
-      recoveryConfirmResume.current = null;
-      clearRecoveryConfirmResume();
-      setApprovalDone(true);
-      setApprovedTarget(
-        response.target?.displayName ?? selected?.target.displayName ?? "профиля",
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось подтвердить восстановление");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const isRecovery = pending?.kind === "recover";
-  const noEligibleRecovery = Boolean(
-    isRecovery && authenticated && approval && approval.eligible.length === 0,
-  );
-
-  return (
-    <Dialog
-      open={pending !== null}
-      onOpenChange={(open) => {
-        if (open || loading) return;
-        if (!authenticated && !approvalDone) deferUntilProfileExists();
-        else dismiss();
-      }}
-    >
-      <DialogContent className={styles.dialog} showCloseButton={false} aria-busy={loading}>
-        <DialogHeader>
-          <span className={styles.icon} aria-hidden="true">
-            {isRecovery ? <ShieldCheck /> : <Link2 />}
-          </span>
-          <DialogTitle className={styles.title}>
-            {isRecovery ? "Подтвердить восстановление" : "Личное приглашение"}
-          </DialogTitle>
-          <DialogDescription className={styles.description}>
-            {approvalDone
-              ? approvedTarget
-                ? `Вы подтвердили возврат профиля «${approvedTarget}». Друг завершит восстановление на своём устройстве.`
-                : "Этот запрос уже подтверждён или завершён. Повторных действий не требуется."
-              : isRecovery
-                ? authenticated
-                  ? approval
-                    ? approval.eligible.length > 0
-                      ? "Выберите знакомый профиль и подтвердите, что запрос действительно отправил его владелец."
-                      : "Этот запрос не относится ни к одному профилю, который доверил вам восстановление."
-                    : "Проверяем запрос восстановления…"
-                  : "Это ссылка для доверенного друга. Откройте её в «Я живой» на устройстве, где вы уже вошли в свой профиль."
-                : invite
-                  ? `${invite.inviter.displayName} приглашает вас в личные связи.${authenticated ? "" : " На этом адресе и в этом браузере активной сессии нет."}`
-                  : "Проверяем приглашение…"}
-          </DialogDescription>
-        </DialogHeader>
-
-        {pending?.kind === "invite" && invite ? (
-          <p className={styles.note}>
-            После принятия вы увидите только новые отметки друг друга. Старая история не откроется.
-          </p>
-        ) : null}
-
-        {pending?.kind === "invite" && invite && !authenticated ? (
-          <div className={styles.appBridge}>
-            <p>
-              Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана. Скопируйте код и выберите «Люди» → «Принять».
-            </p>
-            <textarea
-              className={styles.inviteCode}
-              aria-label="Одноразовый код приглашения"
-              readOnly
-              rows={3}
-              spellCheck={false}
-              value={inviteCode(pending.token)}
-              onFocus={(event) => event.currentTarget.select()}
-            />
-            <button type="button" className={styles.copyCode} onClick={() => void copyInviteCodeForApp()}>
-              <Copy size={17} /> Скопировать код для приложения
-            </button>
-            {bridgeNotice ? <p className={styles.bridgeNotice} role="status">{bridgeNotice}</p> : null}
-          </div>
-        ) : null}
-
-        {isRecovery && !authenticated ? (
-          <p className={styles.warning}>
-            Не создавайте здесь новый профиль ради подтверждения. Перешлите ссылку выбранному доверенному человеку или откройте её на его авторизованном устройстве.
-          </p>
-        ) : null}
-
-        {isRecovery && authenticated && approval?.eligible.length ? (
-          <fieldset className={styles.choices}>
-            <legend>Кому вы помогаете</legend>
-            {approval.eligible.map((candidate) => (
-              <label className={styles.choice} key={candidate.contactId}>
-                <input
-                  type="radio"
-                  name="recovery-contact"
-                  value={candidate.contactId}
-                  checked={selectedContactId === candidate.contactId}
-                  disabled={loading || approvalDone}
-                  onChange={() => {
-                    setSelectedContactId(candidate.contactId);
-                    recoveryConfirmResume.current = null;
-                    clearRecoveryConfirmResume();
-                    setError(null);
-                  }}
-                />
-                <span>
-                  <strong>{candidate.target.displayName}</strong>
-                  <small>{candidate.target.publicId}</small>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-        ) : null}
-
-        {approvalDone ? (
-          <p className={styles.success} role="status">Запрос обработан безопасно.</p>
-        ) : null}
-        {error ? <p className={styles.error} role="alert">{error}</p> : null}
-
-        {approvalDone ? (
-          <button type="button" className={styles.primary} onClick={dismiss}>
-            Готово
-          </button>
-        ) : error && pending ? (
-          <button
-            type="button"
-            className={styles.primary}
-            disabled={loading}
-            onClick={() => {
-              if (
-                pending.kind === "recover" &&
-                authenticated &&
-                approval &&
-                selectedContactId
-              ) {
-                void approveRecovery();
-              } else if (
-                pending.kind === "invite" &&
-                authenticated &&
-                inviteRedeemResume.current
-              ) {
-                void acceptInvite();
-              } else {
-                void loadPreview(pending, authenticated);
-              }
-            }}
-          >
-            {loading
-              ? "Проверяем…"
-              : pending.kind === "recover" && approval
-                ? "Повторить подтверждение"
-                : "Повторить"}
-          </button>
-        ) : pending?.kind === "invite" ? (
-          authenticated ? (
-            <button
-              type="button"
-              className={styles.primary}
-              disabled={loading || !invite}
-              onClick={() => void acceptInvite()}
-            >
-              {loading ? "Принимаем…" : "Принять приглашение"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles.primary}
-              disabled={loading || !invite}
-              onClick={deferUntilProfileExists}
-            >
-              {loading ? "Проверяем…" : "Продолжить в этом браузере"}
-            </button>
-          )
-        ) : authenticated ? (
-          <button
-            type="button"
-            className={styles.primary}
-            disabled={loading || !selectedContactId || noEligibleRecovery}
-            onClick={() => void approveRecovery()}
-          >
-            {loading ? "Подтверждаем…" : "Да, это мой знакомый"}
-          </button>
-        ) : (
-          <button type="button" className={styles.primary} onClick={deferUntilProfileExists}>
-            Понятно — сохранить ссылку
-          </button>
-        )}
-
-        {!approvalDone ? (
-          <button type="button" className={styles.secondary} disabled={loading} onClick={dismiss}>
-            {isRecovery
-              ? "Удалить этот запрос"
-              : !authenticated
-                ? "Отказаться от приглашения"
-                : "Не сейчас"}
-          </button>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
+  return <Dialog open={pending!==null || retired} onOpenChange={v=>{
+    if(v || loading)return;setRetired(false);
+    if(authenticated)clearInvite();else setPending(null);
+  }}>
+    <DialogContent className={styles.dialog} aria-busy={loading}>
+      <DialogHeader>
+        <span className={styles.icon}><Link2/></span>
+        <DialogTitle className={styles.title}>{retired?"Восстановление изменилось":"Личное приглашение"}</DialogTitle>
+        <DialogDescription className={styles.description}>{retired?"Ссылки восстановления через друзей больше не действуют. Владелец входит по личному коду восстановления.":invite?invite.inviter.displayName+" приглашает вас в личные связи."+(authenticated?"":" На этом адресе и в этом браузере активной сессии нет."):"Проверяем приглашение…"}</DialogDescription>
+      </DialogHeader>
+      {retired?<button className={styles.primary} onClick={()=>setRetired(false)}>Понятно</button>:<>
+        {invite?<p className={styles.note}>После принятия вы увидите только новые отметки друг друга. Старая история не откроется.</p>:null}
+        {invite && pending && !authenticated?<div className={styles.appBridge}>
+          <p>Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана. Скопируйте код и выберите «Люди» → «Принять».</p>
+          <textarea className={styles.inviteCode} aria-label="Одноразовый код приглашения" readOnly rows={3} value={inviteCode(pending)}/>
+          <button className={styles.bridgeCopy} onClick={async()=>setBridgeNotice(await copyText(inviteCode(pending))?"Код скопирован. Откройте «Люди» → «Принять».":"Зажмите код выше и выберите «Скопировать».")}><Copy size={16}/>Скопировать код для приложения</button>
+        </div>:null}
+        {bridgeNotice?<p className={styles.note} role="status">{bridgeNotice}</p>:null}
+        {error?<p className={styles.error} role="alert">{error}</p>:null}
+        {authenticated?<button className={styles.primary} disabled={loading || !invite} onClick={()=>void acceptInvite()}>{loading?"Проверяем…":"Принять приглашение"}</button>:<button className={styles.primary} disabled={loading || !invite} onClick={()=>setPending(null)}>Продолжить в этом браузере</button>}
+        <button className={styles.secondary} disabled={loading} onClick={clearInvite}>{authenticated?"Не сейчас":"Отказаться от приглашения"}</button>
+      </>}
+    </DialogContent>
+  </Dialog>;
 }

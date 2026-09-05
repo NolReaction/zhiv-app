@@ -29,6 +29,8 @@ data class GroupMemberSnapshot(
     val lastCheckInAt: OffsetDateTime?,
     val joinedAt: OffsetDateTime,
     val isMe: Boolean,
+    val statusText: String? = null,
+    val statusUpdatedAt: OffsetDateTime? = null,
 )
 
 data class GroupInviteSnapshot(
@@ -51,6 +53,7 @@ data class GroupSnapshot(
     val createdAt: OffsetDateTime,
     val members: List<GroupMemberSnapshot>,
     val pendingInvites: List<GroupInviteSnapshot>,
+    val sharingMixed: Boolean = false,
 )
 
 data class GroupsSnapshot(

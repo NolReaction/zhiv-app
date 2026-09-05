@@ -52,7 +52,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
+import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import styles from "./groups-section.module.css";
 
 type GroupsSectionProps = {
@@ -361,11 +361,12 @@ export function GroupsSection({
                 <div className={styles.groupDetails}>
                   <label className={styles.sharingLabel}>
                     <span>
-                      <strong>Показывать через эту группу</strong>
-                      <small>Только новые отметки после включения</small>
+                      <strong>Показывать участникам группы</strong>
+                      <small id={`sharing-mixed-${group.groupId}`}>{group.sharingMixed ? "Часть участников · нажмите, чтобы включить всем" : "Синхронно с людьми и другими группами"}</small>
                     </span>
                     <Switch
                       checked={group.mySharingMode !== "OFF"}
+                      aria-describedby={group.sharingMixed ? `sharing-mixed-${group.groupId}` : undefined}
                       disabled={Boolean(pending)}
                       onCheckedChange={(checked) => void runMutation(
                         `sharing:${group.groupId}`,
@@ -394,9 +395,10 @@ export function GroupsSection({
                           </span>
                           <span className={styles.cardText}>
                             <strong>{member.user.displayName}{member.isMe ? " · вы" : ""}</strong>
+                            {member.status ? <span className={styles.userStatus}>{member.status.text}</span> : null}
                             <span>
                               {member.isMe
-                                ? (group.mySharingMode === "OFF" ? "Ваши отметки скрыты" : "Ваши новые отметки видны")
+                                ? (group.sharingMixed ? "Показ части участников" : group.mySharingMode === "OFF" ? "Ваши отметки скрыты" : "Ваши новые отметки видны")
                                 : formatPersonCheckIn(member.lastCheckInAt, nowMs, sharing)}
                             </span>
                           </span>

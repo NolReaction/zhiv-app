@@ -291,6 +291,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
             statement.setObject(8, now); statement.setObject(9, now); statement.setObject(10, now)
             statement.executeUpdate()
         }
+        connection.prepareStatement("SELECT preserve_recipient_denies(?)").use { it.setObject(1,first); it.execute() }
     }
 
     private fun findPerson(connection: Connection, circleId: UUID, current: UUID): PersonSnapshot? =
@@ -303,6 +304,8 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                     AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
             )
             SELECT direct_person.id circle_id, direct_person.created_at, other.public_id, other.display_name,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_text END AS status_text,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_updated_at END AS status_updated_at,
                    mine.sharing_mode my_sharing_mode, theirs.sharing_mode their_sharing_mode,
                    CASE WHEN theirs.sharing_mode = 'OFF' THEN 'HIDDEN'
                         WHEN latest.checked_at IS NOT NULL THEN 'AVAILABLE'
@@ -310,8 +313,8 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                         ELSE 'WAITING_INITIAL' END check_in_state,
                    latest.checked_at last_check_in_at
               FROM direct_person JOIN app_users other ON other.id = direct_person.other_user_id
-              JOIN circle_sharing_preferences mine ON mine.circle_id = direct_person.id AND mine.user_id = ?
-              JOIN circle_sharing_preferences theirs ON theirs.circle_id = direct_person.id AND theirs.user_id = direct_person.other_user_id
+              CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid),direct_person.other_user_id) mine
+              CROSS JOIN LATERAL effective_recipient_sharing(direct_person.other_user_id,CAST(? AS uuid)) theirs
               LEFT JOIN LATERAL (
                   SELECT event.checked_at FROM check_in_audiences audience
                   JOIN check_ins event ON event.id = audience.check_in_id AND event.user_id = audience.actor_user_id
@@ -324,7 +327,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
             """.trimIndent(),
         ).use { statement ->
             statement.setObject(1, current); statement.setObject(2, circleId); statement.setObject(3, current)
-            statement.setObject(4, current); statement.setObject(5, current)
+            statement.setObject(4, current); statement.setObject(5, current); statement.setObject(6, current)
             statement.executeQuery().use { result -> if (result.next()) result.toPerson() else null }
         }
 
@@ -352,6 +355,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
         getObject("created_at", OffsetDateTime::class.java), SharingMode.valueOf(getString("my_sharing_mode")),
         SharingMode.valueOf(getString("their_sharing_mode")), PersonCheckInState.valueOf(getString("check_in_state")),
         getObject("last_check_in_at", OffsetDateTime::class.java),
+        statusText=getString("status_text"), statusUpdatedAt=getObject("status_updated_at", OffsetDateTime::class.java),
     )
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }

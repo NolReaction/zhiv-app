@@ -571,10 +571,10 @@ test("bridges an invite from an external iOS browser into the authenticated PWA"
     readFile(new URL("../components/capability-landing.module.css", import.meta.url), "utf8"),
   ]);
 
-  assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT, readAndOpenCapability\)/);
+  assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT,\s*handler\)/);
   assert.match(landing, /На этом адресе и в этом браузере активной сессии нет/);
   assert.match(landing, /Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана/);
-  assert.match(landing, /copyText\(inviteCode\(pending\.token\)\)/);
+  assert.match(landing, /copyText\(inviteCode\(pending\)\)/);
   assert.match(landing, /«Люди» → «Принять»/);
   assert.match(landingStyles, /\.inviteCode\s*\{[^}]*user-select:\s*text;/s);
 });

@@ -61,6 +61,8 @@ data class PersonSnapshot(
     val theirSharingMode: SharingMode,
     val checkInState: PersonCheckInState,
     val lastCheckInAt: OffsetDateTime?,
+    val statusText: String? = null,
+    val statusUpdatedAt: OffsetDateTime? = null,
 )
 
 data class PeopleSnapshot(

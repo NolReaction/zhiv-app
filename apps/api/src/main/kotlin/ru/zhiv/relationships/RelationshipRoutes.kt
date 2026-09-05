@@ -283,6 +283,7 @@ private fun DirectRequestSnapshot.toDto() = DirectRequestDto(
 )
 
 private fun PersonSnapshot.toDto() = PersonDto(
+    status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text,it.toInstant().toString()) } },
     circleId = circleId.toString(),
     user = user.toDto(),
     connectedAt = connectedAt.toInstant().toString(),

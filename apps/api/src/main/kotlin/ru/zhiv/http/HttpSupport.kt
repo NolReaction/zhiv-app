@@ -23,7 +23,7 @@ fun ApplicationCall.isTrustedWrite(config: AppConfig): Boolean {
 }
 
 fun ApplicationCall.sessionCookie(config: AppConfig): String? =
-    request.cookies[config.cookieName]
+    request.cookies[config.cookieName]?.takeIf { it.length <= 128 }
 
 fun sessionCookieHeader(config: AppConfig, rawToken: String): String = buildString {
     append(config.cookieName)

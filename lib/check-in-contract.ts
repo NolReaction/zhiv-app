@@ -17,6 +17,7 @@ export type ProfileState = {
 };
 
 export type MeResponse = {
+  status?: UserStatus | null;
   user: PublicUser;
   lastCheckInAt: string | null;
   checkInCount: number;
@@ -98,6 +99,7 @@ export type DirectRequest = {
 };
 
 export type Person = {
+  status?: UserStatus | null;
   circleId: string;
   user: PublicUser;
   connectedAt: string;
@@ -138,6 +140,7 @@ export type SharingResponse = {
 export type GroupRole = "OWNER" | "ADMIN" | "MEMBER";
 
 export type GroupMember = {
+  status?: UserStatus | null;
   membershipId: string;
   user: PublicUser;
   role: GroupRole;
@@ -161,6 +164,7 @@ export type GroupInvite = {
 };
 
 export type Group = {
+  sharingMixed?: boolean;
   groupId: string;
   title: string;
   emoji: string | null;
@@ -177,6 +181,8 @@ export type GroupsResponse = {
   outgoingInvites: GroupInvite[];
   serverTime: string;
 };
+
+export type UserStatus = { text: string; updatedAt: string };
 
 export type GroupMutationResponse = {
   groupId: string;
@@ -200,33 +206,5 @@ export type DirectInvitePreview = {
 export type DirectInviteRedeemResponse = {
   person: Person;
   replayed: boolean;
-  serverTime: string;
-};
-
-export type RecoveryContact = {
-  contactId: string;
-  circleId: string;
-  user: PublicUser;
-};
-
-export type RecoveryContactsResponse = {
-  contacts: RecoveryContact[];
-  eligible: Array<{ circleId: string; user: PublicUser }>;
-  trustedBy: RecoveryContact[];
-  serverTime: string;
-};
-
-export type RecoveryAttempt = {
-  attemptId: string;
-  status: "PENDING" | "APPROVED" | "COMPLETED";
-  expiresAt: string;
-  target: PublicUser | null;
-  replayed: boolean;
-  serverTime: string;
-};
-
-export type RecoveryApprovalPreview = {
-  eligible: Array<{ contactId: string; target: PublicUser }>;
-  expiresAt: string;
   serverTime: string;
 };

@@ -238,6 +238,8 @@
   white-space: nowrap;
 }
 
+.userStatus { margin: 3px 0; font-size: 14px; line-height: 1.45; color: #c9ddbd; overflow-wrap: anywhere; }
+
 .requestActions {
   display: flex;
   gap: 7px;
