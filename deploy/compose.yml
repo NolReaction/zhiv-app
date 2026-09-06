@@ -68,8 +68,20 @@ services:
       DATABASE_USER: zhiv_app
       DATABASE_PASSWORD_FILE: /run/secrets/db_app
       ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN}
+      AUTH_PUBLIC_ORIGIN: https://${DOMAIN:?set DOMAIN}
+      TELEGRAM_CLIENT_ID: ${TELEGRAM_CLIENT_ID:-}
+      TELEGRAM_CLIENT_SECRET_FILE: ${TELEGRAM_CLIENT_SECRET_FILE:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_TLS_MODE: ${SMTP_TLS_MODE:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD_FILE: ${SMTP_PASSWORD_FILE:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      AUTH_CODE_SECRET_FILE: ${AUTH_CODE_SECRET_FILE:-}
     secrets: [db_app]
-    networks: [backend]
+    volumes:
+      - ./.secrets/auth:/run/auth-secrets:ro
+    networks: [backend, outbound]
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -148,6 +160,7 @@ networks:
   backend:
     internal: true
   edge:
+  outbound:
 
 secrets:
   db_admin:

@@ -95,6 +95,25 @@ for (const isFavorite of ["yes", "true", "false", 1, null, {}, []]) {
 }
 assert.equal((await api("GET", "/api/v1/people", { cookie: owner.cookie })).data.people[0].isFavorite, false);
 
+// Private nickname: exercise the HTTP boundary and migrated runtime-role grants.
+const nicknamePath = "/api/v1/people/" + circle + "/nickname";
+const named = await api("PATCH", nicknamePath, { cookie: owner.cookie, body: { nickname: "  Мама  💚 " } });
+assert.equal(named.data.nickname, "Мама 💚");
+assert.equal(named.headers["cache-control"], "no-store");
+const ownerPeople = () => api("GET", "/api/v1/people", { cookie: owner.cookie });
+assert.equal((await ownerPeople()).data.people[0].nickname, "Мама 💚");
+assert.equal((await ownerPeople()).data.people[0].user.displayName, "CI friend");
+assert.equal((await people()).data.people[0].nickname, null);
+for (const nickname of [1, true, null, {}, [], "x".repeat(51), "a\nb", "x\u202ey"]) {
+  await api("PATCH", nicknamePath, { cookie: owner.cookie, body: { nickname }, expected: 400 });
+}
+await api("PATCH", nicknamePath, { cookie: owner.cookie, body: { nickname: "ok", extra: true }, expected: 400 });
+await api("PATCH", nicknamePath, { body: { nickname: "no" }, expected: 401 });
+await api("PATCH", nicknamePath, { cookie: owner.cookie, source: "https://untrusted.invalid", body: { nickname: "no" }, expected: 403 });
+await api("PATCH", "/api/v1/people/not-a-uuid/nickname", { cookie: owner.cookie, body: { nickname: "no" }, expected: 400 });
+await api("PATCH", nicknamePath, { cookie: owner.cookie, body: { nickname: "" } });
+assert.equal((await ownerPeople()).data.people[0].nickname, null);
+
 const code = "ZHIV-R1-" + randomBytes(32).toString("base64url");
 const retrySecret = randomBytes(32).toString("base64url");
 await api("PUT", "/api/v1/recovery-code", { cookie: owner.cookie, body: { code } });
@@ -113,4 +132,4 @@ await api("PUT", "/api/v1/recovery-code", { cookie: restored.cookie, body: { cod
 await api("DELETE", "/api/v1/people/" + circle, { cookie: restored.cookie, expected: 204 });
 await api("DELETE", "/api/v1/groups/" + group, { cookie: restored.cookie, expected: 204 });
 await api("POST", "/api/v1/account-recovery/attempts", { expected: 404 });
-console.log("Production smoke passed: secure cookies, relations/groups, privacy/status, code recovery, revocation, retirement.");
+console.log("Production smoke passed: secure cookies, relations/groups, privacy/status/nicknames, code recovery, revocation, retirement.");

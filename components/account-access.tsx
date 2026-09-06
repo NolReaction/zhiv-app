@@ -1,0 +1,63 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { MonitorSmartphone, ShieldCheck } from "lucide-react";
+import { getAccountAccess, getAuthOptions, revokeSession, revokeOtherSessions, logout, type AccountAccess as Access, type AuthOptions } from "@/lib/auth-api";
+import { ApiError } from "@/lib/check-in-api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { LoginForm } from "./account-entry";
+import styles from "./account-access.module.css";
+
+export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; onSessionLost: () => void }) {
+  const [access, setAccess] = useState<Access | null>(null);
+  const [options, setOptions] = useState<AuthOptions | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    const [account, available] = await Promise.all([getAccountAccess(), getAuthOptions()]);
+    setAccess(account); setOptions(available); setError("");
+  }, []);
+  useEffect(() => { refresh().catch(cause => setError(cause instanceof Error ? cause.message : "Не удалось загрузить доступ")); }, [refresh]);
+
+  async function remove() {
+    if (!confirm) return;
+    setBusy(true); setError("");
+    try {
+      if (confirm === "logout") { await logout(); onSessionLost(); return; }
+      if (confirm === "others") await revokeOtherSessions(); else await revokeSession(confirm);
+      await refresh(); setNotice("Выбранные сеансы закрыты.");
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) onSessionLost();
+      else setError(cause instanceof Error ? cause.message : "Не удалось закрыть сеанс");
+    } finally { setConfirm(null); setBusy(false); }
+  }
+
+  return <section className={styles.card} aria-labelledby="account-access-title">
+    <h2 id="account-access-title"><ShieldCheck size={20} aria-hidden /> Способы входа</h2>
+    {access && <>
+      <p className={styles.hint}>{access.methods.length ? "Входите в этот профиль в любом браузере. Остальные устройства останутся подключены." : "Привяжите Telegram или почту, чтобы возвращаться в этот профиль на других устройствах."}</p>
+      {access.methods.map(method => <p key={method.provider} className={styles.method}>{method.label} <span>Привязано</span></p>)}
+      {options && <LoginForm link isOnline={isOnline} options={{ telegram: options.telegram && !access.methods.some(m => m.provider === "telegram"), email: options.email && !access.methods.some(m => m.provider === "email") }} onDone={async () => { await refresh(); setNotice("Почта привязана к этому профилю."); }} />}
+      {options && !options.telegram && !options.email && <p className={styles.hint}>Новые способы входа пока недоступны. Сохраните резервный код ниже.</p>}
+      <h3><MonitorSmartphone size={20} aria-hidden /> Устройства</h3>
+      <p className={styles.hint}>Отдельный сеанс для каждого браузера. Название устройства определяется приблизительно.</p>
+      <ul className={styles.sessions}>{access.sessions.map(session => <li key={session.id}>
+        <div><strong>{session.label}</strong><span>{session.current ? "Этот браузер" : `Последний вход или открытие настроек: ${new Date(session.lastSeenAt).toLocaleString("ru-RU")}`}</span></div>
+        {!session.current && <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm(session.id)}>Завершить</button>}
+      </li>)}</ul>
+      {access.sessions.some(s => !s.current) && <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("others")}>Выйти на остальных устройствах</button>}
+      <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("logout")}>Выйти в этом браузере</button>
+    </>}
+    {error && <div role="alert"><p className={styles.error}>{error}</p><button className={styles.secondary} onClick={() => void refresh().catch(cause => setError(cause.message))}>Повторить</button></div>}
+    {notice && <p role="status" className={styles.notice}>{notice}</p>}
+    <Dialog open={confirm !== null} onOpenChange={open => { if (!open && !busy) setConfirm(null); }}>
+      <DialogContent className={styles.dialog}>
+        <DialogHeader><DialogTitle>Завершить сеанс?</DialogTitle><DialogDescription>{confirm === "logout" ? "Для следующего входа понадобится привязанный Telegram, почта или заранее сохранённый резервный код." : "На выбранных устройствах потребуется войти заново. Этот браузер останется подключён."}</DialogDescription></DialogHeader>
+        <button className={styles.primary} disabled={busy} onClick={() => void remove()}>{busy ? "Завершаем…" : "Завершить"}</button>
+        <button className={styles.secondary} disabled={busy} onClick={() => setConfirm(null)}>Остаться</button>
+      </DialogContent>
+    </Dialog>
+  </section>;
+}

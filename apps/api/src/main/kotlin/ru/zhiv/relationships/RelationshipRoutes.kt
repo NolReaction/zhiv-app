@@ -27,6 +27,8 @@ import ru.zhiv.http.PersonDto
 import ru.zhiv.http.PublicUserDto
 import ru.zhiv.http.SharingResponse
 import ru.zhiv.http.UpdateFavoriteRequest
+import ru.zhiv.http.NicknameResponse
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import ru.zhiv.http.FavoriteResponse
@@ -113,6 +115,35 @@ fun Route.relationshipRoutes(
         requestActionRoute("accept", RequestAction.ACCEPTED, repository, tokenCodec, config)
         requestActionRoute("reject", RequestAction.REJECTED, repository, tokenCodec, config)
         requestActionRoute("cancel", RequestAction.CANCELLED, repository, tokenCodec, config)
+
+        route("/api/v1/people/{circleId}/nickname") {
+            install(RequestBodyLimit) { bodyLimit { 1_024 } }
+            patch {
+                call.noStore()
+                if (!call.requireTrustedWrite(config)) return@patch
+                if (call.requireIdempotencyKey() == null) return@patch
+                val sessionHash = call.sessionHash(config, tokenCodec) ?: return@patch
+                val circleId = parseCanonicalUuid(call.parameters["circleId"])
+                if (circleId == null) {
+                    call.respondError(HttpStatusCode.BadRequest, "INVALID_CIRCLE_ID", "Некорректная связь")
+                    return@patch
+                }
+                val request = call.receive<JsonObject>()
+                val rawNickname = (request["nickname"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                val nickname = if (request.keys == setOf("nickname") && rawNickname != null)
+                    normalizePersonNickname(rawNickname) else null
+                if (nickname == null) {
+                    call.respondError(HttpStatusCode.BadRequest, "INVALID_NICKNAME", "Подпись — до 50 символов без переносов строк")
+                    return@patch
+                }
+                when (val result = repository.updateNickname(sessionHash, circleId, nickname)) {
+                    is RelationshipResult.Success -> call.respond(NicknameResponse(
+                        result.value.circleId.toString(), result.value.nickname, result.value.serverTime.toInstant().toString(),
+                    ))
+                    else -> call.respondRelationshipError(result)
+                }
+            }
+        }
 
         route("/api/v1/people/{circleId}/favorite") {
             install(RequestBodyLimit) { bodyLimit { 1_024 } }
@@ -314,6 +345,7 @@ private fun DirectRequestSnapshot.toDto() = DirectRequestDto(
 )
 
 private fun PersonSnapshot.toDto() = PersonDto(
+    nickname = nickname,
     isFavorite = isFavorite,
     status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text,it.toInstant().toString(),statusExpiresAt?.toInstant()?.toString()) } },
     circleId = circleId.toString(),

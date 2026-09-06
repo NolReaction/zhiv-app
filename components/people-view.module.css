@@ -230,7 +230,7 @@
   white-space: nowrap;
 }
 
-.cardText > span {
+.cardText > span:not([data-user-status]) {
   overflow: hidden;
   color: #8e9488;
   font-size: 11px;
@@ -828,3 +828,50 @@ button:disabled {
 .personActions { display: flex; flex: 0 0 auto; gap: 6px; }
 .favoriteButton[aria-pressed="true"] { color: #f5db7d; background: #f5db7d1a; }
 @media (max-width: 480px) { .personActions { flex-direction: column; } }
+.personIdentity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+.personIdentity:focus-visible {
+  outline: 2px solid #c7e7b5;
+  outline-offset: 5px;
+}
+
+.nicknameForm {
+  display: grid;
+  gap: 12px;
+}
+
+.nicknameForm > label {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.nicknameForm > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid rgba(199, 231, 181, 0.25);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 16px;
+}
+
+.nicknameForm > input:focus-visible {
+  outline: 2px solid #c7e7b5;
+  outline-offset: 2px;
+}

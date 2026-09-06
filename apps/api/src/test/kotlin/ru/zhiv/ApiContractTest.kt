@@ -241,8 +241,8 @@ class ApiContractTest {
         assertEquals(HttpStatusCode.OK, activated.status)
         assertEquals("no-store", activated.headers[HttpHeaders.CacheControl])
         kotlin.test.assertContentEquals(TokenCodec().hash("zhiv.recovery-code.v1:" + "C".repeat(43)), recovery.activatedHash)
-        // Activation and redemption share the bounded write bucket.
-        repeat(29) {
+        // Anonymous redemption has its own bounded IP bucket.
+        repeat(120) {
             assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/recovery-code/redeem") {
                 contentType(ContentType.Application.Json)
                 setBody("""{"code":"invalid","retrySecret":"invalid"}""")
@@ -252,6 +252,53 @@ class ApiContractTest {
             contentType(ContentType.Application.Json)
             setBody("""{"code":"invalid","retrySecret":"invalid"}""")
         }.status)
+        // Exhausting anonymous redemption must not lock an authenticated user out of activation.
+        assertEquals(HttpStatusCode.OK, client.put("/api/v1/recovery-code") {
+            header(HttpHeaders.Cookie, cookie)
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"$code"}""")
+        }.status)
+    }
+
+    @Test
+    fun `verified users behind one IP have independent budgets and forged cookies do not`() = testApplication {
+        val base = FakeRepository()
+        val sessions = mutableMapOf<List<Byte>, UserSnapshot>()
+        val identities = object : IdentityRepository by base {
+            override suspend fun bootstrap(displayName: String, bootstrapKeyHash: ByteArray, sessionTokenHash: ByteArray, sessionLifetimeDays: Long): UserSnapshot =
+                base.bootstrap(displayName, bootstrapKeyHash, sessionTokenHash, sessionLifetimeDays).also {
+                    sessions[sessionTokenHash.toList()] = it
+                }
+            override suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot? = sessions[sessionTokenHash.toList()]
+            override suspend fun findSessionUserId(sessionTokenHash: ByteArray): UUID? = findBySession(sessionTokenHash)?.id
+        }
+        val config = testConfig()
+        application { installZhivApi(identities, base, config, recovery = RecordingCodeRecovery()) }
+        suspend fun createCookie(): String {
+            val response = client.post("/api/v1/bootstrap") {
+                contentType(ContentType.Application.Json)
+                header("Idempotency-Key", UUID.randomUUID().toString())
+                setBody("""{"displayName":"Тест"}""")
+            }
+            assertEquals(HttpStatusCode.Created, response.status)
+            return assertNotNull(response.headers[HttpHeaders.SetCookie]).substringBefore(';')
+        }
+        suspend fun activate(cookie: String) = client.put("/api/v1/recovery-code") {
+            header(HttpHeaders.Cookie, cookie)
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"ZHIV-R1-${"C".repeat(43)}"}""")
+        }
+        val first = createCookie()
+        val second = createCookie()
+        val alternate = TokenCodec().issue()
+        sessions[alternate.hash.toList()] = assertNotNull(sessions[TokenCodec().hash(first.substringAfter('=')).toList()])
+        repeat(30) { assertEquals(HttpStatusCode.OK, activate(first).status) }
+        assertEquals(HttpStatusCode.TooManyRequests, activate(first).status)
+        assertEquals(HttpStatusCode.OK, activate(second).status)
+        assertEquals(HttpStatusCode.TooManyRequests, activate("${config.cookieName}=${alternate.raw}").status)
+        repeat(30) { assertEquals(HttpStatusCode.Unauthorized, activate("${config.cookieName}=forged-$it").status) }
+        assertEquals(HttpStatusCode.TooManyRequests, activate("${config.cookieName}=another-forged-cookie").status)
+        assertEquals(HttpStatusCode.OK, activate(second).status)
     }
 
     private class RecordingCodeRecovery : CodeRecoveryRepository {

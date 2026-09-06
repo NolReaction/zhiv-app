@@ -61,6 +61,7 @@ import { PeopleView } from "./people-view";
 import { ProfileView } from "./profile-view";
 import { CapabilityLanding } from "./capability-landing";
 import { RecoveryStarter } from "./recovery-starter";
+import { AccountEntry, AuthReturnNotice } from "./account-entry";
 import { StatusEditor } from "./status-editor";
 import styles from "./check-in-app.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
@@ -250,7 +251,9 @@ function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
   }
 }
 
-function TapCounter({ progress }: { progress: ClickerRun }) {
+type SeriesResult = Pick<ClickerFinishedSeries, "tapCount" | "isRecord">;
+
+function TapCounter({ progress, result }: { progress: ClickerRun; result: SeriesResult | null }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const deadlineMs = progress.activeSeries
     ? progress.activeSeries.lastTapAtMs + CLICKER_IDLE_RESET_MS
@@ -263,7 +266,7 @@ function TapCounter({ progress }: { progress: ClickerRun }) {
   }, [deadlineMs]);
 
   const active = progress.activeSeries;
-  if (!active) return null;
+  if (!active && !result) return null;
   const timer = getClickerSeriesTimer(progress, nowMs);
   const seconds = Math.max(0, Math.ceil(timer.remainingMs / 1_000));
   const urgency = timer.remainingRatio <= 0.2
@@ -279,12 +282,13 @@ function TapCounter({ progress }: { progress: ClickerRun }) {
     <span
       className={styles.tapCounter}
       data-urgency={urgency}
+      data-state={active ? "active" : "finished"}
       style={timerStyle}
       aria-hidden="true"
     >
-      <strong>×{active.tapCount.toLocaleString("ru-RU")}</strong>
-      <small>{seconds}с</small>
-      <i className={styles.tapCounterProgress} />
+      <strong>{!active && result?.isRecord ? "Рекорд " : ""}×{(active?.tapCount ?? result?.tapCount ?? 0).toLocaleString("ru-RU")}</strong>
+      {active ? <small>{seconds}с</small> : null}
+      {active ? <i className={styles.tapCounterProgress} /> : null}
     </span>
   );
 }
@@ -305,7 +309,7 @@ export function CheckInApp() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clickerRun, setClickerRun] = useState<ClickerRun>(() => createClickerRun());
-  const [seriesSummary, setSeriesSummary] = useState<string | null>(null);
+  const [seriesSummary, setSeriesSummary] = useState<SeriesResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [storyEffect, setStoryEffect] = useState<{
     type: ClickerEffect;
@@ -370,11 +374,7 @@ export function CheckInApp() {
     finished: ClickerFinishedSeries,
     progress: ClickerRun,
   ) => {
-    setSeriesSummary(
-      finished.isRecord
-        ? `Забег завершён · рекорд ×${finished.tapCount.toLocaleString("ru-RU")}`
-        : `Забег завершён · результат ×${finished.tapCount.toLocaleString("ru-RU")}`,
-    );
+    setSeriesSummary({ tapCount: finished.tapCount, isRecord: finished.isRecord });
     void reportClickerSeries({
       eventId: finished.eventId ?? createUuidV4(),
       type: "CLICKER_SERIES_FINISHED",
@@ -1045,9 +1045,7 @@ export function CheckInApp() {
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
   const primaryStatus = !isOnline
     ? "Офлайн · серия считается на устройстве"
-    : notice
-      ? notice
-      : seriesSummary;
+    : notice;
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
     activeTapCount >= 2 && activeTapCount <= 4
@@ -1141,10 +1139,13 @@ export function CheckInApp() {
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="session-lost-title">
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
-          <h1 id="session-lost-title">Сессия закончилась</h1>
+          <h1 id="session-lost-title">Войдите в свой профиль</h1>
           <p className={styles.intro}>
-            Введите сохранённый личный код восстановления. Если профиль ещё открыт на другом устройстве, создайте код там.
+            Используйте привязанный Telegram или почту. Ваши люди и отметки останутся на месте.
           </p>
+          <AccountEntry isOnline={isOnline} onAuthenticated={adoptMe}>
+            <p className={styles.intro}>Для входа используйте сохранённый резервный код.</p>
+          </AccountEntry>
           <RecoveryStarter
             context="session-lost"
             isOnline={isOnline}
@@ -1171,17 +1172,12 @@ export function CheckInApp() {
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="welcome-title">
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
-          <h1 id="welcome-title">Как тебя зовут?</h1>
-          <p className={styles.intro}>Только имя. Остальное приложение сделает само.</p>
+          <h1 id="welcome-title">Я здесь</h1>
+          <p className={styles.intro}>Войдите в свой профиль или создайте новый.</p>
           <p className={styles.recoveryHint}>
-            Уже был профиль? Войдите по сохранённому коду восстановления — так вы не
-            создадите случайный новый аккаунт.
+            Старый профиль ещё без Telegram и почты? Привяжите их в его настройках или используйте резервный код ниже.
           </p>
-          <RecoveryStarter
-            context="onboarding"
-            isOnline={isOnline}
-            onRecovered={adoptMe}
-          />
+          <AccountEntry isOnline={isOnline} onAuthenticated={adoptMe}>
           <form onSubmit={handleBootstrap} className={styles.form} noValidate>
             <label htmlFor="display-name" className={styles.srOnly}>
               Имя
@@ -1216,6 +1212,8 @@ export function CheckInApp() {
               {systemError}
             </p>
           ) : null}
+          </AccountEntry>
+          <RecoveryStarter context="onboarding" isOnline={isOnline} onRecovered={adoptMe} />
         </section>
         <CapabilityLanding
           authenticated={false}
@@ -1227,6 +1225,7 @@ export function CheckInApp() {
 
   return (
     <main className={styles.shell} data-active-view={activeView}>
+      <AuthReturnNotice />
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>
@@ -1289,16 +1288,20 @@ export function CheckInApp() {
               onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
+              aria-label="Я живой — отметиться"
               aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
             >
-              <span>Я ЖИВОЙ</span>
+              <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
+              <TapCounter progress={clickerRun} result={seriesSummary} />
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
                 Текущая серия: {visualTapCount.toLocaleString("ru-RU")}
               </span>
             ) : null}
-            {visualTapCount >= 1 ? <TapCounter progress={clickerRun} /> : null}
+            <span className={styles.srOnly} role="status" aria-live="polite">
+              {seriesSummary ? `${seriesSummary.isRecord ? "Рекорд" : "Результат"}: ${seriesSummary.tapCount.toLocaleString("ru-RU")}` : ""}
+            </span>
             {tapFeedbackBurst > 0 ? (
               <i
                 key={`tap-wave-${tapFeedbackBurst}`}
@@ -1404,13 +1407,13 @@ export function CheckInApp() {
           <div className={styles.statusBlock}>
             <p className={styles.serverFact}>{serverStatus}</p>
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
-            <p
+            {primaryStatus ? <p
               className={styles.status}
               role="status"
               aria-live="polite"
             >
               {primaryStatus}
-            </p>
+            </p> : null}
             <span className={styles.srOnly}>
               Лучшая серия: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.

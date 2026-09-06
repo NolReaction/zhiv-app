@@ -18,6 +18,7 @@ import {
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { RecoveryCodeCard } from "./recovery-code-card";
 import { RecoveryStarter } from "./recovery-starter";
+import { AccountAccess } from "./account-access";
 import styles from "./profile-view.module.css";
 
 type ProfileViewProps = {
@@ -256,6 +257,7 @@ export function ProfileView({
         </div>
       </form>
 
+      <AccountAccess isOnline={isOnline} onSessionLost={onSessionLost}/>
       <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost}/>
       <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered}/>
 

@@ -99,6 +99,7 @@ export type DirectRequest = {
 };
 
 export type Person = {
+  nickname?: string | null;
   isFavorite?: boolean;
   status?: UserStatus | null;
   circleId: string;
@@ -115,6 +116,12 @@ export type PeopleResponse = {
   incomingRequests: DirectRequest[];
   outgoingRequests: DirectRequest[];
   audienceCount: number;
+  serverTime: string;
+};
+
+export type NicknameResponse = {
+  circleId: string;
+  nickname: string | null;
   serverTime: string;
 };
 

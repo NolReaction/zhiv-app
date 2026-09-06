@@ -115,6 +115,7 @@ data class DirectRequestDto(
 
 @Serializable
 data class PersonDto(
+    val nickname: String? = null,
     val isFavorite: Boolean = false,
     val circleId: String,
     val user: PublicUserDto,
@@ -263,3 +264,6 @@ data class UpdateFavoriteRequest(val isFavorite: JsonElement)
 
 @Serializable
 data class FavoriteResponse(val circleId: String, val isFavorite: Boolean, val serverTime: String)
+
+@Serializable
+data class NicknameResponse(val circleId: String, val nickname: String?, val serverTime: String)

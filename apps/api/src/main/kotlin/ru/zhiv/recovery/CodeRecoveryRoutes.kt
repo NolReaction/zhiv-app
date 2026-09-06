@@ -55,6 +55,11 @@ fun Route.codeRecoveryRoutes(repository: CodeRecoveryRepository, identities: Ide
                 if (repository.activate(codec.hash(session),codec.hash("zhiv.recovery-code.v1:"+code))) call.respond(RecoveryCodeState(true))
                 else call.respond(HttpStatusCode.Conflict,ApiErrorResponse("CODE_CONFLICT","Код не активирован. Проверьте сессию и создайте новый."))
             }
+        }
+    }
+    rateLimit(RateLimitName("account-recovery-redeem")) {
+        route("/api/v1/recovery-code") {
+            install(RequestBodyLimit) { bodyLimit { 1_024 } }
             post("/redeem") {
                 call.response.header(HttpHeaders.CacheControl,"no-store")
                 if (!call.isTrustedWrite(config)) {

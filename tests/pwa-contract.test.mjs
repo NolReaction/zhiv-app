@@ -455,7 +455,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(groupStyles, /\.peoplePicker\s*\{[^}]*touch-action:\s*pan-y;/s);
 
   const checkInButton = appStyles.match(/\.checkInButton\s*\{[^}]*\}/s)?.[0] ?? "";
-  const checkInLabel = appStyles.match(/\.checkInButton span\s*\{[^}]*\}/s)?.[0] ?? "";
+  const checkInLabel = appStyles.match(/\.checkInTitle\s*\{[^}]*\}/s)?.[0] ?? "";
   assert.match(checkInButton, /-webkit-touch-callout:\s*none;/);
   assert.match(checkInButton, /-webkit-user-select:\s*none;/);
   assert.match(checkInButton, /(?<!-webkit-)user-select:\s*none;/);
@@ -494,8 +494,8 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);
-  assert.match(people, /Включено · новые отметки доступны/);
-  assert.match(people, /Выключено · новые отметки скрыты/);
+  assert.match(people, /Этому человеку, включая общие группы/);
+  assert.match(people, /Скрыты от этого человека, включая группы/);
   assert.match(people, /aria-describedby=\{sharingHintId\}/);
   assert.match(people, /useReducer\(\s*inviteDialogReducer,\s*initialInviteDialogState/);
   assert.match(people, /<Dialog open=\{inviteDialog\.open\}/);
