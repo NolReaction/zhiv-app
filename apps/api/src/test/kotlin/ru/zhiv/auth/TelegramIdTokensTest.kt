@@ -32,7 +32,8 @@ class TelegramIdTokensTest {
         }
     }
     @Test fun `rejects forged signature even when claims match`() {
-        val forged = SignedJWT.parse(token()).apply { sign(RSASSASigner(RSAKeyGenerator(2048).generate())) }
+        val original = SignedJWT.parse(token())
+        val forged = SignedJWT(original.header, original.jwtClaimsSet).apply { sign(RSASSASigner(RSAKeyGenerator(2048).generate())) }
         assertFails { validator.verify(forged.serialize(), "nonce") }
     }
     @Test fun `email digest is keyed and bound to each flow`() {

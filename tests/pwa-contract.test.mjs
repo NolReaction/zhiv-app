@@ -561,7 +561,7 @@ test("keeps local development origins out of production Docker builds", async ()
   assert.match(dockerfile, /COPY \. \.[\s\S]*RUN npm run build:vps/);
 });
 
-test("bridges an invite from an external iOS browser into the authenticated PWA", async () => {
+test("keeps invitations through browser login and retains the legacy PWA fallback", async () => {
   const [landing, landingStyles] = await Promise.all([
     readFile(new URL("../components/capability-landing.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/capability-landing.module.css", import.meta.url), "utf8"),
@@ -569,7 +569,9 @@ test("bridges an invite from an external iOS browser into the authenticated PWA"
 
   assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT,\s*handler\)/);
   assert.match(landing, /На этом адресе и в этом браузере активной сессии нет/);
-  assert.match(landing, /Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана/);
+  assert.match(landing, /Продолжите в этом браузере и войдите через привязанный Telegram или почту/);
+  assert.match(landing, /Приглашение сохранится до завершения входа/);
+  assert.match(landing, /Прежний профиль ещё без привязки/);
   assert.match(landing, /copyText\(inviteCode\(pending\)\)/);
   assert.match(landing, /«Люди» → «Принять»/);
   assert.match(landingStyles, /\.inviteCode\s*\{[^}]*user-select:\s*text;/s);
