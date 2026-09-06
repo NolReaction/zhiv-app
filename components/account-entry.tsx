@@ -15,9 +15,12 @@ export function AuthReturnNotice() {
     const url = new URL(window.location.href);
     const result = url.searchParams.get("auth");
     if (!result) return;
-    setMessage(authReturnMessage(result));
-    url.searchParams.delete("auth");
-    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    const timer = window.setTimeout(() => {
+      setMessage(authReturnMessage(result));
+      url.searchParams.delete("auth");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   return message ? <p className={styles.notice} role="status">{message}</p> : null;
 }
@@ -47,6 +50,7 @@ export function LoginForm({ options, isOnline, link = false, onDone }: { options
   const [emailOpen, setEmailOpen] = useState(false);
   const [flow, setFlow] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [verified, setVerified] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const disabled = busy || !isOnline;
@@ -60,7 +64,7 @@ export function LoginForm({ options, isOnline, link = false, onDone }: { options
         const url = new URL(result.url ?? "");
         if (url.origin !== "https://oauth.telegram.org" || url.pathname !== "/auth") throw new Error("Не удалось открыть вход через Telegram");
         window.location.assign(url.toString());
-      } else { setFlow(result.flow); setCode(""); }
+      } else { setFlow(result.flow); setCode(""); setVerified(false); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось начать вход"); }
     finally { setBusy(false); }
   }
@@ -68,7 +72,10 @@ export function LoginForm({ options, isOnline, link = false, onDone }: { options
   async function verify(event: React.FormEvent) {
     event.preventDefault(); if (!flow) return;
     setBusy(true); setError("");
-    try { await verifyEmailLogin(flow, code); await onDone(); setFlow(null); setCode(""); }
+    try {
+      if (!verified) { await verifyEmailLogin(flow, code); setVerified(true); }
+      await onDone(); setFlow(null); setCode(""); setVerified(false);
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось подтвердить код"); }
     finally { setBusy(false); }
   }

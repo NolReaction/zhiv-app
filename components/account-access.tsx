@@ -19,7 +19,13 @@ export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; 
     const [account, available] = await Promise.all([getAccountAccess(), getAuthOptions()]);
     setAccess(account); setOptions(available); setError("");
   }, []);
-  useEffect(() => { refresh().catch(cause => setError(cause instanceof Error ? cause.message : "Не удалось загрузить доступ")); }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    Promise.all([getAccountAccess(), getAuthOptions()]).then(([account, available]) => {
+      if (active) { setAccess(account); setOptions(available); setError(""); }
+    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Не удалось загрузить доступ"); });
+    return () => { active = false; };
+  }, []);
 
   async function remove() {
     if (!confirm) return;
@@ -33,6 +39,8 @@ export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; 
       else setError(cause instanceof Error ? cause.message : "Не удалось закрыть сеанс");
     } finally { setConfirm(null); setBusy(false); }
   }
+
+  if (access && options && !options.telegram && !options.email && access.sessions.length === 0) return null;
 
   return <section className={styles.card} aria-labelledby="account-access-title">
     <h2 id="account-access-title"><ShieldCheck size={20} aria-hidden /> Способы входа</h2>

@@ -2,6 +2,12 @@ package ru.zhiv.db
 
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
+import io.ktor.server.testing.testApplication
+import io.ktor.client.request.*
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.*
+import kotlinx.serialization.json.*
+import ru.zhiv.installZhivApi
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -86,5 +92,54 @@ class JdbcAuthRepositoryIntegrationTest {
         assertFailsWith<AuthFailure> { auth.takeTelegram(telegram.tokenHash, tokens.issue().hash) }
         assertEquals("nonce", auth.takeTelegram(telegram.tokenHash, telegram.browserHash).nonce)
         assertFailsWith<AuthFailure> { auth.takeTelegram(telegram.tokenHash, telegram.browserHash) }
+    }
+
+    @Test fun `HTTP login sets protected cookies links provider and rejects cross origin writes`() = testApplication {
+        var deliveredCode = ""
+        val config = AppConfig("unused", "unused", "unused", true, setOf("https://im-alive.ru"))
+        application {
+            installZhivApi(identities, identities, config, auth = auth,
+                authConfig = AuthConfig(origin = "https://im-alive.ru", telegramClientId = "test-client", codeSecret = "test-secret"),
+                mailer = LoginMailer { _, code -> deliveredCode = code },
+                telegram = TelegramVerifier { _, flow -> assertNotNull(flow.verifier); assertNotNull(flow.nonce); VerifiedTelegram("test-${UUID.randomUUID()}") },
+            )
+        }
+        val browser = createClient { followRedirects = false }
+        val blocked = browser.post("/api/v1/auth/email/start") { contentType(ContentType.Application.Json); header(HttpHeaders.Origin, "https://evil.example"); setBody("{}") }
+        assertEquals(HttpStatusCode.Forbidden, blocked.status)
+        val started = browser.post("/api/v1/auth/email/start") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Origin, "https://im-alive.ru")
+            setBody("""{"intent":"register","displayName":"Тест входа","email":"${UUID.randomUUID()}@example.com"}""")
+        }
+        assertEquals(HttpStatusCode.OK, started.status)
+        val flow = Json.parseToJsonElement(started.bodyAsText()).jsonObject["flow"]!!.jsonPrimitive.content
+        val loginCookie = started.headers[HttpHeaders.SetCookie]!!
+        assertContains(loginCookie, "HttpOnly"); assertContains(loginCookie, "Secure"); assertContains(loginCookie, "SameSite=Lax")
+        val wrongBrowser = browser.post("/api/v1/auth/email/verify") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Origin, "https://im-alive.ru"); setBody("""{"flow":"$flow","code":"$deliveredCode"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, wrongBrowser.status)
+        val verified = browser.post("/api/v1/auth/email/verify") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Origin, "https://im-alive.ru"); header(HttpHeaders.Cookie, loginCookie.substringBefore(';'))
+            setBody("""{"flow":"$flow","code":"$deliveredCode"}""")
+        }
+        assertEquals(HttpStatusCode.OK, verified.status)
+        val sessionCookie = verified.headers[HttpHeaders.SetCookie]!!.substringBefore(';')
+        val me = browser.get("/api/v1/me") { header(HttpHeaders.Cookie, sessionCookie) }
+        assertEquals(HttpStatusCode.OK, me.status)
+        val startLink = browser.post("/api/v1/auth/telegram/start") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Origin, "https://im-alive.ru"); header(HttpHeaders.Cookie, sessionCookie); setBody("""{"intent":"link"}""")
+        }
+        assertEquals(HttpStatusCode.OK, startLink.status)
+        val linkBody = Json.parseToJsonElement(startLink.bodyAsText()).jsonObject
+        assertContains(linkBody["url"]!!.jsonPrimitive.content, "code_challenge_method=S256")
+        val callback = "/api/v1/auth/telegram/callback?state=${linkBody["flow"]!!.jsonPrimitive.content}&code=test"
+        val linked = browser.get(callback) { header(HttpHeaders.Cookie, startLink.headers[HttpHeaders.SetCookie]!!.substringBefore(';')) }
+        assertEquals(HttpStatusCode.Found, linked.status); assertEquals("/?auth=linked", linked.headers[HttpHeaders.Location])
+        val replay = browser.get(callback) { header(HttpHeaders.Cookie, startLink.headers[HttpHeaders.SetCookie]!!.substringBefore(';')) }
+        assertEquals("/?auth=auth_expired", replay.headers[HttpHeaders.Location])
+        val account = browser.get("/api/v1/auth/account") { header(HttpHeaders.Cookie, sessionCookie) }
+        assertContains(account.bodyAsText(), "telegram"); assertContains(account.bodyAsText(), "email")
+        assertFalse(account.bodyAsText().contains("token_hash"))
     }
 }

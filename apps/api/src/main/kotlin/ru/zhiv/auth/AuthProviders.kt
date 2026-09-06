@@ -74,7 +74,7 @@ class TelegramOidc(private val config: AuthConfig) : TelegramVerifier, AutoClose
             throw AuthFailure("TELEGRAM_LOGIN_FAILED", "Не удалось подтвердить вход через Telegram. Повторите вход.", 502)
         }
     }
-    override fun close() { keySource.close(); client.close() }
+    override fun close() { (keySource as? java.io.Closeable)?.close(); client.close() }
 }
 
 class SmtpLoginMailer(private val config: AuthConfig) : LoginMailer {
