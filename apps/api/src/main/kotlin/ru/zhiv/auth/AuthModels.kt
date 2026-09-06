@@ -5,7 +5,7 @@ import java.util.UUID
 
 class AuthFailure(val code: String, override val message: String, val status: Int = 400) : RuntimeException(message)
 
-@Serializable data class AuthOptions(val telegram: Boolean, val email: Boolean)
+@Serializable data class AuthOptions(val telegram: Boolean, val email: Boolean, val vk: Boolean = false)
 @Serializable data class AuthStartRequest(val intent: String = "login", val displayName: String? = null, val email: String? = null)
 @Serializable data class AuthStartResponse(val flow: String, val url: String? = null)
 @Serializable data class EmailVerifyRequest(val flow: String, val code: String)
@@ -13,6 +13,8 @@ class AuthFailure(val code: String, override val message: String, val status: In
 @Serializable data class LoginSession(val id: String, val label: String, val createdAt: String, val lastSeenAt: String, val current: Boolean)
 @Serializable data class AccountAccess(val methods: List<LoginMethod>, val sessions: List<LoginSession>)
 @Serializable data class AuthDone(val status: String = "ok")
+@Serializable data class RegistrationRequest(val displayName: String)
+@Serializable data class RegistrationState(val pending: Boolean)
 
 data class LoginFlow(
     val tokenHash: ByteArray, val browserHash: ByteArray, val provider: String, val intent: String,
@@ -21,6 +23,7 @@ data class LoginFlow(
 )
 
 data class VerifiedTelegram(val subject: String)
+data class VerifiedVk(val subject: String)
 
 fun normalizedEmail(raw: String): String? {
     val value = raw.trim().lowercase(java.util.Locale.ROOT)
@@ -41,8 +44,12 @@ fun deviceLabel(userAgent: String): String {
 interface AuthRepository {
     suspend fun create(flow: LoginFlow)
     suspend fun takeTelegram(tokenHash: ByteArray, browserHash: ByteArray): LoginFlow
+    suspend fun takeVk(tokenHash: ByteArray, browserHash: ByteArray): LoginFlow
     suspend fun verifyEmail(tokenHash: ByteArray, browserHash: ByteArray, codeHash: ByteArray): LoginFlow
     suspend fun finish(flow: LoginFlow, subject: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID
+    suspend fun prepareRegistration(flow: LoginFlow, subject: String, ticketHash: ByteArray)
+    suspend fun hasRegistration(ticketHash: ByteArray, browserHash: ByteArray): Boolean
+    suspend fun completeRegistration(ticketHash: ByteArray, browserHash: ByteArray, displayName: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID
     suspend fun access(sessionHash: ByteArray): AccountAccess
     suspend fun revoke(sessionHash: ByteArray, target: UUID? = null, others: Boolean = false)
 }

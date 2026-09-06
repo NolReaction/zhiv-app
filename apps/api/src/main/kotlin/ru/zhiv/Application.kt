@@ -68,10 +68,12 @@ fun Application.module() {
     val recovery = JdbcCodeRecoveryRepository(dataSource)
     val authConfig = AuthConfig.fromEnvironment(System.getenv(), config.allowedOrigins)
     val telegram = if (authConfig.telegramEnabled) TelegramOidc(authConfig) else null
+    val vk = if (authConfig.vkEnabled) VkId(authConfig) else null
     val mailer = if (authConfig.emailEnabled) SmtpLoginMailer(authConfig) else null
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         telegram?.close()
+        vk?.close()
         dataSource.close()
     }
     installZhivApi(
@@ -87,6 +89,7 @@ fun Application.module() {
         authConfig = authConfig,
         telegram = telegram,
         mailer = mailer,
+        vk = vk,
     )
 }
 
@@ -105,6 +108,7 @@ fun Application.installZhivApi(
     authConfig: AuthConfig = AuthConfig(),
     telegram: TelegramVerifier? = null,
     mailer: LoginMailer? = null,
+    vk: VkVerifier? = null,
 ) {
     install(DefaultHeaders)
     install(ForwardedHeaders)
@@ -215,7 +219,7 @@ fun Application.installZhivApi(
             }
         }
         identityRoutes(identities, tokenCodec, config)
-        auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer) }
+        auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }

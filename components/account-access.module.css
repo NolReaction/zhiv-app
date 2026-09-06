@@ -21,3 +21,8 @@
 .sessions li div { display: grid; gap: .3rem; flex: 1; min-width: 10rem; }
 .sessions span { color: #aebba4; font-size: .875rem; }
 .dialog { background: #161e12; border-color: #42503a; color: #e7eddf; }
+.textButton { justify-self: center; padding: .5rem; border: 0; background: transparent; color: #abb5a0; font-size: 1rem; cursor: pointer; text-underline-offset: .2em; }
+.textButton:hover { text-decoration: underline; }
+.textButton:disabled { opacity: .55; cursor: default; }
+.textButton:focus-visible { outline: 2px solid #cce6b6; outline-offset: 3px; }
+.vkMark { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; font-size: .875rem; font-weight: 800; letter-spacing: -.07em; }

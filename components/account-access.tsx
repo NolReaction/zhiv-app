@@ -40,15 +40,15 @@ export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; 
     } finally { setConfirm(null); setBusy(false); }
   }
 
-  if (access && options && !options.telegram && !options.email && access.sessions.length === 0) return null;
+  if (access && options && !options.vk && !options.email && access.sessions.length === 0) return null;
 
   return <section className={styles.card} aria-labelledby="account-access-title">
     <h2 id="account-access-title"><ShieldCheck size={20} aria-hidden /> Способы входа</h2>
     {access && <>
-      <p className={styles.hint}>{access.methods.length ? "Входите в этот профиль в любом браузере. Остальные устройства останутся подключены." : "Привяжите Telegram или почту, чтобы возвращаться в этот профиль на других устройствах."}</p>
+      <p className={styles.hint}>{access.methods.length ? "Входите в этот профиль в любом браузере. Остальные устройства останутся подключены." : "Привяжите ВК или почту, чтобы возвращаться в этот профиль на других устройствах."}</p>
       {access.methods.map(method => <p key={method.provider} className={styles.method}>{method.label} <span>Привязано</span></p>)}
-      {options && <LoginForm link isOnline={isOnline} options={{ telegram: options.telegram && !access.methods.some(m => m.provider === "telegram"), email: options.email && !access.methods.some(m => m.provider === "email") }} onDone={async () => { await refresh(); setNotice("Почта привязана к этому профилю."); }} />}
-      {options && !options.telegram && !options.email && <p className={styles.hint}>Новые способы входа пока недоступны. Сохраните резервный код ниже.</p>}
+      {options && <LoginForm link isOnline={isOnline} options={{ ...options, vk: options.vk && !access.methods.some(m => m.provider === "vk"), email: options.email && !access.methods.some(m => m.provider === "email") }} onDone={async () => { await refresh(); setNotice("Почта привязана к этому профилю."); }} />}
+      {options && !options.vk && !options.email && <p className={styles.hint}>Новые способы входа пока недоступны. Сохраните резервный код ниже.</p>}
       <h3><MonitorSmartphone size={20} aria-hidden /> Устройства</h3>
       <p className={styles.hint}>Отдельный сеанс для каждого браузера. Название устройства определяется приблизительно.</p>
       <ul className={styles.sessions}>{access.sessions.map(session => <li key={session.id}>
@@ -62,7 +62,7 @@ export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; 
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     <Dialog open={confirm !== null} onOpenChange={open => { if (!open && !busy) setConfirm(null); }}>
       <DialogContent className={styles.dialog}>
-        <DialogHeader><DialogTitle>Завершить сеанс?</DialogTitle><DialogDescription>{confirm === "logout" ? "Для следующего входа понадобится привязанный Telegram, почта или заранее сохранённый резервный код." : "На выбранных устройствах потребуется войти заново. Этот браузер останется подключён."}</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Завершить сеанс?</DialogTitle><DialogDescription>{confirm === "logout" ? "Для следующего входа понадобится привязанный ВК, почта или заранее сохранённый резервный код." : "На выбранных устройствах потребуется войти заново. Этот браузер останется подключён."}</DialogDescription></DialogHeader>
         <button className={styles.primary} disabled={busy} onClick={() => void remove()}>{busy ? "Завершаем…" : "Завершить"}</button>
         <button className={styles.secondary} disabled={busy} onClick={() => setConfirm(null)}>Остаться</button>
       </DialogContent>

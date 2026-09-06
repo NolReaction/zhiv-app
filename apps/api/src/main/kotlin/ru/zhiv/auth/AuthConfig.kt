@@ -14,10 +14,13 @@ data class AuthConfig(
     val smtpFrom: String = "",
     val smtpImplicitTls: Boolean = false,
     val codeSecret: String = "",
+    val vkClientId: String = "",
 ) {
     val telegramEnabled get() = telegramClientId.isNotEmpty() && telegramClientSecret.isNotEmpty()
     val emailEnabled get() = smtpHost.isNotEmpty() && smtpFrom.isNotEmpty() && codeSecret.isNotEmpty()
     val callback get() = "$origin/api/v1/auth/telegram/callback"
+    val vkEnabled get() = vkClientId.isNotEmpty()
+    val vkCallback get() = "$origin/api/v1/auth/vk/callback"
 
     companion object {
         fun fromEnvironment(env: Map<String, String>, origins: Set<String>): AuthConfig {
@@ -34,6 +37,7 @@ data class AuthConfig(
                 smtpUser = value("SMTP_USER"), smtpPassword = secret("SMTP_PASSWORD"), smtpFrom = value("SMTP_FROM"),
                 smtpImplicitTls = value("SMTP_TLS_MODE").ifEmpty { "starttls" }.also { require(it in setOf("starttls", "implicit")) }.equals("implicit"),
                 codeSecret = secret("AUTH_CODE_SECRET"),
+                vkClientId = value("VK_CLIENT_ID"),
             )
             require(config.telegramClientId.isEmpty() == config.telegramClientSecret.isEmpty()) { "Telegram configuration is incomplete" }
             if (config.smtpHost.isNotEmpty()) {
@@ -41,7 +45,8 @@ data class AuthConfig(
                 require(normalizedEmail(config.smtpFrom) != null && config.smtpPort in 1..65535) { "Invalid SMTP configuration" }
                 require(config.smtpUser.isEmpty() == config.smtpPassword.isEmpty()) { "SMTP credentials are incomplete" }
             }
-            if (config.telegramEnabled || config.emailEnabled) require(config.origin in origins) { "AUTH_PUBLIC_ORIGIN must match ALLOWED_ORIGINS" }
+            require(config.vkClientId.isEmpty() || Regex("^[1-9][0-9]{0,18}$").matches(config.vkClientId)) { "Invalid VK_CLIENT_ID" }
+            if (config.telegramEnabled || config.emailEnabled || config.vkEnabled) require(config.origin in origins) { "AUTH_PUBLIC_ORIGIN must match ALLOWED_ORIGINS" }
             return config
         }
     }

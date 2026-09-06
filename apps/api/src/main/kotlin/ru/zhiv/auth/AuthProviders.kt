@@ -133,7 +133,7 @@ internal class TelegramIdTokens(private val clientId: String, keys: JWKSource<Se
 }
 
 /** Keeps both the request deadline and a strict allocation bound while reading the response. */
-private class LimitedBodySubscriber(private val limit: Int) : HttpResponse.BodySubscriber<ByteArray> {
+internal class LimitedBodySubscriber(private val limit: Int) : HttpResponse.BodySubscriber<ByteArray> {
     private val result = CompletableFuture<ByteArray>()
     private val output = ByteArrayOutputStream()
     private var subscription: Flow.Subscription? = null

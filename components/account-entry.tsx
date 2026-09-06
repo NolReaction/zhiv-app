@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { Mail, Send } from "lucide-react";
-import { getAuthOptions, startAuth, verifyEmailLogin, authReturnMessage, type AuthOptions, type AuthIntent } from "@/lib/auth-api";
+import { Mail } from "lucide-react";
+import { getAuthOptions, startAuth, verifyEmailLogin, authReturnMessage, getRegistrationState, completeRegistration, cancelRegistration, type AuthOptions } from "@/lib/auth-api";
 import { getMe } from "@/lib/check-in-api";
 import { isValidDisplayName, limitDisplayNameInput, normalizeDisplayName } from "@/lib/check-in-presentation";
 import type { MeResponse } from "@/lib/check-in-contract";
@@ -28,41 +28,45 @@ export function AuthReturnNotice() {
 export function AccountEntry({ isOnline, onAuthenticated, children }: { isOnline: boolean; onAuthenticated: (me: MeResponse) => void; children?: ReactNode }) {
   const [options, setOptions] = useState<AuthOptions | null>(null);
   const [failed, setFailed] = useState(false);
+  const [pending, setPending] = useState(false);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true;
-    getAuthOptions().then(value => { if (active) { setOptions(value); setFailed(false); } }).catch(() => { if (active) setFailed(true); });
+    getAuthOptions().then(async value => {
+      const registration = value.legacy ? { pending: false } : await getRegistrationState();
+      if (active) { setOptions(value); setPending(registration.pending); setFailed(false); }
+    }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
   }, [retry]);
   return <div className={styles.entry}>
     <AuthReturnNotice />
-    {options ? (options.telegram || options.email ? <LoginForm options={options} isOnline={isOnline} onDone={async () => {
+    {options ? (options.legacy ? children : <LoginForm options={options} pending={pending} isOnline={isOnline} onDone={async () => {
       const me = await getMe(); if (!me) throw new Error("Не удалось открыть профиль. Повторите вход."); onAuthenticated(me);
-    }} /> : children) : failed ? <div role="alert"><p>Не удалось загрузить способы входа.</p><button className={styles.secondary} onClick={() => { setFailed(false); setRetry(value => value + 1); }}>Повторить</button></div> : <p role="status">Загружаем способы входа…</p>}
+    }} />) : failed ? <div role="alert"><p>Не удалось загрузить способы входа.</p><button className={styles.secondary} onClick={() => { setFailed(false); setRetry(value => value + 1); }}>Повторить</button></div> : <p role="status">Загружаем способы входа…</p>}
   </div>;
 }
 
-export function LoginForm({ options, isOnline, link = false, onDone }: { options: AuthOptions; isOnline: boolean; link?: boolean; onDone: () => Promise<void> }) {
+export function LoginForm({ options, isOnline, link = false, pending = false, onDone }: { options: AuthOptions; isOnline: boolean; link?: boolean; pending?: boolean; onDone: () => Promise<void> }) {
   const id = useId();
-  const [intent, setIntent] = useState<AuthIntent>(link ? "link" : "login");
+  const [needsName, setNeedsName] = useState(pending);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [emailOpen, setEmailOpen] = useState(false);
   const [flow, setFlow] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [verified, setVerified] = useState(false);
+  const [registered, setRegistered] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const disabled = busy || !isOnline;
 
-  async function begin(provider: "telegram" | "email") {
-    if (intent === "register" && !isValidDisplayName(name)) { setError("Введите имя длиной до 50 символов"); return; }
+  async function begin(provider: "vk" | "email") {
     setBusy(true); setError("");
     try {
-      const result = await startAuth(provider, intent, intent === "register" ? normalizeDisplayName(name) : undefined, provider === "email" ? email : undefined);
-      if (provider === "telegram") {
+      const result = await startAuth(provider, link ? "link" : "login", provider === "email" ? email : undefined);
+      if (provider === "vk") {
         const url = new URL(result.url ?? "");
-        if (url.origin !== "https://oauth.telegram.org" || url.pathname !== "/auth") throw new Error("Не удалось открыть вход через Telegram");
+        if (url.origin !== "https://id.vk.ru" || url.pathname !== "/authorize") throw new Error("Не удалось открыть вход через ВК");
         window.location.assign(url.toString());
       } else { setFlow(result.flow); setCode(""); setVerified(false); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось начать вход"); }
@@ -73,38 +77,59 @@ export function LoginForm({ options, isOnline, link = false, onDone }: { options
     event.preventDefault(); if (!flow) return;
     setBusy(true); setError("");
     try {
-      if (!verified) { await verifyEmailLogin(flow, code); setVerified(true); }
+      if (!verified) {
+        const result = await verifyEmailLogin(flow, code, link);
+        if (result.status === "profile-required") { setNeedsName(true); setFlow(null); setCode(""); return; }
+        setVerified(true);
+      }
       await onDone(); setFlow(null); setCode(""); setVerified(false);
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось подтвердить код"); }
     finally { setBusy(false); }
   }
 
+  async function finishProfile(event: React.FormEvent) {
+    event.preventDefault();
+    if (!registered && !isValidDisplayName(name)) { setError("Введите имя длиной до 50 символов"); return; }
+    setBusy(true); setError("");
+    try {
+      if (!registered) { await completeRegistration(normalizeDisplayName(name)); setRegistered(true); }
+      await onDone();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось открыть профиль"); }
+    finally { setBusy(false); }
+  }
+
+  async function chooseAgain() {
+    setBusy(true); setError("");
+    try { await cancelRegistration(); setNeedsName(false); setName(""); setEmailOpen(false); setVerified(false); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось вернуться к входу"); }
+    finally { setBusy(false); }
+  }
+
   return <div className={styles.entry} aria-busy={busy}>
-    {!link && !flow && <div className={styles.mode}>
-      <button type="button" className={styles.secondary} aria-pressed={intent === "login"} disabled={disabled} onClick={() => { setIntent("login"); setError(""); }}>Войти</button>
-      <button type="button" className={styles.secondary} aria-pressed={intent === "register"} disabled={disabled} onClick={() => { setIntent("register"); setError(""); }}>Создать профиль</button>
-    </div>}
-    {intent === "register" && !flow && <>
-      <p className={styles.hint}>Уже отмечались раньше? Выберите «Войти», чтобы сохранить своих людей и отметки.</p>
+    {needsName ? <form className={styles.entry} onSubmit={event => void finishProfile(event)}>
       <label htmlFor={`${id}-name`}>Как вас зовут?</label>
-      <input id={`${id}-name`} className={styles.input} value={name} onChange={event => setName(limitDisplayNameInput(event.target.value))} autoComplete="name" placeholder="Например, Дима" disabled={disabled} />
-    </>}
-    {flow ? <form className={styles.entry} onSubmit={event => void verify(event)}>
+      <p className={styles.hint}>Вход подтверждён. Осталось выбрать имя для нового профиля.</p>
+      <input id={`${id}-name`} className={styles.input} value={name} onChange={event => setName(limitDisplayNameInput(event.target.value))} autoComplete="name" placeholder="Например, Дима" disabled={disabled || registered} />
+      <button type="submit" className={styles.primary} disabled={disabled || (!registered && !isValidDisplayName(name))}>{busy ? "Открываем…" : registered ? "Открыть профиль" : "Продолжить"}</button>
+      {!registered && <button type="button" className={styles.textButton} disabled={disabled} onClick={() => void chooseAgain()}>Другой способ входа</button>}
+    </form> : flow ? <form className={styles.entry} onSubmit={event => void verify(event)}>
       <label htmlFor={`${id}-otp`}>Код из письма</label>
       <p className={styles.hint}>Отправили на {email}. Введите код здесь — он действует 10 минут. Проверьте также папку «Спам».</p>
       <InputOTP id={`${id}-otp`} maxLength={6} pattern="^[0-9]*$" value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" disabled={disabled}>
         <InputOTPGroup>{Array.from({ length: 6 }, (_, index) => <InputOTPSlot className={styles.otpSlot} key={index} index={index} />)}</InputOTPGroup>
       </InputOTP>
-      <button type="submit" className={styles.primary} disabled={disabled || code.length !== 6}>{busy ? "Проверяем…" : link ? "Привязать почту" : "Продолжить"}</button>
-      <button type="button" className={styles.secondary} disabled={disabled} onClick={() => { setFlow(null); setCode(""); setError(""); }}>Другой адрес или новый код</button>
+      <button type="submit" className={styles.primary} disabled={disabled || (!verified && code.length !== 6)}>{busy ? "Проверяем…" : link ? "Привязать почту" : "Продолжить"}</button>
+      {!verified && <button type="button" className={styles.textButton} disabled={disabled} onClick={() => { setFlow(null); setCode(""); setError(""); }}>Другой адрес или новый код</button>}
     </form> : <>
-      {options.telegram && <button type="button" className={styles.primary} disabled={disabled} onClick={() => void begin("telegram")}><Send size={18} aria-hidden />{link ? "Привязать Telegram" : "Войти через Telegram"}</button>}
+      {options.vk && <button type="button" className={styles.primary} disabled={disabled} onClick={() => void begin("vk")}><span className={styles.vkMark} aria-hidden>VK</span>{link ? "Привязать ВК" : "Войти через ВК"}</button>}
       {options.email && (emailOpen ? <form className={styles.entry} onSubmit={event => { event.preventDefault(); void begin("email"); }}>
         <label htmlFor={`${id}-email`}>Ваша почта</label>
         <input id={`${id}-email`} type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} maxLength={254} required className={styles.input} value={email} onChange={event => setEmail(event.target.value)} disabled={disabled} />
         <button type="submit" className={styles.primary} disabled={disabled || !email.trim()}>{busy ? "Отправляем…" : "Получить код"}</button>
-      </form> : <button type="button" className={styles.secondary} disabled={disabled} onClick={() => setEmailOpen(true)}><Mail size={18} aria-hidden />{link ? "Привязать почту" : "Войти по почте"}</button>)}
+        <button type="button" className={styles.textButton} disabled={disabled} onClick={() => setEmailOpen(false)}>Назад</button>
+      </form> : <button type="button" className={styles.secondary} disabled={disabled} onClick={() => setEmailOpen(true)}><Mail size={18} aria-hidden />{link ? "Привязать почту" : "Войти через почту"}</button>)}
+      {!link && !options.vk && !options.email && <p className={styles.hint}>Вход временно недоступен. Попробуйте позже.</p>}
     </>}
     {!isOnline && <p className={styles.hint}>Для входа нужен интернет.</p>}
     {error && <p className={styles.error} role="alert">{error}</p>}

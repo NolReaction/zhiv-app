@@ -2,6 +2,7 @@
 .trigger,.primary,.copyButton { display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:48px; border:1px solid #b7d8a233; border-radius:16px; padding:12px 16px; font:inherit; font-size:14px; font-weight:750; cursor:pointer; background:#ffffff0a; color:#e9f4e2; }
 .primary {background:#e9f4e2;color:#14200f}
 .trigger {margin-top:16px}
+.trigger[data-context="onboarding"], .trigger[data-context="session-lost"] { border:0; background:transparent; color:#a6ada1; font-size:1rem; font-weight:400; text-decoration:underline; text-underline-offset:.2em; }
 .dialog {max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;border-radius:26px!important;background:#151913!important;color:#f3f5ef!important}
 .title,.description {text-align:left}
 .description {color:#a6ada1!important;line-height:1.6}

@@ -34,7 +34,7 @@ export function RecoveryStarter({context,isOnline,onRecovered}: {
     finally {setBusy(false)}
   }
   return <>
-    <button className={styles.trigger} data-context={context} disabled={!isOnline} onClick={()=>setOpen(true)}><KeyRound size={18}/>{context==="profile"?"Вернуть прежний профиль":"У меня уже есть код восстановления"}</button>
+    <button className={styles.trigger} data-context={context} disabled={!isOnline} onClick={()=>setOpen(true)}>{context==="profile" && <KeyRound size={18}/>} {context==="profile"?"Вернуть прежний профиль":"Не получается войти?"}</button>
     <Dialog open={open} onOpenChange={v=>{if(!v)close()}}>
       <DialogContent className={styles.dialog} aria-busy={busy}>
         <DialogHeader>
@@ -47,7 +47,7 @@ export function RecoveryStarter({context,isOnline,onRecovered}: {
         </> : <form className={styles.codeForm} onSubmit={e=>void redeem(e)}>
           <label htmlFor="restore-code">Личный код восстановления</label>
           <input id="restore-code" className={styles.codeInput} value={code} onChange={e=>setCode(e.target.value)} placeholder="ZHIV-R1-…" type="password" maxLength={80} autoComplete="off" autoCapitalize="none" spellCheck={false} disabled={busy}/>
-          <p>Если к профилю привязан Telegram или почта, закройте это окно и используйте обычный вход. Нет кода и привязки? Если профиль ещё открыт на другом устройстве, создайте код там.</p>
+          <p>Если к профилю привязан ВК или почта, закройте это окно и используйте обычный вход. Нет кода и привязки? Если профиль ещё открыт на другом устройстве, создайте код там.</p>
           <button type="submit" className={styles.primary} disabled={busy || !isOnline || !code.trim()}>{busy?"Восстанавливаем…":"Восстановить профиль"}</button>
         </form>}
         {error?<p role="alert" className={styles.error}>{error}</p>:null}

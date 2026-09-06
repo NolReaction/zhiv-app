@@ -78,6 +78,11 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             c.update("UPDATE account_login_flows SET consumed_at=clock_timestamp(),verifier=NULL,nonce=NULL WHERE token_hash=?", tokenHash)
         }
     }
+    override suspend fun takeVk(tokenHash: ByteArray, browserHash: ByteArray): LoginFlow = tx { c ->
+        readFlow(c, tokenHash, browserHash, "vk").also {
+            c.update("UPDATE account_login_flows SET consumed_at=clock_timestamp(),verifier=NULL,nonce=NULL WHERE token_hash=?", tokenHash)
+        }
+    }
     override suspend fun verifyEmail(tokenHash: ByteArray, browserHash: ByteArray, codeHash: ByteArray): LoginFlow {
         // A wrong code commits its attempt count; throwing inside the transaction would undo it.
         val flow = tx { c ->
@@ -94,6 +99,35 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
     }
 
     override suspend fun finish(flow: LoginFlow, subject: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID = tx { c ->
+        finishInTransaction(c, flow, subject, newSessionHash, sessionDays, label)
+    }
+
+    override suspend fun prepareRegistration(flow: LoginFlow, subject: String, ticketHash: ByteArray) = tx { c ->
+        require(flow.intent == "login")
+        c.update("DELETE FROM account_registration_tickets WHERE token_hash IN (SELECT token_hash FROM account_registration_tickets WHERE expires_at<clock_timestamp() LIMIT 100)")
+        c.update("INSERT INTO account_registration_tickets(token_hash,browser_hash,provider,subject) VALUES (?,?,?,?)", ticketHash, flow.browserHash, flow.provider, subject)
+        Unit
+    }
+
+    override suspend fun hasRegistration(ticketHash: ByteArray, browserHash: ByteArray): Boolean = tx { c ->
+        c.query("SELECT browser_hash FROM account_registration_tickets WHERE token_hash=? AND consumed_at IS NULL AND expires_at>clock_timestamp()", ticketHash) {
+            MessageDigest.isEqual(it.getBytes(1), browserHash)
+        } ?: false
+    }
+
+    override suspend fun completeRegistration(ticketHash: ByteArray, browserHash: ByteArray, displayName: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID = tx { c ->
+        val name = loginDisplayName(displayName) ?: throw AuthFailure("INVALID_DISPLAY_NAME", "Введите имя длиной до 50 символов")
+        val pending = c.query("SELECT * FROM account_registration_tickets WHERE token_hash=? AND consumed_at IS NULL AND expires_at>clock_timestamp() FOR UPDATE", ticketHash) { r ->
+            LoginFlow(ticketHash, r.getBytes("browser_hash"), r.getString("provider"), "register", null, name, r.getString("subject"), null, null, null)
+        } ?: invalid()
+        if (!MessageDigest.isEqual(pending.browserHash, browserHash)) invalid()
+        // Identity lookup, optional creation, session and ticket consumption commit together.
+        val user = finishInTransaction(c, pending, requireNotNull(pending.subject), newSessionHash, sessionDays, label)
+        c.update("UPDATE account_registration_tickets SET consumed_at=clock_timestamp() WHERE token_hash=?", ticketHash)
+        user
+    }
+
+    private fun finishInTransaction(c: Connection, flow: LoginFlow, subject: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID {
         // Serialize initial registrations and linking for this exact verified identity.
         lock(c, "identity:${flow.provider}:$subject")
         val owner = c.query("SELECT user_id FROM account_login_identities WHERE provider=? AND subject=?", flow.provider, subject) { it.getObject(1, UUID::class.java) }
@@ -122,7 +156,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             if (count >= 100) throw AuthFailure("AUTH_SESSION_LIMIT", "Закройте ненужные сеансы в разделе «Устройства»", 409)
             c.update("INSERT INTO app_sessions(user_id,token_hash,device_label,expires_at) VALUES (?,?,?,clock_timestamp()+(?*interval '1 day'))", userId, newSessionHash, label, sessionDays)
         }
-        userId
+        return userId
     }
 
     override suspend fun access(sessionHash: ByteArray): AccountAccess = tx { c ->
@@ -132,7 +166,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             s.setObject(1, user); s.executeQuery().use { r -> buildList {
                 while (r.next()) {
                     val provider = r.getString(1); val subject = r.getString(2)
-                    add(LoginMethod(provider, if (provider == "email") subject.take(1) + "•••@" + subject.substringAfter('@') else "Telegram"))
+                    add(LoginMethod(provider, when (provider) { "email" -> subject.take(1) + "•••@" + subject.substringAfter('@'); "vk" -> "ВКонтакте"; else -> "Telegram" }))
                 }
             } }
         }

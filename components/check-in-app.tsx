@@ -1141,7 +1141,7 @@ export function CheckInApp() {
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="session-lost-title">Войдите в свой профиль</h1>
           <p className={styles.intro}>
-            Используйте привязанный Telegram или почту. Ваши люди и отметки останутся на месте.
+            Используйте привязанный ВК или почту. Ваши люди и отметки останутся на месте.
           </p>
           <AccountEntry isOnline={isOnline} onAuthenticated={adoptMe}>
             <p className={styles.intro}>Для входа используйте сохранённый резервный код.</p>
@@ -1151,13 +1151,6 @@ export function CheckInApp() {
             isOnline={isOnline}
             onRecovered={adoptMe}
           />
-          <button
-            className={`${styles.retryButton} ${styles.newProfileButton}`}
-            type="button"
-            onClick={() => setScreen("onboarding")}
-          >
-            Создать новый профиль
-          </button>
         </section>
         <CapabilityLanding
           authenticated={false}
@@ -1173,10 +1166,7 @@ export function CheckInApp() {
         <section className={styles.onboarding} aria-labelledby="welcome-title">
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
           <h1 id="welcome-title">Я здесь</h1>
-          <p className={styles.intro}>Войдите в свой профиль или создайте новый.</p>
-          <p className={styles.recoveryHint}>
-            Старый профиль ещё без Telegram и почты? Привяжите их в его настройках или используйте резервный код ниже.
-          </p>
+          <p className={styles.intro}>Выберите удобный способ входа.</p>
           <AccountEntry isOnline={isOnline} onAuthenticated={adoptMe}>
           <form onSubmit={handleBootstrap} className={styles.form} noValidate>
             <label htmlFor="display-name" className={styles.srOnly}>
