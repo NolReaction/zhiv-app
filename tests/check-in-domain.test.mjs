@@ -157,23 +157,23 @@ test("shows an exact clamped idle budget and resets it on every tap", () => {
   );
   assert.deepEqual(
     clicker.getClickerSeriesTimer(run, 1_000),
-    { remainingMs: 30_000, remainingRatio: 1 },
+    { remainingMs: 10_000, remainingRatio: 1 },
   );
   assert.deepEqual(
-    clicker.getClickerSeriesTimer(run, 16_000),
-    { remainingMs: 15_000, remainingRatio: 0.5 },
+    clicker.getClickerSeriesTimer(run, 6_000),
+    { remainingMs: 5_000, remainingRatio: 0.5 },
   );
-  assert.equal(clicker.getClickerSeriesTimer(run, 30_999).remainingMs, 1);
+  assert.equal(clicker.getClickerSeriesTimer(run, 10_999).remainingMs, 1);
   assert.deepEqual(
-    clicker.getClickerSeriesTimer(run, 31_000),
+    clicker.getClickerSeriesTimer(run, 11_000),
     { remainingMs: 0, remainingRatio: 0 },
   );
   assert.equal(clicker.getClickerSeriesTimer(run, 0).remainingRatio, 1);
 
-  run = clicker.advanceClickerRun(run, 16_000).progress;
+  run = clicker.advanceClickerRun(run, 6_000).progress;
   assert.deepEqual(
-    clicker.getClickerSeriesTimer(run, 16_000),
-    { remainingMs: 30_000, remainingRatio: 1 },
+    clicker.getClickerSeriesTimer(run, 6_000),
+    { remainingMs: 10_000, remainingRatio: 1 },
   );
 });
 
@@ -205,7 +205,7 @@ test("keeps an active clicker run local even after server cooldown ends", () => 
   assert.equal(clicker.planClickerTap(active, false, 1_000, true), "REQUEST_SERVER");
 });
 
-test("ends a series exactly after thirty idle seconds and starts the next at one", () => {
+test("ends a series exactly after ten idle seconds and starts the next at one", () => {
   const eventId = "4a272b65-8ada-4b0d-aad8-6a6ef845f41b";
   const started = clicker.advanceClickerRun(
     clicker.createClickerRun(0),
@@ -215,14 +215,14 @@ test("ends a series exactly after thirty idle seconds and starts the next at one
   ).progress;
   const beforeDeadline = clicker.expireClickerSeries(
     started,
-    1_000 + clicker.CLICKER_IDLE_RESET_MS - 1,
+    10_999,
   );
   assert.equal(beforeDeadline.progress, started);
   assert.equal(beforeDeadline.finishedSeries, null);
 
   const atDeadline = clicker.expireClickerSeries(
     started,
-    1_000 + clicker.CLICKER_IDLE_RESET_MS,
+    11_000,
   );
   assert.equal(atDeadline.progress.activeSeries, null);
   assert.equal(atDeadline.progress.bestSeries, 12);

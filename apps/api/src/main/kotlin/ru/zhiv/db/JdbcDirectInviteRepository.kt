@@ -303,9 +303,10 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                   FROM circles c WHERE c.id = ? AND c.kind = 'DIRECT' AND c.archived_at IS NULL
                     AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
             )
-            SELECT direct_person.id circle_id, direct_person.created_at, other.public_id, other.display_name,
-                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_text END AS status_text,
-                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_updated_at END AS status_updated_at,
+            SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id circle_id, direct_person.created_at, other.public_id, other.display_name,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
                    mine.sharing_mode my_sharing_mode, theirs.sharing_mode their_sharing_mode,
                    CASE WHEN theirs.sharing_mode = 'OFF' THEN 'HIDDEN'
                         WHEN latest.checked_at IS NOT NULL THEN 'AVAILABLE'
@@ -356,6 +357,8 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
         SharingMode.valueOf(getString("their_sharing_mode")), PersonCheckInState.valueOf(getString("check_in_state")),
         getObject("last_check_in_at", OffsetDateTime::class.java),
         statusText=getString("status_text"), statusUpdatedAt=getObject("status_updated_at", OffsetDateTime::class.java),
+        statusExpiresAt=getObject("status_expires_at", OffsetDateTime::class.java),
+        isFavorite=getBoolean("is_favorite"),
     )
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }

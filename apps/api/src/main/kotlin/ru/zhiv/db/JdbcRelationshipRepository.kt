@@ -15,6 +15,7 @@ import ru.zhiv.relationships.RemovedSnapshot
 import ru.zhiv.relationships.RequestAction
 import ru.zhiv.relationships.RequestDirection
 import ru.zhiv.relationships.SharingMode
+import ru.zhiv.relationships.FavoriteSnapshot
 import ru.zhiv.relationships.SharingSnapshot
 import ru.zhiv.relationships.UserLookupSnapshot
 import ru.zhiv.relationships.UserReference
@@ -277,6 +278,31 @@ class JdbcRelationshipRepository(
                     serverTime = now,
                 ),
             )
+        }
+    }
+
+    override suspend fun updateFavorite(sessionTokenHash: ByteArray, circleId: UUID, isFavorite: Boolean): RelationshipResult<FavoriteSnapshot> = io {
+        inTransaction { connection ->
+            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+                ?: return@inTransaction RelationshipResult.Unauthorized
+            val initialCircle = findCircleForUser(connection, circleId, currentUserId, lock = false)
+                ?: return@inTransaction RelationshipResult.NotFound
+            lockUsers(connection, setOf(initialCircle.lowUserId, initialCircle.highUserId))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
+            val circle = findCircleForUser(connection, circleId, currentUserId, lock = true)
+                ?: return@inTransaction RelationshipResult.NotFound
+            if (circle.lowUserId != initialCircle.lowUserId
+                || circle.highUserId != initialCircle.highUserId
+            ) return@inTransaction RelationshipResult.Conflict
+            if (circle.archivedAt != null) return@inTransaction RelationshipResult.NotFound
+            val sql = if (isFavorite) "INSERT INTO direct_person_favorites(user_id, circle_id) VALUES (?, ?) ON CONFLICT DO NOTHING"
+                else "DELETE FROM direct_person_favorites WHERE user_id = ? AND circle_id = ?"
+            connection.prepareStatement(sql).use {
+                it.setObject(1, currentUserId); it.setObject(2, circleId); it.executeUpdate()
+            }
+            RelationshipResult.Success(FavoriteSnapshot(circleId, isFavorite, serverTime(connection)))
         }
     }
 
@@ -641,10 +667,11 @@ class JdbcRelationshipRepository(
                  WHERE c.kind = 'DIRECT' AND c.archived_at IS NULL
                    AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
             )
-            SELECT direct_people.id AS circle_id, direct_people.created_at,
+            SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_people.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_people.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_people.id AS circle_id, direct_people.created_at,
                    other.public_id, other.display_name,
-                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_text END AS status_text,
-                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_updated_at END AS status_updated_at,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
                    mine.sharing_mode AS my_sharing_mode,
                    theirs.sharing_mode AS their_sharing_mode,
                    CASE
@@ -677,7 +704,7 @@ class JdbcRelationshipRepository(
                    ORDER BY event.checked_at DESC
                    LIMIT 1
               ) latest ON TRUE
-             ORDER BY lower(other.display_name), other.public_id
+             ORDER BY is_favorite DESC, lower(other.display_name), other.public_id
             """.trimIndent(),
         ).use { statement ->
             statement.setObject(1, currentUserId)
@@ -764,10 +791,11 @@ class JdbcRelationshipRepository(
              WHERE c.id = ? AND c.kind = 'DIRECT' AND c.archived_at IS NULL
                AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
         )
-        SELECT direct_person.id AS circle_id, direct_person.created_at,
+        SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id AS circle_id, direct_person.created_at,
                other.public_id, other.display_name,
-                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_text END AS status_text,
-                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since THEN other.status_updated_at END AS status_updated_at,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
+                   CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
                mine.sharing_mode AS my_sharing_mode,
                theirs.sharing_mode AS their_sharing_mode,
                CASE
@@ -883,6 +911,8 @@ class JdbcRelationshipRepository(
     private fun ResultSet.toPersonSnapshot() = PersonSnapshot(
         statusText = getString("status_text"),
         statusUpdatedAt = getObject("status_updated_at", OffsetDateTime::class.java),
+        statusExpiresAt = getObject("status_expires_at", OffsetDateTime::class.java),
+        isFavorite = getBoolean("is_favorite"),
         circleId = getObject("circle_id", UUID::class.java),
         user = UserReference(getString("public_id"), getString("display_name")),
         connectedAt = getObject("created_at", OffsetDateTime::class.java),

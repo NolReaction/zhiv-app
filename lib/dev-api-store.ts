@@ -1,5 +1,7 @@
 import type {
   CheckInResponse,
+  FavoriteResponse,
+  UserStatus,
   DailyStreak,
   DirectRequest,
   DirectRequestActionResponse,
@@ -20,6 +22,7 @@ import type {
   SharingResponse,
   UserLookupResponse,
 } from "@/lib/check-in-contract";
+import { activeUserStatus } from "@/lib/user-status";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
 import {
@@ -33,7 +36,7 @@ const REQUEST_TTL_MS = 7 * 24 * 60 * 60_000;
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 type UserRecord = PublicUser & {
-  status?: { text: string; updatedAt: string } | null;
+  status?: UserStatus | null;
   statusWrites?: Map<string, string>;
   id: string;
   timezoneId: string;
@@ -119,6 +122,7 @@ type DirectInviteLinkRecord = {
 type RecoveryCodeRecord = {userId:string;active:boolean;consumedAt?:number;retryHash?:string;sessionToken?:string};
 
 type Store = {
+  favoritePeople: Set<string>;
   recipientSharing: Map<string, SharingRecord>;
   users: Map<string, UserRecord>;
   publicIds: Map<string, string>;
@@ -152,6 +156,7 @@ const globalStore = globalThis as typeof globalThis & { __zhivDevStore?: Store }
 
 function store(): Store {
   globalStore.__zhivDevStore ??= {
+    favoritePeople: new Set(),
     recipientSharing: new Map(),
     users: new Map(),
     publicIds: new Map(),
@@ -172,6 +177,7 @@ function store(): Store {
   globalStore.__zhivDevStore.directInviteLinks ??= new Map();
   globalStore.__zhivDevStore.recoveryCodes ??= new Map();
   globalStore.__zhivDevStore.recipientSharing ??= new Map();
+  globalStore.__zhivDevStore.favoritePeople ??= new Set();
   return globalStore.__zhivDevStore;
 }
 
@@ -213,7 +219,7 @@ function asMe(user: UserRecord, serverTime = new Date()): MeResponse {
     ? new Date(Date.parse(user.displayNameChangedAt) + 24 * 60 * 60_000)
     : null;
   return {
-    status: user.status ?? null,
+    status: activeUserStatus(user.status, serverTime.getTime()),
     user: publicUser(user),
     lastCheckInAt: user.lastCheckInAt,
     checkInCount: [...store().checkIns.values()].filter((event) => event.userId === user.id).length,
@@ -283,7 +289,7 @@ function setRecipientSharing(actor: string, recipient: string, mode: SharingMode
 
 function visibleStatus(user: UserRecord, recipient: string) {
   const permission = effectiveRecipientSharing(user.id, recipient);
-  return permission.mode !== "OFF" && permission.enabledSince && user.status && user.status.updatedAt >= permission.enabledSince ? user.status : null;
+  return permission.mode !== "OFF" && permission.enabledSince && user.status && user.status.updatedAt >= permission.enabledSince ? activeUserStatus(user.status, Date.now()) : null;
 }
 
 function sharingKey(circleId: string, userId: string): string {
@@ -433,7 +439,7 @@ function groupMemberDto(
     ? store().sharing.get(sharingKey(membership.groupId,currentUserId)) ?? { mode: "OFF" as const, enabledSince: null }
     : effectiveRecipientSharing(membership.userId,currentUserId);
   return {
-    status: membership.userId === currentUserId ? user.status ?? null : visibleStatus(user,currentUserId),
+    status: membership.userId === currentUserId ? activeUserStatus(user.status, Date.now()) : visibleStatus(user,currentUserId),
     membershipId: membership.id,
     user: publicUser(user),
     role: membership.role,
@@ -538,6 +544,7 @@ function personDto(circle: DirectCircleRecord, currentUserId: string): Person {
     circleId: circle.id,
     user: publicUser(relatedUser),
     status: visibleStatus(relatedUser,currentUserId),
+    isFavorite: store().favoritePeople.has(sharingKey(circle.id, currentUserId)),
     connectedAt: circle.createdAt,
     mySharingMode: mySharing.mode,
     theirSharingMode: theirSharing.mode,
@@ -646,20 +653,33 @@ export type DevCheckInResult =
     }
   | { kind: "unauthorized" };
 
-export function updateDevStatus(token: string | undefined, text: string, key: string): DevResult<MeResponse> {
+export function updateDevStatus(token: string | undefined, text: string, key: string, expiresInMinutes: number | null = null): DevResult<MeResponse> {
   const user = sessionUser(token);
   if (!user) return { kind: "unauthorized" };
+  const duration = text ? expiresInMinutes : null;
+  const fingerprint = JSON.stringify([text, duration]);
   user.statusWrites ??= new Map();
   if (user.statusWrites.has(key)) {
-    return user.statusWrites.get(key) === text
+    return user.statusWrites.get(key) === fingerprint
       ? { kind: "ok", value: asMe(user) }
       : { kind: "conflict" };
   }
-  if ((user.status?.text ?? "") !== text) {
-    user.status = text ? { text, updatedAt: new Date().toISOString() } : null;
-  }
-  user.statusWrites.set(key, text);
-  return { kind: "ok", value: asMe(user) };
+  const now = new Date();
+  user.status = text ? { text, updatedAt: now.toISOString(), expiresAt: duration === null ? null : new Date(now.getTime() + duration * 60_000).toISOString() } : null;
+  user.statusWrites.set(key, fingerprint);
+  return { kind: "ok", value: asMe(user, now) };
+}
+
+export function updateDevFavorite(token: string | undefined, circleId: string, isFavorite: boolean): DevResult<FavoriteResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const circle = store().circles.get(circleId);
+  if (!circle || circle.archivedAt !== null) return { kind: "not-found" };
+  if (circle.lowUserId !== currentUser.id && circle.highUserId !== currentUser.id) return { kind: "forbidden" };
+  const key = sharingKey(circleId, currentUser.id);
+  if (isFavorite) store().favoritePeople.add(key);
+  else store().favoritePeople.delete(key);
+  return { kind: "ok", value: { circleId, isFavorite, serverTime: new Date().toISOString() } };
 }
 
 export function createDevCheckIn(
@@ -792,7 +812,7 @@ export function listDevPeople(token: string | undefined): DevResult<PeopleRespon
   const currentStore = store();
   const people = activeCirclesForUser(currentUser.id)
     .map((circle) => personDto(circle, currentUser.id))
-    .sort((first, second) => first.user.displayName.localeCompare(second.user.displayName, "ru"));
+    .sort((first, second) => Number(second.isFavorite) - Number(first.isFavorite) || first.user.displayName.localeCompare(second.user.displayName, "ru") || first.user.publicId.localeCompare(second.user.publicId));
   const pending = [...currentStore.directRequests.values()].filter(
     (request) =>
       request.status === "PENDING" &&

@@ -1028,6 +1028,15 @@ export function CheckInApp() {
     void handleCheckIn();
   }
 
+  useEffect(() => {
+    const statuses = [me?.status, ...(people?.people.map(person => person.status) ?? []), ...(groups?.groups.flatMap(group => group.members.map(member => member.status)) ?? [])];
+    const deadlines = statuses.map(status => status?.expiresAt ? Date.parse(status.expiresAt) : NaN)
+      .filter(deadline => Number.isFinite(deadline) && deadline > clientNowMs + clockOffsetMs);
+    if (!deadlines.length) return;
+    const timer = window.setTimeout(() => setClientNowMs(Date.now()), Math.max(0, Math.min(...deadlines) - Date.now() - clockOffsetMs));
+    return () => window.clearTimeout(timer);
+  }, [me?.status, people, groups, clientNowMs, clockOffsetMs]);
+
   const adjustedNow = clientNowMs + clockOffsetMs;
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonPalette = getCheckInPalette(ageMs);
@@ -1394,7 +1403,7 @@ export function CheckInApp() {
 
           <div className={styles.statusBlock}>
             <p className={styles.serverFact}>{serverStatus}</p>
-            {me ? <StatusEditor me={me} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
+            {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
             <p
               className={styles.status}
               role="status"

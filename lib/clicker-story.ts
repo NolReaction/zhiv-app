@@ -1,4 +1,4 @@
-export const CLICKER_IDLE_RESET_MS = 30_000;
+export const CLICKER_IDLE_RESET_MS = 10_000;
 export const CLICKER_MAX_TAP_COUNT = 100_000;
 
 export const CLICKER_MILESTONES = [

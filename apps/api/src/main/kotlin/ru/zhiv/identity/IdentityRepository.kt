@@ -16,6 +16,7 @@ data class UserSnapshot(
     val serverTime: OffsetDateTime,
     val statusText: String? = null,
     val statusUpdatedAt: OffsetDateTime? = null,
+    val statusExpiresAt: OffsetDateTime? = null,
 )
 
 sealed interface DisplayNameUpdateResult {
@@ -31,7 +32,7 @@ sealed interface DisplayNameUpdateResult {
 }
 
 interface IdentityRepository {
-    suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID): DisplayNameUpdateResult =
+    suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID, expiresInMinutes: Int? = null): DisplayNameUpdateResult =
         throw UnsupportedOperationException("Status writes not implemented")
 
     suspend fun bootstrap(

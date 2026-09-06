@@ -73,6 +73,28 @@ assert.equal(unchanged.data.checkInCount, marked.data.checkInCount);
 assert.equal(unchanged.data.lastCheckInAt, marked.data.lastCheckInAt);
 await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, source: "https://untrusted.invalid", body: { text: "no" }, expected: 403 });
 
+// Optional lifetime and private favorites use the production DTOs and restricted DB role.
+const timedKey = randomUUID();
+const timed = await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, key: timedKey, body: { text: "Гуляю", expiresInMinutes: 120 } });
+assert.equal(Date.parse(timed.data.status.expiresAt) - Date.parse(timed.data.status.updatedAt), 7_200_000);
+const timedRetry = await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, key: timedKey, body: { text: "Гуляю", expiresInMinutes: 120 } });
+assert.deepEqual(timedRetry.data.status, timed.data.status);
+await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, key: timedKey, body: { text: "Гуляю", expiresInMinutes: 60 }, expected: 409 });
+for (const expiresInMinutes of [0, -1, 60.5, "120", true, {}, [], 1441]) {
+  await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, body: { text: "Гуляю", expiresInMinutes }, expected: 400 });
+}
+assert.deepEqual((await api("GET", "/api/v1/me", { cookie: owner.cookie })).data.status, timed.data.status);
+assert.deepEqual((await people()).data.people[0].status, timed.data.status);
+await api("PATCH", "/api/v1/people/" + circle + "/favorite", { cookie: owner.cookie, body: { isFavorite: true } });
+assert.equal((await api("GET", "/api/v1/people", { cookie: owner.cookie })).data.people[0].isFavorite, true);
+assert.equal((await people()).data.people[0].isFavorite, false);
+await api("PATCH", "/api/v1/people/" + circle + "/favorite", { cookie: owner.cookie, body: { isFavorite: false } });
+assert.equal((await api("GET", "/api/v1/people", { cookie: owner.cookie })).data.people[0].isFavorite, false);
+for (const isFavorite of ["yes", "true", "false", 1, null, {}, []]) {
+  await api("PATCH", "/api/v1/people/" + circle + "/favorite", { cookie: owner.cookie, body: { isFavorite }, expected: 400 });
+}
+assert.equal((await api("GET", "/api/v1/people", { cookie: owner.cookie })).data.people[0].isFavorite, false);
+
 const code = "ZHIV-R1-" + randomBytes(32).toString("base64url");
 const retrySecret = randomBytes(32).toString("base64url");
 await api("PUT", "/api/v1/recovery-code", { cookie: owner.cookie, body: { code } });

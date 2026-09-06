@@ -2,7 +2,7 @@
 
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMemo, useReducer, useRef, useState } from "react";
-import { Check, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Trash2, UserRound, X } from "lucide-react";
+import { Check, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
 import QRCode from "react-qr-code";
 import type {
   DirectRequest,
@@ -19,6 +19,7 @@ import {
   removePerson,
   sendDirectRequest,
   updatePersonSharing,
+  updatePersonFavorite,
 } from "@/lib/check-in-api";
 import {
   capabilityUrl,
@@ -62,6 +63,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
+import { UserStatusDisplay } from "./user-status-display";
 import styles from "./people-view.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
@@ -556,7 +558,7 @@ export function PeopleView({
                         </div>
                         <div className={styles.cardText}>
                           <strong>{person.user.displayName}</strong>
-                          {person.status ? <p className={styles.userStatus}>{person.status.text}</p> : null}
+                          <UserStatusDisplay status={person.status} nowMs={nowMs} />
                           <span className={styles.personStatus}>
                             <i style={{ background: statusColor }} />
                             {formatDirectPersonCheckIn(
@@ -566,6 +568,13 @@ export function PeopleView({
                             )}
                           </span>
                         </div>
+                        <div className={styles.personActions}>
+                          <button className={`${styles.iconButton} ${styles.favoriteButton}`} type="button"
+                            aria-label={person.isFavorite ? `Убрать ${person.user.displayName} из избранного` : `Добавить ${person.user.displayName} в избранное`}
+                            aria-pressed={Boolean(person.isFavorite)} disabled={Boolean(pending)}
+                            onClick={() => void runMutation(`favorite:${person.circleId}`, () => updatePersonFavorite(person.circleId, !person.isFavorite, createUuidV4()))}>
+                            <Star size={18} fill={person.isFavorite ? "currentColor" : "none"} />
+                          </button>
                         <button
                           className={styles.iconButton}
                           type="button"
@@ -574,6 +583,7 @@ export function PeopleView({
                         >
                           {copiedId === person.user.publicId ? <Check size={17} /> : <Copy size={17} />}
                         </button>
+                        </div>
                       </div>
                       <div className={styles.personBottom}>
                         <label className={styles.sharingLabel}>
@@ -586,7 +596,6 @@ export function PeopleView({
                             </small>
                           </span>
                           <Switch
-                            className={styles.sharingSwitch}
                             checked={isSharing}
                             disabled={Boolean(pending)}
                             onCheckedChange={(checked) => void handleSharing(person, checked)}

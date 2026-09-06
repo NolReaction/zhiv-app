@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   ApiErrorResponse,
+  FavoriteResponse,
   CheckInResponse,
   ClickerSeriesEvent,
   CooldownResponse,
@@ -40,8 +41,10 @@ const profileStateSchema = z.object({
   displayNameChangeAvailableAt: z.string().datetime().nullable(),
 });
 
+const userStatusSchema = z.object({ text: z.string().max(240), updatedAt: z.string().datetime(), expiresAt: z.string().datetime().nullable().default(null) });
+
 const meSchema: z.ZodType<MeResponse> = z.object({
-  status: z.object({ text: z.string().max(240), updatedAt: z.string().datetime() }).nullable().default(null),
+  status: userStatusSchema.nullable().default(null),
   user: userSchema,
   lastCheckInAt: z.string().datetime().nullable(),
   checkInCount: z.number().int().nonnegative().safe(),
@@ -84,7 +87,8 @@ const directRequestSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 const personSchema = z.object({
-  status: z.object({ text: z.string().max(240), updatedAt: z.string().datetime() }).nullable().default(null),
+  isFavorite: z.boolean().default(false),
+  status: userStatusSchema.nullable().default(null),
   circleId: z.string().uuid(),
   user: userSchema,
   connectedAt: z.string().datetime(),
@@ -152,7 +156,7 @@ const groupInviteSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 const groupMemberSchema = z.object({
-  status: z.object({ text: z.string().max(240), updatedAt: z.string().datetime() }).nullable().default(null),
+  status: userStatusSchema.nullable().default(null),
   membershipId: z.string().uuid(),
   user: userSchema,
   role: z.enum(["OWNER", "ADMIN", "MEMBER"]),
@@ -322,11 +326,11 @@ export function updateMyDisplayName(
   });
 }
 
-export function updateMyStatus(text: string, idempotencyKey: string): Promise<MeResponse> {
+export function updateMyStatus(text: string, idempotencyKey: string, expiresInMinutes: number | null = null): Promise<MeResponse> {
   return request<MeResponse>("/api/v1/me/status", meSchema, {
     method: "PUT",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, expiresInMinutes }),
   });
 }
 
@@ -540,4 +544,11 @@ export function activateRecoveryCode(code: string): Promise<{ active: boolean }>
 }
 export function redeemRecoveryCode(code: string, retrySecret: string): Promise<MeResponse> {
   return request("/api/v1/recovery-code/redeem", meSchema, {method:"POST",body:JSON.stringify({code,retrySecret})});
+}
+
+export function updatePersonFavorite(circleId: string, isFavorite: boolean, idempotencyKey: string): Promise<FavoriteResponse> {
+  return request<FavoriteResponse>(`/api/v1/people/${encodeURIComponent(circleId)}/favorite`,
+    z.object({ circleId: z.string().uuid(), isFavorite: z.boolean(), serverTime: z.string().datetime() }), {
+      method: "PATCH", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ isFavorite }),
+    });
 }

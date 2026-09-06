@@ -31,6 +31,7 @@ data class GroupMemberSnapshot(
     val isMe: Boolean,
     val statusText: String? = null,
     val statusUpdatedAt: OffsetDateTime? = null,
+    val statusExpiresAt: OffsetDateTime? = null,
 )
 
 data class GroupInviteSnapshot(

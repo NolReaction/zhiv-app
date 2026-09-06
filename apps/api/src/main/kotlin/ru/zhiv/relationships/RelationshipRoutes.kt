@@ -26,6 +26,10 @@ import ru.zhiv.http.PeopleResponse
 import ru.zhiv.http.PersonDto
 import ru.zhiv.http.PublicUserDto
 import ru.zhiv.http.SharingResponse
+import ru.zhiv.http.UpdateFavoriteRequest
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import ru.zhiv.http.FavoriteResponse
 import ru.zhiv.http.UpdateSharingRequest
 import ru.zhiv.http.UserLookupResponse
 import ru.zhiv.http.isTrustedWrite
@@ -109,6 +113,33 @@ fun Route.relationshipRoutes(
         requestActionRoute("accept", RequestAction.ACCEPTED, repository, tokenCodec, config)
         requestActionRoute("reject", RequestAction.REJECTED, repository, tokenCodec, config)
         requestActionRoute("cancel", RequestAction.CANCELLED, repository, tokenCodec, config)
+
+        route("/api/v1/people/{circleId}/favorite") {
+            install(RequestBodyLimit) { bodyLimit { 1_024 } }
+            patch {
+                call.noStore()
+                if (!call.requireTrustedWrite(config)) return@patch
+                if (call.requireIdempotencyKey() == null) return@patch
+                val sessionHash = call.sessionHash(config, tokenCodec) ?: return@patch
+                val circleId = parseCanonicalUuid(call.parameters["circleId"])
+                if (circleId == null) {
+                    call.respondError(HttpStatusCode.BadRequest, "INVALID_CIRCLE_ID", "Некорректная связь")
+                    return@patch
+                }
+                val body = call.receive<UpdateFavoriteRequest>()
+                val isFavorite = (body.isFavorite as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
+                if (isFavorite == null) {
+                    call.respondError(HttpStatusCode.BadRequest, "INVALID_FAVORITE", "Укажите, закрепить ли человека")
+                    return@patch
+                }
+                when (val result = repository.updateFavorite(sessionHash, circleId, isFavorite)) {
+                    is RelationshipResult.Success -> call.respond(FavoriteResponse(
+                        result.value.circleId.toString(), result.value.isFavorite, result.value.serverTime.toInstant().toString(),
+                    ))
+                    else -> call.respondRelationshipError(result)
+                }
+            }
+        }
 
         route("/api/v1/people/{circleId}/sharing") {
             install(RequestBodyLimit) {
@@ -283,7 +314,8 @@ private fun DirectRequestSnapshot.toDto() = DirectRequestDto(
 )
 
 private fun PersonSnapshot.toDto() = PersonDto(
-    status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text,it.toInstant().toString()) } },
+    isFavorite = isFavorite,
+    status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text,it.toInstant().toString(),statusExpiresAt?.toInstant()?.toString()) } },
     circleId = circleId.toString(),
     user = user.toDto(),
     connectedAt = connectedAt.toInstant().toString(),

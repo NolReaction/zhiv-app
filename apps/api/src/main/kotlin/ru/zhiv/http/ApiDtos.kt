@@ -1,6 +1,7 @@
 package ru.zhiv.http
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class PublicUserDto(
@@ -20,10 +21,10 @@ data class MeResponse(
 )
 
 @Serializable
-data class UserStatusDto(val text: String, val updatedAt: String)
+data class UserStatusDto(val text: String, val updatedAt: String, val expiresAt: String? = null)
 
 @Serializable
-data class UpdateStatusRequest(val text: String)
+data class UpdateStatusRequest(val text: String, val expiresInMinutes: JsonElement? = null)
 
 @Serializable
 data class DailyStreakDto(
@@ -114,6 +115,7 @@ data class DirectRequestDto(
 
 @Serializable
 data class PersonDto(
+    val isFavorite: Boolean = false,
     val circleId: String,
     val user: PublicUserDto,
     val connectedAt: String,
@@ -255,3 +257,9 @@ data class DirectInviteRedeemResponse(
     val replayed: Boolean,
     val serverTime: String,
 )
+
+@Serializable
+data class UpdateFavoriteRequest(val isFavorite: JsonElement)
+
+@Serializable
+data class FavoriteResponse(val circleId: String, val isFavorite: Boolean, val serverTime: String)

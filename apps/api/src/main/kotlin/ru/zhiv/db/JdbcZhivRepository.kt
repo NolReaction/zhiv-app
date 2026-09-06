@@ -123,7 +123,9 @@ class JdbcZhivRepository(
             SELECT clock_timestamp() AS server_time
         )
         SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
-               u.status_text, u.status_updated_at,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
                (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
                streak.current_days, streak.longest_days, streak.is_active,
                streak.renew_by, u.display_name_changed_at,
@@ -213,7 +215,9 @@ class JdbcZhivRepository(
                         SELECT clock_timestamp() AS server_time
                     )
                     SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
-                           u.status_text, u.status_updated_at,
+                           CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
                            (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
                            streak.current_days, streak.longest_days, streak.is_active,
                            streak.renew_by, u.display_name_changed_at,
@@ -290,23 +294,27 @@ class JdbcZhivRepository(
         }
     }
 
-    override suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID): DisplayNameUpdateResult = withContext(Dispatchers.IO) {
+    override suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID, expiresInMinutes: Int?): DisplayNameUpdateResult = withContext(Dispatchers.IO) {
+        require(expiresInMinutes == null || expiresInMinutes in setOf(60, 120, 240, 480, 1440))
         inTransaction { connection ->
             val user = lockUser(connection, sessionTokenHash)
                 ?: return@inTransaction DisplayNameUpdateResult.Unauthorized
-            val previous = connection.prepareStatement("SELECT status_text FROM user_status_write_keys WHERE user_id = ? AND idempotency_key = ?").use {
+            val duration = if (text.isEmpty()) null else expiresInMinutes
+            val previous = connection.prepareStatement("SELECT status_text, expires_in_minutes FROM user_status_write_keys WHERE user_id = ? AND idempotency_key = ?").use {
                 it.setObject(1, user.userId); it.setObject(2, idempotencyKey)
-                it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+                it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) to (rows.getObject(2) as? Int) else null }
             }
-            if (previous != null && previous != text) return@inTransaction DisplayNameUpdateResult.IdempotencyConflict
+            if (previous != null && previous != (text to duration)) return@inTransaction DisplayNameUpdateResult.IdempotencyConflict
             if (previous == null) {
-                connection.prepareStatement("UPDATE app_users SET status_text = NULLIF(?, ''), status_updated_at = CASE WHEN ? = '' THEN NULL ELSE ? END, updated_at = ? WHERE id = ? AND COALESCE(status_text, '') <> ?").use {
-                    it.setString(1, text); it.setString(2, text); it.setObject(3, user.serverTime)
-                    it.setObject(4, user.serverTime); it.setObject(5, user.userId); it.setString(6, text)
+                connection.prepareStatement("UPDATE app_users SET status_text = NULLIF(?, ''), status_updated_at = ?, status_expires_at = ?, updated_at = ? WHERE id = ?").use {
+                    it.setString(1, text)
+                    it.setObject(2, if (text.isEmpty()) null else user.serverTime)
+                    it.setObject(3, duration?.let { minutes -> user.serverTime.plusMinutes(minutes.toLong()) })
+                    it.setObject(4, user.serverTime); it.setObject(5, user.userId)
                     it.executeUpdate()
                 }
-                connection.prepareStatement("INSERT INTO user_status_write_keys(user_id, idempotency_key, status_text) VALUES (?, ?, ?)").use {
-                    it.setObject(1, user.userId); it.setObject(2, idempotencyKey); it.setString(3, text); it.executeUpdate()
+                connection.prepareStatement("INSERT INTO user_status_write_keys(user_id, idempotency_key, status_text, expires_in_minutes) VALUES (?, ?, ?, ?)").use {
+                    it.setObject(1, user.userId); it.setObject(2, idempotencyKey); it.setString(3, text); it.setObject(4, duration); it.executeUpdate()
                 }
             }
             DisplayNameUpdateResult.Success(checkNotNull(loadUserSnapshot(connection, user.userId, user.serverTime)))
@@ -580,7 +588,9 @@ class JdbcZhivRepository(
             SELECT CAST(? AS timestamptz) AS server_time
         )
         SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
-               u.status_text, u.status_updated_at,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
+               CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
                (SELECT count(*) FROM check_ins event WHERE event.user_id = u.id) AS check_in_count,
                streak.current_days, streak.longest_days, streak.is_active,
                streak.renew_by, u.display_name_changed_at,
@@ -640,6 +650,7 @@ class JdbcZhivRepository(
     private fun ResultSet.toUserSnapshot() = UserSnapshot(
         statusText = getString("status_text"),
         statusUpdatedAt = getObject("status_updated_at", OffsetDateTime::class.java),
+        statusExpiresAt = getObject("status_expires_at", OffsetDateTime::class.java),
         id = getObject("id", UUID::class.java),
         publicId = getString("public_id"),
         displayName = getString("display_name"),

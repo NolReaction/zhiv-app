@@ -733,6 +733,84 @@ class JdbcZhivRepositoryIntegrationTest {
         assertEquals(null,person(assertIs<RelationshipResult.Success<*>>(relationships.listPeople(d.hash)).value).statusText)
     }
 
+    @Test
+    fun `status expiry hides every projection and replay does not renew it`() = runBlocking<Unit> {
+        val relationships = JdbcRelationshipRepository(dataSource)
+        val groups = JdbcGroupRepository(dataSource)
+        val ownerToken = tokens.issue(); val friendToken = tokens.issue()
+        val owner = repository.bootstrap("Timed owner", tokens.issue().hash, ownerToken.hash, 365)
+        val friend = repository.bootstrap("Timed friend", tokens.issue().hash, friendToken.hash, 365)
+        val circle = connectDirect(relationships, ownerToken.hash, friendToken.hash, friend.publicId)
+        val groupId = (assertIs<GroupResult.Success<*>>(groups.createGroup(ownerToken.hash, "Expiry", null, listOf(circle), UUID.randomUUID())).value as GroupMutationSnapshot).groupId
+        val invite = (assertIs<GroupResult.Success<*>>(groups.listGroups(friendToken.hash)).value as GroupsSnapshot).incomingInvites.single()
+        assertIs<GroupResult.Success<*>>(groups.actOnInvite(friendToken.hash, invite.inviteId, GroupInviteAction.ACCEPTED))
+        val writeKey = UUID.randomUUID()
+        val saved = assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "Гуляю", writeKey, 120)).user
+        assertEquals(saved.statusUpdatedAt?.plusHours(2), saved.statusExpiresAt)
+        val replay = assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "Гуляю", writeKey, 120)).user
+        assertEquals(saved.statusUpdatedAt, replay.statusUpdatedAt)
+        assertEquals(saved.statusExpiresAt, replay.statusExpiresAt)
+        assertIs<DisplayNameUpdateResult.IdempotencyConflict>(repository.updateStatus(ownerToken.hash, "Гуляю", writeKey, 60))
+        val personBefore = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(friendToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot).people.single()
+        assertEquals(saved.statusExpiresAt, personBefore.statusExpiresAt)
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("UPDATE app_users SET status_expires_at = clock_timestamp() WHERE id = ?").use {
+                it.setObject(1, owner.id); it.executeUpdate()
+            }
+            connection.commit()
+        }
+        val expired = assertNotNull(repository.findBySession(ownerToken.hash))
+        assertEquals(null, expired.statusText); assertEquals(null, expired.statusUpdatedAt); assertEquals(null, expired.statusExpiresAt)
+        val person = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(friendToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot).people.single()
+        assertEquals(null, person.statusText); assertEquals(null, person.statusUpdatedAt); assertEquals(null, person.statusExpiresAt)
+        for (token in listOf(ownerToken, friendToken)) {
+            val member = (assertIs<GroupResult.Success<*>>(groups.listGroups(token.hash)).value as GroupsSnapshot).groups.single { it.groupId == groupId }.members.single { it.user.publicId == owner.publicId }
+            assertEquals(null, member.statusText); assertEquals(null, member.statusUpdatedAt); assertEquals(null, member.statusExpiresAt)
+        }
+        assertEquals(null, assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "Гуляю", writeKey, 120)).user.statusText)
+        val renewed = assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "Гуляю", UUID.randomUUID(), 60)).user
+        assertTrue(requireNotNull(renewed.statusUpdatedAt).isAfter(saved.statusUpdatedAt))
+        assertEquals(saved.checkInCount, renewed.checkInCount); assertEquals(saved.lastCheckInAt, renewed.lastCheckInAt)
+        val indefinite = assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "Гуляю", UUID.randomUUID())).user
+        assertEquals("Гуляю", indefinite.statusText); assertEquals(null, indefinite.statusExpiresAt)
+        val cleared = assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "", UUID.randomUUID(), 60)).user
+        assertEquals(null, cleared.statusText); assertEquals(null, cleared.statusExpiresAt)
+    }
+
+    @Test
+    fun `favorites persist privately without changing sharing and reset on reconnect`() = runBlocking<Unit> {
+        val relationships = JdbcRelationshipRepository(dataSource)
+        val ownerToken = tokens.issue(); val annaToken = tokens.issue(); val yanaToken = tokens.issue(); val outsiderToken = tokens.issue()
+        repository.bootstrap("Favorite owner", tokens.issue().hash, ownerToken.hash, 365)
+        val anna = repository.bootstrap("Анна", tokens.issue().hash, annaToken.hash, 365)
+        val yana = repository.bootstrap("Яна", tokens.issue().hash, yanaToken.hash, 365)
+        repository.bootstrap("Favorite outsider", tokens.issue().hash, outsiderToken.hash, 365)
+        connectDirect(relationships, ownerToken.hash, annaToken.hash, anna.publicId)
+        val circle = connectDirect(relationships, ownerToken.hash, yanaToken.hash, yana.publicId)
+        assertIs<RelationshipResult.Success<*>>(relationships.updateSharing(ownerToken.hash, circle, SharingMode.OFF))
+        val before = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        assertEquals(anna.publicId, before.people.first().user.publicId)
+        repeat(2) { assertIs<RelationshipResult.Success<*>>(relationships.updateFavorite(ownerToken.hash, circle, true)) }
+        val after = (assertIs<RelationshipResult.Success<*>>(JdbcRelationshipRepository(dataSource).listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        assertEquals(yana.publicId, after.people.first().user.publicId)
+        assertEquals(before.people.single { it.circleId == circle }.copy(isFavorite = true), after.people.first())
+        assertEquals(before.audienceCount, after.audienceCount)
+        val reverse = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(yanaToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot).people.single()
+        assertEquals(false, reverse.isFavorite)
+        assertIs<RelationshipResult.NotFound>(relationships.updateFavorite(outsiderToken.hash, circle, true))
+        assertIs<RelationshipResult.Unauthorized>(relationships.updateFavorite(tokens.issue().hash, circle, true))
+        assertIs<RelationshipResult.Success<*>>(relationships.updateFavorite(ownerToken.hash, circle, false))
+        val unpinned = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        assertEquals(anna.publicId, unpinned.people.first().user.publicId)
+        assertIs<RelationshipResult.Success<*>>(relationships.updateFavorite(ownerToken.hash, circle, true))
+        assertIs<RelationshipResult.Success<*>>(relationships.removePerson(ownerToken.hash, circle))
+        assertIs<RelationshipResult.NotFound>(relationships.updateFavorite(ownerToken.hash, circle, true))
+        val reconnected = connectDirect(relationships, ownerToken.hash, yanaToken.hash, yana.publicId)
+        assertTrue(reconnected != circle)
+        val newPerson = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot).people.single { it.circleId == reconnected }
+        assertEquals(false, newPerson.isFavorite)
+    }
+
     private suspend fun connectDirect(
         relationships: JdbcRelationshipRepository,
         requesterSessionHash: ByteArray,

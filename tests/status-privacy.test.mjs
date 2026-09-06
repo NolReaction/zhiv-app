@@ -73,3 +73,77 @@ test("group OFF closes every route, person ON only restores that recipient, and 
   ok(store.deleteDevGroup(owner.token,family));
   assert.equal(ok(store.listDevPeople(mama.token)).people[0].theirSharingMode,"OFF","archiving group cannot lift a saved deny");
 });
+
+test("optional status deadlines expire in every view and retries never extend them", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-09-06T12:00:00Z") });
+  store.resetDevStoreForTests();
+  const owner = store.createDevIdentity("Дима", key());
+  const friend = store.createDevIdentity("Друг", key());
+  const person = connect(owner, friend);
+  const groupId = group(owner, [{ account: friend, person }], "Семья");
+  t.mock.timers.tick(1000);
+  const writeKey = key();
+  const saved = ok(store.updateDevStatus(owner.token, "Гуляю", writeKey, 120));
+  assert.equal(Date.parse(saved.status.expiresAt) - Date.parse(saved.status.updatedAt), 7_200_000);
+  const memberStatus = account => ok(store.listDevGroups(account.token)).groups.find(g => g.groupId === groupId).members.find(m => m.user.publicId === owner.me.user.publicId).status;
+  t.mock.timers.tick(7_199_999);
+  assert.deepEqual(store.getDevIdentity(owner.token).status, saved.status);
+  assert.deepEqual(ok(store.listDevPeople(friend.token)).people[0].status, saved.status);
+  assert.deepEqual(memberStatus(owner), saved.status);
+  assert.deepEqual(memberStatus(friend), saved.status);
+  assert.deepEqual(ok(store.updateDevStatus(owner.token, "Гуляю", writeKey, 120)).status, saved.status);
+  assert.equal(store.updateDevStatus(owner.token, "Гуляю", writeKey, 60).kind, "conflict");
+  t.mock.timers.tick(1);
+  for (const value of [store.getDevIdentity(owner.token).status, ok(store.listDevPeople(friend.token)).people[0].status, memberStatus(owner), memberStatus(friend)]) assert.equal(value, null);
+  assert.equal(ok(store.updateDevStatus(owner.token, "Гуляю", writeKey, 120)).status, null);
+  const renewed = ok(store.updateDevStatus(owner.token, "Гуляю", key(), 60));
+  assert.ok(renewed.status.updatedAt > saved.status.updatedAt);
+  assert.equal(renewed.checkInCount, 0);
+  assert.equal(renewed.lastCheckInAt, null);
+  const indefinite = ok(store.updateDevStatus(owner.token, "Гуляю", key()));
+  assert.equal(indefinite.status.expiresAt, null);
+  t.mock.timers.tick(3 * 86_400_000);
+  assert.deepEqual(store.getDevIdentity(owner.token).status, indefinite.status);
+  assert.equal(ok(store.updateDevStatus(owner.token, "", key(), 60)).status, null);
+});
+
+test("duration validation and client visibility agree at the exact deadline", () => {
+  for (const value of [undefined, null, 60, 120, 240, 480, 1440]) assert.equal(status.validStatusDuration(value), true);
+  for (const value of [0, -1, 60.5, 30, 1441, "120", true, {}, NaN]) assert.equal(status.validStatusDuration(value), false);
+  const timed = { text: "Дома", updatedAt: "2026-09-06T12:00:00Z", expiresAt: "2026-09-06T14:00:00Z" };
+  assert.equal(status.activeUserStatus(timed, Date.parse(timed.expiresAt) - 1), timed);
+  assert.equal(status.activeUserStatus(timed, Date.parse(timed.expiresAt)), null);
+  assert.equal(status.activeUserStatus({ ...timed, expiresAt: null }, Date.parse("2027-01-01T00:00:00Z")).text, "Дома");
+  assert.equal(status.formatStatusUpdatedAt(timed.updatedAt, Date.parse(timed.updatedAt) + 5 * 60_000), "обновлён 5 мин назад");
+});
+
+test("favorites are private durable choices without changing visibility", () => {
+  store.resetDevStoreForTests();
+  const owner = store.createDevIdentity("Владелец", key());
+  const anna = store.createDevIdentity("Анна", key());
+  const yana = store.createDevIdentity("Яна", key());
+  const outsider = store.createDevIdentity("Посторонний", key());
+  connect(owner, anna);
+  const person = connect(owner, yana);
+  ok(store.updateDevSharing(owner.token, person.circleId, "OFF"));
+  const before = ok(store.listDevPeople(owner.token));
+  assert.equal(before.people[0].user.publicId, anna.me.user.publicId);
+  ok(store.updateDevFavorite(owner.token, person.circleId, true));
+  ok(store.updateDevFavorite(owner.token, person.circleId, true));
+  const after = ok(store.listDevPeople(owner.token));
+  assert.equal(after.people[0].user.publicId, yana.me.user.publicId);
+  assert.equal(after.people[0].isFavorite, true);
+  assert.equal(after.people[0].mySharingMode, "OFF");
+  assert.equal(after.audienceCount, before.audienceCount);
+  assert.equal(ok(store.listDevPeople(yana.token)).people[0].isFavorite, false);
+  assert.equal(store.updateDevFavorite(outsider.token, person.circleId, true).kind, "forbidden");
+  assert.equal(store.updateDevFavorite(undefined, person.circleId, true).kind, "unauthorized");
+  ok(store.updateDevFavorite(owner.token, person.circleId, false));
+  assert.equal(ok(store.listDevPeople(owner.token)).people[0].user.publicId, anna.me.user.publicId);
+  ok(store.updateDevFavorite(owner.token, person.circleId, true));
+  ok(store.removeDevPerson(owner.token, person.circleId));
+  assert.equal(store.updateDevFavorite(owner.token, person.circleId, true).kind, "not-found");
+  const reconnected = connect(owner, yana);
+  assert.notEqual(reconnected.circleId, person.circleId);
+  assert.equal(reconnected.isFavorite, false);
+});

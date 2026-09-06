@@ -99,6 +99,7 @@ export type DirectRequest = {
 };
 
 export type Person = {
+  isFavorite?: boolean;
   status?: UserStatus | null;
   circleId: string;
   user: PublicUser;
@@ -182,7 +183,7 @@ export type GroupsResponse = {
   serverTime: string;
 };
 
-export type UserStatus = { text: string; updatedAt: string };
+export type UserStatus = { text: string; updatedAt: string; expiresAt?: string | null };
 
 export type GroupMutationResponse = {
   groupId: string;
@@ -208,3 +209,5 @@ export type DirectInviteRedeemResponse = {
   replayed: boolean;
   serverTime: string;
 };
+
+export type FavoriteResponse = { circleId: string; isFavorite: boolean; serverTime: string };

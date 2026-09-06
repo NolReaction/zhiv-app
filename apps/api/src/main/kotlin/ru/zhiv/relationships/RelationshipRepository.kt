@@ -63,6 +63,8 @@ data class PersonSnapshot(
     val lastCheckInAt: OffsetDateTime?,
     val statusText: String? = null,
     val statusUpdatedAt: OffsetDateTime? = null,
+    val statusExpiresAt: OffsetDateTime? = null,
+    val isFavorite: Boolean = false,
 )
 
 data class PeopleSnapshot(
@@ -108,7 +110,12 @@ sealed interface RelationshipResult<out T> {
     data object Conflict : RelationshipResult<Nothing>
 }
 
+data class FavoriteSnapshot(val circleId: UUID, val isFavorite: Boolean, val serverTime: OffsetDateTime)
+
 interface RelationshipRepository {
+    suspend fun updateFavorite(sessionTokenHash: ByteArray, circleId: UUID, isFavorite: Boolean): RelationshipResult<FavoriteSnapshot> =
+        throw UnsupportedOperationException("Favorites not implemented")
+
     suspend fun lookup(
         sessionTokenHash: ByteArray,
         publicId: String,

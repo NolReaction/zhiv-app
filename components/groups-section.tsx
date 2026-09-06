@@ -53,6 +53,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
+import { UserStatusDisplay } from "./user-status-display";
 import styles from "./groups-section.module.css";
 
 type GroupsSectionProps = {
@@ -393,15 +394,15 @@ export function GroupsSection({
                           >
                             {initials(member.user.displayName)}
                           </span>
-                          <span className={styles.cardText}>
+                          <div className={styles.cardText}>
                             <strong>{member.user.displayName}{member.isMe ? " · вы" : ""}</strong>
-                            {member.status ? <span className={styles.userStatus}>{member.status.text}</span> : null}
+                            <UserStatusDisplay status={member.status} nowMs={nowMs} />
                             <span>
                               {member.isMe
                                 ? (group.sharingMixed ? "Показ части участников" : group.mySharingMode === "OFF" ? "Ваши отметки скрыты" : "Ваши новые отметки видны")
                                 : formatPersonCheckIn(member.lastCheckInAt, nowMs, sharing)}
                             </span>
-                          </span>
+                          </div>
                           {group.myRole === "OWNER" && !member.isMe ? (
                             <button
                               className={styles.iconButton}

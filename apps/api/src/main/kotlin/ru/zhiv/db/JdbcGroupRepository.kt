@@ -469,8 +469,9 @@ class JdbcGroupRepository(
         """
         SELECT membership.id AS membership_id, membership.user_id, membership.role,
                membership.joined_at, person.public_id, person.display_name,
-               CASE WHEN membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since) THEN person.status_text END AS status_text,
-               CASE WHEN membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since) THEN person.status_updated_at END AS status_updated_at,
+               CASE WHEN (membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since)) AND (person.status_expires_at IS NULL OR person.status_expires_at > statement_timestamp()) THEN person.status_text END AS status_text,
+               CASE WHEN (membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since)) AND (person.status_expires_at IS NULL OR person.status_expires_at > statement_timestamp()) THEN person.status_updated_at END AS status_updated_at,
+               CASE WHEN (membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since)) AND (person.status_expires_at IS NULL OR person.status_expires_at > statement_timestamp()) THEN person.status_expires_at END AS status_expires_at,
                preference.sharing_mode, latest.checked_at AS last_check_in_at
           FROM circle_memberships membership
           JOIN app_users person ON person.id = membership.user_id AND person.deleted_at IS NULL
@@ -499,11 +500,12 @@ class JdbcGroupRepository(
     ).use { statement ->
         statement.setObject(1, currentMembershipId)
         statement.setObject(2, currentMembershipId)
-        statement.setObject(3, currentUserId)
+        statement.setObject(3, currentMembershipId)
         statement.setObject(4, currentUserId)
-        statement.setObject(5, currentMembershipId)
-        statement.setObject(6, groupId)
-        statement.setObject(7, currentUserId)
+        statement.setObject(5, currentUserId)
+        statement.setObject(6, currentMembershipId)
+        statement.setObject(7, groupId)
+        statement.setObject(8, currentUserId)
         statement.executeQuery().use { result ->
             buildList {
                 while (result.next()) {
@@ -511,6 +513,7 @@ class JdbcGroupRepository(
                         GroupMemberSnapshot(
                             statusText=result.getString("status_text"),
                             statusUpdatedAt=result.getObject("status_updated_at", OffsetDateTime::class.java),
+                            statusExpiresAt=result.getObject("status_expires_at", OffsetDateTime::class.java),
                             membershipId = result.getObject("membership_id", UUID::class.java),
                             user = UserReference(
                                 result.getString("public_id"),

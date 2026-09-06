@@ -356,7 +356,7 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   );
 });
 
-test("keeps the thirty-second clicker lightweight and motion-safe", async () => {
+test("keeps the ten-second clicker lightweight and motion-safe", async () => {
   const [app, appStyles, clicker] = await Promise.all([
     readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
@@ -494,7 +494,6 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);
-  assert.match(people, /className=\{styles\.sharingSwitch\}/);
   assert.match(people, /Включено · новые отметки доступны/);
   assert.match(people, /Выключено · новые отметки скрыты/);
   assert.match(people, /aria-describedby=\{sharingHintId\}/);
@@ -516,9 +515,6 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /aria-invalid=\{Boolean\(inviteImportError\)\}/);
   assert.match(people, /inviteDialog\.mode === "qr" \? styles\.inviteLinkFieldCompact/);
   assert.match(peopleStyles, /\.inviteLinkField\s*\{[^}]*user-select:\s*text;/s);
-  assert.match(peopleStyles, /\.sharingSwitch\s*\{[^}]*width:\s*48px !important;/s);
-  assert.match(peopleStyles, /\.sharingSwitch :global\(\[data-slot="switch-thumb"\]\)\s*\{[^}]*background:\s*#f4f7ef !important;/s);
-  assert.match(peopleStyles, /\.sharingSwitch\[data-state="checked"\] :global\(\[data-slot="switch-thumb"\]\)\s*\{[^}]*translateX\(20px\)/s);
   assert.doesNotMatch(profile, /лучший стрик/i);
   assert.doesNotMatch(profile, /me\.streak\.longestDays/);
   assert.equal((profile.match(/>\s*лучшая серия\s*</gi) ?? []).length, 1);

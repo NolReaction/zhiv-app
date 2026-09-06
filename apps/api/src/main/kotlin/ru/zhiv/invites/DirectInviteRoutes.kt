@@ -142,6 +142,7 @@ private fun DirectInviteRedeemSnapshot.toDto() = DirectInviteRedeemResponse(
     person.toDto(), replayed, serverTime.toInstant().toString(),
 )
 private fun PersonSnapshot.toDto() = PersonDto(
+    isFavorite = isFavorite,
     circleId = circleId.toString(),
     user = PublicUserDto(user.publicId, user.displayName),
     connectedAt = connectedAt.toInstant().toString(),
@@ -149,5 +150,5 @@ private fun PersonSnapshot.toDto() = PersonDto(
     theirSharingMode = theirSharingMode.name,
     checkInState = checkInState.name,
     lastCheckInAt = lastCheckInAt?.toInstant()?.toString(),
-    status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text, it.toInstant().toString()) } },
+    status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text, it.toInstant().toString(), statusExpiresAt?.toInstant()?.toString()) } },
 )

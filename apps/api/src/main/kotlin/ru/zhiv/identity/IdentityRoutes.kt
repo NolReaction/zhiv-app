@@ -15,6 +15,9 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.put
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.ApiErrorResponse
 import ru.zhiv.http.BootstrapRequest
@@ -57,12 +60,20 @@ fun Route.identityRoutes(
                     call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_IDEMPOTENCY_KEY", "Некорректный ключ запроса"))
                     return@put
                 }
-                val text = validStatus(call.receive<UpdateStatusRequest>().text)
+                val body = call.receive<UpdateStatusRequest>()
+                val text = validStatus(body.text)
+                // Preserve the JSON token type: the default Int decoder also accepts quoted numbers.
+                val rawDuration = body.expiresInMinutes?.takeUnless { it == JsonNull }
+                val duration = (rawDuration as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull
+                if (rawDuration != null && (duration == null || duration !in setOf(60, 120, 240, 480, 1440))) {
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_STATUS_DURATION", "Выберите срок из списка"))
+                    return@put
+                }
                 if (text == null) {
                     call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_STATUS", "До 120 символов, без управляющих символов"))
                     return@put
                 }
-                when (val result = repository.updateStatus(tokenCodec.hash(rawToken), text, key)) {
+                when (val result = repository.updateStatus(tokenCodec.hash(rawToken), text, key, duration)) {
                     is DisplayNameUpdateResult.Success -> call.respond(result.user.toResponse())
                     DisplayNameUpdateResult.Unauthorized -> call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
                     else -> call.respond(HttpStatusCode.Conflict, ApiErrorResponse("IDEMPOTENCY_CONFLICT", "Повторите сохранение"))
@@ -234,7 +245,7 @@ fun Route.identityRoutes(
 }
 
 internal fun UserSnapshot.toResponse() = MeResponse(
-    status = statusText?.let { text -> statusUpdatedAt?.let { UserStatusDto(text, it.toInstant().toString()) } },
+    status = statusText?.let { text -> statusUpdatedAt?.let { UserStatusDto(text, it.toInstant().toString(), statusExpiresAt?.toInstant()?.toString()) } },
     user = PublicUserDto(publicId = publicId, displayName = displayName),
     lastCheckInAt = lastCheckInAt?.toInstant()?.toString(),
     checkInCount = checkInCount,
