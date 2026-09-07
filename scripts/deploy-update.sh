@@ -26,5 +26,8 @@ backup_dir="$project_dir/../zhiv-backups"
 )
 
 dc up -d --no-build --wait --wait-timeout 240
+# A changed bind-mounted Caddyfile does not trigger a Compose recreation.
+# Recreate only the edge so the newly checked-out routing/headers take effect.
+dc up -d --no-deps --no-build --force-recreate --wait --wait-timeout 60 caddy
 dc ps -a
 echo 'Update complete. Check the public home page and /readyz before reopening the app.'
