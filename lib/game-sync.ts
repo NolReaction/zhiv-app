@@ -7,17 +7,41 @@ import {
 } from "@/lib/game-api";
 
 export type GameSyncStatus = "loading" | "ready" | "syncing" | "offline" | "error";
-export type GameSyncSnapshot = { progress: GameProgress | null; status: GameSyncStatus; pendingTaps: number };
-type QueuedTaps = { runId: string; count: number; queuedAt: number };
+export type GameRunSync = {
+  runId: string;
+  acceptedTaps: number;
+  pendingTaps: number;
+  rejectedTaps: number;
+  interrupted: boolean;
+};
+export type GameSyncSnapshot = {
+  progress: GameProgress | null;
+  status: GameSyncStatus;
+  pendingTaps: number;
+  rejectedTaps: number;
+  run: GameRunSync | null;
+};
+type QueuedTaps = { runId: string; count: number };
 type GameTransport = {
   progress(signal: AbortSignal): Promise<GameProgress>;
   session(body: GameSessionRequest, signal: AbortSignal): Promise<GameSession>;
   batch(body: GameBatchRequest, signal: AbortSignal): Promise<GameBatchResponse>;
 };
 const transport: GameTransport = { progress: getGameProgress, session: createGameSession, batch: submitGameBatch };
-const MAX_PENDING_TAPS = 60;
-const MAX_QUEUE_AGE_MS = 5_000;
+const MAX_BATCH_TAPS = 60;
+const MAX_PENDING_TAPS = 3_600;
+// Match the server's shared 30/s, burst-60 policy. Pace observed backlog so a
+// delayed LTE response does not turn ordinary tapping into a rejected burst.
+const TAPS_PER_SECOND = 30;
 const RETRY_DELAY_MS = 3_000;
+function waitForPacing(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(new DOMException("Aborted", "AbortError")); return; }
+    const abort = () => { clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); };
+    const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, delayMs);
+    signal.addEventListener("abort", abort, { once: true });
+  });
+}
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // This queue contains only taps observed while this page is online. Legacy local
@@ -26,10 +50,15 @@ export class GameSyncClient {
   private progress: GameProgress | null = null;
   private queue: QueuedTaps[] = [];
   private session: GameSession | null = null;
+  private run: Omit<GameRunSync, "pendingTaps"> | null = null;
+  private rejectedTaps = 0;
   private sessionUntil = 0;
+  private pacingTokens = MAX_BATCH_TAPS;
+  private pacingUpdatedAt = 0;
   private startRequest: GameSessionRequest | null = null;
   private pendingBatch: GameBatchRequest | null = null;
   private writing = false;
+  private flushOperation: Promise<void> | null = null;
   private reading = false;
   private failed = false;
   private retryAt = 0;
@@ -47,13 +76,19 @@ export class GameSyncClient {
     private readonly api: GameTransport = transport,
     private readonly now: () => number = () => performance.now(),
     private readonly uuid: () => string = createUuidV4,
-  ) { this.online = online; }
+    private readonly wait: (delayMs: number, signal: AbortSignal) => Promise<void> = waitForPacing,
+  ) { this.online = online; this.pacingUpdatedAt = this.now(); }
 
   snapshot(): GameSyncSnapshot {
     const pendingTaps = this.queue.reduce((sum, item) => sum + item.count, 0) + (this.pendingBatch?.tapCount ?? 0);
     return {
       progress: this.progress,
       pendingTaps,
+      rejectedTaps: this.rejectedTaps,
+      run: this.run ? { ...this.run, pendingTaps:
+        this.queue.reduce((sum, item) => sum + (item.runId === this.run?.runId ? item.count : 0), 0)
+        + (this.pendingBatch?.runId === this.run.runId ? this.pendingBatch.tapCount : 0),
+      } : null,
       status: !this.online ? "offline" : this.failed ? "error"
         : pendingTaps > 0 || this.writing ? "syncing"
           : this.progress ? "ready" : "loading",
@@ -66,11 +101,11 @@ export class GameSyncClient {
     if (this.disposed || this.online === online) return;
     this.online = online;
     if (!online) {
-      this.queue = [];
-      // Preserve the immutable in-flight batch: the server may have received it.
+      // Preserve observed online taps and the immutable in-flight batch. No new
+      // offline taps enter the queue, and the server still decides every count.
       this.writeController?.abort();
       this.readController?.abort();
-    }
+    } else this.retryAt = 0;
     this.emit();
   }
 
@@ -110,30 +145,32 @@ export class GameSyncClient {
     this.onSessionLost();
   }
 
-  recordTap(steps: number, runId: string): void {
-    if (this.disposed || !this.online || !Number.isSafeInteger(steps) || steps < 1 || !RUN_ID.test(runId)) return;
-    if (this.failed && this.pendingBatch) { void this.flush(); return; }
-    if (this.failed && this.now() < this.retryAt) return;
-    this.failed = false;
-    const now = this.now();
-    if (this.session && now >= this.sessionUntil && !this.pendingBatch) {
-      this.session = null;
-      this.queue = [];
+  recordTap(steps: number, runId: string): number {
+    if (this.disposed || !this.online || !Number.isSafeInteger(steps) || steps < 1 || !RUN_ID.test(runId)) return 0;
+    if (this.run?.runId !== runId) {
+      this.run = { runId, acceptedTaps: 0, rejectedTaps: 0, interrupted: false };
     }
-    this.pruneQueue();
-    const room = MAX_PENDING_TAPS - this.queue.reduce((sum, item) => sum + item.count, 0);
-    const count = Math.min(steps, room);
-    if (count < 1) return;
-    const last = this.queue.at(-1);
-    if (last?.runId === runId) last.count += count;
-    else this.queue.push({ runId, count, queuedAt: now });
+    const pending = this.queue.reduce((sum, item) => sum + item.count, 0) + (this.pendingBatch?.tapCount ?? 0);
+    const count = Math.min(steps, MAX_PENDING_TAPS - pending);
+    let remaining = count;
+    while (remaining > 0) {
+      const last = this.queue.at(-1);
+      const item = last?.runId === runId && last.count < MAX_BATCH_TAPS
+        ? last : { runId, count: 0 };
+      if (item !== last) this.queue.push(item);
+      const chunk = Math.min(remaining, MAX_BATCH_TAPS - item.count);
+      item.count += chunk;
+      remaining -= chunk;
+    }
+    this.rejectTaps(runId, steps - count);
     this.emit();
-    if (!this.session && !this.writing) void this.flush();
+    if (!this.session || this.queue[0]?.count === MAX_BATCH_TAPS) void this.flush();
+    return count;
   }
 
-  private pruneQueue(): void {
-    const cutoff = this.now() - MAX_QUEUE_AGE_MS;
-    this.queue = this.queue.filter(item => item.queuedAt >= cutoff);
+  private rejectTaps(runId: string, count: number): void {
+    this.rejectedTaps += count;
+    if (this.run?.runId === runId) this.run.rejectedTaps += count;
   }
 
   async refresh(): Promise<void> {
@@ -158,76 +195,132 @@ export class GameSyncClient {
     }
   }
 
-  async flush(): Promise<void> {
+  flush(): Promise<void> {
+    if (this.flushOperation) return this.flushOperation;
+    const operation = this.flushPending();
+    this.flushOperation = operation;
+    void operation.then(() => { if (this.flushOperation === operation) this.flushOperation = null; },
+      () => { if (this.flushOperation === operation) this.flushOperation = null; });
+    return operation;
+  }
+
+  private async flushPending(): Promise<void> {
     if (this.disposed || !this.online || this.writing || this.now() < this.retryAt) return;
-    const hadQueue = this.queue.length > 0;
-    this.pruneQueue();
-    if (!this.pendingBatch && this.queue.length === 0) {
-      this.startRequest = null;
-      if (hadQueue) this.emit();
-      return;
-    }
+    if (!this.pendingBatch && this.queue.length === 0) return;
     this.writing = true;
     const controller = new AbortController();
     this.writeController = controller;
     this.emit();
+    let renewedAfterExpiry = false;
     try {
-      if (!this.session && !this.pendingBatch) {
-        this.startRequest ??= { requestId: this.uuid(), ownerPublicId: this.ownerPublicId };
-        const result = await this.api.session(this.startRequest, controller.signal);
-        if (this.disposed || controller.signal.aborted) return;
-        if (result.progress.ownerPublicId !== this.ownerPublicId) { this.ownerChanged(); return; }
-        this.session = result;
-        this.sessionUntil = this.now() + Math.max(0, Date.parse(result.expiresAt) - Date.parse(result.progress.serverTime));
-        this.startRequest = null;
-        this.adoptProgress(result.progress);
-      }
-      this.pruneQueue();
-      if (!this.pendingBatch) {
-        if (!this.session || this.now() >= this.sessionUntil) {
-          this.session = null;
-          this.queue = [];
+      // Drain sequentially, including taps observed while a previous request was
+      // in flight. Each immutable batch is <= 60 taps and has one run/sequence.
+      while (!this.disposed && this.online && !controller.signal.aborted
+        && (this.pendingBatch || this.queue.length > 0)) {
+        try {
+          if (!this.pendingBatch && this.session && this.now() >= this.sessionUntil) {
+            this.session = null;
+          }
+          if (!this.session && !this.pendingBatch) {
+            this.startRequest ??= { requestId: this.uuid(), ownerPublicId: this.ownerPublicId };
+            const result = await this.api.session(this.startRequest, controller.signal);
+            if (this.disposed || controller.signal.aborted) return;
+            if (result.progress.ownerPublicId !== this.ownerPublicId) { this.ownerChanged(); return; }
+            this.session = result;
+            this.sessionUntil = this.now() + Math.max(0, Date.parse(result.expiresAt) - Date.parse(result.progress.serverTime));
+            this.startRequest = null;
+            this.adoptProgress(result.progress);
+          }
+          if (!this.pendingBatch) {
+            if (!this.session || this.now() >= this.sessionUntil) {
+              this.session = null;
+              throw new ApiError("Игровая сессия истекла", 409, { code: "GAME_SESSION_EXPIRED", message: "Игровая сессия истекла" });
+            }
+            const next = this.queue[0];
+            if (!next) break;
+            // Reserve once at dispatch. Unknown-result retries reuse the same
+            // immutable batch without charging these client tokens a second time.
+            const instant = this.now();
+            this.pacingTokens = Math.min(MAX_BATCH_TAPS,
+              this.pacingTokens + Math.max(0, instant - this.pacingUpdatedAt) * TAPS_PER_SECOND / 1_000);
+            this.pacingUpdatedAt = Math.max(instant, this.pacingUpdatedAt);
+            if (this.pacingTokens < next.count) {
+              await this.wait(Math.ceil((next.count - this.pacingTokens) * 1_000 / TAPS_PER_SECOND), controller.signal);
+              continue;
+            }
+            this.pacingTokens -= next.count;
+            this.queue.shift();
+            this.pendingBatch = {
+              sessionId: this.session.sessionId,
+              sequence: this.session.nextSequence,
+              tapCount: next.count,
+              runId: next.runId,
+            };
+          }
+          const batch = this.pendingBatch;
+          const result = await this.api.batch(batch, controller.signal);
+          if (this.disposed || controller.signal.aborted) return;
+          if (result.sessionId !== batch.sessionId || result.sequence !== batch.sequence
+            || result.acceptedTaps + result.rejectedTaps !== batch.tapCount
+            || !Number.isSafeInteger(result.runTaps) || result.runTaps < 0) {
+            throw new ApiError("Сервер вернул некорректное подтверждение тапов", 502);
+          }
+          // Clear the receipt exactly once, only after validating its owner and
+          // acknowledgment. A replay must never be added as fresh local progress.
+          if (result.progress.ownerPublicId !== this.ownerPublicId) { this.ownerChanged(); return; }
+          // Start refill from acknowledgment, not dispatch: the request itself
+          // may have reached the server late. Counting that network delay as
+          // refill would send two full bursts almost simultaneously on recovery.
+          this.pacingUpdatedAt = this.now();
+          if (result.rejectedTaps > 0) this.pacingTokens = 0;
+          if (this.run?.runId === batch.runId) {
+            if (result.runTaps < this.run.acceptedTaps + result.acceptedTaps) this.run.interrupted = true;
+            this.run.acceptedTaps = result.runTaps;
+          }
+          this.rejectTaps(batch.runId, result.rejectedTaps);
+          this.pendingBatch = null;
+          if (this.session) this.session.nextSequence = batch.sequence + 1;
+          this.failed = false;
+          this.retryAt = 0;
+          this.adoptProgress(result.progress);
+        } catch (error) {
+          if (this.disposed) return;
+          if (error instanceof ApiError && (error.status === 401 || error.body?.code === "GAME_OWNER_CHANGED")) {
+            this.ownerChanged();
+            return;
+          }
+          const expired = error instanceof ApiError && error.body?.code === "GAME_SESSION_EXPIRED";
+          if (expired) {
+            // Expired sessions return a receipt for a committed latest sequence
+            // before rejecting new writes. Only an explicit non-commit expiry
+            // may move these taps to a newly authorized session.
+            if (this.pendingBatch) {
+              this.queue.unshift({ runId: this.pendingBatch.runId, count: this.pendingBatch.tapCount });
+              this.pacingTokens = Math.min(MAX_BATCH_TAPS, this.pacingTokens + this.pendingBatch.tapCount);
+            }
+            this.pendingBatch = null;
+            this.session = null;
+            this.startRequest = null;
+            if (!renewedAfterExpiry && this.online && !controller.signal.aborted) {
+              renewedAfterExpiry = true;
+              continue;
+            }
+          } else {
+            const terminal = error instanceof ApiError && [400, 403, 404, 409, 410, 413, 422].includes(error.status);
+            if (terminal) {
+              if (this.pendingBatch) this.rejectTaps(this.pendingBatch.runId, this.pendingBatch.tapCount);
+              this.pendingBatch = null;
+              this.session = null;
+              this.startRequest = null;
+            }
+            // Timeout/5xx/429 have an unknown outcome. Keep the exact batch and
+            // all later observed taps, then retry this sequence before the next.
+          }
+          this.failed = true;
+          this.retryAt = this.now() + RETRY_DELAY_MS;
           return;
         }
-        const next = this.queue.shift();
-        if (!next) { this.failed = false; return; }
-        this.pendingBatch = {
-          sessionId: this.session.sessionId,
-          sequence: this.session.nextSequence,
-          tapCount: next.count,
-          runId: next.runId,
-        };
       }
-      const batch = this.pendingBatch;
-      const result = await this.api.batch(batch, controller.signal);
-      if (this.disposed || controller.signal.aborted) return;
-      if (result.sessionId !== batch.sessionId || result.sequence !== batch.sequence
-        || result.acceptedTaps + result.rejectedTaps !== batch.tapCount) {
-        throw new ApiError("Сервер вернул некорректное подтверждение тапов", 502);
-      }
-      this.adoptProgress(result.progress);
-      if (this.disposed) return;
-      this.pendingBatch = null;
-      if (this.session) this.session.nextSequence = batch.sequence + 1;
-      this.failed = false;
-      this.retryAt = 0;
-    } catch (error) {
-      if (this.disposed) return;
-      if (error instanceof ApiError && (error.status === 401 || error.body?.code === "GAME_OWNER_CHANGED")) {
-        this.ownerChanged();
-        return;
-      }
-      this.queue = [];
-      const terminal = error instanceof ApiError && [400, 403, 404, 409, 410, 413, 422].includes(error.status);
-      if (terminal) {
-        this.pendingBatch = null;
-        this.session = null;
-        this.startRequest = null;
-      }
-      // A terminal response is known not to have added taps. A timeout/5xx has
-      // unknown outcome; keep precisely the same batch for its eventual retry.
-      this.failed = !terminal;
-      this.retryAt = this.now() + RETRY_DELAY_MS;
     } finally {
       this.writing = false;
       if (this.writeController === controller) this.writeController = null;

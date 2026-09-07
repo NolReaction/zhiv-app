@@ -482,6 +482,10 @@
   z-index: 1;
 }
 
+.tapSaving { flex: 0 0 auto; opacity: .75; animation: tap-saving-spin 900ms linear infinite; }
+@keyframes tap-saving-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tapSaving { animation: none; } }
+
 .tapCounter strong {
   overflow: hidden;
   font-size: clamp(16px, 3.8vw, 20px);
@@ -796,31 +800,6 @@
   content: "";
   transition: width 140ms ease-out;
 }
-
-.serverFact {
-  margin: 0 0 8px;
-  color: #9ca294;
-  font-size: 14px;
-  line-height: 1.35;
-}
-
-.deliveryStatus {
-  display: flex;
-  min-height: 36px;
-  max-width: 100%;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 4px 10px;
-  margin-bottom: 8px;
-  color: #b7d8a2;
-  font-size: 14px;
-  line-height: 1.4;
-}
-.deliveryStatus[data-pending="true"] { color: #e7bf8d; }
-.deliveryStatus button { min-height: 36px; border: 1px solid currentColor; border-radius: 10px; padding: 5px 10px; background: transparent; color: inherit; cursor: pointer; }
-.deliveryStatus button:disabled { opacity: .5; cursor: default; }
-.deliveryStatus button:focus-visible { outline: 2px solid #f5e85b; outline-offset: 2px; }
 
 .storyReward {
   display: grid;

@@ -25,6 +25,7 @@ const gameBatchSchema = z.object({
   sessionId: z.string().uuid(),
   sequence: count,
   acceptedTaps: count,
+  runTaps: count,
   rejectedTaps: count,
   replayed: z.boolean(),
   progress: gameProgressSchema,

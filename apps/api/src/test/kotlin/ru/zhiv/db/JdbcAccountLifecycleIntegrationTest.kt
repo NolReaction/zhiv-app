@@ -355,7 +355,7 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("0",scalar("SELECT count(*) FROM game_profiles WHERE user_id=?",b.id))
         assertEquals("0",scalar("SELECT count(*) FROM game_monthly_scores WHERE user_id=?",b.id))
         assertEquals("0",scalar("SELECT count(*) FROM game_sessions WHERE user_id IN (?,?)",a.id,b.id))
-        assertEquals("GAME_SESSION_EXPIRED",assertFailsWith<AuthFailure> {
+        assertEquals("GAME_SESSION_GONE",assertFailsWith<AuthFailure> {
             game.submitBatch(a.session,UUID.fromString(playA.sessionId),2,1,UUID.randomUUID())
         }.code)
         auth.confirmMerge(a.session,browser,key)

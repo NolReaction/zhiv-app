@@ -37,6 +37,7 @@ data class GameBatchResponse(
     val rejectedTaps: Int,
     val replayed: Boolean,
     val progress: GameProgress,
+    val runTaps: Long,
 )
 
 @Serializable

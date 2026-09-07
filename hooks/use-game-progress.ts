@@ -9,7 +9,7 @@ type GameProgressOptions = {
   isOnline: boolean;
   onSessionLost: () => void;
 };
-const initialSnapshot: GameSyncSnapshot = { progress: null, status: "loading", pendingTaps: 0 };
+const initialSnapshot: GameSyncSnapshot = { progress: null, status: "loading", pendingTaps: 0, rejectedTaps: 0, run: null };
 
 export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: GameProgressOptions) {
   const [state, setState] = useState<GameSyncSnapshot & { ownerPublicId: string | null }>({ ...initialSnapshot, ownerPublicId: null });
@@ -43,7 +43,7 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
     const offline = () => current.setOnline(false);
     const flush = () => { if (!document.hidden) void current.flush(); };
     const flushOnHide = () => { void current.flush(); };
-    const flushInterval = window.setInterval(flush, 3_000);
+    const flushInterval = window.setInterval(flush, 750);
     window.addEventListener("online", synchronize);
     window.addEventListener("offline", offline);
     window.addEventListener("focus", synchronize);
@@ -69,15 +69,20 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
   }, [isOnline]);
 
   const recordTap = useCallback((steps: number, runId: string) => {
-    if (owner.current !== ownerPublicId || document.hidden) return;
-    client.current?.recordTap(steps, runId);
+    if (owner.current !== ownerPublicId || document.hidden) return 0;
+    return client.current?.recordTap(steps, runId) ?? 0;
   }, [ownerPublicId]);
-  const refresh = useCallback(async () => { await client.current?.refresh(); }, []);
+  const flush = useCallback(async () => { await client.current?.flush(); }, []);
+  const refresh = useCallback(async () => {
+    const current = client.current;
+    await current?.flush();
+    await current?.refresh();
+  }, []);
   const adoptProgress = useCallback((progress: GameProgress) => {
     if (progress.ownerPublicId === owner.current) client.current?.adoptProgress(progress);
   }, []);
 
   // Never expose the previous account's snapshot during the effect transition.
   const visibleState = state.ownerPublicId === ownerPublicId ? state : initialSnapshot;
-  return { ...visibleState, recordTap, refresh, adoptProgress };
+  return { ...visibleState, recordTap, flush, refresh, adoptProgress };
 }

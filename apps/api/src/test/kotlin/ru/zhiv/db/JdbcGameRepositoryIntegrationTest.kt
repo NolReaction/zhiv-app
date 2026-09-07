@@ -79,8 +79,10 @@ class JdbcGameRepositoryIntegrationTest {
         val id = UUID.fromString(session.sessionId); val run = UUID.randomUUID()
         val first = games.submitBatch(p.hash, id, 1, 12, run)
         assertEquals(12, first.acceptedTaps)
+        assertEquals(12L, first.runTaps)
         val replay = games.submitBatch(p.hash, id, 1, 12, run)
         assertTrue(replay.replayed)
+        assertEquals(12L, replay.runTaps)
         assertEquals(12L, replay.progress.lifetimeTaps)
         assertEquals("GAME_SEQUENCE_CONFLICT", assertFailsWith<AuthFailure> { games.submitBatch(p.hash, id, 1, 13, run) }.code)
         assertEquals("GAME_SEQUENCE_CONFLICT", assertFailsWith<AuthFailure> { games.submitBatch(p.hash, id, 3, 1, run) }.code)
@@ -110,6 +112,67 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals("GAME_SESSION_CONFLICT", assertFailsWith<AuthFailure> {
             games.submitBatch(otherHash, UUID.fromString(a.sessionId), 2, 1, UUID.randomUUID())
         }.code)
+    }
+
+    @Test fun `a paced 719 tap run is persisted completely and returned in retry receipts`() = runBlocking<Unit> {
+        val p = player(); val opened = session(p)
+        val id = UUID.fromString(opened.sessionId); val run = UUID.randomUUID()
+        var accepted = 0L
+        // Advance only the persisted budget's refill origin. Each batch represents
+        // three seconds at 20 taps/sec without sleeping or trusting client clocks.
+        for (sequence in 1L..12L) {
+            execute("UPDATE game_profiles SET bucket_updated_at=clock_timestamp()-interval '3 seconds' WHERE user_id=?", p.id)
+            val count = minOf(60L, 719L - accepted).toInt()
+            val sent = games.submitBatch(p.hash,id,sequence,count,run)
+            accepted += count
+            assertEquals(count,sent.acceptedTaps)
+            assertEquals(0,sent.rejectedTaps)
+            assertEquals(accepted,sent.runTaps)
+            assertEquals(accepted,sent.progress.bestSeries)
+            val replay = games.submitBatch(p.hash,id,sequence,count,run)
+            assertTrue(replay.replayed)
+            assertEquals(accepted,replay.runTaps)
+            assertEquals(accepted,replay.progress.lifetimeTaps)
+        }
+        val persisted = JdbcGameRepository(source).progress(p.hash)
+        assertEquals(719L,persisted.bestSeries)
+        assertEquals(719L,persisted.lifetimeTaps)
+        assertEquals(719L,persisted.monthlyTaps)
+    }
+
+    @Test fun `zero accepted taps do not report the previous run as the requested run`() = runBlocking<Unit> {
+        val p = player(); val opened = session(p); val id = UUID.fromString(opened.sessionId)
+        val previous = UUID.randomUUID()
+        assertEquals(20L,games.submitBatch(p.hash,id,1,20,previous).runTaps)
+        execute("UPDATE game_profiles SET bucket_tokens=0,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?", p.id)
+        val next = UUID.randomUUID()
+        val rejected = games.submitBatch(p.hash,id,2,4,next)
+        assertEquals(0,rejected.acceptedTaps)
+        assertEquals(0L,rejected.runTaps)
+        assertEquals(20L,rejected.progress.bestSeries)
+        val replay = games.submitBatch(p.hash,id,2,4,next)
+        assertTrue(replay.replayed)
+        assertEquals(0L,replay.runTaps)
+        assertEquals(20L,replay.progress.lifetimeTaps)
+        assertEquals(20L,games.submitBatch(p.hash,id,3,1,previous).runTaps)
+    }
+
+    @Test fun `a purged receipt is gone rather than an uncommitted expired batch`() = runBlocking<Unit> {
+        val p = player(); val opened = session(p)
+        val id = UUID.fromString(opened.sessionId); val run = UUID.randomUUID()
+        games.submitBatch(p.hash,id,1,9,run)
+        // Cleanup after retention, or account merge, can remove transport receipts
+        // while keeping their accepted counters. Clients must not replay these
+        // counts under a fresh session/sequence.
+        execute("DELETE FROM game_sessions WHERE id=?",id)
+        val missing = assertFailsWith<AuthFailure> { games.submitBatch(p.hash,id,1,9,run) }
+        assertEquals("GAME_SESSION_GONE",missing.code)
+        assertEquals(410,missing.status)
+        assertEquals(9L,games.progress(p.hash).lifetimeTaps)
+        val stranger = player()
+        val hidden = assertFailsWith<AuthFailure> { games.submitBatch(stranger.hash,id,1,9,run) }
+        assertEquals(missing.code,hidden.code)
+        assertEquals(missing.status,hidden.status)
     }
 
     @Test fun `only server receipts extend a record and timezone changes cannot choose scoring month`() = runBlocking<Unit> {
