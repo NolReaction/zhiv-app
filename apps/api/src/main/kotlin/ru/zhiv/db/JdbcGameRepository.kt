@@ -205,7 +205,19 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             GameAchievement(it.getString("id"), it.getLong("progress"), it.getLong("target"),
                 it.getObject("unlocked_at", OffsetDateTime::class.java)?.toInstant()?.toString())
         }
-        GameAchievements(actor.publicId, instant.toInstant().toString(), awards)
+        // A previous API instance may have accepted progress after V21's backfill
+        // during a rolling upgrade. Reconcile only verified server values, under
+        // the same user lock as the qualifying writes; preserve any existing date.
+        val reconciled = awards.map { award ->
+            if (award.unlockedAt != null || award.progress < award.target) award else {
+                recordGameAchievement(c, actor.id, award.id, instant)
+                val unlockedAt = c.one("SELECT unlocked_at FROM game_achievements WHERE user_id=? AND achievement_id=?", actor.id, award.id) {
+                    it.getObject(1, OffsetDateTime::class.java).toInstant().toString()
+                } ?: error("Achievement reconciliation did not persist its award")
+                award.copy(unlockedAt = unlockedAt)
+            }
+        }
+        GameAchievements(actor.publicId, instant.toInstant().toString(), reconciled)
     }
 }
 
