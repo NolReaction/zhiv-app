@@ -90,6 +90,39 @@ await api("DELETE", "/api/v1/people/" + guestOne.data.person.circleId, { cookie:
 await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestA.cookie, key: receiptKey, body: { token: multiToken }, expected: 409 });
 await api("DELETE", "/api/v1/people/" + guestTwo.data.person.circleId, { cookie: owner.cookie, expected: 204 });
 
+// The online game has a separate score and must work under the runtime DB role.
+await api("GET", "/api/v1/game/progress", { expected: 401 });
+const gameBefore = await api("GET", "/api/v1/game/progress", { cookie: owner.cookie });
+assert.equal(gameBefore.data.lifetimeTaps, 0);
+assert.equal(gameBefore.data.leaderboardOptIn, false);
+const gameRequest = { ownerPublicId: owner.data.user.publicId, requestId: randomUUID() };
+const gameSession = await api("POST", "/api/v1/game/sessions", { cookie: owner.cookie, body: gameRequest });
+assert.equal((await api("POST", "/api/v1/game/sessions", { cookie: owner.cookie, body: gameRequest })).data.sessionId, gameSession.data.sessionId);
+const gameBatch = { sessionId: gameSession.data.sessionId, sequence: 1, tapCount: 7, runId: randomUUID() };
+const gameScore = await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: gameBatch });
+assert.equal(gameScore.data.acceptedTaps, 7);
+assert.equal(gameScore.data.progress.lifetimeTaps, 7);
+assert.equal(gameScore.data.progress.bestSeries, 7);
+assert.equal(gameScore.data.progress.month, gameScore.data.progress.serverTime.slice(0, 7));
+const gameReplay = await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: gameBatch });
+assert.equal(gameReplay.data.replayed, true);
+assert.equal(gameReplay.data.progress.lifetimeTaps, 7);
+await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, tapCount: 8 }, expected: 409 });
+await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, sequence: 2, lifetimeTaps: 999999 }, expected: 400 });
+assert.deepEqual((await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie })).data.entries, []);
+const gameVisible = await api("PATCH", "/api/v1/game/visibility", { cookie: owner.cookie,
+  body: { ownerPublicId: owner.data.user.publicId, leaderboardOptIn: true, expectedVersion: 0 } });
+const gameBoard = await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie });
+assert.equal(gameBoard.headers["cache-control"], "no-store");
+assert.equal(gameBoard.data.entries[0].taps, 7);
+assert.deepEqual(Object.keys(gameBoard.data.entries[0]).sort(), ["displayName", "isMe", "rank", "taps"]);
+await api("PATCH", "/api/v1/game/visibility", { cookie: owner.cookie,
+  body: { ownerPublicId: owner.data.user.publicId, leaderboardOptIn: false, expectedVersion: gameVisible.data.visibilityVersion } });
+await api("PATCH", "/api/v1/game/visibility", { cookie: owner.cookie,
+  body: { ownerPublicId: owner.data.user.publicId, leaderboardOptIn: true, expectedVersion: 0 }, expected: 409 });
+assert.deepEqual((await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie })).data.entries, []);
+assert.equal((await api("GET", "/api/v1/me", { cookie: owner.cookie })).data.checkInCount, marked.data.checkInCount);
+
 await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, body: { text: "гуляю" } });
 const people = () => api("GET", "/api/v1/people", { cookie: friend.cookie });
 assert.equal((await people()).data.people[0].status.text, "гуляю");

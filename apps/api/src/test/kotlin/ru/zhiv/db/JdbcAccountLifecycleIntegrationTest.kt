@@ -335,4 +335,46 @@ class JdbcAccountLifecycleIntegrationTest {
         assertFailsWith<AuthFailure>{auth.deleteAccount(rotated,browser,tokens.issue().hash)}
     }
 
+
+    @Test fun `game merge keeps personal totals but max monthly score and never inherits public ranking`() = runBlocking<Unit> {
+        val a=account("Game Current"); val b=account("Game Source"); val browser=tokens.issue().hash
+        val game=JdbcGameRepository(source)
+        val publicA=people.findBySession(a.session)!!.publicId; val publicB=people.findBySession(b.session)!!.publicId
+        val playA=game.openSession(a.session,UUID.randomUUID(),publicA)
+        val playB=game.openSession(b.session,UUID.randomUUID(),publicB)
+        game.submitBatch(a.session,UUID.fromString(playA.sessionId),1,15,UUID.randomUUID())
+        game.submitBatch(b.session,UUID.fromString(playB.sessionId),1,40,UUID.randomUUID())
+        game.setVisibility(b.session,true,0,publicB)
+        val key=readyMerge(a,b,browser)
+        auth.confirmMerge(a.session,browser,key)
+        val result=game.progress(a.session)
+        assertEquals(55L,result.lifetimeTaps)
+        assertEquals(40L,result.bestSeries)
+        assertEquals(40L,result.monthlyTaps,"combining accounts must not farm monthly rankings")
+        assertFalse(result.leaderboardOptIn,"source public visibility must not publish surviving profile")
+        assertEquals("0",scalar("SELECT count(*) FROM game_profiles WHERE user_id=?",b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_monthly_scores WHERE user_id=?",b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_sessions WHERE user_id IN (?,?)",a.id,b.id))
+        assertEquals("GAME_SESSION_EXPIRED",assertFailsWith<AuthFailure> {
+            game.submitBatch(a.session,UUID.fromString(playA.sessionId),2,1,UUID.randomUUID())
+        }.code)
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(55L,game.progress(a.session).lifetimeTaps)
+        prove(a,browser,"delete")
+        auth.deleteAccount(a.session,browser,tokens.issue().hash)
+        assertEquals("0",scalar("SELECT count(*) FROM game_profiles WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_monthly_scores WHERE user_id=?",a.id))
+        assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure>{game.progress(a.session)}.code)
+    }
+
+    @Test fun `accepted game taps invalidate a pending account merge review`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val game=JdbcGameRepository(source)
+        val publicB=people.findBySession(b.session)!!.publicId
+        val play=game.openSession(b.session,UUID.randomUUID(),publicB)
+        val key=readyMerge(a,b,browser)
+        game.submitBatch(b.session,UUID.fromString(play.sessionId),1,10,UUID.randomUUID())
+        assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure>{auth.confirmMerge(a.session,browser,key)}.code)
+        assertEquals(b.id,people.findSessionUserId(b.session))
+    }
 }

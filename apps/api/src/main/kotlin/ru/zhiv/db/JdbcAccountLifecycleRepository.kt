@@ -167,6 +167,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("UPDATE account_login_flows SET consumed_at=COALESCE(consumed_at,clock_timestamp()),account_proved_at=COALESCE(account_proved_at,clock_timestamp()),subject=NULL,display_name=NULL,verifier=NULL,nonce=NULL,code_hash=NULL WHERE provider=? AND subject=?",provider,subject)
     }
     private fun clearCapabilities(c: Connection, id: UUID, keepSession: ByteArray? = null) {
+        c.update("DELETE FROM game_sessions WHERE user_id=?", id)
         // Before removing identity strings, invalidate verified tickets and in-flight callbacks.
         c.rows("SELECT provider,subject FROM account_login_identities WHERE user_id=?",id) { it.getString(1) to it.getString(2) }.forEach { retireIdentity(c,it.first,it.second) }
         c.update("UPDATE app_sessions SET revoked_at=clock_timestamp(),device_label=NULL WHERE user_id=? AND revoked_at IS NULL AND (?::bytea IS NULL OR token_hash<>?)",id,keepSession,keepSession)
@@ -222,7 +223,8 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
                 "Ваши группы сохранятся, права владельца второго профиля перейдут сохраняемому профилю. Новые участия начнутся с текущего момента: чужие отметки за время до нового вступления не откроются.",
                 "Останется только этот сеанс. Другие сеансы обоих профилей, коды восстановления и приглашения будут отозваны.",
                 "Для совпадающих сервисов входа останется явно выбранный аккаунт. Не выбранный аккаунт больше не сможет открыть этот профиль.",
-                "Личные заметки и избранное второго профиля удалятся. Его имя и статус будут очищены."),conflicts,providers)
+                "Личные заметки и избранное второго профиля удалятся. Его имя и статус будут очищены.",
+                "Сетевые игровые тапы сложатся, сохранится лучший рекорд серии. Для каждого месяца сохранится больший счёт двух профилей: очки рейтинга не складываются. Публичность рейтинга останется как в открытом профиле."),conflicts,providers)
     }
     /** Include all rows that determine effects, choices, sharing or capabilities. Session heartbeat
      * timestamps are omitted so ordinary polling does not invalidate a review. */
@@ -244,6 +246,8 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM direct_person_favorites t WHERE user_id IN (?,?) ORDER BY user_id,circle_id",
             "SELECT to_jsonb(t)::text FROM user_status_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
             "SELECT to_jsonb(t)::text FROM user_timezone_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
+            "SELECT jsonb_build_array(user_id,lifetime_taps,best_series,leaderboard_opt_in,visibility_version)::text FROM game_profiles WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM game_monthly_scores t WHERE user_id IN (?,?) ORDER BY user_id,month",
             "SELECT to_jsonb(t)::text FROM account_merge_sources t WHERE target_user_id IN (?,?) ORDER BY source_user_id"
         )
         val digest=MessageDigest.getInstance("SHA-256")
@@ -276,7 +280,34 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM user_status_write_keys WHERE user_id=?",id)
         c.update("DELETE FROM user_timezone_write_keys WHERE user_id=?",id)
     }
+    private fun mergeGameProgress(c: Connection, target: UUID, source: UUID) {
+        // Lifetime is personal history. Competitive monthly scores use MAX to prevent
+        // parallel accounts from adding their separate per-user rate budgets together.
+        c.update("""
+            INSERT INTO game_profiles(user_id,lifetime_taps,best_series,bucket_tokens)
+            SELECT ?,lifetime_taps,best_series,0 FROM game_profiles WHERE user_id=?
+            ON CONFLICT(user_id) DO UPDATE SET
+                lifetime_taps=LEAST(9007199254740991,game_profiles.lifetime_taps+EXCLUDED.lifetime_taps),
+                best_series=GREATEST(game_profiles.best_series,EXCLUDED.best_series)
+        """.trimIndent(),target,source)
+        c.update("""
+            INSERT INTO game_monthly_scores(user_id,month,taps,updated_at)
+            SELECT ?,month,taps,clock_timestamp() FROM game_monthly_scores WHERE user_id=?
+            ON CONFLICT(user_id,month) DO UPDATE SET taps=GREATEST(game_monthly_scores.taps,EXCLUDED.taps),
+                updated_at=CASE WHEN EXCLUDED.taps>game_monthly_scores.taps THEN EXCLUDED.updated_at ELSE game_monthly_scores.updated_at END
+        """.trimIndent(),target,source)
+        // Never inherit source opt-in. Invalidate stale settings writes and spend the
+        // burst allowance so repeatedly merging empty accounts cannot refill it.
+        c.update("""
+            UPDATE game_profiles SET bucket_tokens=0,bucket_updated_at=clock_timestamp(),
+                visibility_version=LEAST(9007199254740991,visibility_version+1),updated_at=clock_timestamp()
+            WHERE user_id=?
+        """.trimIndent(),target)
+    }
     private fun tombstone(c: Connection,id: UUID) {
+        c.update("DELETE FROM game_sessions WHERE user_id=?",id)
+        c.update("DELETE FROM game_monthly_scores WHERE user_id=?",id)
+        c.update("DELETE FROM game_profiles WHERE user_id=?",id)
         c.update("DELETE FROM account_login_identities WHERE user_id=?",id)
         c.update("UPDATE app_users SET display_name='Удалённый профиль',status_text=NULL,status_updated_at=NULL,status_expires_at=NULL,last_check_in_at=NULL,avatar_storage_key=NULL,avatar_updated_at=NULL,display_name_changed_at=NULL,display_name_change_key=NULL,updated_at=clock_timestamp(),deleted_at=clock_timestamp() WHERE id=?",id)
     }
@@ -336,6 +367,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("UPDATE account_merge_sources SET target_user_id=? WHERE target_user_id=?",id,s.other)
         c.update("INSERT INTO account_merge_sources(source_user_id,target_user_id) VALUES (?,?)",s.other,id)
         c.update("UPDATE app_users SET last_check_in_at=(SELECT last_check_in_at FROM account_check_in_summary(?)),updated_at=clock_timestamp() WHERE id=?",id,id)
+        mergeGameProgress(c,id,s.other)
         tombstone(c,s.other)
         saveReceipt(c,"merge",previewHash,id,sessionHash,browserHash)
         Unit

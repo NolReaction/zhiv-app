@@ -486,3 +486,11 @@
 .timeZoneActions button { flex: 1; min-height: 44px; border: 1px solid rgba(190,215,169,.2); border-radius: 12px; background: rgba(190,215,169,.06); color: #d2e3c4; padding: 8px 12px; font: inherit; font-size: 14px; cursor: pointer; }
 .timeZoneActions button:disabled { opacity: .45; cursor: default; }
 .timeZoneActions button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.gameActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gameActions button { display: flex; align-items: center; justify-content: center; gap: 7px; flex: 1; min-height: 44px; padding: 8px 12px; border: 1px solid rgba(190,215,169,.2); border-radius: 12px; color: #d2e3c4; background: rgba(190,215,169,.06); font: inherit; font-size: 14px; cursor: pointer; }
+.gameActions button:disabled { opacity: .45; cursor: default; }
+.gameActions button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.legacyGame { color: #aebaa2; font-size: 13px; line-height: 1.5; }
+.legacyGame summary { min-height: 44px; align-content: center; cursor: pointer; }
+.legacyGame p { margin: 0; }
