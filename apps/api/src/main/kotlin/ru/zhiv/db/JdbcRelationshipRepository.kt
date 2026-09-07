@@ -16,6 +16,7 @@ import ru.zhiv.relationships.RequestAction
 import ru.zhiv.relationships.RequestDirection
 import ru.zhiv.relationships.SharingMode
 import ru.zhiv.relationships.FavoriteSnapshot
+import ru.zhiv.relationships.NicknameSnapshot
 import ru.zhiv.relationships.SharingSnapshot
 import ru.zhiv.relationships.UserLookupSnapshot
 import ru.zhiv.relationships.UserReference
@@ -281,6 +282,42 @@ class JdbcRelationshipRepository(
         }
     }
 
+    override suspend fun updateNickname(sessionTokenHash: ByteArray, circleId: UUID, nickname: String): RelationshipResult<NicknameSnapshot> = io {
+        inTransaction { connection ->
+            val currentUserId = findCurrentUser(connection, sessionTokenHash)
+                ?: return@inTransaction RelationshipResult.Unauthorized
+            val initialCircle = findCircleForUser(connection, circleId, currentUserId, lock = false)
+                ?: return@inTransaction RelationshipResult.NotFound
+            lockUsers(connection, setOf(initialCircle.lowUserId, initialCircle.highUserId))
+            if (!sessionBelongsToUser(connection, sessionTokenHash, currentUserId)) {
+                return@inTransaction RelationshipResult.Unauthorized
+            }
+            val circle = findCircleForUser(connection, circleId, currentUserId, lock = true)
+                ?: return@inTransaction RelationshipResult.NotFound
+            if (circle.lowUserId != initialCircle.lowUserId || circle.highUserId != initialCircle.highUserId) {
+                return@inTransaction RelationshipResult.Conflict
+            }
+            if (circle.archivedAt != null) return@inTransaction RelationshipResult.NotFound
+            val subjectId = if (circle.lowUserId == currentUserId) circle.highUserId else circle.lowUserId
+            val sql = if (nickname.isEmpty()) {
+                "DELETE FROM private_person_nicknames WHERE viewer_user_id = ? AND subject_user_id = ?"
+            } else {
+                """
+                INSERT INTO private_person_nicknames(viewer_user_id, subject_user_id, nickname) VALUES (?, ?, ?)
+                ON CONFLICT (viewer_user_id, subject_user_id) DO UPDATE
+                SET nickname = EXCLUDED.nickname, updated_at = clock_timestamp()
+                """.trimIndent()
+            }
+            connection.prepareStatement(sql).use { statement ->
+                statement.setObject(1, currentUserId)
+                statement.setObject(2, subjectId)
+                if (nickname.isNotEmpty()) statement.setString(3, nickname)
+                statement.executeUpdate()
+            }
+            RelationshipResult.Success(NicknameSnapshot(circleId, nickname.ifEmpty { null }, serverTime(connection)))
+        }
+    }
+
     override suspend fun updateFavorite(sessionTokenHash: ByteArray, circleId: UUID, isFavorite: Boolean): RelationshipResult<FavoriteSnapshot> = io {
         inTransaction { connection ->
             val currentUserId = findCurrentUser(connection, sessionTokenHash)
@@ -372,6 +409,10 @@ class JdbcRelationshipRepository(
             ) return@inTransaction RelationshipResult.Conflict
             val now = serverTime(connection)
             if (circle.archivedAt == null) {
+                connection.prepareStatement("SELECT preserve_recipient_denies(?)").use {
+                    it.setObject(1, currentUserId)
+                    it.execute()
+                }
                 connection.prepareStatement(
                     "UPDATE circles SET archived_at = ? WHERE id = ? AND archived_at IS NULL",
                 ).use { statement ->
@@ -659,7 +700,7 @@ class JdbcRelationshipRepository(
         connection.prepareStatement(
             """
             WITH direct_people AS (
-                SELECT c.id, c.created_at,
+                SELECT c.id, c.created_at, c.direct_user_low_id, c.direct_user_high_id,
                        CASE WHEN c.direct_user_low_id = ?
                             THEN c.direct_user_high_id
                             ELSE c.direct_user_low_id END AS other_user_id
@@ -668,7 +709,7 @@ class JdbcRelationshipRepository(
                    AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
             )
             SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_people.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_people.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_people.id AS circle_id, direct_people.created_at,
-                   other.public_id, other.display_name,
+                   other.public_id, other.display_name, private_name.nickname,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
@@ -686,6 +727,11 @@ class JdbcRelationshipRepository(
               JOIN app_users other
                 ON other.id = direct_people.other_user_id
                AND other.deleted_at IS NULL
+              LEFT JOIN private_person_nicknames private_name
+                ON private_name.subject_user_id = direct_people.other_user_id
+               AND private_name.viewer_user_id = CASE
+                   WHEN direct_people.direct_user_low_id = direct_people.other_user_id
+                   THEN direct_people.direct_user_high_id ELSE direct_people.direct_user_low_id END
               CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid), direct_people.other_user_id) mine
               CROSS JOIN LATERAL effective_recipient_sharing(direct_people.other_user_id, CAST(? AS uuid)) theirs
               LEFT JOIN LATERAL (
@@ -704,7 +750,7 @@ class JdbcRelationshipRepository(
                    ORDER BY event.checked_at DESC
                    LIMIT 1
               ) latest ON TRUE
-             ORDER BY is_favorite DESC, lower(other.display_name), other.public_id
+             ORDER BY is_favorite DESC, lower(COALESCE(private_name.nickname, other.display_name)), other.public_id
             """.trimIndent(),
         ).use { statement ->
             statement.setObject(1, currentUserId)
@@ -783,7 +829,7 @@ class JdbcRelationshipRepository(
     ): PersonSnapshot? = connection.prepareStatement(
         """
         WITH direct_person AS (
-            SELECT c.id, c.created_at,
+            SELECT c.id, c.created_at, c.direct_user_low_id, c.direct_user_high_id,
                    CASE WHEN c.direct_user_low_id = ?
                         THEN c.direct_user_high_id
                         ELSE c.direct_user_low_id END AS other_user_id
@@ -792,7 +838,7 @@ class JdbcRelationshipRepository(
                AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
         )
         SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id AS circle_id, direct_person.created_at,
-               other.public_id, other.display_name,
+               other.public_id, other.display_name, private_name.nickname,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
@@ -810,7 +856,12 @@ class JdbcRelationshipRepository(
           JOIN app_users other
             ON other.id = direct_person.other_user_id
            AND other.deleted_at IS NULL
-          CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid), direct_person.other_user_id) mine
+          LEFT JOIN private_person_nicknames private_name
+                ON private_name.subject_user_id = direct_person.other_user_id
+               AND private_name.viewer_user_id = CASE
+                   WHEN direct_person.direct_user_low_id = direct_person.other_user_id
+                   THEN direct_person.direct_user_high_id ELSE direct_person.direct_user_low_id END
+              CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid), direct_person.other_user_id) mine
           CROSS JOIN LATERAL effective_recipient_sharing(direct_person.other_user_id, CAST(? AS uuid)) theirs
           LEFT JOIN LATERAL (
               SELECT event.checked_at
@@ -909,6 +960,7 @@ class JdbcRelationshipRepository(
     )
 
     private fun ResultSet.toPersonSnapshot() = PersonSnapshot(
+        nickname = getString("nickname"),
         statusText = getString("status_text"),
         statusUpdatedAt = getObject("status_updated_at", OffsetDateTime::class.java),
         statusExpiresAt = getObject("status_expires_at", OffsetDateTime::class.java),

@@ -40,6 +40,7 @@ fun Route.identityRoutes(
     repository: IdentityRepository,
     tokenCodec: TokenCodec,
     config: AppConfig,
+    allowLegacyBootstrap: Boolean = true,
 ) {
     rateLimit(RateLimitName("relationships")) {
         route("/api/v1/me/status") {
@@ -88,6 +89,13 @@ fun Route.identityRoutes(
             }
             post {
                 call.response.header(HttpHeaders.CacheControl, "no-store")
+                if (!allowLegacyBootstrap) {
+                    call.respond(
+                        HttpStatusCode.Gone,
+                        ApiErrorResponse("AUTH_REQUIRED", "Обновите приложение и войдите через доступный способ входа"),
+                    )
+                    return@post
+                }
                 if (!call.isTrustedWrite(config)) {
                     call.respond(
                         HttpStatusCode.Forbidden,

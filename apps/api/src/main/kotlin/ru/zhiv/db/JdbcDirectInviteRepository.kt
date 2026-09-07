@@ -298,12 +298,12 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
         connection.prepareStatement(
             """
             WITH direct_person AS (
-                SELECT c.id, c.created_at,
+                SELECT c.id, c.created_at, c.direct_user_low_id, c.direct_user_high_id,
                        CASE WHEN c.direct_user_low_id = ? THEN c.direct_user_high_id ELSE c.direct_user_low_id END other_user_id
                   FROM circles c WHERE c.id = ? AND c.kind = 'DIRECT' AND c.archived_at IS NULL
                     AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
             )
-            SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id circle_id, direct_person.created_at, other.public_id, other.display_name,
+            SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id circle_id, direct_person.created_at, other.public_id, other.display_name, private_name.nickname,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
@@ -314,6 +314,11 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                         ELSE 'WAITING_INITIAL' END check_in_state,
                    latest.checked_at last_check_in_at
               FROM direct_person JOIN app_users other ON other.id = direct_person.other_user_id
+              LEFT JOIN private_person_nicknames private_name
+                ON private_name.subject_user_id = direct_person.other_user_id
+               AND private_name.viewer_user_id = CASE
+                   WHEN direct_person.direct_user_low_id = direct_person.other_user_id
+                   THEN direct_person.direct_user_high_id ELSE direct_person.direct_user_low_id END
               CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid),direct_person.other_user_id) mine
               CROSS JOIN LATERAL effective_recipient_sharing(direct_person.other_user_id,CAST(? AS uuid)) theirs
               LEFT JOIN LATERAL (
@@ -359,6 +364,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
         statusText=getString("status_text"), statusUpdatedAt=getObject("status_updated_at", OffsetDateTime::class.java),
         statusExpiresAt=getObject("status_expires_at", OffsetDateTime::class.java),
         isFavorite=getBoolean("is_favorite"),
+        nickname=getString("nickname"),
     )
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }

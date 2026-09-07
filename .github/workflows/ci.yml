@@ -75,6 +75,12 @@ jobs:
             echo "PostgreSQL integration tests were skipped; Docker is required in CI." >&2
             exit 1
           fi
+          auth_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcAuthRepositoryIntegrationTest.xml"
+          test -s "${auth_report}"
+          if grep --quiet '<skipped' "${auth_report}"; then
+            echo "Authentication integration tests must run with PostgreSQL." >&2
+            exit 1
+          fi
 
   compose:
     name: Production Compose smoke test
@@ -105,6 +111,30 @@ jobs:
 
       - name: Exercise the isolated production API
         run: node scripts/smoke-production.mjs
+
+      - name: Verify explicit user reset with a restored backup
+        shell: bash
+        run: |
+          if bash scripts/reset-user-data.sh; then
+            echo "Reset must require an explicit destructive flag."
+            exit 1
+          fi
+          if bash scripts/reset-user-data.sh --confirm-delete-all-users; then
+            echo "Reset must refuse an API with legacy signup enabled."
+            exit 1
+          fi
+          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO account_login_flows (token_hash, browser_hash, provider, intent)
+          VALUES (decode(repeat('01', 32), 'hex'), decode(repeat('02', 32), 'hex'), 'vk', 'login');
+          INSERT INTO account_registration_tickets (token_hash, browser_hash, provider, subject)
+          VALUES (decode(repeat('03', 32), 'hex'), decode(repeat('04', 32), 'hex'), 'email', 'reset@example.com');
+          SQL
+          export VK_CLIENT_ID=123
+          docker compose -f deploy/compose.yml up -d --no-deps --no-build --wait api
+          bash scripts/reset-user-data.sh --confirm-delete-all-users
+          curl --fail --silent --show-error --insecure https://localhost/readyz
+          status="$(curl --silent --show-error --insecure -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' https://localhost/api/v1/bootstrap)"
+          test "$status" = 410
 
       - name: Show container diagnostics
         if: failure()

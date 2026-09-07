@@ -1,5 +1,6 @@
 "use client";
 
+import { TransientNotice } from "./app-notifications";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import {
@@ -488,7 +489,8 @@ export function GroupsSection({
         })}
       </div>
 
-      {localError ? <p className={styles.error} role="alert">{localError}</p> : null}
+      <TransientNotice message={localError} kind="error" />
+      <TransientNotice message={error} kind="error" />
 
       <Dialog open={createOpen} onOpenChange={(open) => {
         setCreateOpen(open);
@@ -569,7 +571,7 @@ export function GroupsSection({
           <button className={styles.primaryButton} type="button" disabled={Boolean(pending)} onClick={() => void handleCreate()}>
             {pending === "create" ? "Создаём…" : "Создать группу"}
           </button>
-          {localError ? <p className={styles.dialogError} role="alert">{localError}</p> : null}
+
         </DialogContent>
       </Dialog>
 
@@ -592,7 +594,7 @@ export function GroupsSection({
           <button className={styles.primaryButton} type="button" disabled={Boolean(pending)} onClick={() => void handleEdit()}>
             Сохранить
           </button>
-          {localError ? <p className={styles.dialogError} role="alert">{localError}</p> : null}
+
         </DialogContent>
       </Dialog>
 

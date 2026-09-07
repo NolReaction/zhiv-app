@@ -1,5 +1,6 @@
 
 "use client";
+import { TransientNotice } from "./app-notifications";
 import {useEffect,useRef,useState} from "react";
 import {Copy,Link2} from "lucide-react";
 import type {DirectInvitePreview} from "@/lib/check-in-contract";
@@ -129,12 +130,15 @@ export function CapabilityLanding({authenticated,onInviteAccepted}:{authenticate
       {retired?<button className={styles.primary} onClick={()=>setRetired(false)}>Понятно</button>:<>
         {invite?<p className={styles.note}>После принятия вы увидите только новые отметки друг друга. Старая история не откроется.</p>:null}
         {invite && pending && !authenticated?<div className={styles.appBridge}>
-          <p>Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана. Скопируйте код и выберите «Люди» → «Принять».</p>
+          <p>Продолжите в этом браузере и войдите через привязанный ВК или почту. Приглашение сохранится до завершения входа.</p>
+          <details><summary>Прежний профиль ещё без привязки?</summary>
+          <p>Можно принять приглашение там, где профиль уже открыт: скопируйте код и выберите «Люди» → «Принять».</p>
           <textarea className={styles.inviteCode} aria-label="Одноразовый код приглашения" readOnly rows={3} value={inviteCode(pending)}/>
           <button className={styles.bridgeCopy} onClick={async()=>setBridgeNotice(await copyText(inviteCode(pending))?"Код скопирован. Откройте «Люди» → «Принять».":"Зажмите код выше и выберите «Скопировать».")}><Copy size={16}/>Скопировать код для приложения</button>
+          </details>
         </div>:null}
-        {bridgeNotice?<p className={styles.note} role="status">{bridgeNotice}</p>:null}
-        {error?<p className={styles.error} role="alert">{error}</p>:null}
+        <TransientNotice message={bridgeNotice} />
+        <TransientNotice message={error} kind="error" />
         {authenticated?<button className={styles.primary} disabled={loading || !invite} onClick={()=>void acceptInvite()}>{loading?"Проверяем…":"Принять приглашение"}</button>:<button className={styles.primary} disabled={loading || !invite} onClick={()=>setPending(null)}>Продолжить в этом браузере</button>}
         <button className={styles.secondary} disabled={loading} onClick={clearInvite}>{authenticated?"Не сейчас":"Отказаться от приглашения"}</button>
       </>}

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   ApiErrorResponse,
   FavoriteResponse,
+  NicknameResponse,
   CheckInResponse,
   ClickerSeriesEvent,
   CooldownResponse,
@@ -87,6 +88,7 @@ const directRequestSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 const personSchema = z.object({
+  nickname: z.string().nullable().default(null),
   isFavorite: z.boolean().default(false),
   status: userStatusSchema.nullable().default(null),
   circleId: z.string().uuid(),
@@ -262,7 +264,9 @@ async function request<T>(
     const message =
       knownError && "message" in knownError
         ? knownError.message
-        : "Не удалось связаться с сервером";
+        : response.status === 429
+          ? "Слишком много запросов. Подождите немного и повторите."
+          : "Не удалось связаться с сервером";
     throw new ApiError(message, response.status, knownError);
   }
 
@@ -550,5 +554,12 @@ export function updatePersonFavorite(circleId: string, isFavorite: boolean, idem
   return request<FavoriteResponse>(`/api/v1/people/${encodeURIComponent(circleId)}/favorite`,
     z.object({ circleId: z.string().uuid(), isFavorite: z.boolean(), serverTime: z.string().datetime() }), {
       method: "PATCH", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ isFavorite }),
+    });
+}
+
+export function updatePersonNickname(circleId: string, nickname: string, idempotencyKey: string): Promise<NicknameResponse> {
+  return request<NicknameResponse>(`/api/v1/people/${encodeURIComponent(circleId)}/nickname`,
+    z.object({ circleId: z.string().uuid(), nickname: z.string().nullable(), serverTime: z.string().datetime() }), {
+      method: "PATCH", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ nickname }),
     });
 }

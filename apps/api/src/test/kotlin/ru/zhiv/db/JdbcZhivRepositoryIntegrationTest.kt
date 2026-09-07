@@ -811,6 +811,57 @@ class JdbcZhivRepositoryIntegrationTest {
         assertEquals(false, newPerson.isFavorite)
     }
 
+    @Test
+    fun `private nicknames survive reconnect without leaking to the subject`() = runBlocking<Unit> {
+        val relationships = JdbcRelationshipRepository(dataSource)
+        val ownerToken = tokens.issue(); val friendToken = tokens.issue(); val outsiderToken = tokens.issue()
+        repository.bootstrap("Nickname owner", tokens.issue().hash, ownerToken.hash, 365)
+        val friend = repository.bootstrap("Original name", tokens.issue().hash, friendToken.hash, 365)
+        repository.bootstrap("Nickname outsider", tokens.issue().hash, outsiderToken.hash, 365)
+        val circle = connectDirect(relationships, ownerToken.hash, friendToken.hash, friend.publicId)
+        assertIs<RelationshipResult.Success<*>>(relationships.updateSharing(ownerToken.hash, circle, SharingMode.OFF))
+        val before = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        repeat(2) { assertIs<RelationshipResult.Success<*>>(relationships.updateNickname(ownerToken.hash, circle, "Мама 💚")) }
+        val after = (assertIs<RelationshipResult.Success<*>>(JdbcRelationshipRepository(dataSource).listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        assertEquals(before.people.single().copy(nickname = "Мама 💚"), after.people.single())
+        assertEquals(before.audienceCount, after.audienceCount)
+        assertEquals("Original name", repository.findBySession(friendToken.hash)?.displayName)
+        val reverse = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(friendToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        assertEquals(null, reverse.people.single().nickname)
+        assertIs<RelationshipResult.NotFound>(relationships.updateNickname(outsiderToken.hash, circle, "Чужое"))
+        assertIs<RelationshipResult.Unauthorized>(relationships.updateNickname(tokens.issue().hash, circle, "Чужое"))
+        assertIs<RelationshipResult.Success<*>>(relationships.removePerson(ownerToken.hash, circle))
+        assertIs<RelationshipResult.NotFound>(relationships.updateNickname(ownerToken.hash, circle, "Чужое"))
+        val restoredCircle = connectDirect(relationships, ownerToken.hash, friendToken.hash, friend.publicId)
+        val restored = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        assertEquals("Мама 💚", restored.people.single().nickname)
+        assertIs<RelationshipResult.Success<*>>(relationships.updateNickname(ownerToken.hash, restoredCircle, ""))
+        val cleared = (assertIs<RelationshipResult.Success<*>>(relationships.listPeople(ownerToken.hash)).value as ru.zhiv.relationships.PeopleSnapshot)
+        assertEquals(null, cleared.people.single().nickname)
+    }
+
+    @Test
+    fun `lightweight session identity rejects revoked expired and deleted users`() = runBlocking<Unit> {
+        val session = tokens.issue()
+        val user = repository.bootstrap("Rate limit identity", tokens.issue().hash, session.hash, 365)
+        assertEquals(user.id, repository.findSessionUserId(session.hash))
+        assertEquals(null, repository.findSessionUserId(tokens.issue().hash))
+        for (change in listOf(
+            "UPDATE app_sessions SET revoked_at = clock_timestamp() WHERE user_id = ?",
+            "UPDATE app_sessions SET revoked_at = NULL, created_at = clock_timestamp() - interval '1 day', expires_at = clock_timestamp() - interval '1 second' WHERE user_id = ?",
+            "UPDATE app_sessions SET expires_at = clock_timestamp() + interval '1 day' WHERE user_id = ?",
+            "UPDATE app_users SET deleted_at = clock_timestamp() WHERE id = ?",
+        ).withIndex()) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(change.value).use { statement ->
+                    statement.setObject(1, user.id); statement.executeUpdate()
+                }
+                connection.commit()
+            }
+            assertEquals(if (change.index == 2) user.id else null, repository.findSessionUserId(session.hash))
+        }
+    }
+
     private suspend fun connectDirect(
         relationships: JdbcRelationshipRepository,
         requesterSessionHash: ByteArray,

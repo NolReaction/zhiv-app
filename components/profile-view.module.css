@@ -11,7 +11,7 @@
 .heading p {
   margin: 0 0 8px;
   color: #858b80;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -28,7 +28,6 @@
 .profileCard,
 .formCard,
 .futureCard,
-.recoveryCard,
 .gameStats,
 .stats {
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -40,7 +39,6 @@
   grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 14px;
-  margin-top: 14px;
   border-radius: 20px;
   padding: 15px 17px;
 }
@@ -56,7 +54,7 @@
   flex-direction: row;
   justify-content: space-between;
   color: #858b80;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .levelProgress {
@@ -94,7 +92,7 @@
 
 .gameStats small {
   color: #777d72;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .gameStats strong {
@@ -110,7 +108,6 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
-  margin-top: 14px;
   overflow: hidden;
   border-radius: 20px;
 }
@@ -144,14 +141,13 @@
 
 .stats span {
   color: #777d72;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .profileCard {
   display: flex;
   align-items: center;
   gap: 18px;
-  margin-top: 30px;
   border-radius: 24px;
   padding: 20px;
 }
@@ -205,11 +201,9 @@
 }
 
 .identity strong {
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: #f2f4ee;
   font-size: 21px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .identity > span {
@@ -224,14 +218,13 @@
 .identity small {
   margin-top: 5px;
   color: #777d72;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
 .formCard {
   display: grid;
   gap: 10px;
-  margin-top: 14px;
   border-radius: 24px;
   padding: 20px;
 }
@@ -259,12 +252,12 @@
 
 .formHeading small {
   color: #8d9488;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .formCard label {
   color: #9da397;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -295,7 +288,7 @@
 .hint {
   margin: 0 1px 3px;
   color: #747a6f;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -316,24 +309,11 @@
   opacity: 0.43;
 }
 
-.feedback {
-  min-height: 20px;
-}
+.feedback:empty { display: none; }
 
 .feedback p {
   margin: 1px 1px 0;
-  font-size: 11px;
-}
-
-.error {
-  color: #ff9c98;
-}
-
-.success {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #b7d8a2;
+  font-size: 13px;
 }
 
 .offline {
@@ -343,125 +323,9 @@
 .futureCard {
   display: flex;
   gap: 13px;
-  margin-top: 14px;
   border-radius: 20px;
   padding: 16px;
   color: #a4aa9e;
-}
-
-.recoveryCard {
-  display: grid;
-  gap: 14px;
-  margin-top: 14px;
-  border-radius: 22px;
-  padding: 18px;
-}
-
-.recoveryHeading {
-  display: flex;
-  gap: 12px;
-}
-
-.recoveryHeading > span {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  place-items: center;
-  border-radius: 13px;
-  background: rgba(183, 216, 162, 0.1);
-  color: #b7d8a2;
-}
-
-.recoveryHeading strong {
-  color: #e7ebe3;
-  font-size: 13px;
-}
-
-.recoveryHeading p,
-.recoveryNote,
-.recoveryEmpty {
-  margin: 4px 0 0;
-  color: #81877c;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.recoveryList {
-  display: grid;
-  gap: 7px;
-}
-
-.recoveryList > div {
-  display: flex;
-  min-height: 42px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 0 9px 0 12px;
-}
-
-.recoveryList span,
-.recoveryChoices button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.recoveryList span {
-  color: #dce1d8;
-  font-size: 11px;
-  font-weight: 760;
-}
-
-.recoveryList button,
-.recoveryChoices button {
-  border: 0;
-  font: inherit;
-  cursor: pointer;
-}
-
-.recoveryList button {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #b6bbb1;
-}
-
-.recoveryChoices {
-  display: grid;
-  gap: 8px;
-}
-
-.recoveryChoices small {
-  color: #898f84;
-  font-size: 9px;
-}
-
-.recoveryChoices > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.recoveryChoices button {
-  min-height: 36px;
-  border-radius: 12px;
-  background: rgba(183, 216, 162, 0.09);
-  color: #cfe4c3;
-  padding: 0 11px;
-  font-size: 10px;
-  font-weight: 760;
-}
-
-.recoveryNote {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding-top: 12px;
 }
 
 .futureCard > span {
@@ -482,64 +346,12 @@
 
 .futureCard p {
   margin: 4px 0 0;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 @media (min-width: 960px) and (hover: hover) and (pointer: fine) {
-  .view {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: auto auto auto auto auto;
-    align-content: start;
-    gap: 14px 20px;
-    scrollbar-gutter: stable;
-  }
-
-  .heading {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    margin-bottom: 12px;
-  }
-
-  .profileCard,
-  .stats,
-  .gameStats,
-  .formCard,
-  .recoveryCard,
-  .futureCard {
-    margin-top: 0;
-  }
-
-  .profileCard {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .stats {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .gameStats {
-    grid-column: 1;
-    grid-row: 3;
-  }
-
-  .futureCard {
-    grid-column: 1 / -1;
-    grid-row: 5;
-  }
-
-  .formCard {
-    grid-column: 2;
-    grid-row: 3;
-  }
-
-  .recoveryCard {
-    grid-column: 1 / -1;
-    grid-row: 4;
-  }
+  .view { scrollbar-gutter: stable; }
 }
 
 @media (max-width: 520px) {
@@ -601,4 +413,12 @@
   .formCard {min-width:0}
   .identity {min-width:0;overflow-wrap:anywhere}
   .stats span, .gameStats small, .formCard p, .formHeading small, .formCard label {font-size:12px;line-height:1.5}
+}
+
+.columns { display: grid; gap: 16px; margin-top: 26px; align-items: start; }
+.overviewColumn, .settingsColumn { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.localProgressNote { margin: 0 4px; color: #a5aa9f; font-size: 12px; line-height: 1.5; }
+.futureCard { margin-top: 24px; }
+@media (min-width: 960px) and (hover: hover) and (pointer: fine) {
+  .columns { grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: 24px; }
 }

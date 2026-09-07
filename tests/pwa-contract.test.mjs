@@ -455,7 +455,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(groupStyles, /\.peoplePicker\s*\{[^}]*touch-action:\s*pan-y;/s);
 
   const checkInButton = appStyles.match(/\.checkInButton\s*\{[^}]*\}/s)?.[0] ?? "";
-  const checkInLabel = appStyles.match(/\.checkInButton span\s*\{[^}]*\}/s)?.[0] ?? "";
+  const checkInLabel = appStyles.match(/\.checkInTitle\s*\{[^}]*\}/s)?.[0] ?? "";
   assert.match(checkInButton, /-webkit-touch-callout:\s*none;/);
   assert.match(checkInButton, /-webkit-user-select:\s*none;/);
   assert.match(checkInButton, /(?<!-webkit-)user-select:\s*none;/);
@@ -494,8 +494,8 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);
-  assert.match(people, /Включено · новые отметки доступны/);
-  assert.match(people, /Выключено · новые отметки скрыты/);
+  assert.match(people, /Этому человеку, включая общие группы/);
+  assert.match(people, /Скрыты от этого человека, включая группы/);
   assert.match(people, /aria-describedby=\{sharingHintId\}/);
   assert.match(people, /useReducer\(\s*inviteDialogReducer,\s*initialInviteDialogState/);
   assert.match(people, /<Dialog open=\{inviteDialog\.open\}/);
@@ -511,7 +511,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /inviteDialog\.mode === "qr" && inviteShare\.url/);
   assert.match(people, /Ссылка и QR с localhost не откроются на другом устройстве/);
   assert.match(people, /aria-label=\{inviteShare\.url \? "Ссылка приглашения" : "Одноразовый код приглашения"\}/);
-  assert.match(people, /aria-describedby=\{inviteImportError[\s\S]*\? "invite-import-hint invite-import-error"[\s\S]*: "invite-import-hint"\}/);
+  assert.match(people, /aria-describedby="invite-import-hint"/);
   assert.match(people, /aria-invalid=\{Boolean\(inviteImportError\)\}/);
   assert.match(people, /inviteDialog\.mode === "qr" \? styles\.inviteLinkFieldCompact/);
   assert.match(peopleStyles, /\.inviteLinkField\s*\{[^}]*user-select:\s*text;/s);
@@ -540,8 +540,8 @@ test("uses a wide desktop dashboard without changing the mobile navigation contr
   assert.match(desktopPeople, /grid-template-columns:\s*minmax\(260px, 0\.72fr\) minmax\(420px, 1\.28fr\);/);
   assert.match(desktopPeople, /grid-template-columns:\s*minmax\(240px, 1fr\) repeat\(3, 112px\);/);
   assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
-  assert.match(desktopProfile, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/);
-  assert.match(desktopProfile, /\.recoveryCard\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
+  assert.match(desktopProfile, /grid-template-columns:\s*minmax\(280px, 0\.8fr\) minmax\(0, 1\.2fr\);/);
+  assert.doesNotMatch(profileStyles, /grid-row:/);
 
   const narrowQuery = "@media (max-width: 360px)";
   const narrowPeople = peopleStyles.slice(peopleStyles.indexOf(narrowQuery));
@@ -561,7 +561,7 @@ test("keeps local development origins out of production Docker builds", async ()
   assert.match(dockerfile, /COPY \. \.[\s\S]*RUN npm run build:vps/);
 });
 
-test("bridges an invite from an external iOS browser into the authenticated PWA", async () => {
+test("keeps invitations through browser login and retains the legacy PWA fallback", async () => {
   const [landing, landingStyles] = await Promise.all([
     readFile(new URL("../components/capability-landing.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/capability-landing.module.css", import.meta.url), "utf8"),
@@ -569,7 +569,9 @@ test("bridges an invite from an external iOS browser into the authenticated PWA"
 
   assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT,\s*handler\)/);
   assert.match(landing, /На этом адресе и в этом браузере активной сессии нет/);
-  assert.match(landing, /Вернитесь туда, где профиль уже открыт — в исходную вкладку или приложение с домашнего экрана/);
+  assert.match(landing, /Продолжите в этом браузере и войдите через привязанный ВК или почту/);
+  assert.match(landing, /Приглашение сохранится до завершения входа/);
+  assert.match(landing, /Прежний профиль ещё без привязки/);
   assert.match(landing, /copyText\(inviteCode\(pending\)\)/);
   assert.match(landing, /«Люди» → «Принять»/);
   assert.match(landingStyles, /\.inviteCode\s*\{[^}]*user-select:\s*text;/s);

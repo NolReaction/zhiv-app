@@ -1,5 +1,6 @@
 "use client";
 
+import { TransientNotice } from "./app-notifications";
 import { useRef, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -84,7 +85,7 @@ export function StatusEditor({ me, nowMs, isOnline, onUpdated, onSessionLost }: 
           </div>
           {!isOnline && <p role="status">Для сохранения нужен интернет. Текст останется в этом окне.</p>}
           {normalized === null && <p role="alert">До 120 символов, без управляющих символов.</p>}
-          {error && <p role="alert">{error}</p>}
+          <TransientNotice message={error} kind="error" />
           <button type="submit" disabled={saving || !isOnline || normalized === null}>{saving ? "Сохраняем…" : "Сохранить статус"}</button>
         </form>
       </DialogContent>

@@ -142,6 +142,7 @@ private fun DirectInviteRedeemSnapshot.toDto() = DirectInviteRedeemResponse(
     person.toDto(), replayed, serverTime.toInstant().toString(),
 )
 private fun PersonSnapshot.toDto() = PersonDto(
+    nickname = nickname,
     isFavorite = isFavorite,
     circleId = circleId.toString(),
     user = PublicUserDto(user.publicId, user.displayName),

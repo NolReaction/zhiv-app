@@ -1,0 +1,27 @@
+.entry { display: grid; gap: .8rem; width: 100%; text-align: left; }
+.entryScreen { margin-block-start: 1.75rem; }
+.card { display: grid; gap: 1rem; padding: 1.35rem; border: 1px solid #35402f; border-radius: 1.6rem; background: #171d13; color: #e8eddf; }
+.card h2, .card h3 { display: flex; align-items: center; gap: .6rem; font-size: 1.2rem; margin: 0; }
+.card h3 { margin-top: .8rem; }
+.hint { color: #abb5a0; line-height: 1.55; font-size: 1rem; margin: 0; overflow-wrap: anywhere; }
+.mode { display: flex; flex-wrap: wrap; gap: .5rem; }
+.primary, .secondary { display: flex; justify-content: center; align-items: center; gap: .6rem; min-height: 3rem; padding: .75rem 1rem; border-radius: 1rem; font-size: 1rem; font-weight: 600; cursor: pointer; border: 1px solid #414d38; }
+.primary { background: #bed7a9; color: #15220f; }
+.secondary { background: #232b1e; color: #dbe6cf; }
+.secondary[aria-pressed=true] { background: #35432a; border-color: #a1bd8c; }
+.primary:disabled, .secondary:disabled { cursor: default; opacity: .55; }
+.primary:focus-visible, .secondary:focus-visible, .input:focus-visible { outline: 2px solid #cce6b6; outline-offset: 3px; }
+.input { width: 100%; min-width: 0; font-size: 1rem; padding: .85rem; border-radius: .85rem; border: 1px solid #4b5742; background: #10150e; color: #edf4e5; }
+.otpSlot { width: 2.65rem; height: 3.25rem; background: #10150e; border-color: #637355; font-size: 1.3rem; color: #edf4e5; }
+.method { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; overflow-wrap: anywhere; margin: 0; }
+.method span { color: #b7d3a4; }
+.sessions { list-style: none; padding: 0; margin: 0; display: grid; gap: .8rem; }
+.sessions li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .7rem; padding: .9rem 0; border-bottom: 1px solid #30392b; }
+.sessions li div { display: grid; gap: .3rem; flex: 1; min-width: 10rem; }
+.sessions span { color: #aebba4; font-size: .875rem; }
+.dialog { background: #161e12; border-color: #42503a; color: #e7eddf; }
+.textButton { justify-self: center; padding: .5rem; border: 0; background: transparent; color: #abb5a0; font-size: 1rem; cursor: pointer; text-underline-offset: .2em; }
+.textButton:hover { text-decoration: underline; }
+.textButton:disabled { opacity: .55; cursor: default; }
+.textButton:focus-visible { outline: 2px solid #cce6b6; outline-offset: 3px; }
+.vkMark { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; font-size: .875rem; font-weight: 800; letter-spacing: -.07em; }

@@ -9,6 +9,7 @@ import { createCapabilityToken } from "@/lib/capability-token";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RecoveryCodeCard } from "./recovery-code-card";
 import styles from "./recovery-starter.module.css";
+import { TransientNotice } from "./app-notifications";
 
 export function RecoveryStarter({context,isOnline,onRecovered}: {
   context:"onboarding"|"session-lost"|"profile";isOnline:boolean;onRecovered:(me:MeResponse)=>void;
@@ -34,23 +35,24 @@ export function RecoveryStarter({context,isOnline,onRecovered}: {
     finally {setBusy(false)}
   }
   return <>
-    <button className={styles.trigger} data-context={context} disabled={!isOnline} onClick={()=>setOpen(true)}><KeyRound size={18}/>{context==="profile"?"Вернуть прежний профиль":"У меня уже есть код восстановления"}</button>
+    <button className={styles.trigger} data-context={context} disabled={!isOnline} onClick={()=>setOpen(true)}>{context==="profile" && <KeyRound size={18}/>} {context==="profile"?"Вернуть прежний профиль":"Не получается войти?"}</button>
     <Dialog open={open} onOpenChange={v=>{if(!v)close()}}>
       <DialogContent className={styles.dialog} aria-busy={busy}>
         <DialogHeader>
           <DialogTitle className={styles.title}>{recovered?"Профиль восстановлен":"Восстановление по коду"}</DialogTitle>
-          <DialogDescription className={styles.description}>{recovered?"Прежние сессии закрыты, использованный код больше не действует. Сохраните новый код.":"Введите личный код, который вы заранее сохранили в профиле. Отметки, люди и группы останутся; прежние сессии закроются."}</DialogDescription>
+          <DialogDescription className={styles.description}>{recovered?"Вы снова в своём профиле. Старый код использован, а вход на других устройствах завершён. При желании создайте новый резервный код.":"Введите заранее сохранённый резервный код. Мы вернём ваш профиль с отметками, людьми и группами."}</DialogDescription>
         </DialogHeader>
         {recovered ? <>
           <RecoveryCodeCard isOnline={isOnline} onSessionLost={close}/>
           <button className={styles.primary} onClick={close}>Продолжить</button>
         </> : <form className={styles.codeForm} onSubmit={e=>void redeem(e)}>
-          <label htmlFor="restore-code">Личный код восстановления</label>
+          <label htmlFor="restore-code">Резервный код</label>
           <input id="restore-code" className={styles.codeInput} value={code} onChange={e=>setCode(e.target.value)} placeholder="ZHIV-R1-…" type="password" maxLength={80} autoComplete="off" autoCapitalize="none" spellCheck={false} disabled={busy}/>
-          <p>Нет кода? Если профиль ещё открыт на другом устройстве, создайте код там. Без кода и активной сессии восстановление невозможно.</p>
+          <p>После восстановления потребуется заново войти на других устройствах. Код сработает только один раз.</p>
+          <p>Есть доступ к привязанному ВК или почте? Используйте обычный вход — код не понадобится.</p>
           <button type="submit" className={styles.primary} disabled={busy || !isOnline || !code.trim()}>{busy?"Восстанавливаем…":"Восстановить профиль"}</button>
         </form>}
-        {error?<p role="alert" className={styles.error}>{error}</p>:null}
+        <TransientNotice message={error} kind="error" />
       </DialogContent>
     </Dialog>
   </>;

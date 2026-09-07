@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "ru.zhiv"
-version = "0.4.7"
+version = "0.5.0"
 
 repositories {
     mavenCentral()
@@ -15,6 +15,8 @@ val ktorVersion = "3.5.2"
 val flywayVersion = "12.8.0"
 
 dependencies {
+    implementation("com.nimbusds:nimbus-jose-jwt:10.9.1")
+    implementation("org.eclipse.angus:jakarta.mail:2.0.5")
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")

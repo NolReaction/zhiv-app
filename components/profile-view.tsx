@@ -18,6 +18,8 @@ import {
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { RecoveryCodeCard } from "./recovery-code-card";
 import { RecoveryStarter } from "./recovery-starter";
+import { TransientNotice } from "./app-notifications";
+import { AccountAccess } from "./account-access";
 import styles from "./profile-view.module.css";
 
 type ProfileViewProps = {
@@ -144,121 +146,129 @@ export function ProfileView({
         <h1 id="profile-title">Профиль</h1>
       </div>
 
-      <div className={styles.profileCard}>
-        <div className={styles.avatar} aria-hidden="true">
-          {me.profile.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={me.profile.avatarUrl} alt="" />
-          ) : (
-            <strong>{initials(me.user.displayName)}</strong>
-          )}
-          <span><Camera size={16} /></span>
+      <TransientNotice message={error} kind="error" />
+      <TransientNotice message={success} kind="success" />
+      <div className={styles.columns}>
+        <div className={styles.overviewColumn}>
+          <div className={styles.profileCard}>
+            <div className={styles.avatar} aria-hidden="true">
+              {me.profile.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={me.profile.avatarUrl} alt="" />
+              ) : (
+                <strong>{initials(me.user.displayName)}</strong>
+              )}
+              <span><Camera size={16} /></span>
+            </div>
+            <div className={styles.identity}>
+              <strong>{me.user.displayName}</strong>
+              <span>{me.user.publicId}</span>
+              <small>Фото профиля появится в одной из следующих версий</small>
+            </div>
+          </div>
+
+          <div className={styles.stats} aria-label="Статистика профиля">
+            <div>
+              <Flame size={17} aria-hidden="true" />
+              <strong>{me.streak.currentDays}</strong>
+              <span>{russianNoun(me.streak.currentDays, "день", "дня", "дней")} подряд</span>
+            </div>
+            <div>
+              <Trophy size={17} aria-hidden="true" />
+              <strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong>
+              <span>лучшая серия</span>
+            </div>
+            <div>
+              <Check size={17} aria-hidden="true" />
+              <strong>{me.checkInCount}</strong>
+              <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span>
+            </div>
+          </div>
+
+          <div className={styles.gameStats} aria-label="Игровой прогресс">
+            <span aria-hidden="true"><Gamepad2 size={20} /></span>
+            <div>
+              <small>Уровень {clickerStats.level.level}</small>
+              <strong>{clickerStats.level.title}</strong>
+            </div>
+            <div>
+              <small>{clickerStats.level.nextMinimumLifetimeTaps ? "До повышения" : "Высший уровень"}</small>
+              <strong>
+                {clickerStats.level.nextMinimumLifetimeTaps
+                  ? `${clickerStats.levelProgress.remaining.toLocaleString("ru-RU")} ${russianNoun(clickerStats.levelProgress.remaining, "тап", "тапа", "тапов")}`
+                  : "Максимум"}
+              </strong>
+            </div>
+            <div className={styles.levelProgressMeta}>
+              <span>
+                Всего {clickerStats.lifetimeTaps.toLocaleString("ru-RU")} {russianNoun(clickerStats.lifetimeTaps, "тап", "тапа", "тапов")}
+              </span>
+              <span>{Math.round(clickerStats.levelProgress.ratio * 100)}%</span>
+            </div>
+            <div
+              className={styles.levelProgress}
+              role="progressbar"
+              aria-label="Прогресс игрового уровня"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(clickerStats.levelProgress.ratio * 100)}
+            >
+              <i style={{ transform: `scaleX(${clickerStats.levelProgress.ratio})` }} />
+            </div>
+          </div>
+
+          <p className={styles.localProgressNote}>Игровые серии и уровень хранятся на этом устройстве.</p>
         </div>
-        <div className={styles.identity}>
-          <strong>{me.user.displayName}</strong>
-          <span>{me.user.publicId}</span>
-          <small>Фото профиля появится в одной из следующих версий</small>
+        <div className={styles.settingsColumn}>
+          <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
+            <div className={styles.formHeading}>
+              <span><UserRound size={18} aria-hidden="true" /> Отображаемое имя</span>
+              {locked && availableAt ? (
+                <small><Clock3 size={14} aria-hidden="true" /> через {formatRemaining(availableAt, nowMs)}</small>
+              ) : (
+                <small>можно изменить сейчас</small>
+              )}
+            </div>
+
+            <label htmlFor="profile-display-name">Имя, которое видят ваши люди</label>
+            <input
+              id="profile-display-name"
+              value={draft}
+              onChange={(event) => {
+                setDraftState({
+                  sourceName: me.user.displayName,
+                  value: limitDisplayNameInput(event.target.value),
+                });
+                setError(null);
+                setSuccess(null);
+                requestKey.current = null;
+              }}
+              autoComplete="name"
+              disabled={pending || locked}
+              aria-invalid={Boolean(error)}
+              aria-describedby="profile-name-hint profile-name-feedback"
+            />
+            <p id="profile-name-hint" className={styles.hint}>
+              После сохранения следующее изменение будет доступно через 24 часа.
+              Публичный ID при этом не меняется.
+            </p>
+            <button
+              type="submit"
+              disabled={pending || locked || unchanged || !isOnline}
+            >
+              {pending ? "Сохраняем…" : locked ? "Изменение недоступно" : "Сохранить имя"}
+            </button>
+            <div id="profile-name-feedback" className={styles.feedback}>
+              {!isOnline && !error ? <p className={styles.offline}>Офлайн · изменения временно недоступны</p> : null}
+            </div>
+          </form>
+
+          <AccountAccess isOnline={isOnline} onSessionLost={onSessionLost}/>
+          <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost}/>
+          <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered}/>
+
         </div>
       </div>
-
-      <div className={styles.stats} aria-label="Статистика профиля">
-        <div>
-          <Flame size={17} aria-hidden="true" />
-          <strong>{me.streak.currentDays}</strong>
-          <span>{russianNoun(me.streak.currentDays, "день", "дня", "дней")} подряд</span>
-        </div>
-        <div>
-          <Trophy size={17} aria-hidden="true" />
-          <strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong>
-          <span>лучшая серия</span>
-        </div>
-        <div>
-          <Check size={17} aria-hidden="true" />
-          <strong>{me.checkInCount}</strong>
-          <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span>
-        </div>
-      </div>
-
-      <div className={styles.gameStats} aria-label="Игровой прогресс">
-        <span aria-hidden="true"><Gamepad2 size={20} /></span>
-        <div>
-          <small>Уровень {clickerStats.level.level}</small>
-          <strong>{clickerStats.level.title}</strong>
-        </div>
-        <div>
-          <small>{clickerStats.level.nextMinimumLifetimeTaps ? "До повышения" : "Высший уровень"}</small>
-          <strong>
-            {clickerStats.level.nextMinimumLifetimeTaps
-              ? `${clickerStats.levelProgress.remaining.toLocaleString("ru-RU")} ${russianNoun(clickerStats.levelProgress.remaining, "тап", "тапа", "тапов")}`
-              : "Максимум"}
-          </strong>
-        </div>
-        <div className={styles.levelProgressMeta}>
-          <span>
-            Всего {clickerStats.lifetimeTaps.toLocaleString("ru-RU")} {russianNoun(clickerStats.lifetimeTaps, "тап", "тапа", "тапов")}
-          </span>
-          <span>{Math.round(clickerStats.levelProgress.ratio * 100)}%</span>
-        </div>
-        <div
-          className={styles.levelProgress}
-          role="progressbar"
-          aria-label="Прогресс игрового уровня"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(clickerStats.levelProgress.ratio * 100)}
-        >
-          <i style={{ transform: `scaleX(${clickerStats.levelProgress.ratio})` }} />
-        </div>
-      </div>
-
-      <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
-        <div className={styles.formHeading}>
-          <span><UserRound size={18} aria-hidden="true" /> Отображаемое имя</span>
-          {locked && availableAt ? (
-            <small><Clock3 size={14} aria-hidden="true" /> через {formatRemaining(availableAt, nowMs)}</small>
-          ) : (
-            <small>можно изменить сейчас</small>
-          )}
-        </div>
-
-        <label htmlFor="profile-display-name">Имя, которое видят ваши люди</label>
-        <input
-          id="profile-display-name"
-          value={draft}
-          onChange={(event) => {
-            setDraftState({
-              sourceName: me.user.displayName,
-              value: limitDisplayNameInput(event.target.value),
-            });
-            setError(null);
-            setSuccess(null);
-            requestKey.current = null;
-          }}
-          autoComplete="name"
-          disabled={pending || locked}
-          aria-invalid={Boolean(error)}
-          aria-describedby="profile-name-hint profile-name-feedback"
-        />
-        <p id="profile-name-hint" className={styles.hint}>
-          После сохранения следующее изменение будет доступно через 24 часа.
-          Публичный ID при этом не меняется.
-        </p>
-        <button
-          type="submit"
-          disabled={pending || locked || unchanged || !isOnline}
-        >
-          {pending ? "Сохраняем…" : locked ? "Изменение недоступно" : "Сохранить имя"}
-        </button>
-        <div id="profile-name-feedback" className={styles.feedback}>
-          {error ? <p className={styles.error} role="alert">{error}</p> : null}
-          {success ? <p className={styles.success} role="status"><Check size={15} /> {success}</p> : null}
-          {!isOnline && !error ? <p className={styles.offline}>Офлайн · изменения временно недоступны</p> : null}
-        </div>
-      </form>
-
-      <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost}/>
-      <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered}/>
-
       <div className={styles.futureCard}>
         <span aria-hidden="true"><UserRound size={20} /></span>
         <div>

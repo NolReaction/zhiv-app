@@ -16,6 +16,7 @@ import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.CheckInResult
 import ru.zhiv.checkins.DailyStreakSnapshot
 import ru.zhiv.config.AppConfig
+import ru.zhiv.auth.AuthConfig
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.identity.UserSnapshot
@@ -29,8 +30,32 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class ApiContractTest {
+    @Test
+    fun `verified login providers disable legacy profile creation without issuing a session`() {
+        val providers = listOf(
+            AuthConfig(vkClientId = "123"),
+            AuthConfig(smtpHost = "smtp.example.com", smtpFrom = "login@example.com", codeSecret = "x".repeat(32)),
+            AuthConfig(telegramClientId = "123", telegramClientSecret = "test-secret"),
+        )
+        for (provider in providers) testApplication {
+            val repository = FakeRepository()
+            application { installZhivApi(repository, repository, testConfig(), authConfig = provider) }
+            val response = client.post("/api/v1/bootstrap") {
+                contentType(ContentType.Application.Json)
+                header("Idempotency-Key", UUID.randomUUID().toString())
+                setBody("""{"displayName":"Name alone"}""")
+            }
+            assertEquals(HttpStatusCode.Gone, response.status)
+            assertContains(response.bodyAsText(), "AUTH_REQUIRED")
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            assertNull(response.headers[HttpHeaders.SetCookie])
+            assertEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/me").status)
+        }
+    }
+
     @Test
     fun `health stays live while readiness hides database details`() = testApplication {
         val repository = FakeRepository()
@@ -241,8 +266,8 @@ class ApiContractTest {
         assertEquals(HttpStatusCode.OK, activated.status)
         assertEquals("no-store", activated.headers[HttpHeaders.CacheControl])
         kotlin.test.assertContentEquals(TokenCodec().hash("zhiv.recovery-code.v1:" + "C".repeat(43)), recovery.activatedHash)
-        // Activation and redemption share the bounded write bucket.
-        repeat(29) {
+        // Anonymous redemption has its own bounded IP bucket.
+        repeat(120) {
             assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/recovery-code/redeem") {
                 contentType(ContentType.Application.Json)
                 setBody("""{"code":"invalid","retrySecret":"invalid"}""")
@@ -252,6 +277,53 @@ class ApiContractTest {
             contentType(ContentType.Application.Json)
             setBody("""{"code":"invalid","retrySecret":"invalid"}""")
         }.status)
+        // Exhausting anonymous redemption must not lock an authenticated user out of activation.
+        assertEquals(HttpStatusCode.OK, client.put("/api/v1/recovery-code") {
+            header(HttpHeaders.Cookie, cookie)
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"$code"}""")
+        }.status)
+    }
+
+    @Test
+    fun `verified users behind one IP have independent budgets and forged cookies do not`() = testApplication {
+        val base = FakeRepository()
+        val sessions = mutableMapOf<List<Byte>, UserSnapshot>()
+        val identities = object : IdentityRepository by base {
+            override suspend fun bootstrap(displayName: String, bootstrapKeyHash: ByteArray, sessionTokenHash: ByteArray, sessionLifetimeDays: Long): UserSnapshot =
+                base.bootstrap(displayName, bootstrapKeyHash, sessionTokenHash, sessionLifetimeDays).also {
+                    sessions[sessionTokenHash.toList()] = it
+                }
+            override suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot? = sessions[sessionTokenHash.toList()]
+            override suspend fun findSessionUserId(sessionTokenHash: ByteArray): UUID? = findBySession(sessionTokenHash)?.id
+        }
+        val config = testConfig()
+        application { installZhivApi(identities, base, config, recovery = RecordingCodeRecovery()) }
+        suspend fun createCookie(): String {
+            val response = client.post("/api/v1/bootstrap") {
+                contentType(ContentType.Application.Json)
+                header("Idempotency-Key", UUID.randomUUID().toString())
+                setBody("""{"displayName":"Тест"}""")
+            }
+            assertEquals(HttpStatusCode.Created, response.status)
+            return assertNotNull(response.headers[HttpHeaders.SetCookie]).substringBefore(';')
+        }
+        suspend fun activate(cookie: String) = client.put("/api/v1/recovery-code") {
+            header(HttpHeaders.Cookie, cookie)
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"ZHIV-R1-${"C".repeat(43)}"}""")
+        }
+        val first = createCookie()
+        val second = createCookie()
+        val alternate = TokenCodec().issue()
+        sessions[alternate.hash.toList()] = assertNotNull(sessions[TokenCodec().hash(first.substringAfter('=')).toList()])
+        repeat(30) { assertEquals(HttpStatusCode.OK, activate(first).status) }
+        assertEquals(HttpStatusCode.TooManyRequests, activate(first).status)
+        assertEquals(HttpStatusCode.OK, activate(second).status)
+        assertEquals(HttpStatusCode.TooManyRequests, activate("${config.cookieName}=${alternate.raw}").status)
+        repeat(30) { assertEquals(HttpStatusCode.Unauthorized, activate("${config.cookieName}=forged-$it").status) }
+        assertEquals(HttpStatusCode.TooManyRequests, activate("${config.cookieName}=another-forged-cookie").status)
+        assertEquals(HttpStatusCode.OK, activate(second).status)
     }
 
     private class RecordingCodeRecovery : CodeRecoveryRepository {

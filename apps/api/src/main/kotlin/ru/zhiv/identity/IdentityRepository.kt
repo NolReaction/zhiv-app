@@ -42,6 +42,8 @@ interface IdentityRepository {
         sessionLifetimeDays: Long,
     ): UserSnapshot
 
+    suspend fun findSessionUserId(sessionTokenHash: ByteArray): UUID? = findBySession(sessionTokenHash)?.id
+
     suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot?
 
     suspend fun updateDisplayName(

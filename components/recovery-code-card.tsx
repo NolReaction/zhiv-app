@@ -1,13 +1,16 @@
 
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { activateRecoveryCode, getRecoveryCodeState, ApiError } from "@/lib/check-in-api";
 import { createRecoveryCode } from "@/lib/recovery-code";
 import { copyText } from "@/lib/identity-sharing";
 import styles from "./recovery-starter.module.css";
+import { notify, TransientNotice } from "./app-notifications";
 
 export function RecoveryCodeCard({isOnline, onSessionLost}: {isOnline:boolean; onSessionLost:()=>void}) {
+  const fieldId = useId();
+  const titleId = useId();
   const [active,setActive]=useState<boolean|null>(null);
   const [code,setCode]=useState("");
   const [saved,setSaved]=useState(false);
@@ -32,22 +35,27 @@ export function RecoveryCodeCard({isOnline, onSessionLost}: {isOnline:boolean; o
       setNotice(e instanceof Error?e.message:"Не удалось активировать код. Повторите с тем же кодом.");
     } finally {setBusy(false)}
   }
-  return <section className={styles.codeCard} aria-labelledby="recovery-code-title">
-    <h2 id="recovery-code-title"><ShieldCheck size={20}/> Код восстановления</h2>
-    <p>Личный одноразовый ключ от профиля. Сохраните в менеджере паролей или на бумаге. Никому не отправляйте — даже близким.</p>
-    <p>{active===null?"Проверяем…":active?"Код настроен. Показать прежний код нельзя.":"Код ещё не настроен. При потере сессии без кода вернуть профиль не получится."}</p>
+  async function copyCode() {
+    setNotice("");
+    const copied = await copyText(code);
+    notify(copied
+      ? "Код скопирован. Сохраните его в менеджере паролей."
+      : "Браузер не разрешил копирование. Зажмите код и выберите «Скопировать».", copied ? "success" : "error");
+  }
+  return <section className={styles.codeCard} aria-labelledby={titleId}>
+    <h2 id={titleId}><ShieldCheck size={20}/> Код восстановления</h2>
+    <p>Запасной вход, если вы потеряете доступ к ВК или почте. Сохраните код в менеджере паролей и никому не передавайте.</p>
+    <p>{active===null?"Проверяем…":active?"Код настроен. Показать прежний код нельзя.":"Код ещё не настроен. Вы можете создать его на случай потери доступа."}</p>
     {!code ? <button className={styles.primary} disabled={!isOnline || active===null} onClick={()=>{
       setCode(createRecoveryCode());setSaved(false);setNotice("");
     }}>{active?"Заменить код":"Создать код"}</button> : <>
-      <label htmlFor="new-recovery-code">Сохраните этот код, затем активируйте</label>
-      <textarea id="new-recovery-code" className={styles.codeInput} readOnly rows={3} value={code} autoComplete="off" spellCheck={false}/>
-      <button className={styles.copyButton} onClick={async()=>{
-        setNotice(await copyText(code)?"Код скопирован":"Зажмите код и выберите «Скопировать»: браузер не разрешил автоматическое копирование.");
-      }}>Скопировать код</button>
+      <label htmlFor={fieldId}>Сохраните этот код, затем активируйте</label>
+      <textarea id={fieldId} className={styles.codeInput} readOnly rows={3} value={code} autoComplete="off" spellCheck={false}/>
+      <button type="button" className={styles.copyButton} onClick={()=>void copyCode()}>Скопировать код</button>
       <label className={styles.confirm}><input type="checkbox" checked={saved} onChange={e=>setSaved(e.target.checked)}/> Я сохранил код в безопасном месте</label>
       <button className={styles.primary} disabled={!saved || busy || !isOnline} onClick={()=>void activate()}>{busy?"Активируем…":"Активировать код"}</button>
       <p>После активации прежний код перестанет работать. Сам код не сохраняется в браузере или базе сервера.</p>
     </>}
-    {notice?<p role="status">{notice}</p>:null}
+    <TransientNotice message={notice} />
   </section>;
 }

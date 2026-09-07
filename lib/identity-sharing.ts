@@ -1,12 +1,5 @@
 export type NativeShareOutcome = "shared" | "cancelled" | "unavailable" | "failed";
 
-export type IdentitySharingResult = {
-  copied: boolean;
-  shareOutcome: NativeShareOutcome;
-};
-
-export type CopyTextOutcome = "confirmed" | "legacy" | "failed";
-
 type ClipboardLike = {
   writeText(text: string): Promise<void>;
 };
@@ -110,55 +103,23 @@ function copyWithLegacyCommand(documentApi: Document, text: string): boolean {
   }
 }
 
-function copyWithVisibleField(
-  documentApi: Document,
-  text: string,
-  field: HTMLInputElement | HTMLTextAreaElement,
-): boolean {
-  if (typeof documentApi.execCommand !== "function") return false;
-
-  try {
-    if (field.value !== text) field.value = text;
-    field.focus({ preventScroll: true });
-    field.select();
-    field.setSelectionRange(0, field.value.length);
-    return documentApi.execCommand("copy");
-  } catch {
-    return false;
-  }
-}
-
 function copyTextFromUserGesture(
   text: string,
   environment: IdentitySharingEnvironment | null,
 ): Promise<boolean> {
   if (!environment) return Promise.resolve(false);
-
-  const clipboard = environment.secureContext
-    ? environment.navigator.clipboard
-    : undefined;
-
+  const clipboard = environment.secureContext ? environment.navigator.clipboard : undefined;
   if (typeof clipboard?.writeText === "function") {
-    let modernCopy: Promise<void> | null = null;
     try {
-      modernCopy = clipboard.writeText(text);
-    } catch {
-      // A synchronous Clipboard API failure can still use the legacy user-gesture path.
-    }
-
-    // Safari can reject the standards-based write only after transient activation
-    // has expired. Run the same-text legacy attempt now, inside the original tap,
-    // so an asynchronous rejection cannot make both paths unavailable.
-    const legacyCopied = copyWithLegacyCommand(environment.document, text);
-    if (modernCopy) {
-      return modernCopy.then(
+      // Start in the trusted click, before any await or focus/selection changes.
+      return clipboard.writeText(text).then(
         () => true,
-        () => legacyCopied,
+        () => copyWithLegacyCommand(environment.document, text),
       );
+    } catch {
+      // A synchronous failure can still use the original user gesture.
     }
-    return Promise.resolve(legacyCopied);
   }
-
   return Promise.resolve(copyWithLegacyCommand(environment.document, text));
 }
 
@@ -167,39 +128,6 @@ export function copyText(
   environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
 ): Promise<boolean> {
   return copyTextFromUserGesture(text, environment);
-}
-
-export function copyTextFromVisibleField(
-  text: string,
-  field: HTMLInputElement | HTMLTextAreaElement,
-  environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
-): Promise<CopyTextOutcome> {
-  if (!environment) return Promise.resolve("failed");
-
-  const clipboard = environment.secureContext
-    ? environment.navigator.clipboard
-    : undefined;
-  let modernCopy: Promise<void> | null = null;
-
-  if (typeof clipboard?.writeText === "function") {
-    try {
-      // Start the standards-based write before selection changes. The visible-field
-      // fallback still runs in this same trusted tap for Safari on local HTTP.
-      modernCopy = clipboard.writeText(text);
-    } catch {
-      modernCopy = null;
-    }
-  }
-
-  const legacyCopied = copyWithVisibleField(environment.document, text, field);
-  if (!modernCopy) {
-    return Promise.resolve(legacyCopied ? "legacy" : "failed");
-  }
-
-  return modernCopy.then(
-    () => "confirmed",
-    () => (legacyCopied ? "legacy" : "failed"),
-  );
 }
 
 function isAbortError(error: unknown): boolean {
@@ -244,45 +172,4 @@ export function shareContent(
   environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
 ): Promise<NativeShareOutcome> {
   return startNativeShare(data, environment);
-}
-
-export function shareIdentity(
-  publicId: string,
-  environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
-): Promise<IdentitySharingResult> {
-  const shareData: ShareData = {
-    title: "Я живой",
-    text: `Добавь меня в «Я живой» по ID: ${publicId}`,
-  };
-
-  // Both privileged browser actions must start in the same trusted click.
-  // Do not place an await between these calls: Safari would lose transient activation.
-  const copyPromise = copyText(publicId, environment);
-  const sharePromise = startNativeShare(shareData, environment);
-
-  return Promise.all([copyPromise, sharePromise]).then(([copied, shareOutcome]) => ({
-    copied,
-    shareOutcome,
-  }));
-}
-
-export function shareTextAndCopy(
-  text: string,
-  shareData: ShareData,
-  environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
-): Promise<IdentitySharingResult> {
-  const copyPromise = copyText(text, environment);
-  const sharePromise = startNativeShare(shareData, environment);
-  return Promise.all([copyPromise, sharePromise]).then(([copied, shareOutcome]) => ({
-    copied,
-    shareOutcome,
-  }));
-}
-
-export function getIdentitySharingNotice(result: IdentitySharingResult): string {
-  if (result.copied) return "ID скопирован";
-  if (result.shareOutcome === "shared") {
-    return "Поделиться удалось, но ID не скопирован";
-  }
-  return "Не скопировано — зажмите ID";
 }

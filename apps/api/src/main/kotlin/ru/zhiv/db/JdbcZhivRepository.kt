@@ -206,6 +206,25 @@ class JdbcZhivRepository(
         statement.executeUpdate() == 1
     }
 
+    override suspend fun findSessionUserId(sessionTokenHash: ByteArray): UUID? =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    SELECT s.user_id FROM app_sessions s
+                    JOIN app_users u ON u.id = s.user_id
+                    WHERE s.token_hash = ? AND s.revoked_at IS NULL
+                      AND s.expires_at > clock_timestamp() AND u.deleted_at IS NULL
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.setBytes(1, sessionTokenHash)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) result.getObject("user_id", UUID::class.java) else null
+                    }
+                }
+            }
+        }
+
     override suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot? =
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection ->

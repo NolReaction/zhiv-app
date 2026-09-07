@@ -1,5 +1,3 @@
-> **0.4.6:** актуальные изменения, единая приватность и замена восстановления через друзей описаны в [релизе](release-0.4.6.md). Для нового сервера используйте [инструкцию 0.4.6](test-server-0.4.6.md); старые примеры восстановления через друзей/единого пароля БД ниже относятся к предыдущим версиям.
-
 # Эксплуатация и резервные копии
 
 Production-контур запускается из `deploy/compose.yml`. PostgreSQL не публикует
@@ -16,11 +14,12 @@ Production-контур запускается из `deploy/compose.yml`. Postgr
 
 1. Убедиться, что CI прошёл полностью, включая PostgreSQL integration suite.
 2. Создать и проверить свежую резервную копию.
-3. Выполнить `docker compose ... up --build --detach --wait`.
+3. Выполнить `docker compose --env-file deploy/.env -f deploy/compose.yml up --build --detach --wait --wait-timeout 240`.
 4. Проверить главную страницу, `/healthz` и `/readyz`, затем просмотреть логи API.
 
-Flyway запускается при старте API. Миграции должны оставаться добавочными и
-совместимыми с предыдущим приложением: автоматического rollback схемы нет.
+Compose сначала запускает `provision` для подготовки ролей, затем отдельный сервис
+`migrate` с Flyway. API стартует после успешных миграций и сам схему не меняет.
+Миграции добавляются новыми файлами; автоматического отката схемы нет.
 
 ## Зашифрованный backup вне VPS
 
@@ -48,8 +47,8 @@ restic backup --stdin --stdin-filename zhiv.dump --tag zhiv-db <"${backup_dump}"
 restic snapshots --tag zhiv-db --latest 1
 ```
 
-Временный dump содержит пользовательские данные. Каталог должен быть доступен
-только root и находиться на зашифрованном диске; файл удаляется даже при ошибке.
+Временный dump содержит пользовательские данные и создаётся с доступом только
+для пользователя запуска. Используйте зашифрованный диск; файл удаляется даже при ошибке.
 Задание следует запускать systemd timer с `Persistent=true` и уведомлением через
 `OnFailure=`. Ориентир хранения: 14 daily, 8 weekly, 12 monthly. `restic forget
 --prune` и `restic check` лучше выполнять отдельным еженедельным заданием.
@@ -61,26 +60,38 @@ restic snapshots --tag zhiv-db --latest 1
 volume:
 
 ```bash
+(
 set -euo pipefail
 umask 077
-restore_dump="$(mktemp /var/tmp/zhiv-restore.XXXXXX.dump)"
-trap 'rm -f -- "${restore_dump}"; docker compose --project-name zhiv-restore-drill --env-file deploy/.env -f deploy/restore.compose.yml down --volumes --remove-orphans >/dev/null 2>&1 || true' EXIT
+restore_dir="$(mktemp -d /var/tmp/zhiv-restore.XXXXXX)"
+restore_dump="$restore_dir/zhiv.dump"
+restore_env="$restore_dir/compose.env"
+restore_compose=(
+  docker compose
+  --project-name zhiv-restore-drill
+  --env-file "$restore_env"
+  -f deploy/restore.compose.yml
+)
 
-restic dump --tag zhiv-db latest zhiv.dump >"${restore_dump}"
+cleanup() {
+  "${restore_compose[@]}" down --volumes --remove-orphans || true
+  rm -f -- "$restore_dump" "$restore_env"
+  rmdir -- "$restore_dir"
+}
+trap cleanup EXIT
 
-docker compose --project-name zhiv-restore-drill --env-file deploy/.env \
-  -f deploy/restore.compose.yml up --detach --wait
-docker compose --project-name zhiv-restore-drill --env-file deploy/.env \
-  -f deploy/restore.compose.yml exec -T db \
-  pg_restore --list <"${restore_dump}" >/dev/null
-docker compose --project-name zhiv-restore-drill --env-file deploy/.env \
-  -f deploy/restore.compose.yml exec -T db \
+printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 32)" >"$restore_env"
+restic dump --tag zhiv-db latest zhiv.dump >"$restore_dump"
+
+"${restore_compose[@]}" up --detach --wait
+"${restore_compose[@]}" exec -T db \
   pg_restore --username zhiv_restore --dbname zhiv_restore \
-  --no-owner --no-acl --exit-on-error <"${restore_dump}"
-docker compose --project-name zhiv-restore-drill --env-file deploy/.env \
-  -f deploy/restore.compose.yml exec -T db \
-  psql --username zhiv_restore --dbname zhiv_restore --tuples-only --command \
+  --no-owner --no-acl --exit-on-error <"$restore_dump"
+"${restore_compose[@]}" exec -T db \
+  psql --username zhiv_restore --dbname zhiv_restore \
+  --tuples-only --command \
   "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1;"
+)
 ```
 
 Команда очистки всегда указывает отдельный project name `zhiv-restore-drill`;

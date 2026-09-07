@@ -110,7 +110,7 @@ test("falls back to legacy copy when the secure Clipboard API refuses access", a
   ]);
 });
 
-test("runs the Safari fallback before a deferred Clipboard rejection loses activation", async () => {
+test("does not disturb selection while the secure Clipboard write is pending", async () => {
   const events = [];
   let rejectModernCopy;
   const modernCopy = new Promise((_, reject) => {
@@ -131,7 +131,7 @@ test("runs the Safari fallback before a deferred Clipboard rejection loses activ
 
   assert.deepEqual(
     events.filter((event) => event === "clipboard-start" || event === "exec:copy"),
-    ["clipboard-start", "exec:copy"],
+    ["clipboard-start"],
   );
   rejectModernCopy(new Error("denied after the tap"));
   assert.equal(await pendingCopy, true);
@@ -246,78 +246,6 @@ test("uses iOS-safe fixed hidden-field styling for legacy copy", async () => {
   });
 });
 
-test("copies a LAN invite from the visible selected field", async () => {
-  const events = [];
-  const inviteUrl = "http://192.168.1.232:3000/#/invite/K_Px9NhbG9Y6vnUg3BDnv-o4m5GkSb9uLrv0ptuGSvU";
-  const field = {
-    value: inviteUrl,
-    focus(options) {
-      events.push(`focus:${options?.preventScroll === true}`);
-    },
-    select() {
-      events.push("select");
-    },
-    setSelectionRange(start, end) {
-      events.push(`range:${start}-${end}`);
-    },
-  };
-  const pendingCopy = sharing.copyTextFromVisibleField(inviteUrl, field, {
-    document: {
-      execCommand(command) {
-        events.push(`exec:${command}`);
-        return true;
-      },
-    },
-    navigator: {},
-    secureContext: false,
-  });
-
-  assert.deepEqual(events, [
-    "focus:true",
-    "select",
-    `range:0-${inviteUrl.length}`,
-    "exec:copy",
-  ]);
-  assert.equal(await pendingCopy, "legacy");
-});
-
-test("confirms a visible-field copy when the secure Clipboard API resolves", async () => {
-  const events = [];
-  const field = {
-    value: "https://example.test/#/invite/token",
-    focus() {
-      events.push("focus");
-    },
-    select() {
-      events.push("select");
-    },
-    setSelectionRange() {
-      events.push("range");
-    },
-  };
-  const outcome = await sharing.copyTextFromVisibleField(field.value, field, {
-    document: {
-      execCommand(command) {
-        events.push(`exec:${command}`);
-        return true;
-      },
-    },
-    navigator: {
-      clipboard: {
-        writeText(text) {
-          events.push(`clipboard:${text}`);
-          return Promise.resolve();
-        },
-      },
-    },
-    secureContext: true,
-  });
-
-  assert.equal(outcome, "confirmed");
-  assert.equal(events[0], `clipboard:${field.value}`);
-  assert.ok(events.includes("exec:copy"));
-});
-
 test("copy-only action never opens the native share sheet", async () => {
   const events = [];
   const copied = await sharing.copyText("https://example.test/#/invite/token", {
@@ -376,133 +304,82 @@ test("share-only action never competes with clipboard access", async () => {
   ]);
 });
 
-test("copies the ID through the Safari fallback on LAN HTTP", async () => {
+
+test("copies only the complete public ID or recovery code without selecting text", async () => {
+  for (const value of ["A7FN-1FVG-3KM1", "ZHIV-R1-test-recovery-secret"]) {
+    const events = [];
+    const copied = await sharing.copyText(value, {
+      document: createLegacyDocument(events),
+      navigator: { clipboard: { writeText: async text => { events.push(text); } } },
+      secureContext: true,
+    });
+    assert.equal(copied, true);
+    assert.deepEqual(events, [value]);
+  }
+});
+
+test("restores the original selection and focus after legacy copy", async () => {
   const events = [];
-  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
+  const documentApi = createLegacyDocument(events);
+  const savedRange = {};
+  documentApi.getSelection = () => ({
+    rangeCount: 1,
+    getRangeAt: () => ({ cloneRange: () => savedRange }),
+    removeAllRanges: () => events.push("clear-selection"),
+    addRange: range => { assert.equal(range, savedRange); events.push("restore-selection"); },
+  });
+  assert.equal(await sharing.copyText("ID", { document: documentApi, navigator: {}, secureContext: false }), true);
+  assert.deepEqual(events.slice(-4), ["field-remove", "focus-restored", "clear-selection", "restore-selection"]);
+});
+
+test("copy failures and unavailable browser APIs return false, never a false success", async () => {
+  assert.equal(await sharing.copyText("ID", null), false);
+  assert.equal(await sharing.copyText("ID", { document: {}, navigator: {}, secureContext: false }), false);
+  assert.equal(await sharing.copyText("ID", {
+    document: createLegacyDocument([], false),
+    navigator: { clipboard: { writeText: async () => { throw new Error("denied"); } } },
+    secureContext: true,
+  }), false);
+  assert.equal(await sharing.copyText("ID", {
+    document: { body: {}, execCommand: () => true, getSelection: () => { throw new Error("DOM unavailable"); } },
+    navigator: {}, secureContext: false,
+  }), false);
+});
+
+test("synchronously denied Clipboard access still tries the legacy command in the tap", async () => {
+  const events = [];
+  const pending = sharing.copyText("ID", {
     document: createLegacyDocument(events),
-    navigator: {
-      share() {
-        events.push("share-start");
-        return Promise.resolve();
-      },
-    },
-    secureContext: false,
+    navigator: { clipboard: { writeText: () => { throw new Error("blocked"); } } },
+    secureContext: true,
   });
-
-  assert.deepEqual(result, { copied: true, shareOutcome: "unavailable" });
   assert.ok(events.includes("exec:copy"));
-  assert.equal(events.includes("share-start"), false);
-  assert.equal(sharing.getIdentitySharingNotice(result), "ID скопирован");
+  assert.equal(await pending, true);
 });
 
-test("turns a synchronous DOM fallback failure into a normal result", async () => {
-  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
-    document: {
-      body: {},
-      execCommand() {
-        return true;
-      },
-      getSelection() {
-        throw new Error("selection unavailable");
-      },
-    },
-    navigator: {},
-    secureContext: false,
-  });
-
-  assert.deepEqual(result, { copied: false, shareOutcome: "unavailable" });
-  assert.equal(
-    sharing.getIdentitySharingNotice(result),
-    "Не скопировано — зажмите ID",
-  );
+test("native share cancellation and failure remain distinct from clipboard actions", async () => {
+  for (const [name, expected] of [["AbortError", "cancelled"], ["Error", "failed"]]) {
+    assert.equal(await sharing.shareContent({ text: "invite" }, {
+      document: {}, secureContext: true,
+      navigator: { share: async () => { throw Object.assign(new Error("share ended"), { name }); } },
+    }), expected);
+  }
+  assert.equal(await sharing.shareContent({ text: "invite" }, {
+    document: {}, secureContext: true,
+    navigator: { canShare: () => false, share: () => { throw new Error("must not start"); } },
+  }), "unavailable");
 });
 
-test("starts copying before native share without awaiting either action", async () => {
-  const events = [];
-  let resolveCopy;
-  let resolveShare;
-
-  const pending = sharing.shareIdentity("YD4H-0SQF-N72K", {
-    document: {},
-    navigator: {
-      clipboard: {
-        writeText(text) {
-          events.push(`copy:${text}`);
-          return new Promise((resolve) => {
-            resolveCopy = resolve;
-          });
-        },
-      },
-      canShare(data) {
-        events.push(`can-share:${data.text}`);
-        return true;
-      },
-      share(data) {
-        events.push(`share:${data.title}:${data.text}`);
-        return new Promise((resolve) => {
-          resolveShare = resolve;
-        });
-      },
-    },
-    secureContext: true,
+test("reports failure when a deferred rejection outlives Safari user activation", async () => {
+  let rejectWrite;
+  let activation = true;
+  const documentApi = createLegacyDocument([]);
+  documentApi.execCommand = () => activation;
+  const pending = sharing.copyText("ID", {
+    document: documentApi, secureContext: true,
+    navigator: { clipboard: { writeText: () => new Promise((_, reject) => { rejectWrite = reject; }) } },
   });
-
-  assert.deepEqual(events, [
-    "copy:YD4H-0SQF-N72K",
-    "can-share:Добавь меня в «Я живой» по ID: YD4H-0SQF-N72K",
-    "share:Я живой:Добавь меня в «Я живой» по ID: YD4H-0SQF-N72K",
-  ]);
-
-  resolveCopy();
-  resolveShare();
-  assert.deepEqual(await pending, { copied: true, shareOutcome: "shared" });
-});
-
-test("treats closing the share sheet as a normal copied result", async () => {
-  const abortError = Object.assign(new Error("cancelled"), { name: "AbortError" });
-  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
-    document: {},
-    navigator: {
-      clipboard: { writeText: () => Promise.resolve() },
-      share: () => Promise.reject(abortError),
-    },
-    secureContext: true,
-  });
-
-  assert.deepEqual(result, { copied: true, shareOutcome: "cancelled" });
-  assert.equal(sharing.getIdentitySharingNotice(result), "ID скопирован");
-});
-
-test("reports copy failure honestly even when native share succeeds", async () => {
-  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
-    document: {},
-    navigator: {
-      clipboard: { writeText: () => Promise.reject(new Error("denied")) },
-      share: () => Promise.resolve(),
-    },
-    secureContext: true,
-  });
-
-  assert.deepEqual(result, { copied: false, shareOutcome: "shared" });
-  assert.equal(
-    sharing.getIdentitySharingNotice(result),
-    "Поделиться удалось, но ID не скопирован",
-  );
-});
-
-test("offers a manual fallback when both browser actions fail", async () => {
-  const result = await sharing.shareIdentity("YD4H-0SQF-N72K", {
-    document: {},
-    navigator: {
-      clipboard: { writeText: () => Promise.reject(new Error("denied")) },
-      share: () => Promise.reject(new Error("blocked")),
-    },
-    secureContext: true,
-  });
-
-  assert.deepEqual(result, { copied: false, shareOutcome: "failed" });
-  assert.equal(
-    sharing.getIdentitySharingNotice(result),
-    "Не скопировано — зажмите ID",
-  );
+  activation = false;
+  rejectWrite(new Error("denied after user activation expired"));
+  assert.equal(await pending, false);
 });

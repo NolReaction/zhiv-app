@@ -1,5 +1,6 @@
 "use client";
 
+import { TransientNotice } from "./app-notifications";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMemo, useReducer, useRef, useState } from "react";
 import { Check, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
@@ -20,6 +21,7 @@ import {
   sendDirectRequest,
   updatePersonSharing,
   updatePersonFavorite,
+  updatePersonNickname,
 } from "@/lib/check-in-api";
 import {
   capabilityUrl,
@@ -64,6 +66,8 @@ import {
 } from "@/components/ui/dialog";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { UserStatusDisplay } from "./user-status-display";
+import { matchesPersonSearch } from "@/lib/people-search";
+import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import styles from "./people-view.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
@@ -140,6 +144,8 @@ export function PeopleView({
   onGroupsRefresh,
   onSessionLost,
 }: PeopleViewProps) {
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const filteredPeople = useMemo(() => data?.people.filter(person => matchesPersonSearch(person, peopleQuery)) ?? [], [data, peopleQuery]);
   const [addOpen, setAddOpen] = useState(false);
   const [inviteImportOpen, setInviteImportOpen] = useState(false);
   const [inviteImportValue, setInviteImportValue] = useState("");
@@ -149,6 +155,10 @@ export function PeopleView({
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const selectedPerson = data?.people.find(person => person.circleId === selectedPersonId) ?? null;
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<PeopleSection>("people");
   const [inviteDialog, dispatchInviteDialog] = useReducer(
@@ -158,6 +168,34 @@ export function PeopleView({
   const [inviteShare, setInviteShare] = useState<InviteShare | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
   const inviteLinkField = useRef<HTMLTextAreaElement>(null);
+
+  function openPerson(person: Person) {
+    setSelectedPersonId(person.circleId);
+    setNicknameDraft(person.nickname ?? "");
+    setNicknameError(null);
+  }
+
+  async function saveNickname(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedPerson || pending) return;
+    const nickname = normalizePersonNickname(nicknameDraft);
+    if (nickname === null) {
+      setNicknameError("До 50 символов без переносов строк.");
+      return;
+    }
+    setPending(`nickname:${selectedPerson.circleId}`);
+    setNicknameError(null);
+    try {
+      await updatePersonNickname(selectedPerson.circleId, nickname, createUuidV4());
+      await onRefresh();
+      setSelectedPersonId(null);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) onSessionLost();
+      else setNicknameError(cause instanceof Error ? cause.message : "Не удалось сохранить подпись. Попробуйте ещё раз.");
+    } finally {
+      setPending(null);
+    }
+  }
 
   function selectSection(section: PeopleSection) {
     setActiveSection(section);
@@ -369,7 +407,7 @@ export function PeopleView({
     if (error && !data) {
       return (
         <div className={styles.state}>
-          <p>{error}</p>
+          <p>Не удалось загрузить людей.</p>
           <button className={styles.secondaryButton} type="button" onClick={() => void onRefresh()}>
             <RefreshCw size={17} /> Повторить
           </button>
@@ -531,35 +569,53 @@ export function PeopleView({
           <section className={styles.section} aria-labelledby="connected-title">
             <div className={styles.sectionTitleRow}>
               <h2 id="connected-title">Мои люди</h2>
-              {data.people.length > 0 ? <span>{data.people.length}</span> : null}
+              {data.people.length > 0 ? <span aria-live="polite">{peopleQuery.trim() ? `${filteredPeople.length} из ${data.people.length}` : data.people.length}</span> : null}
             </div>
+            {data.people.length > 0 && <div className={styles.peopleSearch}>
+              <Search size={18} aria-hidden="true" />
+              <input type="search" aria-label="Поиск по имени или подписи" placeholder="Имя или подпись"
+                value={peopleQuery} maxLength={100} autoComplete="off"
+                onChange={event => setPeopleQuery(event.target.value)} />
+              {peopleQuery && <button type="button" aria-label="Очистить поиск" onClick={() => setPeopleQuery("")}><X size={18} aria-hidden="true" /></button>}
+            </div>}
             {data.people.length === 0 ? (
               <div className={styles.empty}>
                 <UserRound size={30} />
                 <strong>Здесь пока никого</strong>
                 <p>Добавьте человека по его ID. Только после взаимного согласия вы увидите отметки друг друга.</p>
               </div>
+            ) : filteredPeople.length === 0 ? (
+              <div className={styles.empty} role="status">
+                <Search size={28} aria-hidden="true" />
+                <strong>Никого не нашли</strong>
+                <p>Попробуйте другое имя или личную подпись.</p>
+                <button type="button" className={styles.secondaryButton} onClick={() => setPeopleQuery("")}>Очистить поиск</button>
+              </div>
             ) : (
-              <div className={styles.list}>
-                {data.people.map((person) => {
+              <div className={`${styles.list} ${styles.connectedList}`}>
+                {filteredPeople.map((person) => {
                   const theirSharing = person.theirSharingMode !== "OFF";
                   const ageMs = getCheckInAgeMs(person.lastCheckInAt, 0, nowMs);
                   const statusColor = theirSharing ? getCheckInColor(ageMs) : "#5d6258";
                   const isSharing = person.mySharingMode !== "OFF";
                   const sharingHintId = `sharing-state-${person.circleId}`;
+                  const displayName = personDisplayName(person);
                   return (
                     <article className={styles.personCard} key={person.circleId}>
                       <div className={styles.personTop}>
-                        <div
+                        <button type="button" className={styles.personIdentity}
+                          aria-label={`Открыть ${displayName}`}
+                          aria-describedby={`person-status-${person.circleId} person-checkin-${person.circleId}`} onClick={() => openPerson(person)}>
+                        <span
                           className={styles.avatar}
                           style={{ "--person-color": statusColor } as CSSProperties}
                         >
-                          {initials(person.user.displayName)}
-                        </div>
-                        <div className={styles.cardText}>
-                          <strong>{person.user.displayName}</strong>
-                          <UserStatusDisplay status={person.status} nowMs={nowMs} />
-                          <span className={styles.personStatus}>
+                          {initials(displayName)}
+                        </span>
+                        <span className={styles.cardText}>
+                          <strong>{displayName}</strong>
+                          <UserStatusDisplay id={`person-status-${person.circleId}`} status={person.status} nowMs={nowMs} inline />
+                          <span id={`person-checkin-${person.circleId}`} className={styles.personStatus}>
                             <i style={{ background: statusColor }} />
                             {formatDirectPersonCheckIn(
                               person.lastCheckInAt,
@@ -567,7 +623,8 @@ export function PeopleView({
                               person.checkInState,
                             )}
                           </span>
-                        </div>
+                        </span>
+                        </button>
                         <div className={styles.personActions}>
                           <button className={`${styles.iconButton} ${styles.favoriteButton}`} type="button"
                             aria-label={person.isFavorite ? `Убрать ${person.user.displayName} из избранного` : `Добавить ${person.user.displayName} в избранное`}
@@ -588,11 +645,11 @@ export function PeopleView({
                       <div className={styles.personBottom}>
                         <label className={styles.sharingLabel}>
                           <span>
-                            <strong>Показывать через личную связь</strong>
+                            <strong>Показывать мои отметки</strong>
                             <small id={sharingHintId}>
                               {isSharing
-                                ? "Включено · новые отметки доступны"
-                                : "Выключено · новые отметки скрыты"}
+                                ? "Этому человеку, включая общие группы"
+                                : "Скрыты от этого человека, включая группы"}
                             </small>
                           </span>
                           <Switch
@@ -645,9 +702,38 @@ export function PeopleView({
         </div>
       )}
 
-      {dialogError && !addOpen && !inviteDialog.open ? (
-        <p className={styles.pageError} role="alert">{dialogError}</p>
-      ) : null}
+      <TransientNotice message={dialogError} kind="error" />
+      <TransientNotice message={nicknameError} kind="error" />
+      <TransientNotice message={inviteImportError} kind="error" />
+      <TransientNotice message={shareNotice} />
+      <TransientNotice message={error} kind="error" />
+
+      <Dialog open={Boolean(selectedPerson)} onOpenChange={(open) => {
+        if (!open && !pending) setSelectedPersonId(null);
+      }}>
+        <DialogContent className={styles.dialog}>
+          <DialogHeader>
+            <DialogTitle className={styles.dialogTitle}>{selectedPerson ? personDisplayName(selectedPerson) : "Человек"}</DialogTitle>
+            <DialogDescription className={styles.dialogDescription}>
+              {selectedPerson?.user.displayName} · {selectedPerson?.user.publicId}
+            </DialogDescription>
+          </DialogHeader>
+          <form className={styles.nicknameForm} onSubmit={saveNickname}>
+            <label htmlFor="person-nickname">Личная подпись</label>
+            <input id="person-nickname" value={nicknameDraft} autoComplete="off" maxLength={100}
+              placeholder={selectedPerson?.user.displayName} disabled={Boolean(pending)}
+              aria-describedby="person-nickname-hint" aria-invalid={Boolean(nicknameError)}
+              onChange={event => { setNicknameDraft(event.target.value); setNicknameError(null); }} />
+            <p id="person-nickname-hint" className={styles.searchHint}>
+              Видна только вам. До 50 символов. Оставьте поле пустым, чтобы вернуть имя из профиля.
+            </p>
+
+            <button type="submit" className={styles.sendButton} disabled={Boolean(pending)}>
+              {pending?.startsWith("nickname:") ? "Сохраняем…" : "Сохранить"}
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addOpen} onOpenChange={(open) => {
         setAddOpen(open);
@@ -710,7 +796,7 @@ export function PeopleView({
               ) : null}
             </div>
           ) : null}
-          {dialogError ? <p className={styles.dialogError} role="alert">{dialogError}</p> : null}
+
         </DialogContent>
       </Dialog>
 
@@ -740,9 +826,7 @@ export function PeopleView({
               spellCheck={false}
               rows={4}
               placeholder="Вставьте ссылку или код"
-              aria-describedby={inviteImportError
-                ? "invite-import-hint invite-import-error"
-                : "invite-import-hint"}
+              aria-describedby="invite-import-hint"
               aria-invalid={Boolean(inviteImportError)}
               autoFocus
             />
@@ -753,9 +837,7 @@ export function PeopleView({
               <Link2 size={17} /> Проверить приглашение
             </button>
           </form>
-          {inviteImportError ? (
-            <p className={styles.dialogError} id="invite-import-error" role="alert">{inviteImportError}</p>
-          ) : null}
+
         </DialogContent>
       </Dialog>
 
@@ -847,8 +929,8 @@ export function PeopleView({
               </small>
             </div>
           )}
-          {shareNotice ? <p className={styles.dialogNotice} role="status">{shareNotice}</p> : null}
-          {dialogError ? <p className={styles.dialogError} role="alert">{dialogError}</p> : null}
+
+
         </DialogContent>
       </Dialog>
 
@@ -859,7 +941,8 @@ export function PeopleView({
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить связь?</AlertDialogTitle>
             <AlertDialogDescription className={styles.dialogDescription}>
-              Вы и {removeCandidate?.user.displayName} перестанете видеть новые отметки друг друга.
+              Личная связь будет удалена. В общих группах отметки могут оставаться видны — это зависит от настроек показа.
+              Чтобы скрыть свои отметки от этого человека во всех группах, сначала выключите «Показывать мои отметки».
               Позже можно будет добавиться заново.
             </AlertDialogDescription>
           </AlertDialogHeader>

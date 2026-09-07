@@ -36,6 +36,8 @@ import ru.zhiv.db.JdbcDirectInviteRepository
 import ru.zhiv.db.JdbcCodeRecoveryRepository
 import ru.zhiv.db.JdbcZhivRepository
 import ru.zhiv.http.ApiErrorResponse
+import ru.zhiv.http.sessionCookie
+import io.ktor.server.application.ApplicationCall
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.identityRoutes
 import ru.zhiv.groups.GroupRepository
@@ -52,6 +54,8 @@ import ru.zhiv.observability.Slf4jGameEventSink
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
+import ru.zhiv.auth.*
+import ru.zhiv.db.JdbcAuthRepository
 import io.ktor.server.application.log
 
 fun Application.module() {
@@ -62,8 +66,14 @@ fun Application.module() {
     val groups = JdbcGroupRepository(dataSource)
     val directInvites = JdbcDirectInviteRepository(dataSource)
     val recovery = JdbcCodeRecoveryRepository(dataSource)
+    val authConfig = AuthConfig.fromEnvironment(System.getenv(), config.allowedOrigins)
+    val telegram = if (authConfig.telegramEnabled) TelegramOidc(authConfig) else null
+    val vk = if (authConfig.vkEnabled) VkId(authConfig) else null
+    val mailer = if (authConfig.emailEnabled) SmtpLoginMailer(authConfig) else null
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+        telegram?.close()
+        vk?.close()
         dataSource.close()
     }
     installZhivApi(
@@ -75,6 +85,11 @@ fun Application.module() {
         directInvites = directInvites,
         recovery = recovery,
         readiness = JdbcReadinessProbe(dataSource),
+        auth = JdbcAuthRepository(dataSource),
+        authConfig = authConfig,
+        telegram = telegram,
+        mailer = mailer,
+        vk = vk,
     )
 }
 
@@ -89,6 +104,11 @@ fun Application.installZhivApi(
     recovery: CodeRecoveryRepository? = null,
     readiness: ReadinessProbe = ReadinessProbe { true },
     gameEvents: GameEventSink = Slf4jGameEventSink(),
+    auth: AuthRepository? = null,
+    authConfig: AuthConfig = AuthConfig(),
+    telegram: TelegramVerifier? = null,
+    mailer: LoginMailer? = null,
+    vk: VkVerifier? = null,
 ) {
     install(DefaultHeaders)
     install(ForwardedHeaders)
@@ -101,54 +121,41 @@ fun Application.installZhivApi(
         }
     }
     install(RateLimit) {
-        for ((name, limit) in listOf("profile-read" to 600, "check-in-attempt" to 240)) {
+        // Bound authentication lookups before the narrower account-specific buckets.
+        global {
+            rateLimiter(limit = 12_000, refillPeriod = 1.hours)
+            requestKey { call -> clientIpKey(call) }
+        }
+        for ((name, limit) in listOf(
+            "profile-read" to 600,
+            "check-in-attempt" to 240,
+            "relationships" to 2_400,
+            "game-events" to 2_400,
+            "account-recovery-write" to 30,
+            "account-recovery-read" to 600,
+        )) {
             register(RateLimitName(name)) {
                 rateLimiter(limit = limit, refillPeriod = 1.hours)
                 requestKey { call ->
-                    call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
-                        ?: call.request.headers["X-Real-IP"] ?: "direct-client"
+                    val userId = call.sessionCookie(config)?.let { raw ->
+                        identities.findSessionUserId(tokenCodec.hash(raw))
+                    }
+                    // Forged cookies share one anonymous budget; they cannot create new buckets.
+                    userId?.let { "user:$it" } ?: "anonymous:${clientIpKey(call)}"
                 }
             }
         }
         register(RateLimitName("bootstrap")) {
-            rateLimiter(limit = 10, refillPeriod = 1.hours)
-            requestKey { call ->
-                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
-                    ?: call.request.headers["X-Real-IP"]
-                    ?: "direct-client"
-            }
+            rateLimiter(limit = 60, refillPeriod = 1.hours)
+            requestKey { call -> clientIpKey(call) }
         }
-        register(RateLimitName("relationships")) {
-            rateLimiter(limit = 2_400, refillPeriod = 1.hours)
-            requestKey { call ->
-                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
-                    ?: call.request.headers["X-Real-IP"]
-                    ?: "direct-client"
-            }
+        register(RateLimitName("auth-entry")) {
+            rateLimiter(limit = 60, refillPeriod = 1.hours)
+            requestKey { call -> clientIpKey(call) }
         }
-        register(RateLimitName("game-events")) {
-            rateLimiter(limit = 2_400, refillPeriod = 1.hours)
-            requestKey { call ->
-                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
-                    ?: call.request.headers["X-Real-IP"]
-                    ?: "direct-client"
-            }
-        }
-        register(RateLimitName("account-recovery-write")) {
-            rateLimiter(limit = 30, refillPeriod = 1.hours)
-            requestKey { call ->
-                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
-                    ?: call.request.headers["X-Real-IP"]
-                    ?: "direct-client"
-            }
-        }
-        register(RateLimitName("account-recovery-read")) {
-            rateLimiter(limit = 600, refillPeriod = 1.hours)
-            requestKey { call ->
-                call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
-                    ?: call.request.headers["X-Real-IP"]
-                    ?: "direct-client"
-            }
+        register(RateLimitName("account-recovery-redeem")) {
+            rateLimiter(limit = 120, refillPeriod = 1.hours)
+            requestKey { call -> clientIpKey(call) }
         }
     }
     install(ContentNegotiation) {
@@ -159,6 +166,10 @@ fun Application.installZhivApi(
         })
     }
     install(StatusPages) {
+        exception<AuthFailure> { call, failure ->
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            call.respond(HttpStatusCode.fromValue(failure.status), ApiErrorResponse(failure.code, failure.message))
+        }
         exception<BadRequestException> { call, _ ->
             call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_REQUEST", "Некорректный запрос"))
         }
@@ -207,7 +218,11 @@ fun Application.installZhivApi(
                 call.respond(HttpStatusCode.ServiceUnavailable, mapOf("status" to "unavailable"))
             }
         }
-        identityRoutes(identities, tokenCodec, config)
+        identityRoutes(
+            identities, tokenCodec, config,
+            allowLegacyBootstrap = !authConfig.vkEnabled && !authConfig.emailEnabled && !authConfig.telegramEnabled,
+        )
+        auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
@@ -216,3 +231,7 @@ fun Application.installZhivApi(
         recovery?.let { codeRecoveryRoutes(it, identities, tokenCodec, config) }
     }
 }
+
+private fun clientIpKey(call: ApplicationCall): String =
+    call.request.headers["X-Forwarded-For"]?.substringAfterLast(',')?.trim()
+        ?: call.request.headers["X-Real-IP"] ?: "direct-client"

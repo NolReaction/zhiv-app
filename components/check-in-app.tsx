@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Flame, HeartPulse, Share2, UserRound, Users } from "lucide-react";
+import { Flame, HeartPulse, Copy, UserRound, Users } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -61,10 +61,12 @@ import { PeopleView } from "./people-view";
 import { ProfileView } from "./profile-view";
 import { CapabilityLanding } from "./capability-landing";
 import { RecoveryStarter } from "./recovery-starter";
+import { AccountEntry, AuthReturnNotice } from "./account-entry";
 import { StatusEditor } from "./status-editor";
 import styles from "./check-in-app.module.css";
+import { notify, TransientNotice } from "./app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
-import { getIdentitySharingNotice, shareIdentity } from "@/lib/identity-sharing";
+import { copyText } from "@/lib/identity-sharing";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = "check-in" | "people" | "profile";
@@ -250,7 +252,9 @@ function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
   }
 }
 
-function TapCounter({ progress }: { progress: ClickerRun }) {
+type SeriesResult = Pick<ClickerFinishedSeries, "tapCount" | "isRecord">;
+
+function TapCounter({ progress, result }: { progress: ClickerRun; result: SeriesResult | null }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const deadlineMs = progress.activeSeries
     ? progress.activeSeries.lastTapAtMs + CLICKER_IDLE_RESET_MS
@@ -263,7 +267,7 @@ function TapCounter({ progress }: { progress: ClickerRun }) {
   }, [deadlineMs]);
 
   const active = progress.activeSeries;
-  if (!active) return null;
+  if (!active && !result) return null;
   const timer = getClickerSeriesTimer(progress, nowMs);
   const seconds = Math.max(0, Math.ceil(timer.remainingMs / 1_000));
   const urgency = timer.remainingRatio <= 0.2
@@ -279,12 +283,13 @@ function TapCounter({ progress }: { progress: ClickerRun }) {
     <span
       className={styles.tapCounter}
       data-urgency={urgency}
+      data-state={active ? "active" : "finished"}
       style={timerStyle}
       aria-hidden="true"
     >
-      <strong>×{active.tapCount.toLocaleString("ru-RU")}</strong>
-      <small>{seconds}с</small>
-      <i className={styles.tapCounterProgress} />
+      <strong>{!active && result?.isRecord ? "Рекорд " : ""}×{(active?.tapCount ?? result?.tapCount ?? 0).toLocaleString("ru-RU")}</strong>
+      {active ? <small>{seconds}с</small> : null}
+      {active ? <i className={styles.tapCounterProgress} /> : null}
     </span>
   );
 }
@@ -305,7 +310,7 @@ export function CheckInApp() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clickerRun, setClickerRun] = useState<ClickerRun>(() => createClickerRun());
-  const [seriesSummary, setSeriesSummary] = useState<string | null>(null);
+  const [seriesSummary, setSeriesSummary] = useState<SeriesResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [storyEffect, setStoryEffect] = useState<{
     type: ClickerEffect;
@@ -321,10 +326,8 @@ export function CheckInApp() {
   const [groups, setGroups] = useState<GroupsResponse | null>(null);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
-  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
   const [isIdentityActionPending, setIsIdentityActionPending] = useState(false);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const identityNoticeTimer = useRef<number | null>(null);
   const identityActionPending = useRef(false);
   const checkInSending = useRef(false);
   const clickerRunRef = useRef(clickerRun);
@@ -370,11 +373,7 @@ export function CheckInApp() {
     finished: ClickerFinishedSeries,
     progress: ClickerRun,
   ) => {
-    setSeriesSummary(
-      finished.isRecord
-        ? `Забег завершён · рекорд ×${finished.tapCount.toLocaleString("ru-RU")}`
-        : `Забег завершён · результат ×${finished.tapCount.toLocaleString("ru-RU")}`,
-    );
+    setSeriesSummary({ tapCount: finished.tapCount, isRecord: finished.isRecord });
     void reportClickerSeries({
       eventId: finished.eventId ?? createUuidV4(),
       type: "CLICKER_SERIES_FINISHED",
@@ -647,7 +646,6 @@ export function CheckInApp() {
       if (storyEffectTimer.current) clearTimeout(storyEffectTimer.current);
       if (tapFeedbackTimer.current) clearTimeout(tapFeedbackTimer.current);
       if (seriesBreakTimer.current) clearTimeout(seriesBreakTimer.current);
-      if (identityNoticeTimer.current) clearTimeout(identityNoticeTimer.current);
       if (clickerPersistTimer.current) clearTimeout(clickerPersistTimer.current);
       flushClickerProgress();
     };
@@ -1043,11 +1041,7 @@ export function CheckInApp() {
   const clickerLevel = getClickerLevel(clickerRun.lifetimeTaps);
   const clickerLevelProgress = getClickerLevelProgress(clickerRun.lifetimeTaps);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
-  const primaryStatus = !isOnline
-    ? "Офлайн · серия считается на устройстве"
-    : notice
-      ? notice
-      : seriesSummary;
+  const primaryStatus = !isOnline ? "Офлайн · серия считается на устройстве" : null;
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
     activeTapCount >= 2 && activeTapCount <= 4
@@ -1084,25 +1078,15 @@ export function CheckInApp() {
     [buttonPalette],
   );
 
-  function showIdentityNotice(message: string) {
-    if (identityNoticeTimer.current) window.clearTimeout(identityNoticeTimer.current);
-    setIdentityNotice(message);
-    identityNoticeTimer.current = window.setTimeout(() => {
-      setIdentityNotice(null);
-      identityNoticeTimer.current = null;
-    }, 2_400);
-  }
-
   function handleIdentityAction() {
     if (!me || identityActionPending.current) return;
 
     identityActionPending.current = true;
     setIsIdentityActionPending(true);
-    setIdentityNotice(null);
 
-    void shareIdentity(me.user.publicId)
-      .then((result) => showIdentityNotice(getIdentitySharingNotice(result)))
-      .catch(() => showIdentityNotice("Не скопировано — зажмите ID"))
+    void copyText(me.user.publicId)
+      .then((copied) => notify(copied ? "ID скопирован" : "Не удалось скопировать ID. Зажмите его и выберите «Скопировать».", copied ? "success" : "error"))
+      .catch(() => notify("Не скопировано — зажмите ID", "error"))
       .finally(() => {
         identityActionPending.current = false;
         setIsIdentityActionPending(false);
@@ -1141,22 +1125,18 @@ export function CheckInApp() {
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="session-lost-title">
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
-          <h1 id="session-lost-title">Сессия закончилась</h1>
+          <h1 id="session-lost-title">Войдите в свой профиль</h1>
           <p className={styles.intro}>
-            Введите сохранённый личный код восстановления. Если профиль ещё открыт на другом устройстве, создайте код там.
+            Используйте привязанный ВК или почту. Ваши люди и отметки останутся на месте.
           </p>
+          <AccountEntry isOnline={isOnline} onAuthenticated={adoptMe}>
+            <p className={styles.intro}>Для входа используйте сохранённый резервный код.</p>
+          </AccountEntry>
           <RecoveryStarter
             context="session-lost"
             isOnline={isOnline}
             onRecovered={adoptMe}
           />
-          <button
-            className={`${styles.retryButton} ${styles.newProfileButton}`}
-            type="button"
-            onClick={() => setScreen("onboarding")}
-          >
-            Создать новый профиль
-          </button>
         </section>
         <CapabilityLanding
           authenticated={false}
@@ -1171,17 +1151,9 @@ export function CheckInApp() {
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="welcome-title">
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
-          <h1 id="welcome-title">Как тебя зовут?</h1>
-          <p className={styles.intro}>Только имя. Остальное приложение сделает само.</p>
-          <p className={styles.recoveryHint}>
-            Уже был профиль? Войдите по сохранённому коду восстановления — так вы не
-            создадите случайный новый аккаунт.
-          </p>
-          <RecoveryStarter
-            context="onboarding"
-            isOnline={isOnline}
-            onRecovered={adoptMe}
-          />
+          <h1 id="welcome-title">Я здесь</h1>
+          <p className={styles.intro}>Выберите удобный способ входа.</p>
+          <AccountEntry isOnline={isOnline} onAuthenticated={adoptMe}>
           <form onSubmit={handleBootstrap} className={styles.form} noValidate>
             <label htmlFor="display-name" className={styles.srOnly}>
               Имя
@@ -1196,26 +1168,15 @@ export function CheckInApp() {
               required
               className={styles.input}
               aria-invalid={Boolean(nameError)}
-              aria-describedby={
-                [nameError ? "name-error" : "", systemError ? "system-error" : ""]
-                  .filter(Boolean)
-                  .join(" ") || undefined
-              }
             />
             <button className={styles.continueButton} disabled={isSending} type="submit">
               {isSending ? "Создаём…" : "Продолжить"}
             </button>
           </form>
-          {nameError ? (
-            <p id="name-error" className={styles.error} role="alert">
-              {nameError}
-            </p>
-          ) : null}
-          {systemError ? (
-            <p id="system-error" className={styles.error} role="alert">
-              {systemError}
-            </p>
-          ) : null}
+          <TransientNotice message={nameError} kind="error" />
+          <TransientNotice message={systemError} kind="error" />
+          </AccountEntry>
+          <RecoveryStarter context="onboarding" isOnline={isOnline} onRecovered={adoptMe} />
         </section>
         <CapabilityLanding
           authenticated={false}
@@ -1227,13 +1188,15 @@ export function CheckInApp() {
 
   return (
     <main className={styles.shell} data-active-view={activeView}>
+      <AuthReturnNotice />
+      <TransientNotice message={notice} />
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>
           <button
             type="button"
             className={styles.identity}
-            aria-label="Скопировать ID и поделиться"
+            aria-label="Скопировать ID"
             aria-busy={isIdentityActionPending}
             disabled={isIdentityActionPending}
             onClick={handleIdentityAction}
@@ -1242,9 +1205,8 @@ export function CheckInApp() {
               <strong>{me?.user.displayName}</strong>
               <span>{me?.user.publicId}</span>
             </span>
-            {identityNotice === "ID скопирован" ? <Check size={16} /> : <Share2 size={16} />}
+            <Copy size={16} />
           </button>
-          {identityNotice ? <small role="status">{identityNotice}</small> : null}
         </div>
       </header>
 
@@ -1289,16 +1251,20 @@ export function CheckInApp() {
               onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
+              aria-label="Я живой — отметиться"
               aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
             >
-              <span>Я ЖИВОЙ</span>
+              <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
+              <TapCounter progress={clickerRun} result={seriesSummary} />
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
                 Текущая серия: {visualTapCount.toLocaleString("ru-RU")}
               </span>
             ) : null}
-            {visualTapCount >= 1 ? <TapCounter progress={clickerRun} /> : null}
+            <span className={styles.srOnly} role="status" aria-live="polite">
+              {seriesSummary ? `${seriesSummary.isRecord ? "Рекорд" : "Результат"}: ${seriesSummary.tapCount.toLocaleString("ru-RU")}` : ""}
+            </span>
             {tapFeedbackBurst > 0 ? (
               <i
                 key={`tap-wave-${tapFeedbackBurst}`}
@@ -1404,13 +1370,13 @@ export function CheckInApp() {
           <div className={styles.statusBlock}>
             <p className={styles.serverFact}>{serverStatus}</p>
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
-            <p
+            {primaryStatus ? <p
               className={styles.status}
               role="status"
               aria-live="polite"
             >
               {primaryStatus}
-            </p>
+            </p> : null}
             <span className={styles.srOnly}>
               Лучшая серия: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.

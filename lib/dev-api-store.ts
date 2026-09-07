@@ -1,6 +1,7 @@
 import type {
   CheckInResponse,
   FavoriteResponse,
+  NicknameResponse,
   UserStatus,
   DailyStreak,
   DirectRequest,
@@ -23,6 +24,7 @@ import type {
   UserLookupResponse,
 } from "@/lib/check-in-contract";
 import { activeUserStatus } from "@/lib/user-status";
+import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
 import {
@@ -122,6 +124,7 @@ type DirectInviteLinkRecord = {
 type RecoveryCodeRecord = {userId:string;active:boolean;consumedAt?:number;retryHash?:string;sessionToken?:string};
 
 type Store = {
+  personNicknames: Map<string, string>;
   favoritePeople: Set<string>;
   recipientSharing: Map<string, SharingRecord>;
   users: Map<string, UserRecord>;
@@ -156,6 +159,7 @@ const globalStore = globalThis as typeof globalThis & { __zhivDevStore?: Store }
 
 function store(): Store {
   globalStore.__zhivDevStore ??= {
+    personNicknames: new Map(),
     favoritePeople: new Set(),
     recipientSharing: new Map(),
     users: new Map(),
@@ -178,6 +182,7 @@ function store(): Store {
   globalStore.__zhivDevStore.recoveryCodes ??= new Map();
   globalStore.__zhivDevStore.recipientSharing ??= new Map();
   globalStore.__zhivDevStore.favoritePeople ??= new Set();
+  globalStore.__zhivDevStore.personNicknames ??= new Map();
   return globalStore.__zhivDevStore;
 }
 
@@ -545,6 +550,7 @@ function personDto(circle: DirectCircleRecord, currentUserId: string): Person {
     user: publicUser(relatedUser),
     status: visibleStatus(relatedUser,currentUserId),
     isFavorite: store().favoritePeople.has(sharingKey(circle.id, currentUserId)),
+    nickname: store().personNicknames.get(`${currentUserId}:${relatedUserId}`) ?? null,
     connectedAt: circle.createdAt,
     mySharingMode: mySharing.mode,
     theirSharingMode: theirSharing.mode,
@@ -682,6 +688,20 @@ export function updateDevFavorite(token: string | undefined, circleId: string, i
   return { kind: "ok", value: { circleId, isFavorite, serverTime: new Date().toISOString() } };
 }
 
+export function updateDevNickname(token: string | undefined, circleId: string, value: string): DevResult<NicknameResponse> {
+  const currentUser = sessionUser(token);
+  if (!currentUser) return { kind: "unauthorized" };
+  const circle = store().circles.get(circleId);
+  if (!circle || circle.archivedAt !== null) return { kind: "not-found" };
+  if (circle.lowUserId !== currentUser.id && circle.highUserId !== currentUser.id) return { kind: "forbidden" };
+  const nickname = normalizePersonNickname(value);
+  if (nickname === null) return { kind: "conflict" };
+  const key = `${currentUser.id}:${otherUserId(circle, currentUser.id)}`;
+  if (nickname) store().personNicknames.set(key, nickname);
+  else store().personNicknames.delete(key);
+  return { kind: "ok", value: { circleId, nickname: nickname || null, serverTime: new Date().toISOString() } };
+}
+
 export function createDevCheckIn(
   token: string | undefined,
   idempotencyKey: string,
@@ -812,7 +832,7 @@ export function listDevPeople(token: string | undefined): DevResult<PeopleRespon
   const currentStore = store();
   const people = activeCirclesForUser(currentUser.id)
     .map((circle) => personDto(circle, currentUser.id))
-    .sort((first, second) => Number(second.isFavorite) - Number(first.isFavorite) || first.user.displayName.localeCompare(second.user.displayName, "ru") || first.user.publicId.localeCompare(second.user.publicId));
+    .sort((first, second) => Number(second.isFavorite) - Number(first.isFavorite) || personDisplayName(first).localeCompare(personDisplayName(second), "ru") || first.user.publicId.localeCompare(second.user.publicId));
   const pending = [...currentStore.directRequests.values()].filter(
     (request) =>
       request.status === "PENDING" &&
@@ -1012,6 +1032,7 @@ export function removeDevPerson(
   if (circle.archivedAt !== null) {
     return { kind: "ok", value: { serverTime: circle.archivedAt } };
   }
+  preserveRecipientDenies(currentUser.id);
   circle.archivedAt = new Date().toISOString();
   return { kind: "ok", value: { serverTime: circle.archivedAt } };
 }
