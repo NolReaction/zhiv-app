@@ -7,6 +7,7 @@ import io.ktor.http.*
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -15,6 +16,12 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.checkins.CheckInResult
+import ru.zhiv.invites.DirectInviteResult
+import ru.zhiv.relationships.RelationshipResult
+import ru.zhiv.relationships.RequestAction
+import ru.zhiv.relationships.DirectRequestMutationSnapshot
+import ru.zhiv.relationships.DirectRequestActionSnapshot
 import ru.zhiv.config.AppConfig
 import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
@@ -226,4 +233,231 @@ class JdbcGameRepositoryIntegrationTest {
         val restarted = games.submitBatch(p.hash, renewedId, 3, 3, UUID.randomUUID())
         assertEquals(35L, restarted.progress.bestSeries, "a fresh runId begins a separate run")
     }
+
+    private fun scalar(sql: String, vararg values: Any?): String? = source.connection.use { c ->
+        c.prepareStatement(sql).use { statement ->
+            values.forEachIndexed { i,v -> statement.setObject(i+1,v) }
+            statement.executeQuery().use { if (it.next()) it.getString(1) else null }
+        }
+    }
+    private suspend fun connect(a: Player, b: Player): UUID {
+        val relationships = JdbcRelationshipRepository(source)
+        val request = assertIs<RelationshipResult.Success<DirectRequestMutationSnapshot>>(
+            relationships.sendRequest(a.hash,b.publicId,UUID.randomUUID())).value.request
+        val accepted = assertIs<RelationshipResult.Success<DirectRequestActionSnapshot>>(
+            relationships.actOnRequest(b.hash,request.requestId,RequestAction.ACCEPTED)).value
+        return assertNotNull(accepted.person).circleId
+    }
+    private fun awardAt(player: Player, id: String): String? = scalar(
+        "SELECT unlocked_at FROM game_achievements WHERE user_id=? AND achievement_id=?",player.id,id)
+    private fun seedCheckIn(player: Player, at: OffsetDateTime, localDate: java.time.LocalDate = at.toLocalDate()) {
+        execute("""
+            INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
+            SELECT ?,id,?,?,?,'UTC',? FROM app_sessions WHERE token_hash=?
+        """.trimIndent(),player.id,UUID.randomUUID(),at,at.plusSeconds(30),localDate,player.hash)
+    }
+
+    @Test fun `friends scope filters before ranking and excludes pending groups removed deleted and private players`() = runBlocking<Unit> {
+        val me=player("Мой рейтинг"); val friend=player("Друг"); val pending=player("Заявка")
+        val stranger=player("Посторонний"); val privateFriend=player("Скрытый")
+        val removed=player("Удалённая связь"); val deleted=player("Удалённый участник"); val groupPeer=player("Общая группа")
+        val players=listOf(me,friend,pending,stranger,privateFriend,removed,deleted,groupPeer)
+        players.forEachIndexed { i,p -> score(p,10+i); if (p!=privateFriend) games.setVisibility(p.hash,true,0,p.publicId) }
+        val relationships=JdbcRelationshipRepository(source)
+        connect(me,friend); connect(me,privateFriend)
+        val removedCircle=connect(me,removed); relationships.removePerson(me.hash,removedCircle)
+        connect(me,deleted); execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",deleted.id)
+        relationships.sendRequest(me.hash,pending.publicId,UUID.randomUUID())
+        val groupId=UUID.randomUUID()
+        source.connection.use { c ->
+            c.prepareStatement("INSERT INTO circles(id,kind,title,created_by_user_id,creation_idempotency_key) VALUES (?,'GROUP','Группа',?,?)").use {
+                it.setObject(1,groupId);it.setObject(2,me.id);it.setObject(3,UUID.randomUUID());it.executeUpdate()
+            }
+            c.prepareStatement("INSERT INTO circle_memberships(circle_id,user_id,role) VALUES (?,?,?)").use { statement ->
+                listOf(me,groupPeer).forEach {
+                    statement.setObject(1,groupId);statement.setObject(2,it.id)
+                    statement.setString(3,if(it==me) "OWNER" else "MEMBER");statement.addBatch()
+                }
+                statement.executeBatch()
+            }
+            c.commit() // Deferred invariant: an active group already has its OWNER.
+        }
+        val board=games.leaderboard(me.hash,"friends")
+        assertEquals("friends",board.scope)
+        assertEquals(listOf("Друг","Мой рейтинг"),board.entries.map { it.displayName })
+        assertEquals(listOf(1L,2L),board.entries.map { it.rank })
+        assertEquals(2L,board.myRank)
+        games.setVisibility(friend.hash,false,1,friend.publicId)
+        assertEquals(listOf("Мой рейтинг"),games.leaderboard(me.hash,"friends").entries.map { it.displayName })
+        games.setVisibility(me.hash,false,1,me.publicId)
+        assertNull(games.leaderboard(me.hash,"friends").myRank)
+        assertTrue(games.leaderboard(me.hash,"friends").entries.isEmpty())
+        assertEquals("global",games.leaderboard(stranger.hash).scope)
+    }
+
+    @Test fun `friends top 100 still reports own position outside its limit`() = runBlocking<Unit> {
+        val p=player(); score(p,1); games.setVisibility(p.hash,true,0,p.publicId)
+        execute("INSERT INTO app_users(public_id,display_name) SELECT 'FRND-0000-'||lpad(i::text,4,'0'),'Друг '||i FROM generate_series(1,105) i")
+        execute("INSERT INTO game_profiles(user_id,lifetime_taps,leaderboard_opt_in) SELECT id,1000,true FROM app_users WHERE public_id LIKE 'FRND-0000-%'")
+        execute("INSERT INTO game_monthly_scores(user_id,month,taps) SELECT id,date_trunc('month',clock_timestamp() AT TIME ZONE 'UTC')::date,1000 FROM app_users WHERE public_id LIKE 'FRND-0000-%'")
+        execute("""
+            INSERT INTO circles(kind,created_by_user_id,direct_user_low_id,direct_user_high_id)
+            SELECT 'DIRECT',?,LEAST(?::uuid,id),GREATEST(?::uuid,id) FROM app_users WHERE public_id LIKE 'FRND-0000-%'
+        """.trimIndent(),p.id,p.id,p.id)
+        val board=games.leaderboard(p.hash,"friends")
+        assertEquals(100,board.entries.size)
+        assertEquals(106L,board.myRank)
+        assertEquals((1L..100L).toList(),board.entries.map { it.rank })
+    }
+
+    @Test fun `thousand taps unlocks on accepted write before achievements are opened and replay cannot rewrite the award`() = runBlocking<Unit> {
+        val p=player(); val session=session(p); val id=UUID.fromString(session.sessionId); val run=UUID.randomUUID()
+        execute("UPDATE game_profiles SET lifetime_taps=995 WHERE user_id=?",p.id)
+        games.submitBatch(p.hash,id,1,4,run)
+        assertNull(awardAt(p,"thousand_taps"))
+        games.submitBatch(p.hash,id,2,1,run)
+        val unlocked=assertNotNull(awardAt(p,"thousand_taps"))
+        games.submitBatch(p.hash,id,2,1,run)
+        assertEquals(unlocked,awardAt(p,"thousand_taps"))
+        val snapshot=JdbcGameRepository(source).achievements(secondDevice(p))
+        assertEquals(p.publicId,snapshot.ownerPublicId)
+        val achievement=snapshot.achievements.single { it.id=="thousand_taps" }
+        assertEquals(1000L,achievement.progress)
+        assertEquals(1000L,achievement.target)
+        assertNotNull(achievement.unlockedAt)
+        assertNull(snapshot.achievements.single { it.id=="seven_day_streak" }.unlockedAt)
+    }
+
+    @Test fun `seven days uses server rolling time not local calendar dates and unlocks on check in`() = runBlocking<Unit> {
+        val p=player(); val instant=OffsetDateTime.parse(games.progress(p.hash).serverTime)
+        val start=instant.minusDays(6).minusMinutes(1)
+        repeat(7) { seedCheckIn(p,start.plusHours(it*23L)) }
+        identities.updateTimeZone(p.hash,"Pacific/Kiritimati",UUID.randomUUID())
+        identities.updateTimeZone(p.hash,"Etc/GMT+12",UUID.randomUUID())
+        assertNull(awardAt(p,"seven_day_streak"))
+        val accepted=assertIs<CheckInResult.Accepted>(identities.record(p.hash,UUID.randomUUID()))
+        assertEquals(7L,accepted.streak.longestDays)
+        assertNotNull(awardAt(p,"seven_day_streak"),"the successful check-in writes the award in its transaction")
+        assertEquals(7L,games.achievements(secondDevice(p)).achievements.single { it.id=="seven_day_streak" }.progress)
+        val short=player()
+        val forgedDate=assertFailsWith<java.sql.SQLException> {
+            seedCheckIn(short,instant.minusMinutes(11),instant.toLocalDate().minusDays(5))
+        }
+        assertEquals("23514",forgedDate.sqlState,"the database rejects a calendar date inconsistent with its timestamp and zone")
+        repeat(7) { seedCheckIn(short,instant.minusMinutes(10).plusSeconds(it*31L)) }
+        assertEquals(1L,games.achievements(short.hash).achievements.single { it.id=="seven_day_streak" }.progress)
+        assertNull(awardAt(short,"seven_day_streak"))
+    }
+
+    @Test fun `five friends is awarded to both invitation participants and survives removal before first read`() = runBlocking<Unit> {
+        val a=player(); val b=player(); val others=List(8) { player() }
+        repeat(4) { connect(a,others[it]); connect(b,others[it+4]) }
+        assertNull(awardAt(a,"five_friends")); assertNull(awardAt(b,"five_friends"))
+        val invites=JdbcDirectInviteRepository(source)
+        val invitation=tokens.issue()
+        assertIs<DirectInviteResult.Success<*>>(invites.create(a.hash,invitation.hash,UUID.randomUUID()))
+        val accepted=assertIs<DirectInviteResult.Success<ru.zhiv.invites.DirectInviteRedeemSnapshot>>(
+            invites.redeem(b.hash,invitation.hash,UUID.randomUUID())).value
+        val firstA=assertNotNull(awardAt(a,"five_friends")); val firstB=assertNotNull(awardAt(b,"five_friends"))
+        JdbcRelationshipRepository(source).removePerson(a.hash,accepted.person.circleId)
+        assertEquals(5L,games.achievements(a.hash).achievements.single { it.id=="five_friends" }.progress)
+        assertEquals(5L,JdbcGameRepository(source).achievements(secondDevice(b)).achievements.single { it.id=="five_friends" }.progress)
+        connect(a,b)
+        assertEquals(firstA,awardAt(a,"five_friends")); assertEquals(firstB,awardAt(b,"five_friends"))
+        // The ID acceptance path also unlocks a previously unawarded user.
+        val c=player()
+        repeat(5) { connect(c,others[it]) }
+        assertNotNull(awardAt(c,"five_friends"))
+    }
+
+    @Test fun `HTTP achievements are private and leaderboard scope rejects unknown or repeated values`() = testApplication {
+        application { installZhivApi(identities,identities,config,games=games) }
+        val p=player(); val cookie="${config.cookieName}=${p.raw}"
+        assertEquals(HttpStatusCode.Unauthorized,client.get("/api/v1/game/achievements").status)
+        for (query in listOf("scope=other","scope=","scope=friends&scope=global","scope=friends&scope=friends")) {
+            assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
+        }
+        val response=client.get("/api/v1/game/achievements") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,response.status)
+        assertEquals("no-store",response.headers[HttpHeaders.CacheControl])
+        val json=Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals(setOf("ownerPublicId","serverTime","achievements"),json.keys)
+        assertEquals(p.publicId,json.getValue("ownerPublicId").jsonPrimitive.content)
+        assertEquals(3,json.getValue("achievements").jsonArray.size)
+        execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",p.hash)
+        assertEquals(HttpStatusCode.Unauthorized,client.get("/api/v1/game/achievements") { header(HttpHeaders.Cookie,cookie) }.status)
+    }
+
+
+    @Test fun `V21 upgrade backfills historical streak verified taps and current friends once`() = runBlocking<Unit> {
+        val database="achievement_upgrade_"+UUID.randomUUID().toString().replace("-", "")
+        source.connection.use { c -> c.autoCommit=true; c.createStatement().use { it.execute("CREATE DATABASE $database") } }
+        try {
+            val upgraded=DatabaseFactory.create(config.copy(databaseUrl=postgres.jdbcUrl.substringBeforeLast('/')+"/"+database))
+            upgraded.use { db ->
+                Flyway.configure().dataSource(db).locations("classpath:db/migration").target("20").load().migrate()
+                val repo=JdbcZhivRepository(db); val token=tokens.issue()
+                val owner=repo.bootstrap("До обновления",tokens.issue().hash,token.hash,365)
+                val friends=List(5) { repo.bootstrap("Друг",tokens.issue().hash,tokens.issue().hash,365) }
+                db.connection.use { c ->
+                    c.prepareStatement("INSERT INTO game_profiles(user_id,lifetime_taps) VALUES (?,1000)").use { it.setObject(1,owner.id);it.executeUpdate() }
+                    c.prepareStatement("""
+                        INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
+                        SELECT ?,s.id,uuidv7(),d.at,d.at+interval '30 seconds','UTC',(d.at AT TIME ZONE 'UTC')::date
+                        FROM app_sessions s CROSS JOIN LATERAL (
+                            SELECT statement_timestamp()-interval '20 days'+i*interval '24 hours' AS at FROM generate_series(0,6) i
+                        ) d WHERE s.token_hash=?
+                    """.trimIndent()).use { it.setObject(1,owner.id);it.setBytes(2,token.hash);it.executeUpdate() }
+                    c.prepareStatement("INSERT INTO circles(kind,created_by_user_id,direct_user_low_id,direct_user_high_id) VALUES ('DIRECT',?,LEAST(?::uuid,?::uuid),GREATEST(?::uuid,?::uuid))").use {
+                        friends.forEach { friend ->
+                            it.setObject(1,owner.id);it.setObject(2,owner.id);it.setObject(3,friend.id);it.setObject(4,owner.id);it.setObject(5,friend.id);it.addBatch()
+                        };it.executeBatch()
+                    }
+                    c.commit()
+                }
+                DatabaseFactory.migrate(db)
+                db.connection.use { c ->
+                    c.prepareStatement("SELECT count(*) FROM game_achievements WHERE user_id=?").use {
+                        it.setObject(1,owner.id)
+                        it.executeQuery().use { rows -> assertTrue(rows.next());assertEquals(3,rows.getInt(1),"migration must award before the first achievements read") }
+                    }
+                }
+                val first=JdbcGameRepository(db).achievements(token.hash).achievements
+                assertEquals(listOf(7L,1000L,5L),first.map { it.progress })
+                assertTrue(first.all { it.unlockedAt!=null })
+                db.connection.use { c ->
+                    c.prepareStatement("UPDATE circles SET archived_at=clock_timestamp() WHERE kind='DIRECT' AND ? IN (direct_user_low_id,direct_user_high_id)").use { it.setObject(1,owner.id);it.executeUpdate() };c.commit()
+                }
+                DatabaseFactory.migrate(db)
+                assertEquals(first,JdbcGameRepository(db).achievements(token.hash).achievements)
+            }
+        } finally {
+            source.connection.use { c -> c.autoCommit=true;c.createStatement().use { it.execute("DROP DATABASE $database WITH (FORCE)") } }
+        }
+    }
+
+    @Test fun `achievements reconcile verified progress accepted by an old API after migration exactly once`() = runBlocking<Unit> {
+        val p=player(); session(p)
+        // Simulate the old API's committed score after V21 finished backfilling.
+        execute("UPDATE game_profiles SET lifetime_taps=1005 WHERE user_id=?",p.id)
+        assertNull(awardAt(p,"thousand_taps"))
+        val otherDevice=secondDevice(p)
+        val results=coroutineScope {
+            listOf(
+                async(Dispatchers.IO) { games.achievements(p.hash) },
+                async(Dispatchers.IO) { JdbcGameRepository(source).achievements(otherDevice) },
+            ).awaitAll()
+        }
+        val awards=results.map { it.achievements.single { award -> award.id=="thousand_taps" } }
+        assertTrue(awards.all { it.progress==1000L && it.target==1000L && it.unlockedAt!=null })
+        assertEquals(1,awards.map { it.unlockedAt }.distinct().size)
+        assertEquals("1",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",p.id))
+        assertEquals(awards.first(),games.achievements(p.hash).achievements.single { it.id=="thousand_taps" })
+        val fresh=player()
+        identities.updateTimeZone(fresh.hash,"Pacific/Kiritimati",UUID.randomUUID())
+        val unearned=games.achievements(fresh.hash).achievements
+        assertTrue(unearned.all { it.progress==0L && it.unlockedAt==null },"reconciliation never imports device-local counters or dates")
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",fresh.id))
+    }
+
 }

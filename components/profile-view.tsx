@@ -21,6 +21,7 @@ import { RecoveryStarter } from "./recovery-starter";
 import { TransientNotice } from "./app-notifications";
 import { AccountAccess } from "./account-access";
 import { TimeZoneSetting } from "./time-zone-setting";
+import { GameAchievementsButton } from "./game-achievements";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import styles from "./profile-view.module.css";
 
@@ -173,7 +174,10 @@ export function ProfileView({
               ) : <strong>{initials(me.user.displayName)}</strong>}
             </div>
             <div className={styles.identity}>
-              <strong>{me.user.displayName}</strong>
+              <div className={styles.identityTitle}>
+                <strong>{me.user.displayName}</strong>
+                <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} />
+              </div>
               <span>{me.user.publicId}</span>
               <button type="button" className={styles.editLink} onClick={() => setPanel(panel === "name" ? "" : "name")}>Изменить имя</button>
             </div>

@@ -53,6 +53,7 @@ import {
   type ClickerRun,
 } from "@/lib/clicker-story";
 import {
+  isWithinGameTapArea,
   shouldCountGameClick,
   shouldCountGamePointer,
 } from "@/lib/tap-input";
@@ -383,6 +384,7 @@ export function CheckInApp() {
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
   const homeHeading = useRef<HTMLHeadingElement | null>(null);
   const mainButton = useRef<HTMLButtonElement | null>(null);
+  const buttonOrbit = useRef<HTMLDivElement | null>(null);
   const clickerOwnerPublicId = useRef<string | null>(null);
   const clickerPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1103,6 +1105,8 @@ export function CheckInApp() {
   function handleGameAreaPointerDown(event: ReactPointerEvent<HTMLElement>) {
     if (!shouldCountGamePointer(event.pointerType)) return;
     if (mainButton.current?.contains(event.target as Node)) return;
+    const bounds = buttonOrbit.current?.getBoundingClientRect();
+    if (!bounds || !isWithinGameTapArea(event.clientX, event.clientY, bounds)) return;
     const active = clickerRunRef.current.activeSeries;
     const tappedAtMs = Date.now();
     if (!active || tappedAtMs < active.lastTapAtMs
@@ -1325,7 +1329,6 @@ export function CheckInApp() {
           id="check-in-panel"
           className={styles.action}
           aria-labelledby="main-action-title"
-          onPointerDown={handleGameAreaPointerDown}
         >
           <h1
             id="main-action-title"
@@ -1362,8 +1365,9 @@ export function CheckInApp() {
               className={`${styles.buttonStage} ${tapActive ? styles.buttonStageActive : ""} ${
                 seriesBreakBurst !== null ? styles.seriesBreaking : ""
               }`}
+              onPointerDown={handleGameAreaPointerDown}
             >
-            <div className={styles.buttonOrbit}>
+            <div className={styles.buttonOrbit} ref={buttonOrbit}>
             <button
               type="button"
               className={`${styles.checkInButton} ${pulseClass}`}

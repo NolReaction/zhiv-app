@@ -254,6 +254,9 @@
   gap: 5px;
 }
 
+.identityTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.identityTitle > strong { min-width: 0; }
+
 .identity strong {
   overflow-wrap: anywhere;
   color: #f2f4ee;

@@ -444,16 +444,14 @@ class JdbcZhivRepository(
             }
 
             val checkInCount = countCheckIns(connection, user.userId)
+            val streak = loadStreak(connection, user.userId, user.serverTime)
+            if (streak.longestDays >= 7) recordGameAchievement(connection, user.userId, "seven_day_streak", user.serverTime)
 
             CheckInResult.Accepted(
                 eventId = eventId,
                 checkedAt = user.serverTime,
                 checkInCount = checkInCount,
-                streak = loadStreak(
-                    connection,
-                    user.userId,
-                    user.serverTime,
-                ),
+                streak = streak,
                 serverTime = user.serverTime,
                 nextAllowedAt = acceptedNextAllowedAt,
                 replayed = false,

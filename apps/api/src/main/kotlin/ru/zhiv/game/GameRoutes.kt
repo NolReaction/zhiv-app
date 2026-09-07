@@ -34,7 +34,14 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
         install(RequestBodyLimit) { bodyLimit { 2_048 } }
         rateLimit(RateLimitName("game-read")) {
             get("/progress") { call.respond(repository.progress(call.gameSessionHash(config, codec))) }
-            get("/leaderboard") { call.respond(repository.leaderboard(call.gameSessionHash(config, codec))) }
+            get("/leaderboard") {
+                val hash = call.gameSessionHash(config, codec)
+                val scopes = call.request.queryParameters.getAll("scope")
+                val scope = scopes?.singleOrNull() ?: if (scopes == null) "global" else null
+                if (scope !in setOf("global", "friends")) throw AuthFailure("INVALID_GAME_SCOPE", "Выберите общий рейтинг или рейтинг друзей", 400)
+                call.respond(repository.leaderboard(hash, checkNotNull(scope)))
+            }
+            get("/achievements") { call.respond(repository.achievements(call.gameSessionHash(config, codec))) }
         }
         rateLimit(RateLimitName("game-session")) {
             post("/sessions") {

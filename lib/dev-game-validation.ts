@@ -1,5 +1,5 @@
 import { isValidPublicId } from "@/lib/check-in-presentation";
-import type { GameBatchRequest, GameSessionRequest, GameVisibilityRequest } from "@/lib/game-api";
+import type { GameBatchRequest, GameSessionRequest, GameVisibilityRequest, GameLeaderboardScope } from "@/lib/game-api";
 
 function exact(value: unknown, keys: string[]): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -27,4 +27,10 @@ export function parseDevGameVisibility(value: unknown): GameVisibilityRequest | 
   if (!exact(value, ["ownerPublicId", "leaderboardOptIn", "expectedVersion"]) || !owner(value.ownerPublicId)
     || typeof value.leaderboardOptIn !== "boolean" || !integer(value.expectedVersion, 0)) return null;
   return { ownerPublicId: value.ownerPublicId, leaderboardOptIn: value.leaderboardOptIn, expectedVersion: value.expectedVersion };
+}
+
+export function parseDevGameScope(searchParams: URLSearchParams): GameLeaderboardScope | null {
+  const values = searchParams.getAll("scope");
+  if (values.length === 0) return "global";
+  return values.length === 1 && (values[0] === "global" || values[0] === "friends") ? values[0] : null;
 }

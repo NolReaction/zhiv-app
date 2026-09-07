@@ -144,6 +144,9 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             UPDATE game_profiles SET lifetime_taps=lifetime_taps+?,best_series=GREATEST(best_series,?),
                 bucket_tokens=?,bucket_updated_at=GREATEST(bucket_updated_at,?),updated_at=? WHERE user_id=?
         """.trimIndent(), accepted, runTaps, available - accepted, instant, instant, actor.id)
+        if (bucket.lifetime < 1000 && bucket.lifetime + accepted >= 1000) {
+            recordGameAchievement(c, actor.id, "thousand_taps", instant)
+        }
         if (accepted > 0) c.update("""
             INSERT INTO game_monthly_scores(user_id,month,taps,updated_at) VALUES (?,?,?,?)
             ON CONFLICT(user_id,month) DO UPDATE SET taps=LEAST(9007199254740991,game_monthly_scores.taps+EXCLUDED.taps),updated_at=EXCLUDED.updated_at
@@ -166,7 +169,8 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         c.update("UPDATE game_profiles SET leaderboard_opt_in=?,visibility_version=visibility_version+1,updated_at=clock_timestamp() WHERE user_id=?", visible, actor.id)
         progress(c, actor, now(c))
     }
-    override suspend fun leaderboard(sessionHash: ByteArray): GameLeaderboard = tx { c ->
+    override suspend fun leaderboard(sessionHash: ByteArray, scope: String): GameLeaderboard = tx { c ->
+        if (scope !in setOf("global", "friends")) fail("INVALID_GAME_SCOPE", "Выберите общий рейтинг или рейтинг друзей", 400)
         val actor = lockActor(c, sessionHash)
         val instant = now(c)
         val current = progress(c, actor, instant)
@@ -177,9 +181,43 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
                 FROM game_monthly_scores m JOIN game_profiles p ON p.user_id=m.user_id
                 JOIN app_users u ON u.id=m.user_id
                 WHERE m.month=? AND m.taps>0 AND p.leaderboard_opt_in AND u.deleted_at IS NULL
+                  AND (?='global' OR u.id=? OR u.id IN (SELECT user_id FROM active_direct_friend_ids(?)))
             ) SELECT place,display_name,taps,is_me FROM ranking WHERE place<=100 OR is_me ORDER BY place
-        """.trimIndent(), actor.id, month(instant)) { GameLeaderboardEntry(it.getLong(1), it.getString(2), it.getLong(3), it.getBoolean(4)) }
-        GameLeaderboard(actor.publicId, current.month, current.serverTime, ranked.filter { it.rank <= 100 }, ranked.firstOrNull { it.isMe }?.rank, current.monthlyTaps, current.leaderboardOptIn)
+        """.trimIndent(), actor.id, month(instant), scope, actor.id, actor.id) { GameLeaderboardEntry(it.getLong(1), it.getString(2), it.getLong(3), it.getBoolean(4)) }
+        GameLeaderboard(actor.publicId, current.month, current.serverTime, ranked.filter { it.rank <= 100 }, ranked.firstOrNull { it.isMe }?.rank, current.monthlyTaps, current.leaderboardOptIn, scope)
+    }
+
+    override suspend fun achievements(sessionHash: ByteArray): GameAchievements = tx { c ->
+        val actor = lockActor(c, sessionHash)
+        val instant = now(c)
+        val awards = c.rows("""
+            WITH targets(id,target,position) AS (VALUES
+                ('seven_day_streak',7::bigint,1),('thousand_taps',1000::bigint,2),('five_friends',5::bigint,3))
+            SELECT t.id,t.target,a.unlocked_at,
+                   CASE WHEN a.unlocked_at IS NOT NULL THEN t.target ELSE LEAST(t.target,CASE t.id
+                       WHEN 'seven_day_streak' THEN (SELECT longest_days FROM rolling_check_in_streak(?,?))
+                       WHEN 'thousand_taps' THEN COALESCE((SELECT lifetime_taps FROM game_profiles WHERE user_id=?),0)
+                       ELSE (SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends)
+                   END) END AS progress
+            FROM targets t LEFT JOIN game_achievements a ON a.user_id=? AND a.achievement_id=t.id
+            ORDER BY t.position
+        """.trimIndent(), actor.id, instant, actor.id, actor.id, actor.id) {
+            GameAchievement(it.getString("id"), it.getLong("progress"), it.getLong("target"),
+                it.getObject("unlocked_at", OffsetDateTime::class.java)?.toInstant()?.toString())
+        }
+        // A previous API instance may have accepted progress after V21's backfill
+        // during a rolling upgrade. Reconcile only verified server values, under
+        // the same user lock as the qualifying writes; preserve any existing date.
+        val reconciled = awards.map { award ->
+            if (award.unlockedAt != null || award.progress < award.target) award else {
+                recordGameAchievement(c, actor.id, award.id, instant)
+                val unlockedAt = c.one("SELECT unlocked_at FROM game_achievements WHERE user_id=? AND achievement_id=?", actor.id, award.id) {
+                    it.getObject(1, OffsetDateTime::class.java).toInstant().toString()
+                } ?: error("Achievement reconciliation did not persist its award")
+                award.copy(unlockedAt = unlockedAt)
+            }
+        }
+        GameAchievements(actor.publicId, instant.toInstant().toString(), reconciled)
     }
 }
 

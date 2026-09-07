@@ -196,6 +196,20 @@ test("counts every touch contact once without duplicating its compatibility clic
   assert.equal(tapInput.shouldCountGameClick(0, 1_001, 1_000), true);
 });
 
+test("mobile game taps stay within the circle and a sixteen-pixel outer margin", () => {
+  const bounds = { left: 35, top: 250, width: 360, height: 360 };
+  assert.equal(tapInput.isWithinGameTapArea(215, 430, bounds), true);
+  assert.equal(tapInput.isWithinGameTapArea(411, 430, bounds), true);
+  assert.equal(tapInput.isWithinGameTapArea(215, 234, bounds), true);
+  assert.equal(tapInput.isWithinGameTapArea(412, 430, bounds), false);
+  assert.equal(tapInput.isWithinGameTapArea(215, 233, bounds), false);
+  // The button's rectangular corners and distant page areas are not playable.
+  assert.equal(tapInput.isWithinGameTapArea(35, 250, bounds), false);
+  assert.equal(tapInput.isWithinGameTapArea(215, 150, bounds), false);
+  assert.equal(tapInput.isWithinGameTapArea(215, 750, bounds), false);
+  assert.equal(tapInput.isWithinGameTapArea(0, 0, { left: 0, top: 0, width: 0, height: 0 }), false);
+});
+
 test("keeps an active clicker run local even after server cooldown ends", () => {
   const idle = clicker.createClickerRun();
   assert.equal(clicker.planClickerTap(idle, false, 1_000), "REQUEST_SERVER");

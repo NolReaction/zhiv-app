@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <defs>
+    <radialGradient id="streak-enamel" cx="0" cy="0" r="1" gradientTransform="translate(39 28) rotate(62) scale(64)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#684322"/>
+      <stop offset="1" stop-color="#25271D"/>
+    </radialGradient>
+    <linearGradient id="streak-edge" x1="24" y1="10" x2="68" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE1A0"/>
+      <stop offset=".48" stop-color="#BE7F3C"/>
+      <stop offset="1" stop-color="#74512D"/>
+    </linearGradient>
+    <linearGradient id="streak-flame" x1="41" y1="24" x2="56" y2="74" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE5A5"/>
+      <stop offset=".52" stop-color="#FFBA55"/>
+      <stop offset="1" stop-color="#EA723D"/>
+    </linearGradient>
+    <linearGradient id="streak-heart" x1="44" y1="49" x2="52" y2="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8DA"/>
+      <stop offset="1" stop-color="#FFE0A0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="42" fill="url(#streak-enamel)" stroke="url(#streak-edge)" stroke-width="2"/>
+  <circle cx="48" cy="48" r="36.5" stroke="#FBC67E" stroke-opacity=".17"/>
+  <path d="M23 25a33 33 0 0 1 34-8" stroke="#FFF0C3" stroke-opacity=".23" stroke-width="2" stroke-linecap="round"/>
+  <g stroke="#FFD28B" stroke-width="2.5" stroke-linecap="round">
+    <path d="M48 14v4"/>
+    <path d="M74.6 26.8l-3.1 2.5"/>
+    <path d="M81.1 55.6l-3.9-.9"/>
+    <path d="M62.8 78.6l-1.7-3.6"/>
+    <path d="M33.2 78.6l1.7-3.6"/>
+    <path d="M14.9 55.6l3.9-.9"/>
+    <path d="M21.4 26.8l3.1 2.5"/>
+  </g>
+  <path d="M49 24c3 10 14 13 14 24 3-2 4-5 4-8 6 8 6 17 2 24-4 7-12 11-21 11-13 0-23-9-23-21 0-10 6-16 12-21-1 7 1 11 5 14 7-5 9-12 7-23Z" fill="#100F0B" fill-opacity=".25" transform="translate(0 2)"/>
+  <path d="M49 24c3 10 14 13 14 24 3-2 4-5 4-8 6 8 6 17 2 24-4 7-12 11-21 11-13 0-23-9-23-21 0-10 6-16 12-21-1 7 1 11 5 14 7-5 9-12 7-23Z" fill="url(#streak-flame)"/>
+  <path d="M48 49c1 7 10 10 10 16a10 10 0 0 1-20 0c0-6 6-9 10-16Z" fill="url(#streak-heart)"/>
+  <path d="M31 57c0 6 3 10 7 12" stroke="#FFE7B6" stroke-opacity=".64" stroke-width="2" stroke-linecap="round"/>
+</svg>
