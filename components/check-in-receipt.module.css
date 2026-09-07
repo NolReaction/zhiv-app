@@ -1,12 +1,9 @@
-.receipt { width: 100%; margin: 0 0 6px; }
+.receipt { width: 100%; margin: 0 0 10px; }
 .row { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }
-.fact { margin: 0; max-width: calc(100% - 52px); color: #adb4a4; font-size: 14px; line-height: 1.4; text-align: left; text-wrap: balance; }
-.indicator { position: relative; display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 1px solid rgb(195 217 173 / 17%); border-radius: 15px; background: linear-gradient(145deg, rgb(228 242 207 / 10%), rgb(149 184 117 / 3%)); color: #9ba991; box-shadow: inset 0 1px rgb(255 255 255 / 8%); cursor: pointer; transition: color 220ms, border-color 220ms, transform 160ms; touch-action: manipulation; }
-.indicator:active { transform: scale(.94); }
+.indicator { position: relative; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
 .indicator:focus-visible, .details button:focus-visible, .warning button:focus-visible { outline: 2px solid #c9e5b6; outline-offset: 3px; }
 .badge { position: absolute; right: 4px; bottom: 4px; display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: #172014; }
 .badge:empty { display: none; }
-.receipt[data-state="saved"] .indicator { color: #bddaa5; border-color: rgb(189 218 165 / 28%); }
 .receipt[data-state="saved"] .badge { animation: receipt-arrive 440ms cubic-bezier(.2,.8,.2,1); }
 .receipt[data-state="saved"] .badge path { stroke-dasharray: 24; stroke-dashoffset: 0; animation: receipt-check 440ms ease-out; }
 .receipt[data-state="sending"] .indicator { color: #c9e5b6; }
@@ -18,8 +15,9 @@
 .warning button:disabled, .details button:disabled { opacity: .5; cursor: default; }
 .details { z-index: 90; width: min(300px, calc(100vw - 40px)); padding: 16px; border: 1px solid rgb(201 229 182 / 22%); border-radius: 20px; background: rgb(23 30 20 / 96%); color: #edf3e6; box-shadow: 0 15px 45px rgb(0 0 0 / 35%), inset 0 1px rgb(255 255 255 / 8%); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 .details h3 { margin: 0 0 7px; font-size: 15px; font-weight: 700; }
-.details p { margin: 0; color: #afbba4; font-size: 13px; line-height: 1.5; }
-.details time { display: block; margin-top: 9px; color: #c4d9b3; font-size: 12px; }
+.details p { margin: 0; color: #afbba4; font-size: 14px; line-height: 1.5; }
+.details .fact { margin-bottom: 8px; color: #d0e3bd; }
+.details time { display: block; margin-top: 9px; color: #c4d9b3; font-size: 14px; }
 .details button { margin-top: 10px; color: #dfba8e; font-size: 13px; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @keyframes receipt-arrive { from { opacity: 0; transform: scale(.55); } to { opacity: 1; transform: scale(1); } }

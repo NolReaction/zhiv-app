@@ -482,9 +482,6 @@
   z-index: 1;
 }
 
-.tapSaving { flex: 0 0 auto; opacity: .75; animation: tap-saving-spin 900ms linear infinite; }
-@keyframes tap-saving-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .tapSaving { animation: none; } }
 
 .tapCounter strong {
   overflow: hidden;

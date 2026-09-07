@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "ru.zhiv"
-version = "0.5.7"
+version = "0.5.8"
 
 repositories {
     mavenCentral()

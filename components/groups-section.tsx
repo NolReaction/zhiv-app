@@ -56,6 +56,7 @@ import {
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { UserStatusDisplay } from "./user-status-display";
 import styles from "./groups-section.module.css";
+import glass from "./glass-dialog.module.css";
 
 type GroupsSectionProps = {
   data: GroupsResponse | null;
@@ -223,7 +224,6 @@ export function GroupsSection({
       }
       clearPendingGroupCreation();
       setCreateOpen(false);
-      resetCreate();
     });
   }
 
@@ -492,15 +492,12 @@ export function GroupsSection({
       <TransientNotice message={localError} kind="error" />
       <TransientNotice message={error} kind="error" />
 
-      <Dialog open={createOpen} onOpenChange={(open) => {
-        setCreateOpen(open);
-        if (!open) resetCreate();
-      }}>
-        <DialogContent className={styles.dialog}>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className={`${glass.dialog} ${styles.createDialog}`}>
           <DialogHeader>
-            <DialogTitle>Новая группа</DialogTitle>
-            <DialogDescription className={styles.dialogDescription}>
-              Выбранные люди получат приглашения. Никого не добавляем молча.
+            <DialogTitle className={glass.title}><UsersRound size={22} aria-hidden="true" />Новая группа</DialogTitle>
+            <DialogDescription>
+              Выберите название и пригласите близких. Каждый сам примет приглашение.
             </DialogDescription>
           </DialogHeader>
           <div className={styles.presetRow}>

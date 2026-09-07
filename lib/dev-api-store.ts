@@ -26,7 +26,7 @@ import type {
   SharingResponse,
   UserLookupResponse,
 } from "@/lib/check-in-contract";
-import { activeUserStatus } from "@/lib/user-status";
+import { activeUserStatus, normalizeUserStatus, validStatusDuration } from "@/lib/user-status";
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
@@ -763,8 +763,11 @@ export type DevCheckInResult =
 export function updateDevStatus(token: string | undefined, text: string, key: string, expiresInMinutes: number | null = null): DevResult<MeResponse> {
   const user = sessionUser(token);
   if (!user) return { kind: "unauthorized" };
-  const duration = text ? expiresInMinutes : null;
-  const fingerprint = JSON.stringify([text, duration]);
+  const normalizedText = normalizeUserStatus(text);
+  if (normalizedText === null) throw new RangeError("Invalid status text");
+  if (!validStatusDuration(expiresInMinutes)) throw new RangeError("Invalid status duration");
+  const duration = normalizedText ? expiresInMinutes : null;
+  const fingerprint = JSON.stringify([normalizedText, duration]);
   user.statusWrites ??= new Map();
   if (user.statusWrites.has(key)) {
     return user.statusWrites.get(key) === fingerprint
@@ -772,7 +775,7 @@ export function updateDevStatus(token: string | undefined, text: string, key: st
       : { kind: "conflict" };
   }
   const now = new Date();
-  user.status = text ? { text, updatedAt: now.toISOString(), expiresAt: duration === null ? null : new Date(now.getTime() + duration * 60_000).toISOString() } : null;
+  user.status = normalizedText ? { text: normalizedText, updatedAt: now.toISOString(), expiresAt: duration === null ? null : new Date(now.getTime() + duration * 60_000).toISOString() } : null;
   user.statusWrites.set(key, fingerprint);
   return { kind: "ok", value: asMe(user, now) };
 }

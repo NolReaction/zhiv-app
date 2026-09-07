@@ -105,7 +105,7 @@ fun Route.identityRoutes(
                     return@put
                 }
                 if (text == null) {
-                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_STATUS", "До 120 символов, без управляющих символов"))
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_STATUS", "До $MAX_STATUS_LENGTH символов, без управляющих символов"))
                     return@put
                 }
                 when (val result = repository.updateStatus(tokenCodec.hash(rawToken), text, key, duration)) {
@@ -347,10 +347,4 @@ private fun validDisplayName(raw: String): String? {
     return normalized.takeIf {
         codePoints in 1..50
     }
-}
-
-internal fun validStatus(raw: String): String? {
-    if (raw.any { it.isISOControl() || it in '\u202a'..'\u202e' || it in '\u2066'..'\u2069' }) return null
-    val text = raw.trim { it.isWhitespace() || Character.isSpaceChar(it) }.replace(Regex("[\\s\\p{Z}]+"), " ")
-    return text.takeIf { it.codePointCount(0, it.length) <= 120 }
 }
