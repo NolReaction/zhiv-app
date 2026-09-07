@@ -30,6 +30,7 @@ export async function readDevGameBody(request: Request) {
 
 export function devGameResponse<T>(result: DevGameResult<T>) {
   if (result.kind === "ok") return NextResponse.json(result.value, { headers: NO_STORE_HEADERS });
-  const status = result.code === "UNAUTHORIZED" ? 401 : result.code === "GAME_SESSION_LIMIT" ? 429 : 409;
+  const status = result.code === "UNAUTHORIZED" ? 401 : result.code === "GAME_SESSION_LIMIT" ? 429
+    : result.code === "GAME_SESSION_GONE" ? 410 : 409;
   return gameRequestError(result.code, status);
 }

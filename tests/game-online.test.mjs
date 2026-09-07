@@ -41,7 +41,7 @@ test("game progress is shared by an account while game sessions are tied to thei
   assert.equal(ok(game.getDevGameProgress(stranger.token)).lifetimeTaps, 0);
   assert.equal(game.getDevGameProgress(undefined).code, "UNAUTHORIZED");
   assert.equal(game.submitDevGameBatch(secondDevice.token, sent.request).code, "GAME_SESSION_CONFLICT");
-  assert.equal(game.submitDevGameBatch(stranger.token, sent.request).code, "GAME_SESSION_EXPIRED");
+  assert.equal(game.submitDevGameBatch(stranger.token, sent.request).code, "GAME_SESSION_GONE");
   assert.equal(game.createDevGameSession(owner.token, stranger.me.user.publicId, crypto.randomUUID()).code, "GAME_OWNER_CHANGED");
   assert.equal(game.updateDevGameVisibility(owner.token, stranger.me.user.publicId, true, 0).code, "GAME_OWNER_CHANGED");
 });
@@ -55,10 +55,10 @@ test("multiple sessions share one tap allowance and new sessions cannot refill i
   assert.equal(batch(owner, second, 60).value.acceptedTaps, 0);
   context.mock.timers.setTime(Date.now() + 1_000);
   const sent = batch(owner, second, 60, 2).value;
-  assert.equal(sent.acceptedTaps, 12);
-  assert.equal(sent.rejectedTaps, 48);
-  assert.equal(sent.progress.lifetimeTaps, 72);
-  assert.equal(sent.progress.monthlyTaps, 72);
+  assert.equal(sent.acceptedTaps, 30);
+  assert.equal(sent.rejectedTaps, 30);
+  assert.equal(sent.progress.lifetimeTaps, 90);
+  assert.equal(sent.progress.monthlyTaps, 90);
 });
 
 test("batch retries return the accepted receipt once, including after expiry, and compare the payload", context => {
@@ -265,4 +265,63 @@ test("a rejected batch does not claim the predecessor before a successor actuall
   assert.equal(batch(owner, successor, 1, 1, run).value.progress.bestSeries, 61);
   context.mock.timers.setTime(Date.now() + 100);
   assert.equal(batch(owner, waiting, 1, 2, run).value.progress.bestSeries, 61);
+});
+
+
+test("a fast manual run saves all 719 taps and returns its confirmed count on every receipt", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
+  const owner = player();
+  const active = session(owner);
+  const run = crypto.randomUUID();
+  let accepted = 0;
+  for (let sequence = 1; sequence <= 36; sequence++) {
+    context.mock.timers.setTime(Date.now() + 1_000);
+    const count = Math.min(20, 719 - accepted);
+    const sent = batch(owner, active, count, sequence, run);
+    accepted += count;
+    assert.equal(sent.value.acceptedTaps, count);
+    assert.equal(sent.value.rejectedTaps, 0);
+    assert.equal(sent.value.runTaps, accepted);
+    assert.equal(sent.value.progress.bestSeries, accepted);
+    const replay = ok(game.submitDevGameBatch(owner.token, sent.request));
+    assert.equal(replay.runTaps, accepted);
+    assert.equal(replay.progress.lifetimeTaps, accepted);
+  }
+  const persisted = ok(game.getDevGameProgress(owner.token));
+  assert.equal(persisted.bestSeries, 719);
+  assert.equal(persisted.lifetimeTaps, 719);
+  assert.equal(persisted.monthlyTaps, 719);
+});
+
+test("receipt run counts describe the requested run after a rejection or a server idle split", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
+  const owner = player();
+  const active = session(owner);
+  const firstRun = crypto.randomUUID();
+  assert.equal(batch(owner, active, 60, 1, firstRun).value.runTaps, 60);
+  const secondRun = crypto.randomUUID();
+  const rejected = batch(owner, active, 4, 2, secondRun);
+  assert.equal(rejected.value.acceptedTaps, 0);
+  assert.equal(rejected.value.runTaps, 0);
+  assert.equal(ok(game.submitDevGameBatch(owner.token, rejected.request)).runTaps, 0);
+  context.mock.timers.setTime(Date.now() + 1_000);
+  assert.equal(batch(owner, active, 20, 3, secondRun).value.runTaps, 20);
+  context.mock.timers.setTime(Date.now() + 12_001);
+  const reset = batch(owner, active, 10, 4, secondRun).value;
+  assert.equal(reset.runTaps, 10);
+  assert.equal(reset.progress.bestSeries, 60);
+  assert.equal(reset.progress.lifetimeTaps, 90);
+});
+
+
+test("purged receipts cannot be mistaken for expired but uncommitted batches", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
+  const owner = player();
+  const active = session(owner);
+  const sent = batch(owner, active, 9);
+  context.mock.timers.setTime(Date.parse(active.expiresAt) + 86_400_001);
+  session(owner); // Another active device/session triggers the retention cleanup.
+  assert.equal(game.submitDevGameBatch(owner.token, sent.request).code, "GAME_SESSION_GONE");
+  assert.equal(ok(game.getDevGameProgress(owner.token)).lifetimeTaps, 9);
+  assert.equal(game.submitDevGameBatch(player("Other").token, sent.request).code, "GAME_SESSION_GONE");
 });

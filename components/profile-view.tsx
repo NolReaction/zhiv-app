@@ -43,6 +43,7 @@ type ProfileViewProps = {
   onRefreshGame: () => void;
   gameNotice: string;
   gameLoaded: boolean;
+  gamePendingTaps: number;
   legacyGame: { lifetimeTaps: number; bestSeries: number };
 };
 
@@ -83,6 +84,7 @@ export function ProfileView({
   onRefreshGame,
   gameNotice,
   gameLoaded,
+  gamePendingTaps,
   legacyGame,
 }: ProfileViewProps) {
   const [draftState, setDraftState] = useState({
@@ -189,7 +191,7 @@ export function ProfileView({
             </button>
             <div><Check size={18} aria-hidden="true" /><strong>{me.checkInCount}</strong>
               <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span></div>
-            <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг"><Trophy size={18} aria-hidden="true" /><strong>{gameLoaded ? `×${clickerStats.bestSeries.toLocaleString("ru-RU")}` : "—"}</strong><span>рекорд игры</span></button>
+            <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг"><Trophy size={18} aria-hidden="true" /><strong>{gameLoaded ? `×${clickerStats.bestSeries.toLocaleString("ru-RU")}` : "—"}</strong><span>{gamePendingTaps > 0 ? "сохраняем…" : "рекорд игры"}</span></button>
           </div>
         </div>
         <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>

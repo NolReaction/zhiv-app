@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flame, HeartPulse, Copy, Trophy, UserRound, Users } from "lucide-react";
+import { Flame, HeartPulse, Copy, LoaderCircle, Trophy, UserRound, Users } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -35,7 +35,6 @@ import {
 import {
   advanceClickerRun,
   CLICKER_IDLE_RESET_MS,
-  CLICKER_MAX_TAP_COUNT,
   clickerSeedFromPublicId,
   combineLegacyClickerProgress,
   createClickerRun,
@@ -67,6 +66,7 @@ import { CapabilityLanding } from "./capability-landing";
 import { RecoveryStarter } from "./recovery-starter";
 import { AccountEntry, AuthReturnNotice } from "./account-entry";
 import { StatusEditor } from "./status-editor";
+import { CheckInReceipt } from "./check-in-receipt";
 import styles from "./check-in-app.module.css";
 import { notify, TransientNotice } from "./app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
@@ -266,9 +266,11 @@ function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
   }
 }
 
-type SeriesResult = Pick<ClickerFinishedSeries, "tapCount" | "isRecord">;
+type SeriesResult = Pick<ClickerFinishedSeries, "eventId" | "tapCount" | "isRecord">;
 
-function TapCounter({ progress, result }: { progress: ClickerRun; result: SeriesResult | null }) {
+function TapCounter({ progress, result, count, pending, isRecord }: {
+  progress: ClickerRun; result: SeriesResult | null; count: number; pending: number; isRecord: boolean;
+}) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const deadlineMs = progress.activeSeries
     ? progress.activeSeries.lastTapAtMs + CLICKER_IDLE_RESET_MS
@@ -301,7 +303,8 @@ function TapCounter({ progress, result }: { progress: ClickerRun; result: Series
       style={timerStyle}
       aria-hidden="true"
     >
-      <strong>{!active && result?.isRecord ? "Рекорд " : ""}×{(active?.tapCount ?? result?.tapCount ?? 0).toLocaleString("ru-RU")}</strong>
+      <strong>{!active && isRecord ? "Рекорд " : ""}×{count.toLocaleString("ru-RU")}</strong>
+      {pending > 0 && <LoaderCircle size={13} className={styles.tapSaving} />}
       {active ? <small>{seconds}с</small> : null}
       {active ? <i className={styles.tapCounterProgress} /> : null}
     </span>
@@ -373,6 +376,7 @@ export function CheckInApp() {
   const identityActionPending = useRef(false);
   const checkInSending = useRef(false);
   const clickerRunRef = useRef(clickerRun);
+  const recordAtRunStart = useRef<{ runId: string; bestSeries: number | null }>({ runId: "", bestSeries: null });
   const storyEffectBurst = useRef(0);
   const storyEffectType = useRef<ClickerEffect | null>(null);
   const storyEffectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -416,7 +420,7 @@ export function CheckInApp() {
     finished: ClickerFinishedSeries,
     progress: ClickerRun,
   ) => {
-    setSeriesSummary({ tapCount: finished.tapCount, isRecord: finished.isRecord });
+    setSeriesSummary({ eventId: finished.eventId, tapCount: finished.tapCount, isRecord: finished.isRecord });
     void reportClickerSeries({
       eventId: finished.eventId ?? createUuidV4(),
       type: "CLICKER_SERIES_FINISHED",
@@ -633,11 +637,10 @@ export function CheckInApp() {
       clickerSeedFromPublicId(identity.user.publicId),
     );
     setLegacyGame(archiveLocalGame(identity.user.publicId, restored.progress));
-    commitClickerRun(restored.progress, false);
-    if (restored.finishedSeries) {
-      persistClickerRun(restored.progress);
-      reportFinishedSeries(restored.finishedSeries, restored.progress);
-    }
+    // A local animation archive is not a receipt for the new transport session.
+    // Start a fresh visible run after a reload or account transition.
+    commitClickerRun({ ...restored.progress, activeSeries: null }, false);
+    recordAtRunStart.current = { runId: "", bestSeries: null };
     syncMeSnapshot(identity);
     setNameError(null);
     setSystemError(null);
@@ -648,8 +651,6 @@ export function CheckInApp() {
     clearPendingBootstrap,
     clearPendingCheckIn,
     commitClickerRun,
-    persistClickerRun,
-    reportFinishedSeries,
     resetTransientCheckIn,
     syncMeSnapshot,
   ]);
@@ -867,6 +868,9 @@ export function CheckInApp() {
       const current = clickerRunRef.current;
       const transition = advanceClickerRun(current, tappedAtMs, steps, createUuidV4());
       const runId = transition.progress.activeSeries?.eventId;
+      if (runId && runId !== recordAtRunStart.current.runId) {
+        recordAtRunStart.current = { runId, bestSeries: game.progress?.bestSeries ?? null };
+      }
       if (runId) recordGameTap(steps, runId);
       if (transition.finishedSeries) {
         reportFinishedSeries(transition.finishedSeries, transition.progress);
@@ -883,6 +887,7 @@ export function CheckInApp() {
     },
     [
       recordGameTap,
+      game.progress?.bestSeries,
       commitClickerRun,
       persistClickerRun,
       reportFinishedSeries,
@@ -1149,11 +1154,14 @@ export function CheckInApp() {
   const clickerLevelProgress = getClickerLevelProgress(game.progress?.lifetimeTaps ?? 0);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
   const primaryStatus = !isOnline ? "Офлайн · игровые тапы не сохраняются"
-    : game.status === "error" ? "Игровой прогресс не синхронизирован" : null;
+    : game.status === "error" ? "Ждём соединения, чтобы сохранить нажатия"
+      : game.run?.interrupted ? "После перерыва связи началась новая игровая серия"
+        : game.run?.rejectedTaps ? `Без подтверждения: ${game.run.rejectedTaps.toLocaleString("ru-RU")} нажатий` : null;
   const gameNotice = !isOnline ? "Без интернета новые игровые тапы не сохраняются."
     : game.status === "error" ? "Не удалось синхронизировать игровой прогресс. Повторите обновление."
     : game.status === "loading" ? "Загружаем игровой прогресс…"
     : game.pendingTaps ? `Сохраняем ${game.pendingTaps.toLocaleString("ru-RU")} тапов…`
+    : game.rejectedTaps ? `Сохранённый прогресс обновлён. Без подтверждения в этом сеансе: ${game.rejectedTaps.toLocaleString("ru-RU")} нажатий.`
     : "Прогресс сохранён в аккаунте и доступен на других устройствах.";
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
@@ -1177,10 +1185,13 @@ export function CheckInApp() {
   const showEffectGlow = effectType !== null && [
     "finale", "comet", "legend", "champion",
   ].includes(effectType);
-  const visualTapCount = Math.min(
-    clickerRun.activeSeries?.tapCount ?? 0,
-    CLICKER_MAX_TAP_COUNT,
-  );
+  const displayedRunId = clickerRun.activeSeries?.eventId ?? seriesSummary?.eventId;
+  const displayedRun = game.run?.runId === displayedRunId ? game.run : null;
+  const visualTapCount = (displayedRun?.acceptedTaps ?? 0) + (displayedRun?.pendingTaps ?? 0);
+  const isConfirmedRecord = Boolean(seriesSummary && !clickerRun.activeSeries && displayedRun
+    && displayedRun.pendingTaps === 0 && recordAtRunStart.current.bestSeries !== null
+    && displayedRun.acceptedTaps > recordAtRunStart.current.bestSeries
+    && displayedRun.acceptedTaps === game.progress?.bestSeries);
   const buttonStyle = useMemo(
     () => ({
       "--check-in-color": buttonPalette.base,
@@ -1380,15 +1391,17 @@ export function CheckInApp() {
               aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
-              <TapCounter progress={clickerRun} result={seriesSummary} />
+              <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
+                pending={displayedRun?.pendingTaps ?? 0} isRecord={isConfirmedRecord} />
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
-                Текущая серия: {visualTapCount.toLocaleString("ru-RU")}
+                Текущая серия: {visualTapCount.toLocaleString("ru-RU")}. Сохранено: {displayedRun?.acceptedTaps ?? 0}.
+                {displayedRun?.pendingTaps ? `Ожидают сохранения: ${displayedRun.pendingTaps}.` : ""}
               </span>
             ) : null}
             <span className={styles.srOnly} role="status" aria-live="polite">
-              {seriesSummary ? `${seriesSummary.isRecord ? "Рекорд" : "Результат"}: ${seriesSummary.tapCount.toLocaleString("ru-RU")}` : ""}
+              {seriesSummary ? `${displayedRun?.pendingTaps ? "Сохраняем результат" : isConfirmedRecord ? "Рекорд" : "Результат"}: ${visualTapCount.toLocaleString("ru-RU")}` : ""}
             </span>
             {tapFeedbackBurst > 0 ? (
               <i
@@ -1494,15 +1507,8 @@ export function CheckInApp() {
           </div>
 
           <div className={styles.statusBlock}>
-            <p className={styles.serverFact}>{serverStatus}</p>
-            <div className={styles.deliveryStatus} role="status" aria-live="polite" data-pending={checkInUnconfirmed}>
-              {isSending ? "Подтверждаем отметку…" : checkInUnconfirmed ? <>
-                <span>Не удалось подтвердить отправку</span>
-                <button type="button" disabled={!isOnline} onPointerDown={event => event.stopPropagation()}
-                  onClick={() => void sendCheckIn(true)}>Проверить</button>
-              </> : !isOnline ? "Нет интернета · новая отметка не отправится" : lastCheckInAt ?
-                `Подтверждено сервером · ${new Date(lastCheckInAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "Нажмите кнопку, чтобы отправить первую отметку"}
-            </div>
+            <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
+              isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)} />
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
             {primaryStatus ? <p
               className={styles.status}
@@ -1541,6 +1547,7 @@ export function CheckInApp() {
           onOpenGame={openGame}
           gameNotice={gameNotice}
           gameLoaded={Boolean(game.progress)}
+          gamePendingTaps={game.pendingTaps}
           legacyGame={legacyGame}
           onRefreshGame={() => { void game.refresh(); }}
           nowMs={adjustedNow}

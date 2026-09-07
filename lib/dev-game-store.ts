@@ -3,7 +3,7 @@ import type { GameProgress, GameLeaderboard, GameSession, GameBatchResponse, Gam
 
 const SESSION_LIFETIME_MS = 15 * 60_000;
 const TAP_BUCKET_CAPACITY = 60;
-const TAP_RATE_PER_SECOND = 12;
+const TAP_RATE_PER_SECOND = 30;
 const RUN_IDLE_MS = 12_000;
 
 type Receipt = {
@@ -74,7 +74,7 @@ function progress(value: GameProfileRecord, now: number): GameProgress {
   };
 }
 export type DevGameErrorCode =
-  | "UNAUTHORIZED" | "GAME_OWNER_CHANGED" | "GAME_SESSION_EXPIRED"
+  | "UNAUTHORIZED" | "GAME_OWNER_CHANGED" | "GAME_SESSION_EXPIRED" | "GAME_SESSION_GONE"
   | "GAME_SESSION_CONFLICT" | "GAME_SESSION_LIMIT" | "GAME_SEQUENCE_CONFLICT" | "GAME_VISIBILITY_CONFLICT";
 export type DevGameResult<T> = { kind: "ok"; value: T } | { kind: "error"; code: DevGameErrorCode };
 function error(code: DevGameErrorCode): { kind: "error"; code: DevGameErrorCode } {
@@ -162,7 +162,7 @@ export function submitDevGameBatch(
   const identity = getDevIdentity(token);
   if (!identity) return error("UNAUTHORIZED");
   const session = store().sessions.get(payload.sessionId);
-  if (!session || session.ownerPublicId !== identity.user.publicId) return error("GAME_SESSION_EXPIRED");
+  if (!session || session.ownerPublicId !== identity.user.publicId) return error("GAME_SESSION_GONE");
   if (session.authToken !== token) return error("GAME_SESSION_CONFLICT");
   const own = profile(identity.user.publicId, now);
   const receipt = session.lastReceipt;
@@ -172,6 +172,7 @@ export function submitDevGameBatch(
       sessionId: session.id, sequence: payload.sequence,
       acceptedTaps: receipt.acceptedTaps, rejectedTaps: receipt.rejectedTaps,
       replayed: true, progress: progress(own, now),
+      runTaps: session.currentRun?.id === payload.runId ? session.currentRun.taps : 0,
     } };
   }
   if (now >= session.expiresAt || monthKey(now) !== session.month) return error("GAME_SESSION_EXPIRED");
@@ -216,6 +217,7 @@ export function submitDevGameBatch(
     sessionId: session.id, sequence: payload.sequence,
     acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps,
     replayed: false, progress: progress(own, now),
+    runTaps: session.currentRun?.id === payload.runId ? session.currentRun.taps : 0,
   } };
 }
 

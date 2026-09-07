@@ -518,7 +518,9 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(peopleStyles, /\.inviteLinkField\s*\{[^}]*user-select:\s*text;/s);
   assert.doesNotMatch(profile, /лучший стрик/i);
   assert.doesNotMatch(profile, /me\.streak\.longestDays/);
-  assert.equal((profile.match(/>\s*рекорд игры\s*</gi) ?? []).length, 1);
+  // The record caption switches to a saving state while taps are unconfirmed.
+  assert.equal((profile.match(/["']рекорд игры["']/gi) ?? []).length, 1);
+  assert.match(profile, /gamePendingTaps > 0 \? "сохраняем…" : "рекорд игры"/);
   assert.equal((people.match(/<h1\b/g) ?? []).length, 1);
   assert.doesNotMatch(people, /styles\.kicker/);
   assert.doesNotMatch(`${app}\n${people}\n${groups}`, />\s*Свои\s*</);

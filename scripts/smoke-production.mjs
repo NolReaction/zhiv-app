@@ -101,11 +101,13 @@ assert.equal((await api("POST", "/api/v1/game/sessions", { cookie: owner.cookie,
 const gameBatch = { sessionId: gameSession.data.sessionId, sequence: 1, tapCount: 7, runId: randomUUID() };
 const gameScore = await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: gameBatch });
 assert.equal(gameScore.data.acceptedTaps, 7);
+assert.equal(gameScore.data.runTaps, 7);
 assert.equal(gameScore.data.progress.lifetimeTaps, 7);
 assert.equal(gameScore.data.progress.bestSeries, 7);
 assert.equal(gameScore.data.progress.month, gameScore.data.progress.serverTime.slice(0, 7));
 const gameReplay = await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: gameBatch });
 assert.equal(gameReplay.data.replayed, true);
+assert.equal(gameReplay.data.runTaps, 7);
 assert.equal(gameReplay.data.progress.lifetimeTaps, 7);
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, tapCount: 8 }, expected: 409 });
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, sequence: 2, lifetimeTaps: 999999 }, expected: 400 });

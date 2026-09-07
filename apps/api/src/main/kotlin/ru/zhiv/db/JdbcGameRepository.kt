@@ -20,7 +20,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
     companion object {
         const val MAX_BATCH_TAPS = 60
         const val BUCKET_CAPACITY = 60.0
-        const val TAPS_PER_SECOND = 12.0
+        const val TAPS_PER_SECOND = 30.0
         const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
     }
     private fun fail(code: String, message: String, status: Int = 409): Nothing = throw AuthFailure(code, message, status)
@@ -111,12 +111,12 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         if (sequence !in 1L until MAX_SAFE_INTEGER || tapCount !in 1..MAX_BATCH_TAPS) fail("INVALID_GAME_BATCH", "Некорректный игровой пакет", 400)
         val actor = lockActor(c, sessionHash)
         val game = c.one("SELECT * FROM game_sessions WHERE id=? AND user_id=? FOR UPDATE", sessionId, actor.id, map = ::sessionRow)
-            ?: fail("GAME_SESSION_EXPIRED", "Начните новую игровую сессию")
+            ?: fail("GAME_SESSION_GONE", "Игровая сессия больше недоступна", 410)
         if (game.authSession != actor.authSessionId) fail("GAME_SESSION_CONFLICT", "Игровая сессия открыта на другом устройстве")
         val instant = now(c)
         if (sequence == game.sequence) {
             if (tapCount != game.taps || runId != game.lastRunId) fail("GAME_SEQUENCE_CONFLICT", "Игровой пакет уже использован")
-            return@tx GameBatchResponse(sessionId.toString(), sequence, game.accepted, tapCount - game.accepted, true, progress(c, actor, instant))
+            return@tx GameBatchResponse(sessionId.toString(), sequence, game.accepted, tapCount - game.accepted, true, progress(c, actor, instant), if (game.runId == runId) game.runTaps else 0L)
         }
         if (sequence != game.sequence + 1) fail("GAME_SEQUENCE_CONFLICT", "Нарушен порядок игровых пакетов")
         if (!game.expires.isAfter(instant) || game.month != month(instant)) fail("GAME_SESSION_EXPIRED", "Начните новую игровую сессию")
@@ -154,7 +154,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         c.update("""
             UPDATE game_sessions SET last_sequence=?,last_tap_count=?,last_accepted=?,last_run_id=?,last_batch_at=?,run_taps=?,run_id=?,run_updated_at=? WHERE id=?
         """.trimIndent(), sequence, tapCount, accepted, runId, instant, runTaps, if (accepted > 0) runId else game.runId, if (accepted > 0) instant else game.runUpdatedAt, sessionId)
-        GameBatchResponse(sessionId.toString(), sequence, accepted, tapCount - accepted, false, progress(c, actor, instant))
+        GameBatchResponse(sessionId.toString(), sequence, accepted, tapCount - accepted, false, progress(c, actor, instant), if (accepted > 0 || game.runId == runId) runTaps else 0L)
     }
     override suspend fun setVisibility(sessionHash: ByteArray, visible: Boolean, expectedVersion: Long, ownerPublicId: String): GameProgress = tx { c ->
         if (expectedVersion !in 0L until MAX_SAFE_INTEGER) fail("INVALID_GAME_VISIBILITY", "Некорректная версия настроек", 400)
