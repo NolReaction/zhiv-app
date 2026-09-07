@@ -175,10 +175,19 @@ function setShellResponses(harness, label) {
 test("keeps identity and check-ins out of the offline cache", async () => {
   const serviceWorker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
 
-  assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)\) return/);
+  assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
   assert.match(serviceWorker, /cache\?\.match\(request\)/);
   assert.doesNotMatch(serviceWorker, /caches\.match\(request\)/);
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
+});
+
+test("admin navigation and data always bypass offline cache and root-shell fallback", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "admin-network-only");
+  await harness.dispatchExtendable("install");
+  for (const path of ["/admin", "/admin/users", "/api/v1/admin/overview"]) {
+    assert.equal(await harness.dispatchFetch(path), null);
+  }
 });
 
 test("stages a build-specific shell before switching the active cache", async () => {

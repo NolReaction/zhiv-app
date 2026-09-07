@@ -16,6 +16,13 @@
     }
     encode zstd gzip
 
+    # Scrape endpoints are reachable only inside the container network.
+    @internal path /internal /internal/* /metrics
+    respond @internal 404
+    @admin path /admin /admin/* /api/v1/admin/*
+    header @admin >Cache-Control "no-store"
+    header @admin >X-Robots-Tag "noindex, nofollow"
+
     @api path /api/* /healthz /readyz
     reverse_proxy @api api:8080
     reverse_proxy web:3000
