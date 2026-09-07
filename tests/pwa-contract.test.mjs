@@ -510,7 +510,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /window\.setTimeout\(\(\) => \{[\s\S]*window\.dispatchEvent\(new Event\(INVITE_IMPORT_EVENT\)\);[\s\S]*\}, DIALOG_EXIT_MS\);/);
   assert.match(people, /inviteDialog\.mode === "qr" && inviteShare\.url/);
   assert.match(people, /Ссылка и QR с localhost не откроются на другом устройстве/);
-  assert.match(people, /aria-label=\{inviteShare\.url \? "Ссылка приглашения" : "Одноразовый код приглашения"\}/);
+  assert.match(people, /aria-label=\{inviteShare\.url \? "Ссылка приглашения" : "Код приглашения"\}/);
   assert.match(people, /aria-describedby="invite-import-hint"/);
   assert.match(people, /aria-invalid=\{Boolean\(inviteImportError\)\}/);
   assert.match(people, /inviteDialog\.mode === "qr" \? styles\.inviteLinkFieldCompact/);

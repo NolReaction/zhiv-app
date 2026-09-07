@@ -127,7 +127,7 @@ private fun safeErrorCode(code: String): String = code.takeIf { it in diagnostic
 
 // Only these fixed templates can reach the log. Unknown paths and path parameters are never recorded.
 private val operationTemplates = listOf(
-    "/healthz", "/readyz", "/api/v1/bootstrap", "/api/v1/me", "/api/v1/me/status", "/api/v1/me/calendar",
+    "/healthz", "/readyz", "/api/v1/bootstrap", "/api/v1/me", "/api/v1/me/status", "/api/v1/me/calendar", "/api/v1/me/time-zone",
     "/api/v1/check-ins", "/api/v1/game-events", "/api/v1/recovery-code", "/api/v1/recovery-code/redeem",
     "/api/v1/auth/options", "/api/v1/auth/vk/start", "/api/v1/auth/vk/callback",
     "/api/v1/auth/telegram/start", "/api/v1/auth/telegram/callback", "/api/v1/auth/email/start",

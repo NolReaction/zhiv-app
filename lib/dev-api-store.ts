@@ -1,3 +1,4 @@
+import { isTimeZone, nextLocalDay } from "./time-zone";
 import type {
   CheckInResponse,
   CheckInCalendarResponse,
@@ -41,6 +42,7 @@ const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 type UserRecord = PublicUser & {
   status?: UserStatus | null;
   statusWrites?: Map<string, string>;
+  timeZoneWrites?: Map<string, string>;
   id: string;
   timezoneId: string;
   lastCheckInAt: string | null;
@@ -142,6 +144,7 @@ type Store = {
   groupMemberships: Map<string, GroupMembershipRecord>;
   groupInvites: Map<string, GroupInviteRecord>;
   directInviteLinks: Map<string, DirectInviteLinkRecord>;
+  directInviteRedemptions: Map<string, { linkId: string; recipientId: string; key: string; circleId: string }>;
   recoveryCodes: Map<string,RecoveryCodeRecord>;
 };
 
@@ -177,9 +180,11 @@ function store(): Store {
     groupMemberships: new Map(),
     groupInvites: new Map(),
     directInviteLinks: new Map(),
+    directInviteRedemptions: new Map(),
     recoveryCodes: new Map(),
   };
   globalStore.__zhivDevStore.directInviteLinks ??= new Map();
+  globalStore.__zhivDevStore.directInviteRedemptions ??= new Map();
   globalStore.__zhivDevStore.recoveryCodes ??= new Map();
   globalStore.__zhivDevStore.recipientSharing ??= new Map();
   globalStore.__zhivDevStore.favoritePeople ??= new Set();
@@ -231,6 +236,7 @@ function asMe(user: UserRecord, serverTime = new Date()): MeResponse {
     checkInCount: [...store().checkIns.values()].filter((event) => event.userId === user.id).length,
     streak: streakForUser(user, serverTime),
     profile: {
+      timeZone: user.timezoneId,
       avatarUrl: user.avatarUrl,
       displayNameChangedAt: user.displayNameChangedAt,
       displayNameChangeAvailableAt:
@@ -570,7 +576,9 @@ function personDto(circle: DirectCircleRecord, currentUserId: string): Person {
 export function createDevIdentity(
   displayName: string,
   bootstrapKey: string,
+  timeZone = "Europe/Moscow",
 ): { token: string; me: MeResponse } {
+  if (!isTimeZone(timeZone)) throw new Error("Invalid time zone");
   const currentStore = store();
   const existingUserId = currentStore.bootstrapKeys.get(bootstrapKey);
   const existingUser = existingUserId ? currentStore.users.get(existingUserId) : undefined;
@@ -587,7 +595,7 @@ export function createDevIdentity(
     id: crypto.randomUUID(),
     publicId: newPublicId(),
     displayName: normalizeDisplayName(displayName),
-    timezoneId: "Europe/Moscow",
+    timezoneId: timeZone,
     lastCheckInAt: null,
     displayNameChangedAt: null,
     displayNameChangeKey: null,
@@ -622,11 +630,24 @@ export function getDevCheckInCalendar(token: string | undefined, month: string |
     if (event.localDate.startsWith(`${selected}-`)) counts.set(event.localDate, (counts.get(event.localDate) ?? 0) + 1);
   }
   return {
-    month: selected, today, timeZone: user.timezoneId,
-    firstMonth: events.map(event => event.localDate.slice(0, 7)).sort()[0] ?? today.slice(0, 7),
+    month: selected, today, timeZone: user.timezoneId, nextDayAt: nextLocalDay(now, user.timezoneId),
+    firstMonth: [today.slice(0, 7), ...events.map(event => event.localDate.slice(0, 7))].sort()[0],
+    lastMonth: [today.slice(0, 7), ...events.map(event => event.localDate.slice(0, 7))].sort().at(-1)!,
     days: [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count })),
     serverTime: now.toISOString(),
   };
+}
+
+export function updateDevTimeZone(token: string | undefined, timeZone: string, idempotencyKey: string, now = new Date()): DevResult<MeResponse> {
+  const user = sessionUser(token);
+  if (!user) return { kind: "unauthorized" };
+  if (!isTimeZone(timeZone)) throw new Error("Invalid time zone");
+  user.timeZoneWrites ??= new Map();
+  const previous = user.timeZoneWrites.get(idempotencyKey);
+  if (previous !== undefined) return previous === timeZone ? { kind: "ok", value: asMe(user, now) } : { kind: "conflict" };
+  user.timeZoneWrites.set(idempotencyKey, timeZone);
+  user.timezoneId = timeZone;
+  return { kind: "ok", value: asMe(user, now) };
 }
 
 export type DevDisplayNameUpdateResult =
@@ -1471,36 +1492,25 @@ export function redeemDevDirectInvite(
   const recipient = sessionUser(sessionToken);
   if (!recipient) return { kind: "unauthorized" };
   expireDevCapabilityLinks(now.getTime());
-  const keyedLink = [...store().directInviteLinks.values()].find(
-    (item) =>
-      item.acceptedByUserId === recipient.id &&
-      item.acceptedIdempotencyKey === idempotencyKey,
-  );
-  const link = [...store().directInviteLinks.values()].find((item) => item.token === capabilityToken);
-  if (keyedLink && keyedLink.id !== link?.id) return { kind: "conflict" };
+  const receipts = store().directInviteRedemptions;
+  const previousKey = [...receipts.values()].find(item => item.recipientId === recipient.id && item.key === idempotencyKey);
+  const link = [...store().directInviteLinks.values()].find(item => item.token === capabilityToken);
+  if (previousKey && previousKey.linkId !== link?.id) return { kind: "conflict" };
   if (!link) return { kind: "not-found" };
   if (link.inviterUserId === recipient.id) return { kind: "self" };
-  if (link.status === "ACCEPTED") {
-    if (
-      link.acceptedByUserId !== recipient.id ||
-      link.acceptedIdempotencyKey !== idempotencyKey ||
-      !link.resultCircleId
-    ) return { kind: "conflict" };
-    const circle = store().circles.get(link.resultCircleId);
-    if (!circle) return { kind: "conflict" };
-    return { kind: "ok", value: {
-      person: personDto(circle, recipient.id), replayed: true, serverTime: now.toISOString(),
-    } };
+  const receipt = receipts.get(`${link.id}:${recipient.id}`);
+  if (receipt) {
+    if (receipt.key !== idempotencyKey) return { kind: "conflict" };
+    const circle = store().circles.get(receipt.circleId);
+    if (!circle || circle.archivedAt) return { kind: "conflict" };
+    return { kind: "ok", value: { person: personDto(circle, recipient.id), replayed: true, serverTime: now.toISOString() } };
   }
   if (link.status !== "PENDING") return { kind: "expired" };
   const acceptedAt = now.toISOString();
   const circle = ensureDevDirectCircle(link.inviterUserId, recipient.id, acceptedAt);
   const pending = pendingRequestForPair(link.inviterUserId, recipient.id);
   if (pending) { pending.status = "CANCELLED"; pending.respondedAt = acceptedAt; }
-  link.status = "ACCEPTED";
-  link.acceptedByUserId = recipient.id;
-  link.acceptedIdempotencyKey = idempotencyKey;
-  link.resultCircleId = circle.id;
+  receipts.set(`${link.id}:${recipient.id}`, { linkId: link.id, recipientId: recipient.id, key: idempotencyKey, circleId: circle.id });
   return {
     kind: "ok",
     value: { person: personDto(circle, recipient.id), replayed: false, serverTime: acceptedAt },

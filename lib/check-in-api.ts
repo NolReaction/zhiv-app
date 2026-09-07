@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isCalendarMonth } from "./check-in-calendar";
+import { deviceTimeZone } from "./time-zone";
 import type {
   ApiErrorResponse,
   FavoriteResponse,
@@ -39,6 +40,7 @@ const dailyStreakSchema = z.object({
 });
 
 const profileStateSchema = z.object({
+  timeZone: z.string().min(1),
   avatarUrl: z.string().url().nullable(),
   displayNameChangedAt: z.string().datetime().nullable(),
   displayNameChangeAvailableAt: z.string().datetime().nullable(),
@@ -294,6 +296,8 @@ export async function getMe(): Promise<MeResponse | null> {
 }
 
 const calendarSchema: z.ZodType<CheckInCalendarResponse> = z.object({
+  nextDayAt: z.string().datetime(),
+  lastMonth: z.string().refine(isCalendarMonth),
   month: z.string().refine(isCalendarMonth),
   today: z.string().date(),
   timeZone: z.string().min(1),
@@ -311,7 +315,15 @@ export function bootstrap(displayName: string, idempotencyKey: string): Promise<
   return request<MeResponse>("/api/v1/bootstrap", meSchema, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ displayName }),
+    body: JSON.stringify({ displayName, timeZone: deviceTimeZone() }),
+  });
+}
+
+export function updateMyTimeZone(timeZone: string, idempotencyKey: string): Promise<MeResponse> {
+  return request("/api/v1/me/time-zone", meSchema, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ timeZone }),
   });
 }
 

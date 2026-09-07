@@ -125,6 +125,7 @@ class GameEventRoutesTest {
             bootstrapKeyHash: ByteArray,
             sessionTokenHash: ByteArray,
             sessionLifetimeDays: Long,
+            timeZone: String,
         ): UserSnapshot {
             sessionHash = sessionTokenHash
             val now = OffsetDateTime.now(ZoneOffset.UTC)

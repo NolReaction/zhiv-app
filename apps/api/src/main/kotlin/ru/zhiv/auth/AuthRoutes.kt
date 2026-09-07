@@ -130,7 +130,7 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
                 val body = call.receive<RegistrationRequest>()
                 val ticket = call.registrationHash() ?: throw AuthFailure("AUTH_EXPIRED", "Начните вход заново")
                 val token = tokens.issue()
-                repository.completeRegistration(ticket, call.browserHash(), body.displayName, token.hash, app.sessionDays, deviceLabel(call.request.headers[HttpHeaders.UserAgent].orEmpty()))
+                repository.completeRegistration(ticket, call.browserHash(), body.displayName, token.hash, app.sessionDays, deviceLabel(call.request.headers[HttpHeaders.UserAgent].orEmpty()), body.timeZone)
                 call.response.headers.append(HttpHeaders.SetCookie, sessionCookieHeader(app, token.raw))
                 call.setRegistration(""); call.respond(AuthDone())
             }

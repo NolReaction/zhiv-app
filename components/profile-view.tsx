@@ -20,6 +20,7 @@ import { RecoveryCodeCard } from "./recovery-code-card";
 import { RecoveryStarter } from "./recovery-starter";
 import { TransientNotice } from "./app-notifications";
 import { AccountAccess } from "./account-access";
+import { TimeZoneSetting } from "./time-zone-setting";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import styles from "./profile-view.module.css";
 
@@ -179,7 +180,7 @@ export function ProfileView({
         </div>
         <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>
           <AccordionItem value="name" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Отображаемое имя</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger}><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "name"} className={styles.settingsContent}>
               <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
             <div className={styles.formHeading}>
@@ -223,6 +224,7 @@ export function ProfileView({
               {!isOnline && !error ? <p className={styles.offline}>Офлайн · изменения временно недоступны</p> : null}
             </div>
           </form>
+              <TimeZoneSetting me={me} isOnline={isOnline} onUpdated={onUpdated} onSessionLost={onSessionLost} />
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="security" className={styles.settingsItem}>

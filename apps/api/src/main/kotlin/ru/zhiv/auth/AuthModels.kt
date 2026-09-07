@@ -16,7 +16,7 @@ class ConsumedVkFlow : AuthFailure("AUTH_EXPIRED", "Запрос входа уж
 @Serializable data class LoginSession(val id: String, val label: String, val createdAt: String, val lastSeenAt: String, val current: Boolean)
 @Serializable data class AccountAccess(val methods: List<LoginMethod>, val sessions: List<LoginSession>)
 @Serializable data class AuthDone(val status: String = "ok")
-@Serializable data class RegistrationRequest(val displayName: String)
+@Serializable data class RegistrationRequest(val displayName: String, val timeZone: String = "Europe/Moscow")
 @Serializable data class RegistrationState(val pending: Boolean)
 
 data class LoginFlow(
@@ -53,7 +53,7 @@ interface AuthRepository : AccountLifecycleRepository {
     suspend fun finish(flow: LoginFlow, subject: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID
     suspend fun prepareRegistration(flow: LoginFlow, subject: String, ticketHash: ByteArray)
     suspend fun hasRegistration(ticketHash: ByteArray, browserHash: ByteArray): Boolean
-    suspend fun completeRegistration(ticketHash: ByteArray, browserHash: ByteArray, displayName: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID
+    suspend fun completeRegistration(ticketHash: ByteArray, browserHash: ByteArray, displayName: String, newSessionHash: ByteArray, sessionDays: Long, label: String, timeZone: String = "Europe/Moscow"): UUID
     suspend fun access(sessionHash: ByteArray): AccountAccess
     suspend fun revoke(sessionHash: ByteArray, target: UUID? = null, others: Boolean = false)
 }

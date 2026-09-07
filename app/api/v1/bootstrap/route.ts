@@ -1,3 +1,4 @@
+import { isTimeZone } from "@/lib/time-zone";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createDevIdentity, getDevIdentity, SESSION_COOKIE } from "@/lib/dev-api-store";
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => null)) as { displayName?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { displayName?: unknown; timeZone?: unknown } | null;
   const rawDisplayName = typeof body?.displayName === "string" ? body.displayName : "";
   const displayName = normalizeDisplayName(rawDisplayName);
 
@@ -40,7 +41,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const { token, me } = createDevIdentity(displayName, idempotencyKey);
+  const timeZone = body?.timeZone ?? "Europe/Moscow";
+  if (!isTimeZone(timeZone)) return NextResponse.json({ code: "INVALID_TIME_ZONE", message: "Выберите часовой пояс" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  const { token, me } = createDevIdentity(displayName, idempotencyKey, timeZone);
   const response = NextResponse.json(me, {
     status: 201,
     headers: { "Cache-Control": "no-store" },

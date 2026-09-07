@@ -247,8 +247,8 @@
 }
 
 .personTop {
-  gap: 13px;
-  padding: 15px;
+  gap: 10px;
+  padding: 12px 14px;
 }
 
 .personStatus {
@@ -266,14 +266,13 @@
 }
 
 .personBottom {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 13px 15px;
-  background: rgba(0, 0, 0, 0.09);
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .sharingLabel {
@@ -284,7 +283,7 @@
   max-width: 100%;
   min-width: 0;
   min-height: 44px;
-  gap: 12px;
+  gap: 6px;
   cursor: pointer;
 }
 
@@ -296,7 +295,7 @@
 
 .sharingLabel strong {
   color: #d9ddd4;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .sharingLabel small {
@@ -701,22 +700,6 @@ button:disabled {
     width: 100%;
   }
 
-  .personBottom {
-    grid-template-columns: 1fr;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .sharingLabel {
-    width: 100%;
-    grid-template-columns: minmax(0, 1fr) 48px;
-  }
-
-  .removeButton {
-    min-height: 36px;
-    justify-self: end;
-  }
-
   .qrFrame {
     width: min(100%, 244px);
     aspect-ratio: 1;
@@ -756,7 +739,7 @@ button:disabled {
 
 .personActions { display: flex; flex: 0 0 auto; gap: 6px; }
 .favoriteButton[aria-pressed="true"] { color: #f5db7d; background: #f5db7d1a; }
-@media (max-width: 480px) { .personActions { flex-direction: column; } }
+
 .personIdentity {
   display: flex;
   flex: 1;
@@ -859,3 +842,19 @@ button:disabled {
 .addOptions small { color: #a2ab98; font-size: 14px; line-height: 1.4; }
 .tabPanel { animation: people-enter 180ms ease-out; }
 @keyframes people-enter { from { opacity: .35; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.addPersonButton { grid-column: 1 / -1; margin-bottom: 8px; min-height: 48px; border-radius: 15px; }
+.freshnessRow { margin-bottom: 12px; }
+.personActions { gap: 2px; }
+.personActions .iconButton { width: 44px; height: 44px; border-radius: 12px; background: transparent; }
+.personActions .iconButton:hover { background: rgba(255,255,255,.06); }
+.personActions .favoriteButton[aria-pressed="true"] { color: #f5db7d; }
+.deleteButton { color: #c6a49f; }
+.personActions .deleteButton:hover { color: #ffaba3; background: rgba(201,87,80,.12); }
+.personIdentity .avatar { flex-basis: 40px; width: 40px; height: 40px; border-radius: 13px; }
+.personIdentity .cardText strong { font-size: 16px; }
+.personIdentity .cardText > .personStatus { font-size: 13px; }
+.peopleSearch { margin-bottom: 0; }
+.sharingLabel { flex: 0 1 auto; }
+.sharingLabel [role="switch"] { width: 48px; }

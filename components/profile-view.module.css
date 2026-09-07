@@ -171,7 +171,7 @@
 .settingsTrigger > span > svg { flex-shrink: 0; color: #b7d8a2; }
 .settingsTrigger > span > span { display: grid; gap: 4px; }
 .settingsTrigger small { color: #a0a799; font-size: 13px; font-weight: 400; line-height: 1.45; }
-.settingsContent { display: grid; gap: 14px; padding: 0 16px 16px; }
+.settingsContent { display: grid; gap: 14px; padding: 14px 16px 16px; }
 .settingsContent > section { min-width: 0; }
 .settingsContent .formCard { padding: 4px 0 0; background: transparent; border: 0; }
 .settingsContent .hint { color: #a0a799; font-size: 14px; }
@@ -476,3 +476,13 @@
 @media (min-width: 960px) and (hover: hover) and (pointer: fine) {
   .columns { grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: 24px; }
 }
+
+.timeZoneForm { display: grid; gap: 10px; border-top: 1px solid rgba(190,215,169,.12); padding-top: 16px; min-width: 0; }
+.timeZoneForm > label { font-size: 15px; font-weight: 650; }
+.timeZoneForm :global([data-slot="native-select-wrapper"]) { width: 100%; min-width: 0; }
+.timeZoneForm select { min-height: 46px; height: auto; font-size: 16px; border-radius: 12px; border-color: rgba(190,215,169,.25); color: #e8efdf; }
+.timeZoneForm > p { margin: 0; color: #b4bda9; font-size: 13px; line-height: 1.45; }
+.timeZoneActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.timeZoneActions button { flex: 1; min-height: 44px; border: 1px solid rgba(190,215,169,.2); border-radius: 12px; background: rgba(190,215,169,.06); color: #d2e3c4; padding: 8px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+.timeZoneActions button:disabled { opacity: .45; cursor: default; }
+.timeZoneActions button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

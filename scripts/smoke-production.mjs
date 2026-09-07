@@ -65,6 +65,31 @@ const localDay = new Intl.DateTimeFormat("en-CA", { timeZone: calendar.data.time
 assert.equal(calendar.data.days[0].date, localDay);
 assert.deepEqual((await api("GET", "/api/v1/me/calendar", { cookie: friend.cookie })).data.days, []);
 const marked = await api("GET", "/api/v1/me", { cookie: owner.cookie });
+// Timezone writes and reusable receipts must work with the restricted production role.
+const timeZoneKey = randomUUID();
+const moved = await api("PATCH", "/api/v1/me/time-zone", { cookie: owner.cookie, key: timeZoneKey, body: { timeZone: "Asia/Tokyo" } });
+assert.equal(moved.data.profile.timeZone, "Asia/Tokyo");
+assert.equal(moved.data.lastCheckInAt, marked.data.lastCheckInAt);
+assert.deepEqual(moved.data.streak, marked.data.streak);
+await api("PATCH", "/api/v1/me/time-zone", { cookie: owner.cookie, key: timeZoneKey, body: { timeZone: "UTC" }, expected: 409 });
+await api("PATCH", "/api/v1/me/time-zone", { cookie: owner.cookie, body: { timeZone: "+03:00" }, expected: 400 });
+const localCalendar = await api("GET", "/api/v1/me/calendar?month=" + localDay.slice(0, 7), { cookie: owner.cookie });
+assert.equal(localCalendar.data.days[0].date, localDay);
+assert.ok(Date.parse(localCalendar.data.nextDayAt) > Date.parse(localCalendar.data.serverTime));
+const guestA = await profile("CI invite A"), guestB = await profile("CI invite B");
+const multiToken = randomBytes(32).toString("base64url");
+await api("POST", "/api/v1/direct-invite-links", { cookie: owner.cookie, body: { token: multiToken }, expected: 201 });
+const receiptKey = randomUUID();
+const guestOne = await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestA.cookie, key: receiptKey, body: { token: multiToken } });
+const guestTwo = await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestB.cookie, body: { token: multiToken } });
+assert.notEqual(guestOne.data.person.circleId, guestTwo.data.person.circleId);
+assert.equal(guestOne.data.person.lastCheckInAt, null);
+assert.equal(guestTwo.data.person.lastCheckInAt, null);
+assert.equal((await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestA.cookie, key: receiptKey, body: { token: multiToken } })).data.replayed, true);
+await api("DELETE", "/api/v1/people/" + guestOne.data.person.circleId, { cookie: owner.cookie, expected: 204 });
+await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestA.cookie, key: receiptKey, body: { token: multiToken }, expected: 409 });
+await api("DELETE", "/api/v1/people/" + guestTwo.data.person.circleId, { cookie: owner.cookie, expected: 204 });
+
 await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, body: { text: "гуляю" } });
 const people = () => api("GET", "/api/v1/people", { cookie: friend.cookie });
 assert.equal((await people()).data.people[0].status.text, "гуляю");

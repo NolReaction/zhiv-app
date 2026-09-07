@@ -1,52 +1,68 @@
 .dialog {
-  width: min(440px, calc(100vw - 32px));
-  max-height: min(90dvh, 820px);
+  --dialog-padding: 20px;
+  width: min(390px, calc(100vw - 28px));
+  max-width: min(390px, calc(100vw - 28px));
+  top: calc(50% + (env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2);
+  max-height: min(740px, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px));
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 26px;
-  border: 1px solid rgba(190,215,169,.24);
-  border-radius: 28px;
-  background: #171d13;
+  scrollbar-width: thin;
+  padding: var(--dialog-padding);
+  gap: 14px;
+  border: 1px solid rgba(207,232,186,.3);
+  border-radius: 26px;
+  background: linear-gradient(145deg, rgba(55,66,44,.76), rgba(20,27,17,.9) 65%);
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  backdrop-filter: blur(24px) saturate(135%);
   color: #f0f3e9;
-  box-shadow: 0 24px 100px rgba(0,0,0,.5);
+  box-shadow: 0 24px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(239,255,218,.2), inset 0 -1px 0 rgba(239,255,218,.06);
+  transform-origin: center 35%;
 }
-.dialog[data-state="open"] { animation: calendar-open 240ms cubic-bezier(.2,.8,.2,1); }
-.dialog[data-state="closed"] { animation: calendar-close 160ms ease-in; }
-.title { display: flex; align-items: center; gap: 10px; }
-.title svg { flex-shrink: 0; color: #bcd6a5; }
-.streak { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid rgba(243,162,76,.2); border-radius: 16px; background: rgba(243,162,76,.05); }
+.dialog[data-state="open"] { animation: calendar-open 320ms cubic-bezier(.16,1,.3,1); }
+.dialog[data-state="closed"] { animation: calendar-close 180ms ease-in; }
+.dialog > :global([data-slot="dialog-header"]) { gap: 6px; }
+.dialog :global([data-slot="dialog-description"]) { font-size: 14px; }
+.title { display: flex; align-items: center; gap: 9px; font-size: 20px; }
+.title svg { flex-shrink: 0; color: #c6e0af; }
+.streak { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 5px 8px; padding: 10px 12px; border: 1px solid rgba(243,162,76,.19); border-radius: 15px; background: rgba(243,162,76,.045); }
 .streak > svg { color: #f3a24c; }
 .streak strong { font-size: 15px; }
-.streak > span { flex-basis: 100%; margin-left: 28px; font-size: 13px; color: #b2b6a8; }
-.loading { display: grid; align-content: center; justify-items: center; gap: 14px; min-height: 310px; color: #bac4af; }
+.streak > span, .renewal { grid-column: 2; font-size: 13px; color: #bec5b4; }
+.renewal { margin: 0; line-height: 1.4; }
+.loading { display: grid; align-content: center; justify-items: center; gap: 12px; min-height: 240px; color: #c5cfba; }
 .loading svg { animation: calendar-loading 1.2s ease-in-out infinite alternate; }
-.message { min-height: 160px; display: grid; align-content: center; gap: 16px; font-size: 15px; }
-.message button, .todayButton { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 1px solid rgba(190,215,169,.25); border-radius: 14px; color: #d5e7c7; background: rgba(190,215,169,.06); font: inherit; font-size: 14px; cursor: pointer; }
-.monthContent { display: grid; gap: 12px; }
-.monthSummary { display: grid; gap: 12px; min-height: 72px; animation: month-enter 180ms ease-out; }
-.calendar { --cell-size: clamp(36px, 9vw, 46px); width: 100%; padding: 0; background: transparent; }
-.calendar :global(.rdp-root), .calendar :global(.rdp-months), .calendar :global(.rdp-month) { width: 100%; }
-.calendar :global(.rdp-month_caption) { min-height: 44px; }
-.calendar :global(.rdp-caption_label) { font-size: 17px; text-transform: capitalize; }
-.calendar :global(.rdp-weekday) { font-size: 13px; color: #a6af9b; }
-.calendar button[data-day] { position: relative; min-width: 0; width: 100%; border-radius: 13px; color: #e5ebdc; font-size: 15px; }
+.message { min-height: 100px; display: grid; align-content: center; gap: 12px; font-size: 14px; }
+.message button, .todayButton { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 1px solid rgba(190,215,169,.25); border-radius: 12px; color: #d5e7c7; background: rgba(190,215,169,.06); font: inherit; font-size: 14px; cursor: pointer; }
+.monthContent { display: grid; gap: 10px; }
+.monthSummary { display: grid; gap: 6px; min-height: 60px; animation: month-enter 180ms ease-out; }
+.calendar { --cell-size: 40px; width: 100%; padding: 0; background: transparent; }
+.calendar :global(.rdp-months), .calendar :global(.rdp-month) { width: 100%; gap: 8px; }
+.calendar :global(.rdp-month_caption) { height: 40px; min-height: 40px; }
+.calendar :global(.rdp-caption_label) { font-size: 16px; text-transform: capitalize; }
+.calendar :global(.rdp-weekday) { font-size: 13px; color: #b7c1aa; }
+.calendar :global(.rdp-week) { margin-top: 3px; }
+.calendar :global(.rdp-week) > td { flex: 1; min-width: 0; height: 40px; aspect-ratio: auto; }
+.calendar button[data-day] { position: relative; height: 40px; min-height: 40px; min-width: 0; width: 100%; aspect-ratio: auto; border-radius: 11px; color: #e5ebdc; font-size: 15px; }
 .calendar button[data-day]:hover { background: rgba(190,215,169,.1); }
-.calendar :global(.rdp-selected) button { background: rgba(190,215,169,.12); outline: 1px solid #bcd6a5; outline-offset: -2px; color: #edf5e5; }
+.calendar :global(.rdp-selected) button { background: rgba(190,215,169,.16); outline: 1px solid #bcd6a5; outline-offset: -2px; color: #edf5e5; }
 .calendar :global(.rdp-today) { background: transparent; }
 .calendar :global(.rdp-today) button { font-weight: 850; text-decoration: underline; text-underline-offset: 3px; }
-.calendar .marked button { background: rgba(129,193,101,.14); color: #d1ebbd; }
-.calendar .marked button::after { position: absolute; bottom: 5px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: #bcd6a5; content: ""; }
-.dayDetail { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid rgba(190,215,169,.13); padding-top: 16px; font-size: 15px; }
-.dayDetail > span { color: #b0b9a4; }
+.calendar .marked button { background: rgba(129,193,101,.16); color: #d1ebbd; }
+.calendar .marked button::after { position: absolute; bottom: 3px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: #c9e5b2; content: ""; }
+.dayDetail { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; border-top: 1px solid rgba(190,215,169,.16); padding-top: 10px; font-size: 14px; }
+.dayDetail > span { color: #bec8b1; }
 .dayDetail strong { display: inline-flex; align-items: center; gap: 6px; color: #d1e5bf; }
-.monthTotal { margin: 0; font-size: 14px; color: #aeb7a3; }
-.hint { margin: 0; font-size: 13px; line-height: 1.55; color: #a4ad9a; }
-.dialog button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-@keyframes calendar-open { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
-@keyframes calendar-close { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+.monthTotal { margin: 0; font-size: 14px; color: #bdc7b0; }
+.hint { margin: 0; font-size: 13px; line-height: 1.45; color: #bac5ae; }
+.timeZone { margin: 0; font-size: 12px; color: #a8b59b; overflow-wrap: anywhere; }
+.dialog button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@keyframes calendar-open { from { opacity: 0; transform: translateY(20px) scale(.92); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes calendar-close { to { opacity: 0; transform: translateY(10px) scale(.96); } }
 @keyframes month-enter { from { opacity: .25; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 @keyframes calendar-loading { from { opacity: .4; } to { opacity: 1; } }
+@media (max-width: 360px) { .dialog { --dialog-padding: 16px; } }
+@media (prefers-reduced-transparency: reduce) { .dialog { background: #1a2315; backdrop-filter: none; -webkit-backdrop-filter: none; } }
 @media (forced-colors: active) { .calendar .marked button { border: 2px solid ButtonText; } .calendar .marked button::after { background: ButtonText; } }
-
-.calendar :global(.rdp-week) > td { min-width: 0; flex: 1; }
-@media (max-width: 360px) { .dialog { padding: 18px; } }
+.hint summary { display: flex; align-items: center; min-height: 36px; cursor: pointer; color: #d0dfc0; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 4px; }
+.hint p { margin: 6px 0 10px; }
+.hint summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

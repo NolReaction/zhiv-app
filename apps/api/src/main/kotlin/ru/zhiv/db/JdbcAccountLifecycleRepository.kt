@@ -238,10 +238,12 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM direct_requests t WHERE requester_user_id IN (?,?) OR recipient_user_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM circle_invites t WHERE inviter_user_id IN (?,?) OR invitee_user_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM direct_invite_links t WHERE inviter_user_id IN (?,?) ORDER BY id",
+            "SELECT to_jsonb(t)::text FROM direct_invite_redemptions t WHERE recipient_user_id IN (?,?) OR invite_id IN (SELECT id FROM direct_invite_links WHERE inviter_user_id IN (?,?)) ORDER BY invite_id,recipient_user_id",
             "SELECT to_jsonb(t)::text FROM account_recovery_codes t WHERE user_id IN (?,?) ORDER BY code_hash",
             "SELECT to_jsonb(t)::text FROM private_person_nicknames t WHERE viewer_user_id IN (?,?) OR subject_user_id IN (?,?) ORDER BY viewer_user_id,subject_user_id",
             "SELECT to_jsonb(t)::text FROM direct_person_favorites t WHERE user_id IN (?,?) ORDER BY user_id,circle_id",
             "SELECT to_jsonb(t)::text FROM user_status_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
+            "SELECT to_jsonb(t)::text FROM user_timezone_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
             "SELECT to_jsonb(t)::text FROM account_merge_sources t WHERE target_user_id IN (?,?) ORDER BY source_user_id"
         )
         val digest=MessageDigest.getInstance("SHA-256")
@@ -272,6 +274,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM direct_person_favorites WHERE user_id=? OR circle_id IN (SELECT id FROM circles WHERE archived_at IS NOT NULL AND (created_by_user_id=? OR ? IN (direct_user_low_id,direct_user_high_id)))",id,id,id)
         c.update("DELETE FROM private_person_nicknames WHERE viewer_user_id=? OR subject_user_id=?",id,id)
         c.update("DELETE FROM user_status_write_keys WHERE user_id=?",id)
+        c.update("DELETE FROM user_timezone_write_keys WHERE user_id=?",id)
     }
     private fun tombstone(c: Connection,id: UUID) {
         c.update("DELETE FROM account_login_identities WHERE user_id=?",id)

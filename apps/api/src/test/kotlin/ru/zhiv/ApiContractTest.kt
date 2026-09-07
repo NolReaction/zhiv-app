@@ -292,8 +292,8 @@ class ApiContractTest {
         val base = FakeRepository()
         val sessions = mutableMapOf<List<Byte>, UserSnapshot>()
         val identities = object : IdentityRepository by base {
-            override suspend fun bootstrap(displayName: String, bootstrapKeyHash: ByteArray, sessionTokenHash: ByteArray, sessionLifetimeDays: Long): UserSnapshot =
-                base.bootstrap(displayName, bootstrapKeyHash, sessionTokenHash, sessionLifetimeDays).also {
+            override suspend fun bootstrap(displayName: String, bootstrapKeyHash: ByteArray, sessionTokenHash: ByteArray, sessionLifetimeDays: Long, timeZone: String): UserSnapshot =
+                base.bootstrap(displayName, bootstrapKeyHash, sessionTokenHash, sessionLifetimeDays, timeZone).also {
                     sessions[sessionTokenHash.toList()] = it
                 }
             override suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot? = sessions[sessionTokenHash.toList()]
@@ -373,6 +373,42 @@ class ApiContractTest {
         assertEquals(HttpStatusCode.Unauthorized, forged.status)
     }
 
+    @Test
+    fun `profile timezone endpoint validates source session key and named timezone`() = testApplication {
+        val repository = FakeRepository()
+        application { installZhivApi(repository, repository, testConfig()) }
+        val created = client.post("/api/v1/bootstrap") {
+            contentType(ContentType.Application.Json)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"displayName":"Timezone","timeZone":"Asia/Tokyo"}""")
+        }
+        assertEquals(HttpStatusCode.Created, created.status)
+        assertContains(created.bodyAsText(), "\"timeZone\":\"Asia/Tokyo\"")
+        val cookie = assertNotNull(created.headers[HttpHeaders.SetCookie]).substringBefore(';')
+        val key = UUID.randomUUID().toString()
+        suspend fun update(zone: String, requestCookie: String? = cookie, requestKey: String? = key, origin: String? = null) = client.patch("/api/v1/me/time-zone") {
+            contentType(ContentType.Application.Json)
+            if (requestCookie != null) header(HttpHeaders.Cookie, requestCookie)
+            if (requestKey != null) header("Idempotency-Key", requestKey)
+            if (origin != null) header(HttpHeaders.Origin, origin)
+            setBody("""{"timeZone":"$zone"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, update("UTC", requestCookie = null).status)
+        assertEquals(HttpStatusCode.Forbidden, update("UTC", origin = "https://other.example").status)
+        assertEquals(HttpStatusCode.BadRequest, update("UTC", requestKey = null).status)
+        for (zone in listOf("+03:00", "UTC+03:00", "Bad/Zone")) {
+            val rejected = update(zone)
+            assertEquals(HttpStatusCode.BadRequest, rejected.status)
+            assertContains(rejected.bodyAsText(), "INVALID_TIME_ZONE")
+        }
+        val saved = update("Europe/Berlin")
+        assertEquals(HttpStatusCode.OK, saved.status)
+        assertEquals("no-store", saved.headers[HttpHeaders.CacheControl])
+        assertContains(saved.bodyAsText(), "\"timeZone\":\"Europe/Berlin\"")
+        assertEquals(HttpStatusCode.OK, update("Europe/Berlin").status)
+        assertEquals(HttpStatusCode.Conflict, update("UTC").status)
+    }
+
     private fun testConfig() = AppConfig(
         databaseUrl = "unused",
         databaseUser = "unused",
@@ -382,6 +418,7 @@ class ApiContractTest {
     )
 
     private class FakeRepository : IdentityRepository, CheckInRepository {
+        private val timezoneKeys = mutableMapOf<UUID, String>()
         private var sessionHash: ByteArray? = null
         private var user: UserSnapshot? = null
         private var displayNameChangedAt: OffsetDateTime? = null
@@ -398,12 +435,14 @@ class ApiContractTest {
             bootstrapKeyHash: ByteArray,
             sessionTokenHash: ByteArray,
             sessionLifetimeDays: Long,
+            timeZone: String,
         ): UserSnapshot {
             sessionHash = sessionTokenHash
             return UserSnapshot(
                 id = UUID.randomUUID(),
                 publicId = "7K3P-2Q9M-W8ZR",
                 displayName = displayName,
+                timeZone = timeZone,
                 lastCheckInAt = null,
                 checkInCount = 0,
                 streak = streak(0, false),
@@ -420,6 +459,17 @@ class ApiContractTest {
             if (findBySession(sessionTokenHash) == null) return null
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             return CheckInCalendarSnapshot(month ?: YearMonth.from(now), now.toLocalDate(), "UTC", YearMonth.from(now), emptyList(), now)
+        }
+
+        override suspend fun updateTimeZone(sessionTokenHash: ByteArray, timeZone: String, idempotencyKey: UUID): ru.zhiv.identity.TimeZoneUpdateResult {
+            val current = findBySession(sessionTokenHash) ?: return ru.zhiv.identity.TimeZoneUpdateResult.Unauthorized
+            val previous = timezoneKeys[idempotencyKey]
+            if (previous != null && previous != timeZone) return ru.zhiv.identity.TimeZoneUpdateResult.IdempotencyConflict
+            if (previous == null) {
+                timezoneKeys[idempotencyKey] = timeZone
+                user = current.copy(timeZone = timeZone)
+            }
+            return ru.zhiv.identity.TimeZoneUpdateResult.Success(requireNotNull(user))
         }
 
         override suspend fun updateDisplayName(
