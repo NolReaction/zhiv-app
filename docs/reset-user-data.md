@@ -26,7 +26,7 @@ Caddy/web/API, оставляет PostgreSQL работающим, делает 
 Путь к копии выводится в терминал. Устранить причину и для возврата сайта выполнить:
 
 ```bash
-sudo docker compose --env-file deploy/.env -f deploy/compose.yml start --wait api web caddy
+sudo docker compose --env-file deploy/.env -f deploy/compose.yml up -d --no-deps --no-build --no-recreate --wait --wait-timeout 120 api web caddy
 ```
 
 Если ошибка произошла после успешного COMMIT, данные уже очищены; запуск контейнеров

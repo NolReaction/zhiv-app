@@ -75,7 +75,9 @@ echo 'Backup restored successfully. Resetting all application data in one transa
 "${compose[@]}" exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 < scripts/reset-user-data.sql
 
 echo 'User data reset committed. Starting site services.'
-"${compose[@]}" start --wait --wait-timeout 120 api web caddy
+# `start --wait` is unavailable in some Compose versions that support `up --wait`.
+# Reuse the stopped containers without rebuilding or starting migration services.
+"${compose[@]}" up -d --no-deps --no-build --no-recreate --wait --wait-timeout 120 api web caddy
 services_stopped=false
 "${compose[@]}" exec -T api curl -fsS --max-time 10 http://127.0.0.1:8080/readyz
 echo
