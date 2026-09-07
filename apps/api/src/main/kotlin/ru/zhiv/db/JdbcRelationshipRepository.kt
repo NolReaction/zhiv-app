@@ -258,6 +258,8 @@ class JdbcRelationshipRepository(
                     resultCircleId = circleId,
                     respondedAt = now,
                 )
+                recordFriendAchievement(connection, request.requesterUserId, now)
+                recordFriendAchievement(connection, request.recipientUserId, now)
                 person = findPerson(connection, circleId, currentUserId)
             } else {
                 connection.prepareStatement(

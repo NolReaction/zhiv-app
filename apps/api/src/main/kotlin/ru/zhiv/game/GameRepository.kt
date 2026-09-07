@@ -54,12 +54,20 @@ data class GameLeaderboard(
     val myRank: Long?,
     val monthlyTaps: Long,
     val leaderboardOptIn: Boolean,
+    val scope: String,
 )
+
+@Serializable
+data class GameAchievement(val id: String, val progress: Long, val target: Long, val unlockedAt: String?)
+
+@Serializable
+data class GameAchievements(val ownerPublicId: String, val serverTime: String, val achievements: List<GameAchievement>)
 
 interface GameRepository {
     suspend fun progress(sessionHash: ByteArray): GameProgress
     suspend fun openSession(sessionHash: ByteArray, requestId: UUID, ownerPublicId: String): GameSessionResponse
     suspend fun submitBatch(sessionHash: ByteArray, sessionId: UUID, sequence: Long, tapCount: Int, runId: UUID): GameBatchResponse
     suspend fun setVisibility(sessionHash: ByteArray, visible: Boolean, expectedVersion: Long, ownerPublicId: String): GameProgress
-    suspend fun leaderboard(sessionHash: ByteArray): GameLeaderboard
+    suspend fun leaderboard(sessionHash: ByteArray, scope: String = "global"): GameLeaderboard
+    suspend fun achievements(sessionHash: ByteArray): GameAchievements
 }

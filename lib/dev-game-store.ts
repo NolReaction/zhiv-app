@@ -1,5 +1,5 @@
-import { getDevIdentity, lookupDevUser } from "@/lib/dev-api-store";
-import type { GameProgress, GameLeaderboard, GameSession, GameBatchResponse } from "@/lib/game-api";
+import { getDevIdentity, lookupDevUser, getDevFriendPublicIds, getDevAchievements, awardDevGameTaps } from "@/lib/dev-api-store";
+import type { GameProgress, GameLeaderboard, GameSession, GameBatchResponse, GameAchievements, GameLeaderboardScope } from "@/lib/game-api";
 
 const SESSION_LIFETIME_MS = 15 * 60_000;
 const TAP_BUCKET_CAPACITY = 60;
@@ -87,23 +87,24 @@ export function getDevGameProgress(token: string | undefined, now = Date.now()):
   return { kind: "ok", value: progress(profile(identity.user.publicId, now), now) };
 }
 
-export function getDevGameLeaderboard(token: string | undefined, now = Date.now()): DevGameResult<GameLeaderboard> {
+export function getDevGameLeaderboard(token: string | undefined, scope: GameLeaderboardScope = "global", now = Date.now()): DevGameResult<GameLeaderboard> {
   const identity = getDevIdentity(token);
   if (!identity) return error("UNAUTHORIZED");
   const ownerPublicId = identity.user.publicId;
   const own = profile(ownerPublicId, now);
   const month = monthKey(now);
+  const friends = scope === "friends" ? new Set([ownerPublicId, ...getDevFriendPublicIds(token)!]) : null;
   const eligible = [...store().profiles.values()].flatMap(candidate => {
     const monthly = candidate.monthlyTaps.get(month);
     const taps = monthly?.taps ?? 0;
-    if (!candidate.leaderboardOptIn || taps === 0) return [];
+    if (!candidate.leaderboardOptIn || taps === 0 || (friends && !friends.has(candidate.ownerPublicId))) return [];
     const found = lookupDevUser(token, candidate.ownerPublicId);
     if (found.kind !== "ok") return [];
     return [{ ownerPublicId: candidate.ownerPublicId, displayName: found.value.user.displayName, taps, updatedAt: monthly!.updatedAt }];
   }).sort((left, right) => right.taps - left.taps || left.updatedAt - right.updatedAt || left.ownerPublicId.localeCompare(right.ownerPublicId));
   const position = eligible.findIndex(entry => entry.ownerPublicId === ownerPublicId);
   return { kind: "ok" as const, value: {
-    ownerPublicId, month, serverTime: new Date(now).toISOString(),
+    ownerPublicId, scope, month, serverTime: new Date(now).toISOString(),
     entries: eligible.slice(0, 100).map((entry, index) => ({
       rank: index + 1, displayName: entry.displayName, taps: entry.taps, isMe: entry.ownerPublicId === ownerPublicId,
     })),
@@ -111,6 +112,13 @@ export function getDevGameLeaderboard(token: string | undefined, now = Date.now(
     monthlyTaps: own.monthlyTaps.get(month)?.taps ?? 0,
     leaderboardOptIn: own.leaderboardOptIn,
   } };
+}
+
+export function getDevGameAchievements(token: string | undefined, now = Date.now()): DevGameResult<GameAchievements> {
+  const identity = getDevIdentity(token);
+  if (!identity) return error("UNAUTHORIZED");
+  const lifetimeTaps = store().profiles.get(identity.user.publicId)?.lifetimeTaps ?? 0;
+  return { kind: "ok", value: getDevAchievements(token, lifetimeTaps, now)! };
 }
 
 export function createDevGameSession(token: string | undefined, ownerPublicId: string, requestId: string, now = Date.now()): DevGameResult<GameSession> {
@@ -174,7 +182,11 @@ export function submitDevGameBatch(
   const acceptedTaps = Math.min(payload.tapCount, Math.floor(own.tokens));
   own.tokens -= acceptedTaps;
   if (acceptedTaps > 0) {
+    const previousLifetimeTaps = own.lifetimeTaps;
     own.lifetimeTaps += acceptedTaps;
+    if (previousLifetimeTaps < 1_000 && own.lifetimeTaps >= 1_000) {
+      awardDevGameTaps(own.ownerPublicId, own.lifetimeTaps, now);
+    }
     own.monthlyTaps.set(session.month, { taps: (own.monthlyTaps.get(session.month)?.taps ?? 0) + acceptedTaps, updatedAt: now });
     if (!session.currentRun) {
       // Renewal preserves an ongoing run, but each expired predecessor can be claimed only once.

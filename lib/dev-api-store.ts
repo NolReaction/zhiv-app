@@ -1,4 +1,5 @@
 import { isTimeZone, nextLocalDay } from "./time-zone";
+import type { GameAchievementId, GameAchievements } from "@/lib/game-api";
 import type {
   CheckInResponse,
   CheckInCalendarResponse,
@@ -127,6 +128,7 @@ type DirectInviteLinkRecord = {
 type RecoveryCodeRecord = {userId:string;active:boolean;consumedAt?:number;retryHash?:string;sessionToken?:string};
 
 type Store = {
+  achievementAwards: Map<string, Map<GameAchievementId, string>>;
   personNicknames: Map<string, string>;
   favoritePeople: Set<string>;
   recipientSharing: Map<string, SharingRecord>;
@@ -163,6 +165,7 @@ const globalStore = globalThis as typeof globalThis & { __zhivDevStore?: Store }
 
 function store(): Store {
   globalStore.__zhivDevStore ??= {
+    achievementAwards: new Map(),
     personNicknames: new Map(),
     favoritePeople: new Set(),
     recipientSharing: new Map(),
@@ -183,6 +186,7 @@ function store(): Store {
     directInviteRedemptions: new Map(),
     recoveryCodes: new Map(),
   };
+  globalStore.__zhivDevStore.achievementAwards ??= new Map();
   globalStore.__zhivDevStore.directInviteLinks ??= new Map();
   globalStore.__zhivDevStore.directInviteRedemptions ??= new Map();
   globalStore.__zhivDevStore.recoveryCodes ??= new Map();
@@ -619,6 +623,63 @@ export function getDevIdentity(token: string | undefined): MeResponse | null {
   return user ? asMe(user) : null;
 }
 
+function friendPublicIdsForUser(userId: string): string[] {
+  return [...new Set(activeCirclesForUser(userId).flatMap(circle => {
+    const friend = store().users.get(otherUserId(circle, userId));
+    return friend ? [friend.publicId] : [];
+  }))];
+}
+
+export function getDevFriendPublicIds(token: string | undefined): string[] | null {
+  const user = sessionUser(token);
+  return user ? friendPublicIdsForUser(user.id) : null;
+}
+
+function awardAchievement(userId: string, id: GameAchievementId, unlockedAt: string) {
+  let awards = store().achievementAwards.get(userId);
+  if (!awards) {
+    awards = new Map();
+    store().achievementAwards.set(userId, awards);
+  }
+  if (!awards.has(id)) awards.set(id, unlockedAt);
+}
+
+function awardFriendAchievement(userId: string, now: string) {
+  if (friendPublicIdsForUser(userId).length >= 5) awardAchievement(userId, "five_friends", now);
+}
+
+// Called only after the game store has accepted a batch; no client total is used.
+export function awardDevGameTaps(ownerPublicId: string, lifetimeTaps: number, now: number) {
+  const userId = store().publicIds.get(ownerPublicId);
+  if (userId && lifetimeTaps >= 1_000) awardAchievement(userId, "thousand_taps", new Date(now).toISOString());
+}
+
+export function getDevAchievements(token: string | undefined, lifetimeTaps: number, now: number): GameAchievements | null {
+  const user = sessionUser(token);
+  if (!user) return null;
+  const serverTime = new Date(now);
+  const longestDays = streakForUser(user, serverTime).longestDays;
+  const friendCount = friendPublicIdsForUser(user.id).length;
+  const values = [
+    { id: "seven_day_streak", progress: longestDays, target: 7 },
+    { id: "thousand_taps", progress: lifetimeTaps, target: 1_000 },
+    { id: "five_friends", progress: friendCount, target: 5 },
+  ] as const;
+  // Backfill milestones for a running development store upgraded from an older version.
+  for (const value of values) {
+    if (value.progress >= value.target) awardAchievement(user.id, value.id, serverTime.toISOString());
+  }
+  const awards = store().achievementAwards.get(user.id);
+  return {
+    ownerPublicId: user.publicId,
+    serverTime: serverTime.toISOString(),
+    achievements: values.map(value => {
+      const unlockedAt = awards?.get(value.id) ?? null;
+      return { ...value, progress: unlockedAt ? value.target : Math.min(value.progress, value.target), unlockedAt };
+    }),
+  };
+}
+
 export function getDevCheckInCalendar(token: string | undefined, month: string | null, now = new Date()): CheckInCalendarResponse | null {
   const user = sessionUser(token);
   if (!user) return null;
@@ -829,6 +890,7 @@ export function createDevCheckIn(
     }
   }
 
+  if (response.streak.longestDays >= 7) awardAchievement(user.id, "seven_day_streak", checkedAt);
   currentStore.idempotency.set(replayKey, response);
   return { kind: "accepted", value: response };
 }
@@ -1025,6 +1087,8 @@ export function actOnDevDirectRequest(
     preserveRecipientDenies(currentUser.id);
     request.resultCircleId = circle.id;
     person = personDto(circle, currentUser.id);
+    awardFriendAchievement(circle.lowUserId, respondedAt);
+    awardFriendAchievement(circle.highUserId, respondedAt);
   }
 
   return {
@@ -1427,6 +1491,8 @@ function ensureDevDirectCircle(firstUserId: string, secondUserId: string, now: s
   store().sharing.set(sharingKey(circle.id, lowUserId), { mode: "LATEST_ONLY", enabledSince: now });
   store().sharing.set(sharingKey(circle.id, highUserId), { mode: "LATEST_ONLY", enabledSince: now });
   preserveRecipientDenies(firstUserId);
+  awardFriendAchievement(firstUserId, now);
+  awardFriendAchievement(secondUserId, now);
   return circle;
 }
 

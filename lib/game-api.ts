@@ -31,6 +31,7 @@ const gameBatchSchema = z.object({
 });
 const gameLeaderboardSchema = z.object({
   ownerPublicId: owner,
+  scope: z.enum(["global", "friends"]),
   month,
   serverTime: z.string().datetime(),
   entries: z.array(z.object({
@@ -44,10 +45,29 @@ const gameLeaderboardSchema = z.object({
   leaderboardOptIn: z.boolean(),
 });
 
+const gameAchievementIdSchema = z.enum(["seven_day_streak", "thousand_taps", "five_friends"]);
+const gameAchievementSchema = z.object({
+  id: gameAchievementIdSchema,
+  progress: count,
+  target: z.number().int().positive().safe(),
+  unlockedAt: z.string().datetime().nullable(),
+}).refine(value => value.target === ({ seven_day_streak: 7, thousand_taps: 1000, five_friends: 5 })[value.id]
+  && value.progress <= value.target && (!value.unlockedAt || value.progress === value.target));
+const gameAchievementsSchema = z.object({
+  ownerPublicId: owner,
+  serverTime: z.string().datetime(),
+  achievements: z.array(gameAchievementSchema).length(3)
+    .refine(items => new Set(items.map(item => item.id)).size === 3),
+});
+
 export type GameProgress = z.infer<typeof gameProgressSchema>;
 export type GameSession = z.infer<typeof gameSessionSchema>;
 export type GameBatchResponse = z.infer<typeof gameBatchSchema>;
 export type GameLeaderboard = z.infer<typeof gameLeaderboardSchema>;
+export type GameLeaderboardScope = GameLeaderboard["scope"];
+export type GameAchievementId = z.infer<typeof gameAchievementIdSchema>;
+export type GameAchievement = z.infer<typeof gameAchievementSchema>;
+export type GameAchievements = z.infer<typeof gameAchievementsSchema>;
 export type GameSessionRequest = { requestId: string; ownerPublicId: string };
 export type GameBatchRequest = { sessionId: string; sequence: number; tapCount: number; runId: string };
 export type GameVisibilityRequest = { leaderboardOptIn: boolean; expectedVersion: number; ownerPublicId: string };
@@ -100,8 +120,11 @@ export function createGameSession(body: GameSessionRequest, signal?: AbortSignal
 export function submitGameBatch(body: GameBatchRequest, signal?: AbortSignal): Promise<GameBatchResponse> {
   return gameRequest("/api/v1/game/batches", gameBatchSchema, "POST", body, signal);
 }
-export function getGameLeaderboard(signal?: AbortSignal): Promise<GameLeaderboard> {
-  return gameRequest("/api/v1/game/leaderboard", gameLeaderboardSchema, "GET", undefined, signal);
+export function getGameLeaderboard(scope: GameLeaderboardScope = "global", signal?: AbortSignal): Promise<GameLeaderboard> {
+  return gameRequest(`/api/v1/game/leaderboard?scope=${scope}`, gameLeaderboardSchema, "GET", undefined, signal);
+}
+export function getGameAchievements(signal?: AbortSignal): Promise<GameAchievements> {
+  return gameRequest("/api/v1/game/achievements", gameAchievementsSchema, "GET", undefined, signal);
 }
 export function updateGameVisibility(body: GameVisibilityRequest, signal?: AbortSignal): Promise<GameProgress> {
   return gameRequest("/api/v1/game/visibility", gameProgressSchema, "PATCH", body, signal);

@@ -179,6 +179,8 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                 statement.setObject(5, now)
                 check(statement.executeUpdate() == 1)
             }
+            recordFriendAchievement(connection, row.inviterUserId, now)
+            recordFriendAchievement(connection, recipientId, now)
             val person = findPerson(connection, circleId, recipientId)
                 ?: error("accepted invite must expose its direct person")
             DirectInviteResult.Success(DirectInviteRedeemSnapshot(person, false, now))

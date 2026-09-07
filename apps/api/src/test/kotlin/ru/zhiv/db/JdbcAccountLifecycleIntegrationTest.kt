@@ -377,4 +377,23 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure>{auth.confirmMerge(a.session,browser,key)}.code)
         assertEquals(b.id,people.findSessionUserId(b.session))
     }
+
+    @Test fun `merge unions achievements at earliest award time and deletion clears them`() = runBlocking<Unit> {
+        val a=account(); val b=account(); val browser=tokens.issue().hash
+        execute("INSERT INTO game_profiles(user_id,lifetime_taps) VALUES (?,700),(?,400)",a.id,b.id)
+        execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'five_friends','2026-01-02T00:00:00Z'),(?,'five_friends','2026-01-01T00:00:00Z'),(?,'seven_day_streak','2026-01-03T00:00:00Z')",a.id,b.id,b.id)
+        val preview=readyMerge(a,b,browser)
+        auth.confirmMerge(a.session,browser,preview)
+        val game=JdbcGameRepository(source)
+        val awards=game.achievements(a.session).achievements
+        assertTrue(awards.all { it.unlockedAt!=null })
+        assertEquals("2026-01-01T00:00:00Z",awards.single { it.id=="five_friends" }.unlockedAt)
+        assertEquals("2026-01-03T00:00:00Z",awards.single { it.id=="seven_day_streak" }.unlockedAt)
+        assertEquals(1000L,awards.single { it.id=="thousand_taps" }.progress,"merged verified lifetime totals may cross a new threshold")
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",b.id))
+        prove(a,browser,"delete"); auth.deleteAccount(a.session,browser,tokens.issue().hash)
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id IN (?,?)",a.id,b.id))
+        assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { game.achievements(a.session) }.code)
+    }
+
 }

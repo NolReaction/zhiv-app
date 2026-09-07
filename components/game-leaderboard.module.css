@@ -24,11 +24,18 @@
 .participation strong { font-size: 14px; }
 .participation small { color: #b6c1a9; font-size: 13px; line-height: 1.4; }
 .participation [role="switch"] { flex-shrink: 0; }
-.listHeader { display: flex; align-items: center; justify-content: space-between; font-size: 15px; }
-.listHeader button { display: grid; place-items: center; width: 44px; height: 44px; color: #c6e0af; border: 1px solid rgba(207,232,186,.14); border-radius: 13px; background: rgba(207,232,186,.04); cursor: pointer; }
+.rankingTabs { gap: 14px; min-width: 0; }
+.rankingContent { display: grid; gap: 8px; min-width: 0; }
+.rankingContent:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 12px; }
+.listHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; }
+.listHeader .refresh { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; color: #c6e0af; border: 1px solid rgba(207,232,186,.14); border-radius: 13px; background: rgba(207,232,186,.04); cursor: pointer; }
+.scopes { display: flex; flex: 1; min-width: 0; width: auto; height: auto !important; padding: 3px; border: 1px solid rgba(207,232,186,.14); border-radius: 14px; background: rgba(10,16,8,.22); }
+.scopes button { min-width: 0; min-height: 44px; height: auto; padding: 8px; border-radius: 10px; color: #afbda3; font-size: 14px; white-space: normal; line-height: 1.25; cursor: pointer; }
+.scopes button[data-state="active"] { background: rgba(194,223,166,.14); border-color: rgba(194,223,166,.16); color: #e5f0da; }
 .listHeader button:disabled { opacity: .4; cursor: default; }
 .listHeader button:focus-visible { outline: 3px solid #f5e85b; outline-offset: 3px; }
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: min(350px,40dvh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.list:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 12px; }
 .list li { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 51px; padding: 8px; border-radius: 12px; border: 1px solid transparent; font-size: 15px; }
 .list li[data-me] { background: rgba(176,214,148,.09); border-color: rgba(176,214,148,.2); }
 .list li > strong { font-size: 14px; color: #d6e5c9; font-variant-numeric: tabular-nums; }
