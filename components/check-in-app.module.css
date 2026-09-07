@@ -1474,6 +1474,11 @@
 .streakPill { cursor: pointer; font-family: inherit; transition: background 160ms ease; }
 .streakPill:hover { background: rgba(248,164,72,.14); }
 .streakPill:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.gameTools { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.gameTools .streakPill { min-height: 44px; }
+.trophyPill { border-color: rgba(222,196,133,.18); background: rgba(222,196,133,.05); }
+.trophyPill svg { color: #dac38b; }
+.trophyPill:hover { background: rgba(222,196,133,.12); }
 @keyframes view-enter {
   from { opacity: .35; transform: translateX(calc(var(--view-direction, 1) * 10px)); }
   to { opacity: 1; transform: none; }

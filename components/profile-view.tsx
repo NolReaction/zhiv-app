@@ -38,6 +38,11 @@ type ProfileViewProps = {
   onRecovered: (response: MeResponse) => void;
   onSessionLost: () => void;
   onOpenCalendar: (trigger: HTMLButtonElement) => void;
+  onOpenGame: (trigger: HTMLButtonElement) => void;
+  onRefreshGame: () => void;
+  gameNotice: string;
+  gameLoaded: boolean;
+  legacyGame: { lifetimeTaps: number; bestSeries: number };
 };
 
 function initials(name: string): string {
@@ -73,6 +78,11 @@ export function ProfileView({
   onRecovered,
   onSessionLost,
   onOpenCalendar,
+  onOpenGame,
+  onRefreshGame,
+  gameNotice,
+  gameLoaded,
+  legacyGame,
 }: ProfileViewProps) {
   const [draftState, setDraftState] = useState({
     sourceName: me.user.displayName,
@@ -175,7 +185,7 @@ export function ProfileView({
             </button>
             <div><Check size={18} aria-hidden="true" /><strong>{me.checkInCount}</strong>
               <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span></div>
-            <div><Trophy size={18} aria-hidden="true" /><strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong><span>рекорд игры</span></div>
+            <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг"><Trophy size={18} aria-hidden="true" /><strong>{gameLoaded ? `×${clickerStats.bestSeries.toLocaleString("ru-RU")}` : "—"}</strong><span>рекорд игры</span></button>
           </div>
         </div>
         <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>
@@ -236,9 +246,9 @@ export function ProfileView({
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="game" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><Gamepad2 size={20} aria-hidden="true" /><span>Игровой прогресс<small>Уровень {clickerStats.level.level} · {clickerStats.level.title}</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger}><span><Gamepad2 size={20} aria-hidden="true" /><span>Игровой прогресс<small>{gameLoaded ? `Уровень ${clickerStats.level.level} · ${clickerStats.level.title}` : "Синхронизация с аккаунтом"}</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "game"} className={styles.settingsContent}>
-              <div className={styles.gameStats} aria-label="Игровой прогресс">
+              {gameLoaded && <div className={styles.gameStats} aria-label="Игровой прогресс">
             <span aria-hidden="true"><Gamepad2 size={20} /></span>
             <div>
               <small>Уровень {clickerStats.level.level}</small>
@@ -270,7 +280,16 @@ export function ProfileView({
             </div>
           </div>
 
-          <p className={styles.localProgressNote}>Игровые серии и уровень хранятся на этом устройстве.</p>
+          }
+          <p className={styles.localProgressNote} role="status">{gameNotice}</p>
+          <div className={styles.gameActions}>
+            <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog"><Trophy size={17} aria-hidden="true" />Открыть рейтинг</button>
+            <button type="button" onClick={onRefreshGame} disabled={!isOnline}>Обновить</button>
+          </div>
+          {legacyGame.lifetimeTaps > 0 && <details className={styles.legacyGame}>
+            <summary>Прогресс до сетевой игры</summary>
+            <p>На этом устройстве: {legacyGame.lifetimeTaps.toLocaleString("ru-RU")} тапов, рекорд ×{legacyGame.bestSeries.toLocaleString("ru-RU")}. Эти результаты сохранены отдельно и не участвуют в рейтинге.</p>
+          </details>}
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="management" className={styles.settingsItem}>

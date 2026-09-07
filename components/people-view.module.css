@@ -483,13 +483,48 @@
   color: #f4f5ef !important;
 }
 
+.dialog {
+  --dialog-padding: 20px;
+  width: min(390px, calc(100vw - 28px));
+  max-width: min(390px, calc(100vw - 28px));
+  top: calc(50% + (env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px);
+  padding: var(--dialog-padding);
+  gap: 16px;
+  border-color: rgba(207,232,186,.3) !important;
+  border-radius: 26px !important;
+  background: linear-gradient(145deg, rgba(55,66,44,.76), rgba(20,27,17,.9) 65%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  backdrop-filter: blur(24px) saturate(135%);
+  box-shadow: 0 24px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(239,255,218,.2), inset 0 -1px 0 rgba(239,255,218,.06) !important;
+  transform-origin: center 35%;
+}
+.dialog[data-state="open"] { animation: invite-open 320ms cubic-bezier(.16,1,.3,1); }
+.dialog[data-state="closed"] { animation: invite-close 180ms ease-in; }
+.dialog > :global([data-slot="dialog-header"]) { padding-right: 18px; gap: 8px; }
+.dialog[data-state="open"] .addOptions button { animation: invite-option 300ms ease-out backwards; }
+.dialog .addOptions button:nth-child(2) { animation-delay: 35ms; }
+.dialog .addOptions button:nth-child(3) { animation-delay: 70ms; }
+.dialog .addOptions button:nth-child(4) { animation-delay: 105ms; }
+@keyframes invite-open { from { opacity: 0; transform: translateY(20px) scale(.92); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes invite-close { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: translateY(10px) scale(.96); } }
+@keyframes invite-option { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-transparency: reduce) {
+  .dialog { background: #172013 !important; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (max-width: 360px) { .dialog { --dialog-padding: 16px; } }
+
 .dialogTitle {
-  font-size: 22px !important;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 20px !important;
   letter-spacing: -0.035em;
 }
 
 .dialogDescription {
-  color: #92988d !important;
+  color: #bac5ae !important;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -824,10 +859,11 @@ button:disabled {
   width: 100%;
   align-items: center;
   gap: 12px;
-  padding: 16px 14px;
+  padding: 12px;
   border: 1px solid rgba(183,216,162,.17);
   border-radius: 16px;
-  background: rgba(183,216,162,.055);
+  background: linear-gradient(135deg, rgba(210,234,193,.075), rgba(183,216,162,.025));
+  box-shadow: inset 0 1px 0 rgba(224,246,208,.06);
   color: #e8eedf;
   font: inherit;
   font-size: 16px;
@@ -840,6 +876,8 @@ button:disabled {
 .addOptions button:disabled { opacity: .45; cursor: default; }
 .addOptions button > span { flex: 1; min-width: 0; display: grid; gap: 4px; }
 .addOptions small { color: #a2ab98; font-size: 14px; line-height: 1.4; }
+.addOptions button > svg:first-child { flex-shrink: 0; box-sizing: content-box; padding: 9px; border: 1px solid rgba(197,222,176,.14); border-radius: 13px; color: #c6e0af; background: rgba(197,222,176,.06); }
+.addOptions button > svg:last-child { width: 16px; flex-shrink: 0; color: #8f9e82; }
 .tabPanel { animation: people-enter 180ms ease-out; }
 @keyframes people-enter { from { opacity: .35; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 

@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flame, HeartPulse, Copy, UserRound, Users } from "lucide-react";
+import { Flame, HeartPulse, Copy, Trophy, UserRound, Users } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -60,6 +60,8 @@ import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "./people-view";
 import { ProfileView } from "./profile-view";
 import { CheckInCalendar } from "./check-in-calendar";
+import { GameLeaderboardDialog } from "./game-leaderboard";
+import { useGameProgress } from "@/hooks/use-game-progress";
 import { CapabilityLanding } from "./capability-landing";
 import { RecoveryStarter } from "./recovery-starter";
 import { AccountEntry, AuthReturnNotice } from "./account-entry";
@@ -219,6 +221,16 @@ function clickerStorageKey(publicId: string, prefix = CLICKER_PROGRESS_STORAGE_P
   return `${prefix}:${publicId}`;
 }
 
+function archiveLocalGame(publicId: string, progress: ClickerRun) {
+  try {
+    const key = `zhiv.clicker-archive.v054:${publicId}`;
+    const saved = parseClickerProgress(window.localStorage.getItem(key) ?? "", progress.storySeed);
+    if (!saved) window.localStorage.setItem(key, serializeClickerProgress(progress));
+    const source = saved ?? progress;
+    return { lifetimeTaps: source.lifetimeTaps, bestSeries: source.bestSeries };
+  } catch { return { lifetimeTaps: progress.lifetimeTaps, bestSeries: progress.bestSeries }; }
+}
+
 function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
   if (typeof window === "undefined") {
     return { progress: createClickerRun(storySeed), finishedSeries: null };
@@ -312,6 +324,7 @@ export function CheckInApp() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clickerRun, setClickerRun] = useState<ClickerRun>(() => createClickerRun());
+  const [legacyGame, setLegacyGame] = useState({ lifetimeTaps: 0, bestSeries: 0 });
   const [seriesSummary, setSeriesSummary] = useState<SeriesResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [storyEffect, setStoryEffect] = useState<{
@@ -324,6 +337,12 @@ export function CheckInApp() {
   const [activeView, setActiveView] = useState<ActiveView>("check-in");
   const [viewDirection, setViewDirection] = useState(1);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [gameOpen, setGameOpen] = useState(false);
+  const gameTrigger = useRef<HTMLElement | null>(null);
+  const openGame = useCallback((trigger: HTMLButtonElement) => {
+    gameTrigger.current = trigger;
+    setGameOpen(true);
+  }, []);
   const calendarTrigger = useRef<HTMLElement | null>(null);
   const openCalendar = useCallback((trigger: HTMLButtonElement) => {
     calendarTrigger.current = trigger;
@@ -333,6 +352,7 @@ export function CheckInApp() {
     const order: ActiveView[] = ["check-in", "people", "profile"];
     setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
     setActiveView(next);
+    if (next === "profile") void game.refresh();
   };
   const [people, setPeople] = useState<PeopleResponse | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
@@ -490,6 +510,7 @@ export function CheckInApp() {
 
   const loseSession = useCallback(() => {
     setCalendarOpen(false);
+    setGameOpen(false);
     identityEpoch.current += 1;
     setPeopleUpdatedAt(null);
     setGroupsUpdatedAt(null);
@@ -513,6 +534,9 @@ export function CheckInApp() {
     persistClickerRun,
     resetTransientCheckIn,
   ]);
+
+  const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
+  const recordGameTap = game.recordTap;
 
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
     // A mutation response supersedes a background read that started before it.
@@ -606,6 +630,7 @@ export function CheckInApp() {
       identity.user.publicId,
       clickerSeedFromPublicId(identity.user.publicId),
     );
+    setLegacyGame(archiveLocalGame(identity.user.publicId, restored.progress));
     commitClickerRun(restored.progress, false);
     if (restored.finishedSeries) {
       persistClickerRun(restored.progress);
@@ -839,6 +864,8 @@ export function CheckInApp() {
       triggerTapFeedback();
       const current = clickerRunRef.current;
       const transition = advanceClickerRun(current, tappedAtMs, steps, createUuidV4());
+      const runId = transition.progress.activeSeries?.eventId;
+      if (runId) recordGameTap(steps, runId);
       if (transition.finishedSeries) {
         reportFinishedSeries(transition.finishedSeries, transition.progress);
         triggerSeriesBreakEffect();
@@ -853,6 +880,7 @@ export function CheckInApp() {
       resetClickerLater();
     },
     [
+      recordGameTap,
       commitClickerRun,
       persistClickerRun,
       reportFinishedSeries,
@@ -1113,10 +1141,16 @@ export function CheckInApp() {
   const adjustedNow = clientNowMs + clockOffsetMs;
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonPalette = getCheckInPalette(ageMs);
-  const clickerLevel = getClickerLevel(clickerRun.lifetimeTaps);
-  const clickerLevelProgress = getClickerLevelProgress(clickerRun.lifetimeTaps);
+  const clickerLevel = getClickerLevel(game.progress?.lifetimeTaps ?? 0);
+  const clickerLevelProgress = getClickerLevelProgress(game.progress?.lifetimeTaps ?? 0);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
-  const primaryStatus = !isOnline ? "Офлайн · серия считается на устройстве" : null;
+  const primaryStatus = !isOnline ? "Офлайн · игровые тапы не сохраняются"
+    : game.status === "error" ? "Игровой прогресс не синхронизирован" : null;
+  const gameNotice = !isOnline ? "Без интернета новые игровые тапы не сохраняются."
+    : game.status === "error" ? "Не удалось синхронизировать игровой прогресс. Повторите обновление."
+    : game.status === "loading" ? "Загружаем игровой прогресс…"
+    : game.pendingTaps ? `Сохраняем ${game.pendingTaps.toLocaleString("ru-RU")} тапов…`
+    : "Прогресс сохранён в аккаунте и доступен на других устройствах.";
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
     activeTapCount >= 2 && activeTapCount <= 4
@@ -1302,6 +1336,7 @@ export function CheckInApp() {
             Отметиться
           </h1>
           <div className={styles.checkInCluster}>
+            <div className={styles.gameTools}>
             {streak ? (
               <button
                 type="button"
@@ -1318,6 +1353,11 @@ export function CheckInApp() {
                 <strong>{formatDayCount(streak.currentDays)}</strong>
               </button>
             ) : null}
+            <button type="button" className={`${styles.streakPill} ${styles.trophyPill}`} onPointerDown={event => event.stopPropagation()}
+              onClick={event => openGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг за месяц">
+              <Trophy size={18} aria-hidden="true" /><strong>Рейтинг</strong>
+            </button>
+            </div>
             <div
               className={`${styles.buttonStage} ${tapActive ? styles.buttonStageActive : ""} ${
                 seriesBreakBurst !== null ? styles.seriesBreaking : ""
@@ -1468,7 +1508,7 @@ export function CheckInApp() {
               {primaryStatus}
             </p> : null}
             <span className={styles.srOnly}>
-              Лучшая серия: {clickerRun.bestSeries}. Уровень {clickerLevel.level}, {clickerLevel.title}.
+              Рекорд в аккаунте: {game.progress?.bestSeries ?? 0}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.
             </span>
           </div>
@@ -1494,11 +1534,16 @@ export function CheckInApp() {
         <ProfileView
           me={me}
           onOpenCalendar={openCalendar}
+          onOpenGame={openGame}
+          gameNotice={gameNotice}
+          gameLoaded={Boolean(game.progress)}
+          legacyGame={legacyGame}
+          onRefreshGame={() => { void game.refresh(); }}
           nowMs={adjustedNow}
           isOnline={isOnline}
           clickerStats={{
-            bestSeries: clickerRun.bestSeries,
-            lifetimeTaps: clickerRun.lifetimeTaps,
+            bestSeries: game.progress?.bestSeries ?? 0,
+            lifetimeTaps: game.progress?.lifetimeTaps ?? 0,
             level: clickerLevel,
             levelProgress: clickerLevelProgress,
           }}
@@ -1519,6 +1564,9 @@ export function CheckInApp() {
       {me && streak ? <CheckInCalendar key={me.user.publicId} open={calendarOpen} onOpenChange={setCalendarOpen}
         streak={streak} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}
         returnFocus={() => { if (calendarTrigger.current?.isConnected) calendarTrigger.current.focus(); }} /> : null}
+      {me && screen === "home" ? <GameLeaderboardDialog key={`game:${me.user.publicId}`} open={gameOpen} onOpenChange={setGameOpen}
+        ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
+        returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
       <footer className={styles.footer}>
         <nav

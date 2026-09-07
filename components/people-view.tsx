@@ -703,8 +703,8 @@ export function PeopleView({
           if (!addMenuForward.current) addMenuTrigger.current?.focus();
         }}>
           <DialogHeader>
-            <DialogTitle className={styles.dialogTitle}>Добавить человека</DialogTitle>
-            <DialogDescription className={styles.dialogDescription}>Пригласите близкого или откройте приглашение, которое прислали вам.</DialogDescription>
+            <DialogTitle className={styles.dialogTitle}><UserRound size={22} aria-hidden="true" />Добавить человека</DialogTitle>
+            <DialogDescription className={styles.dialogDescription}>Выберите удобный способ связи.</DialogDescription>
           </DialogHeader>
           <div className={styles.addOptions}>
             <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); resetLookup(); setAddOpen(true); }}>

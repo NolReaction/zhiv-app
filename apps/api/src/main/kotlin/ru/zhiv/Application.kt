@@ -46,6 +46,9 @@ import ru.zhiv.invites.directInviteRoutes
 import ru.zhiv.recovery.CodeRecoveryRepository
 import ru.zhiv.recovery.codeRecoveryRoutes
 import ru.zhiv.game.gameEventRoutes
+import ru.zhiv.game.gameRoutes
+import ru.zhiv.game.GameRepository
+import ru.zhiv.db.JdbcGameRepository
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
 import ru.zhiv.observability.RequestDiagnostics
@@ -89,6 +92,7 @@ fun Application.module() {
         telegram = telegram,
         mailer = mailer,
         vk = vk,
+        games = JdbcGameRepository(dataSource),
     )
 }
 
@@ -108,6 +112,7 @@ fun Application.installZhivApi(
     telegram: TelegramVerifier? = null,
     mailer: LoginMailer? = null,
     vk: VkVerifier? = null,
+    games: GameRepository? = null,
 ) {
     install(RequestDiagnostics)
     install(DefaultHeaders)
@@ -124,6 +129,9 @@ fun Application.installZhivApi(
             "check-in-attempt" to 240,
             "relationships" to 2_400,
             "game-events" to 2_400,
+            "game-read" to 1_200,
+            "game-session" to 120,
+            "game-write" to 4_800,
             "account-recovery-write" to 30,
             "account-recovery-read" to 600,
         )) {
@@ -220,6 +228,7 @@ fun Application.installZhivApi(
         auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
+        games?.let { gameRoutes(it, tokenCodec, config) }
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }
