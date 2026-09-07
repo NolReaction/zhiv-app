@@ -218,7 +218,10 @@ fun Application.installZhivApi(
                 call.respond(HttpStatusCode.ServiceUnavailable, mapOf("status" to "unavailable"))
             }
         }
-        identityRoutes(identities, tokenCodec, config)
+        identityRoutes(
+            identities, tokenCodec, config,
+            allowLegacyBootstrap = !authConfig.vkEnabled && !authConfig.emailEnabled && !authConfig.telegramEnabled,
+        )
         auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)

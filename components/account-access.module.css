@@ -1,4 +1,5 @@
 .entry { display: grid; gap: .8rem; width: 100%; text-align: left; }
+.entryScreen { margin-block-start: 1.75rem; }
 .card { display: grid; gap: 1rem; padding: 1.35rem; border: 1px solid #35402f; border-radius: 1.6rem; background: #171d13; color: #e8eddf; }
 .card h2, .card h3 { display: flex; align-items: center; gap: .6rem; font-size: 1.2rem; margin: 0; }
 .card h3 { margin-top: .8rem; }

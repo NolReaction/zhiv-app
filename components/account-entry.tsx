@@ -38,7 +38,7 @@ export function AccountEntry({ isOnline, onAuthenticated, children }: { isOnline
     }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
   }, [retry]);
-  return <div className={styles.entry}>
+  return <div className={`${styles.entry} ${styles.entryScreen}`}>
     <AuthReturnNotice />
     {options ? (options.legacy ? children : <LoginForm options={options} pending={pending} isOnline={isOnline} onDone={async () => {
       const me = await getMe(); if (!me) throw new Error("Не удалось открыть профиль. Повторите вход."); onAuthenticated(me);

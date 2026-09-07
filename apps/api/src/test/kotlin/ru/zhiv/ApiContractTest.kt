@@ -16,6 +16,7 @@ import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.CheckInResult
 import ru.zhiv.checkins.DailyStreakSnapshot
 import ru.zhiv.config.AppConfig
+import ru.zhiv.auth.AuthConfig
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.identity.UserSnapshot
@@ -29,8 +30,32 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class ApiContractTest {
+    @Test
+    fun `verified login providers disable legacy profile creation without issuing a session`() {
+        val providers = listOf(
+            AuthConfig(vkClientId = "123"),
+            AuthConfig(smtpHost = "smtp.example.com", smtpFrom = "login@example.com", codeSecret = "x".repeat(32)),
+            AuthConfig(telegramClientId = "123", telegramClientSecret = "test-secret"),
+        )
+        for (provider in providers) testApplication {
+            val repository = FakeRepository()
+            application { installZhivApi(repository, repository, testConfig(), authConfig = provider) }
+            val response = client.post("/api/v1/bootstrap") {
+                contentType(ContentType.Application.Json)
+                header("Idempotency-Key", UUID.randomUUID().toString())
+                setBody("""{"displayName":"Name alone"}""")
+            }
+            assertEquals(HttpStatusCode.Gone, response.status)
+            assertContains(response.bodyAsText(), "AUTH_REQUIRED")
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            assertNull(response.headers[HttpHeaders.SetCookie])
+            assertEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/me").status)
+        }
+    }
+
     @Test
     fun `health stays live while readiness hides database details`() = testApplication {
         val repository = FakeRepository()
