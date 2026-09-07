@@ -1208,10 +1208,6 @@
     gap: 8px;
   }
 
-  .shell[data-active-view="check-in"] .streakPill {
-    transform: translateY(-6px);
-  }
-
   .shell[data-active-view="check-in"] .buttonStage,
   .shell[data-active-view="check-in"] .checkInButton {
     touch-action: none;
@@ -1441,7 +1437,7 @@
     width: 100%;
     height: 100%;
     align-self: stretch;
-    grid-template-rows: 32px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
   .shell[data-active-view="check-in"] .buttonStage {
     min-height: 0;

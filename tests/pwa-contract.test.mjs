@@ -476,8 +476,9 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(app, /shouldCountGameClick\(event\.detail, nowMs, lastGameTouchAt\.current\)/);
   assert.match(
     appStyles,
-    /\.shell\[data-active-view="check-in"\] \.streakPill\s*\{[^}]*translateY\(-6px\)/s,
+    /\.shell\[data-active-view="check-in"\] \.checkInCluster\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);/s,
   );
+  assert.doesNotMatch(appStyles, /\.streakPill\s*\{[^}]*translateY\(-6px\)/s);
 
   const checkInFlow = app.slice(
     app.indexOf("async function handleCheckIn"),
