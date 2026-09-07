@@ -105,7 +105,7 @@ class SmtpLoginMailer(private val config: AuthConfig) : LoginMailer {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            throw AuthFailure("EMAIL_DELIVERY_FAILED", "Письмо не удалось отправить. Попробуйте позже или войдите через Telegram.", 503)
+            throw AuthFailure("EMAIL_DELIVERY_FAILED", "Письмо не удалось отправить. Попробуйте позже или выберите другой доступный способ входа.", 503)
         }
     }
 }

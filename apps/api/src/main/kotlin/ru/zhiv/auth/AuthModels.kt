@@ -3,7 +3,10 @@ package ru.zhiv.auth
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
-class AuthFailure(val code: String, override val message: String, val status: Int = 400) : RuntimeException(message)
+open class AuthFailure(val code: String, override val message: String, val status: Int = 400) : RuntimeException(message)
+
+// Internal signal; the public error stays AUTH_EXPIRED unless a valid app session exists.
+class ConsumedVkFlow : AuthFailure("AUTH_EXPIRED", "Запрос входа уже использован")
 
 @Serializable data class AuthOptions(val telegram: Boolean, val email: Boolean, val vk: Boolean = false)
 @Serializable data class AuthStartRequest(val intent: String = "login", val displayName: String? = null, val email: String? = null)

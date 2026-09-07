@@ -1,5 +1,6 @@
 "use client";
 
+import { TransientNotice } from "./app-notifications";
 import { useCallback, useEffect, useState } from "react";
 import { MonitorSmartphone, ShieldCheck } from "lucide-react";
 import { getAccountAccess, getAuthOptions, revokeSession, revokeOtherSessions, logout, type AccountAccess as Access, type AuthOptions } from "@/lib/auth-api";
@@ -29,7 +30,7 @@ export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; 
 
   async function remove() {
     if (!confirm) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setNotice("");
     try {
       if (confirm === "logout") { await logout(); onSessionLost(); return; }
       if (confirm === "others") await revokeOtherSessions(); else await revokeSession(confirm);
@@ -58,8 +59,9 @@ export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; 
       {access.sessions.some(s => !s.current) && <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("others")}>Выйти на остальных устройствах</button>}
       <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("logout")}>Выйти в этом браузере</button>
     </>}
-    {error && <div role="alert"><p className={styles.error}>{error}</p><button className={styles.secondary} onClick={() => void refresh().catch(cause => setError(cause.message))}>Повторить</button></div>}
-    {notice && <p role="status" className={styles.notice}>{notice}</p>}
+    <TransientNotice message={error} kind="error" />
+    {error && !access && <button className={styles.secondary} onClick={() => { setError(""); void refresh().catch(cause => setError(cause.message)); }}>Повторить загрузку способов входа</button>}
+    <TransientNotice message={notice} kind="success" />
     <Dialog open={confirm !== null} onOpenChange={open => { if (!open && !busy) setConfirm(null); }}>
       <DialogContent className={styles.dialog}>
         <DialogHeader><DialogTitle>Завершить сеанс?</DialogTitle><DialogDescription>{confirm === "logout" ? "Для следующего входа понадобится привязанный ВК, почта или заранее сохранённый резервный код." : "На выбранных устройствах потребуется войти заново. Этот браузер останется подключён."}</DialogDescription></DialogHeader>

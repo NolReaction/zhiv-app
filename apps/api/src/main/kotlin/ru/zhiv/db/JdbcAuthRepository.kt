@@ -79,6 +79,13 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
         }
     }
     override suspend fun takeVk(tokenHash: ByteArray, browserHash: ByteArray): LoginFlow = tx { c ->
+        val consumedBrowser = c.query(
+            "SELECT browser_hash FROM account_login_flows WHERE token_hash=? AND provider='vk' AND consumed_at IS NOT NULL",
+            tokenHash,
+        ) { it.getBytes("browser_hash") }
+        if (consumedBrowser != null && MessageDigest.isEqual(consumedBrowser, browserHash)) {
+            throw ConsumedVkFlow()
+        }
         readFlow(c, tokenHash, browserHash, "vk").also {
             c.update("UPDATE account_login_flows SET consumed_at=clock_timestamp(),verifier=NULL,nonce=NULL WHERE token_hash=?", tokenHash)
         }

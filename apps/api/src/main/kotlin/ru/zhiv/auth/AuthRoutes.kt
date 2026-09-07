@@ -136,6 +136,14 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
                     if (code.isBlank() || code.length > 4096 || deviceId.isBlank() || deviceId.length > 4096) throw AuthFailure("VK_LOGIN_FAILED", "Не удалось подтвердить вход через ВК")
                     call.finish(flow, vk.verify(code, deviceId, state, flow).subject)
                 } catch (failure: AuthFailure) {
+                    if (failure is ConsumedVkFlow) {
+                        val currentHash = call.sessionCookie(app)?.let(tokens::hash)
+                        if (currentHash != null && identities.findSessionUserId(currentHash) != null) {
+                            // Browser history revisit: resume the existing session, never re-use the code.
+                            call.respondRedirect("/")
+                            return@get
+                        }
+                    }
                     // Only fixed application error codes, never callback URLs or provider payloads.
                     call.application.log.info("vk_callback_failed reason={}", failure.code)
                     failure.code.lowercase(java.util.Locale.ROOT)

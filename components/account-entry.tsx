@@ -8,6 +8,7 @@ import { isValidDisplayName, limitDisplayNameInput, normalizeDisplayName } from 
 import type { MeResponse } from "@/lib/check-in-contract";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import styles from "./account-access.module.css";
+import { TransientNotice } from "./app-notifications";
 
 export function AuthReturnNotice() {
   const [message, setMessage] = useState("");
@@ -22,7 +23,7 @@ export function AuthReturnNotice() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
-  return message ? <p className={styles.notice} role="status">{message}</p> : null;
+  return <TransientNotice message={message} />;
 }
 
 export function AccountEntry({ isOnline, onAuthenticated, children }: { isOnline: boolean; onAuthenticated: (me: MeResponse) => void; children?: ReactNode }) {
@@ -67,7 +68,7 @@ export function LoginForm({ options, isOnline, link = false, pending = false, on
       if (provider === "vk") {
         const url = new URL(result.url ?? "");
         if (url.origin !== "https://id.vk.ru" || url.pathname !== "/authorize") throw new Error("Не удалось открыть вход через ВК");
-        window.location.assign(url.toString());
+        window.location.replace(url.toString());
       } else { setFlow(result.flow); setCode(""); setVerified(false); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось начать вход"); }
     finally { setBusy(false); }
@@ -132,6 +133,6 @@ export function LoginForm({ options, isOnline, link = false, pending = false, on
       {!link && !options.vk && !options.email && <p className={styles.hint}>Вход временно недоступен. Попробуйте позже.</p>}
     </>}
     {!isOnline && <p className={styles.hint}>Для входа нужен интернет.</p>}
-    {error && <p className={styles.error} role="alert">{error}</p>}
+    <TransientNotice message={error} kind="error" />
   </div>;
 }

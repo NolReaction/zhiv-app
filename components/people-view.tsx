@@ -1,5 +1,6 @@
 "use client";
 
+import { TransientNotice } from "./app-notifications";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMemo, useReducer, useRef, useState } from "react";
 import { Check, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
@@ -65,6 +66,7 @@ import {
 } from "@/components/ui/dialog";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { UserStatusDisplay } from "./user-status-display";
+import { matchesPersonSearch } from "@/lib/people-search";
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import styles from "./people-view.module.css";
 import { createUuidV4 } from "@/lib/browser-uuid";
@@ -142,6 +144,8 @@ export function PeopleView({
   onGroupsRefresh,
   onSessionLost,
 }: PeopleViewProps) {
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const filteredPeople = useMemo(() => data?.people.filter(person => matchesPersonSearch(person, peopleQuery)) ?? [], [data, peopleQuery]);
   const [addOpen, setAddOpen] = useState(false);
   const [inviteImportOpen, setInviteImportOpen] = useState(false);
   const [inviteImportValue, setInviteImportValue] = useState("");
@@ -403,7 +407,7 @@ export function PeopleView({
     if (error && !data) {
       return (
         <div className={styles.state}>
-          <p>{error}</p>
+          <p>Не удалось загрузить людей.</p>
           <button className={styles.secondaryButton} type="button" onClick={() => void onRefresh()}>
             <RefreshCw size={17} /> Повторить
           </button>
@@ -565,17 +569,31 @@ export function PeopleView({
           <section className={styles.section} aria-labelledby="connected-title">
             <div className={styles.sectionTitleRow}>
               <h2 id="connected-title">Мои люди</h2>
-              {data.people.length > 0 ? <span>{data.people.length}</span> : null}
+              {data.people.length > 0 ? <span aria-live="polite">{peopleQuery.trim() ? `${filteredPeople.length} из ${data.people.length}` : data.people.length}</span> : null}
             </div>
+            {data.people.length > 0 && <div className={styles.peopleSearch}>
+              <Search size={18} aria-hidden="true" />
+              <input type="search" aria-label="Поиск по имени или подписи" placeholder="Имя или подпись"
+                value={peopleQuery} maxLength={100} autoComplete="off"
+                onChange={event => setPeopleQuery(event.target.value)} />
+              {peopleQuery && <button type="button" aria-label="Очистить поиск" onClick={() => setPeopleQuery("")}><X size={18} aria-hidden="true" /></button>}
+            </div>}
             {data.people.length === 0 ? (
               <div className={styles.empty}>
                 <UserRound size={30} />
                 <strong>Здесь пока никого</strong>
                 <p>Добавьте человека по его ID. Только после взаимного согласия вы увидите отметки друг друга.</p>
               </div>
+            ) : filteredPeople.length === 0 ? (
+              <div className={styles.empty} role="status">
+                <Search size={28} aria-hidden="true" />
+                <strong>Никого не нашли</strong>
+                <p>Попробуйте другое имя или личную подпись.</p>
+                <button type="button" className={styles.secondaryButton} onClick={() => setPeopleQuery("")}>Очистить поиск</button>
+              </div>
             ) : (
-              <div className={styles.list}>
-                {data.people.map((person) => {
+              <div className={`${styles.list} ${styles.connectedList}`}>
+                {filteredPeople.map((person) => {
                   const theirSharing = person.theirSharingMode !== "OFF";
                   const ageMs = getCheckInAgeMs(person.lastCheckInAt, 0, nowMs);
                   const statusColor = theirSharing ? getCheckInColor(ageMs) : "#5d6258";
@@ -684,9 +702,11 @@ export function PeopleView({
         </div>
       )}
 
-      {dialogError && !addOpen && !inviteDialog.open ? (
-        <p className={styles.pageError} role="alert">{dialogError}</p>
-      ) : null}
+      <TransientNotice message={dialogError} kind="error" />
+      <TransientNotice message={nicknameError} kind="error" />
+      <TransientNotice message={inviteImportError} kind="error" />
+      <TransientNotice message={shareNotice} />
+      <TransientNotice message={error} kind="error" />
 
       <Dialog open={Boolean(selectedPerson)} onOpenChange={(open) => {
         if (!open && !pending) setSelectedPersonId(null);
@@ -707,7 +727,7 @@ export function PeopleView({
             <p id="person-nickname-hint" className={styles.searchHint}>
               Видна только вам. До 50 символов. Оставьте поле пустым, чтобы вернуть имя из профиля.
             </p>
-            {nicknameError ? <p className={styles.dialogError} role="alert">{nicknameError}</p> : null}
+
             <button type="submit" className={styles.sendButton} disabled={Boolean(pending)}>
               {pending?.startsWith("nickname:") ? "Сохраняем…" : "Сохранить"}
             </button>
@@ -776,7 +796,7 @@ export function PeopleView({
               ) : null}
             </div>
           ) : null}
-          {dialogError ? <p className={styles.dialogError} role="alert">{dialogError}</p> : null}
+
         </DialogContent>
       </Dialog>
 
@@ -806,9 +826,7 @@ export function PeopleView({
               spellCheck={false}
               rows={4}
               placeholder="Вставьте ссылку или код"
-              aria-describedby={inviteImportError
-                ? "invite-import-hint invite-import-error"
-                : "invite-import-hint"}
+              aria-describedby="invite-import-hint"
               aria-invalid={Boolean(inviteImportError)}
               autoFocus
             />
@@ -819,9 +837,7 @@ export function PeopleView({
               <Link2 size={17} /> Проверить приглашение
             </button>
           </form>
-          {inviteImportError ? (
-            <p className={styles.dialogError} id="invite-import-error" role="alert">{inviteImportError}</p>
-          ) : null}
+
         </DialogContent>
       </Dialog>
 
@@ -913,8 +929,8 @@ export function PeopleView({
               </small>
             </div>
           )}
-          {shareNotice ? <p className={styles.dialogNotice} role="status">{shareNotice}</p> : null}
-          {dialogError ? <p className={styles.dialogError} role="alert">{dialogError}</p> : null}
+
+
         </DialogContent>
       </Dialog>
 

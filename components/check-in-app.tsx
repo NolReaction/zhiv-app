@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Flame, HeartPulse, Share2, UserRound, Users } from "lucide-react";
+import { Flame, HeartPulse, Copy, UserRound, Users } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -64,8 +64,9 @@ import { RecoveryStarter } from "./recovery-starter";
 import { AccountEntry, AuthReturnNotice } from "./account-entry";
 import { StatusEditor } from "./status-editor";
 import styles from "./check-in-app.module.css";
+import { notify, TransientNotice } from "./app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
-import { getIdentitySharingNotice, shareIdentity } from "@/lib/identity-sharing";
+import { copyText } from "@/lib/identity-sharing";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = "check-in" | "people" | "profile";
@@ -325,10 +326,8 @@ export function CheckInApp() {
   const [groups, setGroups] = useState<GroupsResponse | null>(null);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
-  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
   const [isIdentityActionPending, setIsIdentityActionPending] = useState(false);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const identityNoticeTimer = useRef<number | null>(null);
   const identityActionPending = useRef(false);
   const checkInSending = useRef(false);
   const clickerRunRef = useRef(clickerRun);
@@ -647,7 +646,6 @@ export function CheckInApp() {
       if (storyEffectTimer.current) clearTimeout(storyEffectTimer.current);
       if (tapFeedbackTimer.current) clearTimeout(tapFeedbackTimer.current);
       if (seriesBreakTimer.current) clearTimeout(seriesBreakTimer.current);
-      if (identityNoticeTimer.current) clearTimeout(identityNoticeTimer.current);
       if (clickerPersistTimer.current) clearTimeout(clickerPersistTimer.current);
       flushClickerProgress();
     };
@@ -1043,9 +1041,7 @@ export function CheckInApp() {
   const clickerLevel = getClickerLevel(clickerRun.lifetimeTaps);
   const clickerLevelProgress = getClickerLevelProgress(clickerRun.lifetimeTaps);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
-  const primaryStatus = !isOnline
-    ? "Офлайн · серия считается на устройстве"
-    : notice;
+  const primaryStatus = !isOnline ? "Офлайн · серия считается на устройстве" : null;
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
     activeTapCount >= 2 && activeTapCount <= 4
@@ -1082,25 +1078,15 @@ export function CheckInApp() {
     [buttonPalette],
   );
 
-  function showIdentityNotice(message: string) {
-    if (identityNoticeTimer.current) window.clearTimeout(identityNoticeTimer.current);
-    setIdentityNotice(message);
-    identityNoticeTimer.current = window.setTimeout(() => {
-      setIdentityNotice(null);
-      identityNoticeTimer.current = null;
-    }, 2_400);
-  }
-
   function handleIdentityAction() {
     if (!me || identityActionPending.current) return;
 
     identityActionPending.current = true;
     setIsIdentityActionPending(true);
-    setIdentityNotice(null);
 
-    void shareIdentity(me.user.publicId)
-      .then((result) => showIdentityNotice(getIdentitySharingNotice(result)))
-      .catch(() => showIdentityNotice("Не скопировано — зажмите ID"))
+    void copyText(me.user.publicId)
+      .then((copied) => notify(copied ? "ID скопирован" : "Не удалось скопировать ID. Зажмите его и выберите «Скопировать».", copied ? "success" : "error"))
+      .catch(() => notify("Не скопировано — зажмите ID", "error"))
       .finally(() => {
         identityActionPending.current = false;
         setIsIdentityActionPending(false);
@@ -1182,26 +1168,13 @@ export function CheckInApp() {
               required
               className={styles.input}
               aria-invalid={Boolean(nameError)}
-              aria-describedby={
-                [nameError ? "name-error" : "", systemError ? "system-error" : ""]
-                  .filter(Boolean)
-                  .join(" ") || undefined
-              }
             />
             <button className={styles.continueButton} disabled={isSending} type="submit">
               {isSending ? "Создаём…" : "Продолжить"}
             </button>
           </form>
-          {nameError ? (
-            <p id="name-error" className={styles.error} role="alert">
-              {nameError}
-            </p>
-          ) : null}
-          {systemError ? (
-            <p id="system-error" className={styles.error} role="alert">
-              {systemError}
-            </p>
-          ) : null}
+          <TransientNotice message={nameError} kind="error" />
+          <TransientNotice message={systemError} kind="error" />
           </AccountEntry>
           <RecoveryStarter context="onboarding" isOnline={isOnline} onRecovered={adoptMe} />
         </section>
@@ -1216,13 +1189,14 @@ export function CheckInApp() {
   return (
     <main className={styles.shell} data-active-view={activeView}>
       <AuthReturnNotice />
+      <TransientNotice message={notice} />
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>
           <button
             type="button"
             className={styles.identity}
-            aria-label="Скопировать ID и поделиться"
+            aria-label="Скопировать ID"
             aria-busy={isIdentityActionPending}
             disabled={isIdentityActionPending}
             onClick={handleIdentityAction}
@@ -1231,9 +1205,8 @@ export function CheckInApp() {
               <strong>{me?.user.displayName}</strong>
               <span>{me?.user.publicId}</span>
             </span>
-            {identityNotice === "ID скопирован" ? <Check size={16} /> : <Share2 size={16} />}
+            <Copy size={16} />
           </button>
-          {identityNotice ? <small role="status">{identityNotice}</small> : null}
         </div>
       </header>
 

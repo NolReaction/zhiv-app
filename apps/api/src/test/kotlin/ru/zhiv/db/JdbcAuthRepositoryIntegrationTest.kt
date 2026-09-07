@@ -166,6 +166,27 @@ class JdbcAuthRepositoryIntegrationTest {
         assertEquals(Json.parseToJsonElement(meA.bodyAsText()).jsonObject["user"], Json.parseToJsonElement(meB.bodyAsText()).jsonObject["user"])
         val replay = browser.get(callback) { header(HttpHeaders.Cookie, binder) }
         assertEquals("/?auth=auth_expired", replay.headers[HttpHeaders.Location]); assertEquals(2, verifications)
+
+        val sessionHash = tokens.hash(sessionB.substringAfter('='))
+        val sessionsBefore = auth.access(sessionHash).sessions.map { it.id }.toSet()
+        val revisit = browser.get(callback) { header(HttpHeaders.Cookie, "$binder; $sessionB") }
+        assertEquals(HttpStatusCode.Found, revisit.status)
+        assertEquals("/", revisit.headers[HttpHeaders.Location])
+        assertEquals("no-store", revisit.headers[HttpHeaders.CacheControl])
+        assertEquals("no-referrer", revisit.headers["Referrer-Policy"])
+        assertTrue(revisit.headers.getAll(HttpHeaders.SetCookie).isNullOrEmpty())
+        assertEquals(2, verifications)
+        assertEquals(sessionsBefore, auth.access(sessionHash).sessions.map { it.id }.toSet())
+
+        val wrongBinder = browser.get(callback) {
+            header(HttpHeaders.Cookie, "__Host-zhiv_login=${tokens.issue().raw}; $sessionB")
+        }
+        assertEquals("/?auth=auth_expired", wrongBinder.headers[HttpHeaders.Location])
+        assertEquals(2, verifications)
+        auth.revoke(sessionHash)
+        val revoked = browser.get(callback) { header(HttpHeaders.Cookie, "$binder; $sessionB") }
+        assertEquals("/?auth=auth_expired", revoked.headers[HttpHeaders.Location])
+        assertEquals(2, verifications)
     }
 
     @Test fun `email login discovers new profile only after OTP and creates it after name`() = testApplication {

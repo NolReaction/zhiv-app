@@ -511,7 +511,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /inviteDialog\.mode === "qr" && inviteShare\.url/);
   assert.match(people, /Ссылка и QR с localhost не откроются на другом устройстве/);
   assert.match(people, /aria-label=\{inviteShare\.url \? "Ссылка приглашения" : "Одноразовый код приглашения"\}/);
-  assert.match(people, /aria-describedby=\{inviteImportError[\s\S]*\? "invite-import-hint invite-import-error"[\s\S]*: "invite-import-hint"\}/);
+  assert.match(people, /aria-describedby="invite-import-hint"/);
   assert.match(people, /aria-invalid=\{Boolean\(inviteImportError\)\}/);
   assert.match(people, /inviteDialog\.mode === "qr" \? styles\.inviteLinkFieldCompact/);
   assert.match(peopleStyles, /\.inviteLinkField\s*\{[^}]*user-select:\s*text;/s);
@@ -540,8 +540,8 @@ test("uses a wide desktop dashboard without changing the mobile navigation contr
   assert.match(desktopPeople, /grid-template-columns:\s*minmax\(260px, 0\.72fr\) minmax\(420px, 1\.28fr\);/);
   assert.match(desktopPeople, /grid-template-columns:\s*minmax\(240px, 1fr\) repeat\(3, 112px\);/);
   assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
-  assert.match(desktopProfile, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/);
-  assert.match(desktopProfile, /\.recoveryCard\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
+  assert.match(desktopProfile, /grid-template-columns:\s*minmax\(280px, 0\.8fr\) minmax\(0, 1\.2fr\);/);
+  assert.doesNotMatch(profileStyles, /grid-row:/);
 
   const narrowQuery = "@media (max-width: 360px)";
   const narrowPeople = peopleStyles.slice(peopleStyles.indexOf(narrowQuery));
@@ -569,7 +569,7 @@ test("keeps invitations through browser login and retains the legacy PWA fallbac
 
   assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT,\s*handler\)/);
   assert.match(landing, /На этом адресе и в этом браузере активной сессии нет/);
-  assert.match(landing, /Продолжите в этом браузере и войдите через привязанный Telegram или почту/);
+  assert.match(landing, /Продолжите в этом браузере и войдите через привязанный ВК или почту/);
   assert.match(landing, /Приглашение сохранится до завершения входа/);
   assert.match(landing, /Прежний профиль ещё без привязки/);
   assert.match(landing, /copyText\(inviteCode\(pending\)\)/);

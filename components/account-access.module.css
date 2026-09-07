@@ -13,8 +13,6 @@
 .primary:focus-visible, .secondary:focus-visible, .input:focus-visible { outline: 2px solid #cce6b6; outline-offset: 3px; }
 .input { width: 100%; min-width: 0; font-size: 1rem; padding: .85rem; border-radius: .85rem; border: 1px solid #4b5742; background: #10150e; color: #edf4e5; }
 .otpSlot { width: 2.65rem; height: 3.25rem; background: #10150e; border-color: #637355; font-size: 1.3rem; color: #edf4e5; }
-.notice { padding: .8rem 1rem; background: #263720; border-radius: .9rem; color: #d9e9cd; font-size: 1rem; line-height: 1.5; }
-.error { color: #ffb9ae; font-size: 1rem; line-height: 1.5; }
 .method { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; overflow-wrap: anywhere; margin: 0; }
 .method span { color: #b7d3a4; }
 .sessions { list-style: none; padding: 0; margin: 0; display: grid; gap: .8rem; }

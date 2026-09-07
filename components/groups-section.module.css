@@ -301,12 +301,6 @@
   color: #dd8d87;
 }
 
-.error,
-.dialogError {
-  margin: 2px 0 0;
-  color: #ff9c98;
-  font-size: 12px;
-}
 
 .dialog,
 .confirmDialog {

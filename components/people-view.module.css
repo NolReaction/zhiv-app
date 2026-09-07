@@ -405,12 +405,6 @@
   text-align: center;
 }
 
-.dialogNotice {
-  margin: 0;
-  color: #b7d8a2;
-  font-size: 11px;
-  text-align: center;
-}
 
 .qrFrame {
   display: grid;
@@ -505,12 +499,6 @@
   text-align: center;
 }
 
-.pageError,
-.dialogError {
-  margin: 14px 2px 0;
-  color: #ff9c98;
-  font-size: 12px;
-}
 
 .dialog,
 .confirmDialog {
@@ -709,9 +697,6 @@ button:disabled {
   }
 
   .tabPanel,
-  .pageError {
-    grid-column: 1 / -1;
-  }
 
   .quickActions {
     width: min(760px, 100%);
@@ -874,4 +859,18 @@ button:disabled {
 .nicknameForm > input:focus-visible {
   outline: 2px solid #c7e7b5;
   outline-offset: 2px;
+}
+
+.peopleSearch {
+  display: flex; align-items: center; gap: 10px; min-width: 0; margin-bottom: 14px;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 16px;
+  background: rgba(255,255,255,.045); padding: 0 14px; color: #b7c2ad;
+}
+.peopleSearch:focus-within { outline: 2px solid #b7d8a2; outline-offset: 2px; }
+.peopleSearch input { flex: 1; width: 100%; min-width: 0; height: 48px; border: 0; outline: none; background: transparent; color: #f1f4ed; font: inherit; font-size: 16px; }
+.peopleSearch input::-webkit-search-cancel-button { display: none; }
+.peopleSearch button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: inherit; cursor: pointer; }
+.peopleSearch button:focus-visible { outline: 2px solid #f5e85b; }
+@media (min-width: 1100px) and (hover: hover) and (pointer: fine) {
+  .connectedList { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 }
