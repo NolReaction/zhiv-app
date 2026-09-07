@@ -81,6 +81,14 @@ jobs:
             echo "Authentication integration tests must run with PostgreSQL." >&2
             exit 1
           fi
+          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedHistoryIntegrationTest; do
+            lifecycle_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
+            test -s "${lifecycle_report}"
+            if grep --quiet '<skipped' "${lifecycle_report}"; then
+              echo "Account lifecycle and history tests must run with PostgreSQL." >&2
+              exit 1
+            fi
+          done
 
   compose:
     name: Production Compose smoke test
@@ -133,6 +141,18 @@ jobs:
           docker compose -f deploy/compose.yml up -d --no-deps --no-build --wait api
           bash scripts/reset-user-data.sh --confirm-delete-all-users
           curl --fail --silent --show-error --insecure https://localhost/readyz
+          status="$(curl --silent --show-error --insecure -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' https://localhost/api/v1/bootstrap)"
+          test "$status" = 410
+
+      - name: Verify a fresh database reset with typed confirmation
+        shell: bash
+        env:
+          VK_CLIENT_ID: "123"
+        run: |
+          python3 scripts/verify-reset-database-ci.py
+          curl --fail --silent --show-error --insecure https://localhost/healthz
+          curl --fail --silent --show-error --insecure https://localhost/readyz
+          curl --fail --silent --show-error --insecure https://localhost/ >/dev/null
           status="$(curl --silent --show-error --insecure -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' https://localhost/api/v1/bootstrap)"
           test "$status" = 410
 

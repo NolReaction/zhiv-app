@@ -209,15 +209,20 @@ const directInviteRedeemSchema: z.ZodType<DirectInviteRedeemResponse> = z.object
 const errorSchema: z.ZodType<ApiErrorResponse> = z.object({
   code: z.string(),
   message: z.string(),
+  requestId: z.string().uuid().nullish(),
 });
 
 export class ApiError extends Error {
+  readonly requestId: string | undefined;
   constructor(
     message: string,
     readonly status: number,
     readonly body?: ApiErrorResponse | CooldownResponse | DisplayNameCooldownResponse,
+    requestId?: string | null,
   ) {
-    super(message);
+    const safeRequestId = requestId && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId) ? requestId : undefined;
+    super(status >= 500 && safeRequestId ? `${message}. Код ошибки: ${safeRequestId}` : message);
+    this.requestId = safeRequestId;
   }
 }
 
@@ -267,7 +272,7 @@ async function request<T>(
         : response.status === 429
           ? "Слишком много запросов. Подождите немного и повторите."
           : "Не удалось связаться с сервером";
-    throw new ApiError(message, response.status, knownError);
+    throw new ApiError(message, response.status, knownError, response.headers.get("X-Request-ID"));
   }
 
   const parsed = schema.safeParse(body);

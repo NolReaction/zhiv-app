@@ -3,13 +3,13 @@ package ru.zhiv.auth
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
-open class AuthFailure(val code: String, override val message: String, val status: Int = 400) : RuntimeException(message)
+open class AuthFailure(val code: String, override val message: String, val status: Int = 400, cause: Throwable? = null) : RuntimeException(message, cause)
 
 // Internal signal; the public error stays AUTH_EXPIRED unless a valid app session exists.
 class ConsumedVkFlow : AuthFailure("AUTH_EXPIRED", "Запрос входа уже использован")
 
 @Serializable data class AuthOptions(val telegram: Boolean, val email: Boolean, val vk: Boolean = false)
-@Serializable data class AuthStartRequest(val intent: String = "login", val displayName: String? = null, val email: String? = null)
+@Serializable data class AuthStartRequest(val intent: String = "login", val displayName: String? = null, val email: String? = null, val action: String? = null, val role: String? = null)
 @Serializable data class AuthStartResponse(val flow: String, val url: String? = null)
 @Serializable data class EmailVerifyRequest(val flow: String, val code: String)
 @Serializable data class LoginMethod(val provider: String, val label: String)
@@ -23,6 +23,7 @@ data class LoginFlow(
     val tokenHash: ByteArray, val browserHash: ByteArray, val provider: String, val intent: String,
     val sessionHash: ByteArray?, val displayName: String?, val subject: String?,
     val verifier: String?, val nonce: String?, val codeHash: ByteArray?,
+    val action: String? = null, val role: String? = null,
 )
 
 data class VerifiedTelegram(val subject: String)
@@ -44,7 +45,7 @@ fun deviceLabel(userAgent: String): String {
     return listOf(browser, system).filter(String::isNotEmpty).joinToString(" · ")
 }
 
-interface AuthRepository {
+interface AuthRepository : AccountLifecycleRepository {
     suspend fun create(flow: LoginFlow)
     suspend fun takeTelegram(tokenHash: ByteArray, browserHash: ByteArray): LoginFlow
     suspend fun takeVk(tokenHash: ByteArray, browserHash: ByteArray): LoginFlow

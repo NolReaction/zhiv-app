@@ -35,6 +35,7 @@ import java.util.concurrent.CompletionStage
 import java.util.concurrent.Flow
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import ru.zhiv.observability.ProviderFailure
 
 fun formEncode(values: Map<String, String>): String = values.entries.joinToString("&") {
     URLEncoder.encode(it.key, Charsets.UTF_8) + "=" + URLEncoder.encode(it.value, Charsets.UTF_8)
@@ -69,9 +70,10 @@ class TelegramOidc(private val config: AuthConfig) : TelegramVerifier, AutoClose
             validator.verify(jwt, requireNotNull(flow.nonce))
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
             // Provider responses may contain credentials: never put them in logs or error bodies.
-            throw AuthFailure("TELEGRAM_LOGIN_FAILED", "Не удалось подтвердить вход через Telegram. Повторите вход.", 502)
+            throw AuthFailure("TELEGRAM_LOGIN_FAILED", "Не удалось подтвердить вход через Telegram. Повторите вход.", 502,
+                ProviderFailure("telegram", "verify", cause = failure))
         }
     }
     override fun close() { (keySource as? java.io.Closeable)?.close(); client.close() }
@@ -104,8 +106,9 @@ class SmtpLoginMailer(private val config: AuthConfig) : LoginMailer {
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            throw AuthFailure("EMAIL_DELIVERY_FAILED", "Письмо не удалось отправить. Попробуйте позже или выберите другой доступный способ входа.", 503)
+        } catch (failure: Exception) {
+            throw AuthFailure("EMAIL_DELIVERY_FAILED", "Письмо не удалось отправить. Попробуйте позже или выберите другой доступный способ входа.", 503,
+                ProviderFailure("email", "delivery", cause = failure))
         }
     }
 }

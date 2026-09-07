@@ -7,9 +7,11 @@ import { getAccountAccess, getAuthOptions, revokeSession, revokeOtherSessions, l
 import { ApiError } from "@/lib/check-in-api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { LoginForm } from "./account-entry";
+import { AccountLifecycle } from "./account-lifecycle";
+import type { MeResponse } from "@/lib/check-in-contract";
 import styles from "./account-access.module.css";
 
-export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; onSessionLost: () => void }) {
+export function AccountAccess({ isOnline, onSessionLost, onUpdated }: { isOnline: boolean; onSessionLost: () => void; onUpdated: (me: MeResponse) => void }) {
   const [access, setAccess] = useState<Access | null>(null);
   const [options, setOptions] = useState<AuthOptions | null>(null);
   const [error, setError] = useState("");
@@ -50,6 +52,7 @@ export function AccountAccess({ isOnline, onSessionLost }: { isOnline: boolean; 
       {access.methods.map(method => <p key={method.provider} className={styles.method}>{method.label} <span>Привязано</span></p>)}
       {options && <LoginForm link isOnline={isOnline} options={{ ...options, vk: options.vk && !access.methods.some(m => m.provider === "vk"), email: options.email && !access.methods.some(m => m.provider === "email") }} onDone={async () => { await refresh(); setNotice("Почта привязана к этому профилю."); }} />}
       {options && !options.vk && !options.email && <p className={styles.hint}>Новые способы входа пока недоступны. Сохраните резервный код ниже.</p>}
+      {options && <AccountLifecycle access={access} options={options} isOnline={isOnline} onDeleted={onSessionLost} onChanged={async me => { onUpdated(me); await refresh(); }} />}
       <h3><MonitorSmartphone size={20} aria-hidden /> Устройства</h3>
       <p className={styles.hint}>Отдельный сеанс для каждого браузера. Название устройства определяется приблизительно.</p>
       <ul className={styles.sessions}>{access.sessions.map(session => <li key={session.id}>

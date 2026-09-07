@@ -14,6 +14,13 @@ import javax.sql.DataSource
 
 class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
     private val publicIds = PublicIdGenerator()
+    private val accounts = JdbcAccountLifecycleRepository(source)
+    override suspend fun recordAccountProof(flow: LoginFlow, subject: String) = accounts.recordAccountProof(flow, subject)
+    override suspend fun lifecycle(sessionHash: ByteArray, browserHash: ByteArray) = accounts.lifecycle(sessionHash, browserHash)
+    override suspend fun changeEmail(sessionHash: ByteArray, browserHash: ByteArray, requestHash: ByteArray) = accounts.changeEmail(sessionHash, browserHash, requestHash)
+    override suspend fun previewMerge(sessionHash: ByteArray, browserHash: ByteArray, choices: MergeChoices, previewHash: ByteArray) = accounts.previewMerge(sessionHash, browserHash, choices, previewHash)
+    override suspend fun confirmMerge(sessionHash: ByteArray, browserHash: ByteArray, previewHash: ByteArray) = accounts.confirmMerge(sessionHash, browserHash, previewHash)
+    override suspend fun deleteAccount(sessionHash: ByteArray, browserHash: ByteArray, requestHash: ByteArray) = accounts.deleteAccount(sessionHash, browserHash, requestHash)
 
     private suspend fun <T> tx(action: (Connection) -> T): T = withContext(Dispatchers.IO) {
         source.connection.use { c ->
@@ -46,7 +53,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
     }
 
     override suspend fun create(flow: LoginFlow) = tx { c ->
-        if (flow.intent == "link") lockSessionUser(c, flow.sessionHash ?: unauthorized())
+        if (flow.intent in setOf("link", "account")) lockSessionUser(c, flow.sessionHash ?: unauthorized())
         // This durable mailbox budget is shared by all API processes and IP addresses.
         if (flow.provider == "email") {
             lock(c, "email-send:${flow.subject}")
@@ -60,15 +67,15 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
         }
         c.update("DELETE FROM account_login_flows WHERE token_hash IN (SELECT token_hash FROM account_login_flows WHERE created_at < clock_timestamp()-interval '1 day' LIMIT 100)")
         c.update("""
-            INSERT INTO account_login_flows(token_hash,browser_hash,provider,intent,session_hash,display_name,subject,verifier,nonce,code_hash)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """.trimIndent(), flow.tokenHash, flow.browserHash, flow.provider, flow.intent, flow.sessionHash, flow.displayName, flow.subject, flow.verifier, flow.nonce, flow.codeHash)
+            INSERT INTO account_login_flows(token_hash,browser_hash,provider,intent,session_hash,display_name,subject,verifier,nonce,code_hash,account_action,account_role)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """.trimIndent(), flow.tokenHash, flow.browserHash, flow.provider, flow.intent, flow.sessionHash, flow.displayName, flow.subject, flow.verifier, flow.nonce, flow.codeHash, flow.action, flow.role)
         Unit
     }
 
     private fun readFlow(c: Connection, hash: ByteArray, browser: ByteArray, provider: String): LoginFlow {
         val flow = c.query("SELECT * FROM account_login_flows WHERE token_hash=? AND consumed_at IS NULL AND expires_at>clock_timestamp() AND attempts<5 FOR UPDATE", hash) { r ->
-            LoginFlow(r.getBytes("token_hash"), r.getBytes("browser_hash"), r.getString("provider"), r.getString("intent"), r.getBytes("session_hash"), r.getString("display_name"), r.getString("subject"), r.getString("verifier"), r.getString("nonce"), r.getBytes("code_hash"))
+            LoginFlow(r.getBytes("token_hash"), r.getBytes("browser_hash"), r.getString("provider"), r.getString("intent"), r.getBytes("session_hash"), r.getString("display_name"), r.getString("subject"), r.getString("verifier"), r.getString("nonce"), r.getBytes("code_hash"), r.getString("account_action"), r.getString("account_role"))
         } ?: invalid()
         if (flow.provider != provider || !MessageDigest.isEqual(flow.browserHash, browser)) invalid()
         return flow
@@ -111,8 +118,17 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
 
     override suspend fun prepareRegistration(flow: LoginFlow, subject: String, ticketHash: ByteArray) = tx { c ->
         require(flow.intent == "login")
+        lock(c,"identity:${flow.provider}:$subject")
+        val owner=c.query("SELECT user_id FROM account_login_identities WHERE provider=? AND subject=?",flow.provider,subject){it.getObject(1,UUID::class.java)}
+        if(owner!=null)c.query("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL FOR UPDATE",owner){true} ?: invalid()
+        // Converting a verified login into a signup ticket must not reset proof age or jump over
+        // a retirement that happened after the initial AUTH_NOT_LINKED result.
+        val times=c.query("SELECT created_at,expires_at FROM account_login_flows WHERE token_hash=?",flow.tokenHash){it.getObject(1,OffsetDateTime::class.java) to it.getObject(2,OffsetDateTime::class.java)}
+            ?: c.query("SELECT clock_timestamp(),clock_timestamp()+interval '10 minutes'"){it.getObject(1,OffsetDateTime::class.java) to it.getObject(2,OffsetDateTime::class.java)}!!
+        if(c.query("SELECT ?::timestamptz>clock_timestamp()",times.second){it.getBoolean(1)}!=true)invalid()
+        if(c.query("SELECT 1 FROM account_identity_retirements WHERE provider=? AND subject_hash=sha256(convert_to(?, 'UTF8')) AND retired_at>=?",flow.provider,subject,times.first){true}==true)invalid()
         c.update("DELETE FROM account_registration_tickets WHERE token_hash IN (SELECT token_hash FROM account_registration_tickets WHERE expires_at<clock_timestamp() LIMIT 100)")
-        c.update("INSERT INTO account_registration_tickets(token_hash,browser_hash,provider,subject) VALUES (?,?,?,?)", ticketHash, flow.browserHash, flow.provider, subject)
+        c.update("INSERT INTO account_registration_tickets(token_hash,browser_hash,provider,subject,created_at,expires_at) VALUES (?,?,?,?,?,?)", ticketHash, flow.browserHash, flow.provider, subject,times.first,times.second)
         Unit
     }
 
@@ -135,8 +151,13 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
     }
 
     private fun finishInTransaction(c: Connection, flow: LoginFlow, subject: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID {
+        if (flow.intent == "account") throw AuthFailure("INVALID_REQUEST", "Подтверждение требует отдельной операции")
         // Serialize initial registrations and linking for this exact verified identity.
         lock(c, "identity:${flow.provider}:$subject")
+        fun requireUnchangedIdentity() {
+            if (c.query("SELECT 1 FROM account_identity_retirements r WHERE provider=? AND subject_hash=sha256(convert_to(?, 'UTF8')) AND retired_at >= COALESCE((SELECT created_at FROM account_login_flows WHERE token_hash=?), (SELECT created_at FROM account_registration_tickets WHERE token_hash=?), clock_timestamp())", flow.provider, subject, flow.tokenHash, flow.tokenHash) { true } == true) invalid()
+        }
+        requireUnchangedIdentity()
         val owner = c.query("SELECT user_id FROM account_login_identities WHERE provider=? AND subject=?", flow.provider, subject) { it.getObject(1, UUID::class.java) }
         val userId = if (flow.intent == "link") {
             val current = lockSessionUser(c, flow.sessionHash ?: unauthorized())
@@ -154,6 +175,11 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             }
             allocated ?: error("Could not allocate public ID")
         }
+        // A lifecycle transaction may have retired or moved this exact identity while this
+        // login waited for its owner's row lock. Never mint access from the pre-lock lookup.
+        requireUnchangedIdentity()
+        val freshOwner=c.query("SELECT user_id FROM account_login_identities WHERE provider=? AND subject=?",flow.provider,subject){it.getObject(1,UUID::class.java)}
+        if(freshOwner != owner) invalid()
         if (owner == null) {
             val inserted = c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES (?,?,?) ON CONFLICT DO NOTHING", flow.provider, subject, userId)
             if (inserted != 1) throw AuthFailure("AUTH_ALREADY_LINKED", "В профиле уже привязан другой аккаунт этого сервиса", 409)
@@ -163,6 +189,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             if (count >= 100) throw AuthFailure("AUTH_SESSION_LIMIT", "Закройте ненужные сеансы в разделе «Устройства»", 409)
             c.update("INSERT INTO app_sessions(user_id,token_hash,device_label,expires_at) VALUES (?,?,?,clock_timestamp()+(?*interval '1 day'))", userId, newSessionHash, label, sessionDays)
         }
+        c.update("UPDATE account_login_flows SET display_name=NULL WHERE token_hash=?",flow.tokenHash)
         return userId
     }
 

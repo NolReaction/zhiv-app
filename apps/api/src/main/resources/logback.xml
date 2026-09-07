@@ -1,7 +1,9 @@
 <configuration>
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%date{ISO8601} %-5level [%thread] %logger{24} - %msg %kvp%n</pattern>
+            <!-- RequestDiagnostics emits bounded source locations and cause classes itself.
+                 Never implicitly append raw exception messages, SQL or provider responses. -->
+            <pattern>%date{ISO8601} %-5level [%thread] %logger{24} - %msg %kvp%n%nopex</pattern>
         </encoder>
     </appender>
     <root level="INFO">

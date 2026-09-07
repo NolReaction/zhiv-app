@@ -18,6 +18,8 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.http.*
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.security.TokenCodec
+import java.security.MessageDigest
+import ru.zhiv.observability.recordAuthFailure
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -40,6 +42,11 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
     }
     fun ApplicationCall.registrationHash(): ByteArray? = request.cookies[registrationCookie]?.takeIf { Regex("^[A-Za-z0-9_-]{43}$").matches(it) }?.let(tokens::hash)
     suspend fun ApplicationCall.finish(flow: LoginFlow, subject: String): String {
+        if (flow.intent == "account") {
+            if (!MessageDigest.isEqual(flow.sessionHash, sessionHash())) throw AuthFailure("AUTH_EXPIRED", "Подтвердите профиль заново в этом сеансе")
+            repository.recordAccountProof(flow, subject)
+            return "account-proof"
+        }
         val token = tokens.issue()
         try {
             repository.finish(flow, subject, token.hash, app.sessionDays, deviceLabel(request.headers[HttpHeaders.UserAgent].orEmpty()))
@@ -59,11 +66,15 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
         noStore(); trusted()
         if ((provider == "telegram" && telegram == null) || (provider == "email" && mailer == null) || (provider == "vk" && vk == null)) throw AuthFailure("AUTH_UNAVAILABLE", "Этот способ входа пока недоступен", 503)
         val body = receive<AuthStartRequest>()
-        if (body.intent !in setOf("login", "register", "link")) throw AuthFailure("INVALID_REQUEST", "Некорректный запрос")
+        if (body.intent !in setOf("login", "register", "link", "account")) throw AuthFailure("INVALID_REQUEST", "Некорректный запрос")
         val currentHash = sessionCookie(app)?.let(tokens::hash)
         val currentUser = currentHash?.let { identities.findSessionUserId(it) }
-        if (body.intent == "link" && currentUser == null) throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
-        if (body.intent != "link" && currentUser != null) throw AuthFailure("AUTH_USE_LINK", "Привяжите способ входа в открытом профиле", 409)
+        if (body.intent in setOf("link", "account") && currentUser == null) throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
+        if (body.intent !in setOf("link", "account") && currentUser != null) throw AuthFailure("AUTH_USE_LINK", "Привяжите способ входа в открытом профиле", 409)
+        if (body.intent == "account" && (provider !in setOf("email", "vk") || body.action !in setOf("email", "merge", "delete") ||
+                !(body.role == "current" || (body.role == "other" && body.action == "merge") || (body.role == "new-email" && body.action == "email" && provider == "email")))) {
+            throw AuthFailure("INVALID_REQUEST", "Некорректное подтверждение профиля")
+        }
         val name = if (body.intent == "register") loginDisplayName(body.displayName) ?: throw AuthFailure("INVALID_DISPLAY_NAME", "Введите имя длиной до 50 символов") else null
         val email = if (provider == "email") normalizedEmail(body.email.orEmpty()) ?: throw AuthFailure("INVALID_EMAIL", "Введите адрес почты") else null
         val state = tokens.issue()
@@ -71,7 +82,7 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
         val browser = request.cookies[browserCookie]?.takeIf { Regex("^[A-Za-z0-9_-]{43}$").matches(it) } ?: tokens.issue().raw
         val verifier = tokens.issue().raw; val nonce = tokens.issue().raw
         val code = (100_000 + random.nextInt(900_000)).toString()
-        val flow = LoginFlow(state.hash, tokens.hash(browser), provider, body.intent, if (body.intent == "link") currentHash else null, name, email, if (provider != "email") verifier else null, if (provider == "telegram") nonce else null, if (provider == "email") codeDigest(config.codeSecret, state.raw, code) else null)
+        val flow = LoginFlow(state.hash, tokens.hash(browser), provider, body.intent, if (body.intent in setOf("link", "account")) currentHash else null, name, email, if (provider != "email") verifier else null, if (provider == "telegram") nonce else null, if (provider == "email") codeDigest(config.codeSecret, state.raw, code) else null, body.action.takeIf { body.intent == "account" }, body.role.takeIf { body.intent == "account" })
         repository.create(flow)
         if (email != null) requireNotNull(mailer).send(email, code)
         setBrowser(browser)
@@ -99,7 +110,7 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
                 if (!Regex("^[A-Za-z0-9_-]{43}$").matches(body.flow) || !Regex("^[0-9]{6}$").matches(body.code)) throw AuthFailure("INVALID_REQUEST", "Введите шестизначный код из письма")
                 val flow = repository.verifyEmail(tokens.hash(body.flow), call.browserHash(), codeDigest(config.codeSecret, body.flow, body.code))
                 val outcome = call.finish(flow, requireNotNull(flow.subject))
-                call.respond(AuthDone(if (outcome == "profile-required") outcome else "ok"))
+                call.respond(AuthDone(if (outcome in setOf("profile-required", "account-proof")) outcome else "ok"))
             }
             get("/registration") {
                 call.noStore()
@@ -145,7 +156,7 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
                         }
                     }
                     // Only fixed application error codes, never callback URLs or provider payloads.
-                    call.application.log.info("vk_callback_failed reason={}", failure.code)
+                    call.recordAuthFailure(failure)
                     failure.code.lowercase(java.util.Locale.ROOT)
                 }
                 call.respondRedirect("/?auth=$outcome")
@@ -161,12 +172,46 @@ fun Route.authRoutes(repository: AuthRepository, identities: IdentityRepository,
                     if (code.isBlank() || code.length > 4096) throw AuthFailure("TELEGRAM_LOGIN_FAILED", "Вход отменён")
                     val identity = telegram.verify(code, flow)
                     call.finish(flow, identity.subject)
-                } catch (failure: AuthFailure) { failure.code.lowercase(java.util.Locale.ROOT) }
+                } catch (failure: AuthFailure) { call.recordAuthFailure(failure); failure.code.lowercase(java.util.Locale.ROOT) }
                 call.respondRedirect("/?auth=$outcome")
             }
         }
         rateLimit(RateLimitName("profile-read")) {
             get("/account") { call.noStore(); call.respond(repository.access(call.sessionHash())) }
+            get("/account/lifecycle") {
+                call.noStore()
+                val browser = call.request.cookies[browserCookie]
+                if (browser == null) { repository.access(call.sessionHash()); call.respond(AccountLifecycleState()) }
+                else call.respond(repository.lifecycle(call.sessionHash(), call.browserHash()))
+            }
+            post("/account/email") {
+                call.noStore(); call.trusted()
+                val body = call.receive<AccountConfirmRequest>()
+                if (!body.confirm) throw AuthFailure("CONFIRM_REQUIRED", "Подтвердите смену почты")
+                val key = parseCanonicalUuid(body.idempotencyKey) ?: throw AuthFailure("INVALID_REQUEST", "Некорректный ключ операции")
+                repository.changeEmail(call.sessionHash(), call.browserHash(), tokens.hash(key.toString())); call.respond(AuthDone())
+            }
+            post("/account/merge/preview") {
+                call.noStore(); call.trusted()
+                val choices = call.receive<MergeChoices>(); val preview = tokens.issue()
+                call.respond(repository.previewMerge(call.sessionHash(), call.browserHash(), choices, preview.hash).copy(preview = preview.raw))
+            }
+            post("/account/merge/confirm") {
+                call.noStore(); call.trusted()
+                val body = call.receive<MergeConfirmRequest>()
+                if (!body.confirm) throw AuthFailure("CONFIRM_REQUIRED", "Подтвердите объединение профилей")
+                if (!Regex("^[A-Za-z0-9_-]{43}$").matches(body.preview)) throw AuthFailure("ACCOUNT_PREVIEW_EXPIRED", "Откройте проверку объединения заново", 409)
+                repository.confirmMerge(call.sessionHash(), call.browserHash(), tokens.hash(body.preview)); call.respond(AuthDone())
+            }
+            delete("/account/profile") {
+                call.noStore(); call.trusted()
+                val body = call.receive<AccountConfirmRequest>()
+                if (!body.confirm) throw AuthFailure("CONFIRM_REQUIRED", "Подтвердите удаление профиля")
+                val key = parseCanonicalUuid(body.idempotencyKey) ?: throw AuthFailure("INVALID_REQUEST", "Некорректный ключ операции")
+                repository.deleteAccount(call.sessionHash(), call.browserHash(), tokens.hash(key.toString()))
+                call.response.headers.append(HttpHeaders.SetCookie, "${app.cookieName}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax" + if (app.production) "; Secure" else "")
+                call.setRegistration(""); call.respond(AuthDone())
+            }
             delete("/sessions/{id}") {
                 call.noStore(); call.trusted()
                 val id = parseCanonicalUuid(call.parameters["id"]) ?: throw AuthFailure("INVALID_REQUEST", "Некорректный сеанс")

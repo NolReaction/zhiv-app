@@ -1,0 +1,6 @@
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin: 12px 0; color: #a7ab9e; font-size: 14px; line-height: 1.4; }
+.bar[data-stale="true"] { color: #e7bf8d; }
+.bar > span { min-width: 0; overflow-wrap: anywhere; }
+.bar button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; min-height: 44px; border: 0; border-radius: 12px; padding: 8px; color: #c1d5b4; background: transparent; cursor: pointer; }
+.bar button:disabled { opacity: .5; cursor: default; }
+.bar button:focus-visible { outline: 2px solid #f5e85b; outline-offset: 2px; }

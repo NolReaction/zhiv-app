@@ -7,7 +7,6 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.PayloadTooLargeException
-import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.defaultheaders.DefaultHeaders
 import io.ktor.server.plugins.forwardedheaders.ForwardedHeaders
@@ -17,13 +16,11 @@ import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.ContentTransformationException
-import io.ktor.server.request.httpMethod
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
-import org.slf4j.event.Level
 import java.sql.SQLException
 import kotlin.time.Duration.Companion.hours
 import ru.zhiv.checkins.CheckInRepository
@@ -51,12 +48,14 @@ import ru.zhiv.recovery.codeRecoveryRoutes
 import ru.zhiv.game.gameEventRoutes
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
+import ru.zhiv.observability.RequestDiagnostics
+import ru.zhiv.observability.recordApiFailure
+import ru.zhiv.observability.recordAuthFailure
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.auth.*
 import ru.zhiv.db.JdbcAuthRepository
-import io.ktor.server.application.log
 
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
@@ -110,16 +109,10 @@ fun Application.installZhivApi(
     mailer: LoginMailer? = null,
     vk: VkVerifier? = null,
 ) {
+    install(RequestDiagnostics)
     install(DefaultHeaders)
     install(ForwardedHeaders)
     install(XForwardedHeaders)
-    install(CallLogging) {
-        level = Level.INFO
-        disableDefaultColors()
-        format { call ->
-            "http_request method=${call.request.httpMethod.value} status=${call.response.status()?.value ?: 0}"
-        }
-    }
     install(RateLimit) {
         // Bound authentication lookups before the narrower account-specific buckets.
         global {
@@ -167,6 +160,7 @@ fun Application.installZhivApi(
     }
     install(StatusPages) {
         exception<AuthFailure> { call, failure ->
+            call.recordAuthFailure(failure, responseStatus = failure.status)
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respond(HttpStatusCode.fromValue(failure.status), ApiErrorResponse(failure.code, failure.message))
         }
@@ -184,12 +178,13 @@ fun Application.installZhivApi(
         }
         exception<SQLException> { call, cause ->
             if (cause.sqlState in setOf("40001", "40P01", "55P03", "57014")) {
+                call.recordApiFailure("DATABASE_BUSY", 503, cause)
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
                     ApiErrorResponse("DATABASE_BUSY", "Сервер занят, повторите запрос"),
                 )
             } else {
-                this@installZhivApi.log.error("Database error", cause)
+                call.recordApiFailure("INTERNAL_ERROR", 500, cause)
                 call.respond(
                     HttpStatusCode.InternalServerError,
                     ApiErrorResponse("INTERNAL_ERROR", "Внутренняя ошибка сервера"),
@@ -197,7 +192,7 @@ fun Application.installZhivApi(
             }
         }
         exception<Throwable> { call, cause ->
-            this@installZhivApi.log.error("Unhandled API error", cause)
+            call.recordApiFailure("INTERNAL_ERROR", 500, cause)
             call.respond(
                 HttpStatusCode.InternalServerError,
                 ApiErrorResponse("INTERNAL_ERROR", "Внутренняя ошибка сервера"),

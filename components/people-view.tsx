@@ -1,6 +1,7 @@
 "use client";
 
 import { TransientNotice } from "./app-notifications";
+import { DataFreshness } from "./data-freshness";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMemo, useReducer, useRef, useState } from "react";
 import { Check, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
@@ -80,6 +81,10 @@ type PeopleViewProps = {
   loading: boolean;
   groupsLoading: boolean;
   nowMs: number;
+  freshnessNowMs?: number;
+  isOnline?: boolean;
+  updatedAt?: number | null;
+  groupsUpdatedAt?: number | null;
   onRefresh: () => Promise<void>;
   onGroupsRefresh: () => Promise<void>;
   onSessionLost: () => void;
@@ -140,6 +145,10 @@ export function PeopleView({
   loading,
   groupsLoading,
   nowMs,
+  freshnessNowMs = nowMs,
+  isOnline = true,
+  updatedAt = null,
+  groupsUpdatedAt = null,
   onRefresh,
   onGroupsRefresh,
   onSessionLost,
@@ -451,6 +460,15 @@ export function PeopleView({
           Группы {groups?.incomingInvites.length ? <span>{groups.incomingInvites.length}</span> : null}
         </button>
       </div>
+
+      <DataFreshness
+        updatedAt={activeSection === "people" ? updatedAt : groupsUpdatedAt}
+        nowMs={freshnessNowMs}
+        isOnline={isOnline}
+        failed={Boolean(activeSection === "people" ? error : groupsError)}
+        loading={activeSection === "people" ? loading : groupsLoading}
+        onRefresh={activeSection === "people" ? onRefresh : onGroupsRefresh}
+      />
 
       {activeSection === "people" ? (
         <div

@@ -147,6 +147,8 @@
 }
 
 .shell {
+  --shell-left-inset: max(20px, env(safe-area-inset-left));
+  --shell-right-inset: max(20px, env(safe-area-inset-right));
   display: grid;
   height: 100vh;
   height: 100dvh;
@@ -239,6 +241,10 @@
   overflow-x: hidden;
   overscroll-behavior-y: contain;
   padding: 24px 0;
+  /* Let the circular glow reach the viewport, rather than a padded rectangle. */
+  width: calc(100% + var(--shell-left-inset) + var(--shell-right-inset));
+  margin-inline: calc(-1 * var(--shell-left-inset)) calc(-1 * var(--shell-right-inset));
+  padding-inline: var(--shell-left-inset) var(--shell-right-inset);
 }
 
 .checkInCluster {
@@ -785,6 +791,24 @@
   line-height: 1.35;
 }
 
+.deliveryStatus {
+  display: flex;
+  min-height: 36px;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+  color: #b7d8a2;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.deliveryStatus[data-pending="true"] { color: #e7bf8d; }
+.deliveryStatus button { min-height: 36px; border: 1px solid currentColor; border-radius: 10px; padding: 5px 10px; background: transparent; color: inherit; cursor: pointer; }
+.deliveryStatus button:disabled { opacity: .5; cursor: default; }
+.deliveryStatus button:focus-visible { outline: 2px solid #f5e85b; outline-offset: 2px; }
+
 .storyReward {
   display: grid;
   width: min(300px, 78vw);
@@ -1114,6 +1138,8 @@
 
 @media (min-width: 960px) and (hover: hover) and (pointer: fine) {
   .shell {
+    --shell-left-inset: max(36px, env(safe-area-inset-left));
+    --shell-right-inset: max(36px, env(safe-area-inset-right));
     width: min(100%, 1120px);
     padding-right: max(36px, env(safe-area-inset-right));
     padding-left: max(36px, env(safe-area-inset-left));
@@ -1159,7 +1185,7 @@
     gap: 8px;
     overflow: hidden;
     overscroll-behavior: none;
-    padding: 6px 0 var(--floating-nav-clearance);
+    padding: 6px var(--shell-right-inset) var(--floating-nav-clearance) var(--shell-left-inset);
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
   }

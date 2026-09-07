@@ -306,6 +306,7 @@ export function CheckInApp() {
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [clientNowMs, setClientNowMs] = useState(() => Date.now());
   const [isSending, setIsSending] = useState(false);
+  const [checkInUnconfirmed, setCheckInUnconfirmed] = useState(false);
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -323,9 +324,16 @@ export function CheckInApp() {
   const [people, setPeople] = useState<PeopleResponse | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleError, setPeopleError] = useState<string | null>(null);
+  const [peopleUpdatedAt, setPeopleUpdatedAt] = useState<number | null>(null);
   const [groups, setGroups] = useState<GroupsResponse | null>(null);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [groupsUpdatedAt, setGroupsUpdatedAt] = useState<number | null>(null);
+  const identityEpoch = useRef(0);
+  const accountReturn = useRef(false);
+  const peopleRequest = useRef(0);
+  const groupsRequest = useRef(0);
+  const selfRequest = useRef(0);
   const [isIdentityActionPending, setIsIdentityActionPending] = useState(false);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityActionPending = useRef(false);
@@ -442,6 +450,7 @@ export function CheckInApp() {
 
   const clearPendingCheckIn = useCallback(() => {
     pendingCheckIn.current = null;
+    setCheckInUnconfirmed(false);
     removePending(PENDING_CHECK_IN_STORAGE_KEY);
     removePending(LEGACY_PENDING_CHECK_IN_STORAGE_KEY);
   }, []);
@@ -467,6 +476,9 @@ export function CheckInApp() {
   ]);
 
   const loseSession = useCallback(() => {
+    identityEpoch.current += 1;
+    setPeopleUpdatedAt(null);
+    setGroupsUpdatedAt(null);
     if (clickerPersistTimer.current) {
       clearTimeout(clickerPersistTimer.current);
       clickerPersistTimer.current = null;
@@ -479,6 +491,7 @@ export function CheckInApp() {
     setPeople(null);
     setGroups(null);
     setActiveView("check-in");
+    accountReturn.current = false;
     setScreen("session-lost");
   }, [
     clearPendingBootstrap,
@@ -488,20 +501,30 @@ export function CheckInApp() {
   ]);
 
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
+    // A mutation response supersedes a background read that started before it.
+    selfRequest.current += 1;
+    const pending = pendingCheckIn.current;
+    if (pending && pending.ownerPublicId === identity.user.publicId
+      && identity.lastCheckInAt !== pending.previousLastCheckInAt) clearPendingCheckIn();
     setMe(identity);
     setLastCheckInAt(identity.lastCheckInAt);
     setStreak(identity.streak);
     setClockOffsetMs(serverOffset(identity.serverTime));
     setClientNowMs(Date.now());
-  }, []);
+  }, [clearPendingCheckIn]);
 
   const refreshPeople = useCallback(async (signal?: AbortSignal) => {
+    const epoch = identityEpoch.current;
+    const request = ++peopleRequest.current;
     setPeopleLoading(true);
     try {
       const response = await getPeople(signal);
+      if (epoch !== identityEpoch.current || request !== peopleRequest.current) return;
       setPeople(response);
+      setPeopleUpdatedAt(Date.now());
       setPeopleError(null);
     } catch (error) {
+      if (epoch !== identityEpoch.current || request !== peopleRequest.current) return;
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof ApiError && error.status === 401) {
         loseSession();
@@ -509,17 +532,22 @@ export function CheckInApp() {
       }
       setPeopleError(error instanceof Error ? error.message : "Не удалось загрузить личные связи");
     } finally {
-      setPeopleLoading(false);
+      if (epoch === identityEpoch.current && request === peopleRequest.current) setPeopleLoading(false);
     }
   }, [loseSession]);
 
   const refreshGroups = useCallback(async (signal?: AbortSignal) => {
+    const epoch = identityEpoch.current;
+    const request = ++groupsRequest.current;
     setGroupsLoading(true);
     try {
       const response = await getGroups(signal);
+      if (epoch !== identityEpoch.current || request !== groupsRequest.current) return;
       setGroups(response);
+      setGroupsUpdatedAt(Date.now());
       setGroupsError(null);
     } catch (error) {
+      if (epoch !== identityEpoch.current || request !== groupsRequest.current) return;
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof ApiError && error.status === 401) {
         loseSession();
@@ -527,11 +555,16 @@ export function CheckInApp() {
       }
       setGroupsError(error instanceof Error ? error.message : "Не удалось загрузить группы");
     } finally {
-      setGroupsLoading(false);
+      if (epoch === identityEpoch.current && request === groupsRequest.current) setGroupsLoading(false);
     }
   }, [loseSession]);
 
   const adoptMe = useCallback((identity: MeResponse) => {
+    identityEpoch.current += 1;
+    setPeopleUpdatedAt(null);
+    setGroupsUpdatedAt(null);
+    setPeopleError(null);
+    setGroupsError(null);
     const unresolvedCheckIn = pendingCheckIn.current;
     const isAccountSwitch = Boolean(
       clickerOwnerPublicId.current &&
@@ -551,6 +584,7 @@ export function CheckInApp() {
     }
     clearPendingBootstrap();
     resetTransientCheckIn();
+    setCheckInUnconfirmed(Boolean(pendingCheckIn.current));
     setPeople(null);
     setGroups(null);
     clickerOwnerPublicId.current = identity.user.publicId;
@@ -566,7 +600,8 @@ export function CheckInApp() {
     syncMeSnapshot(identity);
     setNameError(null);
     setSystemError(null);
-    setActiveView("check-in");
+    setActiveView(accountReturn.current ? "profile" : "check-in");
+    accountReturn.current = false;
     setScreen("home");
   }, [
     clearPendingBootstrap,
@@ -579,14 +614,18 @@ export function CheckInApp() {
   ]);
 
   const refreshSelf = useCallback(async () => {
+    const epoch = identityEpoch.current;
+    const request = ++selfRequest.current;
     try {
       const identity = await getMe();
+      if (epoch !== identityEpoch.current || request !== selfRequest.current) return;
       if (!identity) {
         loseSession();
         return;
       }
       syncMeSnapshot(identity);
     } catch (error) {
+      if (epoch !== identityEpoch.current || request !== selfRequest.current) return;
       if (error instanceof ApiError && error.status === 401) loseSession();
     }
   }, [loseSession, syncMeSnapshot]);
@@ -594,6 +633,10 @@ export function CheckInApp() {
   useEffect(() => {
     let active = true;
 
+    accountReturn.current = new URL(window.location.href).searchParams.get("auth") === "account-proof";
+    try {
+      accountReturn.current ||= ["email", "merge", "delete"].includes(window.sessionStorage.getItem("zhiv:account-action") ?? "");
+    } catch { /* A successful callback still opens the profile without browser storage. */ }
     const restoredBootstrap = readPending(
       PENDING_BOOTSTRAP_STORAGE_KEY,
       isPendingBootstrap,
@@ -931,6 +974,19 @@ export function CheckInApp() {
     }
     if (checkInSending.current) return;
 
+    await sendCheckIn();
+  }
+
+  async function sendCheckIn(retryOnly = false) {
+    if (checkInSending.current || !navigator.onLine) return;
+    if (retryOnly && (!pendingCheckIn.current || pendingCheckIn.current.expiresAt <= Date.now())) {
+      clearPendingCheckIn();
+      await refreshSelf();
+      setNotice("Время проверки истекло. Если нужна новая отметка, нажмите «Я ЖИВОЙ».");
+      return;
+    }
+    const epoch = identityEpoch.current;
+
     checkInSending.current = true;
     setIsSending(true);
     try {
@@ -953,6 +1009,8 @@ export function CheckInApp() {
       }
 
       const response = await createCheckIn(pendingCheckIn.current.idempotencyKey);
+      if (epoch !== identityEpoch.current) return;
+      selfRequest.current += 1;
       clearPendingCheckIn();
       setLastCheckInAt(response.checkedAt);
       setNextAllowedAt(response.nextAllowedAt);
@@ -968,12 +1026,14 @@ export function CheckInApp() {
         serverTime: response.serverTime,
       } : current);
     } catch (error) {
+      if (epoch !== identityEpoch.current) return;
       if (
         error instanceof ApiError &&
         error.status === 429 &&
         isCheckInCooldownResponse(error.body)
       ) {
         const cooldown = error.body;
+        selfRequest.current += 1;
         clearPendingCheckIn();
         setLastCheckInAt(cooldown.checkedAt);
         setNextAllowedAt(cooldown.nextAllowedAt);
@@ -989,6 +1049,7 @@ export function CheckInApp() {
       } else if (error instanceof ApiError && error.status === 401) {
         loseSession();
       } else {
+        setCheckInUnconfirmed(true);
         setNotice("Связь оборвалась · нажмите ещё раз для проверки");
       }
     } finally {
@@ -1369,6 +1430,14 @@ export function CheckInApp() {
 
           <div className={styles.statusBlock}>
             <p className={styles.serverFact}>{serverStatus}</p>
+            <div className={styles.deliveryStatus} role="status" aria-live="polite" data-pending={checkInUnconfirmed}>
+              {isSending ? "Подтверждаем отметку…" : checkInUnconfirmed ? <>
+                <span>Не удалось подтвердить отправку</span>
+                <button type="button" disabled={!isOnline} onPointerDown={event => event.stopPropagation()}
+                  onClick={() => void sendCheckIn(true)}>Проверить</button>
+              </> : !isOnline ? "Нет интернета · новая отметка не отправится" : lastCheckInAt ?
+                `Подтверждено сервером · ${new Date(lastCheckInAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "Нажмите кнопку, чтобы отправить первую отметку"}
+            </div>
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
             {primaryStatus ? <p
               className={styles.status}
@@ -1392,6 +1461,10 @@ export function CheckInApp() {
           loading={peopleLoading}
           groupsLoading={groupsLoading}
           nowMs={adjustedNow}
+          freshnessNowMs={clientNowMs}
+          isOnline={isOnline}
+          updatedAt={peopleUpdatedAt}
+          groupsUpdatedAt={groupsUpdatedAt}
           onRefresh={() => refreshPeople()}
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}

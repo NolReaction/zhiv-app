@@ -6,14 +6,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.slf4j.LoggerFactory
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.net.http.HttpTimeoutException
 import java.security.MessageDigest
 import java.time.Duration
+import ru.zhiv.observability.ProviderFailure
 
 fun interface VkVerifier {
     suspend fun verify(code: String, deviceId: String, state: String, flow: LoginFlow): VerifiedVk
@@ -24,7 +23,6 @@ internal fun interface VkTransport { fun post(uri: URI, form: String): ByteArray
 /** VK ID Authorization Code + PKCE, following VKCOM/vkid-web-sdk's exchange and userInfo. */
 class VkId internal constructor(private val config: AuthConfig, private val transport: VkTransport? = null) : VkVerifier, AutoCloseable {
     private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build()
-    private val logger = LoggerFactory.getLogger(VkId::class.java)
     private class HttpFailure(val status: Int) : RuntimeException()
 
     private fun post(uri: URI, values: Map<String, String>): ByteArray {
@@ -70,9 +68,8 @@ class VkId internal constructor(private val config: AuthConfig, private val tran
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            val kind = when (failure) { is HttpTimeoutException -> "timeout"; is HttpFailure -> "http"; is java.io.IOException -> "network"; else -> "invalid_response" }
-            logger.warn("vk_login_failed stage={} kind={} http_status={}", stage, kind, (failure as? HttpFailure)?.status ?: 0)
-            throw AuthFailure("VK_LOGIN_FAILED", "Не удалось подтвердить вход через ВК. Попробуйте ещё раз.", 502)
+            throw AuthFailure("VK_LOGIN_FAILED", "Не удалось подтвердить вход через ВК. Попробуйте ещё раз.", 502,
+                ProviderFailure("vk", stage, (failure as? HttpFailure)?.status, failure))
         }
     }
 

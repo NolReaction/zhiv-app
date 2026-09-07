@@ -263,7 +263,7 @@ export function ProfileView({
             </div>
           </form>
 
-          <AccountAccess isOnline={isOnline} onSessionLost={onSessionLost}/>
+          <AccountAccess isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated}/>
           <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost}/>
           <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered}/>
 

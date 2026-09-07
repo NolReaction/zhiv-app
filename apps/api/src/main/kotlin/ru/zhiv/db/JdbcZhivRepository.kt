@@ -122,11 +122,11 @@ class JdbcZhivRepository(
         WITH request_clock AS MATERIALIZED (
             SELECT clock_timestamp() AS server_time
         )
-        SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+        SELECT u.id, u.public_id, u.display_name, history.last_check_in_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
-               (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
+               history.check_in_count,
                streak.current_days, streak.longest_days, streak.is_active,
                streak.renew_by, u.display_name_changed_at,
                CASE
@@ -137,6 +137,7 @@ class JdbcZhivRepository(
         FROM identity_bootstrap_keys b
         JOIN app_users u ON u.id = b.user_id
         CROSS JOIN request_clock clock
+        CROSS JOIN LATERAL account_check_in_summary(u.id) history
         CROSS JOIN LATERAL rolling_check_in_streak(u.id, clock.server_time) streak
         WHERE b.idempotency_hash = ?
         FOR UPDATE OF b, u
@@ -233,11 +234,11 @@ class JdbcZhivRepository(
                     WITH request_clock AS MATERIALIZED (
                         SELECT clock_timestamp() AS server_time
                     )
-                    SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+                    SELECT u.id, u.public_id, u.display_name, history.last_check_in_at,
                            CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
-                           (SELECT count(*) FROM check_ins e WHERE e.user_id = u.id) AS check_in_count,
+                           history.check_in_count,
                            streak.current_days, streak.longest_days, streak.is_active,
                            streak.renew_by, u.display_name_changed_at,
                            CASE
@@ -248,6 +249,7 @@ class JdbcZhivRepository(
                     FROM app_sessions s
                     JOIN app_users u ON u.id = s.user_id
                     CROSS JOIN request_clock clock
+                    CROSS JOIN LATERAL account_check_in_summary(u.id) history
                     CROSS JOIN LATERAL rolling_check_in_streak(u.id, clock.server_time) streak
                     WHERE s.token_hash = ?
                       AND s.revoked_at IS NULL
@@ -507,11 +509,12 @@ class JdbcZhivRepository(
             SELECT user_account.display_name,
                    user_account.display_name_changed_at,
                    user_account.display_name_change_key,
-                   user_account.last_check_in_at,
+                   history.last_check_in_at,
                    user_account.timezone_id,
                    session.expires_at
               FROM app_sessions session
               JOIN app_users user_account ON user_account.id = session.user_id
+              CROSS JOIN LATERAL account_check_in_summary(user_account.id) history
              WHERE session.id = ?
                AND session.user_id = ?
                AND session.token_hash = ?
@@ -554,17 +557,18 @@ class JdbcZhivRepository(
         idempotencyKey: UUID,
         serverTime: OffsetDateTime,
     ): CheckInResult.Accepted? {
+        // Idempotency remains scoped to the event's original actor. Merged accounts
+        // may have independently used the same key; only the owner's totals combine.
         val replay = connection.prepareStatement(
             """
             SELECT event.id, event.checked_at, event.next_allowed_at,
                    (
                        SELECT count(*)
                          FROM check_ins previous
-                        WHERE previous.user_id = event.user_id
-                          AND (
-                              previous.checked_at < event.checked_at
-                              OR (previous.checked_at = event.checked_at AND previous.id <= event.id)
-                          )
+                         JOIN account_history_user_ids(event.user_id) history_user
+                           ON history_user.user_id = previous.user_id
+                        WHERE previous.checked_at < event.checked_at
+                           OR (previous.checked_at = event.checked_at AND previous.id <= event.id)
                    ) AS check_in_count
               FROM check_ins event
              WHERE event.user_id = ? AND event.idempotency_key = ?
@@ -606,11 +610,11 @@ class JdbcZhivRepository(
         WITH request_clock AS MATERIALIZED (
             SELECT CAST(? AS timestamptz) AS server_time
         )
-        SELECT u.id, u.public_id, u.display_name, u.last_check_in_at,
+        SELECT u.id, u.public_id, u.display_name, history.last_check_in_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
-               (SELECT count(*) FROM check_ins event WHERE event.user_id = u.id) AS check_in_count,
+               history.check_in_count,
                streak.current_days, streak.longest_days, streak.is_active,
                streak.renew_by, u.display_name_changed_at,
                CASE
@@ -620,6 +624,7 @@ class JdbcZhivRepository(
                clock.server_time
           FROM request_clock clock
           JOIN app_users u ON u.id = ?
+          CROSS JOIN LATERAL account_check_in_summary(u.id) history
           CROSS JOIN LATERAL rolling_check_in_streak(u.id, clock.server_time) streak
          WHERE u.deleted_at IS NULL
         """.trimIndent(),
@@ -647,7 +652,7 @@ class JdbcZhivRepository(
     }
 
     private fun countCheckIns(connection: Connection, userId: UUID): Long =
-        connection.prepareStatement("SELECT count(*) FROM check_ins WHERE user_id = ?").use { statement ->
+        connection.prepareStatement("SELECT check_in_count FROM account_check_in_summary(?)").use { statement ->
             statement.setObject(1, userId)
             statement.executeQuery().use { result ->
                 check(result.next())

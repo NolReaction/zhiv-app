@@ -25,3 +25,18 @@
 .textButton:disabled { opacity: .55; cursor: default; }
 .textButton:focus-visible { outline: 2px solid #cce6b6; outline-offset: 3px; }
 .vkMark { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; font-size: .875rem; font-weight: 800; letter-spacing: -.07em; }
+.accountActions { display: grid; gap: .65rem; padding-block: .5rem; }
+.lifecycleDialog { max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.lifecycleDialog > * { min-width: 0; }
+.stepLabel { margin: .4rem 0 0; font-weight: 650; }
+.choiceLabel { display: grid; gap: .5rem; line-height: 1.5; }
+.mergeSummary { padding: 1rem; border: 1px solid #49573d; border-radius: 1rem; background: #11190d; line-height: 1.6; overflow-wrap: anywhere; }
+.mergeSummary p { margin: 0 0 .4rem; }
+.mergeSummary ul { margin: .6rem 0 0; padding-inline-start: 1.25rem; }
+.mergeSummary li + li { margin-top: .5rem; }
+.confirmLabel { display: flex; align-items: flex-start; gap: .8rem; min-height: 44px; line-height: 1.5; cursor: pointer; padding-block: .5rem; }
+.confirmLabel input { flex: 0 0 auto; width: 1.25rem; height: 1.25rem; margin-top: .15rem; accent-color: #bed7a9; }
+.confirmLabel input:focus-visible { outline: 2px solid #cce6b6; outline-offset: 3px; }
+.danger { color: #ffb4ae; }
+.dangerButton { background: #ffc0b8; color: #40110c; border-color: #ffb4ae; }
+@media (max-width: 380px) { .lifecycleDialog { padding: 1rem; } .lifecycleDialog .otpSlot { width: 2.25rem; } }

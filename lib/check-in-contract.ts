@@ -66,6 +66,7 @@ export type DisplayNameCooldownResponse = {
 export type ApiErrorResponse = {
   code: string;
   message: string;
+  requestId?: string | null;
 };
 
 export type SharingMode = "OFF" | "LATEST_ONLY";
