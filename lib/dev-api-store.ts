@@ -1,5 +1,6 @@
 import type {
   CheckInResponse,
+  CheckInCalendarResponse,
   FavoriteResponse,
   NicknameResponse,
   UserStatus,
@@ -608,6 +609,24 @@ export function createDevIdentity(
 export function getDevIdentity(token: string | undefined): MeResponse | null {
   const user = sessionUser(token);
   return user ? asMe(user) : null;
+}
+
+export function getDevCheckInCalendar(token: string | undefined, month: string | null, now = new Date()): CheckInCalendarResponse | null {
+  const user = sessionUser(token);
+  if (!user) return null;
+  const today = formatLocalDate(now, user.timezoneId);
+  const selected = month ?? today.slice(0, 7);
+  const events = [...store().checkIns.values()].filter(event => event.userId === user.id && Date.parse(event.checkedAt) <= now.getTime());
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    if (event.localDate.startsWith(`${selected}-`)) counts.set(event.localDate, (counts.get(event.localDate) ?? 0) + 1);
+  }
+  return {
+    month: selected, today, timeZone: user.timezoneId,
+    firstMonth: events.map(event => event.localDate.slice(0, 7)).sort()[0] ?? today.slice(0, 7),
+    days: [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count })),
+    serverTime: now.toISOString(),
+  };
 }
 
 export type DevDisplayNameUpdateResult =

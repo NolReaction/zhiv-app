@@ -21,6 +21,8 @@ import ru.zhiv.relationships.SharingMode
 import ru.zhiv.security.TokenCodec
 import java.sql.Connection
 import java.sql.ResultSet
+import java.time.YearMonth
+import java.time.ZoneId
 import java.time.OffsetDateTime
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -102,6 +104,8 @@ class JdbcMergedHistoryIntegrationTest {
         assertEquals(me.lastCheckInAt, bootstrapReplay.lastCheckInAt)
         assertEquals(3L, bootstrapReplay.streak.currentDays)
         assertEquals(originalEvents, eventRows(events))
+        assertNull(repository.calendar(survivor.sessionHash, null))
+        assertNotNull(repository.calendar(nextSession, null))
         assertNull(repository.findBySession(retired.sessionHash))
         assertIs<CheckInResult.Unauthorized>(repository.record(retired.sessionHash, UUID.randomUUID()))
     }
@@ -160,6 +164,12 @@ class JdbcMergedHistoryIntegrationTest {
         event(retired, start.plusDays(2))
         mergeFixture(retired, survivor)
         assertEquals(4L, repository.findBySession(survivor.sessionHash)?.checkInCount)
+        val calendar = assertNotNull(repository.calendar(survivor.sessionHash, YearMonth.of(2026, 1)))
+        assertEquals(YearMonth.of(2026, 1), calendar.month)
+        assertEquals(YearMonth.of(2026, 1), calendar.firstMonth)
+        assertEquals(listOf("2026-01-01" to 1L, "2026-01-02" to 1L, "2026-01-03" to 2L),
+            calendar.days.map { it.date.toString() to it.count })
+        assertNull(repository.calendar(retired.sessionHash, YearMonth.of(2026, 1)))
         source.connection.use { c ->
             val daily = c.rows("SELECT * FROM daily_check_in_streak(?, ?, 'UTC')", survivor.profile.id, start.plusDays(2).plusHours(1)) {
                 Triple(it.getLong("current_days"), it.getLong("longest_days"), it.getBoolean("checked_in_today"))
@@ -225,6 +235,43 @@ class JdbcMergedHistoryIntegrationTest {
         assertEquals(originalAudiences, audienceRows(listOf(fromSource, fromPeer)))
     }
 
+    @Test
+    fun `calendar preserves local midnight leap days and excludes unrelated profiles`() = runBlocking<Unit> {
+        val owner = user("Local calendar")
+        val other = user("Unrelated calendar")
+        for (at in listOf("2024-02-28T20:59:00Z", "2024-02-28T21:01:00Z", "2024-02-29T20:59:00Z", "2024-02-29T21:01:00Z")) {
+            event(owner, OffsetDateTime.parse(at), zone = "Europe/Moscow")
+        }
+        event(other, OffsetDateTime.parse("2024-02-29T12:00:00Z"))
+        val february = assertNotNull(repository.calendar(owner.sessionHash, YearMonth.of(2024, 2)))
+        assertEquals(listOf("2024-02-28" to 1L, "2024-02-29" to 2L), february.days.map { it.date.toString() to it.count })
+        val march = assertNotNull(repository.calendar(owner.sessionHash, YearMonth.of(2024, 3)))
+        assertEquals(listOf("2024-03-01" to 1L), march.days.map { it.date.toString() to it.count })
+        val empty = assertNotNull(repository.calendar(owner.sessionHash, YearMonth.of(2024, 1)))
+        assertTrue(empty.days.isEmpty())
+        assertEquals(YearMonth.of(2024, 2), empty.firstMonth)
+        assertTrue(assertNotNull(repository.calendar(owner.sessionHash, YearMonth.of(9999, 12))).days.isEmpty())
+    }
+
+    @Test
+    fun `empty calendar uses server profile time and replay never adds another mark`() = runBlocking<Unit> {
+        val owner = user("Empty calendar")
+        val empty = assertNotNull(repository.calendar(owner.sessionHash, null))
+        assertEquals("Europe/Moscow", empty.timeZone)
+        assertEquals(empty.serverTime.atZoneSameInstant(ZoneId.of(empty.timeZone)).toLocalDate(), empty.today)
+        assertEquals(YearMonth.from(empty.today), empty.month)
+        assertEquals(empty.month, empty.firstMonth)
+        assertTrue(empty.days.isEmpty())
+        val key = UUID.randomUUID()
+        val first = assertIs<CheckInResult.Accepted>(repository.record(owner.sessionHash, key))
+        assertTrue(assertIs<CheckInResult.Accepted>(repository.record(owner.sessionHash, key)).replayed)
+        val month = YearMonth.from(first.checkedAt.atZoneSameInstant(ZoneId.of(empty.timeZone)))
+        assertEquals(1L, assertNotNull(repository.calendar(owner.sessionHash, month)).days.sumOf { it.count })
+        transaction { c -> c.update("UPDATE app_sessions SET created_at=clock_timestamp() - interval '2 days', expires_at=clock_timestamp() - interval '1 second' WHERE token_hash=?", owner.sessionHash) }
+        assertNull(repository.calendar(owner.sessionHash, null))
+        assertNull(repository.calendar(tokens.issue().hash, null))
+    }
+
     private suspend fun assertHistoryHidden(first: Account, second: Account) {
         for (account in listOf(first, second)) {
             assertNull(people(account).people.single().lastCheckInAt)
@@ -252,12 +299,12 @@ class JdbcMergedHistoryIntegrationTest {
         return Account(profile, session, bootstrap, sessionId)
     }
 
-    private fun event(account: Account, at: OffsetDateTime, key: UUID = UUID.randomUUID()): Event = transaction { c ->
+    private fun event(account: Account, at: OffsetDateTime, key: UUID = UUID.randomUUID(), zone: String = "UTC"): Event = transaction { c ->
         val id = c.rows("""
             INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
-            VALUES (?, ?, ?, ?, ?::timestamptz + interval '30 seconds', 'UTC', (?::timestamptz AT TIME ZONE 'UTC')::date)
+            VALUES (?, ?, ?, ?, ?::timestamptz + interval '30 seconds', ?, (?::timestamptz AT TIME ZONE ?)::date)
             RETURNING id
-        """.trimIndent(), account.profile.id, account.sessionId, key, at, at, at) { it.getObject(1, UUID::class.java) }.single()
+        """.trimIndent(), account.profile.id, account.sessionId, key, at, at, zone, at, zone) { it.getObject(1, UUID::class.java) }.single()
         c.update("UPDATE app_users SET last_check_in_at=GREATEST(last_check_in_at,?),updated_at=clock_timestamp() WHERE id=?", at, account.profile.id)
         Event(id)
     }

@@ -505,7 +505,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /> Поделиться\s*<\/button>/);
   assert.match(people, /const copied = await copyText\(value\);/);
   assert.doesNotMatch(people, /copyTextFromVisibleField/);
-  assert.match(people, /aria-label="Принять приглашение по ссылке или коду"/);
+  assert.match(people, /aria-label="Открыть приглашение по ссылке или коду"/);
   assert.match(people, /parseInviteToken\(inviteImportValue\)/);
   assert.match(people, /window\.setTimeout\(\(\) => \{[\s\S]*window\.dispatchEvent\(new Event\(INVITE_IMPORT_EVENT\)\);[\s\S]*\}, DIALOG_EXIT_MS\);/);
   assert.match(people, /inviteDialog\.mode === "qr" && inviteShare\.url/);
@@ -517,7 +517,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(peopleStyles, /\.inviteLinkField\s*\{[^}]*user-select:\s*text;/s);
   assert.doesNotMatch(profile, /лучший стрик/i);
   assert.doesNotMatch(profile, /me\.streak\.longestDays/);
-  assert.equal((profile.match(/>\s*лучшая серия\s*</gi) ?? []).length, 1);
+  assert.equal((profile.match(/>\s*рекорд игры\s*</gi) ?? []).length, 1);
   assert.equal((people.match(/<h1\b/g) ?? []).length, 1);
   assert.doesNotMatch(people, /styles\.kicker/);
   assert.doesNotMatch(`${app}\n${people}\n${groups}`, />\s*Свои\s*</);
@@ -538,14 +538,14 @@ test("uses a wide desktop dashboard without changing the mobile navigation contr
 
   assert.match(desktopApp, /\.shell\s*\{[^}]*width:\s*min\(100%, 1120px\);/s);
   assert.match(desktopPeople, /grid-template-columns:\s*minmax\(260px, 0\.72fr\) minmax\(420px, 1\.28fr\);/);
-  assert.match(desktopPeople, /grid-template-columns:\s*minmax\(240px, 1fr\) repeat\(3, 112px\);/);
+  assert.match(desktopPeople, /\.tabPanel, \.freshnessRow\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
   assert.match(desktopProfile, /grid-template-columns:\s*minmax\(280px, 0\.8fr\) minmax\(0, 1\.2fr\);/);
   assert.doesNotMatch(profileStyles, /grid-row:/);
 
   const narrowQuery = "@media (max-width: 360px)";
   const narrowPeople = peopleStyles.slice(peopleStyles.indexOf(narrowQuery));
-  assert.match(narrowPeople, /\.quickActions\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s);
+  assert.doesNotMatch(peopleStyles, /\.quickActions/);
   assert.match(narrowPeople, /\.inviteActions\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s);
   assert.match(peopleStyles, /\.dialog,\s*\.confirmDialog\s*\{(?=[^}]*max-height:\s*calc\(100dvh - 24px\);)(?=[^}]*overflow-y:\s*auto;)[^}]*\}/s);
 });

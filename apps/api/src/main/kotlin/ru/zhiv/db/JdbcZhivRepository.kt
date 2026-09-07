@@ -226,6 +226,9 @@ class JdbcZhivRepository(
             }
         }
 
+    override suspend fun calendar(sessionTokenHash: ByteArray, month: java.time.YearMonth?) =
+        readCheckInCalendar(dataSource, sessionTokenHash, month)
+
     override suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot? =
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection ->

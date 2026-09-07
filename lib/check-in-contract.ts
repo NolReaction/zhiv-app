@@ -26,6 +26,15 @@ export type MeResponse = {
   serverTime: string;
 };
 
+export type CheckInCalendarResponse = {
+  month: string;
+  today: string;
+  timeZone: string;
+  firstMonth: string;
+  days: Array<{ date: string; count: number }>;
+  serverTime: string;
+};
+
 export type CheckInResponse = {
   eventId: string;
   checkedAt: string;

@@ -1,0 +1,52 @@
+.dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(90dvh, 820px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 26px;
+  border: 1px solid rgba(190,215,169,.24);
+  border-radius: 28px;
+  background: #171d13;
+  color: #f0f3e9;
+  box-shadow: 0 24px 100px rgba(0,0,0,.5);
+}
+.dialog[data-state="open"] { animation: calendar-open 240ms cubic-bezier(.2,.8,.2,1); }
+.dialog[data-state="closed"] { animation: calendar-close 160ms ease-in; }
+.title { display: flex; align-items: center; gap: 10px; }
+.title svg { flex-shrink: 0; color: #bcd6a5; }
+.streak { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid rgba(243,162,76,.2); border-radius: 16px; background: rgba(243,162,76,.05); }
+.streak > svg { color: #f3a24c; }
+.streak strong { font-size: 15px; }
+.streak > span { flex-basis: 100%; margin-left: 28px; font-size: 13px; color: #b2b6a8; }
+.loading { display: grid; align-content: center; justify-items: center; gap: 14px; min-height: 310px; color: #bac4af; }
+.loading svg { animation: calendar-loading 1.2s ease-in-out infinite alternate; }
+.message { min-height: 160px; display: grid; align-content: center; gap: 16px; font-size: 15px; }
+.message button, .todayButton { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 1px solid rgba(190,215,169,.25); border-radius: 14px; color: #d5e7c7; background: rgba(190,215,169,.06); font: inherit; font-size: 14px; cursor: pointer; }
+.monthContent { display: grid; gap: 12px; }
+.monthSummary { display: grid; gap: 12px; min-height: 72px; animation: month-enter 180ms ease-out; }
+.calendar { --cell-size: clamp(36px, 9vw, 46px); width: 100%; padding: 0; background: transparent; }
+.calendar :global(.rdp-root), .calendar :global(.rdp-months), .calendar :global(.rdp-month) { width: 100%; }
+.calendar :global(.rdp-month_caption) { min-height: 44px; }
+.calendar :global(.rdp-caption_label) { font-size: 17px; text-transform: capitalize; }
+.calendar :global(.rdp-weekday) { font-size: 13px; color: #a6af9b; }
+.calendar button[data-day] { position: relative; min-width: 0; width: 100%; border-radius: 13px; color: #e5ebdc; font-size: 15px; }
+.calendar button[data-day]:hover { background: rgba(190,215,169,.1); }
+.calendar :global(.rdp-selected) button { background: rgba(190,215,169,.12); outline: 1px solid #bcd6a5; outline-offset: -2px; color: #edf5e5; }
+.calendar :global(.rdp-today) { background: transparent; }
+.calendar :global(.rdp-today) button { font-weight: 850; text-decoration: underline; text-underline-offset: 3px; }
+.calendar .marked button { background: rgba(129,193,101,.14); color: #d1ebbd; }
+.calendar .marked button::after { position: absolute; bottom: 5px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: #bcd6a5; content: ""; }
+.dayDetail { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid rgba(190,215,169,.13); padding-top: 16px; font-size: 15px; }
+.dayDetail > span { color: #b0b9a4; }
+.dayDetail strong { display: inline-flex; align-items: center; gap: 6px; color: #d1e5bf; }
+.monthTotal { margin: 0; font-size: 14px; color: #aeb7a3; }
+.hint { margin: 0; font-size: 13px; line-height: 1.55; color: #a4ad9a; }
+.dialog button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+@keyframes calendar-open { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes calendar-close { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+@keyframes month-enter { from { opacity: .25; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes calendar-loading { from { opacity: .4; } to { opacity: 1; } }
+@media (forced-colors: active) { .calendar .marked button { border: 2px solid ButtonText; } .calendar .marked button::after { background: ButtonText; } }
+
+.calendar :global(.rdp-week) > td { min-width: 0; flex: 1; }
+@media (max-width: 360px) { .dialog { padding: 18px; } }

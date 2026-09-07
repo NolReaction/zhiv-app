@@ -152,6 +152,27 @@ fun Route.identityRoutes(
     }
 
     rateLimit(RateLimitName("profile-read")) {
+    get("/api/v1/me/calendar") {
+        call.response.header(HttpHeaders.CacheControl, "no-store")
+        val values = call.request.queryParameters.getAll("month")
+        val month = values?.singleOrNull()?.let(::parseCalendarMonth)
+        if (values != null && (values.size != 1 || month == null)) {
+            call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_MONTH", "Укажите месяц в формате ГГГГ-ММ"))
+            return@get
+        }
+        val token = call.sessionCookie(config)
+        val calendar = token?.let { repository.calendar(tokenCodec.hash(it), month) }
+        if (calendar == null) {
+            call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
+            return@get
+        }
+        call.respond(ru.zhiv.http.CheckInCalendarResponse(
+            month = calendar.month.toString(), today = calendar.today.toString(),
+            timeZone = calendar.timeZone, firstMonth = calendar.firstMonth.toString(),
+            days = calendar.days.map { ru.zhiv.http.CalendarDayDto(it.date.toString(), it.count) },
+            serverTime = calendar.serverTime.toInstant().toString(),
+        ))
+    }
     get("/api/v1/me") {
         call.response.header(HttpHeaders.CacheControl, "no-store")
         val rawToken = call.sessionCookie(config)

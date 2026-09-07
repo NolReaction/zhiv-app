@@ -32,6 +32,9 @@ sealed interface DisplayNameUpdateResult {
 }
 
 interface IdentityRepository {
+    suspend fun calendar(sessionTokenHash: ByteArray, month: java.time.YearMonth?): CheckInCalendarSnapshot? =
+        throw UnsupportedOperationException("Calendar reads not implemented")
+
     suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID, expiresInMinutes: Int? = null): DisplayNameUpdateResult =
         throw UnsupportedOperationException("Status writes not implemented")
 

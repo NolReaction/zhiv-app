@@ -1,7 +1,7 @@
 "use client";
 
 import { TransientNotice } from "./app-notifications";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { MonitorSmartphone, ShieldCheck } from "lucide-react";
 import { getAccountAccess, getAuthOptions, revokeSession, revokeOtherSessions, logout, type AccountAccess as Access, type AuthOptions } from "@/lib/auth-api";
 import { ApiError } from "@/lib/check-in-api";
@@ -11,7 +11,8 @@ import { AccountLifecycle } from "./account-lifecycle";
 import type { MeResponse } from "@/lib/check-in-contract";
 import styles from "./account-access.module.css";
 
-export function AccountAccess({ isOnline, onSessionLost, onUpdated }: { isOnline: boolean; onSessionLost: () => void; onUpdated: (me: MeResponse) => void }) {
+export function AccountAccess({ mode = "access", active = true, isOnline, onSessionLost, onUpdated }: { mode?: "access" | "manage"; active?: boolean; isOnline: boolean; onSessionLost: () => void; onUpdated: (me: MeResponse) => void }) {
+  const titleId = useId();
   const [access, setAccess] = useState<Access | null>(null);
   const [options, setOptions] = useState<AuthOptions | null>(null);
   const [error, setError] = useState("");
@@ -23,12 +24,17 @@ export function AccountAccess({ isOnline, onSessionLost, onUpdated }: { isOnline
     setAccess(account); setOptions(available); setError("");
   }, []);
   useEffect(() => {
-    let active = true;
+    if (!active) return;
+    let current = true;
     Promise.all([getAccountAccess(), getAuthOptions()]).then(([account, available]) => {
-      if (active) { setAccess(account); setOptions(available); setError(""); }
-    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Не удалось загрузить доступ"); });
-    return () => { active = false; };
-  }, []);
+      if (current) { setAccess(account); setOptions(available); setError(""); }
+    }).catch(cause => {
+      if (!current) return;
+      if (cause instanceof ApiError && cause.status === 401) onSessionLost();
+      else setError(cause instanceof Error ? cause.message : "Не удалось загрузить доступ");
+    });
+    return () => { current = false; };
+  }, [active, onSessionLost]);
 
   async function remove() {
     if (!confirm) return;
@@ -45,14 +51,18 @@ export function AccountAccess({ isOnline, onSessionLost, onUpdated }: { isOnline
 
   if (access && options && !options.vk && !options.email && access.sessions.length === 0) return null;
 
-  return <section className={styles.card} aria-labelledby="account-access-title">
-    <h2 id="account-access-title"><ShieldCheck size={20} aria-hidden /> Способы входа</h2>
+  return <section className={styles.card} aria-labelledby={titleId}>
+    <h2 id={titleId}><ShieldCheck size={20} aria-hidden /> {mode === "manage" ? "Управление профилем" : "Способы входа"}</h2>
+    {!access && !error && <p className={styles.hint} role="status">Загружаем настройки…</p>}
     {access && <>
+      {mode === "access" && <>
       <p className={styles.hint}>{access.methods.length ? "Входите в этот профиль в любом браузере. Остальные устройства останутся подключены." : "Привяжите ВК или почту, чтобы возвращаться в этот профиль на других устройствах."}</p>
       {access.methods.map(method => <p key={method.provider} className={styles.method}>{method.label} <span>Привязано</span></p>)}
       {options && <LoginForm link isOnline={isOnline} options={{ ...options, vk: options.vk && !access.methods.some(m => m.provider === "vk"), email: options.email && !access.methods.some(m => m.provider === "email") }} onDone={async () => { await refresh(); setNotice("Почта привязана к этому профилю."); }} />}
       {options && !options.vk && !options.email && <p className={styles.hint}>Новые способы входа пока недоступны. Сохраните резервный код ниже.</p>}
-      {options && <AccountLifecycle access={access} options={options} isOnline={isOnline} onDeleted={onSessionLost} onChanged={async me => { onUpdated(me); await refresh(); }} />}
+      </>}
+      {mode === "manage" && options && <AccountLifecycle access={access} options={options} isOnline={isOnline} onDeleted={onSessionLost} onChanged={async me => { onUpdated(me); await refresh(); }} />}
+      {mode === "access" && <>
       <h3><MonitorSmartphone size={20} aria-hidden /> Устройства</h3>
       <p className={styles.hint}>Отдельный сеанс для каждого браузера. Название устройства определяется приблизительно.</p>
       <ul className={styles.sessions}>{access.sessions.map(session => <li key={session.id}>
@@ -61,6 +71,7 @@ export function AccountAccess({ isOnline, onSessionLost, onUpdated }: { isOnline
       </li>)}</ul>
       {access.sessions.some(s => !s.current) && <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("others")}>Выйти на остальных устройствах</button>}
       <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("logout")}>Выйти в этом браузере</button>
+      </>}
     </>}
     <TransientNotice message={error} kind="error" />
     {error && !access && <button className={styles.secondary} onClick={() => { setError(""); void refresh().catch(cause => setError(cause.message)); }}>Повторить загрузку способов входа</button>}

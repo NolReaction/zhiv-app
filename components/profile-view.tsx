@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
-import { Camera, Check, Clock3, Flame, Gamepad2, Trophy, UserRound } from "lucide-react";
+import { Check, Clock3, Flame, Gamepad2, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
 import type { ClickerLevel, ClickerLevelProgress } from "@/lib/clicker-story";
 import {
@@ -20,6 +20,7 @@ import { RecoveryCodeCard } from "./recovery-code-card";
 import { RecoveryStarter } from "./recovery-starter";
 import { TransientNotice } from "./app-notifications";
 import { AccountAccess } from "./account-access";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import styles from "./profile-view.module.css";
 
 type ProfileViewProps = {
@@ -35,6 +36,7 @@ type ProfileViewProps = {
   onUpdated: (response: MeResponse) => void;
   onRecovered: (response: MeResponse) => void;
   onSessionLost: () => void;
+  onOpenCalendar: (trigger: HTMLButtonElement) => void;
 };
 
 function initials(name: string): string {
@@ -69,10 +71,16 @@ export function ProfileView({
   onUpdated,
   onRecovered,
   onSessionLost,
+  onOpenCalendar,
 }: ProfileViewProps) {
   const [draftState, setDraftState] = useState({
     sourceName: me.user.displayName,
     value: me.user.displayName,
+  });
+  const [panel, setPanel] = useState(() => {
+    try {
+      return ["email", "merge", "delete"].includes(window.sessionStorage.getItem("zhiv:account-action") ?? "") ? "management" : "";
+    } catch { return ""; }
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,11 +149,7 @@ export function ProfileView({
 
   return (
     <section id="profile-panel" className={styles.view} aria-labelledby="profile-title">
-      <div className={styles.heading}>
-        <p>Ваше пространство</p>
-        <h1 id="profile-title">Профиль</h1>
-      </div>
-
+      <div className={styles.heading}><h1 id="profile-title">Профиль</h1></div>
       <TransientNotice message={error} kind="error" />
       <TransientNotice message={success} kind="success" />
       <div className={styles.columns}>
@@ -155,72 +159,29 @@ export function ProfileView({
               {me.profile.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={me.profile.avatarUrl} alt="" />
-              ) : (
-                <strong>{initials(me.user.displayName)}</strong>
-              )}
-              <span><Camera size={16} /></span>
+              ) : <strong>{initials(me.user.displayName)}</strong>}
             </div>
             <div className={styles.identity}>
               <strong>{me.user.displayName}</strong>
               <span>{me.user.publicId}</span>
-              <small>Фото профиля появится в одной из следующих версий</small>
+              <button type="button" className={styles.editLink} onClick={() => setPanel(panel === "name" ? "" : "name")}>Изменить имя</button>
             </div>
           </div>
-
           <div className={styles.stats} aria-label="Статистика профиля">
-            <div>
-              <Flame size={17} aria-hidden="true" />
-              <strong>{me.streak.currentDays}</strong>
+            <button type="button" onClick={event => onOpenCalendar(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть календарь моих отметок">
+              <Flame size={18} aria-hidden="true" /><strong>{me.streak.currentDays}</strong>
               <span>{russianNoun(me.streak.currentDays, "день", "дня", "дней")} подряд</span>
-            </div>
-            <div>
-              <Trophy size={17} aria-hidden="true" />
-              <strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong>
-              <span>лучшая серия</span>
-            </div>
-            <div>
-              <Check size={17} aria-hidden="true" />
-              <strong>{me.checkInCount}</strong>
-              <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span>
-            </div>
+            </button>
+            <div><Check size={18} aria-hidden="true" /><strong>{me.checkInCount}</strong>
+              <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span></div>
+            <div><Trophy size={18} aria-hidden="true" /><strong>×{clickerStats.bestSeries.toLocaleString("ru-RU")}</strong><span>рекорд игры</span></div>
           </div>
-
-          <div className={styles.gameStats} aria-label="Игровой прогресс">
-            <span aria-hidden="true"><Gamepad2 size={20} /></span>
-            <div>
-              <small>Уровень {clickerStats.level.level}</small>
-              <strong>{clickerStats.level.title}</strong>
-            </div>
-            <div>
-              <small>{clickerStats.level.nextMinimumLifetimeTaps ? "До повышения" : "Высший уровень"}</small>
-              <strong>
-                {clickerStats.level.nextMinimumLifetimeTaps
-                  ? `${clickerStats.levelProgress.remaining.toLocaleString("ru-RU")} ${russianNoun(clickerStats.levelProgress.remaining, "тап", "тапа", "тапов")}`
-                  : "Максимум"}
-              </strong>
-            </div>
-            <div className={styles.levelProgressMeta}>
-              <span>
-                Всего {clickerStats.lifetimeTaps.toLocaleString("ru-RU")} {russianNoun(clickerStats.lifetimeTaps, "тап", "тапа", "тапов")}
-              </span>
-              <span>{Math.round(clickerStats.levelProgress.ratio * 100)}%</span>
-            </div>
-            <div
-              className={styles.levelProgress}
-              role="progressbar"
-              aria-label="Прогресс игрового уровня"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(clickerStats.levelProgress.ratio * 100)}
-            >
-              <i style={{ transform: `scaleX(${clickerStats.levelProgress.ratio})` }} />
-            </div>
-          </div>
-
-          <p className={styles.localProgressNote}>Игровые серии и уровень хранятся на этом устройстве.</p>
         </div>
-        <div className={styles.settingsColumn}>
-          <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
+        <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>
+          <AccordionItem value="name" className={styles.settingsItem}>
+            <AccordionTrigger className={styles.settingsTrigger}><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Отображаемое имя</small></span></span></AccordionTrigger>
+            <AccordionContent forceMount hidden={panel !== "name"} className={styles.settingsContent}>
+              <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
             <div className={styles.formHeading}>
               <span><UserRound size={18} aria-hidden="true" /> Отображаемое имя</span>
               {locked && availableAt ? (
@@ -262,12 +223,61 @@ export function ProfileView({
               {!isOnline && !error ? <p className={styles.offline}>Офлайн · изменения временно недоступны</p> : null}
             </div>
           </form>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="security" className={styles.settingsItem}>
+            <AccordionTrigger className={styles.settingsTrigger}><span><ShieldCheck size={20} aria-hidden="true" /><span>Вход и безопасность<small>Способы входа, устройства, восстановление</small></span></span></AccordionTrigger>
+            <AccordionContent forceMount hidden={panel !== "security"} className={styles.settingsContent}>
+              <AccountAccess mode="access" active={panel === "security"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
+              <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost} />
+              <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered} />
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="game" className={styles.settingsItem}>
+            <AccordionTrigger className={styles.settingsTrigger}><span><Gamepad2 size={20} aria-hidden="true" /><span>Игровой прогресс<small>Уровень {clickerStats.level.level} · {clickerStats.level.title}</small></span></span></AccordionTrigger>
+            <AccordionContent forceMount hidden={panel !== "game"} className={styles.settingsContent}>
+              <div className={styles.gameStats} aria-label="Игровой прогресс">
+            <span aria-hidden="true"><Gamepad2 size={20} /></span>
+            <div>
+              <small>Уровень {clickerStats.level.level}</small>
+              <strong>{clickerStats.level.title}</strong>
+            </div>
+            <div>
+              <small>{clickerStats.level.nextMinimumLifetimeTaps ? "До повышения" : "Высший уровень"}</small>
+              <strong>
+                {clickerStats.level.nextMinimumLifetimeTaps
+                  ? `${clickerStats.levelProgress.remaining.toLocaleString("ru-RU")} ${russianNoun(clickerStats.levelProgress.remaining, "тап", "тапа", "тапов")}`
+                  : "Максимум"}
+              </strong>
+            </div>
+            <div className={styles.levelProgressMeta}>
+              <span>
+                Всего {clickerStats.lifetimeTaps.toLocaleString("ru-RU")} {russianNoun(clickerStats.lifetimeTaps, "тап", "тапа", "тапов")}
+              </span>
+              <span>{Math.round(clickerStats.levelProgress.ratio * 100)}%</span>
+            </div>
+            <div
+              className={styles.levelProgress}
+              role="progressbar"
+              aria-label="Прогресс игрового уровня"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(clickerStats.levelProgress.ratio * 100)}
+            >
+              <i style={{ transform: `scaleX(${clickerStats.levelProgress.ratio})` }} />
+            </div>
+          </div>
 
-          <AccountAccess isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated}/>
-          <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost}/>
-          <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered}/>
-
-        </div>
+          <p className={styles.localProgressNote}>Игровые серии и уровень хранятся на этом устройстве.</p>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="management" className={styles.settingsItem}>
+            <AccordionTrigger className={styles.settingsTrigger}><span><Settings2 size={20} aria-hidden="true" /><span>Управление профилем<small>Смена почты, объединение, удаление</small></span></span></AccordionTrigger>
+            <AccordionContent forceMount hidden={panel !== "management"} className={styles.settingsContent}>
+              <AccountAccess mode="manage" active={panel === "management"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
       <div className={styles.futureCard}>
         <span aria-hidden="true"><UserRound size={20} /></span>
@@ -276,7 +286,6 @@ export function ProfileView({
           <p>Загрузка фотографии появится позже — с безопасным хранением и отдельной настройкой видимости.</p>
         </div>
       </div>
-
     </section>
   );
 }

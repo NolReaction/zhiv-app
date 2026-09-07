@@ -54,7 +54,16 @@ const created = await api("POST", "/api/v1/groups", {
 const group = created.data.groupId;
 const invitations = await api("GET", "/api/v1/groups", { cookie: friend.cookie });
 await api("POST", "/api/v1/group-invites/" + invitations.data.incomingInvites[0].inviteId + "/accept", { cookie: friend.cookie });
-await api("POST", "/api/v1/check-ins", { cookie: owner.cookie });
+const calendarKey = randomUUID();
+const checkIn = await api("POST", "/api/v1/check-ins", { cookie: owner.cookie, key: calendarKey });
+await api("POST", "/api/v1/check-ins", { cookie: owner.cookie, key: calendarKey });
+await api("GET", "/api/v1/me/calendar", { expected: 401 });
+const calendar = await api("GET", "/api/v1/me/calendar", { cookie: owner.cookie });
+assert.equal(calendar.headers["cache-control"], "no-store");
+assert.equal(calendar.data.days.reduce((sum, day) => sum + day.count, 0), 1);
+const localDay = new Intl.DateTimeFormat("en-CA", { timeZone: calendar.data.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(checkIn.data.checkedAt));
+assert.equal(calendar.data.days[0].date, localDay);
+assert.deepEqual((await api("GET", "/api/v1/me/calendar", { cookie: friend.cookie })).data.days, []);
 const marked = await api("GET", "/api/v1/me", { cookie: owner.cookie });
 await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, body: { text: "гуляю" } });
 const people = () => api("GET", "/api/v1/people", { cookie: friend.cookie });

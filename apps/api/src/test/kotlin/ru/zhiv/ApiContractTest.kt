@@ -23,6 +23,8 @@ import ru.zhiv.identity.UserSnapshot
 import ru.zhiv.health.ReadinessProbe
 import ru.zhiv.recovery.CodeRecoveryRepository
 import ru.zhiv.security.TokenCodec
+import ru.zhiv.identity.CheckInCalendarSnapshot
+import java.time.YearMonth
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -340,6 +342,37 @@ class ApiContractTest {
         }
     }
 
+    @Test
+    fun `calendar is private uncached and validates exactly one month`() = testApplication {
+        val repository = FakeRepository()
+        application { installZhivApi(repository, repository, testConfig()) }
+        val anonymous = client.get("/api/v1/me/calendar")
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.status)
+        assertEquals("no-store", anonymous.headers[HttpHeaders.CacheControl])
+        val created = client.post("/api/v1/bootstrap") {
+            contentType(ContentType.Application.Json)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"displayName":"Calendar"}""")
+        }
+        val cookie = assertNotNull(created.headers[HttpHeaders.SetCookie]).substringBefore(';')
+        for (query in listOf("", "?month=2024-02")) {
+            val response = client.get("/api/v1/me/calendar$query") { header(HttpHeaders.Cookie, cookie) }
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            assertContains(response.bodyAsText(), "\"days\":[]")
+            assertContains(response.bodyAsText(), "\"timeZone\":\"UTC\"")
+            if (query.isNotEmpty()) assertContains(response.bodyAsText(), "\"month\":\"2024-02\"")
+        }
+        for (query in listOf("month=", "month=2026-1", "month=2026-13", "month=0000-01", "month=10000-01", "month=2026-01&month=2026-02")) {
+            val response = client.get("/api/v1/me/calendar?$query") { header(HttpHeaders.Cookie, cookie) }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            assertContains(response.bodyAsText(), "INVALID_MONTH")
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+        }
+        val forged = client.get("/api/v1/me/calendar") { header(HttpHeaders.Cookie, "${testConfig().cookieName}=forged") }
+        assertEquals(HttpStatusCode.Unauthorized, forged.status)
+    }
+
     private fun testConfig() = AppConfig(
         databaseUrl = "unused",
         databaseUser = "unused",
@@ -382,6 +415,12 @@ class ApiContractTest {
 
         override suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot? =
             user?.takeIf { sessionHash?.contentEquals(sessionTokenHash) == true }
+
+        override suspend fun calendar(sessionTokenHash: ByteArray, month: YearMonth?): CheckInCalendarSnapshot? {
+            if (findBySession(sessionTokenHash) == null) return null
+            val now = OffsetDateTime.now(ZoneOffset.UTC)
+            return CheckInCalendarSnapshot(month ?: YearMonth.from(now), now.toLocalDate(), "UTC", YearMonth.from(now), emptyList(), now)
+        }
 
         override suspend fun updateDisplayName(
             sessionTokenHash: ByteArray,

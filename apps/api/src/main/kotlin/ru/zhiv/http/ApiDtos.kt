@@ -10,6 +10,19 @@ data class PublicUserDto(
 )
 
 @Serializable
+data class CalendarDayDto(val date: String, val count: Long)
+
+@Serializable
+data class CheckInCalendarResponse(
+    val month: String,
+    val today: String,
+    val timeZone: String,
+    val firstMonth: String,
+    val days: List<CalendarDayDto>,
+    val serverTime: String,
+)
+
+@Serializable
 data class MeResponse(
     val user: PublicUserDto,
     val lastCheckInAt: String?,

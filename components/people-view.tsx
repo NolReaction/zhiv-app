@@ -4,7 +4,7 @@ import { TransientNotice } from "./app-notifications";
 import { DataFreshness } from "./data-freshness";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMemo, useReducer, useRef, useState } from "react";
-import { Check, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
+import { Check, ChevronRight, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
 import QRCode from "react-qr-code";
 import type {
   DirectRequest,
@@ -155,6 +155,9 @@ export function PeopleView({
 }: PeopleViewProps) {
   const [peopleQuery, setPeopleQuery] = useState("");
   const filteredPeople = useMemo(() => data?.people.filter(person => matchesPersonSearch(person, peopleQuery)) ?? [], [data, peopleQuery]);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addMenuForward = useRef(false);
+  const addMenuTrigger = useRef<HTMLButtonElement>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [inviteImportOpen, setInviteImportOpen] = useState(false);
   const [inviteImportValue, setInviteImportValue] = useState("");
@@ -399,7 +402,7 @@ export function PeopleView({
       title: "Приглашение в «Я живой»",
       text: inviteShare.url
         ? "Добавь меня в личные связи в «Я живой»."
-        : `Открой «Я живой» → «Люди» → «Принять» и введи код: ${inviteCode(inviteShare.token)}`,
+        : `Открой «Я живой» → «Люди» → «Добавить человека» → «Открыть приглашение» и введи код: ${inviteCode(inviteShare.token)}`,
       ...(inviteShare.url ? { url: inviteShare.url } : {}),
     });
     if (outcome === "shared") {
@@ -461,60 +464,28 @@ export function PeopleView({
         </button>
       </div>
 
-      <DataFreshness
+      <div className={styles.freshnessRow}><DataFreshness
         updatedAt={activeSection === "people" ? updatedAt : groupsUpdatedAt}
         nowMs={freshnessNowMs}
         isOnline={isOnline}
         failed={Boolean(activeSection === "people" ? error : groupsError)}
         loading={activeSection === "people" ? loading : groupsLoading}
         onRefresh={activeSection === "people" ? onRefresh : onGroupsRefresh}
-      />
+      /></div>
 
       {activeSection === "people" ? (
         <div
           id="people-section-panel-people"
+          key={activeSection}
           className={styles.tabPanel}
           role="tabpanel"
           aria-labelledby="people-section-tab-people"
           aria-busy={loading && !data}
         >
-          <div className={styles.quickActions} role="group" aria-label="Способы добавить человека">
-            <button
-              className={styles.addButton}
-              type="button"
-              disabled={Boolean(pending)}
-              onClick={() => { resetLookup(); setAddOpen(true); }}
-            >
-              <Plus size={18} /> <span>По ID</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Пригласить человека по ссылке"
-              onClick={() => void openInvite("link")}
-              disabled={Boolean(pending)}
-            >
-              <Link2 size={18} /> <span>Ссылка</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Показать QR-код приглашения"
-              onClick={() => void openInvite("qr")}
-              disabled={Boolean(pending)}
-            >
-              <QrCode size={18} /> <span>QR</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Принять приглашение по ссылке или коду"
-              onClick={() => {
-                resetInviteImport();
-                setInviteImportOpen(true);
-              }}
-              disabled={Boolean(pending)}
-            >
-              <ClipboardPaste size={18} /> <span>Принять</span>
-            </button>
-          </div>
+          <button ref={addMenuTrigger} className={styles.addPersonButton} type="button" disabled={Boolean(pending)}
+            onClick={() => { addMenuForward.current = false; setAddMenuOpen(true); }}>
+            <Plus size={20} aria-hidden="true" /> Добавить человека
+          </button>
 
           {content}
 
@@ -599,8 +570,8 @@ export function PeopleView({
             {data.people.length === 0 ? (
               <div className={styles.empty}>
                 <UserRound size={30} />
-                <strong>Здесь пока никого</strong>
-                <p>Добавьте человека по его ID. Только после взаимного согласия вы увидите отметки друг друга.</p>
+                <strong>Добавьте первого близкого</strong>
+                <p>Отправьте приглашение удобным способом. После взаимного согласия вы увидите отметки друг друга.</p>
               </div>
             ) : filteredPeople.length === 0 ? (
               <div className={styles.empty} role="status">
@@ -726,6 +697,33 @@ export function PeopleView({
       <TransientNotice message={shareNotice} />
       <TransientNotice message={error} kind="error" />
 
+      <Dialog open={addMenuOpen} onOpenChange={setAddMenuOpen}>
+        <DialogContent className={styles.dialog} onCloseAutoFocus={event => {
+          event.preventDefault();
+          if (!addMenuForward.current) addMenuTrigger.current?.focus();
+        }}>
+          <DialogHeader>
+            <DialogTitle className={styles.dialogTitle}>Добавить человека</DialogTitle>
+            <DialogDescription className={styles.dialogDescription}>Пригласите близкого или откройте приглашение, которое прислали вам.</DialogDescription>
+          </DialogHeader>
+          <div className={styles.addOptions}>
+            <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); void openInvite("link"); }}>
+              <Link2 size={22} aria-hidden="true" /><span>Отправить приглашение<small>Поделиться одноразовой ссылкой</small></span><ChevronRight size={18} aria-hidden="true" />
+            </button>
+            <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); void openInvite("qr"); }}>
+              <QrCode size={22} aria-hidden="true" /><span>Показать QR-код<small>Для человека рядом с вами</small></span><ChevronRight size={18} aria-hidden="true" />
+            </button>
+            <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); resetLookup(); setAddOpen(true); }}>
+              <UserRound size={22} aria-hidden="true" /><span>Ввести ID человека<small>Найти профиль по его коду</small></span><ChevronRight size={18} aria-hidden="true" />
+            </button>
+            <button type="button" aria-label="Открыть приглашение по ссылке или коду" onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); resetInviteImport(); setInviteImportOpen(true); }}>
+              <ClipboardPaste size={22} aria-hidden="true" /><span>Открыть приглашение<small>Вставить полученную ссылку или код</small></span><ChevronRight size={18} aria-hidden="true" />
+            </button>
+          </div>
+          {!isOnline && <p className={styles.searchHint}>Для поиска и отправки приглашений нужен интернет.</p>}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(selectedPerson)} onOpenChange={(open) => {
         if (!open && !pending) setSelectedPersonId(null);
       }}>
@@ -757,7 +755,7 @@ export function PeopleView({
         setAddOpen(open);
         if (!open) resetLookup();
       }}>
-        <DialogContent className={styles.dialog}>
+        <DialogContent className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); addMenuTrigger.current?.focus(); }}>
           <DialogHeader>
             <DialogTitle className={styles.dialogTitle}>Добавить своего</DialogTitle>
             <DialogDescription className={styles.dialogDescription}>
@@ -822,7 +820,7 @@ export function PeopleView({
         setInviteImportOpen(open);
         if (!open) resetInviteImport();
       }}>
-        <DialogContent className={styles.dialog}>
+        <DialogContent className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); addMenuTrigger.current?.focus(); }}>
           <DialogHeader>
             <DialogTitle className={styles.dialogTitle}>Принять приглашение</DialogTitle>
             <DialogDescription className={styles.dialogDescription}>
@@ -866,7 +864,7 @@ export function PeopleView({
           setShareNotice(null);
         }
       }}>
-        <DialogContent className={styles.dialog}>
+        <DialogContent className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); addMenuTrigger.current?.focus(); }}>
           <DialogHeader>
             <DialogTitle className={styles.dialogTitle}>
               {!inviteShare || inviteShare.url

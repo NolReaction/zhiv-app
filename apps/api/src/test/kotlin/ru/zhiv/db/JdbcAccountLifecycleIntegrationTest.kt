@@ -138,7 +138,9 @@ class JdbcAccountLifecycleIntegrationTest {
         val chosen=tokens.issue().hash
         auth.previewMerge(a.session,browser,MergeChoices("other","current",mapOf("email" to "other","vk" to "current")),chosen)
         auth.confirmMerge(a.session,browser,chosen)
-        assertEquals("Второй",people.findBySession(a.session)!!.displayName)
+        val renamed=assertNotNull(people.findBySession(a.session))
+        assertEquals("Второй",renamed.displayName)
+        assertEquals(assertNotNull(renamed.displayNameChangedAt).plusHours(24),renamed.displayNameChangeAvailableAt)
         assertEquals(emailB,scalar("SELECT subject FROM account_login_identities WHERE user_id=? AND provider='email'",a.id))
         assertEquals(a.subject,scalar("SELECT subject FROM account_login_identities WHERE user_id=? AND provider='vk'",a.id))
         assertNull(people.findSessionUserId(b.session))

@@ -324,7 +324,8 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
                 c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES (?,?,?)",provider,subject,id)
             }
         }
-        if(saved.choices.displayNameSource=="other") c.update("UPDATE app_users SET display_name=?,display_name_changed_at=clock_timestamp(),display_name_change_key=uuidv7(),updated_at=clock_timestamp() WHERE id=?",preview.displayName,id)
+        // Both fields must share a timestamp: assignment evaluation order is not guaranteed.
+        if(saved.choices.displayNameSource=="other") c.update("UPDATE app_users SET display_name=?,display_name_changed_at=statement_timestamp(),display_name_change_key=uuidv7(),updated_at=statement_timestamp() WHERE id=?",preview.displayName,id)
         if(saved.choices.statusSource=="other") {
             // Preserve original status timestamp/expiry, so selecting it cannot reset its lifetime.
             c.update("UPDATE app_users a SET status_text=b.status_text,status_updated_at=b.status_updated_at,status_expires_at=b.status_expires_at,updated_at=clock_timestamp() FROM app_users b WHERE a.id=? AND b.id=?",id,s.other)

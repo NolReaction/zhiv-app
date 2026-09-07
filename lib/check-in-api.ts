@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { isCalendarMonth } from "./check-in-calendar";
 import type {
   ApiErrorResponse,
   FavoriteResponse,
   NicknameResponse,
   CheckInResponse,
+  CheckInCalendarResponse,
   ClickerSeriesEvent,
   CooldownResponse,
   DisplayNameCooldownResponse,
@@ -289,6 +291,20 @@ export async function getMe(): Promise<MeResponse | null> {
     if (error instanceof ApiError && error.status === 401) return null;
     throw error;
   }
+}
+
+const calendarSchema: z.ZodType<CheckInCalendarResponse> = z.object({
+  month: z.string().refine(isCalendarMonth),
+  today: z.string().date(),
+  timeZone: z.string().min(1),
+  firstMonth: z.string().refine(isCalendarMonth),
+  days: z.array(z.object({ date: z.string().date(), count: z.number().int().positive().safe() })).max(31),
+  serverTime: z.string().datetime(),
+}).refine(value => value.days.every(day => day.date.startsWith(`${value.month}-`))
+  && new Set(value.days.map(day => day.date)).size === value.days.length);
+
+export function getCheckInCalendar(month: string | null, signal?: AbortSignal): Promise<CheckInCalendarResponse> {
+  return request(`/api/v1/me/calendar${month ? `?month=${encodeURIComponent(month)}` : ""}`, calendarSchema, { signal });
 }
 
 export function bootstrap(displayName: string, idempotencyKey: string): Promise<MeResponse> {

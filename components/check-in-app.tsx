@@ -59,6 +59,7 @@ import {
 import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "./people-view";
 import { ProfileView } from "./profile-view";
+import { CheckInCalendar } from "./check-in-calendar";
 import { CapabilityLanding } from "./capability-landing";
 import { RecoveryStarter } from "./recovery-starter";
 import { AccountEntry, AuthReturnNotice } from "./account-entry";
@@ -321,6 +322,18 @@ export function CheckInApp() {
   const [tapActive, setTapActive] = useState(false);
   const [seriesBreakBurst, setSeriesBreakBurst] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>("check-in");
+  const [viewDirection, setViewDirection] = useState(1);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const calendarTrigger = useRef<HTMLElement | null>(null);
+  const openCalendar = useCallback((trigger: HTMLButtonElement) => {
+    calendarTrigger.current = trigger;
+    setCalendarOpen(true);
+  }, []);
+  const selectView = (next: ActiveView) => {
+    const order: ActiveView[] = ["check-in", "people", "profile"];
+    setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
+    setActiveView(next);
+  };
   const [people, setPeople] = useState<PeopleResponse | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleError, setPeopleError] = useState<string | null>(null);
@@ -476,6 +489,7 @@ export function CheckInApp() {
   ]);
 
   const loseSession = useCallback(() => {
+    setCalendarOpen(false);
     identityEpoch.current += 1;
     setPeopleUpdatedAt(null);
     setGroupsUpdatedAt(null);
@@ -1271,6 +1285,7 @@ export function CheckInApp() {
         </div>
       </header>
 
+      <div key={activeView} className={styles.viewTransition} style={{ "--view-direction": viewDirection } as CSSProperties}>
       {activeView === "check-in" ? (
         <section
           id="check-in-panel"
@@ -1288,22 +1303,27 @@ export function CheckInApp() {
           </h1>
           <div className={styles.checkInCluster}>
             {streak ? (
-              <div
+              <button
+                type="button"
+                onClick={event => openCalendar(event.currentTarget)}
+                onPointerDown={event => event.stopPropagation()}
+                aria-haspopup="dialog"
                 className={styles.streakPill}
                 data-state={
                   streak.isActive && streak.currentDays > 0 ? "complete" : "empty"
                 }
-                aria-label={`${formatDayCount(streak.currentDays)} подряд. ${getDailyStreakMessage(streak)}`}
+                aria-label={`${formatDayCount(streak.currentDays)} подряд. Открыть календарь отметок. ${getDailyStreakMessage(streak)}`}
               >
                 <Flame size={18} aria-hidden="true" />
                 <strong>{formatDayCount(streak.currentDays)}</strong>
-              </div>
+              </button>
             ) : null}
             <div
               className={`${styles.buttonStage} ${tapActive ? styles.buttonStageActive : ""} ${
                 seriesBreakBurst !== null ? styles.seriesBreaking : ""
               }`}
             >
+            <div className={styles.buttonOrbit}>
             <button
               type="button"
               className={`${styles.checkInButton} ${pulseClass}`}
@@ -1426,6 +1446,7 @@ export function CheckInApp() {
               </span>
             ) : null}
             </div>
+            </div>
           </div>
 
           <div className={styles.statusBlock}>
@@ -1472,6 +1493,7 @@ export function CheckInApp() {
       ) : me ? (
         <ProfileView
           me={me}
+          onOpenCalendar={openCalendar}
           nowMs={adjustedNow}
           isOnline={isOnline}
           clickerStats={{
@@ -1493,6 +1515,10 @@ export function CheckInApp() {
           onSessionLost={loseSession}
         />
       ) : null}
+      </div>
+      {me && streak ? <CheckInCalendar key={me.user.publicId} open={calendarOpen} onOpenChange={setCalendarOpen}
+        streak={streak} lastCheckInAt={lastCheckInAt} onSessionLost={loseSession}
+        returnFocus={() => { if (calendarTrigger.current?.isConnected) calendarTrigger.current.focus(); }} /> : null}
 
       <footer className={styles.footer}>
         <nav
@@ -1505,7 +1531,7 @@ export function CheckInApp() {
             type="button"
             className={activeView === "check-in" ? styles.navActive : undefined}
             aria-current={activeView === "check-in" ? "page" : undefined}
-            onClick={() => setActiveView("check-in")}
+            onClick={() => selectView("check-in")}
           >
             <HeartPulse size={20} />
             <span>Я живой</span>
@@ -1514,7 +1540,7 @@ export function CheckInApp() {
             type="button"
             className={activeView === "people" ? styles.navActive : undefined}
             aria-current={activeView === "people" ? "page" : undefined}
-            onClick={() => setActiveView("people")}
+            onClick={() => selectView("people")}
           >
             <span className={styles.navIcon}>
               <Users size={20} />
@@ -1531,7 +1557,7 @@ export function CheckInApp() {
             type="button"
             className={activeView === "profile" ? styles.navActive : undefined}
             aria-current={activeView === "profile" ? "page" : undefined}
-            onClick={() => setActiveView("profile")}
+            onClick={() => selectView("profile")}
           >
             <UserRound size={20} />
             <span>Профиль</span>
