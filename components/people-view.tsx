@@ -129,12 +129,12 @@ function stateMessage(result: UserLookupResponse): string | null {
 
 function unavailableInviteMessage(reason: ShareOriginUnavailableReason | null): string {
   if (reason === "loopback-origin") {
-    return "Ссылка и QR с localhost не откроются на другом устройстве. Откройте приложение на компьютере по LAN-адресу или задайте NEXT_PUBLIC_APP_ORIGIN. Пока можно передать одноразовый код ниже.";
+    return "Ссылка и QR с localhost не откроются на другом устройстве. Откройте приложение на компьютере по LAN-адресу или задайте NEXT_PUBLIC_APP_ORIGIN. Пока можно передать код приглашения ниже.";
   }
   if (reason === "invalid-configured-origin") {
     return "NEXT_PUBLIC_APP_ORIGIN задан неверно. Нужен полный адрес вида https://example.ru или http://192.168.1.232:3000 без пути.";
   }
-  return "Не удалось определить адрес приложения для другого устройства. Передайте одноразовый код ниже.";
+  return "Не удалось определить адрес приложения для другого устройства. Передайте код приглашения ниже.";
 }
 
 export function PeopleView({
@@ -464,6 +464,13 @@ export function PeopleView({
         </button>
       </div>
 
+      {activeSection === "people" && (
+          <button ref={addMenuTrigger} className={styles.addPersonButton} type="button" disabled={Boolean(pending)}
+            onClick={() => { addMenuForward.current = false; setAddMenuOpen(true); }}>
+            <Plus size={20} aria-hidden="true" /> Добавить человека
+          </button>
+      )}
+
       <div className={styles.freshnessRow}><DataFreshness
         updatedAt={activeSection === "people" ? updatedAt : groupsUpdatedAt}
         nowMs={freshnessNowMs}
@@ -482,10 +489,7 @@ export function PeopleView({
           aria-labelledby="people-section-tab-people"
           aria-busy={loading && !data}
         >
-          <button ref={addMenuTrigger} className={styles.addPersonButton} type="button" disabled={Boolean(pending)}
-            onClick={() => { addMenuForward.current = false; setAddMenuOpen(true); }}>
-            <Plus size={20} aria-hidden="true" /> Добавить человека
-          </button>
+
 
           {content}
 
@@ -555,11 +559,8 @@ export function PeopleView({
             </section>
           ) : null}
 
-          <section className={styles.section} aria-labelledby="connected-title">
-            <div className={styles.sectionTitleRow}>
-              <h2 id="connected-title">Мои люди</h2>
-              {data.people.length > 0 ? <span aria-live="polite">{peopleQuery.trim() ? `${filteredPeople.length} из ${data.people.length}` : data.people.length}</span> : null}
-            </div>
+          <section className={styles.section} aria-label="Ваши связи">
+            <span className={styles.srOnly} aria-live="polite">{peopleQuery.trim() ? `Найдено ${filteredPeople.length} из ${data.people.length}` : `Людей: ${data.people.length}`}</span>
             {data.people.length > 0 && <div className={styles.peopleSearch}>
               <Search size={18} aria-hidden="true" />
               <input type="search" aria-label="Поиск по имени или подписи" placeholder="Имя или подпись"
@@ -614,28 +615,13 @@ export function PeopleView({
                           </span>
                         </span>
                         </button>
-                        <div className={styles.personActions}>
-                          <button className={`${styles.iconButton} ${styles.favoriteButton}`} type="button"
-                            aria-label={person.isFavorite ? `Убрать ${person.user.displayName} из избранного` : `Добавить ${person.user.displayName} в избранное`}
-                            aria-pressed={Boolean(person.isFavorite)} disabled={Boolean(pending)}
-                            onClick={() => void runMutation(`favorite:${person.circleId}`, () => updatePersonFavorite(person.circleId, !person.isFavorite, createUuidV4()))}>
-                            <Star size={18} fill={person.isFavorite ? "currentColor" : "none"} />
-                          </button>
-                        <button
-                          className={styles.iconButton}
-                          type="button"
-                          aria-label={`Скопировать ID ${person.user.displayName}`}
-                          onClick={() => copyId(person.user.publicId)}
-                        >
-                          {copiedId === person.user.publicId ? <Check size={17} /> : <Copy size={17} />}
-                        </button>
-                        </div>
+
                       </div>
                       <div className={styles.personBottom}>
                         <label className={styles.sharingLabel}>
                           <span>
-                            <strong>Показывать мои отметки</strong>
-                            <small id={sharingHintId}>
+                            <strong>{isSharing ? "Видны" : "Скрыты"}</strong>
+                            <small id={sharingHintId} className={styles.srOnly}>
                               {isSharing
                                 ? "Этому человеку, включая общие группы"
                                 : "Скрыты от этого человека, включая группы"}
@@ -649,13 +635,27 @@ export function PeopleView({
                             aria-describedby={sharingHintId}
                           />
                         </label>
+                        <div className={styles.personActions}>
+                          <button className={`${styles.iconButton} ${styles.favoriteButton}`} type="button"
+                            aria-label={person.isFavorite ? `Убрать ${person.user.displayName} из избранного` : `Добавить ${person.user.displayName} в избранное`}
+                            aria-pressed={Boolean(person.isFavorite)} disabled={Boolean(pending)}
+                            onClick={() => void runMutation(`favorite:${person.circleId}`, () => updatePersonFavorite(person.circleId, !person.isFavorite, createUuidV4()))}>
+                            <Star size={18} fill={person.isFavorite ? "currentColor" : "none"} />
+                          </button>
+                          <button className={`${styles.iconButton} ${styles.deleteButton}`} type="button"
+                            aria-label={`Удалить связь с ${displayName}`} title="Удалить связь" disabled={Boolean(pending)}
+                            onClick={() => setRemoveCandidate(person)}>
+                            <Trash2 size={18} aria-hidden="true" />
+                          </button>
                         <button
-                          className={styles.removeButton}
+                          className={styles.iconButton}
                           type="button"
-                          onClick={() => setRemoveCandidate(person)}
+                          aria-label={`Скопировать ID ${person.user.displayName}`}
+                          onClick={() => copyId(person.user.publicId)}
                         >
-                          <Trash2 size={15} /> Удалить связь
+                          {copiedId === person.user.publicId ? <Check size={17} /> : <Copy size={17} />}
                         </button>
+                        </div>
                       </div>
                     </article>
                   );
@@ -707,15 +707,16 @@ export function PeopleView({
             <DialogDescription className={styles.dialogDescription}>Пригласите близкого или откройте приглашение, которое прислали вам.</DialogDescription>
           </DialogHeader>
           <div className={styles.addOptions}>
+            <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); resetLookup(); setAddOpen(true); }}>
+              <UserRound size={22} aria-hidden="true" /><span>Ввести ID человека<small>Найти профиль по его коду</small></span><ChevronRight size={18} aria-hidden="true" />
+            </button>
             <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); void openInvite("link"); }}>
-              <Link2 size={22} aria-hidden="true" /><span>Отправить приглашение<small>Поделиться одноразовой ссылкой</small></span><ChevronRight size={18} aria-hidden="true" />
+              <Link2 size={22} aria-hidden="true" /><span>Отправить приглашение<small>Одна ссылка для нескольких людей</small></span><ChevronRight size={18} aria-hidden="true" />
             </button>
             <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); void openInvite("qr"); }}>
               <QrCode size={22} aria-hidden="true" /><span>Показать QR-код<small>Для человека рядом с вами</small></span><ChevronRight size={18} aria-hidden="true" />
             </button>
-            <button type="button" disabled={!isOnline} onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); resetLookup(); setAddOpen(true); }}>
-              <UserRound size={22} aria-hidden="true" /><span>Ввести ID человека<small>Найти профиль по его коду</small></span><ChevronRight size={18} aria-hidden="true" />
-            </button>
+
             <button type="button" aria-label="Открыть приглашение по ссылке или коду" onClick={() => { addMenuForward.current = true; setAddMenuOpen(false); resetInviteImport(); setInviteImportOpen(true); }}>
               <ClipboardPaste size={22} aria-hidden="true" /><span>Открыть приглашение<small>Вставить полученную ссылку или код</small></span><ChevronRight size={18} aria-hidden="true" />
             </button>
@@ -824,7 +825,7 @@ export function PeopleView({
           <DialogHeader>
             <DialogTitle className={styles.dialogTitle}>Принять приглашение</DialogTitle>
             <DialogDescription className={styles.dialogDescription}>
-              Вставьте ссылку или одноразовый код. Это удобно, если камера открыла QR в Yandex или Safari, а ваш профиль находится в приложении с домашнего экрана.
+              Вставьте ссылку или код приглашения. Это удобно, если камера открыла QR в Yandex или Safari, а ваш профиль находится в приложении с домашнего экрана.
             </DialogDescription>
           </DialogHeader>
           <form className={styles.inviteImportForm} onSubmit={handleInviteImport} noValidate>
@@ -871,10 +872,10 @@ export function PeopleView({
                 ? inviteDialog.mode === "qr"
                   ? "Приглашение по QR-коду"
                   : "Приглашение по ссылке"
-                : "Одноразовый код приглашения"}
+                : "Код приглашения"}
             </DialogTitle>
             <DialogDescription className={styles.dialogDescription}>
-              Один человек сможет принять приглашение. Ссылка действует 7 дней. После подтверждения будут видны только новые отметки.
+              По этой ссылке могут добавиться несколько человек. Она действует 7 дней. Каждый подтверждает добавление сам и видит только новые отметки.
             </DialogDescription>
           </DialogHeader>
           {!inviteShare && pending === "invite-link" ? (
@@ -890,7 +891,7 @@ export function PeopleView({
           ) : (
             <div className={styles.inviteShare}>
               {inviteDialog.mode === "qr" && inviteShare.url ? (
-                <div className={styles.qrFrame} role="img" aria-label="QR-код одноразового приглашения">
+                <div className={styles.qrFrame} role="img" aria-label="QR-код приглашения">
                   <QRCode
                     value={inviteShare.url}
                     size={212}
@@ -910,7 +911,7 @@ export function PeopleView({
                 className={`${styles.inviteLinkField} ${
                   inviteDialog.mode === "qr" ? styles.inviteLinkFieldCompact : ""
                 }`}
-                aria-label={inviteShare.url ? "Ссылка приглашения" : "Одноразовый код приглашения"}
+                aria-label={inviteShare.url ? "Ссылка приглашения" : "Код приглашения"}
                 readOnly
                 rows={inviteDialog.mode === "qr" ? 2 : 3}
                 spellCheck={false}
@@ -928,7 +929,7 @@ export function PeopleView({
                   <Share2 size={17} /> Поделиться
                 </button>
               </div>
-              <small>Одно использование · до {new Intl.DateTimeFormat("ru-RU", {
+              <small>Для нескольких людей · до {new Intl.DateTimeFormat("ru-RU", {
                 day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
               }).format(Date.parse(inviteShare.expiresAt))}</small>
               <button

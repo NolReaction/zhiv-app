@@ -38,17 +38,22 @@ internal suspend fun readCheckInCalendar(
                    AND e.local_date < (b.month_start + interval '1 month')::date
                    AND e.checked_at <= b.server_time
                  GROUP BY e.local_date
-            ), first_day AS (
-                SELECT min(found.local_date) AS earliest_date
+            ), history_bounds AS (
+                SELECT min(found.local_date) AS earliest_date, max(latest.local_date) AS latest_date
                   FROM history h LEFT JOIN LATERAL (
                     SELECT e.local_date FROM check_ins e CROSS JOIN viewer v
                      WHERE e.user_id = h.user_id AND e.checked_at <= v.server_time
                      ORDER BY e.local_date, e.checked_at LIMIT 1
                   ) found ON true
+                  LEFT JOIN LATERAL (
+                    SELECT e.local_date FROM check_ins e CROSS JOIN viewer v
+                     WHERE e.user_id = h.user_id AND e.checked_at <= v.server_time
+                     ORDER BY e.local_date DESC, e.checked_at DESC LIMIT 1
+                  ) latest ON true
             )
             SELECT b.timezone_id, b.today, b.server_time, b.month_start,
-                   first_day.earliest_date, daily.local_date, daily.check_in_count
-              FROM bounds b CROSS JOIN first_day LEFT JOIN daily ON true
+                   history_bounds.earliest_date, history_bounds.latest_date, daily.local_date, daily.check_in_count
+              FROM bounds b CROSS JOIN history_bounds LEFT JOIN daily ON true
              ORDER BY daily.local_date
             """.trimIndent(),
         ).use { statement ->
@@ -61,13 +66,15 @@ internal suspend fun readCheckInCalendar(
                 val timeZone = result.getString("timezone_id")
                 val serverTime = result.getObject("server_time", OffsetDateTime::class.java)
                 val first = result.getObject("earliest_date", LocalDate::class.java) ?: today
+                val last = result.getObject("latest_date", LocalDate::class.java) ?: today
                 val days = buildList {
                     do {
                         val date = result.getObject("local_date", LocalDate::class.java)
                         if (date != null) add(CalendarDay(date, result.getLong("check_in_count")))
                     } while (result.next())
                 }
-                CheckInCalendarSnapshot(selectedMonth, today, timeZone, YearMonth.from(first), days, serverTime)
+                CheckInCalendarSnapshot(selectedMonth, today, timeZone, YearMonth.from(minOf(first, today)), days, serverTime,
+                    lastMonth = YearMonth.from(maxOf(last, today)))
             }
         }
     }

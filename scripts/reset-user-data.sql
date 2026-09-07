@@ -12,9 +12,9 @@ DECLARE
         'account_recovery_codes', 'account_recovery_contact_removals', 'account_recovery_contacts',
         'account_registration_tickets', 'app_sessions', 'app_users', 'check_in_audiences',
         'check_ins', 'circle_invites', 'circle_memberships', 'circle_sharing_preferences',
-        'circles', 'direct_invite_links', 'direct_person_favorites', 'direct_requests',
+        'circles', 'direct_invite_links', 'direct_invite_redemptions', 'direct_person_favorites', 'direct_requests',
         'identity_bootstrap_keys', 'private_person_nicknames', 'recipient_sharing_preferences',
-        'user_status_write_keys'
+        'user_status_write_keys', 'user_timezone_write_keys'
     ];
     actual_tables text[];
     table_name text;
@@ -26,9 +26,9 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
-    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '17'
+    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '19'
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migration V17. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migration V19. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;
@@ -48,6 +48,6 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Migration history changed. Reset rolled back.';
     END IF;
-    RAISE NOTICE 'All 28 application tables are empty. Migration history is preserved.';
+    RAISE NOTICE 'All 30 application tables are empty. Migration history is preserved.';
 END $$;
 COMMIT;

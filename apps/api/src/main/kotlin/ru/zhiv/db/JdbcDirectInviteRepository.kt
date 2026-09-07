@@ -53,8 +53,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                 INSERT INTO direct_invite_links (
                     inviter_user_id, token_hash, idempotency_key, created_at, expires_at
                 ) VALUES (?, ?, ?, ?, ? + interval '7 days')
-                RETURNING id, inviter_user_id, token_hash, status, accepted_by_user_id,
-                          accepted_idempotency_key, result_circle_id, created_at, expires_at
+                RETURNING id, inviter_user_id, token_hash, status, created_at, expires_at
                 """.trimIndent(),
             ).use { statement ->
                 statement.setObject(1, userId)
@@ -84,8 +83,9 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                 if (row.status == "PENDING") expire(connection, row.id, now)
                 return@tx DirectInviteResult.Expired
             }
+            val inviter = user(connection, row.inviterUserId) ?: return@tx DirectInviteResult.Expired
             DirectInviteResult.Success(
-                DirectInvitePreviewSnapshot(user(connection, row.inviterUserId), row.expiresAt, now),
+                DirectInvitePreviewSnapshot(inviter, row.expiresAt, now),
             )
         }
     }
@@ -109,27 +109,18 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                 ?: return@tx DirectInviteResult.NotFound
             val now = serverTime(connection)
             if (row.inviterUserId == recipientId) return@tx DirectInviteResult.Self
-            val priorIdempotency = connection.prepareStatement(
-                """SELECT id FROM direct_invite_links
-                    WHERE accepted_by_user_id = ? AND accepted_idempotency_key = ?""",
-            ).use { statement ->
-                statement.setObject(1, recipientId)
-                statement.setObject(2, idempotencyKey)
-                statement.executeQuery().use { result ->
-                    if (result.next()) result.getObject(1, UUID::class.java) else null
-                }
-            }
-            if (priorIdempotency != null && priorIdempotency != row.id) {
+            if (user(connection, row.inviterUserId) == null) return@tx DirectInviteResult.Expired
+            // Receipt identity is per recipient: another person never consumes this link.
+            val priorIdempotency = findRedemptionByKey(connection, recipientId, idempotencyKey)
+            if (priorIdempotency != null && priorIdempotency.inviteId != row.id) {
                 return@tx DirectInviteResult.Conflict
             }
-            if (row.status == "ACCEPTED") {
-                if (row.acceptedByUserId != recipientId
-                    || row.acceptedIdempotencyKey != idempotencyKey
-                    || row.resultCircleId == null
-                ) {
-                    return@tx DirectInviteResult.Conflict
-                }
-                val person = findPerson(connection, row.resultCircleId, recipientId)
+            val receipt = findRedemption(connection, row.id, recipientId)
+            if (receipt != null) {
+                if (receipt.idempotencyKey != idempotencyKey) return@tx DirectInviteResult.Conflict
+                // Never recreate a relationship removed since the original acceptance.
+                // Exact retries can read an existing result even after rotation/expiry.
+                val person = findPerson(connection, receipt.circleId, recipientId)
                     ?: return@tx DirectInviteResult.Conflict
                 return@tx DirectInviteResult.Success(DirectInviteRedeemSnapshot(person, true, now))
             }
@@ -176,18 +167,16 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
             }
             connection.prepareStatement(
                 """
-                UPDATE direct_invite_links
-                   SET status = 'ACCEPTED', accepted_by_user_id = ?,
-                       accepted_idempotency_key = ?, result_circle_id = ?,
-                       result_circle_kind = 'DIRECT', accepted_at = ?
-                 WHERE id = ? AND status = 'PENDING'
+                INSERT INTO direct_invite_redemptions (
+                    invite_id, recipient_user_id, idempotency_key, circle_id, accepted_at
+                ) VALUES (?, ?, ?, ?, ?)
                 """.trimIndent(),
             ).use { statement ->
-                statement.setObject(1, recipientId)
-                statement.setObject(2, idempotencyKey)
-                statement.setObject(3, circleId)
-                statement.setObject(4, now)
-                statement.setObject(5, row.id)
+                statement.setObject(1, row.id)
+                statement.setObject(2, recipientId)
+                statement.setObject(3, idempotencyKey)
+                statement.setObject(4, circleId)
+                statement.setObject(5, now)
                 check(statement.executeUpdate() == 1)
             }
             val person = findPerson(connection, circleId, recipientId)
@@ -210,8 +199,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
 
     private fun findByIdempotency(connection: Connection, userId: UUID, key: UUID): InviteRow? =
         connection.prepareStatement(
-            """SELECT id, inviter_user_id, token_hash, status, accepted_by_user_id,
-                      accepted_idempotency_key, result_circle_id, created_at, expires_at
+            """SELECT id, inviter_user_id, token_hash, status, created_at, expires_at
                  FROM direct_invite_links WHERE inviter_user_id = ? AND idempotency_key = ?""",
         ).use { statement ->
             statement.setObject(1, userId)
@@ -222,14 +210,36 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
     private fun findByToken(connection: Connection, hash: ByteArray, lock: Boolean): InviteRow? {
         val suffix = if (lock) " FOR UPDATE" else ""
         return connection.prepareStatement(
-            """SELECT id, inviter_user_id, token_hash, status, accepted_by_user_id,
-                      accepted_idempotency_key, result_circle_id, created_at, expires_at
+            """SELECT id, inviter_user_id, token_hash, status, created_at, expires_at
                  FROM direct_invite_links WHERE token_hash = ?$suffix""",
         ).use { statement ->
             statement.setBytes(1, hash)
             statement.executeQuery().use { result -> if (result.next()) result.toInviteRow() else null }
         }
     }
+
+    private fun findRedemptionByKey(connection: Connection, recipientId: UUID, key: UUID): RedemptionRow? =
+        connection.prepareStatement(
+            """SELECT invite_id, idempotency_key, circle_id FROM direct_invite_redemptions
+               WHERE recipient_user_id = ? AND idempotency_key = ?""",
+        ).use { statement ->
+            statement.setObject(1, recipientId); statement.setObject(2, key)
+            statement.executeQuery().use { result -> if (result.next()) result.toRedemptionRow() else null }
+        }
+
+    private fun findRedemption(connection: Connection, inviteId: UUID, recipientId: UUID): RedemptionRow? =
+        connection.prepareStatement(
+            """SELECT invite_id, idempotency_key, circle_id FROM direct_invite_redemptions
+               WHERE invite_id = ? AND recipient_user_id = ?""",
+        ).use { statement ->
+            statement.setObject(1, inviteId); statement.setObject(2, recipientId)
+            statement.executeQuery().use { result -> if (result.next()) result.toRedemptionRow() else null }
+        }
+
+    private fun ResultSet.toRedemptionRow() = RedemptionRow(
+        getObject("invite_id", UUID::class.java), getObject("idempotency_key", UUID::class.java),
+        getObject("circle_id", UUID::class.java),
+    )
 
     private fun expire(connection: Connection, id: UUID, now: OffsetDateTime) {
         connection.prepareStatement(
@@ -337,10 +347,10 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
             statement.executeQuery().use { result -> if (result.next()) result.toPerson() else null }
         }
 
-    private fun user(connection: Connection, id: UUID): UserReference =
+    private fun user(connection: Connection, id: UUID): UserReference? =
         connection.prepareStatement("SELECT public_id, display_name FROM app_users WHERE id = ? AND deleted_at IS NULL").use { statement ->
             statement.setObject(1, id)
-            statement.executeQuery().use { result -> check(result.next()); UserReference(result.getString(1), result.getString(2)) }
+            statement.executeQuery().use { result -> if (result.next()) UserReference(result.getString(1), result.getString(2)) else null }
         }
 
     private fun serverTime(connection: Connection): OffsetDateTime =
@@ -350,9 +360,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
 
     private fun ResultSet.toInviteRow() = InviteRow(
         getObject("id", UUID::class.java), getObject("inviter_user_id", UUID::class.java),
-        getBytes("token_hash"), getString("status"), getObject("accepted_by_user_id", UUID::class.java),
-        getObject("accepted_idempotency_key", UUID::class.java),
-        getObject("result_circle_id", UUID::class.java), getObject("created_at", OffsetDateTime::class.java),
+        getBytes("token_hash"), getString("status"), getObject("created_at", OffsetDateTime::class.java),
         getObject("expires_at", OffsetDateTime::class.java),
     )
 
@@ -373,9 +381,10 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
         catch (error: Throwable) { connection.rollback(); throw error }
     }
 
+    private data class RedemptionRow(val inviteId: UUID, val idempotencyKey: UUID, val circleId: UUID)
+
     private data class InviteRow(
         val id: UUID, val inviterUserId: UUID, val tokenHash: ByteArray, val status: String,
-        val acceptedByUserId: UUID?, val acceptedIdempotencyKey: UUID?, val resultCircleId: UUID?,
         val createdAt: OffsetDateTime,
         val expiresAt: OffsetDateTime,
     )

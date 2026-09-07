@@ -92,3 +92,27 @@ test("direct invite preview and redeem share exact expiry and idempotency errors
     });
   }
 });
+
+test("one invite admits multiple people, preserves privacy and cannot recreate a removed link", context => {
+  store.resetDevStoreForTests();
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
+  const inviter = store.createDevIdentity("Owner", crypto.randomUUID());
+  const first = store.createDevIdentity("First", crypto.randomUUID());
+  const second = store.createDevIdentity("Second", crypto.randomUUID());
+  store.createDevCheckIn(inviter.token, crypto.randomUUID());
+  context.mock.timers.tick(31_000);
+  const token = capabilityToken(), firstKey = crypto.randomUUID();
+  ok(store.createDevDirectInviteLink(inviter.token, token, crypto.randomUUID()));
+  const accepted = ok(store.redeemDevDirectInvite(first.token, token, firstKey));
+  assert.equal(accepted.person.lastCheckInAt, null);
+  ok(store.previewDevDirectInvite(token));
+  const secondKey = crypto.randomUUID();
+  const another = ok(store.redeemDevDirectInvite(second.token, token, secondKey));
+  assert.equal(another.person.lastCheckInAt, null);
+  assert.notEqual(accepted.person.circleId, another.person.circleId);
+  assert.equal(ok(store.redeemDevDirectInvite(first.token, token, firstKey)).replayed, true);
+  ok(store.removeDevPerson(inviter.token, accepted.person.circleId));
+  assert.equal(store.redeemDevDirectInvite(first.token, token, firstKey).kind, "conflict");
+  assert.equal(store.redeemDevDirectInvite(first.token, token, crypto.randomUUID()).kind, "conflict");
+  assert.equal(ok(store.redeemDevDirectInvite(second.token, token, secondKey)).replayed, true);
+});

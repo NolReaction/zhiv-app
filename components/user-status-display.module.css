@@ -1,2 +1,5 @@
 .status { margin: 3px 0; color: #c9ddbd; font-size: 14px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
 .updated { display: block; margin-top: 2px; color: #8e9887; font-size: 12px; line-height: 1.4; }
+
+.status[data-compact] { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.status[data-compact] .updated { display: none; }

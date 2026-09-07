@@ -17,6 +17,7 @@ data class UserSnapshot(
     val statusText: String? = null,
     val statusUpdatedAt: OffsetDateTime? = null,
     val statusExpiresAt: OffsetDateTime? = null,
+    val timeZone: String = "Europe/Moscow",
 )
 
 sealed interface DisplayNameUpdateResult {
@@ -32,6 +33,9 @@ sealed interface DisplayNameUpdateResult {
 }
 
 interface IdentityRepository {
+    suspend fun updateTimeZone(sessionTokenHash: ByteArray, timeZone: String, idempotencyKey: UUID): TimeZoneUpdateResult =
+        throw UnsupportedOperationException("Timezone writes not implemented")
+
     suspend fun calendar(sessionTokenHash: ByteArray, month: java.time.YearMonth?): CheckInCalendarSnapshot? =
         throw UnsupportedOperationException("Calendar reads not implemented")
 
@@ -43,6 +47,7 @@ interface IdentityRepository {
         bootstrapKeyHash: ByteArray,
         sessionTokenHash: ByteArray,
         sessionLifetimeDays: Long,
+        timeZone: String = "Europe/Moscow",
     ): UserSnapshot
 
     suspend fun findSessionUserId(sessionTokenHash: ByteArray): UUID? = findBySession(sessionTokenHash)?.id

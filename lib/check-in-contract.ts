@@ -11,6 +11,7 @@ export type DailyStreak = {
 };
 
 export type ProfileState = {
+  timeZone: string;
   avatarUrl: string | null;
   displayNameChangedAt: string | null;
   displayNameChangeAvailableAt: string | null;
@@ -27,6 +28,8 @@ export type MeResponse = {
 };
 
 export type CheckInCalendarResponse = {
+  nextDayAt: string;
+  lastMonth: string;
   month: string;
   today: string;
   timeZone: string;

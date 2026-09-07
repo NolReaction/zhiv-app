@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApiError, getMe } from "./check-in-api";
+import { deviceTimeZone } from "./time-zone";
 
 export const authOptionsSchema = z.object({ telegram: z.boolean().default(false), email: z.boolean(), vk: z.boolean().default(false), legacy: z.boolean().default(false) });
 const accountAccessSchema = z.object({
@@ -47,7 +48,7 @@ export async function verifyEmailLogin(flow: string, code: string, link = false)
 }
 export const getRegistrationState = () => authRequest("registration", z.object({ pending: z.boolean() }));
 export async function completeRegistration(displayName: string): Promise<{ status: "ok" }> {
-  try { return await authRequest("registration", z.object({ status: z.literal("ok") }), { displayName }); }
+  try { return await authRequest("registration", z.object({ status: z.literal("ok") }), { displayName, timeZone: deviceTimeZone() }); }
   catch (error) {
     if (mayHaveCompleted(error)) {
       try { if (await getMe()) return { status: "ok" }; } catch { /* Keep the original error. */ }

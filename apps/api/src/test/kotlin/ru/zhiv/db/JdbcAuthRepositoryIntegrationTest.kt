@@ -82,7 +82,11 @@ class JdbcAuthRepositoryIntegrationTest {
         assertFailsWith<AuthFailure> { auth.completeRegistration(ticket.hash, tokens.issue().hash, "Wrong browser", session.hash, 365, "Browser") }
         assertFailsWith<AuthFailure> { auth.completeRegistration(ticket.hash, login.browserHash, " ", session.hash, 365, "Browser") }
         assertTrue(auth.hasRegistration(ticket.hash, login.browserHash))
-        val user = auth.completeRegistration(ticket.hash, login.browserHash, "Новый профиль", session.hash, 365, "Browser")
+        val invalidZone = assertFailsWith<AuthFailure> { auth.completeRegistration(ticket.hash, login.browserHash, "Новый профиль", session.hash, 365, "Browser", "+03:00") }
+        assertEquals("INVALID_TIME_ZONE", invalidZone.code)
+        assertTrue(auth.hasRegistration(ticket.hash, login.browserHash))
+        val user = auth.completeRegistration(ticket.hash, login.browserHash, "Новый профиль", session.hash, 365, "Browser", "Asia/Kathmandu")
+        assertEquals("Asia/Kathmandu", identities.findBySession(session.hash)?.timeZone)
         assertEquals(user, identities.findSessionUserId(session.hash))
         assertFalse(auth.hasRegistration(ticket.hash, login.browserHash))
         assertFailsWith<AuthFailure> { auth.completeRegistration(ticket.hash, login.browserHash, "Replay", tokens.issue().hash, 365, "Other") }
@@ -94,8 +98,9 @@ class JdbcAuthRepositoryIntegrationTest {
         val sessionA = tokens.issue(); val sessionB = tokens.issue()
         auth.prepareRegistration(login, login.subject!!, ticketA.hash)
         auth.prepareRegistration(login, login.subject, ticketB.hash)
-        val first = auth.completeRegistration(ticketA.hash, login.browserHash, "Первое имя", sessionA.hash, 365, "First")
-        val second = auth.completeRegistration(ticketB.hash, login.browserHash, "Другое имя", sessionB.hash, 365, "Second")
+        val first = auth.completeRegistration(ticketA.hash, login.browserHash, "Первое имя", sessionA.hash, 365, "First", "Asia/Tokyo")
+        val second = auth.completeRegistration(ticketB.hash, login.browserHash, "Другое имя", sessionB.hash, 365, "Second", "Europe/Berlin")
+        assertEquals("Asia/Tokyo", identities.findBySession(sessionB.hash)?.timeZone)
         assertEquals(first, second)
         assertEquals(first, identities.findSessionUserId(sessionA.hash))
         assertEquals(first, identities.findSessionUserId(sessionB.hash))

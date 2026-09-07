@@ -57,7 +57,7 @@ const me = {
   user: { publicId: "1234-5678-9ABC", displayName: "Дима" },
   lastCheckInAt: null, checkInCount: 0,
   streak: { currentDays: 0, longestDays: 0, isActive: false, renewBy: null },
-  profile: { avatarUrl: null, displayNameChangedAt: null, displayNameChangeAvailableAt: null },
+  profile: { timeZone: "Europe/Moscow", avatarUrl: null, displayNameChangedAt: null, displayNameChangeAvailableAt: null },
   serverTime: "2026-09-06T12:00:00Z",
 };
 

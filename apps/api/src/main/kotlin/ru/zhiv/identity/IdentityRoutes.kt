@@ -43,6 +43,40 @@ fun Route.identityRoutes(
     allowLegacyBootstrap: Boolean = true,
 ) {
     rateLimit(RateLimitName("relationships")) {
+        route("/api/v1/me/time-zone") {
+            install(RequestBodyLimit) { bodyLimit { 2_048 } }
+            patch {
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                if (!call.isTrustedWrite(config)) {
+                    call.respond(HttpStatusCode.Forbidden, ApiErrorResponse("UNTRUSTED_ORIGIN", "Источник запроса не разрешён"))
+                    return@patch
+                }
+                val rawToken = call.sessionCookie(config)
+                if (rawToken == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
+                    return@patch
+                }
+                val key = parseCanonicalUuidV4(call.request.headers["Idempotency-Key"])
+                if (key == null) {
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_IDEMPOTENCY_KEY", "Некорректный ключ запроса"))
+                    return@patch
+                }
+                val body = call.receive<ru.zhiv.http.UpdateTimeZoneRequest>()
+                val timeZone = validTimeZone(body.timeZone)
+                if (timeZone == null) {
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_TIME_ZONE", "Выберите часовой пояс из списка"))
+                    return@patch
+                }
+                when (val result = repository.updateTimeZone(tokenCodec.hash(rawToken), timeZone, key)) {
+                    is TimeZoneUpdateResult.Success -> call.respond(result.user.toResponse())
+                    TimeZoneUpdateResult.Unauthorized -> call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
+                    TimeZoneUpdateResult.Invalid -> call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_TIME_ZONE", "Выберите часовой пояс из списка"))
+                    TimeZoneUpdateResult.IdempotencyConflict -> call.respond(HttpStatusCode.Conflict, ApiErrorResponse("IDEMPOTENCY_CONFLICT", "Ключ уже использован для другого часового пояса"))
+                }
+            }
+        }
+    }
+    rateLimit(RateLimitName("relationships")) {
         route("/api/v1/me/status") {
             install(RequestBodyLimit) { bodyLimit { 2_048 } }
             put {
@@ -130,6 +164,11 @@ fun Route.identityRoutes(
                     return@post
                 }
 
+                val timeZone = validTimeZone(request.timeZone)
+                if (timeZone == null) {
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_TIME_ZONE", "Выберите часовой пояс из списка"))
+                    return@post
+                }
                 val token = tokenCodec.issue()
                 val user = try {
                     repository.bootstrap(
@@ -137,7 +176,11 @@ fun Route.identityRoutes(
                         bootstrapKeyHash = tokenCodec.hash(bootstrapKey.toString()),
                         sessionTokenHash = token.hash,
                         sessionLifetimeDays = config.sessionDays,
+                        timeZone = timeZone,
                     )
+                } catch (_: InvalidTimeZoneException) {
+                    call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_TIME_ZONE", "Выберите часовой пояс из списка"))
+                    return@post
                 } catch (_: BootstrapKeyExpiredException) {
                     call.respond(
                         HttpStatusCode.Conflict,
@@ -171,6 +214,8 @@ fun Route.identityRoutes(
             timeZone = calendar.timeZone, firstMonth = calendar.firstMonth.toString(),
             days = calendar.days.map { ru.zhiv.http.CalendarDayDto(it.date.toString(), it.count) },
             serverTime = calendar.serverTime.toInstant().toString(),
+            nextDayAt = calendar.nextDayAt.toInstant().toString(),
+            lastMonth = calendar.lastMonth.toString(),
         ))
     }
     get("/api/v1/me") {
@@ -285,6 +330,7 @@ internal fun UserSnapshot.toResponse() = MeResponse(
         renewBy = streak.renewBy?.toInstant()?.toString(),
     ),
     profile = ProfileStateDto(
+        timeZone = timeZone,
         avatarUrl = null,
         displayNameChangedAt = displayNameChangedAt?.toInstant()?.toString(),
         displayNameChangeAvailableAt = displayNameChangeAvailableAt?.toInstant()?.toString(),

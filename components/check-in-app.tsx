@@ -1517,7 +1517,7 @@ export function CheckInApp() {
       ) : null}
       </div>
       {me && streak ? <CheckInCalendar key={me.user.publicId} open={calendarOpen} onOpenChange={setCalendarOpen}
-        streak={streak} lastCheckInAt={lastCheckInAt} onSessionLost={loseSession}
+        streak={streak} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}
         returnFocus={() => { if (calendarTrigger.current?.isConnected) calendarTrigger.current.focus(); }} /> : null}
 
       <footer className={styles.footer}>

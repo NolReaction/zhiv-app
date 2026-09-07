@@ -138,19 +138,20 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
         } ?: false
     }
 
-    override suspend fun completeRegistration(ticketHash: ByteArray, browserHash: ByteArray, displayName: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID = tx { c ->
+    override suspend fun completeRegistration(ticketHash: ByteArray, browserHash: ByteArray, displayName: String, newSessionHash: ByteArray, sessionDays: Long, label: String, timeZone: String): UUID = tx { c ->
+        if (!c.acceptsTimeZone(timeZone)) throw AuthFailure("INVALID_TIME_ZONE", "Выберите часовой пояс из списка")
         val name = loginDisplayName(displayName) ?: throw AuthFailure("INVALID_DISPLAY_NAME", "Введите имя длиной до 50 символов")
         val pending = c.query("SELECT * FROM account_registration_tickets WHERE token_hash=? AND consumed_at IS NULL AND expires_at>clock_timestamp() FOR UPDATE", ticketHash) { r ->
             LoginFlow(ticketHash, r.getBytes("browser_hash"), r.getString("provider"), "register", null, name, r.getString("subject"), null, null, null)
         } ?: invalid()
         if (!MessageDigest.isEqual(pending.browserHash, browserHash)) invalid()
         // Identity lookup, optional creation, session and ticket consumption commit together.
-        val user = finishInTransaction(c, pending, requireNotNull(pending.subject), newSessionHash, sessionDays, label)
+        val user = finishInTransaction(c, pending, requireNotNull(pending.subject), newSessionHash, sessionDays, label, timeZone)
         c.update("UPDATE account_registration_tickets SET consumed_at=clock_timestamp() WHERE token_hash=?", ticketHash)
         user
     }
 
-    private fun finishInTransaction(c: Connection, flow: LoginFlow, subject: String, newSessionHash: ByteArray, sessionDays: Long, label: String): UUID {
+    private fun finishInTransaction(c: Connection, flow: LoginFlow, subject: String, newSessionHash: ByteArray, sessionDays: Long, label: String, registrationTimeZone: String = "Europe/Moscow"): UUID {
         if (flow.intent == "account") throw AuthFailure("INVALID_REQUEST", "Подтверждение требует отдельной операции")
         // Serialize initial registrations and linking for this exact verified identity.
         lock(c, "identity:${flow.provider}:$subject")
@@ -171,7 +172,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             val name = loginDisplayName(flow.displayName) ?: throw AuthFailure("INVALID_DISPLAY_NAME", "Введите имя")
             var allocated: UUID? = null
             repeat(5) {
-                if (allocated == null) allocated = c.query("INSERT INTO app_users(public_id,display_name) VALUES (?,?) ON CONFLICT (public_id) DO NOTHING RETURNING id", publicIds.next(), name) { it.getObject(1, UUID::class.java) }
+                if (allocated == null) allocated = c.query("INSERT INTO app_users(public_id,display_name,timezone_id) VALUES (?,?,?) ON CONFLICT (public_id) DO NOTHING RETURNING id", publicIds.next(), name, registrationTimeZone) { it.getObject(1, UUID::class.java) }
             }
             allocated ?: error("Could not allocate public ID")
         }

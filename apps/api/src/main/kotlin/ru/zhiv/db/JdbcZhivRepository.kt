@@ -10,6 +10,8 @@ import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.PublicIdGenerator
 import ru.zhiv.identity.UserSnapshot
+import ru.zhiv.identity.TimeZoneUpdateResult
+import ru.zhiv.identity.InvalidTimeZoneException
 import java.nio.ByteBuffer
 import java.sql.Connection
 import java.sql.ResultSet
@@ -29,6 +31,7 @@ class JdbcZhivRepository(
         bootstrapKeyHash: ByteArray,
         sessionTokenHash: ByteArray,
         sessionLifetimeDays: Long,
+        timeZone: String,
     ): UserSnapshot = withContext(Dispatchers.IO) {
         var lastCollision: SQLException? = null
         repeat(5) {
@@ -53,16 +56,18 @@ class JdbcZhivRepository(
                         return@inTransaction replay.user
                     }
 
+                    if (!connection.acceptsTimeZone(timeZone)) throw InvalidTimeZoneException()
                     val publicId = publicIds.next()
                     val user = connection.prepareStatement(
                         """
-                        INSERT INTO app_users (public_id, display_name)
-                        VALUES (?, ?)
+                        INSERT INTO app_users (public_id, display_name, timezone_id)
+                        VALUES (?, ?, ?)
                         RETURNING id, created_at
                         """.trimIndent(),
                     ).use { statement ->
                         statement.setString(1, publicId)
                         statement.setString(2, displayName)
+                        statement.setString(3, timeZone)
                         statement.executeQuery().use { result ->
                             check(result.next())
                             NewUser(
@@ -122,7 +127,7 @@ class JdbcZhivRepository(
         WITH request_clock AS MATERIALIZED (
             SELECT clock_timestamp() AS server_time
         )
-        SELECT u.id, u.public_id, u.display_name, history.last_check_in_at,
+        SELECT u.id, u.public_id, u.display_name, u.timezone_id, history.last_check_in_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
@@ -237,7 +242,7 @@ class JdbcZhivRepository(
                     WITH request_clock AS MATERIALIZED (
                         SELECT clock_timestamp() AS server_time
                     )
-                    SELECT u.id, u.public_id, u.display_name, history.last_check_in_at,
+                    SELECT u.id, u.public_id, u.display_name, u.timezone_id, history.last_check_in_at,
                            CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
@@ -267,6 +272,31 @@ class JdbcZhivRepository(
                 }
             }
         }
+
+    override suspend fun updateTimeZone(sessionTokenHash: ByteArray, timeZone: String, idempotencyKey: UUID): TimeZoneUpdateResult = withContext(Dispatchers.IO) {
+        inTransaction { connection ->
+            val user = lockUser(connection, sessionTokenHash)
+                ?: return@inTransaction TimeZoneUpdateResult.Unauthorized
+            if (!connection.acceptsTimeZone(timeZone)) return@inTransaction TimeZoneUpdateResult.Invalid
+            val previous = connection.prepareStatement("SELECT timezone_id FROM user_timezone_write_keys WHERE user_id = ? AND idempotency_key = ?").use {
+                it.setObject(1, user.userId); it.setObject(2, idempotencyKey)
+                it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+            }
+            if (previous != null && previous != timeZone) return@inTransaction TimeZoneUpdateResult.IdempotencyConflict
+            // Replaying an older request must not undo a later selection.
+            if (previous == null) {
+                connection.prepareStatement("UPDATE app_users SET timezone_id = ?, updated_at = ? WHERE id = ?").use {
+                    it.setString(1, timeZone); it.setObject(2, user.serverTime); it.setObject(3, user.userId)
+                    check(it.executeUpdate() == 1)
+                }
+                connection.prepareStatement("INSERT INTO user_timezone_write_keys(user_id, idempotency_key, timezone_id) VALUES (?, ?, ?)").use {
+                    it.setObject(1, user.userId); it.setObject(2, idempotencyKey); it.setString(3, timeZone); it.executeUpdate()
+                }
+            }
+            // Saved check-in dates and rolling streak timestamps are deliberately untouched.
+            TimeZoneUpdateResult.Success(checkNotNull(loadUserSnapshot(connection, user.userId, user.serverTime)))
+        }
+    }
 
     override suspend fun updateDisplayName(
         sessionTokenHash: ByteArray,
@@ -613,7 +643,7 @@ class JdbcZhivRepository(
         WITH request_clock AS MATERIALIZED (
             SELECT CAST(? AS timestamptz) AS server_time
         )
-        SELECT u.id, u.public_id, u.display_name, history.last_check_in_at,
+        SELECT u.id, u.public_id, u.display_name, u.timezone_id, history.last_check_in_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
@@ -681,6 +711,7 @@ class JdbcZhivRepository(
         id = getObject("id", UUID::class.java),
         publicId = getString("public_id"),
         displayName = getString("display_name"),
+        timeZone = getString("timezone_id"),
         lastCheckInAt = getObject("last_check_in_at", OffsetDateTime::class.java),
         checkInCount = getLong("check_in_count"),
         streak = toDailyStreakSnapshot(),

@@ -266,7 +266,7 @@ class RequestDiagnosticsTest {
     )
 
     private object UnusedRepository : IdentityRepository, CheckInRepository {
-        override suspend fun bootstrap(displayName: String, bootstrapKeyHash: ByteArray, sessionTokenHash: ByteArray, sessionLifetimeDays: Long): UserSnapshot = error("unused")
+        override suspend fun bootstrap(displayName: String, bootstrapKeyHash: ByteArray, sessionTokenHash: ByteArray, sessionLifetimeDays: Long, timeZone: String): UserSnapshot = error("unused")
         override suspend fun findBySession(sessionTokenHash: ByteArray): UserSnapshot? = null
         override suspend fun updateDisplayName(sessionTokenHash: ByteArray, displayName: String, idempotencyKey: UUID): DisplayNameUpdateResult = error("unused")
         override suspend fun record(sessionTokenHash: ByteArray, idempotencyKey: UUID): CheckInResult = error("unused")

@@ -20,6 +20,8 @@ data class CheckInCalendarResponse(
     val firstMonth: String,
     val days: List<CalendarDayDto>,
     val serverTime: String,
+    val nextDayAt: String,
+    val lastMonth: String,
 )
 
 @Serializable
@@ -52,10 +54,14 @@ data class ProfileStateDto(
     val avatarUrl: String?,
     val displayNameChangedAt: String?,
     val displayNameChangeAvailableAt: String?,
+    val timeZone: String = "Europe/Moscow",
 )
 
 @Serializable
-data class BootstrapRequest(val displayName: String)
+data class BootstrapRequest(val displayName: String, val timeZone: String = "Europe/Moscow")
+
+@Serializable
+data class UpdateTimeZoneRequest(val timeZone: String)
 
 @Serializable
 data class UpdateDisplayNameRequest(val displayName: String)
