@@ -121,12 +121,16 @@ private val diagnosticErrorCodes = actionableAuthFailures + setOf(
     "ACCOUNT_PROOF_REQUIRED", "ACCOUNT_WRONG_PROFILE", "ACCOUNT_OTHER_PROFILE_REQUIRED", "ACCOUNT_EMAIL_IN_USE",
     "ACCOUNT_PREVIEW_EXPIRED", "ACCOUNT_PREVIEW_STALE", "ACCOUNT_MERGE_CONFLICT", "ACCOUNT_BUSY",
     "ACCOUNT_REQUEST_CONFLICT", "CONFIRM_REQUIRED",
+    "ADMIN_FORBIDDEN", "ADMIN_UNAVAILABLE", "INVALID_ADMIN_QUERY",
+    "ADMIN_PROTECTED_ACCOUNT", "ADMIN_REQUEST_CONFLICT", "ADMIN_USER_NOT_FOUND",
 )
 
 private fun safeErrorCode(code: String): String = code.takeIf { it in diagnosticErrorCodes } ?: "UNKNOWN_ERROR"
 
 // Only these fixed templates can reach the log. Unknown paths and path parameters are never recorded.
 private val operationTemplates = listOf(
+    "/api/v1/admin/access", "/api/v1/admin/overview", "/api/v1/admin/users",
+    "/api/v1/admin/audit", "/api/v1/admin/monitoring", "/api/v1/admin/users/{publicId}/revoke-sessions",
     "/healthz", "/readyz", "/api/v1/bootstrap", "/api/v1/me", "/api/v1/me/status", "/api/v1/me/calendar", "/api/v1/me/time-zone",
     "/api/v1/game/progress", "/api/v1/game/sessions", "/api/v1/game/batches",
     "/api/v1/game/visibility", "/api/v1/game/leaderboard", "/api/v1/game/achievements",

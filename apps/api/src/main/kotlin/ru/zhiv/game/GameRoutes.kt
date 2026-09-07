@@ -21,6 +21,7 @@ import ru.zhiv.http.parseCanonicalUuid
 import ru.zhiv.http.parseCanonicalUuidV4
 import ru.zhiv.http.sessionCookie
 import ru.zhiv.security.TokenCodec
+import ru.zhiv.observability.RuntimeMetrics
 
 private fun ApplicationCall.gameSessionHash(config: AppConfig, codec: TokenCodec, writing: Boolean = false): ByteArray {
     response.header(HttpHeaders.CacheControl, "no-store")
@@ -61,7 +62,9 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
                 if (sessionId == null || runId == null || request.sequence !in 1L until 9_007_199_254_740_991L || request.tapCount !in 1..60) {
                     throw AuthFailure("INVALID_GAME_BATCH", "Некорректный игровой пакет", 400)
                 }
-                call.respond(repository.submitBatch(hash, sessionId, request.sequence, request.tapCount, runId))
+                val receipt = repository.submitBatch(hash, sessionId, request.sequence, request.tapCount, runId)
+                RuntimeMetrics.shared.recordGameBatch(receipt.acceptedTaps, receipt.rejectedTaps, receipt.replayed)
+                call.respond(receipt)
             }
             patch("/visibility") {
                 val hash = call.gameSessionHash(config, codec, writing = true)

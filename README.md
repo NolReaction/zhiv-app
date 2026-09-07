@@ -2,7 +2,7 @@
 
 PWA для короткой отметки близким: нажмите **«Я ЖИВОЙ»**, и выбранные люди увидят подтверждённое сервером время. Работает в браузере и устанавливается на главный экран телефона.
 
-**Версия:** 0.5.6 · **Стек:** React 19, Next.js 16, Kotlin/Ktor, PostgreSQL 18, Docker Compose, Caddy.
+**Версия:** 0.5.7 · **Стек:** React 19, Next.js 16, Kotlin/Ktor, PostgreSQL 18, Docker Compose, Caddy.
 
 ## Возможности
 
@@ -136,6 +136,8 @@ CI проверяет web, Ktor, PostgreSQL и запуск production Compose. 
 - [Вход через ВК и почту](docs/auth-0.5.0.md)
 - [VPS](docs/vps.md)
 - [Эксплуатация и резервные копии](docs/operations.md)
+- [Закрытая панель управления](docs/admin-panel.md)
+- [Изменения 0.5.7](docs/release-0.5.7.md)
 - [Изменения 0.5.6](docs/release-0.5.6.md)
 - [Изменения 0.5.5](docs/release-0.5.5.md)
 - [Изменения 0.5.4](docs/release-0.5.4.md)

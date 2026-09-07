@@ -79,9 +79,13 @@ services:
       SMTP_PASSWORD_FILE: ${SMTP_PASSWORD_FILE:-}
       SMTP_FROM: ${SMTP_FROM:-}
       AUTH_CODE_SECRET_FILE: ${AUTH_CODE_SECRET_FILE:-}
+      ADMIN_PUBLIC_IDS: ${ADMIN_PUBLIC_IDS:-}
+      MONITORING_URL: ${MONITORING_URL:-}
+      METRICS_TOKEN_FILE: ${METRICS_TOKEN_FILE:-}
     secrets: [db_app]
     volumes:
       - ./.secrets/auth:/run/auth-secrets:ro
+      - ./.secrets/monitoring:/run/monitoring-secrets:ro
     networks: [backend, outbound]
     read_only: true
     tmpfs: [/tmp]
@@ -152,7 +156,77 @@ services:
     stop_grace_period: 10s
     logging: *default-logging
 
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=14d
+      - --storage.tsdb.retention.size=1GB
+      - --query.timeout=5s
+      - --query.max-concurrency=4
+      - --query.max-samples=200000
+      - --web.listen-address=0.0.0.0:9090
+    networks: [backend]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./.secrets/monitoring/token:/run/secrets/metrics_token:ro
+      - prometheus_data:/prometheus
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    cpus: '0.50'
+    healthcheck:
+      test: [CMD-SHELL, 'wget --quiet --spider http://127.0.0.1:9090/-/ready']
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.meminfo
+      - --collector.loadavg
+      - --collector.filesystem
+      - '--collector.filesystem.mount-points-include=^/$$'
+      - --web.listen-address=0.0.0.0:9100
+    networks: [backend]
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 96m
+    cpus: '0.25'
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+
 volumes:
+  prometheus_data:
   postgres_data:
   caddy_data:
   caddy_config:

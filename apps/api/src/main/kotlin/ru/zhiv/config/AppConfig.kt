@@ -11,6 +11,9 @@ data class AppConfig(
     val production: Boolean,
     val allowedOrigins: Set<String>,
     val sessionDays: Long = 365,
+    val adminPublicIds: Set<String> = emptySet(),
+    val monitoringUrl: String? = null,
+    val metricsScrapeToken: String? = null,
 ) {
     val cookieName: String = if (production) "__Host-zhiv_session" else "zhiv_session_dev"
 
@@ -43,6 +46,24 @@ data class AppConfig(
                 } ?: value("DATABASE_PASSWORD", "zhiv"),
                 production = production,
                 allowedOrigins = allowedOrigins,
+                adminPublicIds = environment["ADMIN_PUBLIC_IDS"].orEmpty().split(',').map(String::trim)
+                    .filter(String::isNotEmpty).toSet().also { ids ->
+                        require(ids.size <= 32 && ids.all { it.matches(Regex("^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$")) }) {
+                            "ADMIN_PUBLIC_IDS must contain up to 32 canonical public IDs"
+                        }
+                    },
+                monitoringUrl = environment["MONITORING_URL"]?.trim()?.takeIf(String::isNotEmpty)?.also { raw ->
+                    val uri = URI(raw)
+                    require(uri.scheme in setOf("http", "https") && uri.host != null && uri.userInfo == null
+                        && uri.rawQuery == null && uri.rawFragment == null && uri.rawPath in setOf("", "/")) {
+                        "MONITORING_URL must be a server-configured HTTP origin"
+                    }
+                },
+                metricsScrapeToken = environment["METRICS_TOKEN_FILE"]?.takeIf(String::isNotBlank)?.let { file ->
+                    Files.readString(Path.of(file)).trim().also { token ->
+                        require(token.matches(Regex("^[A-Za-z0-9_-]{64}$"))) { "Invalid metrics scrape token file" }
+                    }
+                },
             )
         }
 

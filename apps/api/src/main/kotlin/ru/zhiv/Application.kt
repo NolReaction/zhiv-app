@@ -2,6 +2,7 @@ package ru.zhiv
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpHeaders
+import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -18,6 +19,7 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.ContentTransformationException
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
@@ -59,6 +61,14 @@ import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.auth.*
 import ru.zhiv.db.JdbcAuthRepository
+import ru.zhiv.admin.AdminConfig
+import ru.zhiv.admin.AdminRepository
+import ru.zhiv.admin.adminRoutes
+import ru.zhiv.db.JdbcAdminRepository
+import ru.zhiv.observability.RuntimeMetrics
+import ru.zhiv.observability.RequestMetrics
+import ru.zhiv.observability.MonitoringService
+import java.security.MessageDigest
 
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
@@ -93,6 +103,7 @@ fun Application.module() {
         mailer = mailer,
         vk = vk,
         games = JdbcGameRepository(dataSource),
+        admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
     )
 }
 
@@ -113,7 +124,11 @@ fun Application.installZhivApi(
     mailer: LoginMailer? = null,
     vk: VkVerifier? = null,
     games: GameRepository? = null,
+    admin: AdminRepository? = null,
 ) {
+    val metrics = RuntimeMetrics.shared
+    val monitoring = MonitoringService(config.monitoringUrl)
+    install(RequestMetrics) { this.metrics = metrics }
     install(RequestDiagnostics)
     install(DefaultHeaders)
     install(ForwardedHeaders)
@@ -132,6 +147,8 @@ fun Application.installZhivApi(
             "game-read" to 1_200,
             "game-session" to 120,
             "game-write" to 4_800,
+            "admin-read" to 3_600,
+            "admin-write" to 30,
             "account-recovery-write" to 30,
             "account-recovery-read" to 600,
         )) {
@@ -209,6 +226,17 @@ fun Application.installZhivApi(
     }
 
     routing {
+        get("/internal/metrics") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            val expected = config.metricsScrapeToken
+            val authorization = call.request.headers[HttpHeaders.Authorization].orEmpty()
+            val supplied = authorization.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")
+            if (expected == null || supplied == null || !MessageDigest.isEqual(expected.toByteArray(), supplied.toByteArray())) {
+                call.respond(HttpStatusCode.NotFound)
+            } else {
+                call.respondText(metrics.exposition(), ContentType.parse("text/plain; version=0.0.4; charset=utf-8"))
+            }
+        }
         get("/healthz") {
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respond(mapOf("status" to "ok"))
@@ -229,6 +257,18 @@ fun Application.installZhivApi(
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         games?.let { gameRoutes(it, tokenCodec, config) }
+        admin?.let { repository ->
+            adminRoutes(repository, tokenCodec, config)
+            rateLimit(RateLimitName("admin-read")) {
+                get("/api/v1/admin/monitoring") {
+                    call.response.header(HttpHeaders.CacheControl, "no-store")
+                    call.response.header("X-Robots-Tag", "noindex, nofollow")
+                    val raw = call.sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
+                    repository.access(tokenCodec.hash(raw))
+                    call.respond(monitoring.snapshot())
+                }
+            }
+        }
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }

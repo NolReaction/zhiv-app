@@ -8,5 +8,11 @@ chmodSync(directory,0o700);
 for(const name of ["db_admin","db_migration","db_app"]) {
   try {writeFileSync(directory+name,randomBytes(36).toString("base64url")+"\n",{mode:0o444,flag:"wx"});}
   catch(error){if(error.code!=="EEXIST")throw error;}
+  chmodSync(directory+name,0o444);
 }
 console.log("Secret files ready; existing files were preserved. Values are not printed.");
+mkdirSync(directory+"monitoring",{recursive:true,mode:0o755});
+chmodSync(directory+"monitoring",0o755);
+try {writeFileSync(directory+"monitoring/token",randomBytes(48).toString("base64url")+"\n",{mode:0o444,flag:"wx"});}
+catch(error){if(error.code!=="EEXIST")throw error;}
+chmodSync(directory+"monitoring/token",0o444);

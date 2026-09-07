@@ -5,6 +5,18 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFails
 
 class AppConfigTest {
+    @Test fun `administrator access is disabled until exact server public IDs are configured`() {
+        val base = mapOf("APP_ENV" to "development")
+        assertEquals(emptySet(), AppConfig.fromEnvironment(base).adminPublicIds)
+        assertEquals(null, AppConfig.fromEnvironment(base).metricsScrapeToken)
+        assertEquals(setOf("39QC-QR3A-F92Q"), AppConfig.fromEnvironment(base + ("ADMIN_PUBLIC_IDS" to "39QC-QR3A-F92Q")).adminPublicIds)
+        for (value in listOf("*", "admin", "https://example.com", "39qc-qr3a-f92q")) {
+            assertFails { AppConfig.fromEnvironment(base + ("ADMIN_PUBLIC_IDS" to value)) }
+        }
+        for (value in listOf("file:///etc/passwd", "http://user:pass@prometheus:9090", "http://prometheus:9090/api?query=secret")) {
+            assertFails { AppConfig.fromEnvironment(base + ("MONITORING_URL" to value)) }
+        }
+    }
     @Test
     fun `APP_ENV is mandatory`() {
         assertFails {

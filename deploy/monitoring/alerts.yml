@@ -1,0 +1,45 @@
+groups:
+  - name: zhiv
+    rules:
+      - alert: ZhivApiDown
+        expr: up{job="api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: API metrics have been unreachable for over one minute.
+      - alert: ZhivNodeDown
+        expr: up{job="node"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Host metrics have been unreachable for over two minutes.
+      - alert: ZhivHighErrorRate
+        expr: (sum(rate(zhiv_http_errors_total{job="api"}[5m])) / clamp_min(sum(rate(zhiv_http_requests_total{job="api"}[5m])), 0.001) > 0.05) and (sum(increase(zhiv_http_errors_total{job="api"}[5m])) >= 5)
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than five percent of API requests returned HTTP 5xx.
+      - alert: ZhivDiskLow
+        expr: node_filesystem_avail_bytes{job="node",mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{job="node",mountpoint="/",fstype!~"tmpfs|overlay"} < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Less than ten percent of the root filesystem is available.
+      - alert: ZhivMemoryPressure
+        expr: node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"} < 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Less than ten percent of host memory is available.
+      - alert: ZhivGameRejects
+        expr: (sum(rate(zhiv_game_taps_total{job="api",result="rejected"}[5m])) / clamp_min(sum(rate(zhiv_game_taps_total{job="api"}[5m])), 0.001) > 0.1) and (sum(increase(zhiv_game_taps_total{job="api",result="rejected"}[5m])) >= 30)
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than ten percent of gameplay taps are rejected.
