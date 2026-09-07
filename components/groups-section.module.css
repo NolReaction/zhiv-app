@@ -323,6 +323,17 @@
   line-height: 1.5;
 }
 
+.createDialog .presetRow button { min-height: 76px; border-radius: 16px; border-color: rgb(207 232 186 / 18%); background: rgb(207 232 186 / 5%); color: #becbb2; font-size: 14px; cursor: pointer; }
+.createDialog .presetRow .presetActive { border-color: rgb(205 239 190 / 48%); background: rgb(194 223 166 / 17%); color: #ecf6e4; box-shadow: inset 0 1px rgb(255 255 255 / 10%); }
+.createDialog .field, .createDialog .peoplePicker legend { color: #c5d2b9; font-size: 14px; font-weight: 600; }
+.createDialog .field input { border-color: rgb(207 232 186 / 20%); background: rgb(12 19 8 / 25%); }
+.createDialog .peoplePicker { max-height: min(230px, 30dvh); overscroll-behavior: contain; scrollbar-width: thin; }
+.createDialog .peoplePicker label { min-height: 48px; border: 1px solid transparent; }
+.createDialog .peoplePicker label:has(input:checked) { background: rgb(194 223 166 / 10%); border-color: rgb(194 223 166 / 18%); }
+.createDialog .peoplePicker input[type="checkbox"] { width: 18px; height: 18px; accent-color: #bed9a7; }
+.createDialog .peoplePicker label strong { font-size: 14px; overflow-wrap: anywhere; }
+.createDialog .primaryButton { min-height: 48px; border: 1px solid rgb(223 242 205 / 30%); border-radius: 15px; background: linear-gradient(145deg, #d8e9c9, #b9d69f); box-shadow: inset 0 1px rgb(255 255 255 / 30%); color: #14200f; font-size: 16px; }
+
 .presetRow {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

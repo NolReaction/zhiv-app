@@ -6,6 +6,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType:"custom", configFile:false, root, resolve:{alias:{"@":root}}, server:{middlewareMode:true,hmr:false} });
 const store = await vite.ssrLoadModule("/lib/dev-api-store.ts");
 const status = await vite.ssrLoadModule("/lib/user-status.ts");
+const api = await vite.ssrLoadModule("/lib/check-in-api.ts");
 after(() => vite.close());
 const key = () => crypto.randomUUID();
 function ok(result) { assert.equal(result.kind,"ok"); return result.value; }
@@ -25,9 +26,42 @@ function group(owner,members,title) {
 test("status validation accepts plain Unicode and rejects controls/oversize",()=>{
   assert.equal(status.normalizeUserStatus("  гуляю   дома "),"гуляю дома");
   assert.equal(status.normalizeUserStatus(""),"");
-  assert.equal(status.normalizeUserStatus("😀".repeat(120)),"😀".repeat(120));
-  for(const value of ["я\nдома","a\u202eb","x".repeat(121)]) assert.equal(status.normalizeUserStatus(value),null);
+  for (const character of ["я", "😀"]) {
+    assert.equal(status.normalizeUserStatus(character.repeat(30)), character.repeat(30));
+    assert.equal(status.normalizeUserStatus(character.repeat(31)), null);
+    assert.equal(status.normalizeUserStatus(`  ${character.repeat(30)}  `), character.repeat(30));
+  }
+  assert.equal(status.normalizeUserStatus("  я\u00a0\u2003😀  "), "я 😀");
+  assert.equal(status.normalizeUserStatus(" \u00a0 "), "");
+  for(const value of ["я\nдома","a\u202eb","x".repeat(31)]) assert.equal(status.normalizeUserStatus(value),null);
 });
+test("new status writes reject 31 code points without replacing a saved status", () => {
+  store.resetDevStoreForTests();
+  const owner = store.createDevIdentity("Владелец", key());
+  for (const character of ["я", "😀"]) {
+    const writeKey = key();
+    const saved = ok(store.updateDevStatus(owner.token, `  ${character.repeat(30)}  `, writeKey, 60));
+    assert.equal(saved.status.text, character.repeat(30));
+    assert.equal(Date.parse(saved.status.expiresAt) - Date.parse(saved.status.updatedAt), 3_600_000);
+    assert.deepEqual(ok(store.updateDevStatus(owner.token, character.repeat(30), writeKey, 60)).status, saved.status);
+    assert.throws(() => store.updateDevStatus(owner.token, character.repeat(31), key()), RangeError);
+    assert.deepEqual(store.getDevIdentity(owner.token).status, saved.status);
+    assert.throws(() => store.updateDevStatus(owner.token, "Дома", key(), 30), RangeError);
+    assert.deepEqual(store.getDevIdentity(owner.token).status, saved.status);
+  }
+  assert.equal(ok(store.updateDevStatus(owner.token, "  \u00a0  ", key(), 60)).status, null);
+});
+
+test("legacy statuses remain readable in the API and display until deliberately edited", async t => {
+  store.resetDevStoreForTests();
+  const owner = store.createDevIdentity("Владелец", key());
+  const legacyStatus = { text: "😀".repeat(120), updatedAt: owner.me.serverTime, expiresAt: null };
+  t.mock.method(globalThis, "fetch", async () => Response.json({ ...owner.me, status: legacyStatus }));
+  assert.deepEqual((await api.getMe()).status, legacyStatus);
+  assert.equal(status.activeUserStatus(legacyStatus, Date.now()), legacyStatus);
+  assert.equal(status.normalizeUserStatus(legacyStatus.text), null);
+});
+
 test("group OFF closes every route, person ON only restores that recipient, and status follows privacy",t=>{
   t.mock.timers.enable({apis:["Date"],now:Date.parse("2026-09-05T12:00:00Z")});
   store.resetDevStoreForTests();

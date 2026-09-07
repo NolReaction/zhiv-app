@@ -778,6 +778,39 @@ class JdbcZhivRepositoryIntegrationTest {
     }
 
     @Test
+    fun `status writes enforce 30 code points while preserving readable legacy data`() = runBlocking<Unit> {
+        val ownerToken = tokens.issue()
+        val owner = repository.bootstrap("Legacy status owner", tokens.issue().hash, ownerToken.hash, 365)
+        val legacyText = "😀".repeat(120)
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("UPDATE app_users SET status_text=?,status_updated_at=clock_timestamp() WHERE id=?").use {
+                it.setString(1, legacyText); it.setObject(2, owner.id); it.executeUpdate()
+            }
+            connection.commit()
+        }
+        assertEquals(legacyText, assertNotNull(repository.findBySession(ownerToken.hash)).statusText)
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateStatus(ownerToken.hash, "я".repeat(31), UUID.randomUUID())
+        }
+        assertEquals(legacyText, assertNotNull(repository.findBySession(ownerToken.hash)).statusText)
+        for (character in listOf("я", "😀")) {
+            val key = UUID.randomUUID()
+            val saved = assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "  ${character.repeat(30)}  ", key, 60)).user
+            assertEquals(character.repeat(30), saved.statusText)
+            assertEquals(saved.statusUpdatedAt?.plusHours(1), saved.statusExpiresAt)
+            assertEquals(saved.statusExpiresAt, assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, character.repeat(30), key, 60)).user.statusExpiresAt)
+            assertFailsWith<IllegalArgumentException> {
+                repository.updateStatus(ownerToken.hash, character.repeat(31), UUID.randomUUID())
+            }
+            assertEquals(saved.statusText, assertNotNull(repository.findBySession(ownerToken.hash)).statusText)
+        }
+        val cleared = assertIs<DisplayNameUpdateResult.Success>(repository.updateStatus(ownerToken.hash, "  \u00a0  ", UUID.randomUUID(), 60)).user
+        assertEquals(null, cleared.statusText)
+        assertEquals(null, cleared.statusUpdatedAt)
+        assertEquals(null, cleared.statusExpiresAt)
+    }
+
+    @Test
     fun `favorites persist privately without changing sharing and reset on reconnect`() = runBlocking<Unit> {
         val relationships = JdbcRelationshipRepository(dataSource)
         val ownerToken = tokens.issue(); val annaToken = tokens.issue(); val yanaToken = tokens.issue(); val outsiderToken = tokens.issue()

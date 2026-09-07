@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flame, HeartPulse, Copy, LoaderCircle, Trophy, UserRound, Users } from "lucide-react";
+import { Flame, HeartPulse, Copy, Trophy, UserRound, Users } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -268,8 +268,8 @@ function restoreClickerRun(publicId: string, storySeed: number): ClickerExpiry {
 
 type SeriesResult = Pick<ClickerFinishedSeries, "eventId" | "tapCount" | "isRecord">;
 
-function TapCounter({ progress, result, count, pending, isRecord }: {
-  progress: ClickerRun; result: SeriesResult | null; count: number; pending: number; isRecord: boolean;
+function TapCounter({ progress, result, count, isRecord }: {
+  progress: ClickerRun; result: SeriesResult | null; count: number; isRecord: boolean;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const deadlineMs = progress.activeSeries
@@ -304,7 +304,6 @@ function TapCounter({ progress, result, count, pending, isRecord }: {
       aria-hidden="true"
     >
       <strong>{!active && isRecord ? "Рекорд " : ""}×{count.toLocaleString("ru-RU")}</strong>
-      {pending > 0 && <LoaderCircle size={13} className={styles.tapSaving} />}
       {active ? <small>{seconds}с</small> : null}
       {active ? <i className={styles.tapCounterProgress} /> : null}
     </span>
@@ -1392,7 +1391,7 @@ export function CheckInApp() {
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
               <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
-                pending={displayedRun?.pendingTaps ?? 0} isRecord={isConfirmedRecord} />
+                isRecord={isConfirmedRecord} />
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>

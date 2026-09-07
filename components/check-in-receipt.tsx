@@ -4,6 +4,7 @@ import { useId } from "react";
 import { Check, CircleAlert, LoaderCircle, Server, WifiOff } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import styles from "./check-in-receipt.module.css";
+import glass from "./glass-action.module.css";
 
 export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSending, unconfirmed, isOnline, onRetry }: {
   lastCheckInAt: string | null;
@@ -25,7 +26,7 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
     <div className={styles.row}>
       <Popover>
         <PopoverTrigger asChild>
-          <button type="button" className={styles.indicator} aria-label={`${title}. Подробнее об отметке`}
+          <button type="button" className={`${glass.button} ${styles.indicator}`} aria-label={`${title}. ${lastCheckInLabel}. Подробнее об отметке`}
             onPointerDown={event => event.stopPropagation()}>
             <Server size={20} aria-hidden="true" className={styles.server} />
             <span key={`${state}:${lastCheckInAt ?? "first"}`} className={styles.badge} aria-hidden="true">
@@ -36,6 +37,7 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
         </PopoverTrigger>
         <PopoverContent className={styles.details} side="top" sideOffset={10} collisionPadding={20} aria-labelledby={titleId}>
           <h3 id={titleId}>{title}</h3>
+          <p className={styles.fact}>{lastCheckInLabel}</p>
           <p>{state === "sending" ? "Ещё немного — ждём подтверждения отправки."
             : state === "pending" ? "Связь прервалась. Проверьте, дошла ли отметка."
               : state === "offline" ? "Последняя сохранённая отметка остаётся с вами. Для новой нужно подключение."
@@ -45,7 +47,6 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
           {unconfirmed && <button type="button" disabled={!isOnline || isSending} onClick={onRetry}>Проверить отправку</button>}
         </PopoverContent>
       </Popover>
-      <p className={styles.fact}>{lastCheckInLabel}</p>
     </div>
     <span className={styles.srOnly} role="status" aria-live="polite">{title}</span>
     {(unconfirmed || !isOnline) && <div className={styles.warning}>

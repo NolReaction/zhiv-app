@@ -328,6 +328,41 @@ class ApiContractTest {
         assertEquals(HttpStatusCode.OK, activate(second).status)
     }
 
+    @Test
+    fun `status endpoint accepts 30 code points and rejects longer writes without truncation`() = testApplication {
+        val repository = FakeRepository()
+        application { installZhivApi(repository, repository, testConfig()) }
+        val created = client.post("/api/v1/bootstrap") {
+            contentType(ContentType.Application.Json)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"displayName":"Status limit"}""")
+        }
+        val cookie = assertNotNull(created.headers[HttpHeaders.SetCookie]).substringBefore(';')
+        suspend fun update(text: String, duration: String = "null") = client.put("/api/v1/me/status") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Cookie, cookie)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"text":"$text","expiresInMinutes":$duration}""")
+        }
+        for (character in listOf("я", "😀")) {
+            val saved = update("  ${character.repeat(30)}  ", "60")
+            assertEquals(HttpStatusCode.OK, saved.status)
+            assertContains(saved.bodyAsText(), "\"text\":\"${character.repeat(30)}\"")
+            assertEquals("no-store", saved.headers[HttpHeaders.CacheControl])
+            val rejected = update(character.repeat(31))
+            assertEquals(HttpStatusCode.BadRequest, rejected.status)
+            assertContains(rejected.bodyAsText(), "INVALID_STATUS")
+            assertContains(rejected.bodyAsText(), "До 30 символов")
+            assertContains(client.get("/api/v1/me") { header(HttpHeaders.Cookie, cookie) }.bodyAsText(), "\"text\":\"${character.repeat(30)}\"")
+        }
+        val invalidDuration = update("Дома", "30")
+        assertEquals(HttpStatusCode.BadRequest, invalidDuration.status)
+        assertContains(invalidDuration.bodyAsText(), "INVALID_STATUS_DURATION")
+        val cleared = update("   ", "60")
+        assertEquals(HttpStatusCode.OK, cleared.status)
+        assertContains(cleared.bodyAsText(), "\"status\":null")
+    }
+
     private class RecordingCodeRecovery : CodeRecoveryRepository {
         var activatedHash: ByteArray? = null
         var redeemCalls = 0
@@ -470,6 +505,17 @@ class ApiContractTest {
                 user = current.copy(timeZone = timeZone)
             }
             return ru.zhiv.identity.TimeZoneUpdateResult.Success(requireNotNull(user))
+        }
+
+        override suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID, expiresInMinutes: Int?): DisplayNameUpdateResult {
+            val current = findBySession(sessionTokenHash) ?: return DisplayNameUpdateResult.Unauthorized
+            val now = OffsetDateTime.now(ZoneOffset.UTC)
+            return DisplayNameUpdateResult.Success(current.copy(
+                statusText = text.ifEmpty { null },
+                statusUpdatedAt = if (text.isEmpty()) null else now,
+                statusExpiresAt = if (text.isEmpty()) null else expiresInMinutes?.let { now.plusMinutes(it.toLong()) },
+                serverTime = now,
+            ).also { user = it })
         }
 
         override suspend fun updateDisplayName(

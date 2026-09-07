@@ -10,6 +10,7 @@ import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.PublicIdGenerator
 import ru.zhiv.identity.UserSnapshot
+import ru.zhiv.identity.validStatus
 import ru.zhiv.identity.TimeZoneUpdateResult
 import ru.zhiv.identity.InvalidTimeZoneException
 import java.nio.ByteBuffer
@@ -350,25 +351,26 @@ class JdbcZhivRepository(
 
     override suspend fun updateStatus(sessionTokenHash: ByteArray, text: String, idempotencyKey: UUID, expiresInMinutes: Int?): DisplayNameUpdateResult = withContext(Dispatchers.IO) {
         require(expiresInMinutes == null || expiresInMinutes in setOf(60, 120, 240, 480, 1440))
+        val normalizedText = requireNotNull(validStatus(text)) { "Invalid status text" }
         inTransaction { connection ->
             val user = lockUser(connection, sessionTokenHash)
                 ?: return@inTransaction DisplayNameUpdateResult.Unauthorized
-            val duration = if (text.isEmpty()) null else expiresInMinutes
+            val duration = if (normalizedText.isEmpty()) null else expiresInMinutes
             val previous = connection.prepareStatement("SELECT status_text, expires_in_minutes FROM user_status_write_keys WHERE user_id = ? AND idempotency_key = ?").use {
                 it.setObject(1, user.userId); it.setObject(2, idempotencyKey)
                 it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) to (rows.getObject(2) as? Int) else null }
             }
-            if (previous != null && previous != (text to duration)) return@inTransaction DisplayNameUpdateResult.IdempotencyConflict
+            if (previous != null && previous != (normalizedText to duration)) return@inTransaction DisplayNameUpdateResult.IdempotencyConflict
             if (previous == null) {
                 connection.prepareStatement("UPDATE app_users SET status_text = NULLIF(?, ''), status_updated_at = ?, status_expires_at = ?, updated_at = ? WHERE id = ?").use {
-                    it.setString(1, text)
-                    it.setObject(2, if (text.isEmpty()) null else user.serverTime)
+                    it.setString(1, normalizedText)
+                    it.setObject(2, if (normalizedText.isEmpty()) null else user.serverTime)
                     it.setObject(3, duration?.let { minutes -> user.serverTime.plusMinutes(minutes.toLong()) })
                     it.setObject(4, user.serverTime); it.setObject(5, user.userId)
                     it.executeUpdate()
                 }
                 connection.prepareStatement("INSERT INTO user_status_write_keys(user_id, idempotency_key, status_text, expires_in_minutes) VALUES (?, ?, ?, ?)").use {
-                    it.setObject(1, user.userId); it.setObject(2, idempotencyKey); it.setString(3, text); it.setObject(4, duration); it.executeUpdate()
+                    it.setObject(1, user.userId); it.setObject(2, idempotencyKey); it.setString(3, normalizedText); it.setObject(4, duration); it.executeUpdate()
                 }
             }
             DisplayNameUpdateResult.Success(checkNotNull(loadUserSnapshot(connection, user.userId, user.serverTime)))
