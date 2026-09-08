@@ -23,6 +23,7 @@ function profile(token: string | undefined, now: number) {
 export function getDevWorld(token: string | undefined, now = Date.now()): WorldSnapshot {
   const { owner, value } = profile(token, now);
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(),
+    devTools: process.env.NODE_ENV === "development",
     state: structuredClone(value.state), gifts: naturalItems(getDevItemStreak(owner, now)), catalogVersion: catalog.version as 1,
     dailySparksEarned: value.day === new Date(now).toISOString().slice(0, 10) ? value.earned : 0 };
 }
@@ -32,6 +33,9 @@ function apply(state: WorldState, command: WorldCommand, now: number): string {
     for (const key of ["sparks", "wood", "stone"] as const) state.resources[key] -= cost[key];
   };
   switch (command.action) {
+    case "dev_grant_resources":
+      for (const key of ["sparks", "wood", "stone"] as const) state.resources[key] += 50;
+      return "+50 искр, дерева и камня";
     case "upgrade_house": {
       const cost = catalog.houseUpgrades.find(c => c.level === state.houseLevel + 1);
       if (!cost) return fail("WORLD_MAX_LEVEL", "Домик уже полностью улучшен");
@@ -85,6 +89,9 @@ function apply(state: WorldState, command: WorldCommand, now: number): string {
   }
 }
 export function commandDevWorld(token: string | undefined, command: WorldCommand, now = Date.now()) {
+  if (command.action === "dev_grant_resources" && (process.env.NODE_ENV !== "development" || command.target !== "")) {
+    throw new DevWorldError("DEV_TOOLS_DISABLED", "Тестовая выдача недоступна", 404);
+  }
   const { owner, value } = profile(token, now);
   if (owner !== command.ownerPublicId) return fail("WORLD_OWNER_CHANGED", "Аккаунт изменился. Обновите мир.");
   const signature = JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.target]);

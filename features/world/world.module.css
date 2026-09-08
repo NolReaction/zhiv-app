@@ -1,17 +1,17 @@
 .portal[data-slot='dialog-content'] { --dialog-padding: 0; translate: none; position: fixed; inset: 0; z-index: 80; display: block; width: 100%; height: 100dvh; max-width: none; max-height: none; padding: 0; border: 0; border-radius: 0; transform: none; gap: 0; background: #142218; color: #eef2dc; overflow: hidden; isolation: isolate; }
-.portal[data-state='open'] { animation: forest-open 680ms cubic-bezier(.18,.7,.2,1) both; }
-.portal[data-state='closed'] { animation: forest-close 380ms cubic-bezier(.5,0,.7,.3) both; }
-@keyframes forest-open { from { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: .6; } to { clip-path: circle(150vmax at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } }
-@keyframes forest-close { from { clip-path: circle(150vmax at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } to { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 0; } }
+.portal[data-state='open'] { animation: forest-open 950ms cubic-bezier(.22,.65,.25,1) both; }
+.portal[data-state='closed'] { animation: forest-close 500ms cubic-bezier(.4,0,.6,1) both; }
+@keyframes forest-open { from { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: .95; } to { clip-path: circle(var(--portal-end-radius, 120vmax) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } }
+@keyframes forest-close { from { clip-path: circle(var(--portal-end-radius, 120vmax) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } to { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 0; } }
 .world { position: relative; width: 100%; height: 100%; overflow: hidden; color: #eef2dc; }
 .world *, .sheet * { box-sizing: border-box; }
 .world button, .sheet button, .loading button { min-height: 44px; border: 1px solid #d8e6b643; border-radius: 14px; background: #19271cec; color: #e0e9ce; font: inherit; font-size: .875rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 13px; transition: background .18s, border-color .18s; }
 .world button:hover:not(:disabled), .sheet button:hover:not(:disabled) { background: #33452bee; border-color: #d4e8a78c; }
 .world button:disabled, .sheet button:disabled { opacity: .5; cursor: default; }
-.world button:focus-visible, .sheet button:focus-visible, .sheet summary:focus-visible, .scene canvas:focus-visible { outline: 2px solid #e1eeb6; outline-offset: 3px; }
+.world button:focus-visible, .sheet button:focus-visible, .sheet summary:focus-visible, .scene > canvas:focus-visible { outline: 2px solid #e1eeb6; outline-offset: 3px; }
 .scene { position: absolute; inset: 0; overflow: hidden; background: #1a2a1d url('/mochlik-pixel/forest.webp') center / cover; }
-.scene canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
-.scene canvas:active { cursor: grabbing; }
+.scene > canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.scene > canvas:active { cursor: grabbing; }
 .sceneLoading { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); width: min(340px, 80%); border: 1px solid #c1d59340; border-radius: 16px; background: #152017ef; padding: 18px; text-align: center; font-size: 1rem; }
 .hud { position: absolute; top: 0; left: 0; right: 0; z-index: 3; padding: calc(12px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 36px max(12px, env(safe-area-inset-left)); pointer-events: none; background: linear-gradient(#0d180dc9, transparent); }
 .playerBar { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; }
@@ -112,3 +112,44 @@
 @media (prefers-reduced-motion: reduce) { .portal[data-state], .sheet[data-state] { animation: none; clip-path: none; } .world *, .sheet * { transition: none !important; } }
 
 .sheetScrim[data-slot='dialog-overlay'] { z-index: 90; background: #06100970; }
+
+/* World-only motion; never inherit the centered modal transform utilities. */
+.portalScrim[data-slot='dialog-overlay'] { animation-duration: 650ms; background: #0610095c; }
+.portal[data-state='open'] .scene { animation: terrain-arrive 950ms cubic-bezier(.22,.65,.25,1) both; transform-origin: var(--portal-x, 50%) var(--portal-y, 50%); }
+.portal[data-state='open'] .hud, .portal[data-state='open'] .bottomHud { animation: hud-arrive 500ms ease 350ms both; }
+@keyframes terrain-arrive { from { transform: scale(1.055); } to { transform: scale(1); } }
+@keyframes hud-arrive { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
+.mapAnchors button { --place-color: #cedf8a; width: 56px; height: 44px; min-height: 44px; padding: 0; border: 1px solid color-mix(in srgb, var(--place-color) 60%, transparent); border-radius: 50%; background: radial-gradient(ellipse, color-mix(in srgb, var(--place-color) 26%, transparent), transparent 70%); box-shadow: 0 0 12px color-mix(in srgb, var(--place-color) 25%, transparent), inset 0 0 10px color-mix(in srgb, var(--place-color) 12%, transparent); }
+.mapAnchors button[data-kind='house'] { --place-color: #efc97a; }
+.mapAnchors button[data-kind='river'] { --place-color: #8fd5db; }
+.mapAnchors button[data-kind='workshop'] { --place-color: #ddad7a; }
+.mapAnchors button:hover { background: color-mix(in srgb, var(--place-color) 32%, transparent) !important; }
+.scene .away { border: 0; padding: 0; background: none; min-height: 46px; top: calc(112px + env(safe-area-inset-top)); }
+.routeChooser { overflow: hidden; margin: 8px 0 14px; border-radius: 16px; border: 1px solid #c9dca438; background: #152418; }
+.routeChooser > img { display: block; width: 100%; height: clamp(115px, 20dvh, 190px); object-fit: cover; image-rendering: pixelated; }
+.routeChooser > div { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 9px; }
+.routeChooser span { display: grid; text-align: center; gap: 2px; }
+.routeChooser strong { font-size: 1rem; }
+.routeChooser small { font-size: .75rem; color: #b8cba3; }
+.devTools { border-top: 1px dashed #b6c78d55; margin-top: 20px; padding-top: 15px; display: grid; gap: 8px; }
+.devTools small { color: #a8b69b; font-size: .75rem; text-align: center; }
+.activeTrip { text-align: center; }
+.notice { position: relative; display: flex; align-items: center; gap: 8px; overflow: hidden; border: 1px solid #bfd29d40; border-radius: 13px; background: #152418ed; padding: 12px 14px; font-size: .875rem; line-height: 1.45; pointer-events: auto; animation: notice-dismiss 5500ms linear var(--notice-delay, 0ms) both; }
+.notice > span { flex: 1; }
+.notice i { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, #91b570, #e5edb1); transform-origin: left; animation: notice-time 5500ms linear var(--notice-delay, 0ms) both; }
+@keyframes notice-time { to { transform: scaleX(0); } }
+@keyframes notice-dismiss { 0%, 78% { opacity: 1; mask-image: linear-gradient(90deg, #000, #000); } 92% { opacity: .7; mask-image: linear-gradient(90deg, #000, transparent); } 100% { opacity: 0; mask-image: linear-gradient(90deg, transparent, transparent); } }
+.feedback[data-collapsed='true'] { width: 44px; left: auto; right: 68px; transform: none; }
+.feedback[data-collapsed='true'] button { width: 44px; padding: 8px; }
+.sheet .feedback { position: relative; inset: auto; transform: none; width: 100%; margin-top: 12px; }
+.sheet .feedback[data-collapsed='true'] { width: 44px; margin-left: auto; }
+.statsPanel { padding: 16px 0; }
+.statsIdentity { display: grid; justify-items: center; gap: 9px; }
+.statsIdentity h2 { font-size: 1.25rem; overflow-wrap: anywhere; }
+.statsIdentity > span { font-size: .875rem; color: #c7d7ac; }
+.statsPanel dl { margin: 22px 0; display: grid; gap: 0; }
+.statsPanel dl > div { display: flex; gap: 16px; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #b4c89422; font-size: .875rem; }
+.statsPanel dt { color: #b6c5a6; }
+.statsPanel dd { margin: 0; text-align: right; }
+.statsPanel > button { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .portal .scene, .portal .hud, .portal .bottomHud, .notice, .notice i { animation: none !important; transform: none; } }

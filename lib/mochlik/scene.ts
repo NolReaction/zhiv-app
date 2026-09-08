@@ -1,6 +1,7 @@
 import type { WorldState } from "@/features/world/model";
 import { loadWorkshopArt } from "./workshop-art";
 import { homeAppearance } from "./home-state";
+import { houseAtlasCell, houseDetailPatches } from "./house-details";
 import type { GameItemId } from "../game-rewards";
 import { SHELTER, SHELTER_ART, nextWeatherChange, createHabitat, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
 import { pixelSprite } from "./pixel-sprite";
@@ -13,7 +14,7 @@ import { propBehindBody, drawDecor, drawShelter, drawProp, drawWeather, drawMome
 export type SceneOptions = { lampOn: boolean; dusk: boolean; paused: boolean; reducedMotion: boolean; backgrounded?: boolean; presenceKey?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[] };
 export type HabitatScene = { configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; dispose: () => void };
 type Callbacks = { activity: (activity: Activity) => void; ready: () => void; failure: () => void; rendered?: () => void };
-const upgrades = new Map<number, Promise<HTMLImageElement>>();
+let upgradePromise: Promise<HTMLImageElement> | null = null;
 let artPromise: Promise<HTMLImageElement> | null = null;
 function loadArt() {
   if (!artPromise) artPromise = new Promise<HTMLImageElement>((resolve, reject) => {
@@ -24,12 +25,11 @@ function loadArt() {
   return artPromise;
 }
 
-function loadUpgrade(level: number) {
-  if (!upgrades.has(level)) upgrades.set(level, new Promise<HTMLImageElement>((resolve, reject) => {
+function loadUpgrade() {
+  return upgradePromise ??= new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image(); image.onload = () => resolve(image); image.onerror = reject;
-    image.src = `/world/home-level-${level}.webp`;
-  }).catch(error => { upgrades.delete(level); throw error; }));
-  return upgrades.get(level)!;
+    image.src = "/world/house-details.webp";
+  }).catch(error => { upgradePromise = null; throw error; });
 }
 
 export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, callbacks: Callbacks): HabitatScene {
@@ -69,10 +69,10 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
     ctx.drawImage(art, 0, 0, width, width);
     if (upgradeArt && upgradeLevel === appearance.houseLevel) {
-      // House additions share this layer in both views. Keep the original door,
-      // lamp, mushrooms and bush pixels so all existing choreography stays aligned.
-      ctx.save(); ctx.beginPath(); ctx.rect(145, 14, 97, 71); ctx.rect(203, 66, 39, 35); ctx.clip();
-      ctx.drawImage(upgradeArt, 0, 0, width, width); ctx.restore();
+      const cell = houseAtlasCell(upgradeLevel);
+      for (const part of houseDetailPatches(upgradeLevel)) {
+        ctx.drawImage(upgradeArt, cell.x + part.sx, cell.y + part.sy, part.sw, part.sh, part.x, part.y, part.w, part.h);
+      }
     }
     if (appearance.workshop && workshopArt) ctx.drawImage(workshopArt, 24, 151, 48, 44);
     const state = world.state, a = state.activity, p = state.progress;
@@ -233,7 +233,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     const level = appearance.houseLevel;
     if (level <= 1 || level === upgradeLevel) return;
     upgradeLevel = level; upgradeArt = null;
-    void loadUpgrade(level).then(image => {
+    void loadUpgrade().then(image => {
       if (disposed || level !== appearance.houseLevel) return;
       upgradeArt = image; draw();
     }).catch(() => { if (!disposed) { upgradeLevel = 1; callbacks.failure(); } });

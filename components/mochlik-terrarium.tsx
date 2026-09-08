@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { WorldState } from "@/features/world/model";
-import { journeyLabel } from "@/lib/mochlik/home-state";
+import { JourneyProgress } from "@/features/world/journey-progress";
 import type { GameItemId } from "@/lib/game-rewards";
 import { habitatLighting } from "@/lib/mochlik/lighting";
 import type { HabitatScene, SceneOptions } from "@/lib/mochlik/scene";
@@ -69,6 +69,6 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
     <div className={styles.fallback} />
     <canvas ref={canvas} className={styles.canvas} />
     <div className={styles.glass} />
-    {journeyLabel(worldState, nowMs) && <span className={styles.journey}>{journeyLabel(worldState, nowMs)}</span>}
+    {worldState?.journeys[0] && <span className={styles.journey}><JourneyProgress journey={worldState.journeys[0]} equipment={worldState.equipment} now={nowMs} paused={suspended} /></span>}
   </div>;
 }

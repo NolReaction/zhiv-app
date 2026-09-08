@@ -85,6 +85,7 @@ test("home journey status distinguishes travelling, rewards ready, and claimed",
 });
 
 test("camera zoom keeps the touched terrain point stable and clamps every viewport to map edges", () => {
+  assert.deepEqual(camera.viewportPoint({ x: 105, y: 230 }, { left: 5, top: 30, width: 420, height: 840 }, { width: 400, height: 800 }), { x: 100 * 400 / 420, y: 200 * 800 / 840 });
   const view = { width: 393, height: 700 }, initial = { x: 384, y: 384, zoom: 1.6 }, anchor = { x: 155, y: 210 };
   const before = camera.screenToWorld(anchor, initial, view), zoomed = camera.zoomAt(initial, view, anchor, 1.35), afterZoom = camera.screenToWorld(anchor, zoomed, view);
   assert.ok(Math.hypot(before.x - afterZoom.x, before.y - afterZoom.y) < .000001);
@@ -92,7 +93,7 @@ test("camera zoom keeps the touched terrain point stable and clamps every viewpo
     for (const x of [-1e6, 384, 1e6]) {
       const bounded = camera.clampCamera({ x, y: -x, zoom: .001 }, dimensions);
       const first = camera.screenToWorld({ x: 0, y: 0 }, bounded, dimensions), last = camera.screenToWorld({ x: dimensions.width, y: dimensions.height }, bounded, dimensions);
-      assert.ok(first.x >= -1e-6 && first.y >= -1e-6 && last.x <= 768.000001 && last.y <= 768.000001);
+      assert.ok(first.x >= -1e-6 && first.y >= -1e-6 && last.x <= camera.MAP_SIZE + .000001 && last.y <= camera.MAP_SIZE + .000001);
     }
   }
 });

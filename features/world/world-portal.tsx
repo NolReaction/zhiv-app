@@ -10,13 +10,13 @@ import styles from "./world.module.css";
 export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
   world: WorldController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
-  wakeSignal: number; lastCheckInLabel: string; onCheckIn: () => void; isCheckingIn: boolean;
+  wakeSignal: number;
   bestStreakDays: number; items?: readonly GameItemId[];
 };
 export default function WorldPortal(props: WorldPortalProps) {
   return <Dialog open={props.open} onOpenChange={open => { if (!open) props.onClose(); }}>
     <DialogPortal>
-    <DialogOverlay />
+    <DialogOverlay className={styles.portalScrim} />
     {/* Fullscreen content must not inherit the centered dialog's translate utilities. */}
     <DialogPrimitive.Content data-slot="dialog-content" className={styles.portal} style={props.origin}
       onCloseAutoFocus={event => { event.preventDefault(); props.returnFocus(); }}

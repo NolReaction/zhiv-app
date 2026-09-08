@@ -9,7 +9,7 @@ export const journeySchema = z.object({
   rewards: resourcesSchema, finds: z.array(z.string()).max(20), introductory: z.boolean(), catalogVersion: count,
 });
 export const worldStateSchema = z.object({
-  schemaVersion: z.literal(1), resources: resourcesSchema, houseLevel: z.number().int().min(1).max(3),
+  schemaVersion: z.literal(1), resources: resourcesSchema, houseLevel: z.number().int().min(1).max(5),
   workshop: z.boolean(), inventory: z.array(z.string()).max(100),
   equipment: z.object({ palette: z.string(), head: z.string().nullable(), neck: z.string().nullable() }),
   collection: z.array(z.string()).max(100), journeys: z.array(journeySchema).max(32),
@@ -17,11 +17,11 @@ export const worldStateSchema = z.object({
 });
 export const worldSnapshotSchema = z.object({
   ownerPublicId: z.string().min(1), revision: count, serverTime: z.string().datetime(), state: worldStateSchema,
-  gifts: z.array(z.string()).max(100), dailySparksEarned: count, catalogVersion: z.literal(1),
+  gifts: z.array(z.string()).max(100), dailySparksEarned: count, catalogVersion: z.literal(1), devTools: z.boolean().optional(),
 });
 export const worldCommandSchema = z.object({
   requestId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), ownerPublicId: z.string().min(1).max(40), expectedRevision: count,
-  action: z.enum(["upgrade_house", "build_workshop", "craft", "equip", "start_journey", "recall_journey", "claim_journey"]),
+  action: z.enum(["upgrade_house", "build_workshop", "craft", "equip", "start_journey", "recall_journey", "claim_journey", "dev_grant_resources"]),
   target: z.string().max(80).default(""),
 }).strict();
 export const worldResultSchema = z.object({ snapshot: worldSnapshotSchema, message: z.string(), replayed: z.boolean() });

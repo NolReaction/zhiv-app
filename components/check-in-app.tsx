@@ -1412,7 +1412,7 @@ export function CheckInApp() {
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
               <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
-                wakeSignal={mochlikWakeSignal} nowMs={adjustedNow} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
+                wakeSignal={mochlikWakeSignal} nowMs={world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
                 bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={world.snapshot?.state} worldGifts={world.snapshot?.gifts} />
             </div>}
             <button
@@ -1629,9 +1629,8 @@ export function CheckInApp() {
       {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
         origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
-        level={clickerLevel.level} wakeSignal={mochlikWakeSignal} lastCheckInLabel={serverStatus}
-        bestStreakDays={me.streak.longestDays} items={game.progress?.items}
-        onCheckIn={() => { void handleCheckIn(); }} isCheckingIn={isSending} />}
+        level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
+        bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
       <footer className={styles.footer}>
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />

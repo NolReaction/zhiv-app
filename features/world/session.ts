@@ -6,16 +6,19 @@ type Transport = {
   get: (signal: AbortSignal) => Promise<WorldSnapshot>;
   send: (command: WorldCommand, signal: AbortSignal) => Promise<{ snapshot: WorldSnapshot; message: string }>;
 };
-type View = { snapshot: WorldSnapshot | null; error: string | null; notice: string; busy: boolean; uncertain: boolean };
+type View = { snapshot: WorldSnapshot | null; error: string | null; notice: string; busy: boolean; uncertain: boolean; feedbackAt: number };
 
 /** One account session survives opening/closing the map; receipts never belong to a renderer. */
 export function createWorldSession(owner: string | null, transport: Transport, onSessionLost: () => void) {
-  let view: View = { snapshot: null, error: null, notice: "", busy: false, uncertain: false };
+  let view: View = { snapshot: null, error: null, notice: "", busy: false, uncertain: false, feedbackAt: 0 };
   let pending: WorldCommand | null = null;
   let active = false, epoch = 0, readSequence = 0;
   let serverClock = Date.now(), localClock = performance.now();
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
-  const publish = (patch: Partial<View>) => { view = { ...view, ...patch }; listeners.forEach(listener => listener()); };
+  const publish = (patch: Partial<View>) => {
+    if (patch.notice || patch.error && patch.error !== view.error) patch.feedbackAt = Date.now();
+    view = { ...view, ...patch }; listeners.forEach(listener => listener());
+  };
   const valid = (generation: number) => active && generation === epoch;
   function adopt(value: WorldSnapshot) {
     if (value.ownerPublicId !== owner) { onSessionLost(); return false; }
@@ -40,7 +43,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
     if (!active || view.busy || command.ownerPublicId !== owner) return;
     const generation = epoch, request = controller();
     ++readSequence;
-    pending = command; publish({ busy: true, error: null });
+    pending = command; publish({ busy: true, error: null, notice: "" });
     try {
       const result = await transport.send(command, request.signal);
       if (!valid(generation)) return;

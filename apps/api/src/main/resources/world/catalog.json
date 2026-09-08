@@ -4,7 +4,9 @@
   "tapsPerSpark": 5,
   "houseUpgrades": [
     {"level": 2, "sparks": 10, "wood": 6, "stone": 2},
-    {"level": 3, "sparks": 35, "wood": 18, "stone": 8}
+    {"level": 3, "sparks": 35, "wood": 18, "stone": 8},
+    {"level": 4, "sparks": 65, "wood": 35, "stone": 18},
+    {"level": 5, "sparks": 100, "wood": 60, "stone": 35}
   ],
   "workshop": {"sparks": 20, "wood": 10, "stone": 4},
   "items": [

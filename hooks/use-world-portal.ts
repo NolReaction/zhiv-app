@@ -19,7 +19,9 @@ export function useWorldPortal(owner: string | null) {
     if (!owner || entry.current || backPending.current) return;
     trigger.current = button;
     const rect = circle?.getBoundingClientRect() ?? button.getBoundingClientRect();
-    setOrigin({ "--portal-x": `${rect.left + rect.width / 2}px`, "--portal-y": `${rect.top + rect.height / 2}px`, "--portal-radius": `${rect.width / 2}px` } as CSSProperties);
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    const endRadius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y)) + 8;
+    setOrigin({ "--portal-end-radius": `${endRadius}px`, "--portal-x": `${rect.left + rect.width / 2}px`, "--portal-y": `${rect.top + rect.height / 2}px`, "--portal-radius": `${rect.width / 2}px` } as CSSProperties);
     entry.current = `${owner}:${Date.now()}`;
     try { window.history.pushState({ ...window.history.state, [HISTORY_KEY]: entry.current }, ""); } catch { entry.current = null; }
     setOpenedFor(owner);

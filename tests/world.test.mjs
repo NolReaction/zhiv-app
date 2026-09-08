@@ -89,3 +89,46 @@ test("recalling a trip grants nothing and inventory commands reject malformed in
   assert.equal(model.worldCommandSchema.safeParse({ ...command(p, "equip", "moss"), expectedRevision: -1 }).success, false);
   assert.equal(model.worldCommandSchema.safeParse({ ...command(p, "equip", "moss"), resources: { sparks: 9999 } }).success, false);
 });
+
+test("local grants use receipts and never enable production grants or competitive earnings", () => {
+  const before = process.env.NODE_ENV, enabled = process.env.ENABLE_DEV_API;
+  try {
+    process.env.NODE_ENV = "development";
+    const p = player(), stranger = player();
+    assert.equal(world.getDevWorld(p.token, now).devTools, true);
+    const grant = command(p, "dev_grant_resources");
+    assert.throws(() => world.commandDevWorld(stranger.token, grant, now), { code: "WORLD_OWNER_CHANGED" });
+    const result = world.commandDevWorld(p.token, grant, now);
+    assert.deepEqual(result.snapshot.state.resources, { sparks: 50, wood: 50, stone: 50 });
+    assert.equal(world.commandDevWorld(p.token, grant, now).replayed, true);
+    assert.deepEqual(world.getDevWorld(p.token, now).state.resources, result.snapshot.state.resources);
+    assert.throws(() => world.commandDevWorld(p.token, { ...grant, requestId: crypto.randomUUID() }, now), { code: "WORLD_REVISION_CONFLICT" });
+    assert.equal(issue(p, "dev_grant_resources").snapshot.state.resources.sparks, 100);
+    assert.equal(world.getDevWorld(p.token, now).dailySparksEarned, 0);
+    assert.throws(() => issue(p, "dev_grant_resources", "9999"), { code: "DEV_TOOLS_DISABLED" });
+    process.env.NODE_ENV = "production"; process.env.ENABLE_DEV_API = "true";
+    assert.equal(world.getDevWorld(p.token, now).devTools, false);
+    assert.throws(() => world.commandDevWorld(p.token, grant, now), { code: "DEV_TOOLS_DISABLED" });
+    assert.throws(() => issue(p, "dev_grant_resources"), { code: "DEV_TOOLS_DISABLED" });
+  } finally {
+    if (before === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = before;
+    if (enabled === undefined) delete process.env.ENABLE_DEV_API; else process.env.ENABLE_DEV_API = enabled;
+  }
+});
+
+test("local world supports all five house levels and preserves state when the maximum is reached", () => {
+  const before = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = "development";
+    const p = player();
+    for (let i = 0; i < 5; i++) issue(p, "dev_grant_resources");
+    for (let level = 2; level <= 5; level++) {
+      const result = issue(p, "upgrade_house");
+      assert.equal(result.snapshot.state.houseLevel, level);
+      assert.equal(model.worldSnapshotSchema.safeParse(result.snapshot).success, true);
+    }
+    const finalState = world.getDevWorld(p.token, now);
+    assert.throws(() => issue(p, "upgrade_house"), { code: "WORLD_MAX_LEVEL" });
+    assert.deepEqual(world.getDevWorld(p.token, now), finalState);
+  } finally { if (before === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = before; }
+});
