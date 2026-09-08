@@ -16,10 +16,12 @@ export const gameProgressSchema = z.object({
   visibilityVersion: count,
   serverTime: z.string().datetime(),
 });
-const gameSessionSchema = z.object({
+export const gameSessionSchema = z.object({
   sessionId: z.string().uuid(),
   nextSequence: count,
   expiresAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable().optional(),
+  closedAt: z.string().datetime().nullable().optional(),
   progress: gameProgressSchema,
 });
 const gameBatchSchema = z.object({
@@ -29,6 +31,7 @@ const gameBatchSchema = z.object({
   runTaps: count,
   rejectedTaps: count,
   replayed: z.boolean(),
+  rejectionCode: z.string().nullable().optional(),
   progress: gameProgressSchema,
 });
 const gameLeaderboardSchema = z.object({
@@ -76,7 +79,7 @@ export type GameAchievementId = z.infer<typeof gameAchievementIdSchema>;
 export type GameAchievement = z.infer<typeof gameAchievementSchema>;
 export type GameAchievements = z.infer<typeof gameAchievementsSchema>;
 export type GameSessionRequest = { requestId: string; ownerPublicId: string };
-export type GameBatchRequest = { sessionId: string; sequence: number; tapCount: number; runId: string };
+export type GameBatchRequest = { sessionId: string; sequence: number; tapCount: number; runId: string; tapTimes?: number[] };
 export type GameVisibilityRequest = { leaderboardOptIn: boolean; expectedVersion: number; ownerPublicId: string };
 
 async function gameRequest<T>(
@@ -107,7 +110,7 @@ async function gameRequest<T>(
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(value);
       throw new ApiError(error.success ? error.data.message : "Не удалось загрузить игровой прогресс", response.status,
-        error.success ? error.data : undefined, response.headers.get("X-Request-ID"));
+        error.success ? error.data : undefined, response.headers.get("X-Request-ID"), parseRetryAfter(response.headers.get("Retry-After")));
     }
     const result = schema.safeParse(value);
     if (!result.success) throw new ApiError("Сервер вернул некорректный игровой ответ", 502);
@@ -135,4 +138,10 @@ export function getGameAchievements(signal?: AbortSignal): Promise<GameAchieveme
 }
 export function updateGameVisibility(body: GameVisibilityRequest, signal?: AbortSignal): Promise<GameProgress> {
   return gameRequest("/api/v1/game/visibility", gameProgressSchema, "PATCH", body, signal);
+}
+
+export function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
+  if (!value) return undefined;
+  const delay = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - now;
+  return Number.isFinite(delay) ? Math.max(1000, Math.min(3_600_000, delay)) : undefined;
 }

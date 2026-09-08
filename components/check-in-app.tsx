@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 
 import { GameLevelIcon } from "./game-level-icon";
@@ -1125,7 +1126,8 @@ export function CheckInApp() {
         loseSession();
       } else {
         setCheckInUnconfirmed(true);
-        setNotice("Связь оборвалась · нажмите ещё раз для проверки");
+        setNotice(null);
+        if (me) reportIncident(me.user.publicId, "check-in", incidentCode(error), 0, error);
       }
     } finally {
       checkInSending.current = false;
@@ -1180,15 +1182,16 @@ export function CheckInApp() {
   const clickerLevel = getClickerLevel(game.progress?.lifetimeTaps ?? 0);
   const clickerLevelProgress = getClickerLevelProgress(game.progress?.lifetimeTaps ?? 0);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
-  const primaryStatus = !isOnline ? "Офлайн · игровые тапы не сохраняются"
-    : game.status === "error" ? "Ждём соединения, чтобы сохранить нажатия"
-      : game.run?.interrupted ? "После перерыва связи началась новая игровая серия"
-        : game.run?.rejectedTaps ? `Без подтверждения: ${game.run.rejectedTaps.toLocaleString("ru-RU")} нажатий` : null;
-  const gameNotice = !isOnline ? "Без интернета новые игровые тапы не сохраняются."
-    : game.status === "error" ? "Не удалось синхронизировать игровой прогресс. Повторите обновление."
+  const gameNotice = game.errorCode === "GAME_STARTING" ? "Получаем разрешение на игру. Первые нажатия в очереди; продолжить можно после подключения."
+    : game.errorCode === "GAME_ACTIVE_ELSEWHERE" ? "Игра активна в другом окне или на другом устройстве. Очередь сохранена; отправка продолжится после освобождения игры."
+    : game.errorCode === "STORAGE_FAILED" ? "Браузер не смог сохранить очередь. Новые игровые нажатия приостановлены. Освободите место и проверьте доступ к хранилищу."
+    : game.errorCode === "GAME_SESSION_EXPIRED" && !isOnline ? "Разрешение на игру без связи истекло. Уже сделанные нажатия остаются в очереди; подключитесь, чтобы продолжить."
+    : game.errorCode === "GAME_PERMIT_CLOSED" ? "Игра была передана другому устройству или разрешение закончилось. Допустимые нажатия сохранены; поздние не входят в рейтинг."
+    : game.status === "error" ? "Не удалось получить подтверждение. Очередь остаётся на этом устройстве; повторим отправку автоматически."
+    : !isOnline ? "Офлайн. Нажатия сохраняются на этом устройстве в пределах разрешения на игру. После подключения отправим очередь."
     : game.status === "loading" ? "Загружаем игровой прогресс…"
-    : game.pendingTaps ? `Сохраняем ${game.pendingTaps.toLocaleString("ru-RU")} тапов…`
-    : game.rejectedTaps ? `Сохранённый прогресс обновлён. Без подтверждения в этом сеансе: ${game.rejectedTaps.toLocaleString("ru-RU")} нажатий.`
+    : game.pendingTaps ? `Ожидают подтверждения: ${game.pendingTaps.toLocaleString("ru-RU")} тапов. Можно продолжать играть.`
+    : game.rejectedTaps ? `Сохранённый прогресс обновлён. Не вошли в рейтинг: ${game.rejectedTaps.toLocaleString("ru-RU")} нажатий.`
     : "Прогресс сохранён в аккаунте и доступен на других устройствах.";
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
@@ -1545,7 +1548,8 @@ export function CheckInApp() {
 
           <div className={styles.statusBlock}>
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
-              isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}>
+              isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
+              gameStatus={game.status} gameNotice={gameNotice} gamePending={game.pendingTaps} gameRequestId={game.requestId} onRetryGame={() => void game.refresh()}>
               <button type="button" className={`${glass.button} ${styles.mapEntry}`}
                 aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
                 onPointerDown={event => event.stopPropagation()} onClick={event => {
@@ -1555,13 +1559,6 @@ export function CheckInApp() {
               </button>
             </CheckInReceipt>
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} onOpenChange={setStatusOpen} /> : null}
-            {primaryStatus ? <p
-              className={styles.status}
-              role="status"
-              aria-live="polite"
-            >
-              {primaryStatus}
-            </p> : null}
             <span className={styles.srOnly}>
               Рекорд в аккаунте: {game.progress?.bestSeries ?? 0}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.

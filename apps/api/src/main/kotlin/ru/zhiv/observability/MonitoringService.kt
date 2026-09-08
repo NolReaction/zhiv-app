@@ -39,6 +39,7 @@ data class MonitoringSummary(
     val diskTotalBytes: Double? = null,
     val requestRate: Double? = null,
     val errorRate: Double? = null,
+    val throttledRate: Double? = null,
     val p95LatencyMs: Double? = null,
     val gameAcceptedRate: Double? = null,
     val gameRejectedRate: Double? = null,
@@ -54,6 +55,7 @@ data class MonitoringSample(
     val memoryPercent: Double? = null,
     val requestRate: Double? = null,
     val errorRate: Double? = null,
+    val throttledRate: Double? = null,
     val p95LatencyMs: Double? = null,
 )
 
@@ -87,27 +89,28 @@ class MonitoringService(
     private val configured = !baseUrl.isNullOrBlank()
     private val base = parseMonitoringBase(baseUrl)
     private val mutex = Mutex()
-    private var cached: MonitoringSnapshot? = null
-    private var cachedAt = 0L
+    private val cached = mutableMapOf<Int, Pair<Long, MonitoringSnapshot>>()
 
-    suspend fun snapshot(): MonitoringSnapshot = mutex.withLock {
-        cached?.takeIf { System.nanoTime() - cachedAt < 10_000_000_000L }?.let { return@withLock it }
+    suspend fun snapshot(rangeMinutes: Int = 60): MonitoringSnapshot = mutex.withLock {
+        require(rangeMinutes in MONITORING_RANGES)
+        cached[rangeMinutes]?.takeIf { System.nanoTime() - it.first < 10_000_000_000L }?.let { return@withLock it.second }
         val now = clock.instant()
         val response = if (base == null) {
             unavailable(now, if (configured) "MONITORING_CONFIGURATION_INVALID" else "MONITORING_DISABLED")
         } else {
-            load(now)
+            load(now, rangeMinutes)
         }
-        cached = response
-        cachedAt = System.nanoTime()
-        response
+        val result = response.copy(rangeMinutes = rangeMinutes)
+        cached[rangeMinutes] = System.nanoTime() to result
+        result
     }
 
-    private suspend fun load(now: Instant): MonitoringSnapshot = coroutineScope {
+    private suspend fun load(now: Instant, rangeMinutes: Int): MonitoringSnapshot = coroutineScope {
         val end = now.epochSecond / 60 * 60
-        val start = end - 3_600
+        val start = end - rangeMinutes * 60L
+        val step = MONITORING_RANGES.getValue(rangeMinutes)
         val summaryRequest = async(Dispatchers.IO) { readObject("query", mapOf("query" to SUMMARY_QUERY, "time" to now.epochSecond.toString(), "timeout" to "2s")) }
-        val rangeRequest = async(Dispatchers.IO) { readObject("query_range", mapOf("query" to HISTORY_QUERY, "start" to start.toString(), "end" to end.toString(), "step" to "60", "timeout" to "2s")) }
+        val rangeRequest = async(Dispatchers.IO) { readObject("query_range", mapOf("query" to HISTORY_QUERY.replace("[2m]", "[${maxOf(120L, step)}s]").replace("[5m]", "[${maxOf(300L, step)}s]"), "start" to start.toString(), "end" to end.toString(), "step" to step.toString(), "timeout" to "2s")) }
         val alertRequest = async(Dispatchers.IO) { readObject("alerts", emptyMap()) }
         val summaryResponse = summaryRequest.await()
         val rangeResponse = rangeRequest.await()
@@ -122,11 +125,11 @@ class MonitoringService(
             summary = MonitoringSummary(
                 cpuPercent = value("cpuPercent"), memoryUsedBytes = value("memoryUsedBytes"), memoryTotalBytes = value("memoryTotalBytes"),
                 load1 = value("load1"), diskUsedBytes = value("diskUsedBytes"), diskTotalBytes = value("diskTotalBytes"),
-                requestRate = value("requestRate"), errorRate = value("errorRate"), p95LatencyMs = value("p95LatencyMs"),
+                requestRate = value("requestRate"), errorRate = value("errorRate"), throttledRate = value("throttledRate"), p95LatencyMs = value("p95LatencyMs"),
                 gameAcceptedRate = value("gameAcceptedRate"), gameRejectedRate = value("gameRejectedRate"),
                 apiUptimeSeconds = value("apiUptimeSeconds"), jvmHeapUsedBytes = value("jvmHeapUsedBytes"), jvmHeapMaxBytes = value("jvmHeapMaxBytes"),
             ),
-            samples = rangeResponse?.let { parseMonitoringMatrix(it, start, end) }.orEmpty(),
+            samples = rangeResponse?.let { parseMonitoringMatrix(it, start, end, step) }.orEmpty(),
             health = listOf(MonitoringHealth("prometheus", "up"), MonitoringHealth("api", health("apiUp")), MonitoringHealth("node", health("nodeUp"))),
             alerts = alertResponse?.let(::parseMonitoringAlerts).orEmpty(),
         )
@@ -150,8 +153,10 @@ class MonitoringService(
     )
 }
 
+val MONITORING_RANGES = mapOf(60 to 60L, 360 to 180L, 1440 to 720L, 10080 to 5040L)
+
 private const val MAX_RESPONSE_BYTES = 262_144
-private val HISTORY_NAMES = setOf("cpuPercent", "memoryPercent", "requestRate", "errorRate", "p95LatencyMs")
+private val HISTORY_NAMES = setOf("cpuPercent", "memoryPercent", "requestRate", "errorRate", "p95LatencyMs", "throttledRate")
 private val SUMMARY_NAMES = HISTORY_NAMES + setOf("memoryUsedBytes", "memoryTotalBytes", "load1", "diskUsedBytes", "diskTotalBytes", "gameAcceptedRate", "gameRejectedRate", "apiUp", "nodeUp", "apiUptimeSeconds", "jvmHeapUsedBytes", "jvmHeapMaxBytes")
 
 internal fun parseMonitoringBase(value: String?): URI? = runCatching {
@@ -188,27 +193,27 @@ internal fun parseMonitoringVector(root: JsonObject): Map<String, Double> = buil
     }
 }
 
-internal fun parseMonitoringMatrix(root: JsonObject, start: Long, end: Long): List<MonitoringSample> {
-    if (end - start != 3600L || start < 0 || end > 253_402_300_799L) return emptyList()
+internal fun parseMonitoringMatrix(root: JsonObject, start: Long, end: Long, step: Long = 60L): List<MonitoringSample> {
+    if (MONITORING_RANGES.entries.none { end - start == it.key * 60L && step == it.value } || start < 0 || end > 253_402_300_799L) return emptyList()
     val rows = root.results("matrix") ?: return emptyList()
     val values = mutableMapOf<Long, MutableMap<String, Double>>()
     rows.forEach { row ->
         val series = row as? JsonObject ?: return@forEach
         val name = (series["metric"] as? JsonObject)?.text("key")?.takeIf { it in HISTORY_NAMES } ?: return@forEach
-        val samples = (series["values"] as? JsonArray)?.takeIf { it.size <= 61 } ?: return@forEach
+        val samples = (series["values"] as? JsonArray)?.takeIf { it.size <= (end - start) / step + 1 } ?: return@forEach
         samples.forEach sampleLoop@ { element ->
             val sample = element as? JsonArray ?: return@sampleLoop
             val time = (sample.firstOrNull() as? JsonPrimitive)?.doubleOrNull?.takeIf { it.isFinite() && it >= start && it <= end && it % 1.0 == 0.0 }?.toLong() ?: return@sampleLoop
-            if ((time - start) % 60 != 0L) return@sampleLoop
+            if ((time - start) % step != 0L) return@sampleLoop
             val value = finiteSample(sample, name) ?: return@sampleLoop
             values.getOrPut(time) { mutableMapOf() }.putIfAbsent(name, value)
         }
     }
     // Include gaps as null; drawing a continuous line through an outage would be misleading.
-    return (0..60).map { index ->
-        val time = start + index * 60L
+    return (0..((end - start) / step).toInt()).map { index ->
+        val time = start + index * step
         val point = values[time].orEmpty()
-        MonitoringSample(Instant.ofEpochSecond(time).toString(), point["cpuPercent"], point["memoryPercent"], point["requestRate"], point["errorRate"], point["p95LatencyMs"])
+        MonitoringSample(Instant.ofEpochSecond(time).toString(), point["cpuPercent"], point["memoryPercent"], point["requestRate"], point["errorRate"], point["throttledRate"], point["p95LatencyMs"])
     }
 }
 
@@ -246,6 +251,7 @@ private val EXPRESSIONS = linkedMapOf(
     "diskTotalBytes" to host("max(node_filesystem_size_bytes{job=\"node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})"),
     "requestRate" to api("sum(rate(zhiv_http_requests_total{job=\"api\"}[2m]))"),
     "errorRate" to api("sum(rate(zhiv_http_errors_total{job=\"api\"}[2m]))"),
+    "throttledRate" to api("sum(rate(zhiv_http_throttled_total{job=\"api\"}[2m]))"),
     "p95LatencyMs" to api("1000 * histogram_quantile(0.95, sum by(le)(rate(zhiv_http_request_duration_seconds_bucket{job=\"api\"}[5m])))"),
     "gameAcceptedRate" to api("sum(rate(zhiv_game_taps_total{job=\"api\",result=\"accepted\"}[2m]))"),
     "gameRejectedRate" to api("sum(rate(zhiv_game_taps_total{job=\"api\",result=\"rejected\"}[2m]))"),

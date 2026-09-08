@@ -13,7 +13,7 @@ export async function devGameContext(request: Request, write = false) {
 }
 
 export function gameRequestError(code: string, status = 400) {
-  return NextResponse.json({ code, message: "Не удалось выполнить игровой запрос" }, { status, headers: NO_STORE_HEADERS });
+  return NextResponse.json({ code, message: "Не удалось выполнить игровой запрос" }, { status, headers: { ...NO_STORE_HEADERS, ...(code === "GAME_ACTIVE_ELSEWHERE" ? { "Retry-After": "30" } : code === "GAME_PACING" ? { "Retry-After": "2" } : {}) } });
 }
 
 export async function readDevGameBody(request: Request) {
@@ -30,7 +30,7 @@ export async function readDevGameBody(request: Request) {
 
 export function devGameResponse<T>(result: DevGameResult<T>) {
   if (result.kind === "ok") return NextResponse.json(result.value, { headers: NO_STORE_HEADERS });
-  const status = result.code === "UNAUTHORIZED" ? 401 : result.code === "GAME_SESSION_LIMIT" ? 429
+  const status = result.code === "UNAUTHORIZED" ? 401 : (result.code === "GAME_SESSION_LIMIT" || result.code === "GAME_PACING") ? 429
     : result.code === "GAME_SESSION_GONE" ? 410 : 409;
   return gameRequestError(result.code, status);
 }

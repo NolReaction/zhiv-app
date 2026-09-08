@@ -28,6 +28,8 @@ private class RequestTrace(
     var expectedCooldown: Boolean = false,
 )
 
+class RequestDiagnosticsConfig { var persist: (suspend (ApplicationCall, String, Int) -> Unit)? = null }
+
 private val traceKey = AttributeKey<RequestTrace>("zhiv.request-diagnostics")
 private val logger = LoggerFactory.getLogger(DIAGNOSTICS_LOGGER)
 
@@ -37,7 +39,8 @@ private fun ApplicationCall.trace(): RequestTrace = attributes.getOrNull(traceKe
 fun ApplicationCall.requestId(): String = trace().id
 
 /** Never trust client correlation headers, which may contain identifiers or log-injection payloads. */
-val RequestDiagnostics = createApplicationPlugin("RequestDiagnostics") {
+val RequestDiagnostics = createApplicationPlugin("RequestDiagnostics", ::RequestDiagnosticsConfig) {
+    val persist = pluginConfig.persist
     on(CallSetup) { call ->
         call.response.headers.append(REQUEST_ID_HEADER, call.requestId())
     }
@@ -59,16 +62,20 @@ val RequestDiagnostics = createApplicationPlugin("RequestDiagnostics") {
     on(ResponseSent) { call ->
         val trace = call.trace()
         val status = call.response.status()?.value ?: return@on
-        if (trace.recorded || (trace.expectedCooldown && status == 429)) return@on
+        if (trace.expectedCooldown && status == 429) return@on
         // Validation, absent sessions and regular gameplay cooldowns are expected, quiet responses.
         // Ktor's rate limiter has no ApiErrorResponse; keep its body and Retry-After unchanged.
-        if (status >= 500 || status == 429 || trace.responseCode == "UNTRUSTED_ORIGIN") {
+        if (status >= 500 || status == 429 || trace.responseCode == "UNTRUSTED_ORIGIN" || (status >= 400 && trace.responseCode?.startsWith("GAME_") == true)) {
             val code = trace.responseCode ?: when {
                 call.request.path() == "/readyz" -> "READINESS_UNAVAILABLE"
                 status == 429 -> "RATE_LIMITED"
                 else -> "INTERNAL_ERROR"
             }
             call.recordApiFailure(code, status)
+            if (call.request.path() != "/api/v1/client-incidents") {
+                try { persist?.invoke(call, code, status) } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (_: Exception) { logger.warn("incident_storage_unavailable request_id={}", trace.id) }
+            }
         }
     }
 }
@@ -122,6 +129,8 @@ private val diagnosticErrorCodes = actionableAuthFailures + setOf(
     "ACCOUNT_PREVIEW_EXPIRED", "ACCOUNT_PREVIEW_STALE", "ACCOUNT_MERGE_CONFLICT", "ACCOUNT_BUSY",
     "ACCOUNT_REQUEST_CONFLICT", "CONFIRM_REQUIRED",
     "ADMIN_FORBIDDEN", "ADMIN_UNAVAILABLE", "INVALID_ADMIN_QUERY",
+    "GAME_ACTIVE_ELSEWHERE", "GAME_SESSION_EXPIRED", "GAME_SESSION_GONE", "GAME_SESSION_CONFLICT", "GAME_SESSION_LIMIT",
+    "GAME_SEQUENCE_CONFLICT", "GAME_OWNER_CHANGED", "GAME_PERMIT_CLOSED", "GAME_PACING", "GAME_QUEUE_EXPIRED",
     "ADMIN_PROTECTED_ACCOUNT", "ADMIN_REQUEST_CONFLICT", "ADMIN_USER_NOT_FOUND",
 )
 
@@ -129,6 +138,7 @@ private fun safeErrorCode(code: String): String = code.takeIf { it in diagnostic
 
 // Only these fixed templates can reach the log. Unknown paths and path parameters are never recorded.
 private val operationTemplates = listOf(
+    "/api/v1/client-incidents", "/api/v1/admin/incidents", "/api/v1/world", "/api/v1/world/commands",
     "/api/v1/admin/access", "/api/v1/admin/overview", "/api/v1/admin/users",
     "/api/v1/admin/audit", "/api/v1/admin/monitoring", "/api/v1/admin/users/{publicId}/revoke-sessions",
     "/healthz", "/readyz", "/api/v1/bootstrap", "/api/v1/me", "/api/v1/me/status", "/api/v1/me/calendar", "/api/v1/me/time-zone",
@@ -157,7 +167,7 @@ private val operationTemplates = listOf(
     Regex("^$pattern$") to template
 }
 
-internal fun diagnosticOperation(path: String): String =
+fun diagnosticOperation(path: String): String =
     operationTemplates.firstOrNull { (pattern, _) -> pattern.matches(path) }?.second ?: "unmatched"
 
 internal fun safeExceptionDetails(cause: Throwable?): Map<String, Any> {

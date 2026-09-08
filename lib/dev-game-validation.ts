@@ -19,9 +19,10 @@ export function parseDevGameSession(value: unknown): GameSessionRequest | null {
   return { requestId: value.requestId.toLowerCase(), ownerPublicId: value.ownerPublicId };
 }
 export function parseDevGameBatch(value: unknown): GameBatchRequest | null {
-  if (!exact(value, ["sessionId", "sequence", "tapCount", "runId"]) || !uuid(value.sessionId)
+  if (!(exact(value, ["sessionId", "sequence", "tapCount", "runId"]) || exact(value, ["sessionId", "sequence", "tapCount", "runId", "tapTimes"])) || !uuid(value.sessionId)
     || !uuid(value.runId) || !integer(value.sequence, 1) || !integer(value.tapCount, 1, 60)) return null;
-  return { sessionId: value.sessionId.toLowerCase(), sequence: value.sequence, tapCount: value.tapCount, runId: value.runId.toLowerCase() };
+  if (value.tapTimes !== undefined && (!Array.isArray(value.tapTimes) || value.tapTimes.length !== value.tapCount || value.tapTimes.some((at, i, times) => !integer(at, 0, 253402300799000) || i > 0 && at < times[i - 1]))) return null;
+  return { ...(value.tapTimes ? { tapTimes: value.tapTimes as number[] } : {}), sessionId: value.sessionId.toLowerCase(), sequence: value.sequence, tapCount: value.tapCount, runId: value.runId.toLowerCase() };
 }
 export function parseDevGameVisibility(value: unknown): GameVisibilityRequest | null {
   if (!exact(value, ["ownerPublicId", "leaderboardOptIn", "expectedVersion"]) || !owner(value.ownerPublicId)

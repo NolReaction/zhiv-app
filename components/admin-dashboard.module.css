@@ -251,3 +251,9 @@
 .primaryButton:disabled { opacity: .4; cursor: default; }
 .select:focus-visible { outline: 3px solid #bad79e; outline-offset: 2px; }
 .confirmDialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+
+.incidentList { display: grid; gap: 12px; margin-block: 20px; min-width: 0; }
+.incidentItem { padding: 16px; border: 1px solid #343d30; border-radius: 16px; background: #ffffff03; min-width: 0; overflow-wrap: anywhere; }
+.incidentItem > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.incidentItem p { margin: 8px 0; }
+.incidentItem small { display: block; color: #a3af9c; margin-top: 6px; }

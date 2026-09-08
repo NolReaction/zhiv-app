@@ -31,11 +31,11 @@ const auditSchema = z.object({ ...page, events: z.array(z.object({
 })).max(100) });
 const metric = z.number().finite().nullable();
 const monitoringSchema = z.object({
-  serverTime: instant, configured: z.boolean(), available: z.boolean(), error: z.string().nullable(), rangeMinutes: z.literal(60),
+  serverTime: instant, configured: z.boolean(), available: z.boolean(), error: z.string().nullable(), rangeMinutes: z.union([z.literal(60), z.literal(360), z.literal(1440), z.literal(10080)]),
   summary: z.object({ cpuPercent: metric, memoryUsedBytes: metric, memoryTotalBytes: metric, load1: metric,
-    diskUsedBytes: metric, diskTotalBytes: metric, requestRate: metric, errorRate: metric,
+    diskUsedBytes: metric, diskTotalBytes: metric, requestRate: metric, errorRate: metric, throttledRate: metric.optional(),
     p95LatencyMs: metric, gameAcceptedRate: metric, gameRejectedRate: metric }),
-  samples: z.array(z.object({ at: instant, cpuPercent: metric, memoryPercent: metric, requestRate: metric, errorRate: metric, p95LatencyMs: metric })).max(121),
+  samples: z.array(z.object({ at: instant, cpuPercent: metric, memoryPercent: metric, requestRate: metric, errorRate: metric, throttledRate: metric.optional(), p95LatencyMs: metric })).max(121),
   health: z.array(z.object({ name: z.string(), status: z.enum(["up", "down", "unknown"]) })).max(10),
   alerts: z.array(z.object({ name: z.string(), severity: z.enum(["warning", "critical"]),
     state: z.enum(["pending", "firing"]), summary: z.string(), activeAt: instant.nullable() })).max(20),
@@ -85,7 +85,7 @@ export function getAdminUsers(options: { q: string; sort: "created" | "activity"
 export function getAdminAudit(options: { offset: number; limit: number }, signal?: AbortSignal) {
   return adminRequest(`audit?offset=${options.offset}&limit=${options.limit}`, auditSchema, signal);
 }
-export const getAdminMonitoring = (signal?: AbortSignal) => adminRequest("monitoring", monitoringSchema, signal);
+export const getAdminMonitoring = (signal?: AbortSignal, rangeMinutes = 60) => adminRequest(`monitoring?rangeMinutes=${rangeMinutes}`, monitoringSchema, signal);
 export function revokeAdminSessions(targetPublicId: string, body: AdminRevokeRequest, signal?: AbortSignal) {
   return adminRequest(`users/${encodeURIComponent(targetPublicId)}/revoke-sessions`,
     z.object({ requestId: z.string().uuid(), affectedSessions: count, createdAt: instant }), signal, body);
@@ -104,4 +104,14 @@ export function getAdminRewards(target: string, signal?: AbortSignal) {
 export function grantAdminReward(target: string, body: AdminGrantRequest, signal?: AbortSignal) {
   return adminRequest(`users/${encodeURIComponent(target)}/grant-reward`,
     z.object({ requestId: z.string().uuid(), kind: z.enum(["item", "achievement"]), rewardId: rewardIdSchema, granted: z.boolean(), createdAt: instant }), signal, body);
+}
+
+const incidentsSchema = z.object({ ...page, events: z.array(z.object({
+  id: count, publicId, displayName: z.string(), source: z.enum(["client", "server"]),
+  operation: z.string().max(100), code: z.string().max(64), occurredAt: instant, receivedAt: instant,
+  requestId: z.string().uuid().nullable(), httpStatus: z.number().int().min(100).max(599).nullable(), pendingTaps: count, occurrences: count,
+})).max(100) });
+export type AdminIncidents = z.infer<typeof incidentsSchema>;
+export function getAdminIncidents(options: { rangeMinutes: number; q: string; offset: number }, signal?: AbortSignal) {
+  return adminRequest(`incidents?${new URLSearchParams({ rangeMinutes: String(options.rangeMinutes), q: options.q, offset: String(options.offset), limit: "25" })}`, incidentsSchema, signal);
 }

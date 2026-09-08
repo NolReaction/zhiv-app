@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import styles from "./check-in-receipt.module.css";
 import glass from "./glass-action.module.css";
 
-export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSending, unconfirmed, isOnline, onRetry, children }: {
+export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSending, unconfirmed, isOnline, onRetry, children, gameStatus, gameNotice, gamePending = 0, gameRequestId, onRetryGame }: {
   lastCheckInAt: string | null;
   lastCheckInLabel: string;
   timeZone: string;
@@ -15,10 +15,16 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
   isOnline: boolean;
   onRetry: () => void;
   children?: ReactNode;
+  gameStatus?: string;
+  gameNotice?: string;
+  gamePending?: number;
+  gameRequestId?: string;
+  onRetryGame?: () => void;
 }) {
   const titleId = useId();
-  const state = isSending ? "sending" : unconfirmed ? "pending" : !isOnline ? "offline" : lastCheckInAt ? "saved" : "empty";
-  const title = state === "sending" ? "Сохраняем отметку" : state === "pending" ? "Нужна проверка отправки"
+  const gameIssue = gameStatus === "error" || gameStatus === "blocked";
+  const state = gameIssue ? "pending" : isSending || gameStatus === "syncing" ? "sending" : unconfirmed ? "pending" : !isOnline ? "offline" : lastCheckInAt ? "saved" : "empty";
+  const title = gameIssue ? "Проверить соединение" : state === "sending" ? "Сохраняем данные" : state === "pending" ? "Нужна проверка отправки"
     : state === "offline" ? "Нет интернета" : state === "saved" ? "Отметка сохранена" : "Ваша первая отметка";
   const timestamp = lastCheckInAt ? new Date(lastCheckInAt).toLocaleString("ru-RU", {
     timeZone, day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
@@ -44,6 +50,11 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
               : state === "offline" ? "Последняя сохранённая отметка остаётся с вами. Для новой нужно подключение."
                 : state === "saved" ? "Всё готово. Эта отметка сохранена в вашем аккаунте."
                   : "Нажмите «Я ЖИВОЙ», чтобы отметиться."}</p>
+          {gameNotice && <div className={styles.gameDetails}><h3>Игровые нажатия</h3><p>{gameNotice}</p>
+            {gamePending > 0 && <p>В очереди: {gamePending.toLocaleString("ru-RU")}</p>}
+            {gameRequestId && <p>Код запроса: <code>{gameRequestId}</code></p>}
+            {(gameIssue || gamePending > 0) && <button type="button" disabled={!isOnline} onClick={onRetryGame}>Проверить связь</button>}
+          </div>}
           {timestamp && <time dateTime={lastCheckInAt!}>{timestamp}</time>}
           {unconfirmed && <button type="button" disabled={!isOnline || isSending} onClick={onRetry}>Проверить отправку</button>}
         </PopoverContent>
@@ -51,9 +62,6 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
       {children}
     </div>
     <span className={styles.srOnly} role="status" aria-live="polite">{title}</span>
-    {(unconfirmed || !isOnline) && <div className={styles.warning}>
-      <span>{unconfirmed ? "Не удалось проверить отправку" : "Нет интернета"}</span>
-      {unconfirmed && <button type="button" disabled={!isOnline || isSending} onClick={onRetry}>Проверить</button>}
-    </div>}
+
   </div>;
 }

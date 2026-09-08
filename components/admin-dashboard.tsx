@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminIncidentsPanel } from "./admin-incidents-panel";
 import Link from "next/link";
 import { AdminRewardsDialog } from "./admin-rewards-dialog";
 import { GAME_ITEMS, GAME_ACHIEVEMENTS } from "@/lib/game-rewards";
@@ -29,7 +30,7 @@ import {
 } from "@/lib/admin-api";
 import styles from "./admin-dashboard.module.css";
 
-type AdminTab = "overview" | "users" | "monitoring" | "audit";
+type AdminTab = "overview" | "users" | "monitoring" | "audit" | "incidents";
 type UserSort = "created" | "activity" | "taps";
 type AccessStatus = "loading" | "allowed" | "signed-out" | "forbidden" | "error";
 type Snapshot<T> = { key: string; value: T };
@@ -242,7 +243,7 @@ function Monitoring({ data }: { data: AdminMonitoring }) {
         <CircleAlert size={20} /><div><strong>{alert.summary || alert.name}</strong><p>{alert.severity === "critical" ? "Критический" : "Предупреждение"} · {alert.state === "firing" ? "Условие подтверждено" : "Проверяем длительность"}</p><small>{alert.name}{alert.activeAt ? ` · с ${time(alert.activeAt)} UTC` : ""}</small></div>
       </div>)}</div>
     </section>}
-    <div className={styles.healthStrip} aria-label="Состояние служб">{data.health.map(service => <span className={styles.healthItem} data-status={service.status} key={service.name}><span className={styles.healthDot} />{service.name}<strong>{service.status === "up" ? "Доступен" : service.status === "down" ? "Недоступен" : "Нет данных"}</strong></span>)}{!data.health.length && <span className={styles.muted}>Состояние служб пока неизвестно</span>}</div>
+    <div className={styles.healthStrip} aria-label="Текущее состояние служб">{data.health.map(service => <span className={styles.healthItem} data-status={service.status} key={service.name}><span className={styles.healthDot} />{service.name}<strong>{service.status === "up" ? "Доступен" : service.status === "down" ? "Недоступен" : "Нет данных"}</strong></span>)}{!data.health.length && <span className={styles.muted}>Состояние служб пока неизвестно</span>}</div>
     <div className={styles.metricGrid}>
       <Metric label="Процессор сервера" value={percent(summary.cpuPercent)} note={`Нагрузка за 1 мин.: ${decimal(summary.load1)}`} icon={<Cpu size={18} />} tone={summary.cpuPercent != null && summary.cpuPercent >= 85 ? "warning" : undefined} />
       <Metric label="Память сервера" value={bytes(summary.memoryUsedBytes)} note={`Из ${bytes(summary.memoryTotalBytes)}`} icon={<Server size={18} />} />
@@ -256,10 +257,10 @@ function Monitoring({ data }: { data: AdminMonitoring }) {
       <Metric label="Отклонённые тапы" value={decimal(summary.gameRejectedRate)} note="Тапов в секунду" icon={<Trophy size={18} />} tone={summary.gameRejectedRate != null && summary.gameRejectedRate > 0 ? "warning" : undefined} />
     </div>
     <div className={styles.twoColumns}>
-      <ServerChart title="CPU и память" description="Последние 60 минут · проценты · UTC" samples={data.samples} unit="%" metrics={[{ key: "cpuPercent", name: "CPU", color: "#b9d99c" }, { key: "memoryPercent", name: "Память", color: "#7fb8e6" }]} />
-      <ServerChart title="Трафик API" description="Последние 60 минут · запросы в секунду · UTC" samples={data.samples} metrics={[{ key: "requestRate", name: "Запросы/с", color: "#b9d99c" }, { key: "errorRate", name: "Ошибки/с", color: "#e9b77f" }]} />
+      <ServerChart title="CPU и память" description={`История за ${data.rangeMinutes / 60} ч · проценты · UTC`} samples={data.samples} unit="%" metrics={[{ key: "cpuPercent", name: "CPU", color: "#b9d99c" }, { key: "memoryPercent", name: "Память", color: "#7fb8e6" }]} />
+      <ServerChart title="Трафик API" description={`История за ${data.rangeMinutes / 60} ч · запросы в секунду · UTC`} samples={data.samples} metrics={[{ key: "requestRate", name: "Запросы/с", color: "#b9d99c" }, { key: "errorRate", name: "Ошибки 5xx/с", color: "#e9b77f" }, { key: "throttledRate", name: "Ограничения 429/с", color: "#e898aa" }]} />
     </div>
-    <ServerChart title="Скорость API · p95" description="Последние 60 минут · миллисекунды · UTC" samples={data.samples} metrics={[{ key: "p95LatencyMs", name: "p95, мс", color: "#7fb8e6" }]} />
+    <ServerChart title="Скорость API · p95" description={`История за ${data.rangeMinutes / 60} ч · миллисекунды · UTC`} samples={data.samples} metrics={[{ key: "p95LatencyMs", name: "p95, мс", color: "#7fb8e6" }]} />
     <p className={styles.footnote}>Пропуски означают отсутствие измерений. Нулевая нагрузка отображается только когда сборщик действительно вернул ноль.</p>
   </div>;
 }
@@ -283,6 +284,7 @@ export function AdminDashboard() {
   const [access, setAccess] = useState<AdminAccess | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus>("loading");
   const [tab, setTab] = useState<AdminTab>("overview");
+  const [rangeMinutes, setRangeMinutes] = useState(360);
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
@@ -356,9 +358,9 @@ export function AdminDashboard() {
           const value = await getAdminUsers({ q: query, sort, offset: usersOffset, limit: PAGE_SIZE }, signal);
           if (active && !signal.aborted) setUsers({ key: JSON.stringify([query, sort, usersOffset]), value });
         } else if (tab === "monitoring") {
-          const value = await getAdminMonitoring(signal);
-          if (active && !signal.aborted) setMonitoring({ key: "monitoring", value });
-        } else {
+          const value = await getAdminMonitoring(signal, rangeMinutes);
+          if (active && !signal.aborted) setMonitoring({ key: String(rangeMinutes), value });
+        } else if (tab === "audit") {
           const value = await getAdminAudit({ offset: auditOffset, limit: PAGE_SIZE }, signal);
           if (active && !signal.aborted) setAudit({ key: String(auditOffset), value });
         }
@@ -385,7 +387,7 @@ export function AdminDashboard() {
       active = false; controller?.abort(); window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [tab, days, query, sort, usersOffset, auditOffset, refreshVersion, clearData, closeAccess]);
+  }, [tab, days, rangeMinutes, query, sort, usersOffset, auditOffset, refreshVersion, clearData, closeAccess]);
 
   useEffect(() => () => { actionControllerRef.current?.abort(); }, []);
 
@@ -427,7 +429,7 @@ export function AdminDashboard() {
   const overviewData = overview?.key === String(days) ? overview.value : null;
   const usersData = users?.key === JSON.stringify([query, sort, usersOffset]) ? users.value : null;
   const auditData = audit?.key === String(auditOffset) ? audit.value : null;
-  const currentData = tab === "overview" ? overviewData : tab === "users" ? usersData : tab === "monitoring" ? monitoring?.value : auditData;
+  const currentData = tab === "overview" ? overviewData : tab === "users" ? usersData : tab === "monitoring" ? (monitoring?.key === String(rangeMinutes) ? monitoring.value : null) : tab === "audit" ? auditData : null;
   const currentTime = currentData?.serverTime;
   const validConfirmation = Boolean(revocation && revocation.confirmation.trim() === revocation.target.publicId && revocation.reason.trim().length >= 8 && revocation.reason.trim().length <= 240);
 
@@ -455,11 +457,13 @@ export function AdminDashboard() {
               <TabsTrigger className={styles.tab} value="overview"><LayoutDashboard size={18} />Обзор</TabsTrigger>
               <TabsTrigger className={styles.tab} value="users"><Users size={18} />Пользователи</TabsTrigger>
               <TabsTrigger className={styles.tab} value="monitoring"><Server size={18} />Сервер</TabsTrigger>
+              <TabsTrigger className={styles.tab} value="incidents"><CircleAlert size={18} />Сбои у пользователей</TabsTrigger>
               <TabsTrigger className={styles.tab} value="audit"><Terminal size={18} />Журнал</TabsTrigger>
             </TabsList>
             <div className={styles.refreshGroup}><span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span><button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <Activity size={19} />}</button></div>
           </div>
-          <div className={styles.viewHeading}><div><h1>{tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "monitoring" ? "Нагрузка и доступность" : "Действия администраторов"}</h1><p>{tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Аккаунты, прогресс и управление сеансами" : tab === "monitoring" ? "Измерения сервера и API" : "История выдачи наград и управления сеансами"}</p></div>
+          <div className={styles.viewHeading}><div><h1>{tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Аккаунты, прогресс и управление сеансами" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История выдачи наград и управления сеансами"}</p></div>
+            {tab === "monitoring" && <label className={styles.selectLabel}><span>История</span><select className={styles.select} value={rangeMinutes} onChange={event => setRangeMinutes(Number(event.target.value))}><option value={60}>1 час</option><option value={360}>6 часов</option><option value={1440}>24 часа</option><option value={10080}>7 дней</option></select></label>}
             {tab === "overview" && <label className={styles.selectLabel}><span>Период</span><select value={days} onChange={event => setDays(Number(event.target.value) as 7 | 30 | 90)} className={styles.select}><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option></select></label>}
           </div>
           {loadError && <div className={styles.notice} role="status"><CircleAlert size={20} /><div><strong>{currentData ? "Данные не обновились" : "Не удалось загрузить раздел"}</strong><p>{loadError}{currentData ? " Показан последний успешный снимок." : ""}</p></div><button className={styles.button} type="button" onClick={requestRefresh} disabled={loading}>Повторить</button></div>}
@@ -469,7 +473,8 @@ export function AdminDashboard() {
             <div className={styles.searchToolbar}><label className={styles.search}><Search size={19} /><span className={styles.srOnly}>Поиск пользователя по имени или ID</span><input type="search" value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="Имя или ID пользователя" maxLength={100} autoComplete="off" /></label><label className={styles.selectLabel}><span>Сортировка</span><select className={styles.select} value={sort} onChange={event => { setSort(event.target.value as UserSort); setUsersOffset(0); }}><option value="created">Сначала новые</option><option value="activity">По последней отметке</option><option value="taps">По числу тапов</option></select></label></div>
             {usersData ? <UsersTable data={usersData} access={access} busy={loading || actionBusy} onPage={setUsersOffset} onRevoke={startRevocation} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /> : <Empty>{loading ? "Ищем пользователей…" : "Список пока не загружен."}</Empty>}
           </TabsContent>
-          <TabsContent value="monitoring" className={styles.tabContent}>{monitoring ? <Monitoring data={monitoring.value} /> : <Empty>{loading ? "Получаем метрики сервера…" : "Метрики пока не загружены."}</Empty>}</TabsContent>
+          <TabsContent value="monitoring" className={styles.tabContent}>{monitoring?.key === String(rangeMinutes) ? <Monitoring data={monitoring.value} /> : <Empty>{loading ? "Получаем метрики сервера…" : "Метрики пока не загружены."}</Empty>}</TabsContent>
+          <TabsContent value="incidents" className={styles.tabContent}>{tab === "incidents" && <AdminIncidentsPanel onAccessError={closeAccess} />}</TabsContent>
           <TabsContent value="audit" className={styles.tabContent}>{auditData ? <Audit data={auditData} busy={loading} onPage={setAuditOffset} /> : <Empty>{loading ? "Загружаем журнал…" : "Журнал пока не загружен."}</Empty>}</TabsContent>
           <footer className={styles.footer}><span><span className={styles.liveDot} />Автообновление каждые 30 секунд, пока вкладка видна</span><span>Время и периоды — UTC</span></footer>
         </Tabs>

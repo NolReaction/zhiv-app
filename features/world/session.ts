@@ -1,3 +1,4 @@
+import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import type { WorldCommand, WorldSnapshot } from "./model";
@@ -35,6 +36,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       if (valid(generation) && sequence === readSequence && adopt(snapshot) && !pending) publish({ error: null });
     } catch (error) {
       if (!valid(generation) || sequence !== readSequence) return;
+      reportIncident(owner, "world", incidentCode(error), 0, error);
       if (error instanceof ApiError && error.status === 401) onSessionLost();
       else if (!pending) publish({ error: error instanceof ApiError ? error.message : "Нет связи. Сохранённый мир появится после подключения." });
     } finally { requests.delete(request); }
@@ -50,6 +52,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       if (adopt(result.snapshot)) { pending = null; publish({ notice: result.message, uncertain: false }); }
     } catch (error) {
       if (!valid(generation)) return;
+      if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
       const definitive = error instanceof ApiError && error.status < 500;
       if (definitive) pending = null;
       publish({ uncertain: !definitive, error: error instanceof ApiError ? error.message : "Ответ не пришёл. Проверьте результат тем же запросом." });

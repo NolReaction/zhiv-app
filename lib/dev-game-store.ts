@@ -10,6 +10,8 @@ const RUN_IDLE_MS = 12_000;
 
 type Receipt = {
   sequence: number;
+  tapTimes?: number[];
+  rejectionCode?: string | null;
   tapCount: number;
   runId: string;
   acceptedTaps: number;
@@ -20,6 +22,10 @@ type GameSessionRecord = {
   ownerPublicId: string;
   authToken: string;
   month: string;
+  createdAt: number;
+  closedAt: number | null;
+  eventTokens: number;
+  eventAt: number;
   expiresAt: number;
   nextSequence: number;
   lastReceipt: Receipt | null;
@@ -35,6 +41,8 @@ type GameProfileRecord = {
   monthlyTaps: Map<string, { taps: number; updatedAt: number }>;
   tokens: number;
   refilledAt: number;
+  writerId?: string;
+  writerUntil?: number;
 };
 type GameStore = {
   profiles: Map<string, GameProfileRecord>;
@@ -78,7 +86,7 @@ function progress(value: GameProfileRecord, now: number): GameProgress {
 }
 export type DevGameErrorCode =
   | "UNAUTHORIZED" | "GAME_OWNER_CHANGED" | "GAME_SESSION_EXPIRED" | "GAME_SESSION_GONE"
-  | "GAME_SESSION_CONFLICT" | "GAME_SESSION_LIMIT" | "GAME_SEQUENCE_CONFLICT" | "GAME_VISIBILITY_CONFLICT";
+  | "GAME_QUEUE_EXPIRED" | "GAME_ACTIVE_ELSEWHERE" | "GAME_PACING" | "INVALID_GAME_BATCH" | "GAME_SESSION_CONFLICT" | "GAME_SESSION_LIMIT" | "GAME_SEQUENCE_CONFLICT" | "GAME_VISIBILITY_CONFLICT";
 export type DevGameResult<T> = { kind: "ok"; value: T } | { kind: "error"; code: DevGameErrorCode };
 function error(code: DevGameErrorCode): { kind: "error"; code: DevGameErrorCode } {
   return { kind: "error", code };
@@ -132,7 +140,7 @@ export function createDevGameSession(token: string | undefined, ownerPublicId: s
   const own = profile(ownerPublicId, now);
   // Keep receipts for one day, including safe retries after game-session expiry.
   for (const [id, value] of store().sessions) {
-    if (value.expiresAt + 86_400_000 <= now) {
+    if (value.expiresAt + 172_800_000 <= now) {
       store().sessions.delete(id);
       for (const [key, sessionId] of store().requests) if (sessionId === id) store().requests.delete(key);
     }
@@ -141,26 +149,29 @@ export function createDevGameSession(token: string | undefined, ownerPublicId: s
   const existingId = store().requests.get(requestKey);
   let session = existingId ? store().sessions.get(existingId) : undefined;
   if (session && session.authToken !== token) return error("GAME_SESSION_CONFLICT");
-  if (session && now >= session.expiresAt) return error("GAME_SESSION_EXPIRED");
+  if (session && now > session.expiresAt + 172800_000) return error("GAME_QUEUE_EXPIRED");
   if (!session) {
-    const active = [...store().sessions.values()].filter(value => value.ownerPublicId === ownerPublicId && value.expiresAt > now);
-    if (active.length >= 8) return error("GAME_SESSION_LIMIT");
+    if (own.writerId && (own.writerUntil ?? 0) > now) return error("GAME_ACTIVE_ELSEWHERE");
+    const previous = own.writerId ? store().sessions.get(own.writerId) : null;
+    if (previous) previous.closedAt ??= now;
     const current = new Date(now);
     const nextMonth = Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 1);
-    session = { id: crypto.randomUUID(), ownerPublicId, authToken: token!, month: monthKey(now),
+    session = { createdAt: now, closedAt: null, eventTokens: 60, eventAt: now, id: crypto.randomUUID(), ownerPublicId, authToken: token!, month: monthKey(now),
       expiresAt: Math.min(now + SESSION_LIFETIME_MS, nextMonth), nextSequence: 1, lastReceipt: null, continuationClaimed: false, currentRun: null };
+    own.writerId = session.id; own.writerUntil = Math.min(now + 30_000, session.expiresAt);
     store().sessions.set(session.id, session);
     store().requests.set(requestKey, session.id);
   }
   return { kind: "ok" as const, value: {
     sessionId: session.id, nextSequence: session.nextSequence,
-    expiresAt: new Date(session.expiresAt).toISOString(), progress: progress(own, now),
+    closedAt: session.closedAt == null ? null : new Date(session.closedAt).toISOString(),
+    startedAt: new Date(session.createdAt).toISOString(), expiresAt: new Date(session.expiresAt).toISOString(), progress: progress(own, now),
   } };
 }
 
 export function submitDevGameBatch(
   token: string | undefined,
-  payload: { sessionId: string; sequence: number; tapCount: number; runId: string },
+  payload: { sessionId: string; sequence: number; tapCount: number; runId: string; tapTimes?: number[] },
   now = Date.now(),
 ): DevGameResult<GameBatchResponse> {
   const identity = getDevIdentity(token);
@@ -171,20 +182,39 @@ export function submitDevGameBatch(
   const own = profile(identity.user.publicId, now);
   const receipt = session.lastReceipt;
   if (receipt?.sequence === payload.sequence) {
-    if (receipt.tapCount !== payload.tapCount || receipt.runId !== payload.runId) return error("GAME_SEQUENCE_CONFLICT");
+    if (receipt.tapCount !== payload.tapCount || receipt.runId !== payload.runId || JSON.stringify(receipt.tapTimes) !== JSON.stringify(payload.tapTimes)) return error("GAME_SEQUENCE_CONFLICT");
     return { kind: "ok" as const, value: {
       sessionId: session.id, sequence: payload.sequence,
-      acceptedTaps: receipt.acceptedTaps, rejectedTaps: receipt.rejectedTaps,
+      acceptedTaps: receipt.acceptedTaps, rejectedTaps: receipt.rejectedTaps, rejectionCode: receipt.rejectionCode,
       replayed: true, progress: progress(own, now),
       runTaps: session.currentRun?.id === payload.runId ? session.currentRun.taps : 0,
     } };
   }
-  if (now >= session.expiresAt || monthKey(now) !== session.month) return error("GAME_SESSION_EXPIRED");
+  if (now > session.expiresAt + 172800_000) return error("GAME_QUEUE_EXPIRED");
+  if (!payload.tapTimes && (now >= session.expiresAt || monthKey(now) !== session.month)) return error("GAME_SESSION_EXPIRED");
   if (payload.sequence !== session.nextSequence) return error("GAME_SEQUENCE_CONFLICT");
+  if (!payload.tapTimes && session.closedAt != null) return error("GAME_ACTIVE_ELSEWHERE");
+  const times = payload.tapTimes;
+  if (times && (times.length !== payload.tapCount || times.some((at, index) => !Number.isSafeInteger(at) || at < 0 || index > 0 && at < times[index - 1]))) return error("INVALID_GAME_BATCH");
+  const valid = times?.map(at => session.nextSequence === 1 && at >= session.createdAt - 8000 ? Math.max(at, session.createdAt) : at)
+    .filter(at => at >= session.eventAt && at < Math.min(session.expiresAt, session.closedAt ?? session.expiresAt) && at <= now + 2000 && now - at <= 86400_000);
+  let eventTokens = session.eventTokens, eventAt = session.eventAt;
+  const eligible = valid?.filter(at => {
+    eventTokens = Math.min(60, eventTokens + Math.max(0, at - eventAt) * 30 / 1000); eventAt = Math.max(eventAt, at);
+    if (eventTokens < 1) return false;
+    eventTokens -= 1; return true;
+  });
+  const eventStart = eligible?.[0] ?? now;
+  const eventEnd = eligible?.at(-1) ?? now;
+  const eligibleCount = eligible?.length ?? payload.tapCount;
+  const rejectionCode = valid && valid.length < payload.tapCount ? "GAME_PERMIT_CLOSED" : eligibleCount < payload.tapCount ? "GAME_TAP_RATE" : null;
   const elapsed = Math.max(0, now - own.refilledAt);
   own.tokens = Math.min(TAP_BUCKET_CAPACITY, own.tokens + elapsed * TAP_RATE_PER_SECOND / 1_000);
   own.refilledAt = Math.max(own.refilledAt, now);
-  const acceptedTaps = Math.min(payload.tapCount, Math.floor(own.tokens));
+  if (times && eligibleCount > Math.floor(own.tokens)) return error("GAME_PACING");
+  const acceptedTaps = Math.min(eligibleCount, Math.floor(own.tokens));
+  if (times) { session.eventTokens = eventTokens; session.eventAt = eventAt; }
+  if (session.closedAt == null && own.writerId === session.id && now < session.expiresAt) own.writerUntil = Math.min(now + 30000, session.expiresAt);
   own.tokens -= acceptedTaps;
   if (acceptedTaps > 0) {
     own.lifetimeTaps += acceptedTaps;
@@ -195,8 +225,8 @@ export function submitDevGameBatch(
         candidate.ownerPublicId === session.ownerPublicId && candidate.authToken === session.authToken
         && candidate.expiresAt <= now && !candidate.continuationClaimed
         && candidate.currentRun?.id === payload.runId
-        && candidate.currentRun.lastAcceptedAt <= now
-        && now - candidate.currentRun.lastAcceptedAt <= RUN_IDLE_MS,
+        && candidate.currentRun.lastAcceptedAt <= eventStart
+        && eventStart - candidate.currentRun.lastAcceptedAt <= RUN_IDLE_MS,
       ).sort((left, right) => right.currentRun!.lastAcceptedAt - left.currentRun!.lastAcceptedAt
         || right.expiresAt - left.expiresAt || right.id.localeCompare(left.id))[0];
       if (predecessor?.currentRun) {
@@ -204,20 +234,26 @@ export function submitDevGameBatch(
         predecessor.continuationClaimed = true;
       }
     }
-    if (session.currentRun?.id !== payload.runId || now - session.currentRun.lastAcceptedAt > RUN_IDLE_MS || now < session.currentRun.lastAcceptedAt) {
+    if (session.currentRun?.id !== payload.runId || eventStart - session.currentRun.lastAcceptedAt > RUN_IDLE_MS || eventStart < session.currentRun.lastAcceptedAt) {
       session.currentRun = { id: payload.runId, taps: 0, lastAcceptedAt: now };
     }
-    session.currentRun.taps += acceptedTaps;
-    session.currentRun.lastAcceptedAt = now;
+    if (eligible) {
+      for (const at of eligible.slice(0, acceptedTaps)) {
+        if (at - session.currentRun.lastAcceptedAt > RUN_IDLE_MS) session.currentRun.taps = 0;
+        session.currentRun.taps++;
+        session.currentRun.lastAcceptedAt = at;
+        own.bestSeries = Math.max(own.bestSeries, session.currentRun.taps);
+      }
+    } else { session.currentRun.taps += acceptedTaps; session.currentRun.lastAcceptedAt = eventEnd; }
     own.bestSeries = Math.max(own.bestSeries, session.currentRun.taps);
     awardDevGameTaps(own.ownerPublicId, own.lifetimeTaps, now, own.bestSeries);
   }
   creditDevWorldTaps(own.ownerPublicId, `tap:${session.id}:${payload.sequence}`, acceptedTaps, now);
-  session.lastReceipt = { ...payload, acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps };
+  session.lastReceipt = { ...payload, rejectionCode, acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps };
   session.nextSequence++;
   return { kind: "ok" as const, value: {
     sessionId: session.id, sequence: payload.sequence,
-    acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps,
+    acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps, rejectionCode,
     replayed: false, progress: progress(own, now),
     runTaps: session.currentRun?.id === payload.runId ? session.currentRun.taps : 0,
   } };

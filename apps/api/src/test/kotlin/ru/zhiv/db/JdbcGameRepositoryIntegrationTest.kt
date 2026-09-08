@@ -96,19 +96,15 @@ class JdbcGameRepositoryIntegrationTest {
 
     @Test fun `concurrent devices and new repository instances share a persistent user budget`() = runBlocking<Unit> {
         val p = player(); val otherHash = secondDevice(p)
-        val a = session(p); val b = session(p, otherHash)
-        execute("UPDATE game_profiles SET bucket_tokens=60,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?", p.id)
-        val results = coroutineScope {
-            listOf(
-                async(Dispatchers.IO) { games.submitBatch(p.hash, UUID.fromString(a.sessionId), 1, 60, UUID.randomUUID()) },
-                async(Dispatchers.IO) { JdbcGameRepository(source).submitBatch(otherHash, UUID.fromString(b.sessionId), 1, 60, UUID.randomUUID()) },
-            ).awaitAll()
-        }
-        assertEquals(60, results.sumOf { it.acceptedTaps })
-        assertEquals(60, results.sumOf { it.rejectedTaps })
+        val a = session(p)
+        assertEquals("GAME_ACTIVE_ELSEWHERE", assertFailsWith<AuthFailure> { session(p, otherHash) }.code)
+        val first = games.submitBatch(p.hash, UUID.fromString(a.sessionId), 1, 60, UUID.randomUUID())
+        assertEquals(60, first.acceptedTaps)
+        execute("UPDATE game_profiles SET writer_until=clock_timestamp()-interval '1 second',bucket_tokens=0,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?", p.id)
+        val b = session(p, otherHash)
+        assertEquals(0, JdbcGameRepository(source).submitBatch(otherHash, UUID.fromString(b.sessionId), 1, 60, UUID.randomUUID()).acceptedTaps)
+        assertEquals("GAME_ACTIVE_ELSEWHERE", assertFailsWith<AuthFailure> { games.submitBatch(p.hash, UUID.fromString(a.sessionId), 2, 1, UUID.randomUUID()) }.code)
         assertEquals(60L, games.progress(p.hash).lifetimeTaps)
-        val next = session(p)
-        assertEquals(0, games.submitBatch(p.hash, UUID.fromString(next.sessionId), 1, 60, UUID.randomUUID()).acceptedTaps)
         assertEquals("GAME_SESSION_CONFLICT", assertFailsWith<AuthFailure> {
             games.submitBatch(otherHash, UUID.fromString(a.sessionId), 2, 1, UUID.randomUUID())
         }.code)
@@ -197,6 +193,7 @@ class JdbcGameRepositoryIntegrationTest {
         execute("UPDATE game_sessions SET month=?,created_at=?,expires_at=? WHERE id=?", currentMonth.minusMonths(1), boundary.minusMinutes(5), boundary, id)
         assertEquals("GAME_SESSION_EXPIRED", assertFailsWith<AuthFailure> { games.submitBatch(p.hash, id, 1, 60, UUID.randomUUID()) }.code)
         assertEquals(0L, games.progress(p.hash).monthlyTaps)
+        execute("UPDATE game_profiles SET writer_until=clock_timestamp()-interval '1 second' WHERE user_id=?", p.id)
         val newSession = session(p)
         assertEquals(currentMonth.toString().take(7), newSession.progress.month)
         assertTrue(OffsetDateTime.parse(newSession.expiresAt) <= currentMonth.plusMonths(1).atStartOfDay().atOffset(ZoneOffset.UTC))
@@ -268,9 +265,7 @@ class JdbcGameRepositoryIntegrationTest {
         val p = player(); val run = UUID.randomUUID()
         val original = session(p); val originalId = UUID.fromString(original.sessionId)
         games.submitBatch(p.hash, originalId, 1, 20, run)
-        val parallel = session(p)
-        val independent = games.submitBatch(p.hash, UUID.fromString(parallel.sessionId), 1, 5, run)
-        assertEquals(20L, independent.progress.bestSeries, "active sessions must not borrow each other's run")
+        assertEquals("GAME_ACTIVE_ELSEWHERE", assertFailsWith<AuthFailure> { session(p) }.code)
         // Deterministically expire the predecessor with a recent receipt. Clamp at its
         // month's end so this fixture also works during the first seconds of a month.
         val instant = OffsetDateTime.parse(games.progress(p.hash).serverTime)
@@ -279,20 +274,19 @@ class JdbcGameRepositoryIntegrationTest {
         val expiry = minOf(instant.minusNanos(1_000_000), scoreMonth.plusMonths(1).atStartOfDay().atOffset(ZoneOffset.UTC))
         val acceptedAt = expiry.minusNanos(1_000_000)
         execute("UPDATE game_sessions SET month=?,created_at=?,expires_at=?,last_batch_at=?,run_updated_at=? WHERE id=?", scoreMonth, created, expiry, acceptedAt, acceptedAt, originalId)
+        execute("UPDATE game_profiles SET writer_until=clock_timestamp()-interval '1 second' WHERE user_id=?", p.id)
         val renewed = session(p); val renewedId = UUID.fromString(renewed.sessionId)
         val continued = games.submitBatch(p.hash, renewedId, 1, 5, run)
         assertEquals(25L, continued.progress.bestSeries)
-        assertEquals(30L, continued.progress.lifetimeTaps)
+        assertEquals(25L, continued.progress.lifetimeTaps)
         val replay = games.submitBatch(p.hash, renewedId, 1, 5, run)
         assertTrue(replay.replayed)
         assertEquals(25L, replay.progress.bestSeries)
-        assertEquals(30L, replay.progress.lifetimeTaps)
-        val extra = session(p)
-        val noSecondClaim = games.submitBatch(p.hash, UUID.fromString(extra.sessionId), 1, 7, run)
-        assertEquals(25L, noSecondClaim.progress.bestSeries, "an expired predecessor can be inherited only once")
+        assertEquals(25L, replay.progress.lifetimeTaps)
+        assertEquals("GAME_ACTIVE_ELSEWHERE", assertFailsWith<AuthFailure> { session(p) }.code)
         val more = games.submitBatch(p.hash, renewedId, 2, 10, run)
         assertEquals(35L, more.progress.bestSeries)
-        assertEquals(47L, more.progress.lifetimeTaps)
+        assertEquals(35L, more.progress.lifetimeTaps)
         val restarted = games.submitBatch(p.hash, renewedId, 3, 3, UUID.randomUUID())
         assertEquals(35L, restarted.progress.bestSeries, "a fresh runId begins a separate run")
     }
@@ -612,6 +606,84 @@ class JdbcGameRepositoryIntegrationTest {
         """.trimIndent(),p.id,p.hash)
         assertEquals(setOf("flower","leaf_bed","keepsakes","leaf_garland"),games.progress(p.hash).items.toSet())
         assertNotNull(games.achievements(p.hash).achievements.single { it.id=="seven_day_streak" }.unlockedAt)
+    }
+
+    @Test fun `delayed timed packets survive expiry and replay keeps the exact original receipt`() = runBlocking<Unit> {
+        val p = player(); val original = session(p); val id = UUID.fromString(original.sessionId); val run = UUID.randomUUID()
+        val now = OffsetDateTime.parse(games.progress(p.hash).serverTime)
+        val created = now.minusHours(2).withSecond(0).withNano(0)
+        val month = created.toLocalDate().withDayOfMonth(1)
+        val expiry = minOf(created.plusMinutes(15), month.plusMonths(1).atStartOfDay().atOffset(ZoneOffset.UTC))
+        execute("UPDATE game_sessions SET created_at=?,expires_at=?,month=? WHERE id=?", created, expiry, month, id)
+        execute("UPDATE game_profiles SET writer_until=? WHERE user_id=?", expiry, p.id)
+        val times = listOf(created.plusSeconds(1).toInstant().toEpochMilli(), created.plusSeconds(2).toInstant().toEpochMilli())
+        val first = games.submitBatch(p.hash, id, 1, 2, run, times)
+        assertEquals(2, first.acceptedTaps); assertEquals(2L, first.runTaps)
+        val successor = session(p)
+        assertNotEquals(original.sessionId, successor.sessionId)
+        assertTrue(games.submitBatch(p.hash, id, 1, 2, run, times).replayed)
+        val next = games.submitBatch(p.hash, id, 2, 1, run, listOf(created.plusSeconds(3).toInstant().toEpochMilli()))
+        assertEquals(3L, next.runTaps)
+        assertEquals(3L, next.progress.bestSeries)
+        assertEquals("GAME_SEQUENCE_CONFLICT", assertFailsWith<AuthFailure> { games.submitBatch(p.hash,id,2,1,run,listOf(times[0])) }.code)
+    }
+
+    @Test fun `timed packets cannot farm one historical instant or poison future packet time`() = runBlocking<Unit> {
+        val p=player(); val play=session(p); val id=UUID.fromString(play.sessionId); val run=UUID.randomUUID()
+        val created=OffsetDateTime.parse(play.startedAt).toInstant().toEpochMilli()+1
+        val first=games.submitBatch(p.hash,id,1,1,run,listOf(created+60_000))
+        assertEquals(0,first.acceptedTaps)
+        val accepted=games.submitBatch(p.hash,id,2,60,run,List(60){created})
+        assertEquals(60,accepted.acceptedTaps)
+        execute("UPDATE game_profiles SET writer_until=clock_timestamp()-interval '1 second',bucket_tokens=60,bucket_updated_at=clock_timestamp() WHERE user_id=?",p.id)
+        session(p,secondDevice(p))
+        val repeated=games.submitBatch(p.hash,id,3,60,run,List(60){created})
+        assertEquals(0,repeated.acceptedTaps);assertEquals("GAME_TAP_RATE",repeated.rejectionCode)
+        assertEquals(60L,games.progress(p.hash).lifetimeTaps)
+        assertTrue(games.submitBatch(p.hash,id,3,60,run,List(60){created}).replayed)
+    }
+
+    @Test fun `temporary pacing keeps sequence uncommitted and old retained sessions return a typed expiry`() = runBlocking<Unit> {
+        val p=player();val play=session(p);val id=UUID.fromString(play.sessionId);val run=UUID.randomUUID()
+        val at=OffsetDateTime.parse(play.startedAt).toInstant().toEpochMilli()+1
+        execute("UPDATE game_profiles SET bucket_tokens=0,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?",p.id)
+        assertEquals("GAME_PACING",assertFailsWith<AuthFailure>{games.submitBatch(p.hash,id,1,1,run,listOf(at))}.code)
+        assertEquals("0",scalar("SELECT last_sequence FROM game_sessions WHERE id=?",id))
+        execute("UPDATE game_profiles SET bucket_tokens=60 WHERE user_id=?",p.id)
+        assertEquals(1,games.submitBatch(p.hash,id,1,1,run,listOf(at)).acceptedTaps)
+        val old=OffsetDateTime.now(ZoneOffset.UTC).minusDays(3).withHour(12).withMinute(0).withSecond(0).withNano(0)
+        execute("UPDATE game_sessions SET created_at=?,expires_at=?,month=?,last_batch_at=?,run_updated_at=? WHERE id=?",old,old.plusMinutes(15),old.toLocalDate().withDayOfMonth(1),old,old,id)
+        assertTrue(games.submitBatch(p.hash,id,1,1,run,listOf(at)).replayed)
+        assertEquals("GAME_QUEUE_EXPIRED",assertFailsWith<AuthFailure>{games.submitBatch(p.hash,id,2,1,run,listOf(at))}.code)
+    }
+
+    @Test fun `incident messages persist across connections and cannot be assigned to another player`() = runBlocking<Unit> {
+        val p=player();val stranger=player()
+        val repository=ru.zhiv.observability.UserIncidentRepository(source)
+        val event=ru.zhiv.observability.ClientIncident(UUID.randomUUID().toString(),"game.batch","NETWORK_ERROR",java.time.Instant.now().toString(),pendingTaps=719,ownerPublicId=p.publicId)
+        repository.record(p.hash,event)
+        repository.record(p.hash,event)
+        val page=ru.zhiv.observability.UserIncidentRepository(source).list(1440,p.publicId,0,25)
+        assertEquals(1L,page.total);assertEquals(719,page.events.single().pendingTaps)
+        assertEquals("client",page.events.single().source)
+        assertEquals("GAME_OWNER_CHANGED",assertFailsWith<AuthFailure>{repository.record(stranger.hash,event)}.code)
+        assertEquals(0L,repository.list(1440,stranger.publicId,0,25).total)
+    }
+
+    @Test fun `incident HTTP access is authenticated private and verifies trusted writes`() = testApplication {
+        val admin=player();val ordinary=player()
+        val incidentRepo=ru.zhiv.observability.UserIncidentRepository(source)
+        val adminRepo=JdbcAdminRepository(source,ru.zhiv.admin.AdminConfig(setOf(admin.publicId)))
+        application { installZhivApi(identities,identities,config,tokens,games=games,admin=adminRepo,incidents=incidentRepo) }
+        val path="/api/v1/admin/incidents?rangeMinutes=1440"
+        assertEquals(HttpStatusCode.Unauthorized,client.get(path).status)
+        assertEquals(HttpStatusCode.Forbidden,client.get(path){header(HttpHeaders.Cookie,"${config.cookieName}=${ordinary.raw}")}.status)
+        val body="""{"eventId":"${UUID.randomUUID()}","operation":"game.batch","code":"NETWORK_ERROR","occurredAt":"${java.time.Instant.now()}","ownerPublicId":"${ordinary.publicId}"}"""
+        assertEquals(HttpStatusCode.Forbidden,client.post("/api/v1/client-incidents") { contentType(ContentType.Application.Json);header(HttpHeaders.Cookie,"${config.cookieName}=${ordinary.raw}");header(HttpHeaders.Origin,"https://evil.example");setBody(body) }.status)
+        assertEquals(HttpStatusCode.NoContent,client.post("/api/v1/client-incidents") { contentType(ContentType.Application.Json);header(HttpHeaders.Cookie,"${config.cookieName}=${ordinary.raw}");setBody(body) }.status)
+        val response=client.get(path+"&q=${ordinary.publicId}"){header(HttpHeaders.Cookie,"${config.cookieName}=${admin.raw}")}
+        assertEquals(HttpStatusCode.OK,response.status);assertEquals("no-store",response.headers[HttpHeaders.CacheControl])
+        assertTrue(response.bodyAsText().contains("NETWORK_ERROR"))
     }
 
 }

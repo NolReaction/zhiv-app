@@ -16,7 +16,7 @@ async function request<T>(path: string, schema: z.ZodType<T>, command?: WorldCom
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(body);
-      throw new ApiError(error.success ? error.data.message : "Не удалось связаться с миром", response.status, error.success ? error.data : undefined);
+      throw new ApiError(error.success ? error.data.message : "Не удалось связаться с миром", response.status, error.success ? error.data : undefined, response.headers.get("X-Request-ID"));
     }
     const result = schema.safeParse(body);
     if (!result.success) throw new ApiError("Обновите приложение: мир получил новую версию", 502);

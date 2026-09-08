@@ -86,11 +86,11 @@ class JdbcWorldRepositoryIntegrationTest {
         val p=player(); val id=UUID.fromString(games.openSession(p.hash,UUID.randomUUID(),p.publicId).sessionId)
         games.submitBatch(p.hash,id,1,5,UUID.randomUUID())
         assertEquals(0L,world.snapshot(p.hash).state.resources.sparks)
-        val other=secondDevice(p);val second=UUID.fromString(games.openSession(other,UUID.randomUUID(),p.publicId).sessionId)
-        var a=2L;var b=1L
-        repeat(6) { i ->
+        val other=secondDevice(p)
+        var a=2L
+        repeat(6) {
             execute("UPDATE game_profiles SET bucket_tokens=60,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?",p.id)
-            val hash=if(i%2==0)p.hash else other;val sid=if(i%2==0)id else second;val seq=if(i%2==0)a++ else b++;val run=UUID.randomUUID()
+            val hash=p.hash;val sid=id;val seq=a++;val run=UUID.randomUUID()
             assertEquals(60,games.submitBatch(hash,sid,seq,60,run).acceptedTaps)
             val before=world.snapshot(hash).state.resources
             assertTrue(games.submitBatch(hash,sid,seq,60,run).replayed);assertEquals(before,world.snapshot(hash).state.resources)

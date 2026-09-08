@@ -318,6 +318,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         """.trimIndent(),target)
     }
     private fun tombstone(c: Connection,id: UUID) {
+        c.update("DELETE FROM user_incidents WHERE user_id=?",id)
         c.update("DELETE FROM world_commands WHERE user_id=?",id)
         c.update("DELETE FROM world_ledger WHERE user_id=?",id)
         c.update("DELETE FROM world_profiles WHERE user_id=?",id)
