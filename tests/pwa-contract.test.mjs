@@ -262,11 +262,12 @@ test("applies clickjacking protection to the root page and nested routes", async
 });
 
 test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrome", async () => {
-  const [app, appStyles, peopleStyles, profileStyles] = await Promise.all([
+  const [app, appStyles, peopleStyles, profileStyles, navigation] = await Promise.all([
     readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
     readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
     readFile(new URL("../components/profile-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8"),
   ]);
 
   const mobileQuery = "@media (max-width: 700px), (hover: none) and (pointer: coarse)";
@@ -288,11 +289,10 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   const mobileBottomNav = mobileAppStyles.match(/\.bottomNav\s*\{[^}]*\}/s)?.[0] ?? "";
 
   assert.match(app, /data-active-view=\{activeView\}/);
-  assert.match(app, /className=\{styles\.navLens\}/);
-  assert.equal(
-    (app.match(/aria-current=\{activeView === "[^"]+" \? "page" : undefined\}/g) ?? []).length,
-    3,
-  );
+  assert.match(app, /<AppNavigation active=\{activeView\}/);
+  assert.match(navigation, /className=\{styles\.navLens\}/);
+  assert.match(navigation, /aria-current=\{active === id \? "page" : undefined\}/);
+  assert.equal((navigation.match(/name: "/g) ?? []).length, 4);
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*overflow-y:\s*auto;/s);
@@ -331,11 +331,11 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   );
   assert.match(mobileBottomNav, /pointer-events:\s*auto;/);
   assert.match(mobileAppStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
-  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/);
-  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 3\);/);
+  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
+  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 4\);/);
   assert.match(
     mobileAppStyles,
-    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(200%, 0, 0\)/s,
+    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(300%, 0, 0\)/s,
   );
   assert.match(appStyles, /@supports not \(\(-webkit-backdrop-filter:/);
 
@@ -500,7 +500,9 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, />\s*подряд\s*</);
   assert.match(app, /formatDayCount\(streak\.currentDays\)/);
 
-  assert.match(app, /<span>Люди<\/span>/);
+  const navigation = await readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8");
+  assert.match(navigation, /id: "people", name: "Люди"/);
+  assert.match(navigation, /id: "world", name: "Мир"/);
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);

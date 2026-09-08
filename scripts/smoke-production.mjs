@@ -90,6 +90,18 @@ await api("DELETE", "/api/v1/people/" + guestOne.data.person.circleId, { cookie:
 await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestA.cookie, key: receiptKey, body: { token: multiToken }, expected: 409 });
 await api("DELETE", "/api/v1/people/" + guestTwo.data.person.circleId, { cookie: owner.cookie, expected: 204 });
 
+// World enrollment, commands and ledger writes use the restricted runtime role.
+await api("GET", "/api/v1/world", { expected: 401 });
+const worldBefore = await api("GET", "/api/v1/world", { cookie: owner.cookie });
+assert.equal(worldBefore.headers["cache-control"], "no-store");
+assert.deepEqual(worldBefore.data.state.resources, { sparks: 0, wood: 0, stone: 0 });
+const outfit = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldBefore.data.revision, action: "equip", target: "amber_scarf" };
+const equipped = await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: outfit });
+assert.equal(equipped.data.snapshot.state.equipment.neck, "amber_scarf");
+assert.equal((await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: outfit })).data.replayed, true);
+await api("POST", "/api/v1/world/commands", { cookie: friend.cookie, body: outfit, expected: 409 });
+await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: { ...outfit, requestId: randomUUID() }, source: "https://untrusted.example", expected: 403 });
+
 // The online game has a separate score and must work under the runtime DB role.
 await api("GET", "/api/v1/game/progress", { expected: 401 });
 const gameBefore = await api("GET", "/api/v1/game/progress", { cookie: owner.cookie });
@@ -108,6 +120,12 @@ assert.equal(gameScore.data.progress.month, gameScore.data.progress.serverTime.s
 const gameReplay = await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: gameBatch });
 assert.equal(gameReplay.data.replayed, true);
 assert.equal(gameReplay.data.runTaps, 7);
+const worldEarned = await api("GET", "/api/v1/world", { cookie: owner.cookie });
+assert.equal(worldEarned.data.state.resources.sparks, 1);
+const travel = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldEarned.data.revision, action: "start_journey", target: "first_path" };
+const travelling = await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel });
+assert.equal(travelling.data.snapshot.state.journeys.length, 1);
+assert.equal((await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel })).data.replayed, true);
 assert.equal(gameReplay.data.progress.lifetimeTaps, 7);
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, tapCount: 8 }, expected: 409 });
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, sequence: 2, lifetimeTaps: 999999 }, expected: 400 });

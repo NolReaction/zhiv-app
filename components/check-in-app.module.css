@@ -860,7 +860,7 @@
 .bottomNav {
   display: grid;
   width: min(100%, 410px);
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 5px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 20px;
@@ -1236,7 +1236,7 @@
     position: relative;
     width: 100%;
     min-height: 64px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0;
     overflow: hidden;
     isolation: isolate;
@@ -1272,7 +1272,7 @@
     bottom: 5px;
     left: 5px;
     display: block;
-    width: calc((100% - 10px) / 3);
+    width: calc((100% - 10px) / 4);
     border: 1px solid rgba(223, 241, 212, 0.17);
     border-radius: 999px;
     background:
@@ -1287,12 +1287,16 @@
     pointer-events: none;
   }
 
-  .bottomNav[data-active-view="people"] .navLens {
+  .bottomNav[data-active-view="world"] .navLens {
     transform: translate3d(100%, 0, 0);
   }
 
-  .bottomNav[data-active-view="profile"] .navLens {
+  .bottomNav[data-active-view="people"] .navLens {
     transform: translate3d(200%, 0, 0);
+  }
+
+  .bottomNav[data-active-view="profile"] .navLens {
+    transform: translate3d(300%, 0, 0);
   }
 
   .bottomNav button {

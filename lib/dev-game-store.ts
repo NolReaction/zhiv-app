@@ -1,3 +1,4 @@
+import { creditDevWorldTaps } from "@/lib/dev-world-store";
 import { naturalItems } from "@/lib/game-rewards";
 import { getDevItemStreak, getDevIdentity, lookupDevUser, getDevFriendPublicIds, getDevAchievements, awardDevGameTaps } from "@/lib/dev-api-store";
 import type { GameProgress, GameLeaderboard, GameSession, GameBatchResponse, GameAchievements, GameLeaderboardMetric, GameLeaderboardScope } from "@/lib/game-api";
@@ -211,6 +212,7 @@ export function submitDevGameBatch(
     own.bestSeries = Math.max(own.bestSeries, session.currentRun.taps);
     awardDevGameTaps(own.ownerPublicId, own.lifetimeTaps, now, own.bestSeries);
   }
+  creditDevWorldTaps(own.ownerPublicId, `tap:${session.id}:${payload.sequence}`, acceptedTaps, now);
   session.lastReceipt = { ...payload, acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps };
   session.nextSequence++;
   return { kind: "ok" as const, value: {

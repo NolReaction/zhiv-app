@@ -48,6 +48,9 @@ import ru.zhiv.invites.directInviteRoutes
 import ru.zhiv.recovery.CodeRecoveryRepository
 import ru.zhiv.recovery.codeRecoveryRoutes
 import ru.zhiv.game.gameEventRoutes
+import ru.zhiv.world.WorldRepository
+import ru.zhiv.world.worldRoutes
+import ru.zhiv.db.JdbcWorldRepository
 import ru.zhiv.game.gameRoutes
 import ru.zhiv.game.GameRepository
 import ru.zhiv.db.JdbcGameRepository
@@ -103,6 +106,7 @@ fun Application.module() {
         mailer = mailer,
         vk = vk,
         games = JdbcGameRepository(dataSource),
+        worlds = JdbcWorldRepository(dataSource),
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
     )
 }
@@ -124,6 +128,7 @@ fun Application.installZhivApi(
     mailer: LoginMailer? = null,
     vk: VkVerifier? = null,
     games: GameRepository? = null,
+    worlds: WorldRepository? = null,
     admin: AdminRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
@@ -145,6 +150,8 @@ fun Application.installZhivApi(
             "relationships" to 2_400,
             "game-events" to 2_400,
             "game-read" to 1_200,
+            "world-read" to 240,
+            "world-write" to 120,
             "game-session" to 120,
             "game-write" to 4_800,
             "admin-read" to 3_600,
@@ -257,6 +264,7 @@ fun Application.installZhivApi(
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         games?.let { gameRoutes(it, tokenCodec, config) }
+        worlds?.let { worldRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
             rateLimit(RateLimitName("admin-read")) {

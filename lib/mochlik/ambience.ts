@@ -25,18 +25,17 @@ function prop(ctx: CanvasRenderingContext2D, kind: PropKind, x: number, y: numbe
   }
 }
 
-export function drawDecor(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean) {
-  const t = reducedMotion ? 0 : state.elapsed;
-  ctx.save(); ctx.globalAlpha = reducedMotion ? 1 : .35 + state.decorReveal * .65;
-  if (state.decorItems.includes("flower")) {
+/** Shared retained gift artwork for the check-in habitat and personal world. */
+export function drawOwnedDecor(ctx: CanvasRenderingContext2D, items: readonly string[], t = 0) {
+  if (items.includes("flower")) {
     const bend = Math.round(Math.sin(t * 1.3));
     rect(ctx, "#647e3c", 160, 104, 2, 10); rect(ctx, "#a6af57", 157, 109, 4, 2);
     rect(ctx, "#e4c889", 158 + bend, 100, 5, 5); rect(ctx, "#fff0bc", 159 + bend, 98, 3, 8);
     rect(ctx, "#bd8440", 160 + bend, 101, 2, 2);
   }
-  if (state.decorItems.includes("leaf_bed")) for (let i = 0; i < 4; i++) prop(ctx, "leaf", 174 + i * 4, 109 - i % 2, i);
-  if (state.decorItems.includes("keepsakes")) { prop(ctx, "cone", 205, 120); prop(ctx, "stone", 200, 122); prop(ctx, "stone", 213, 122); }
-  if (state.decorItems.includes("leaf_garland")) {
+  if (items.includes("leaf_bed")) for (let i = 0; i < 4; i++) prop(ctx, "leaf", 174 + i * 4, 109 - i % 2, i);
+  if (items.includes("keepsakes")) { prop(ctx, "cone", 205, 120); prop(ctx, "stone", 200, 122); prop(ctx, "stone", 213, 122); }
+  if (items.includes("leaf_garland")) {
     for (let i = 0; i < 8; i++) {
       const x = 168 + i * 4, y = 78 + Math.round(Math.sin(i / 7 * Math.PI) * 5);
       rect(ctx, "#6c7141", x, y, 4, 1);
@@ -44,6 +43,12 @@ export function drawDecor(ctx: CanvasRenderingContext2D, state: HabitatState, re
       rect(ctx, "#d9d68b", x + 1, y + 2, 1, 1);
     }
   }
+}
+
+export function drawDecor(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean) {
+  const t = reducedMotion ? 0 : state.elapsed;
+  ctx.save(); ctx.globalAlpha = reducedMotion ? 1 : .35 + state.decorReveal * .65;
+  drawOwnedDecor(ctx, state.decorItems, t);
   ctx.restore();
   if (state.leafDelivered) { const at = depositedPosition("leaf"); prop(ctx, "leaf", at.x * 256, at.y * 256); }
   if (state.keepsake) { const at = depositedPosition(state.keepsake); prop(ctx, state.keepsake, at.x * 256, at.y * 256); }

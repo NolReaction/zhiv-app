@@ -8,8 +8,8 @@ const colors = {
 };
 const cache = new Map<string, HTMLCanvasElement>();
 
-export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number): HTMLCanvasElement {
-  const key = `${pose}:${direction}:${frame % 4}`;
+export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }): HTMLCanvasElement {
+  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}`;
   const existing = cache.get(key);
   if (existing) return existing;
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
@@ -25,7 +25,9 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     }
   };
   const walking = pose === "walk" || pose === "carry";
-  const c = colors, step = walking ? [0, -2, 0, 2][frame % 4] : 0;
+  const c = appearance?.palette === "fern" ? { ...colors, moss: "#49816b", mossLight: "#7fb99a", mossDark: "#345649" }
+    : appearance?.palette === "autumn" ? { ...colors, moss: "#b27b42", mossLight: "#d8ae63", mossDark: "#7a5637" } : colors;
+  const step = walking ? [0, -2, 0, 2][frame % 4] : 0;
   const bob = walking && frame % 2 === 1 ? -1 : pose === "chew" ? [0, 1, 0, 1][frame % 4] : 0;
   if (pose === "sleep" || pose === "drowsy") {
     oval(26, 35, 16, 9, c.outline); oval(26, 34, 15, 8, c.moss);
@@ -91,6 +93,19 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(leftHand, armY, 3, 5, c.shade); oval(leftHand, armY - 1, 2, 4, c.cream);
     const wave = pose === "greet" ? -5 + (frame % 2) * 2 : pose === "scratch" ? -17 + (frame % 2) * 3 : 0;
     oval(rightHand, armY + wave, 3, 5, c.shade); oval(rightHand, armY - 1 + wave, 2, 4, c.cream);
+  }
+  // Wearables share the rig's pose anchors and depth rules in every direction.
+  if (appearance && pose !== "sleep" && pose !== "drowsy") {
+    if (appearance.neck) {
+      const scarf = appearance.neck === "berry_scarf" ? "#b96374" : "#e2a44d";
+      rect(14, 31 + bob, 21, 3, "#65492f"); rect(15, 31 + bob, 19, 2, scarf);
+      if (direction !== "back") { rect(direction === "left" ? 18 : 28, 33 + bob, 4, 6, scarf); }
+    }
+    if (appearance.head) {
+      const cap = appearance.head === "leaf_cap" ? "#9cb764" : "#c29a61";
+      rect(14, 7 + bob, 22, 3, "#514d32"); rect(16, 5 + bob, 18, 4, cap);
+      rect(20, 1 + bob, 11, 5, cap); rect(20, 5 + bob, 11, 1, "#78613b");
+    }
   }
   cache.set(key, canvas);
   return canvas;

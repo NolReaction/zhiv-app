@@ -1,5 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
+
 import { GameLevelIcon } from "./game-level-icon";
 
 import type {
@@ -9,7 +12,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flame, HeartPulse, Copy, Trophy, UserRound, Users, Rabbit } from "lucide-react";
+import { Flame, Copy, Trophy, Rabbit } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -77,7 +80,8 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { copyText } from "@/lib/identity-sharing";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
-type ActiveView = "check-in" | "people" | "profile";
+type ActiveView = AppView;
+const WorldView = dynamic(() => import("@/features/world/world-view"), { loading: () => <p role="status">Открываем мир Мохлика…</p>, ssr: false });
 
 type PendingBootstrap = {
   version: 1;
@@ -360,7 +364,7 @@ export function CheckInApp() {
     setCalendarOpen(true);
   }, []);
   const selectView = (next: ActiveView) => {
-    const order: ActiveView[] = ["check-in", "people", "profile"];
+    const order = appViews;
     setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
     setActiveView(next);
     if (next === "profile") void game.refresh();
@@ -1550,6 +1554,8 @@ export function CheckInApp() {
             </span>
           </div>
         </section>
+      ) : activeView === "world" && me ? (
+        <WorldView key={me.user.publicId} ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} onSessionLost={loseSession} />
       ) : activeView === "people" ? (
         <PeopleView
           data={people}
@@ -1607,48 +1613,8 @@ export function CheckInApp() {
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
       <footer className={styles.footer}>
-        <nav
-          className={styles.bottomNav}
-          data-active-view={activeView}
-          aria-label="Основные разделы"
-        >
-          <span className={styles.navLens} aria-hidden="true" />
-          <button
-            type="button"
-            className={activeView === "check-in" ? styles.navActive : undefined}
-            aria-current={activeView === "check-in" ? "page" : undefined}
-            onClick={() => selectView("check-in")}
-          >
-            <HeartPulse size={20} />
-            <span>Я живой</span>
-          </button>
-          <button
-            type="button"
-            className={activeView === "people" ? styles.navActive : undefined}
-            aria-current={activeView === "people" ? "page" : undefined}
-            onClick={() => selectView("people")}
-          >
-            <span className={styles.navIcon}>
-              <Users size={20} />
-              {(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0) > 0 ? (
-                <i>{Math.min(
-                  (people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0),
-                  9,
-                )}</i>
-              ) : null}
-            </span>
-            <span>Люди</span>
-          </button>
-          <button
-            type="button"
-            className={activeView === "profile" ? styles.navActive : undefined}
-            aria-current={activeView === "profile" ? "page" : undefined}
-            onClick={() => selectView("profile")}
-          >
-            <UserRound size={20} />
-            <span>Профиль</span>
-          </button>
-        </nav>
+        <AppNavigation active={activeView} onSelect={selectView}
+          invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />
       </footer>
       <CapabilityLanding
         authenticated={true}
