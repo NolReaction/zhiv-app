@@ -292,7 +292,7 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   assert.match(app, /<AppNavigation active=\{activeView\}/);
   assert.match(navigation, /className=\{styles\.navLens\}/);
   assert.match(navigation, /aria-current=\{active === id \? "page" : undefined\}/);
-  assert.equal((navigation.match(/name: "/g) ?? []).length, 4);
+  assert.equal((navigation.match(/name: "/g) ?? []).length, 3);
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*overflow-y:\s*auto;/s);
@@ -331,11 +331,11 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   );
   assert.match(mobileBottomNav, /pointer-events:\s*auto;/);
   assert.match(mobileAppStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
-  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
-  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 4\);/);
+  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/);
+  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 3\);/);
   assert.match(
     mobileAppStyles,
-    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(300%, 0, 0\)/s,
+    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(200%, 0, 0\)/s,
   );
   assert.match(appStyles, /@supports not \(\(-webkit-backdrop-filter:/);
 
@@ -502,7 +502,8 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
 
   const navigation = await readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8");
   assert.match(navigation, /id: "people", name: "Люди"/);
-  assert.match(navigation, /id: "world", name: "Мир"/);
+  assert.doesNotMatch(navigation, /id: "world"/);
+  assert.match(app, /aria-label="Войти в мир Мохлика"/);
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);

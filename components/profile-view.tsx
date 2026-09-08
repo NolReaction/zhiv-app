@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
+import { Switch } from "./ui/switch";
 import { GameLevelIcon } from "./game-level-icon";
 import { Check, Clock3, Flame, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
@@ -27,6 +28,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./
 import styles from "./profile-view.module.css";
 
 type ProfileViewProps = {
+  simpleView: boolean;
+  onSimpleViewChange: (value: boolean) => void;
   me: MeResponse;
   nowMs: number;
   isOnline: boolean;
@@ -73,6 +76,8 @@ function russianNoun(count: number, one: string, few: string, many: string): str
 }
 
 export function ProfileView({
+  simpleView,
+  onSimpleViewChange,
   me,
   nowMs,
   isOnline,
@@ -242,6 +247,16 @@ export function ProfileView({
             </div>
           </form>
               <TimeZoneSetting me={me} isOnline={isOnline} onUpdated={onUpdated} onSessionLost={onSessionLost} />
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="appearance" className={styles.settingsItem}>
+            <AccordionTrigger className={styles.settingsTrigger}><span><Settings2 size={20} aria-hidden="true" /><span>Внешний вид<small>{simpleView ? "Простая кнопка" : "Живая полянка Мохлика"}</small></span></span></AccordionTrigger>
+            <AccordionContent className={styles.settingsContent}>
+              <div className={styles.appearanceSetting}>
+                <label htmlFor="simple-view"><strong>Простой вид</strong><span>Знакомая кнопка без полянки. Вход в игру остаётся доступным.</span></label>
+                <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} />
+              </div>
+              <p className={styles.hint}>Настройка сохраняется на этом устройстве.</p>
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="security" className={styles.settingsItem}>

@@ -268,6 +268,26 @@ export function createHabitat() {
     if (place === "mushrooms" && !state.mushrooms.some(item => item.growth >= 1 && (mushroomId === undefined || item.id === mushroomId))) return false;
     activate(); destination = place; requestedMushroom = mushroomId ?? null; return true;
   }
+  let away = false;
+  function setAway(value: boolean) {
+    if (value === away) return;
+    away = value; clearMoment(); queue = []; visitPending = false; playPending = false; homePending = false; destination = null;
+    state.visiting = false; state.feedingId = null; state.gathering = 0; state.wakeTapsNeeded = 1; state.wakeTaps = 0;
+    state.resting = false; state.inactiveFor = 0;
+    if (!value) {
+      state.position = { x: .76, y: .65 }; state.size = sizeAt(state.position);
+      plan([walk(START, state.position), { activity: "greet", duration: 4, layer: "clearing" }]);
+    }
+  }
+  function moveTo(target: Point) {
+    if (away || ATOMIC.has(state.activity)) return false;
+    // Ground controls stay within the familiar walkable clearing, away from door/bush masks.
+    if (target.x < .34 || target.x > .76 || target.y < .53 || target.y > .80) return false;
+    activate(); clearMoment(); visitPending = false; playPending = false; destination = null;
+    state.visiting = false; state.feedingId = null;
+    plan([...leaveSteps(), walk(target, outside()), { activity: "look", duration: 2, layer: "clearing" }]);
+    return true;
+  }
   function notice() {
     const waking = state.resting || state.activity === "sleep";
     if (waking && state.wakeTapsNeeded > 1) {
@@ -311,7 +331,7 @@ export function createHabitat() {
     for (const mushroom of state.mushrooms) {
       if (state.feedingId !== mushroom.id) mushroom.growth = Math.min(1, mushroom.growth + seconds / mushroom.growSeconds);
     }
-    if (state.inactiveFor >= INACTIVITY_SECONDS && !state.resting) {
+    if (!away && state.inactiveFor >= INACTIVITY_SECONDS && !state.resting) {
       state.resting = true; homePending = true; destination = null;
     }
   }
@@ -319,6 +339,7 @@ export function createHabitat() {
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     const dt = Math.min(seconds, .05);
     state.elapsed += dt; if (age) elapse(dt);
+    if (away) return;
     if (visitPending && !state.visiting && !ATOMIC.has(state.activity)) { startVisit(); }
     else if (playPending && !state.playing && !ATOMIC.has(state.activity)) play();
     else if (destination && !state.visiting && !visitPending && !ATOMIC.has(state.activity)) startDestination();
@@ -372,6 +393,7 @@ export function createHabitat() {
   }
   /** Reduced motion: explicit controls change a still scene without animation frames. */
   function settle() {
+    if (away) return;
     visitCooldown = 0;
     state.decorReveal = 1; state.gathering = 0;
     if (playPending && !state.resting) play();
@@ -416,5 +438,5 @@ export function createHabitat() {
 
     }
   }
-  return { state, notice, invite, update, elapse, setLamp, setInsects, setDecor, restAfterAbsence, settle };
+  return { state, notice, invite, moveTo, update, elapse, setLamp, setInsects, setDecor, setAway, restAfterAbsence, settle };
 }

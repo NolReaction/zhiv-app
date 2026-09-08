@@ -1,29 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { WorldState } from "@/features/world/model";
+import { journeyLabel } from "@/lib/mochlik/home-state";
 import type { GameItemId } from "@/lib/game-rewards";
 import { habitatLighting } from "@/lib/mochlik/lighting";
 import type { HabitatScene, SceneOptions } from "@/lib/mochlik/scene";
 import styles from "./mochlik-terrarium.module.css";
 
-type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[] };
+type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[] };
 
 // Decorative content of the same native check-in button; it never records taps.
-export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZone, userId, bestStreakDays = 0, items }: Props) {
+export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZone, userId, bestStreakDays = 0, items, worldState, worldGifts }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const previousWake = useRef(wakeSignal);
   const pendingWake = useRef(0);
   const scene = useRef<HabitatScene | null>(null);
   const { lampOn, dusk } = habitatLighting(nowMs, timeZone);
   const presenceKey = userId ? `zhiv:mochlik:presence:${userId}` : undefined;
-  const options = useRef<SceneOptions>({ lampOn, dusk, paused: false, backgrounded: suspended, reducedMotion: false, presenceKey, bestStreakDays, items });
+  const options = useRef<SceneOptions>({ lampOn, dusk, paused: false, backgrounded: suspended, reducedMotion: false, presenceKey, bestStreakDays, items, worldState, worldGifts });
   const [ready, setReady] = useState(false);
   const inView = useRef(true);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const refresh = () => {
-      options.current = { lampOn, dusk, paused: false, backgrounded: suspended || document.hidden || !inView.current, reducedMotion: media.matches, presenceKey, bestStreakDays, items };
+      options.current = { lampOn, dusk, paused: false, backgrounded: suspended || document.hidden || !inView.current, reducedMotion: media.matches, presenceKey, bestStreakDays, items, worldState, worldGifts };
       scene.current?.configure(options.current);
     };
     const observer = new IntersectionObserver(entries => { inView.current = entries.some(entry => entry.isIntersecting); refresh(); });
@@ -35,7 +37,7 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
       observer.disconnect(); document.removeEventListener("visibilitychange", refresh); media.removeEventListener("change", refresh);
       window.removeEventListener("pagehide", pageHide); window.removeEventListener("pageshow", refresh);
     };
-  }, [lampOn, dusk, suspended, presenceKey, bestStreakDays, items]);
+  }, [lampOn, dusk, suspended, presenceKey, bestStreakDays, items, worldState, worldGifts]);
 
   // Reconcile visibility/absence first, so a tap on the returning render is not reset.
   useEffect(() => {
@@ -67,5 +69,6 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
     <div className={styles.fallback} />
     <canvas ref={canvas} className={styles.canvas} />
     <div className={styles.glass} />
+    {journeyLabel(worldState, nowMs) && <span className={styles.journey}>{journeyLabel(worldState, nowMs)}</span>}
   </div>;
 }

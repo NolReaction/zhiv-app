@@ -860,7 +860,7 @@
 .bottomNav {
   display: grid;
   width: min(100%, 410px);
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 5px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 20px;
@@ -1236,7 +1236,7 @@
     position: relative;
     width: 100%;
     min-height: 64px;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0;
     overflow: hidden;
     isolation: isolate;
@@ -1272,7 +1272,7 @@
     bottom: 5px;
     left: 5px;
     display: block;
-    width: calc((100% - 10px) / 4);
+    width: calc((100% - 10px) / 3);
     border: 1px solid rgba(223, 241, 212, 0.17);
     border-radius: 999px;
     background:
@@ -1287,16 +1287,12 @@
     pointer-events: none;
   }
 
-  .bottomNav[data-active-view="world"] .navLens {
+  .bottomNav[data-active-view="people"] .navLens {
     transform: translate3d(100%, 0, 0);
   }
 
-  .bottomNav[data-active-view="people"] .navLens {
-    transform: translate3d(200%, 0, 0);
-  }
-
   .bottomNav[data-active-view="profile"] .navLens {
-    transform: translate3d(300%, 0, 0);
+    transform: translate3d(200%, 0, 0);
   }
 
   .bottomNav button {
@@ -1482,3 +1478,6 @@
 .identityText > .nameRow { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 5px 8px; font-family: inherit; max-width: 100%; color: inherit; }
 .nameRow strong { min-width: 0; }
 .levelBadge { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; padding: 3px 6px; border: 1px solid rgba(192,218,166,.18); border-radius: 8px; background: rgba(192,218,166,.07); color: #d2e5bd; font: 600 11px/1.2 var(--font-body, sans-serif); }
+
+.mapEntry { display: inline-flex; gap: 8px; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; font-size: 14px; }
+.mapEntry svg { flex-shrink: 0; }

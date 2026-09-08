@@ -12,7 +12,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flame, Copy, Trophy, Rabbit } from "lucide-react";
+import { Flame, Copy, Trophy, Map } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -72,6 +72,9 @@ import { RecoveryStarter } from "./recovery-starter";
 import { AccountEntry, AuthReturnNotice } from "./account-entry";
 import { StatusEditor } from "./status-editor";
 import { CheckInReceipt } from "./check-in-receipt";
+import { useSimpleView } from "@/hooks/use-simple-view";
+import { useWorldPortal } from "@/hooks/use-world-portal";
+import { useWorld } from "@/features/world/use-world";
 import { MochlikTerrarium } from "./mochlik-terrarium";
 import styles from "./check-in-app.module.css";
 import glass from "./glass-action.module.css";
@@ -81,7 +84,7 @@ import { copyText } from "@/lib/identity-sharing";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
-const WorldView = dynamic(() => import("@/features/world/world-view"), { loading: () => <p role="status">Открываем мир Мохлика…</p>, ssr: false });
+const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
 
 type PendingBootstrap = {
   version: 1;
@@ -350,8 +353,11 @@ export function CheckInApp() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [gameOpen, setGameOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
-  const [mochlikVisible, setMochlikVisible] = useState(false);
-  const [mochlikMounted, setMochlikMounted] = useState(false);
+  const { simpleView, appearanceReady, setSimpleView } = useSimpleView();
+  const mochlikVisible = appearanceReady && !simpleView;
+  const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
+  const [worldMounted, setWorldMounted] = useState(false);
+  const closeWorld = worldPortal.close;
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
   const openGame = useCallback((trigger: HTMLButtonElement) => {
@@ -527,6 +533,7 @@ export function CheckInApp() {
   ]);
 
   const loseSession = useCallback(() => {
+    closeWorld();
     setCalendarOpen(false);
     setGameOpen(false);
     identityEpoch.current += 1;
@@ -547,6 +554,7 @@ export function CheckInApp() {
     accountReturn.current = false;
     setScreen("session-lost");
   }, [
+    closeWorld,
     clearPendingBootstrap,
     clearPendingCheckIn,
     persistClickerRun,
@@ -555,6 +563,9 @@ export function CheckInApp() {
 
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
+  const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const worldRefresh = world.refresh;
+  useEffect(() => { if (screen === "home" && me) void worldRefresh(); }, [game.progress?.lifetimeTaps, me, screen, worldRefresh]);
 
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
     // A mutation response supersedes a background read that started before it.
@@ -638,6 +649,7 @@ export function CheckInApp() {
     ) {
       clearPendingCheckIn();
     }
+    if (isAccountSwitch) closeWorld();
     clearPendingBootstrap();
     resetTransientCheckIn();
     setCheckInUnconfirmed(Boolean(pendingCheckIn.current));
@@ -660,6 +672,7 @@ export function CheckInApp() {
     accountReturn.current = false;
     setScreen("home");
   }, [
+    closeWorld,
     clearPendingBootstrap,
     clearPendingCheckIn,
     commitClickerRun,
@@ -1397,10 +1410,10 @@ export function CheckInApp() {
               onPointerDown={handleGameAreaPointerDown}
             >
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
-            {mochlikMounted && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
-              <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || calendarOpen || gameOpen || statusOpen}
+            {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
+              <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
                 wakeSignal={mochlikWakeSignal} nowMs={adjustedNow} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} />
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={world.snapshot?.state} worldGifts={world.snapshot?.gifts} />
             </div>}
             <button
               type="button"
@@ -1411,10 +1424,10 @@ export function CheckInApp() {
               onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
-              aria-label={mochlikVisible ? "Я мохлик — отметиться и поиграть; после долгого отсутствия разбудить тремя нажатиями" : "Я живой — отметиться"}
+              aria-label="Я живой — отметиться и поиграть"
               aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
             >
-              <span className={styles.checkInTitle}>{mochlikVisible ? "Я МОХЛИК" : "Я ЖИВОЙ"}</span>
+              <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
               <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
                 isRecord={isConfirmedRecord} />
             </button>
@@ -1533,11 +1546,12 @@ export function CheckInApp() {
           <div className={styles.statusBlock}>
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}>
-              <button type="button" className={`${glass.button} ${styles.appearanceToggle}`}
-                aria-label={mochlikVisible ? "Показать обычную кнопку" : "Показать Мохлика"} aria-pressed={mochlikVisible}
-                title={mochlikVisible ? "Обычная кнопка" : "Мохлик"}
-                onPointerDown={event => event.stopPropagation()} onClick={() => { setMochlikMounted(true); setMochlikVisible(value => !value); }}>
-                <Rabbit size={20} aria-hidden="true" />
+              <button type="button" className={`${glass.button} ${styles.mapEntry}`}
+                aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
+                onPointerDown={event => event.stopPropagation()} onClick={event => {
+                  setWorldMounted(true); worldPortal.enter(event.currentTarget, buttonOrbit.current); void world.refresh();
+                }}>
+                <Map size={20} aria-hidden="true" /><span>Войти в мир</span>
               </button>
             </CheckInReceipt>
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} onOpenChange={setStatusOpen} /> : null}
@@ -1554,8 +1568,7 @@ export function CheckInApp() {
             </span>
           </div>
         </section>
-      ) : activeView === "world" && me ? (
-        <WorldView key={me.user.publicId} ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} onSessionLost={loseSession} />
+
       ) : activeView === "people" ? (
         <PeopleView
           data={people}
@@ -1575,6 +1588,7 @@ export function CheckInApp() {
         />
       ) : me ? (
         <ProfileView
+          simpleView={simpleView} onSimpleViewChange={setSimpleView}
           me={me}
           onOpenCalendar={openCalendar}
           onOpenGame={openGame}
@@ -1612,6 +1626,12 @@ export function CheckInApp() {
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
+      {worldMounted && me && <WorldPortal key={me.user.publicId} open={worldPortal.open} onClose={worldPortal.close}
+        origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world}
+        ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
+        level={clickerLevel.level} wakeSignal={mochlikWakeSignal} lastCheckInLabel={serverStatus}
+        bestStreakDays={me.streak.longestDays} items={game.progress?.items}
+        onCheckIn={() => { void handleCheckIn(); }} isCheckingIn={isSending} />}
       <footer className={styles.footer}>
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />

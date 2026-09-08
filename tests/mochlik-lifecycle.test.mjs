@@ -101,6 +101,16 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
     await new Promise(resolve => setImmediate(resolve)); assert.equal(activity, "idle"); scene.dispose();
     assert.equal(scheduled.size, 0); assert.equal(timers.size, 0); assert.equal(failures, 0);
 
+    // Covering the circle with an actively used map is not a long user absence.
+    const shared = { ...daylight, presenceKey: "mochlik:shared-map" };
+    scene = mountHabitat(canvas(), shared, { activity: value => { activity = value; }, ready() {}, failure() { failures++; } });
+    await new Promise(resolve => setImmediate(resolve));
+    scene.configure({ ...shared, backgrounded: true }); now += 360_000;
+    storage.set(shared.presenceKey, JSON.stringify({ seenAt: now, inactiveFor: 0, resting: false, deepSleep: false }));
+    scene.configure(shared); frames(3);
+    assert.notEqual(activity, "sleep"); assert.notEqual(activity, "stir");
+    scene.dispose(); assert.equal(scheduled.size, 0); assert.equal(timers.size, 0);
+
     // Render every extended moment through the real renderer and its cached pixel rig.
     const seen = new Set();
     const night = { ...daylight, dusk: true, bestStreakDays: 30 };

@@ -1,9 +1,9 @@
 "use client";
-import { Compass, HeartPulse, UserRound, Users } from "lucide-react";
+import { HeartPulse, UserRound, Users } from "lucide-react";
 import styles from "@/components/check-in-app.module.css";
-export type AppView = "check-in" | "world" | "people" | "profile";
-export const appViews: AppView[] = ["check-in", "world", "people", "profile"];
-const entries = [{ id: "check-in", name: "Я живой", icon: HeartPulse }, { id: "world", name: "Мир", icon: Compass },
+export type AppView = "check-in" | "people" | "profile";
+export const appViews: AppView[] = ["check-in", "people", "profile"];
+const entries = [{ id: "check-in", name: "Я живой", icon: HeartPulse },
   { id: "people", name: "Люди", icon: Users }, { id: "profile", name: "Профиль", icon: UserRound }] as const;
 export function AppNavigation({ active, onSelect, invitations }: { active: AppView; onSelect: (view: AppView) => void; invitations: number }) {
   return <nav className={styles.bottomNav} data-active-view={active} aria-label="Основные разделы">

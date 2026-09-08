@@ -497,3 +497,8 @@
 .legacyGame { color: #aebaa2; font-size: 13px; line-height: 1.5; }
 .legacyGame summary { min-height: 44px; align-content: center; cursor: pointer; }
 .legacyGame p { margin: 0; }
+
+.appearanceSetting { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 0; }
+.appearanceSetting label { display: grid; gap: 8px; cursor: pointer; }
+.appearanceSetting label span { color: #aab49f; font-size: 14px; line-height: 1.5; }
+.appearanceSetting button { flex-shrink: 0; }

@@ -1,16 +1,17 @@
 "use client";
-import { useCallback, useState } from "react";
-import { ArrowRight, BookOpen, Check, ChevronRight, Clock3, Compass, Feather, Gem, Hammer, House, Leaf, LockKeyhole, RefreshCw, Shirt, Sparkles, Sprout, Trees, Wind } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, Compass, HeartPulse, X, Backpack, Feather, Gem, Hammer, House, Leaf, LockKeyhole, Shirt, Sparkles, Sprout, Trees, Wind } from "lucide-react";
 import { GAME_ITEMS } from "@/lib/game-rewards";
-import { useWorld } from "./use-world";
+import type { WorldPortalProps } from "./world-portal";
+import { GameLevelIcon } from "@/components/game-level-icon";
+import { Dialog as DialogPrimitive } from "radix-ui";
+import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "./world-scene";
 import { canAfford, worldCatalog as catalog, type WorldResources } from "./model";
-import type { WorldPlace } from "./engine";
+import type { WorldPlace } from "./map-engine";
 import styles from "./world.module.css";
 
 type Panel = "journeys" | "build" | "wardrobe" | "collection";
-const panels = [{ id: "journeys", name: "Карта", icon: Compass }, { id: "build", name: "Постройки", icon: House },
-  { id: "wardrobe", name: "Гардероб", icon: Shirt }, { id: "collection", name: "Альбом", icon: BookOpen }] as const;
 const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind };
 function Materials({ cost }: { cost: WorldResources }) {
   return <span className={styles.materials}>
@@ -21,50 +22,69 @@ function Materials({ cost }: { cost: WorldResources }) {
 }
 const duration = (seconds: number) => seconds < 60 ? `${Math.max(0, seconds)} с` : `${Math.ceil(seconds / 60)} мин`;
 
-export default function WorldView({ ownerPublicId, timeZone, onSessionLost }: { ownerPublicId: string; timeZone: string; onSessionLost: () => void }) {
-  const world = useWorld(ownerPublicId, onSessionLost);
-  const [panel, setPanel] = useState<Panel>("journeys");
+export default function WorldView({ world, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, lastCheckInLabel, onCheckIn, isCheckingIn, bestStreakDays, items }: WorldPortalProps) {
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const panelReturn = useRef<HTMLElement | null>(null);
+  const openPanel = useCallback((next: Panel) => {
+    if (panel === null) panelReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPanel(next);
+  }, [panel]);
   const [recalling, setRecalling] = useState<string | null>(null);
-  const onPlace = useCallback((place: WorldPlace) => { setPanel(place === "journeys" ? "journeys" : "build"); document.getElementById("world-controls")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, []);
+  const onPlace = useCallback((place: WorldPlace) => openPanel(place === "journeys" ? "journeys" : place === "wardrobe" ? "wardrobe" : "build"), [openPanel]);
   const { snapshot, busy, uncertain, act } = world;
-  if (!snapshot) return <section className={styles.loading} aria-live="polite"><Compass size={32} /><h1>Мир Мохлика</h1>
-    <p>{world.error ?? "Открываем вашу полянку…"}</p>{world.error && <button onClick={world.retry}>Попробовать ещё раз</button>}</section>;
+  if (!snapshot) return <section className={styles.loading} aria-live="polite"><button id="world-exit" onClick={onClose}><ArrowLeft size={18} />Назад</button><Compass size={32} /><h1>Лес Мохлика</h1>
+    <p>{world.error ?? "Открываем вашу полянку…"}</p>{world.error && <button onClick={() => void world.retry()}>Попробовать ещё раз</button>}</section>;
   const state = snapshot.state;
   const locked = busy || uncertain;
   const houseCost = catalog.houseUpgrades.find(c => c.level === state.houseLevel + 1);
-  let hour = 12;
-  try { hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone }).format(world.now)); } catch { /* Unknown legacy time zone uses daylight. */ }
   const goal = !state.firstJourneyCompleted ? "Отправьте Мохлика на первую прогулку. Через минуту он принесёт материалы для домика."
     : state.houseLevel === 1 ? "Улучшите домик: у Мохлика появится веранда, а на карте откроется ручей."
       : !state.workshop ? "Постройте мастерскую, чтобы делать одежду и пробовать новые цвета мха."
         : state.collection.length < catalog.finds.length ? "Исследуйте разные маршруты. За полный альбом Мохлик получит шляпу следопыта."
           : "Альбом собран! Примерьте шляпу следопыта и обустройте домик до третьего уровня.";
-  return <section className={styles.world} aria-labelledby="world-title">
-    <div className={styles.heading}><div><span className={styles.eyebrow}>МАЛЕНЬКИЙ ГЕРОЙ · БОЛЬШОЙ ЛЕС</span><h1 id="world-title">Твой мир растёт</h1></div>
-      <button className={styles.refresh} onClick={() => void world.refresh()} disabled={busy} aria-label="Обновить мир"><RefreshCw size={18} /></button></div>
-    <div className={styles.balances} aria-label="Ресурсы в аккаунте">
-      <div><Sparkles /><span><strong>{state.resources.sparks}</strong> искры</span></div>
-      <div><Trees /><span><strong>{state.resources.wood}</strong> дерево</span></div>
-      <div><Gem /><span><strong>{state.resources.stone}</strong> камень</span></div>
-    </div>
-    <div className={styles.layout}>
-      <div className={styles.plot}>
-        <WorldScene state={state} gifts={snapshot.gifts} night={hour < 7 || hour >= 19} onPlace={onPlace} />
-        <div className={styles.sceneActions}><button onClick={() => setPanel("build")}><House size={17} />Домик · {state.houseLevel} ур.</button>
-          <button onClick={() => setPanel("wardrobe")}><Shirt size={17} />Переодеть</button><button onClick={() => setPanel("journeys")}><Compass size={17} />В путь</button></div>
-        <p className={styles.hint}>Нажми на траву — Мохлик подойдёт. Нажми на него — поздоровается.</p>
-        <div className={styles.goal}><Sprout size={22} /><div><strong>Следующий маленький шаг</strong><p>{goal}</p></div></div>
-        <details className={styles.details}><summary><Sparkles size={16} />Откуда берутся искры?</summary>
-          <p>Каждые {catalog.tapsPerSpark} засчитанных игровых тапов дают 1 искру. Сегодня получено {snapshot.dailySparksEarned} из {catalog.dailySparkLimit}. Новый лимит начинается в 00:00 UTC.</p>
-          <p>Материалы и дополнительные искры Мохлик приносит из путешествий. Искры — внутренняя игровая валюта.</p>
-        </details>
+  return <section className={styles.world} aria-label="Лес Мохлика">
+    <WorldScene state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={world.now} timeZone={timeZone}
+      onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} />
+    <header className={styles.hud}>
+      <div className={styles.playerBar}>
+        <button id="world-exit" onClick={onClose} aria-label="Вернуться к отметке Я живой"><ArrowLeft size={22} /></button>
+        <button className={styles.player} onClick={() => openPanel("wardrobe")} aria-label={`Гардероб Мохлика. ${displayName}, уровень ${level}`}>
+          <GameLevelIcon level={level} size={23} /><span><strong>{displayName}</strong><small>Уровень {level}</small></span>
+        </button>
+        <button className={styles.checkIn} onClick={onCheckIn} disabled={isCheckingIn} aria-label={`Я живой — отметиться. ${lastCheckInLabel}`} title={lastCheckInLabel}><HeartPulse size={21} /><span>{isCheckingIn ? "Отмечаем…" : "Я живой"}</span></button>
       </div>
-      <div className={styles.controls} id="world-controls">
-        <div className={styles.tabs} aria-label="Разделы мира">{panels.map(({ id, name, icon: Icon }) => <button key={id} aria-pressed={panel === id} onClick={() => setPanel(id)}><Icon size={20} /><span>{name}</span></button>)}</div>
-        <div className={styles.feedback} aria-live="polite" aria-atomic="true">
-          {world.error ? <p className={styles.error}>{world.error} <button disabled={busy} onClick={world.retry}>{uncertain ? "Проверить результат" : "Обновить"}</button></p>
-            : <p>{busy ? "Сохраняем…" : world.notice}</p>}
+      <div className={styles.balances} aria-label="Ресурсы в аккаунте">
+        <span><Sparkles size={17} /><strong>{state.resources.sparks.toLocaleString("ru-RU")}</strong><span className={styles.sr}> искр</span></span>
+        <span><Trees size={17} /><strong>{state.resources.wood.toLocaleString("ru-RU")}</strong><span className={styles.sr}> древесины</span></span>
+        <span><Gem size={17} /><strong>{state.resources.stone.toLocaleString("ru-RU")}</strong><span className={styles.sr}> камня</span></span>
+      </div>
+    </header>
+    <div className={styles.feedback} aria-live="polite" aria-atomic="true">
+      {world.error ? <p className={styles.error}>{world.error} <button disabled={busy} onClick={() => void world.retry()}>{uncertain ? "Проверить результат" : "Обновить"}</button></p>
+        : (busy || world.notice) && <p>{busy ? "Сохраняем…" : world.notice}</p>}
+    </div>
+    <div className={styles.bottomHud}>
+      <button className={styles.goalChip} onClick={() => openPanel(!state.firstJourneyCompleted ? "journeys" : state.houseLevel < 3 ? "build" : "collection")}><Sprout size={18} /><span>{!state.firstJourneyCompleted ? "Первая прогулка" : state.houseLevel < 3 ? "Обустроить дом" : "Лесной альбом"}</span><ChevronRight size={16} /></button>
+      <nav className={styles.gameDock} aria-label="Действия в игре">
+        <button onClick={() => openPanel("build")}><Hammer size={23} /><span>Строить</span></button>
+        <button onClick={() => openPanel("collection")}><Backpack size={23} /><span>Рюкзак</span></button>
+        <button onClick={() => openPanel("journeys")}><Compass size={23} /><span>В путь</span></button>
+      </nav>
+    </div>
+    <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}>
+      <DialogPortal>
+      <DialogOverlay className={styles.sheetScrim} />
+      <DialogPrimitive.Content data-slot="dialog-content" className={styles.sheet}
+        onCloseAutoFocus={event => { event.preventDefault(); if (panelReturn.current?.isConnected) panelReturn.current.focus(); else document.getElementById("world-exit")?.focus(); }}>
+        <div className={styles.sheetHeader}>
+          <DialogTitle>{panel === "build" ? "Постройки" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Рюкзак" : "Путешествия"}</DialogTitle>
+          <button onClick={() => setPanel(null)} aria-label="Закрыть панель"><X size={21} /></button>
         </div>
+        <DialogDescription className={styles.sr}>Управление домом и путешествиями Мохлика</DialogDescription>
+        <div className={styles.sheetBody}>
+          {panel === "collection" && <div className={styles.bagTabs}><button onClick={() => openPanel("wardrobe")}><Shirt size={18} />Гардероб</button><button onClick={() => openPanel("build")}><Hammer size={18} />Материалы и постройки</button></div>}
+          {panel === "build" && <p className={styles.hint}>{goal}</p>}
+          {panel === "journeys" && <p className={styles.hint}>{!state.firstJourneyCompleted ? goal : "Мохлик принесёт материалы и находки, даже если закрыть игру."}</p>}
         {panel === "journeys" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>КАРТА ОКРЕСТНОСТЕЙ</span><h2>За поворотом тропы</h2><p>Выбери маршрут. Путешествие продолжается, даже когда приложение закрыто.</p></div>
           {state.journeys.map(j => {
             const seconds = Math.max(0, Math.ceil((Date.parse(j.finishesAt) - world.now) / 1000));
@@ -92,7 +112,7 @@ export default function WorldView({ ownerPublicId, timeZone, onSessionLost }: { 
             <p>{state.houseLevel === 1 ? "Уютная веранда и маршрут к ручью откроются на втором уровне." : state.houseLevel === 2 ? "Третий уровень — большой лесной дом с башенкой и своим садиком." : "Большой лесной дом готов. Здесь Мохлика всегда ждут."}</p>
             {houseCost ? <><Materials cost={houseCost} /><button className={styles.primary} disabled={locked || !canAfford(state.resources, houseCost)} onClick={() => act("upgrade_house")}>{canAfford(state.resources, houseCost) ? `Улучшить до ${houseCost.level} уровня` : "Нужны материалы из путешествий"}</button></> : <span className={styles.kicker}><Check size={16} />Все улучшения открыты</span>}</article>
           <article className={styles.card}><Hammer className={styles.cardIcon} /><h3>Лесная мастерская</h3><p>Шарфы, головные уборы и новые оттенки мха. Всё сделанное остаётся в гардеробе.</p>
-            {state.workshop ? <button onClick={() => setPanel("wardrobe")}>Выбрать, что изготовить<ArrowRight size={16} /></button> : <><Materials cost={catalog.workshop} /><button disabled={locked || !canAfford(state.resources, catalog.workshop)} onClick={() => act("build_workshop")}>{canAfford(state.resources, catalog.workshop) ? "Построить мастерскую" : "Накопите материалы на мастерскую"}</button></>}</article>
+            {state.workshop ? <button onClick={() => openPanel("wardrobe")}>Выбрать, что изготовить<ArrowRight size={16} /></button> : <><Materials cost={catalog.workshop} /><button disabled={locked || !canAfford(state.resources, catalog.workshop)} onClick={() => act("build_workshop")}>{canAfford(state.resources, catalog.workshop) ? "Построить мастерскую" : "Накопите материалы на мастерскую"}</button></>}</article>
         </div>}
         {panel === "wardrobe" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ХАРАКТЕР В ДЕТАЛЯХ</span><h2>Твой Мохлик</h2><p>Первый янтарный шарф уже в рюкзаке. Примерь его!</p></div>
           <div className={styles.wardrobe}>{catalog.items.map(item => {
@@ -111,7 +131,14 @@ export default function WorldView({ ownerPublicId, timeZone, onSessionLost }: { 
             return <article key={find.id} className={styles.find} data-owned={owned}><Icon size={32} /><h3>{find.name}</h3><p>{find.description}</p><span className={styles.kicker}>{owned ? <><Check size={13} />В альбоме</> : "Ждёт на лесной тропе"}</span></article>;
           })}</div><p className={styles.hint}>Завершено путешествий: {state.completedJourneys}. Находки остаются навсегда.</p>
         </div>}
-      </div>
-    </div>
+          <details className={styles.details}><summary><Sparkles size={16} />Откуда берутся искры?</summary>
+            <p>Каждые {catalog.tapsPerSpark} засчитанных игровых тапов дают 1 искру. Сегодня получено {snapshot.dailySparksEarned} из {catalog.dailySparkLimit}. Лимит обновляется в 00:00 UTC.</p>
+            <p>Материалы и дополнительные искры Мохлик приносит из путешествий.</p>
+          </details>
+          <div className={styles.sheetFeedback} aria-live="polite">{world.error ? <p className={styles.error}>{world.error} <button disabled={busy} onClick={() => void world.retry()}>{uncertain ? "Проверить результат" : "Обновить"}</button></p> : <p>{busy ? "Сохраняем…" : world.notice}</p>}</div>
+        </div>
+      </DialogPrimitive.Content>
+      </DialogPortal>
+    </Dialog>
   </section>;
 }

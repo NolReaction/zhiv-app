@@ -8,7 +8,6 @@ const identities = await vite.ssrLoadModule("/lib/dev-api-store.ts");
 const game = await vite.ssrLoadModule("/lib/dev-game-store.ts");
 const world = await vite.ssrLoadModule("/lib/dev-world-store.ts");
 const model = await vite.ssrLoadModule("/features/world/model.ts");
-const engine = await vite.ssrLoadModule("/features/world/engine.ts");
 const now = Date.parse("2026-09-08T10:00:00Z");
 beforeEach(() => { identities.resetDevStoreForTests(); game.resetDevGameStoreForTests(); world.resetDevWorldStoreForTests(); });
 after(() => vite.close());
@@ -89,14 +88,4 @@ test("recalling a trip grants nothing and inventory commands reject malformed in
   issue(p, "recall_journey", trip.id); assert.equal(world.getDevWorld(p.token, now).state.resources.sparks, 0);
   assert.equal(model.worldCommandSchema.safeParse({ ...command(p, "equip", "moss"), expectedRevision: -1 }).success, false);
   assert.equal(model.worldCommandSchema.safeParse({ ...command(p, "equip", "moss"), resources: { sparks: 9999 } }).success, false);
-});
-test("walking routes remain within the clearing and go around building footprints", () => {
-  const path = engine.worldPath({ x: 165, y: 225 }, { x: 165, y: 125 });
-  assert.ok(path.length > 0);
-  assert.deepEqual(engine.worldPath({ x: 165, y: 225 }, { x: 10, y: 10 }), []);
-  assert.deepEqual(engine.worldPath({ x: 165, y: 225 }, { x: 220, y: 180 }), []);
-  assert.ok(engine.worldPath({ x: 165, y: 225 }, { x: 95, y: 215 }, false).length > 0);
-  const detour = engine.worldPath({ x: 165, y: 225 }, { x: 65, y: 185 });
-  assert.ok(detour.length > 0);
-  assert.ok(detour.every(p => !(p.x > 39 && p.x < 123 && p.y > 197 && p.y < 238)));
 });
