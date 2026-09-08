@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/check-in-api";
+import { createUuidV4 } from "@/lib/browser-uuid";
 import { getWorld, sendWorldCommand } from "./api";
 import type { WorldCommand, WorldSnapshot } from "./model";
 
@@ -63,7 +64,7 @@ export function useWorld(owner: string, onSessionLost: () => void) {
   }, [adopt]);
   const act = useCallback((action: WorldCommand["action"], target = "") => {
     if (!current.current || pending.current) return;
-    void execute({ requestId: crypto.randomUUID(), ownerPublicId: owner, expectedRevision: current.current.revision, action, target });
+    void execute({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: current.current.revision, action, target });
   }, [execute, owner]);
   const retry = () => { if (pending.current) void execute(pending.current); else void refresh(); };
   return { snapshot, now, busy, uncertain, error, notice, act, retry, refresh };
