@@ -1,3 +1,4 @@
+import { rollingStreakStartedAt } from "@/lib/daily-streak";
 import { isTimeZone, nextLocalDay } from "./time-zone";
 import type { GameAchievementId, GameAchievements } from "@/lib/game-api";
 import type {
@@ -630,6 +631,12 @@ function friendPublicIdsForUser(userId: string): string[] {
   }))];
 }
 
+export function getDevItemStreak(ownerPublicId: string, now: number): number {
+  const id = store().publicIds.get(ownerPublicId);
+  const user = id ? store().users.get(id) : undefined;
+  return user ? streakForUser(user, new Date(now)).longestDays : 0;
+}
+
 export function getDevFriendPublicIds(token: string | undefined): string[] | null {
   const user = sessionUser(token);
   return user ? friendPublicIdsForUser(user.id) : null;
@@ -649,12 +656,13 @@ function awardFriendAchievement(userId: string, now: string) {
 }
 
 // Called only after the game store has accepted a batch; no client total is used.
-export function awardDevGameTaps(ownerPublicId: string, lifetimeTaps: number, now: number) {
+export function awardDevGameTaps(ownerPublicId: string, lifetimeTaps: number, now: number, bestSeries = 0) {
   const userId = store().publicIds.get(ownerPublicId);
   if (userId && lifetimeTaps >= 1_000) awardAchievement(userId, "thousand_taps", new Date(now).toISOString());
+  if (userId && bestSeries >= 10_000) awardAchievement(userId, "ten_thousand_series", new Date(now).toISOString());
 }
 
-export function getDevAchievements(token: string | undefined, lifetimeTaps: number, now: number): GameAchievements | null {
+export function getDevAchievements(token: string | undefined, lifetimeTaps: number, now: number, bestSeries = 0): GameAchievements | null {
   const user = sessionUser(token);
   if (!user) return null;
   const serverTime = new Date(now);
@@ -664,6 +672,10 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
     { id: "seven_day_streak", progress: longestDays, target: 7 },
     { id: "thousand_taps", progress: lifetimeTaps, target: 1_000 },
     { id: "five_friends", progress: friendCount, target: 5 },
+    { id: "ten_thousand_series", progress: bestSeries, target: 10_000 },
+    // Development mode intentionally does not simulate verified email identities.
+    { id: "linked_email", progress: 0, target: 1 },
+    { id: "saved_recovery_code", progress: [...store().recoveryCodes.values()].some(row => row.userId === user.id) ? 1 : 0, target: 1 },
   ] as const;
   // Backfill milestones for a running development store upgraded from an older version.
   for (const value of values) {
@@ -691,6 +703,7 @@ export function getDevCheckInCalendar(token: string | undefined, month: string |
     if (event.localDate.startsWith(`${selected}-`)) counts.set(event.localDate, (counts.get(event.localDate) ?? 0) + 1);
   }
   return {
+    streakStartedAt: rollingStreakStartedAt(events.map(event => event.checkedAt), now),
     month: selected, today, timeZone: user.timezoneId, nextDayAt: nextLocalDay(now, user.timezoneId),
     firstMonth: [today.slice(0, 7), ...events.map(event => event.localDate.slice(0, 7))].sort()[0],
     lastMonth: [today.slice(0, 7), ...events.map(event => event.localDate.slice(0, 7))].sort().at(-1)!,
@@ -1599,6 +1612,7 @@ export function activateDevRecoveryCode(token:string|undefined,code:string):DevR
   if(prior)return prior.userId===user.id && prior.active?{kind:"ok",value:{active:true}}:{kind:"conflict"};
   for(const row of store().recoveryCodes.values())if(row.userId===user.id)row.active=false;
   store().recoveryCodes.set(hash,{userId:user.id,active:true});
+  awardAchievement(user.id,"saved_recovery_code",new Date().toISOString());
   return {kind:"ok",value:{active:true}};
 }
 export function redeemDevRecoveryCode(code:string,retrySecret:string):{token:string;me:MeResponse}|null {

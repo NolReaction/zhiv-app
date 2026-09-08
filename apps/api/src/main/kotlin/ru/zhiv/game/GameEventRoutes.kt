@@ -112,12 +112,15 @@ private fun ClickerSeriesEventRequest.isValid(): Boolean {
     return if (lifetime == null) {
         level == legacyLevelFor(bestSeries)
     } else {
-        lifetime in bestSeries..MAX_SAFE_INTEGER && level == lifetimeLevelFor(lifetime)
+        lifetime in bestSeries..MAX_SAFE_INTEGER && level in setOf(lifetimeLevelFor(lifetime), minOf(10, lifetimeLevelFor(lifetime)))
     }
 }
 
 private fun lifetimeLevelFor(lifetimeTaps: Long): Int = when {
-    lifetimeTaps >= 5_000 -> 10
+    lifetimeTaps >= 5_000 -> (100 downTo 10).first { level ->
+        val n = (level - 10).toLong()
+        lifetimeTaps >= 5_000 + 2_500 * n + 125 * n * (n - 1)
+    }
     lifetimeTaps >= 2_500 -> 9
     lifetimeTaps >= 1_000 -> 8
     lifetimeTaps >= 500 -> 7

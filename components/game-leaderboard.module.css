@@ -50,3 +50,8 @@
 @keyframes board-close { to { opacity: 0; transform: translateY(10px) scale(.96); } }
 @media (max-width: 360px) { .dialog { --dialog-padding: 16px; } }
 @media (prefers-reduced-transparency: reduce) { .dialog { background: #172013; backdrop-filter: none; -webkit-backdrop-filter: none; } }
+
+.metrics { display: flex; gap: 6px; }
+.metrics button { flex: 1; min-height: 42px; border-radius: 12px; border: 1px solid rgba(191,214,166,.18); background: rgba(191,214,166,.04); color: #afbea1; padding: 8px; font: inherit; font-size: 13px; font-weight: 600; line-height: 1.3; cursor: pointer; }
+.metrics button[aria-pressed="true"] { color: #ebf0dd; background: rgba(191,214,166,.14); border-color: #80966b; }
+.metrics button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

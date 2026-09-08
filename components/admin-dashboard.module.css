@@ -246,3 +246,8 @@
 @media (prefers-reduced-motion: reduce) {
   .shell *, .confirmDialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.confirmDialog { --admin-green: #c3dda7; --admin-panel-raised: #252d23; }
+.primaryButton:disabled { opacity: .4; cursor: default; }
+.select:focus-visible { outline: 3px solid #bad79e; outline-offset: 2px; }
+.confirmDialog { max-height: calc(100dvh - 32px); overflow-y: auto; }

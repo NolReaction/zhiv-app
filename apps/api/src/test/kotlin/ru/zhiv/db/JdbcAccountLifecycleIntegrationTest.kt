@@ -382,11 +382,13 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account(); val b=account(); val browser=tokens.issue().hash
         execute("INSERT INTO game_profiles(user_id,lifetime_taps) VALUES (?,700),(?,400)",a.id,b.id)
         execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'five_friends','2026-01-02T00:00:00Z'),(?,'five_friends','2026-01-01T00:00:00Z'),(?,'seven_day_streak','2026-01-03T00:00:00Z')",a.id,b.id,b.id)
+        execute("INSERT INTO account_recovery_codes(user_id,code_hash,revoked_at) VALUES (?,?,clock_timestamp())",b.id,tokens.issue().hash)
         val preview=readyMerge(a,b,browser)
         auth.confirmMerge(a.session,browser,preview)
         val game=JdbcGameRepository(source)
         val awards=game.achievements(a.session).achievements
-        assertTrue(awards.all { it.unlockedAt!=null })
+        assertTrue(awards.take(3).all { it.unlockedAt!=null })
+        assertNotNull(awards.single { it.id=="saved_recovery_code" }.unlockedAt)
         assertEquals("2026-01-01T00:00:00Z",awards.single { it.id=="five_friends" }.unlockedAt)
         assertEquals("2026-01-03T00:00:00Z",awards.single { it.id=="seven_day_streak" }.unlockedAt)
         assertEquals(1000L,awards.single { it.id=="thousand_taps" }.progress,"merged verified lifetime totals may cross a new threshold")
@@ -394,6 +396,20 @@ class JdbcAccountLifecycleIntegrationTest {
         prove(a,browser,"delete"); auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id IN (?,?)",a.id,b.id))
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { game.achievements(a.session) }.code)
+    }
+
+    @Test fun `item grants invalidate merge review and inventory survives union and deletion`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val stale=readyMerge(a,b,browser)
+        execute("INSERT INTO game_items(user_id,item_id,unlocked_at) VALUES (?,'leaf_garland','2026-01-02T00:00:00Z')",b.id)
+        assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,stale) }.code)
+        execute("INSERT INTO game_items(user_id,item_id,unlocked_at) VALUES (?,'leaf_garland','2026-01-03T00:00:00Z'),(?,'flower','2026-01-01T00:00:00Z')",a.id,b.id)
+        val preview=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,preview)
+        assertEquals(setOf("flower","leaf_garland"),JdbcGameRepository(source).progress(a.session).items.toSet())
+        assertTrue(flag("SELECT unlocked_at='2026-01-02T00:00:00Z'::timestamptz FROM game_items WHERE user_id=? AND item_id='leaf_garland'",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_items WHERE user_id=?",b.id))
+        prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
+        assertEquals("0",scalar("SELECT count(*) FROM game_items WHERE user_id IN (?,?)",a.id,b.id))
     }
 
 }

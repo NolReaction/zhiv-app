@@ -30,6 +30,14 @@ internal suspend fun readCheckInCalendar(
             ), history AS MATERIALIZED (
                 SELECT h.user_id FROM viewer v
                 CROSS JOIN LATERAL account_history_user_ids(v.id) h
+            ), ordered_events AS (
+                SELECT e.checked_at, lag(e.checked_at) OVER (ORDER BY e.checked_at,e.id) AS previous_at
+                FROM history h JOIN check_ins e ON e.user_id=h.user_id CROSS JOIN viewer v
+                WHERE e.checked_at<=v.server_time
+            ), streak_span AS (
+                SELECT max(checked_at) AS last_at,
+                       max(checked_at) FILTER (WHERE previous_at IS NULL OR checked_at>previous_at+interval '24 hours') AS started_at
+                FROM ordered_events
             ), daily AS (
                 SELECT e.local_date, count(*) AS check_in_count
                   FROM history h JOIN check_ins e ON e.user_id = h.user_id
@@ -52,8 +60,9 @@ internal suspend fun readCheckInCalendar(
                   ) latest ON true
             )
             SELECT b.timezone_id, b.today, b.server_time, b.month_start,
+                   CASE WHEN b.server_time<=streak_span.last_at+interval '24 hours' THEN streak_span.started_at END AS streak_started_at,
                    history_bounds.earliest_date, history_bounds.latest_date, daily.local_date, daily.check_in_count
-              FROM bounds b CROSS JOIN history_bounds LEFT JOIN daily ON true
+              FROM bounds b CROSS JOIN history_bounds CROSS JOIN streak_span LEFT JOIN daily ON true
              ORDER BY daily.local_date
             """.trimIndent(),
         ).use { statement ->
@@ -67,6 +76,7 @@ internal suspend fun readCheckInCalendar(
                 val serverTime = result.getObject("server_time", OffsetDateTime::class.java)
                 val first = result.getObject("earliest_date", LocalDate::class.java) ?: today
                 val last = result.getObject("latest_date", LocalDate::class.java) ?: today
+                val streakStartedAt = result.getObject("streak_started_at", OffsetDateTime::class.java)
                 val days = buildList {
                     do {
                         val date = result.getObject("local_date", LocalDate::class.java)
@@ -74,7 +84,7 @@ internal suspend fun readCheckInCalendar(
                     } while (result.next())
                 }
                 CheckInCalendarSnapshot(selectedMonth, today, timeZone, YearMonth.from(minOf(first, today)), days, serverTime,
-                    lastMonth = YearMonth.from(maxOf(last, today)))
+                    lastMonth = YearMonth.from(maxOf(last, today)), streakStartedAt = streakStartedAt)
             }
         }
     }

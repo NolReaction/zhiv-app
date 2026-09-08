@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Trophy, Users } from "lucide-react";
 import { ApiError } from "@/lib/check-in-api";
-import { getGameLeaderboard, getGameProgress, updateGameVisibility, type GameLeaderboard, type GameLeaderboardScope, type GameProgress } from "@/lib/game-api";
+import { getGameLeaderboard, getGameProgress, updateGameVisibility, type GameLeaderboard, type GameLeaderboardMetric, type GameLeaderboardScope, type GameProgress } from "@/lib/game-api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { SharingSwitch } from "./sharing-switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -15,6 +15,7 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
   onSessionLost: () => void; isOnline: boolean; returnFocus: () => void;
 }) {
   const [data, setData] = useState<GameLeaderboard | null>(null);
+  const [metric, setMetric] = useState<GameLeaderboardMetric>("monthly_taps");
   const [scope, setScope] = useState<GameLeaderboardScope>("global");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -26,10 +27,10 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
     if (!open) return;
     const controller = new AbortController();
     let active = true;
-    void Promise.all([getGameLeaderboard(scope, controller.signal), getGameProgress(controller.signal)]).then(([result, own]) => {
+    void Promise.all([getGameLeaderboard(scope, controller.signal, metric), getGameProgress(controller.signal)]).then(([result, own]) => {
       if (!active) return;
       if (result.ownerPublicId !== ownerPublicId || own.ownerPublicId !== ownerPublicId) { onSessionLost(); return; }
-      if (result.scope !== scope) throw new Error("Leaderboard scope mismatch");
+      if (result.scope !== scope || result.metric !== metric) throw new Error("Leaderboard scope mismatch");
       setData(result); setError("");
       onProgress(own);
     }).catch(cause => {
@@ -38,7 +39,7 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
       else setError("Не удалось обновить рейтинг. Попробуйте ещё раз.");
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [open, scope, ownerPublicId, reload, progress?.monthlyTaps, progress?.visibilityVersion, progress?.month, onSessionLost, onProgress]);
+  }, [open, scope, metric, ownerPublicId, reload, progress?.monthlyTaps, progress?.bestSeries, progress?.visibilityVersion, progress?.month, onSessionLost, onProgress]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,7 +82,7 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
     } finally { if (epoch === writeEpoch.current) setSaving(false); }
   }
 
-  const visibleData = data?.scope === scope && data.ownerPublicId === ownerPublicId ? data : null;
+  const visibleData = data?.scope === scope && data.metric === metric && data.ownerPublicId === ownerPublicId ? data : null;
   const month = visibleData?.month ?? progress?.month;
   const monthLabel = month ? new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T12:00:00Z`)) : "Текущий месяц";
   const optedIn = progress?.leaderboardOptIn ?? visibleData?.leaderboardOptIn ?? false;
@@ -90,19 +91,23 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
     <DialogContent className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); returnFocus(); }}>
       <DialogHeader>
         <DialogTitle className={styles.title}><Trophy size={23} aria-hidden="true" />Рейтинг</DialogTitle>
-        <DialogDescription className={styles.month}>{monthLabel} · по UTC</DialogDescription>
+        <DialogDescription className={styles.month}>{metric === "monthly_taps" ? `${monthLabel} · по UTC` : "Лучшая серия · за всё время"}</DialogDescription>
       </DialogHeader>
+      <div className={styles.metrics} role="group" aria-label="Вид рейтинга">
+        {([ ["monthly_taps", "Тапы за месяц"], ["best_series", "Лучшая серия"] ] as const).map(([value, label]) =>
+          <button type="button" key={value} aria-pressed={metric === value} onClick={() => { if (metric === value) return; setMetric(value); setLoading(true); setError(""); }}>{label}</button>)}
+      </div>
       <Tabs className={styles.rankingTabs} value={scope} onValueChange={value => {
         if (value !== "global" && value !== "friends") return;
         setScope(value); setLoading(true); setError("");
       }}>
       <div className={styles.score}>
-        <div><small>Тапы за месяц</small><strong>{(visibleData?.monthlyTaps ?? progress?.monthlyTaps)?.toLocaleString("ru-RU") ?? "—"}</strong></div>
+        <div><small>{metric === "monthly_taps" ? "Тапы за месяц" : "Ваш рекорд серии"}</small><strong>{(metric === "monthly_taps" ? visibleData?.monthlyTaps ?? progress?.monthlyTaps : visibleData?.bestSeries ?? progress?.bestSeries)?.toLocaleString("ru-RU") ?? "—"}</strong></div>
         <div><small>{scope === "friends" ? "Среди друзей" : "Ваше место"}</small><strong>{optedIn && visibleData?.myRank ? `#${visibleData.myRank}` : "—"}</strong></div>
       </div>
       <label className={styles.participation}>
-        <span><strong>Участвовать в рейтингах</strong><small id="game-visibility-hint">В обоих списках другие игроки увидят ваше имя и игровые тапы.</small></span>
-        <SharingSwitch checked={optedIn} disabled={!progress || saving || !isOnline} aria-describedby="game-visibility-hint" aria-label="Участвовать в месячном рейтинге" onCheckedChange={value => void setParticipation(value)} />
+        <span><strong>Участвовать в рейтингах</strong><small id="game-visibility-hint">Другие игроки увидят ваше имя, тапы за месяц и рекорд серии.</small></span>
+        <SharingSwitch checked={optedIn} disabled={!progress || saving || !isOnline} aria-describedby="game-visibility-hint" aria-label="Участвовать в рейтингах" onCheckedChange={value => void setParticipation(value)} />
       </label>
       <div className={styles.listHeader}>
         <TabsList className={styles.scopes} aria-label="Круг участников рейтинга">
@@ -115,16 +120,16 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
       <TabsContent value={scope} className={styles.rankingContent}>
       {scope === "friends" && <p className={styles.hint}>Вы и добавленные люди, которые включили участие.</p>}
       {!visibleData && loading ? <p className={styles.empty} role="status">Загружаем рейтинг…</p>
-        : visibleData?.entries.length ? <ol className={styles.list} tabIndex={0} aria-label={scope === "friends" ? "Рейтинг друзей за месяц" : "Игроки месяца"} aria-busy={loading}>
-          {visibleData.entries.map(entry => <li key={entry.rank} data-me={entry.isMe || undefined}>
+        : visibleData?.entries.length ? <ol className={styles.list} tabIndex={0} aria-label={`${scope === "friends" ? "Среди друзей" : "Топ 100"}: ${metric === "monthly_taps" ? "тапы за месяц" : "лучшая серия"}`} aria-busy={loading}>
+          {visibleData.entries.map((entry, index) => <li key={`${scope}:${metric}:${index}`} data-me={entry.isMe || undefined}>
             <span className={styles.rank} data-podium={entry.rank <= 3 || undefined}>{entry.rank <= 3 ? <Trophy size={14} aria-hidden="true" /> : null}{entry.rank}</span>
             <span className={styles.name}>{entry.displayName}{entry.isMe && <small>Вы</small>}</span>
-            <strong>{entry.taps.toLocaleString("ru-RU")}</strong>
+            <strong>{entry.score.toLocaleString("ru-RU")}</strong>
           </li>)}
-        </ol> : !error ? <p className={styles.empty}>{scope === "friends" ? "Пока нет участников среди друзей с игровыми тапами за этот месяц." : "В этом месяце ещё нет участников. Можно стать первым."}</p> : null}
+        </ol> : !error ? <p className={styles.empty}>{metric === "best_series" ? "Рекордов участников пока нет. Включите участие и сыграйте серию." : scope === "friends" ? "Пока нет участников среди друзей с игровыми тапами за этот месяц." : "В этом месяце ещё нет участников. Можно стать первым."}</p> : null}
       </TabsContent>
       </Tabs>
-      <p className={styles.hint}>Новый месяц — новый старт. Уровень и общий прогресс сохраняются. Очень быстрые нажатия ограничены; без интернета можно играть без рейтинга.</p>
+      <p className={styles.hint}>{metric === "monthly_taps" ? "Новый месяц — новый старт. Уровень и общий прогресс сохраняются." : "Серия заканчивается после 10 секунд без нажатий. Рекорд сохраняется навсегда; одинаковым рекордам — одинаковое место."} Учитываются подтверждённые сервером тапы. Очень быстрые нажатия ограничены.</p>
     </DialogContent>
   </Dialog>;
 }

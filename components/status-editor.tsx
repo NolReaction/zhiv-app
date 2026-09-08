@@ -17,10 +17,12 @@ const STATUS_PRESETS = ["Дома", "Гуляю", "Учусь", "На работ
 
 const DURATION_OPTIONS = [[60, "1 час"], [120, "2 часа"], [240, "4 часа"], [480, "8 часов"], [1440, "24 часа"]] as const;
 
-export function StatusEditor({ me, nowMs, isOnline, onUpdated, onSessionLost }: {
+export function StatusEditor({ me, nowMs, isOnline, onUpdated, onSessionLost, onOpenChange }: {
   me: MeResponse; nowMs: number; isOnline: boolean; onUpdated: (me: MeResponse) => void; onSessionLost: () => void;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  function changeOpen(value: boolean) { setOpen(value); onOpenChange?.(value); }
   const [draft, setDraft] = useState("");
   const [duration, setDuration] = useState<number | null>(null);
   const currentStatus = activeUserStatus(me.status, nowMs);
@@ -39,7 +41,7 @@ export function StatusEditor({ me, nowMs, isOnline, onUpdated, onSessionLost }: 
     }
     try {
       onUpdated(await updateMyStatus(normalized, pending.current.key, savedDuration));
-      pending.current = null; setOpen(false);
+      pending.current = null; changeOpen(false);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) onSessionLost();
       else setError(cause instanceof Error ? cause.message : "Не удалось сохранить статус");
@@ -50,11 +52,11 @@ export function StatusEditor({ me, nowMs, isOnline, onUpdated, onSessionLost }: 
       setDraft(currentStatus?.text ?? "");
       const existingDuration = currentStatus?.expiresAt ? Math.round((Date.parse(currentStatus.expiresAt) - Date.parse(currentStatus.updatedAt)) / 60_000) : null;
       setDuration(validStatusDuration(existingDuration) ? existingDuration ?? null : null);
-      setError(null); setOpen(true);
+      setError(null); changeOpen(true);
     }} aria-label={currentStatus ? "Изменить статус" : "Добавить статус"}>
       <MessageCircle size={20} aria-hidden="true" /><span>{currentStatus?.text || "Добавить статус"}</span>
     </button>
-    <Dialog open={open} onOpenChange={(value) => { if (!saving) setOpen(value); }}>
+    <Dialog open={open} onOpenChange={(value) => { if (!saving) changeOpen(value); }}>
       <DialogContent className={`${glass.dialog} ${styles.dialog}`}
         onOpenAutoFocus={event => { event.preventDefault(); heading.current?.focus({ preventScroll: true }); }}
         onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus({ preventScroll: true }); }}>

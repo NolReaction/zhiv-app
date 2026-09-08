@@ -65,11 +65,14 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         FROM app_users u LEFT JOIN game_profiles p ON p.user_id=u.id
         LEFT JOIN game_monthly_scores m ON m.user_id=u.id AND m.month=? WHERE u.id=?
     """.trimIndent(), month(instant), actor.id) {
-        GameProgress(actor.publicId, it.getLong(1), it.getLong(2), month(instant).toString().take(7), it.getLong(3), it.getBoolean(4), it.getLong(5), instant.toInstant().toString())
+        GameProgress(actor.publicId, it.getLong(1), it.getLong(2), month(instant).toString().take(7), it.getLong(3), it.getBoolean(4), it.getLong(5), instant.toInstant().toString(),
+            c.rows("SELECT item_id FROM game_items WHERE user_id=? ORDER BY item_id", actor.id) { item -> item.getString(1) })
     }!!
     override suspend fun progress(sessionHash: ByteArray): GameProgress = tx { c ->
         val actor = lockActor(c, sessionHash)
-        progress(c, actor, now(c))
+        val instant = now(c)
+        recordMergedAchievements(c, actor.id, instant)
+        progress(c, actor, instant)
     }
     private data class PlaySession(
         val id: UUID, val authSession: UUID, val month: LocalDate, val expires: OffsetDateTime,
@@ -147,6 +150,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         if (bucket.lifetime < 1000 && bucket.lifetime + accepted >= 1000) {
             recordGameAchievement(c, actor.id, "thousand_taps", instant)
         }
+        if (accepted > 0 && runTaps >= 10000) recordGameAchievement(c, actor.id, "ten_thousand_series", instant)
         if (accepted > 0) c.update("""
             INSERT INTO game_monthly_scores(user_id,month,taps,updated_at) VALUES (?,?,?,?)
             ON CONFLICT(user_id,month) DO UPDATE SET taps=LEAST(9007199254740991,game_monthly_scores.taps+EXCLUDED.taps),updated_at=EXCLUDED.updated_at
@@ -169,39 +173,50 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         c.update("UPDATE game_profiles SET leaderboard_opt_in=?,visibility_version=visibility_version+1,updated_at=clock_timestamp() WHERE user_id=?", visible, actor.id)
         progress(c, actor, now(c))
     }
-    override suspend fun leaderboard(sessionHash: ByteArray, scope: String): GameLeaderboard = tx { c ->
+    override suspend fun leaderboard(sessionHash: ByteArray, scope: String, metric: String): GameLeaderboard = tx { c ->
         if (scope !in setOf("global", "friends")) fail("INVALID_GAME_SCOPE", "Выберите общий рейтинг или рейтинг друзей", 400)
+        if (metric !in setOf("monthly_taps", "best_series")) fail("INVALID_GAME_METRIC", "Выберите вид рейтинга", 400)
         val actor = lockActor(c, sessionHash)
         val instant = now(c)
         val current = progress(c, actor, instant)
+        val score = if (metric == "best_series") "p.best_series" else "COALESCE(m.taps,0)"
+        val place = if (metric == "best_series") "rank() OVER (ORDER BY $score DESC)" else "row_number() OVER (ORDER BY $score DESC,m.updated_at,u.id)"
         val ranked = c.rows("""
-            WITH ranking AS (
-                SELECT row_number() OVER (ORDER BY m.taps DESC,m.updated_at,m.user_id) AS place,
-                       u.display_name,m.taps,u.id=? AS is_me
-                FROM game_monthly_scores m JOIN game_profiles p ON p.user_id=m.user_id
-                JOIN app_users u ON u.id=m.user_id
-                WHERE m.month=? AND m.taps>0 AND p.leaderboard_opt_in AND u.deleted_at IS NULL
+            WITH eligible AS (
+                SELECT $place AS place, row_number() OVER (ORDER BY $score DESC,${if (metric == "monthly_taps") "m.updated_at," else ""}u.id) AS position,
+                       u.display_name,$score AS score,u.id=? AS is_me
+                FROM game_profiles p JOIN app_users u ON u.id=p.user_id
+                LEFT JOIN game_monthly_scores m ON m.user_id=u.id AND m.month=?
+                WHERE $score>0 AND p.leaderboard_opt_in AND u.deleted_at IS NULL
                   AND (?='global' OR u.id=? OR u.id IN (SELECT user_id FROM active_direct_friend_ids(?)))
-            ) SELECT place,display_name,taps,is_me FROM ranking WHERE place<=100 OR is_me ORDER BY place
-        """.trimIndent(), actor.id, month(instant), scope, actor.id, actor.id) { GameLeaderboardEntry(it.getLong(1), it.getString(2), it.getLong(3), it.getBoolean(4)) }
-        GameLeaderboard(actor.publicId, current.month, current.serverTime, ranked.filter { it.rank <= 100 }, ranked.firstOrNull { it.isMe }?.rank, current.monthlyTaps, current.leaderboardOptIn, scope)
+            ) SELECT place,display_name,score,is_me,position FROM eligible WHERE position<=100 OR is_me ORDER BY position
+        """.trimIndent(), actor.id, month(instant), scope, actor.id, actor.id) {
+            it.getLong(5) to GameLeaderboardEntry(it.getLong(1), it.getString(2), it.getLong(3), it.getBoolean(4))
+        }
+        GameLeaderboard(actor.publicId, current.month, current.serverTime, ranked.filter { it.first <= 100 }.map { it.second },
+            ranked.firstOrNull { it.second.isMe }?.second?.rank, current.monthlyTaps, current.leaderboardOptIn, scope, metric, current.bestSeries)
     }
 
     override suspend fun achievements(sessionHash: ByteArray): GameAchievements = tx { c ->
         val actor = lockActor(c, sessionHash)
         val instant = now(c)
+        recordSecurityAchievements(c, actor.id)
         val awards = c.rows("""
             WITH targets(id,target,position) AS (VALUES
-                ('seven_day_streak',7::bigint,1),('thousand_taps',1000::bigint,2),('five_friends',5::bigint,3))
+                ('seven_day_streak',7::bigint,1),('thousand_taps',1000::bigint,2),('five_friends',5::bigint,3),
+                ('ten_thousand_series',10000::bigint,4),('linked_email',1::bigint,5),('saved_recovery_code',1::bigint,6))
             SELECT t.id,t.target,a.unlocked_at,
                    CASE WHEN a.unlocked_at IS NOT NULL THEN t.target ELSE LEAST(t.target,CASE t.id
+                       WHEN 'ten_thousand_series' THEN COALESCE((SELECT best_series FROM game_profiles WHERE user_id=?),0)
                        WHEN 'seven_day_streak' THEN (SELECT longest_days FROM rolling_check_in_streak(?,?))
+                       WHEN 'linked_email' THEN 0
+                       WHEN 'saved_recovery_code' THEN 0
                        WHEN 'thousand_taps' THEN COALESCE((SELECT lifetime_taps FROM game_profiles WHERE user_id=?),0)
                        ELSE (SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends)
                    END) END AS progress
             FROM targets t LEFT JOIN game_achievements a ON a.user_id=? AND a.achievement_id=t.id
             ORDER BY t.position
-        """.trimIndent(), actor.id, instant, actor.id, actor.id, actor.id) {
+        """.trimIndent(), actor.id, actor.id, instant, actor.id, actor.id, actor.id) {
             GameAchievement(it.getString("id"), it.getLong("progress"), it.getLong("target"),
                 it.getObject("unlocked_at", OffsetDateTime::class.java)?.toInstant()?.toString())
         }

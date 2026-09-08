@@ -88,3 +88,39 @@ test("midnight refresh is based on server instants and respects DST, not the pho
   assert.equal(dates.calendarRefreshDelay(serverTime, nextDayAt), 30_150);
   for (const zone of ["+03:00", "SystemV/EST5", "Mars/Olympus", ""]) assert.equal(zones.isTimeZone(zone), false);
 });
+
+test("gift forecast stays anchored across extra marks and projects DST instants into local dates", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-03-27T22:30:00Z") });
+  const owner = store.createDevIdentity("Gifts",crypto.randomUUID(),"Europe/Berlin");
+  store.createDevCheckIn(owner.token,crypto.randomUUID());
+  const original = store.getDevCheckInCalendar(owner.token,null);
+  assert.equal(original.streakStartedAt,"2026-03-27T22:30:00.000Z");
+  const forecast = dates.calendarRewardForecast(original,[],1);
+  assert.equal(forecast[0].at,"2026-03-29T22:30:00.000Z");
+  assert.equal(forecast[0].date,"2026-03-30","spring clock shift advances local civil date");
+  context.mock.timers.setTime(Date.now()+12*3_600_000);
+  store.createDevCheckIn(owner.token,crypto.randomUUID());
+  const after = store.getDevCheckInCalendar(owner.token,null);
+  assert.equal(after.streakStartedAt,original.streakStartedAt);
+  assert.deepEqual(dates.calendarRewardForecast(after,[],1).map(x=>x.at),forecast.map(x=>x.at));
+  assert.deepEqual(dates.calendarRewardForecast(after,["flower","leaf_garland"],7).map(x=>x.id),["keepsakes"]);
+  const autumn = {...after,serverTime:"2026-10-23T22:30:00Z",streakStartedAt:"2026-10-23T22:30:00Z"};
+  assert.equal(dates.calendarRewardForecast(autumn,[],1)[0].date,"2026-10-25","fall clock shift uses 48 elapsed hours");
+});
+
+test("forecast handles expiry, due gifts, year boundary and old servers without guesses", async () => {
+  const streaks = await vite.ssrLoadModule("/lib/daily-streak.ts");
+  const marks=["2026-12-30T23:30:00Z","2026-12-31T23:30:00Z"];
+  assert.equal(streaks.rollingStreakStartedAt(marks,new Date("2027-01-01T23:30:00Z")),"2026-12-30T23:30:00.000Z");
+  assert.equal(streaks.rollingStreakStartedAt(marks,new Date("2027-01-01T23:30:00.001Z")),null);
+  const owner=store.createDevIdentity("Future",crypto.randomUUID(),"UTC");
+  const base={...store.getDevCheckInCalendar(owner.token,null),serverTime:"2026-12-31T23:30:00Z",streakStartedAt:null,timeZone:"UTC"};
+  const planned=dates.calendarRewardForecast(base,[],0);
+  assert.equal(planned[0].date,"2027-01-02"); assert.equal(planned[0].active,false);
+  assert.equal(planned[3].date,"2027-01-29");
+  assert.deepEqual(dates.calendarRewardForecast({...base,streakStartedAt:undefined},[],0),[]);
+  const due=dates.calendarRewardForecast({...base,streakStartedAt:"2026-12-29T23:00:00Z"},[],2)[0];
+  assert.equal(due.due,true); assert.equal(due.date,"2026-12-31");
+  assert.equal(dates.calendarRewardForecast({...base,timeZone:"Pacific/Kiritimati"},[],0)[0].date,"2027-01-03");
+  assert.equal(dates.calendarRewardForecast({...base,timeZone:"Etc/GMT+12"},[],0)[0].date,"2027-01-02");
+});

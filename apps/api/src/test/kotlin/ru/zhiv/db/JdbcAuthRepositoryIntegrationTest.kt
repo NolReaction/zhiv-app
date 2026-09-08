@@ -37,11 +37,19 @@ class JdbcAuthRepositoryIntegrationTest {
     @AfterAll fun stop() { source.close() }
     private fun flow(intent: String = "register", subject: String = "${UUID.randomUUID()}@example.com", session: ByteArray? = null, provider: String = "email") = LoginFlow(tokens.issue().hash, tokens.issue().hash, provider, intent, session, "Дима", subject, "verifier", "nonce", tokens.hash("code"))
 
+    private fun emailAward(userId: UUID): String? = source.connection.use { c ->
+        c.prepareStatement("SELECT unlocked_at::text FROM game_achievements WHERE user_id=? AND achievement_id='linked_email'").use {
+            it.setObject(1,userId); it.executeQuery().use { row -> if (row.next()) row.getString(1) else null }
+        }
+    }
+
     @Test fun `normal login preserves profile and both sessions while device revocation is scoped`(): Unit = runBlocking {
         val registration = flow(); val first = tokens.issue(); val second = tokens.issue()
         val user = auth.finish(registration, registration.subject!!, first.hash, 365, "Safari")
+        val awardedAt=assertNotNull(emailAward(user))
         assertEquals(user, auth.finish(registration.copy(intent = "login"), registration.subject, second.hash, 365, "Telegram"))
         assertEquals(user, identities.findSessionUserId(first.hash)); assertEquals(user, identities.findSessionUserId(second.hash))
+        assertEquals(awardedAt,emailAward(user))
         val access = auth.access(second.hash)
         assertEquals(2, access.sessions.size); assertEquals(1, access.sessions.count { it.current })
         val other = tokens.issue(); val stranger = flow()
@@ -57,8 +65,10 @@ class JdbcAuthRepositoryIntegrationTest {
         val link = flow("link", session = legacy.hash, provider = "telegram")
         auth.finish(link, "tg-${UUID.randomUUID()}", tokens.issue().hash, 365, "Unused")
         assertEquals(user.id, identities.findSessionUserId(legacy.hash))
+        assertNull(emailAward(user.id))
         val subject = "email-${UUID.randomUUID()}@example.com"
         auth.finish(flow("link", subject, legacy.hash), subject, tokens.issue().hash, 365, "Unused")
+        assertNotNull(emailAward(user.id))
         val stranger = tokens.issue(); val otherFlow = flow()
         auth.finish(otherFlow, otherFlow.subject!!, stranger.hash, 365, "Other")
         assertFailsWith<AuthFailure> { auth.finish(flow("link", subject, stranger.hash), subject, tokens.issue().hash, 365, "Unused") }
@@ -86,6 +96,7 @@ class JdbcAuthRepositoryIntegrationTest {
         assertEquals("INVALID_TIME_ZONE", invalidZone.code)
         assertTrue(auth.hasRegistration(ticket.hash, login.browserHash))
         val user = auth.completeRegistration(ticket.hash, login.browserHash, "Новый профиль", session.hash, 365, "Browser", "Asia/Kathmandu")
+        assertNull(emailAward(user))
         assertEquals("Asia/Kathmandu", identities.findBySession(session.hash)?.timeZone)
         assertEquals(user, identities.findSessionUserId(session.hash))
         assertFalse(auth.hasRegistration(ticket.hash, login.browserHash))

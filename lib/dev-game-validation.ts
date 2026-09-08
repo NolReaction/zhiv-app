@@ -34,3 +34,9 @@ export function parseDevGameScope(searchParams: URLSearchParams): GameLeaderboar
   if (values.length === 0) return "global";
   return values.length === 1 && (values[0] === "global" || values[0] === "friends") ? values[0] : null;
 }
+
+export function parseDevGameMetric(searchParams: URLSearchParams): "monthly_taps" | "best_series" | null {
+  const values = searchParams.getAll("metric");
+  if (!values.length) return "monthly_taps";
+  return values.length === 1 && (values[0] === "monthly_taps" || values[0] === "best_series") ? values[0] : null;
+}

@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { AdminRewardsDialog } from "./admin-rewards-dialog";
+import { GAME_ITEMS, GAME_ACHIEVEMENTS } from "@/lib/game-rewards";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Activity, ArrowLeft, ArrowUpRight, Check, ChevronLeft, ChevronRight, CircleAlert,
-  Clock3, Cpu, Database, HeartPulse, LayoutDashboard, LoaderCircle,
+  Clock3, Cpu, Database, Gift, HeartPulse, LayoutDashboard, LoaderCircle,
   LogOut, Search, Server, ShieldCheck, ShieldX, Terminal, Trophy, Users,
 } from "lucide-react";
 import {
@@ -190,8 +192,8 @@ function Overview({ data, days }: { data: AdminOverview; days: number }) {
   );
 }
 
-function UsersTable({ data, access, busy, onPage, onRevoke }: {
-  data: AdminUsers; access: AdminAccess; busy: boolean; onPage: (offset: number) => void; onRevoke: (user: AdminUser) => void;
+function UsersTable({ data, access, busy, onPage, onRevoke, onRewards }: {
+  data: AdminUsers; access: AdminAccess; busy: boolean; onPage: (offset: number) => void; onRevoke: (user: AdminUser) => void; onRewards: (user: AdminUser) => void;
 }) {
   return <section className={styles.panel}>
     <SectionHeading title="Пользователи приложения" description="Поиск по имени или ID. Сеансы можно завершить без удаления аккаунта." />
@@ -203,7 +205,7 @@ function UsersTable({ data, access, busy, onPage, onRevoke }: {
         <TableCell><strong>{count(user.checkInCount)}</strong> отметок<small>{count(user.friendCount)} друзей</small></TableCell>
         <TableCell><strong>{count(user.lifetimeTaps)}</strong> тапов<small>Месяц {count(user.monthlyTaps)} · рекорд ×{count(user.bestSeries)}</small><small>{user.leaderboardOptIn ? "Участвует в рейтинге" : "Рейтинг скрыт"}</small></TableCell>
         <TableCell><strong>{count(user.activeSessions)}</strong><small>{user.loginMethods.length ? user.loginMethods.join(" · ") : "Нет привязанных способов"}</small></TableCell>
-        <TableCell>{!user.isAdmin && user.publicId !== access.publicId ? <button type="button" className={styles.dangerLink} disabled={user.activeSessions === 0 || busy} onClick={() => onRevoke(user)}><LogOut size={16} />Завершить сеансы</button> : <span className={styles.muted}>Защищённый аккаунт</span>}</TableCell>
+        <TableCell><button type="button" className={styles.textButton} disabled={busy} onClick={() => onRewards(user)}><Gift size={16} />Награды</button>{!user.isAdmin && user.publicId !== access.publicId ? <button type="button" className={styles.dangerLink} disabled={user.activeSessions === 0 || busy} onClick={() => onRevoke(user)}><LogOut size={16} />Завершить сеансы</button> : <span className={styles.muted}>Защищённый аккаунт</span>}</TableCell>
       </TableRow>)}</TableBody>
     </Table>}
     <Pagination total={data.total} offset={data.offset} busy={busy} onChange={onPage} />
@@ -264,13 +266,13 @@ function Monitoring({ data }: { data: AdminMonitoring }) {
 
 function Audit({ data, busy, onPage }: { data: AdminAudit; busy: boolean; onPage: (offset: number) => void }) {
   return <section className={styles.panel}>
-    <SectionHeading title="Журнал действий" description="Кто, когда и по какой причине завершил сеансы пользователя · UTC" />
+    <SectionHeading title="Журнал действий" description="Выдача наград и завершение сеансов · кто, когда и почему · UTC" />
     {!data.events.length ? <Empty>Действий администратора пока нет.</Empty> : <Table className={styles.auditTable}>
-      <TableHeader><TableRow><TableHead>Время / операция</TableHead><TableHead>Администратор</TableHead><TableHead>Пользователь</TableHead><TableHead>Причина</TableHead><TableHead>Сеансы</TableHead></TableRow></TableHeader>
+      <TableHeader><TableRow><TableHead>Время / операция</TableHead><TableHead>Администратор</TableHead><TableHead>Пользователь</TableHead><TableHead>Причина</TableHead><TableHead>Результат</TableHead></TableRow></TableHeader>
       <TableBody>{data.events.map(event => <TableRow key={event.requestId}>
-        <TableCell>{time(event.createdAt, true)}<small>Завершение сеансов</small><code className={styles.requestId}>{event.requestId}</code></TableCell>
+        <TableCell>{time(event.createdAt, true)}<small>{event.action === "revoke_sessions" ? "Завершение сеансов" : event.action === "grant_item" ? "Выдача предмета" : "Выдача достижения"}</small><code className={styles.requestId}>{event.requestId}</code></TableCell>
         <TableCell><code>{event.actorPublicId}</code></TableCell><TableCell><code>{event.targetPublicId}</code></TableCell>
-        <TableCell className={styles.reasonCell}>{event.reason}</TableCell><TableCell>{count(event.affectedSessions)}</TableCell>
+        <TableCell className={styles.reasonCell}>{event.reason}</TableCell><TableCell>{event.action === "revoke_sessions" ? `${count(event.affectedSessions)} сеансов` : <>{[...GAME_ITEMS, ...GAME_ACHIEVEMENTS].find(item => item.id === event.rewardId)?.title ?? event.rewardId}<small>{event.granted ? "Выдано" : "Уже было получено"}</small></>}</TableCell>
       </TableRow>)}</TableBody>
     </Table>}
     <Pagination total={data.total} offset={data.offset} busy={busy} onChange={onPage} />
@@ -294,10 +296,12 @@ export function AdminDashboard() {
   const [users, setUsers] = useState<Snapshot<AdminUsers> | null>(null);
   const [monitoring, setMonitoring] = useState<Snapshot<AdminMonitoring> | null>(null);
   const [audit, setAudit] = useState<Snapshot<AdminAudit> | null>(null);
+  const [rewardTarget, setRewardTarget] = useState<AdminUser | null>(null);
   const [revocation, setRevocation] = useState<Revocation | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionReceipt, setActionReceipt] = useState<string | null>(null);
+  const rewardTrigger = useRef<HTMLElement | null>(null);
   const ownerRef = useRef<string | null>(null);
   const actionBusyRef = useRef(false);
   const actionControllerRef = useRef<AbortController | null>(null);
@@ -306,7 +310,7 @@ export function AdminDashboard() {
   const clearData = useCallback(() => {
     setOverview(null); setUsers(null); setMonitoring(null); setAudit(null);
     setQueryInput(""); setQuery(""); setUsersOffset(0); setAuditOffset(0);
-    setRevocation(null); setActionError(null); setActionReceipt(null);
+    setRevocation(null); setRewardTarget(null); setActionError(null); setActionReceipt(null);
     actionControllerRef.current?.abort();
     actionBusyRef.current = false;
     setActionBusy(false);
@@ -455,7 +459,7 @@ export function AdminDashboard() {
             </TabsList>
             <div className={styles.refreshGroup}><span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span><button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <Activity size={19} />}</button></div>
           </div>
-          <div className={styles.viewHeading}><div><h1>{tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "monitoring" ? "Нагрузка и доступность" : "Действия администраторов"}</h1><p>{tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Аккаунты, прогресс и управление сеансами" : tab === "monitoring" ? "Измерения сервера и API" : "История операций с пользовательскими сеансами"}</p></div>
+          <div className={styles.viewHeading}><div><h1>{tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "monitoring" ? "Нагрузка и доступность" : "Действия администраторов"}</h1><p>{tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Аккаунты, прогресс и управление сеансами" : tab === "monitoring" ? "Измерения сервера и API" : "История выдачи наград и управления сеансами"}</p></div>
             {tab === "overview" && <label className={styles.selectLabel}><span>Период</span><select value={days} onChange={event => setDays(Number(event.target.value) as 7 | 30 | 90)} className={styles.select}><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option></select></label>}
           </div>
           {loadError && <div className={styles.notice} role="status"><CircleAlert size={20} /><div><strong>{currentData ? "Данные не обновились" : "Не удалось загрузить раздел"}</strong><p>{loadError}{currentData ? " Показан последний успешный снимок." : ""}</p></div><button className={styles.button} type="button" onClick={requestRefresh} disabled={loading}>Повторить</button></div>}
@@ -463,13 +467,17 @@ export function AdminDashboard() {
           <TabsContent value="overview" className={styles.tabContent}>{overviewData ? <Overview data={overviewData} days={days} /> : <Empty>{loading ? "Загружаем статистику…" : "Статистика пока не загружена."}</Empty>}</TabsContent>
           <TabsContent value="users" className={styles.tabContent}>
             <div className={styles.searchToolbar}><label className={styles.search}><Search size={19} /><span className={styles.srOnly}>Поиск пользователя по имени или ID</span><input type="search" value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="Имя или ID пользователя" maxLength={100} autoComplete="off" /></label><label className={styles.selectLabel}><span>Сортировка</span><select className={styles.select} value={sort} onChange={event => { setSort(event.target.value as UserSort); setUsersOffset(0); }}><option value="created">Сначала новые</option><option value="activity">По последней отметке</option><option value="taps">По числу тапов</option></select></label></div>
-            {usersData ? <UsersTable data={usersData} access={access} busy={loading || actionBusy} onPage={setUsersOffset} onRevoke={startRevocation} /> : <Empty>{loading ? "Ищем пользователей…" : "Список пока не загружен."}</Empty>}
+            {usersData ? <UsersTable data={usersData} access={access} busy={loading || actionBusy} onPage={setUsersOffset} onRevoke={startRevocation} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /> : <Empty>{loading ? "Ищем пользователей…" : "Список пока не загружен."}</Empty>}
           </TabsContent>
           <TabsContent value="monitoring" className={styles.tabContent}>{monitoring ? <Monitoring data={monitoring.value} /> : <Empty>{loading ? "Получаем метрики сервера…" : "Метрики пока не загружены."}</Empty>}</TabsContent>
           <TabsContent value="audit" className={styles.tabContent}>{auditData ? <Audit data={auditData} busy={loading} onPage={setAuditOffset} /> : <Empty>{loading ? "Загружаем журнал…" : "Журнал пока не загружен."}</Empty>}</TabsContent>
           <footer className={styles.footer}><span><span className={styles.liveDot} />Автообновление каждые 30 секунд, пока вкладка видна</span><span>Время и периоды — UTC</span></footer>
         </Tabs>
       </div>
+      {rewardTarget && <AdminRewardsDialog key={rewardTarget.publicId} target={rewardTarget} actorPublicId={access.publicId}
+        onClose={() => setRewardTarget(null)} onAccessLost={closeAccess}
+        returnFocus={() => { if (rewardTrigger.current?.isConnected) rewardTrigger.current.focus(); }}
+        onGranted={message => { setActionReceipt(message); requestRefresh(); }} />}
       <AlertDialog open={revocation !== null} onOpenChange={open => { if (!open && !actionBusy) { setRevocation(null); setActionError(null); } }}>
         <AlertDialogContent className={styles.confirmDialog} onEscapeKeyDown={event => { if (actionBusy) event.preventDefault(); }}>
           <AlertDialogHeader><AlertDialogTitle>Завершить все сеансы?</AlertDialogTitle><AlertDialogDescription>Пользователь {revocation?.target.displayName} выйдет из аккаунта на всех устройствах. Его данные сохранятся, и он сможет войти снова. Это действие попадёт в журнал.</AlertDialogDescription></AlertDialogHeader>

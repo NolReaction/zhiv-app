@@ -216,6 +216,7 @@ fun Route.identityRoutes(
             serverTime = calendar.serverTime.toInstant().toString(),
             nextDayAt = calendar.nextDayAt.toInstant().toString(),
             lastMonth = calendar.lastMonth.toString(),
+            streakStartedAt = calendar.streakStartedAt?.toInstant()?.toString(),
         ))
     }
     get("/api/v1/me") {

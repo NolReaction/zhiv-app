@@ -447,6 +447,15 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(setOf("ownerPublicId","serverTime","achievements"),json.keys)
         assertEquals(p.publicId,json.getValue("ownerPublicId").jsonPrimitive.content)
         assertEquals(3,json.getValue("achievements").jsonArray.size)
+        val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
+        for (query in listOf("catalog=4","catalog=3&catalog=3"))
+            assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
+        val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
+        for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
+            assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
+
         execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",p.hash)
         assertEquals(HttpStatusCode.Unauthorized,client.get("/api/v1/game/achievements") { header(HttpHeaders.Cookie,cookie) }.status)
     }
@@ -486,13 +495,50 @@ class JdbcGameRepositoryIntegrationTest {
                     }
                 }
                 val first=JdbcGameRepository(db).achievements(token.hash).achievements
-                assertEquals(listOf(7L,1000L,5L),first.map { it.progress })
-                assertTrue(first.all { it.unlockedAt!=null })
+                assertEquals(listOf(7L,1000L,5L,0L,0L,0L),first.map { it.progress })
+                assertTrue(first.take(3).all { it.unlockedAt!=null }); assertTrue(first.drop(3).all { it.unlockedAt==null })
                 db.connection.use { c ->
                     c.prepareStatement("UPDATE circles SET archived_at=clock_timestamp() WHERE kind='DIRECT' AND ? IN (direct_user_low_id,direct_user_high_id)").use { it.setObject(1,owner.id);it.executeUpdate() };c.commit()
                 }
                 DatabaseFactory.migrate(db)
                 assertEquals(first,JdbcGameRepository(db).achievements(token.hash).achievements)
+            }
+        } finally {
+            source.connection.use { c -> c.autoCommit=true;c.createStatement().use { it.execute("DROP DATABASE $database WITH (FORCE)") } }
+        }
+    }
+
+    @Test fun `V24 backfills verified security and best series without converting retired awards`() = runBlocking<Unit> {
+        val database="reward_upgrade_"+UUID.randomUUID().toString().replace("-", "")
+        source.connection.use { c -> c.autoCommit=true; c.createStatement().use { it.execute("CREATE DATABASE $database") } }
+        try {
+            DatabaseFactory.create(config.copy(databaseUrl=postgres.jdbcUrl.substringBeforeLast('/')+"/"+database)).use { db ->
+                Flyway.configure().dataSource(db).locations("classpath:db/migration").target("23").load().migrate()
+                val repo=JdbcZhivRepository(db); val token=tokens.issue(); val championToken=tokens.issue()
+                val owner=repo.bootstrap("Before update",tokens.issue().hash,token.hash,365)
+                val champion=repo.bootstrap("Champion",tokens.issue().hash,championToken.hash,365)
+                fun write(sql: String,vararg args: Any) = db.connection.use { c ->
+                    c.prepareStatement(sql).use { q -> args.forEachIndexed { i,v -> q.setObject(i+1,v) }; q.executeUpdate() };c.commit()
+                }
+                write("INSERT INTO game_profiles(user_id,lifetime_taps,best_series) VALUES (?,10000,100),(?,10000,10000)",owner.id,champion.id)
+                write("INSERT INTO game_achievements(user_id,achievement_id) VALUES (?,'hundred_series')",owner.id)
+                write("INSERT INTO account_login_identities(user_id,provider,subject) VALUES (?,'email','verified@example.com')",owner.id)
+                write("INSERT INTO account_recovery_codes(user_id,code_hash,revoked_at) VALUES (?,?,clock_timestamp())",owner.id,tokens.issue().hash)
+                DatabaseFactory.migrate(db)
+                db.connection.use { c ->
+                    c.prepareStatement("SELECT achievement_id FROM game_achievements WHERE user_id=? ORDER BY achievement_id").use {
+                        it.setObject(1,owner.id);it.executeQuery().use { rows ->
+                            val ids=buildSet { while(rows.next()) add(rows.getString(1)) }
+                            assertEquals(setOf("hundred_series","linked_email","saved_recovery_code"),ids,"backfill must run before first read")
+                        }
+                    }
+                }
+                val current=JdbcGameRepository(db).achievements(token.hash).achievements
+                assertNull(current.single { it.id=="ten_thousand_series" }.unlockedAt)
+                assertEquals(100L,current.single { it.id=="ten_thousand_series" }.progress)
+                assertNotNull(JdbcGameRepository(db).achievements(championToken.hash).achievements.single { it.id=="ten_thousand_series" }.unlockedAt)
+                DatabaseFactory.migrate(db)
+                assertEquals(current,JdbcGameRepository(db).achievements(token.hash).achievements)
             }
         } finally {
             source.connection.use { c -> c.autoCommit=true;c.createStatement().use { it.execute("DROP DATABASE $database WITH (FORCE)") } }
@@ -521,6 +567,51 @@ class JdbcGameRepositoryIntegrationTest {
         val unearned=games.achievements(fresh.hash).achievements
         assertTrue(unearned.all { it.progress==0L && it.unlockedAt==null },"reconciliation never imports device-local counters or dates")
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",fresh.id))
+    }
+
+    @Test fun `series leaderboard gives equal places independently of current month and respects friends consent`() = runBlocking<Unit> {
+        val owner=player();val a=player("Рекорд А");val b=player("Рекорд Б");val hidden=player()
+        execute("INSERT INTO game_profiles(user_id,lifetime_taps,best_series,leaderboard_opt_in) VALUES (?,30,10,true),(?,30,20,true),(?,30,20,true),(?,100,100,false)",owner.id,a.id,b.id,hidden.id)
+        connect(owner,a);connect(owner,b);connect(owner,hidden)
+        val board=games.leaderboard(owner.hash,"friends","best_series")
+        assertEquals("best_series",board.metric);assertEquals(0L,board.monthlyTaps)
+        assertEquals(listOf(1L,1L,3L),board.entries.map { it.rank })
+        assertEquals(listOf(20L,20L,10L),board.entries.map { it.score });assertEquals(3L,board.myRank)
+        assertTrue(games.leaderboard(owner.hash,"friends","monthly_taps").entries.isEmpty())
+        games.setVisibility(a.hash,false,0,a.publicId)
+        assertEquals(2L,games.leaderboard(owner.hash,"friends","best_series").myRank)
+    }
+
+    @Test fun `accepted thresholds award new achievements and verified streak reconciles items`() = runBlocking<Unit> {
+        val p=player();val play=session(p);val run=UUID.randomUUID()
+        games.submitBatch(p.hash,UUID.fromString(play.sessionId),1,1,run)
+        execute("UPDATE game_profiles SET lifetime_taps=9999,best_series=99 WHERE user_id=?",p.id)
+        execute("UPDATE game_sessions SET run_id=?,run_taps=99,run_updated_at=clock_timestamp() WHERE id=?",run,UUID.fromString(play.sessionId))
+        val reply=games.submitBatch(p.hash,UUID.fromString(play.sessionId),2,1,run)
+        assertEquals(10000L,reply.progress.lifetimeTaps);assertEquals(100L,reply.progress.bestSeries)
+        val first=games.achievements(p.hash).achievements
+        assertNull(first.single { it.id=="ten_thousand_series" }.unlockedAt)
+        assertEquals(100L,first.single { it.id=="ten_thousand_series" }.progress)
+        games.submitBatch(p.hash,UUID.fromString(play.sessionId),2,1,run)
+        assertEquals(first,games.achievements(p.hash).achievements)
+        execute("UPDATE game_profiles SET lifetime_taps=19999,best_series=9999 WHERE user_id=?",p.id)
+        execute("UPDATE game_sessions SET run_taps=9999,run_updated_at=clock_timestamp() WHERE id=?",UUID.fromString(play.sessionId))
+        assertNull(games.achievements(p.hash).achievements.single { it.id=="ten_thousand_series" }.unlockedAt)
+        games.submitBatch(p.hash,UUID.fromString(play.sessionId),3,1,run)
+        assertNotNull(awardAt(p,"ten_thousand_series"))
+        val achieved=games.achievements(p.hash).achievements.single { it.id=="ten_thousand_series" }
+        assertEquals(10000L,achieved.progress)
+        games.submitBatch(p.hash,UUID.fromString(play.sessionId),3,1,run)
+        assertEquals(achieved,games.achievements(p.hash).achievements.single { it.id=="ten_thousand_series" })
+        execute("""
+            INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
+            SELECT ?,s.id,uuidv7(),d.at,d.at+interval '30 seconds','UTC',(d.at AT TIME ZONE 'UTC')::date
+            FROM app_sessions s CROSS JOIN LATERAL (
+                SELECT statement_timestamp()-interval '40 days'+i*interval '24 hours' AS at FROM generate_series(0,29) i
+            ) d WHERE s.token_hash=?
+        """.trimIndent(),p.id,p.hash)
+        assertEquals(setOf("flower","leaf_bed","keepsakes","leaf_garland"),games.progress(p.hash).items.toSet())
+        assertNotNull(games.achievements(p.hash).achievements.single { it.id=="seven_day_streak" }.unlockedAt)
     }
 
 }

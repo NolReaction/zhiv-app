@@ -42,6 +42,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -657,9 +658,17 @@ class JdbcZhivRepositoryIntegrationTest {
         val old=tokens.issue()
         val user=repository.bootstrap("Code owner",tokens.issue().hash,old.hash,365)
         val code=tokens.issue().hash
+        fun award(): String? = dataSource.connection.use { c ->
+            c.prepareStatement("SELECT unlocked_at::text FROM game_achievements WHERE user_id=? AND achievement_id='saved_recovery_code'").use {
+                it.setObject(1,user.id); it.executeQuery().use { row -> if (row.next()) row.getString(1) else null }
+            }
+        }
+        assertNull(award())
         assertEquals(false,recovery.hasCode(old.hash))
         assertTrue(recovery.activate(old.hash,code))
+        val awardedAt=assertNotNull(award())
         assertTrue(recovery.activate(old.hash,code))
+        assertEquals(awardedAt,award())
         val retry=tokens.issue().hash
         val newSession=tokens.issue().hash
         val results=coroutineScope {
@@ -678,6 +687,7 @@ class JdbcZhivRepositoryIntegrationTest {
         assertTrue(recovery.redeem(nextCode,tokens.issue().hash,newest,365))
         assertEquals(false,recovery.redeem(code,retry,newSession,365))
         assertEquals(user.id,repository.findBySession(newest)?.id)
+        assertEquals(awardedAt,award())
     }
 
     @Test

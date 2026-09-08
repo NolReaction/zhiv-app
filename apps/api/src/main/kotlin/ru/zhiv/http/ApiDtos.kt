@@ -22,6 +22,7 @@ data class CheckInCalendarResponse(
     val serverTime: String,
     val nextDayAt: String,
     val lastMonth: String,
+    val streakStartedAt: String? = null,
 )
 
 @Serializable

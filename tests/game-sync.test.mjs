@@ -23,7 +23,7 @@ const runId = "4a272b65-8ada-4b0d-aad8-6a6ef845f41b";
 const requestId = "5a272b65-8ada-4b0d-aad8-6a6ef845f41b";
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const progress = (overrides = {}) => ({
-  ownerPublicId: owner, lifetimeTaps: 0, bestSeries: 0,
+  ownerPublicId: owner, items: [], lifetimeTaps: 0, bestSeries: 0,
   month: "2026-09", monthlyTaps: 0, leaderboardOptIn: false,
   visibilityVersion: 0, serverTime: "2026-09-07T10:00:00.000Z", ...overrides,
 });
@@ -453,4 +453,28 @@ test("a committed batch whose receipt was purged is never replayed under a new s
   assert.equal(f.client.snapshot().progress.lifetimeTaps, 9);
   assert.equal(committed, 9);
   f.client.dispose();
+});
+
+test("permanent items survive out-of-order progress and an older server snapshot", () => {
+  const f = fixture();
+  f.client.adoptProgress(progress({ items: ["leaf_garland"], serverTime: "2026-09-07T10:01:00.000Z" }));
+  f.client.adoptProgress(progress({ items: ["flower"] }));
+  f.client.adoptProgress(progress({ items: [], serverTime: "2026-09-07T10:02:00.000Z" }));
+  assert.deepEqual(f.client.snapshot().progress.items, ["leaf_garland", "flower"]);
+  f.client.dispose();
+});
+
+test("new client reads old monthly responses and explicitly asks for the expanded catalog", async () => {
+  const oldFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => Response.json({ ownerPublicId: owner, scope: "global", month: "2026-09", serverTime: "2026-09-07T10:00:00Z",
+      entries: [{ rank: 1, displayName: "Owner", taps: 5, isMe: true }], myRank: 1, monthlyTaps: 5, leaderboardOptIn: true });
+    assert.equal((await gameApi.getGameLeaderboard()).entries[0].score, 5);
+    globalThis.fetch = async url => {
+      assert.equal(url, "/api/v1/game/achievements?catalog=3");
+      return Response.json({ ownerPublicId: owner, serverTime: "2026-09-07T10:00:00Z",
+        achievements: [["seven_day_streak",7],["thousand_taps",1000],["five_friends",5]].map(([id,target]) => ({ id, target, progress: 0, unlockedAt: null })) });
+    };
+    assert.equal((await gameApi.getGameAchievements()).achievements.length, 3);
+  } finally { globalThis.fetch = oldFetch; }
 });

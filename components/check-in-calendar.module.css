@@ -66,3 +66,28 @@
 .hint summary { display: flex; align-items: center; min-height: 36px; cursor: pointer; color: #d0dfc0; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 4px; }
 .hint p { margin: 6px 0 10px; }
 .hint summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.rewards { min-width: 0; padding: 12px; border: 1px solid rgba(197,215,174,.15); border-radius: 16px; background: rgba(197,215,174,.035); }
+.rewardsTrigger { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 14px; color: #dae6c9; }
+.rewards p { margin: 0; font-size: 12px; line-height: 1.5; color: #adbba0; }
+.rewards ol { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; list-style: none; padding: 0; margin: 2px 0 0; }
+.rewards li { display: grid; gap: 4px; padding: 9px; border-radius: 11px; background: rgba(197,215,174,.035); border: 1px solid transparent; }
+.rewards li[data-earned] { border-color: rgba(196,215,138,.3); background: rgba(196,215,138,.07); }
+.rewardDay { display: flex; align-items: center; gap: 5px; color: #d7cd9a; font-size: 12px; }
+.rewards strong { color: #d9e3ce; font-size: 12px; font-weight: 600; }
+.rewards small { color: #a7b699; font-size: 11px; }
+
+.rewardsTrigger { width: 100%; min-height: 36px; border: 0; padding: 0; background: none; text-align: left; cursor: pointer; font: inherit; font-size: 14px; }
+.rewardsTrigger > svg { flex-shrink: 0; }
+.rewardsTrigger > svg:last-child { margin-left: auto; transition: transform 180ms ease; }
+.rewardsTrigger[data-state="open"] > svg:last-child { transform: rotate(180deg); }
+.rewardsContent { display: grid; gap: 9px; padding-top: 9px; }
+.rewardsContent[data-state="closed"] { display: none; }
+.rewards strong, .rewards small { font-size: 13px; overflow-wrap: anywhere; }
+.calendar .rewardDate button { box-shadow: inset 0 0 0 2px #dbc68b; color: #f0dfb4; }
+.calendar .rewardDate:global(.rdp-selected) button { outline-offset: -5px; }
+.rewardLegend, .selectedGift { display: flex; align-items: center; gap: 7px; margin: 0; color: #dac994; font-size: 13px; line-height: 1.45; }
+.rewardLegend > span { width: 15px; height: 15px; border: 2px solid #dbc68b; border-radius: 5px; flex-shrink: 0; }
+.selectedGift svg { flex-shrink: 0; }
+@media (forced-colors: active) { .calendar .rewardDate button { border: 2px solid Highlight; } }
+@media (prefers-reduced-motion: reduce) { .rewardsTrigger > svg:last-child { transition: none; } }

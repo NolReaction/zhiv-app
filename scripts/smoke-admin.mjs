@@ -190,6 +190,20 @@ assert.equal(audit.data.events[0].affectedSessions, 2);
 assert.equal(audit.data.events[0].action, "revoke_sessions");
 assert.equal((await api("GET", "/api/v1/admin/audit?offset=1&limit=1", { cookie: admin.cookie })).data.events.length, 0);
 
+const grantPath = `/api/v1/admin/users/${target.publicId}/grant-reward`;
+const grantBody = { requestId: randomUUID(), confirmationPublicId: target.publicId, kind: "item", rewardId: "leaf_garland", reason: "CI isolated reward validation" };
+await api("POST", grantPath, { cookie: ordinary.cookie, body: grantBody, expected: 403 });
+const granted = await api("POST", grantPath, { cookie: admin.cookie, body: grantBody });
+assert.equal(granted.data.granted, true);
+assert.deepEqual((await api("POST", grantPath, { cookie: admin.cookie, body: grantBody })).data, granted.data);
+assert.deepEqual((await api("GET", "/api/v1/game/progress", { cookie: freshCookie })).data.items, ["leaf_garland"]);
+assert.deepEqual((await api("GET", `/api/v1/admin/users/${target.publicId}/rewards`, { cookie: admin.cookie })).data.items, ["leaf_garland"]);
+await api("POST", path, { cookie: admin.cookie, body: { requestId: grantBody.requestId, confirmationPublicId: target.publicId, reason: grantBody.reason }, expected: 409 });
+const achievementGrant = { ...grantBody, requestId: randomUUID(), kind: "achievement", rewardId: "ten_thousand_series" };
+await api("POST", grantPath, { cookie: admin.cookie, body: achievementGrant });
+assert.equal((await api("GET", "/api/v1/game/achievements?catalog=3", { cookie: freshCookie })).data.achievements.find(item => item.id === "ten_thousand_series").progress, 10000);
+assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 3);
+
 // Two 15-second scrapes are required for rate(). The API cache lasts 10 seconds.
 // Keep a hard wall-clock deadline and print only the readiness result, not raw metrics.
 const deadline = performance.now() + 60_000;

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { GAME_ITEMS, GAME_ACHIEVEMENTS, type GameItemId } from "@/lib/game-rewards";
+import type { GameAchievementId } from "@/lib/game-api";
 import { ApiError } from "@/lib/check-in-api";
 
 const count = z.number().int().nonnegative().safe();
@@ -25,7 +27,7 @@ const userSchema = z.object({
 const usersSchema = z.object({ ...page, users: z.array(userSchema).max(100) });
 const auditSchema = z.object({ ...page, events: z.array(z.object({
   requestId: z.string().uuid(), actorPublicId: publicId, targetPublicId: publicId,
-  action: z.literal("revoke_sessions"), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
+  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement"]), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
 })).max(100) });
 const metric = z.number().finite().nullable();
 const monitoringSchema = z.object({
@@ -47,7 +49,7 @@ export type AdminAudit = z.infer<typeof auditSchema>;
 export type AdminMonitoring = z.infer<typeof monitoringSchema>;
 export type AdminRevokeRequest = { requestId: string; confirmationPublicId: string; reason: string };
 
-async function adminRequest<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal, body?: AdminRevokeRequest): Promise<T> {
+async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: AdminRevokeRequest | AdminGrantRequest): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort();
@@ -87,4 +89,19 @@ export const getAdminMonitoring = (signal?: AbortSignal) => adminRequest("monito
 export function revokeAdminSessions(targetPublicId: string, body: AdminRevokeRequest, signal?: AbortSignal) {
   return adminRequest(`users/${encodeURIComponent(targetPublicId)}/revoke-sessions`,
     z.object({ requestId: z.string().uuid(), affectedSessions: count, createdAt: instant }), signal, body);
+}
+
+const rewardIdSchema = z.string().refine(id => [...GAME_ITEMS, ...GAME_ACHIEVEMENTS].some(item => item.id === id));
+const rewardsSchema = z.object({ publicId, serverTime: instant,
+  items: z.array(z.custom<GameItemId>(id => GAME_ITEMS.some(item => item.id === id))).max(4),
+  achievements: z.array(z.custom<GameAchievementId>(id => GAME_ACHIEVEMENTS.some(item => item.id === id))).max(6),
+});
+export type AdminRewards = z.infer<typeof rewardsSchema>;
+export type AdminGrantRequest = AdminRevokeRequest & { kind: "item" | "achievement"; rewardId: GameItemId | GameAchievementId };
+export function getAdminRewards(target: string, signal?: AbortSignal) {
+  return adminRequest(`users/${encodeURIComponent(target)}/rewards`, rewardsSchema, signal);
+}
+export function grantAdminReward(target: string, body: AdminGrantRequest, signal?: AbortSignal) {
+  return adminRequest(`users/${encodeURIComponent(target)}/grant-reward`,
+    z.object({ requestId: z.string().uuid(), kind: z.enum(["item", "achievement"]), rewardId: rewardIdSchema, granted: z.boolean(), createdAt: instant }), signal, body);
 }

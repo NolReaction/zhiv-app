@@ -304,7 +304,7 @@ test("caps one uninterrupted series at one hundred thousand", () => {
   assert.equal(restarted.activeSeries.storyId, after.progress.activeSeries.storyId);
 });
 
-test("derives ten durable levels from lifetime taps", () => {
+test("preserves the first ten durable levels while extending to one hundred", () => {
   const levels = [
     [0, 1, "Новичок"],
     [10, 2, "Искра"],
@@ -319,7 +319,7 @@ test("derives ten durable levels from lifetime taps", () => {
   ];
 
   assert.deepEqual(
-    clicker.CLICKER_LEVELS.map(({ minimumLifetimeTaps, level, title }) => [
+    clicker.CLICKER_LEVELS.slice(0,10).map(({ minimumLifetimeTaps, level, title }) => [
       minimumLifetimeTaps,
       level,
       title,
@@ -362,9 +362,9 @@ test("calculates level progress inside the current lifetime segment", () => {
   assert.deepEqual(clicker.getClickerLevelProgress(5_000), {
     current: 5_000,
     minimum: 5_000,
-    maximum: 5_000,
-    ratio: 1,
-    remaining: 0,
+    maximum: 7_500,
+    ratio: 0,
+    remaining: 2_500,
   });
 });
 
@@ -615,4 +615,19 @@ test("0.4.5 story identifiers preserve existing counters and active series witho
       assert.equal(clicker.parseClickerProgress(clicker.serializeClickerProgress(next)).bestSeries, 200);
     }
   }
+});
+
+test("all one hundred level boundaries and ten icon stages are reachable without count loss", () => {
+  assert.equal(clicker.CLICKER_LEVELS.length, 100);
+  for (const { level, minimumLifetimeTaps: taps } of clicker.CLICKER_LEVELS) {
+    assert.equal(clicker.getClickerLevel(taps).level, level);
+    if (level > 1) assert.equal(clicker.getClickerLevel(taps - 1).level, level - 1);
+  }
+  assert.equal(clicker.getClickerLevel(1_231_250).level, 100);
+  assert.equal(clicker.getClickerLevelProgress(1_231_250).ratio, 1);
+  assert.equal(clicker.getClickerLevelProgress(1_231_250).remaining, 0);
+  assert.equal(clicker.getClickerLevel(9_000_000).nextMinimumLifetimeTaps, null);
+  assert.equal(new Set(Array.from({ length: 100 }, (_, i) => clicker.getClickerIconStage(i + 1))).size, 10);
+  assert.equal(clicker.getClickerIconStage(99), 8);
+  assert.equal(clicker.getClickerIconStage(100), 9);
 });

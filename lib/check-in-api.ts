@@ -296,6 +296,7 @@ export async function getMe(): Promise<MeResponse | null> {
 }
 
 const calendarSchema: z.ZodType<CheckInCalendarResponse> = z.object({
+  streakStartedAt: z.string().datetime().nullable().optional(),
   nextDayAt: z.string().datetime(),
   lastMonth: z.string().refine(isCalendarMonth),
   month: z.string().refine(isCalendarMonth),

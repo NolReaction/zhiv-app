@@ -1,12 +1,12 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { Check, CircleAlert, LoaderCircle, Server, WifiOff } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import styles from "./check-in-receipt.module.css";
 import glass from "./glass-action.module.css";
 
-export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSending, unconfirmed, isOnline, onRetry }: {
+export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSending, unconfirmed, isOnline, onRetry, children }: {
   lastCheckInAt: string | null;
   lastCheckInLabel: string;
   timeZone: string;
@@ -14,6 +14,7 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
   unconfirmed: boolean;
   isOnline: boolean;
   onRetry: () => void;
+  children?: ReactNode;
 }) {
   const titleId = useId();
   const state = isSending ? "sending" : unconfirmed ? "pending" : !isOnline ? "offline" : lastCheckInAt ? "saved" : "empty";
@@ -47,6 +48,7 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
           {unconfirmed && <button type="button" disabled={!isOnline || isSending} onClick={onRetry}>Проверить отправку</button>}
         </PopoverContent>
       </Popover>
+      {children}
     </div>
     <span className={styles.srOnly} role="status" aria-live="polite">{title}</span>
     {(unconfirmed || !isOnline) && <div className={styles.warning}>

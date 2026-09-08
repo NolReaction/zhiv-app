@@ -40,9 +40,19 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
                 val scopes = call.request.queryParameters.getAll("scope")
                 val scope = scopes?.singleOrNull() ?: if (scopes == null) "global" else null
                 if (scope !in setOf("global", "friends")) throw AuthFailure("INVALID_GAME_SCOPE", "Выберите общий рейтинг или рейтинг друзей", 400)
-                call.respond(repository.leaderboard(hash, checkNotNull(scope)))
+                val metrics = call.request.queryParameters.getAll("metric")
+                val metric = metrics?.singleOrNull() ?: if (metrics == null) "monthly_taps" else null
+                if (metric !in setOf("monthly_taps", "best_series")) throw AuthFailure("INVALID_GAME_METRIC", "Выберите вид рейтинга", 400)
+                call.respond(repository.leaderboard(hash, checkNotNull(scope), checkNotNull(metric)))
             }
-            get("/achievements") { call.respond(repository.achievements(call.gameSessionHash(config, codec))) }
+            get("/achievements") {
+                val hash = call.gameSessionHash(config, codec)
+                val versions = call.request.queryParameters.getAll("catalog")
+                val version = versions?.singleOrNull() ?: if (versions == null) "1" else null
+                if (version !in setOf("1", "2", "3")) throw AuthFailure("INVALID_GAME_CATALOG", "Неизвестный каталог достижений", 400)
+                val result = repository.achievements(hash)
+                call.respond(if (version != "3") result.copy(achievements=result.achievements.take(3)) else result)
+            }
         }
         rateLimit(RateLimitName("game-session")) {
             post("/sessions") {

@@ -191,6 +191,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         clearCapabilities(c,id,sessionHash)
         c.update("DELETE FROM account_login_identities WHERE user_id=? AND provider='email'",id)
         c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('email',?,?)",newEmail.subject,id)
+        recordSecurityAchievements(c,id)
         saveReceipt(c,"email",requestHash,id,sessionHash,browserHash)
         Unit
     }
@@ -248,6 +249,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM user_timezone_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
             "SELECT jsonb_build_array(user_id,lifetime_taps,best_series,leaderboard_opt_in,visibility_version)::text FROM game_profiles WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM game_monthly_scores t WHERE user_id IN (?,?) ORDER BY user_id,month",
+            "SELECT to_jsonb(t)::text FROM game_items t WHERE user_id IN (?,?) ORDER BY user_id,item_id",
             "SELECT to_jsonb(t)::text FROM game_achievements t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id",
             "SELECT to_jsonb(t)::text FROM account_merge_sources t WHERE target_user_id IN (?,?) ORDER BY source_user_id"
         )
@@ -306,6 +308,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         """.trimIndent(),target)
     }
     private fun tombstone(c: Connection,id: UUID) {
+        c.update("DELETE FROM game_items WHERE user_id=?",id)
         c.update("DELETE FROM game_achievements WHERE user_id=?",id)
         c.update("DELETE FROM game_sessions WHERE user_id=?",id)
         c.update("DELETE FROM game_monthly_scores WHERE user_id=?",id)
@@ -377,6 +380,11 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
                 SET unlocked_at=LEAST(game_achievements.unlocked_at,EXCLUDED.unlocked_at)
         """.trimIndent(),id,s.other)
         val awardTime=c.one("SELECT clock_timestamp()") { it.getObject(1,OffsetDateTime::class.java) }!!
+        c.update("""
+            INSERT INTO game_items(user_id,item_id,unlocked_at)
+            SELECT ?,item_id,unlocked_at FROM game_items WHERE user_id=?
+            ON CONFLICT(user_id,item_id) DO UPDATE SET unlocked_at=LEAST(game_items.unlocked_at,EXCLUDED.unlocked_at)
+        """,id,s.other)
         recordMergedAchievements(c,id,awardTime)
         tombstone(c,s.other)
         saveReceipt(c,"merge",previewHash,id,sessionHash,browserHash)

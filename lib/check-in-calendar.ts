@@ -1,3 +1,7 @@
+import type { CheckInCalendarResponse } from "@/lib/check-in-contract";
+import { GAME_ITEMS, type GameItemId } from "@/lib/game-rewards";
+import { formatLocalDate } from "@/lib/daily-streak";
+
 export function isCalendarMonth(value: string): boolean {
   return /^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/.test(value);
 }
@@ -25,4 +29,18 @@ export function calendarCountLabel(count: number): string {
 export function calendarRefreshDelay(serverTime: string, nextDayAt: string): number {
   const remaining = Date.parse(nextDayAt) - Date.parse(serverTime);
   return Number.isFinite(remaining) ? Math.max(250, Math.min(48 * 60 * 60_000, remaining + 150)) : 60_000;
+}
+
+/** Project elapsed 24-hour milestones into the viewer's civil dates, including DST. */
+export function calendarRewardForecast(calendar: CheckInCalendarResponse, owned: readonly GameItemId[], longestDays: number) {
+  // Older servers cannot provide an accurate anchor. Do not guess from the last tap.
+  if (calendar.streakStartedAt === undefined) return [];
+  const now = Date.parse(calendar.serverTime);
+  const start = Date.parse(calendar.streakStartedAt ?? calendar.serverTime);
+  return GAME_ITEMS.filter(item => !owned.includes(item.id) && longestDays < item.days).map(item => {
+    const threshold = start + (item.days - 1) * 86_400_000;
+    const at = Math.max(now, threshold);
+    return { ...item, at: new Date(at).toISOString(), date: formatLocalDate(new Date(at), calendar.timeZone),
+      due: threshold <= now, active: calendar.streakStartedAt !== null };
+  });
 }

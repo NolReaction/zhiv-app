@@ -15,6 +15,7 @@ data class CheckInCalendarSnapshot(
     val serverTime: OffsetDateTime,
     val nextDayAt: OffsetDateTime = today.plusDays(1).atStartOfDay(java.time.ZoneId.of(timeZone)).toOffsetDateTime(),
     val lastMonth: YearMonth = YearMonth.from(today),
+    val streakStartedAt: OffsetDateTime? = null,
 )
 
 fun parseCalendarMonth(value: String): YearMonth? {

@@ -1456,3 +1456,25 @@
   to { opacity: 1; transform: none; }
 }
 @media (max-height: 640px) { .buttonOrbit { width: min(64vh, 68vw); } }
+
+
+/* Only the alternate button appearance differs from the master interface. */
+.appearanceToggle { flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
+.appearanceToggle[aria-pressed='true'] { border-color: #d0e3bd80; background: #acc89226; }
+.habitatSurface { position: absolute; inset: 0; border-radius: 50%; border: 1px solid #c0cba055; box-shadow: 0 15px 65px color-mix(in srgb, var(--check-in-glow), transparent 60%); }
+.habitatStage { transform: none; }
+.mochlikButton { border: 1px solid color-mix(in srgb, var(--check-in-color), #c2c9a9 60%); background: transparent; box-shadow: none; animation: none; }
+.mochlikButton:active { transform: none; }
+.mochlikButton::before { --check-in-color: inherit; z-index: 4; inset: 0; border: 1px solid color-mix(in srgb, var(--check-in-color), transparent 50%); pointer-events: none; background: none !important; }
+.mochlikButton .checkInTitle { position: absolute; z-index: 3; top: 14%; left: 50%; transform: translateX(-50%); padding: 10px 17px; border-radius: 20px; background: #0e1c12a8; border: 1px solid #e4ecd429; font-size: clamp(18px, 4.5vw, 28px); font-weight: 750; letter-spacing: -.035em; line-height: 1; text-shadow: 0 2px 12px #07130b; backdrop-filter: blur(6px); transition: background 110ms ease, border-color 110ms ease; }
+.mochlikButton .tapCounter { top: auto; bottom: 9%; padding: 3px 10px 8px; border-radius: 12px; background: #07140a8c; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.buttonStageActive .mochlikButton .checkInTitle { background: #30482bdf; border-color: #e8f5c77a; }
+.mochlikButton[data-pulse='odd'] .checkInTitle { animation: mochlik-press-a 260ms ease-out; }
+.mochlikButton[data-pulse='even'] .checkInTitle { animation: mochlik-press-b 260ms ease-out; }
+@keyframes mochlik-press-a { 0%, 100% { transform: translateX(-50%) scale(1); } 30% { transform: translateX(-50%) scale(.9); } 65% { transform: translateX(-50%) scale(1.035); } }
+@keyframes mochlik-press-b { 0%, 100% { transform: translateX(-50%) scale(1); } 30% { transform: translateX(-50%) scale(.9); } 65% { transform: translateX(-50%) scale(1.035); } }
+@media (prefers-reduced-motion: reduce) { .mochlikButton[data-pulse] .checkInTitle { animation: none; transition: none; } }
+
+.identityText > .nameRow { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 5px 8px; font-family: inherit; max-width: 100%; color: inherit; }
+.nameRow strong { min-width: 0; }
+.levelBadge { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; padding: 3px 6px; border: 1px solid rgba(192,218,166,.18); border-radius: 8px; background: rgba(192,218,166,.07); color: #d2e5bd; font: 600 11px/1.2 var(--font-body, sans-serif); }

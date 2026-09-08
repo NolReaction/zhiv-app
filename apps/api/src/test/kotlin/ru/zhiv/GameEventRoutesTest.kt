@@ -106,6 +106,13 @@ class GameEventRoutesTest {
         }
         assertEquals(HttpStatusCode.Unauthorized, anonymous.status)
         assertEquals(2, events.size)
+        for (level in listOf(10,100,99)) {
+            val extended=client.post("/api/v1/game-events") {
+                contentType(ContentType.Application.Json);header(HttpHeaders.Cookie,cookie)
+                setBody(body.replace("\"lifetimeTaps\":100","\"lifetimeTaps\":1231250").replace("\"level\":5","\"level\":$level"))
+            }
+            assertEquals(if(level==99) HttpStatusCode.BadRequest else HttpStatusCode.NoContent,extended.status)
+        }
     }
 
     private fun testConfig() = AppConfig(

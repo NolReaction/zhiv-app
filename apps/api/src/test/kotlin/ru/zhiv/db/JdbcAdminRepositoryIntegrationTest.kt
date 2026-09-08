@@ -321,4 +321,79 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
         assertFalse(response.bodyAsText().contains("cpuPercent"))
     }
+    @Test fun `reward grants are authorized independent idempotent and immutable`() = runBlocking<Unit> {
+        val admin=user(); val target=user(); val other=user(); val repo=repository(admin)
+        val key=UUID.randomUUID()
+        val request=ru.zhiv.admin.AdminGrantRequest(key.toString(),target.publicId,"item","leaf_garland","Помощь в тестировании приложения")
+        assertEquals(403,assertFailsWith<AuthFailure> { repo.grantReward(other.hash,target.publicId,key,request) }.status)
+        assertEquals(400,assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,target.publicId,key,request.copy(rewardId="unknown")) }.status)
+        assertEquals(400,assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,target.publicId,key,request.copy(confirmationPublicId=other.publicId)) }.status)
+        assertEquals(0L,repo.audit(admin.hash,0,25).total)
+        val replies=coroutineScope { List(2) { async(Dispatchers.IO) { repo.grantReward(admin.hash,target.publicId,key,request) } }.awaitAll() }
+        assertEquals(replies[0],replies[1]); assertTrue(replies[0].granted)
+        val game=JdbcGameRepository(source)
+        val progress=game.progress(target.hash)
+        assertEquals(listOf("leaf_garland"),progress.items)
+        assertEquals(0L,progress.lifetimeTaps); assertEquals(0L,progress.bestSeries); assertFalse(progress.leaderboardOptIn)
+        assertNotNull(identities.findBySession(target.hash))
+        assertEquals(listOf("leaf_garland"),repo.rewards(admin.hash,target.publicId).items)
+        assertEquals("ADMIN_REQUEST_CONFLICT",assertFailsWith<AuthFailure> { repo.revokeSessions(admin.hash,target.publicId,key,target.publicId,request.reason) }.code)
+        assertEquals("ADMIN_REQUEST_CONFLICT",assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,target.publicId,key,request.copy(rewardId="flower")) }.code)
+        val another=UUID.randomUUID()
+        assertFalse(repo.grantReward(admin.hash,target.publicId,another,request.copy(requestId=another.toString())).granted)
+        val award=UUID.randomUUID()
+        assertTrue(repo.grantReward(admin.hash,target.publicId,award,request.copy(requestId=award.toString(),kind="achievement",rewardId="ten_thousand_series")).granted)
+        val earned=game.achievements(target.hash).achievements.single { it.id=="ten_thousand_series" }
+        assertEquals(10000L,earned.progress); assertNotNull(earned.unlockedAt)
+        assertEquals(0L,game.progress(target.hash).bestSeries)
+        val audit=repo.audit(admin.hash,0,25)
+        assertEquals(3L,audit.total)
+        assertEquals(setOf("grant_item","grant_achievement"),audit.events.map { it.action }.toSet())
+        assertEquals("55000",assertFailsWith<SQLException> { execute("UPDATE admin_actions SET reward_id='flower' WHERE request_id=?",key) }.sqlState)
+        assertEquals("55000",assertFailsWith<SQLException> { execute("DELETE FROM admin_actions WHERE request_id=?",key) }.sqlState)
+        // Administrative accounts can receive cosmetic rewards without weakening session protection.
+        val self=UUID.randomUUID()
+        assertTrue(repo.grantReward(admin.hash,admin.publicId,self,request.copy(requestId=self.toString(),confirmationPublicId=admin.publicId)).granted)
+        execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",other.id)
+        val missing=UUID.randomUUID()
+        assertEquals(404,assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,other.publicId,missing,request.copy(requestId=missing.toString(),confirmationPublicId=other.publicId)) }.status)
+    }
+
+    @Test fun `retired reward receipts replay but cannot be newly granted or leak into current ownership`() = runBlocking<Unit> {
+        val admin=user(); val target=user(); val repo=repository(admin); val requestId=UUID.randomUUID()
+        val request=ru.zhiv.admin.AdminGrantRequest(requestId.toString(),target.publicId,"achievement","hundred_series","Historical tester reward")
+        execute("INSERT INTO game_achievements(user_id,achievement_id) VALUES (?,'hundred_series')",target.id)
+        execute("""INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,reward_id,granted)
+            VALUES (?,?,?,?,?,'grant_achievement',?,0,'hundred_series',true)""",requestId,admin.id,target.id,admin.publicId,target.publicId,request.reason)
+        assertTrue(repo.grantReward(admin.hash,target.publicId,requestId,request).granted)
+        assertTrue(repo.rewards(admin.hash,target.publicId).achievements.isEmpty())
+        val another=UUID.randomUUID()
+        assertEquals(400,assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,target.publicId,another,request.copy(requestId=another.toString())) }.status)
+    }
+
+    @Test fun `HTTP reward grants enforce trusted origin and validate catalog`() = testApplication {
+        val admin=user(); val target=user(); val visitor=user(); val repo=repository(admin)
+        val production=config.copy(production=true,allowedOrigins=setOf("https://example.test"))
+        application { installZhivApi(identities,identities,production,admin=repo) }
+        val path="/api/v1/admin/users/${target.publicId}/grant-reward"
+        val body="""{"requestId":"${UUID.randomUUID()}","confirmationPublicId":"${target.publicId}","kind":"item","rewardId":"flower","reason":"Награда за тестирование"}"""
+        for (origin in listOf<String?>(null,"https://evil.example")) {
+            assertEquals(HttpStatusCode.Forbidden,client.post(path) {
+                header(HttpHeaders.Cookie,"${production.cookieName}=${admin.raw}")
+                if(origin!=null) header(HttpHeaders.Origin,origin)
+                contentType(ContentType.Application.Json);setBody(body)
+            }.status)
+        }
+        assertEquals(HttpStatusCode.Forbidden,client.post(path) {
+            header(HttpHeaders.Cookie,"${production.cookieName}=${visitor.raw}");header(HttpHeaders.Origin,"https://example.test")
+            contentType(ContentType.Application.Json);setBody(body)
+        }.status)
+        val accepted=client.post(path) {
+            header(HttpHeaders.Cookie,"${production.cookieName}=${admin.raw}");header(HttpHeaders.Origin,"https://example.test")
+            contentType(ContentType.Application.Json);setBody(body)
+        }
+        assertEquals(HttpStatusCode.OK,accepted.status);assertEquals("no-store",accepted.headers[HttpHeaders.CacheControl])
+        assertEquals(listOf("flower"),repo.rewards(admin.hash,target.publicId).items)
+    }
+
 }

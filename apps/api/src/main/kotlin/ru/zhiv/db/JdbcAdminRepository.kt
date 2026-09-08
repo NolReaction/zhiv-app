@@ -169,12 +169,13 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
         val previous = c.one("SELECT * FROM admin_actions WHERE request_id=?", requestId) { r ->
             AdminAuditEvent(r.getObject("request_id").toString(), r.getString("actor_public_id"), r.getString("target_public_id"),
-                r.getString("action"), r.getString("reason"), r.getInt("affected_sessions"), r.time("created_at")!!)
+                r.getString("action"), r.getString("reason"), r.getInt("affected_sessions"), r.time("created_at")!!,
+                r.getString("reward_id"), r.getObject("granted") as Boolean?)
         }
         if (previous != null) {
             c.one("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", initial.id) { true }
             val current = actor(c, sessionHash, lockSession = true)
-            if (current.publicId != previous.actorPublicId || targetPublicId != previous.targetPublicId || reason != previous.reason) {
+            if (current.publicId != previous.actorPublicId || targetPublicId != previous.targetPublicId || reason != previous.reason || previous.action != "revoke_sessions") {
                 fail("ADMIN_REQUEST_CONFLICT", "Этот запрос уже использован с другими параметрами", 409)
             }
             return@tx AdminRevokeReceipt(previous.requestId, previous.affectedSessions, previous.createdAt)
@@ -196,13 +197,71 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         }!!
     }
 
+    override suspend fun rewards(sessionHash: ByteArray, targetPublicId: String): AdminRewards = tx { c ->
+        actor(c, sessionHash)
+        val target = c.one("SELECT id FROM app_users WHERE public_id=? AND deleted_at IS NULL FOR NO KEY UPDATE", targetPublicId) { it.getObject(1, UUID::class.java) }
+            ?: fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
+        actor(c, sessionHash)
+        val instant = now(c)
+        recordMergedAchievements(c,target,instant)
+        AdminRewards(targetPublicId,
+            c.rows("SELECT item_id FROM game_items WHERE user_id=? ORDER BY item_id",target) { it.getString(1) },
+            c.rows("SELECT achievement_id FROM game_achievements WHERE user_id=? ORDER BY achievement_id",target) { it.getString(1) }
+                .filter { it in ru.zhiv.game.GameRewards.achievements },
+            instant.toInstant().toString())
+    }
+
+    override suspend fun grantReward(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminGrantRequest): AdminGrantReceipt = tx { c ->
+        val initial = actor(c, sessionHash)
+        val (confirmation,kind,rewardId,reason) = listOf(request.confirmationPublicId,request.kind,request.rewardId,request.reason)
+        val catalog = when (kind) { "item" -> ru.zhiv.game.GameRewards.items; "achievement" -> ru.zhiv.game.GameRewards.achievements; else -> invalid() }
+        if (confirmation != targetPublicId || request.requestId != requestId.toString()
+            || reason.length !in 8..240 || reason != reason.trim() || reason.any(Char::isISOControl)
+            || requestId.version() != 4 || requestId.variant() != 2) invalid()
+        val action = "grant_$kind"
+        c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
+        val previous = c.one("SELECT * FROM admin_actions WHERE request_id=?",requestId) { r ->
+            AdminAuditEvent(r.getObject("request_id").toString(),r.getString("actor_public_id"),r.getString("target_public_id"),
+                r.getString("action"),r.getString("reason"),r.getInt("affected_sessions"),r.time("created_at")!!,
+                r.getString("reward_id"),r.getObject("granted") as Boolean?)
+        }
+        if (previous != null) {
+            c.one("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE",initial.id) { true }
+            val current = actor(c,sessionHash,lockSession=true)
+            if (current.publicId != previous.actorPublicId || targetPublicId != previous.targetPublicId || action != previous.action
+                || rewardId != previous.rewardId || reason != previous.reason) fail("ADMIN_REQUEST_CONFLICT","Этот запрос уже использован с другими параметрами",409)
+            return@tx AdminGrantReceipt(requestId.toString(),kind,rewardId,checkNotNull(previous.granted),previous.createdAt)
+        }
+        if (rewardId !in catalog) invalid()
+        val target = c.one("SELECT id FROM app_users WHERE public_id=? AND deleted_at IS NULL",targetPublicId) { it.getObject(1,UUID::class.java) }
+            ?: fail("ADMIN_USER_NOT_FOUND","Профиль не найден",404)
+        c.rows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE",initial.id,target) { it.getObject(1,UUID::class.java) }
+        val current = actor(c,sessionHash,lockSession=true)
+        if (current.id != initial.id) fail("UNAUTHORIZED","Войдите в профиль ещё раз",401)
+        if (c.one("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL",target) { true } != true)
+            fail("ADMIN_USER_NOT_FOUND","Профиль не найден",404)
+        val instant = now(c)
+        recordMergedAchievements(c,target,instant)
+        // Only the validated catalog selects the table. Counters and ranking consent stay authoritative.
+        val table = if (kind == "item") "game_items" else "game_achievements"
+        val column = if (kind == "item") "item_id" else "achievement_id"
+        val granted = c.update("INSERT INTO $table(user_id,$column,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
+        c.one("""
+            INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,reward_id,granted)
+            VALUES (?,?,?,?,?,?,?,0,?,?) RETURNING created_at
+        """.trimIndent(),requestId,current.id,target,current.publicId,targetPublicId,action,reason,rewardId,granted) {
+            AdminGrantReceipt(requestId.toString(),kind,rewardId,granted,it.time("created_at")!!)
+        }!!
+    }
+
     override suspend fun audit(sessionHash: ByteArray, offset: Int, limit: Int): AdminAudit = tx { c ->
         actor(c, sessionHash); pagination(offset, limit)
         val now = now(c)
         val total = c.count("SELECT count(*) FROM admin_actions")
         val events = c.rows("SELECT * FROM admin_actions ORDER BY created_at DESC,request_id LIMIT ? OFFSET ?", limit, offset) { r ->
             AdminAuditEvent(r.getObject("request_id").toString(), r.getString("actor_public_id"), r.getString("target_public_id"),
-                r.getString("action"), r.getString("reason"), r.getInt("affected_sessions"), r.time("created_at")!!)
+                r.getString("action"), r.getString("reason"), r.getInt("affected_sessions"), r.time("created_at")!!,
+                r.getString("reward_id"), r.getObject("granted") as Boolean?)
         }
         AdminAudit(now.toInstant().toString(), total, offset, limit, events)
     }

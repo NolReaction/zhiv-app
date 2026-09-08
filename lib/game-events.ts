@@ -39,9 +39,9 @@ export function parseClickerSeriesEvent(value: unknown): ClickerSeriesEvent | nu
     || (isCurrentShape && (typeof lifetimeTaps !== "number"
       || !Number.isSafeInteger(lifetimeTaps) || lifetimeTaps < record.bestSeries))
     || typeof record.level !== "number" || !Number.isSafeInteger(record.level)
-    || record.level !== (isCurrentShape
-      ? getClickerLevel(lifetimeTaps as number).level
-      : legacyLevel(record.bestSeries))
+    || !(isCurrentShape
+      ? [getClickerLevel(lifetimeTaps as number).level, Math.min(10, getClickerLevel(lifetimeTaps as number).level)].includes(record.level)
+      : record.level === legacyLevel(record.bestSeries))
     || typeof record.storyId !== "string" || !STORY_IDS.has(record.storyId)
     || typeof record.durationMs !== "number" || !Number.isSafeInteger(record.durationMs)
     || record.durationMs < 0 || record.durationMs > MAX_SERIES_DURATION_MS

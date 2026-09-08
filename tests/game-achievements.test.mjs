@@ -178,7 +178,7 @@ test("only accepted server taps unlock a thousand taps and retries preserve the 
   const anotherDevice = identities.createDevIdentity("Ignored", owner.bootstrapKey);
   const response = ok(game.getDevGameAchievements(anotherDevice.token));
   assert.equal(response.ownerPublicId, owner.me.user.publicId);
-  assert.deepEqual(response.achievements.map(item => item.id), ["seven_day_streak", "thousand_taps", "five_friends"]);
+  assert.deepEqual(response.achievements.map(item => item.id), ["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code"]);
   assert.equal(response.achievements[1].unlockedAt, qualifiedAt);
   assert.equal(game.getDevGameAchievements(undefined).code, "UNAUTHORIZED");
   identities.resetDevStoreForTests();
@@ -195,4 +195,59 @@ test("five friends needs five simultaneous connections, not repeated adding and 
   }
   connect(owner, player("Current friend"));
   assert.deepEqual(achievement(owner, "five_friends"), { id: "five_friends", progress: 1, target: 5, unlockedAt: null });
+});
+
+test("thirty-day reward and four items survive a broken streak and another device", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
+  const owner = player("Owner");
+  for (let day = 1; day <= 30; day++) {
+    if (day > 1) context.mock.timers.setTime(Date.now() + 86_400_000);
+    const result = identities.createDevCheckIn(owner.token, crypto.randomUUID()); assert.equal(result.kind, "accepted");
+    const items = ok(game.getDevGameProgress(owner.token)).items;
+    assert.equal(items.length, [3,7,14,30].filter(target => day >= target).length);
+  }
+  context.mock.timers.setTime(Date.now() + 3 * 86_400_000);
+  const second = identities.createDevIdentity("Ignored", owner.bootstrapKey);
+  assert.deepEqual(ok(game.getDevGameProgress(second.token)).items, ["flower", "leaf_bed", "keepsakes", "leaf_garland"]);
+});
+test("ten thousand in one game uses accepted best series, never combined lifetime taps", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
+  const owner = player("Owner"), active = ok(game.createDevGameSession(owner.token, owner.me.user.publicId, crypto.randomUUID()));
+  let runId = crypto.randomUUID(), sequence = 0;
+  const send = taps => {
+    context.mock.timers.setTime(Date.now() + 2_000);
+    const request = { sessionId: active.sessionId, runId, sequence: ++sequence, tapCount: taps };
+    assert.equal(ok(game.submitDevGameBatch(owner.token, request)).acceptedTaps, taps);
+    return request;
+  };
+  for (let i = 0; i < 200; i++) { runId = crypto.randomUUID(); send(50); }
+  assert.equal(ok(game.getDevGameProgress(owner.token)).lifetimeTaps, 10_000);
+  assert.deepEqual(achievement(owner, "ten_thousand_series"), { id: "ten_thousand_series", progress: 50, target: 10_000, unlockedAt: null });
+  runId = crypto.randomUUID();
+  let total = 0;
+  while (total < 9_999) { const taps = Math.min(60,9_999-total); send(taps); total += taps; }
+  assert.equal(achievement(owner, "ten_thousand_series").progress, 9_999);
+  assert.equal(achievement(owner, "ten_thousand_series").unlockedAt, null);
+  const request = send(1), at = new Date().toISOString();
+  context.mock.timers.setTime(Date.now() + 20_000); ok(game.submitDevGameBatch(owner.token,request));
+  assert.equal(achievement(owner, "ten_thousand_series").unlockedAt, at);
+});
+
+test("saved code achievement requires successful activation and survives replacement and use", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
+  const owner = player("Owner"), stranger = player("Stranger");
+  const code = "generated-only", replacement = "replacement";
+  assert.equal(achievement(owner,"saved_recovery_code").progress, 0);
+  assert.equal(identities.activateDevRecoveryCode(undefined,code).kind,"unauthorized");
+  const at = new Date().toISOString();
+  ok(identities.activateDevRecoveryCode(owner.token,code));
+  context.mock.timers.setTime(Date.now() + 60_000);
+  ok(identities.activateDevRecoveryCode(owner.token,code));
+  assert.equal(identities.activateDevRecoveryCode(stranger.token,code).kind,"conflict");
+  assert.equal(achievement(stranger,"saved_recovery_code").unlockedAt,null);
+  ok(identities.activateDevRecoveryCode(owner.token,replacement));
+  const recovered = identities.redeemDevRecoveryCode(replacement,"retry-secret");
+  assert.ok(recovered);
+  assert.deepEqual(achievement(recovered,"saved_recovery_code"), {id:"saved_recovery_code",progress:1,target:1,unlockedAt:at});
+  assert.equal(achievement(recovered,"linked_email").unlockedAt,null,"development accounts do not fake verified email");
 });

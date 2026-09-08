@@ -45,11 +45,21 @@ data class AdminRevokeReceipt(val requestId: String, val affectedSessions: Int, 
 data class AdminAuditEvent(
     val requestId: String, val actorPublicId: String, val targetPublicId: String, val action: String,
     val reason: String, val affectedSessions: Int, val createdAt: String,
+    val rewardId: String? = null, val granted: Boolean? = null,
 )
 @Serializable
 data class AdminAudit(val serverTime: String, val total: Long, val offset: Int, val limit: Int, val events: List<AdminAuditEvent>)
 
+@Serializable
+data class AdminRewards(val publicId: String, val items: List<String>, val achievements: List<String>, val serverTime: String)
+@Serializable
+data class AdminGrantRequest(val requestId: String, val confirmationPublicId: String, val kind: String, val rewardId: String, val reason: String)
+@Serializable
+data class AdminGrantReceipt(val requestId: String, val kind: String, val rewardId: String, val granted: Boolean, val createdAt: String)
+
 interface AdminRepository {
+    suspend fun rewards(sessionHash: ByteArray, targetPublicId: String): AdminRewards
+    suspend fun grantReward(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminGrantRequest): AdminGrantReceipt
     suspend fun access(sessionHash: ByteArray): AdminAccess
     suspend fun overview(sessionHash: ByteArray, days: Int): AdminOverview
     suspend fun users(sessionHash: ByteArray, query: String, sort: String, offset: Int, limit: Int): AdminUsers

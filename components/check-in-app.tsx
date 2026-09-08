@@ -1,5 +1,7 @@
 "use client";
 
+import { GameLevelIcon } from "./game-level-icon";
+
 import type {
   CSSProperties,
   FormEvent,
@@ -7,7 +9,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flame, HeartPulse, Copy, Trophy, UserRound, Users } from "lucide-react";
+import { Flame, HeartPulse, Copy, Trophy, UserRound, Users, Rabbit } from "lucide-react";
 import type {
   DailyStreak,
   GroupsResponse,
@@ -67,7 +69,9 @@ import { RecoveryStarter } from "./recovery-starter";
 import { AccountEntry, AuthReturnNotice } from "./account-entry";
 import { StatusEditor } from "./status-editor";
 import { CheckInReceipt } from "./check-in-receipt";
+import { MochlikTerrarium } from "./mochlik-terrarium";
 import styles from "./check-in-app.module.css";
+import glass from "./glass-action.module.css";
 import { notify, TransientNotice } from "./app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { copyText } from "@/lib/identity-sharing";
@@ -341,6 +345,10 @@ export function CheckInApp() {
   const [viewDirection, setViewDirection] = useState(1);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [gameOpen, setGameOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [mochlikVisible, setMochlikVisible] = useState(false);
+  const [mochlikMounted, setMochlikMounted] = useState(false);
+  const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
   const openGame = useCallback((trigger: HTMLButtonElement) => {
     gameTrigger.current = trigger;
@@ -506,6 +514,7 @@ export function CheckInApp() {
     setStreak(null);
     setNotice(null);
     setSeriesSummary(null);
+    setStatusOpen(false);
   }, [
     clearSeriesBreakEffect,
     clearStoryEffect,
@@ -863,6 +872,7 @@ export function CheckInApp() {
 
   const registerTap = useCallback(
     (steps = 1, tappedAtMs = Date.now()) => {
+      setMochlikWakeSignal(value => value + 1);
       triggerTapFeedback();
       const current = clickerRunRef.current;
       const transition = advanceClickerRun(current, tappedAtMs, steps, createUuidV4());
@@ -1107,6 +1117,7 @@ export function CheckInApp() {
   }
 
   function handleGameAreaPointerDown(event: ReactPointerEvent<HTMLElement>) {
+    if ((event.target as Element).closest?.("[data-pet-interaction]")) return;
     if (!shouldCountGamePointer(event.pointerType)) return;
     if (mainButton.current?.contains(event.target as Node)) return;
     const bounds = buttonOrbit.current?.getBoundingClientRect();
@@ -1319,13 +1330,17 @@ export function CheckInApp() {
           <button
             type="button"
             className={styles.identity}
-            aria-label="Скопировать ID"
+            aria-label={`Скопировать ID${game.progress ? `. Уровень ${clickerLevel.level} из 100` : ""}`}
             aria-busy={isIdentityActionPending}
             disabled={isIdentityActionPending}
             onClick={handleIdentityAction}
           >
             <span className={styles.identityText}>
-              <strong>{me?.user.displayName}</strong>
+              <span className={styles.nameRow}><strong>{me?.user.displayName}</strong>
+                {game.progress && <span className={styles.levelBadge} title={`Уровень ${clickerLevel.level} из 100 · ${clickerLevel.title}`}>
+                  <GameLevelIcon level={clickerLevel.level} size={15} /><span>ур. {clickerLevel.level}</span>
+                </span>}
+              </span>
               <span>{me?.user.publicId}</span>
             </span>
             <Copy size={16} />
@@ -1372,24 +1387,30 @@ export function CheckInApp() {
             </button>
             </div>
             <div
-              className={`${styles.buttonStage} ${tapActive ? styles.buttonStageActive : ""} ${
-                seriesBreakBurst !== null ? styles.seriesBreaking : ""
+              className={`${styles.buttonStage} ${mochlikVisible ? styles.habitatStage : ""} ${tapActive ? styles.buttonStageActive : ""} ${
+                seriesBreakBurst !== null && !mochlikVisible ? styles.seriesBreaking : ""
               }`}
               onPointerDown={handleGameAreaPointerDown}
             >
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
+            {mochlikMounted && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
+              <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || calendarOpen || gameOpen || statusOpen}
+                wakeSignal={mochlikWakeSignal} nowMs={adjustedNow} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} />
+            </div>}
             <button
               type="button"
-              className={`${styles.checkInButton} ${pulseClass}`}
+              className={`${styles.checkInButton} ${mochlikVisible ? "" : pulseClass} ${mochlikVisible ? styles.mochlikButton : ""}`}
+              data-pulse={mochlikVisible && tapFeedbackBurst > 0 ? tapFeedbackBurst % 2 ? "odd" : "even" : undefined}
               style={buttonStyle}
               ref={mainButton}
               onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
-              aria-label="Я живой — отметиться"
+              aria-label={mochlikVisible ? "Я мохлик — отметиться и поиграть; после долгого отсутствия разбудить тремя нажатиями" : "Я живой — отметиться"}
               aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
             >
-              <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
+              <span className={styles.checkInTitle}>{mochlikVisible ? "Я МОХЛИК" : "Я ЖИВОЙ"}</span>
               <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
                 isRecord={isConfirmedRecord} />
             </button>
@@ -1409,7 +1430,7 @@ export function CheckInApp() {
                 aria-hidden="true"
               />
             ) : null}
-            {seriesBreakBurst !== null ? (
+            {seriesBreakBurst !== null && !mochlikVisible ? (
               <div
                 key={`series-break-${seriesBreakBurst}`}
                 className={styles.seriesBreakBurst}
@@ -1418,7 +1439,7 @@ export function CheckInApp() {
                 <i /><i /><i /><i /><i /><i />
               </div>
             ) : null}
-            {showEffectRings && storyEffect ? (
+            {showEffectRings && storyEffect && !mochlikVisible ? (
               <div
                 key={`rings-${storyEffect.burst}`}
                 className={`${styles.storyRings} ${
@@ -1433,7 +1454,7 @@ export function CheckInApp() {
                 <i />
               </div>
             ) : null}
-            {showEffectSparks && storyEffect ? (
+            {showEffectSparks && storyEffect && !mochlikVisible ? (
               <div
                 key={`sparks-${storyEffect.burst}`}
                 className={`${styles.storySparks} ${
@@ -1456,7 +1477,7 @@ export function CheckInApp() {
                 ))}
               </div>
             ) : null}
-            {showEffectConfetti && storyEffect ? (
+            {showEffectConfetti && storyEffect && !mochlikVisible ? (
               <div
                 key={`confetti-${storyEffect.burst}`}
                 className={`${styles.confetti} ${
@@ -1481,7 +1502,7 @@ export function CheckInApp() {
                 ))}
               </div>
             ) : null}
-            {showEffectGlow && storyEffect ? (
+            {showEffectGlow && storyEffect && !mochlikVisible ? (
               <div
                 key={`finale-${storyEffect.burst}`}
                 className={`${styles.finaleGlow} ${
@@ -1492,7 +1513,7 @@ export function CheckInApp() {
                 aria-hidden="true"
               />
             ) : null}
-            {storyEffect?.type === "champion" ? (
+            {storyEffect?.type === "champion" && !mochlikVisible ? (
               <span
                 key={`champion-${storyEffect.burst}`}
                 className={styles.championBurst}
@@ -1507,8 +1528,15 @@ export function CheckInApp() {
 
           <div className={styles.statusBlock}>
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
-              isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)} />
-            {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} /> : null}
+              isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}>
+              <button type="button" className={`${glass.button} ${styles.appearanceToggle}`}
+                aria-label={mochlikVisible ? "Показать обычную кнопку" : "Показать Мохлика"} aria-pressed={mochlikVisible}
+                title={mochlikVisible ? "Обычная кнопка" : "Мохлик"}
+                onPointerDown={event => event.stopPropagation()} onClick={() => { setMochlikMounted(true); setMochlikVisible(value => !value); }}>
+                <Rabbit size={20} aria-hidden="true" />
+              </button>
+            </CheckInReceipt>
+            {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} onOpenChange={setStatusOpen} /> : null}
             {primaryStatus ? <p
               className={styles.status}
               role="status"
@@ -1572,7 +1600,7 @@ export function CheckInApp() {
       ) : null}
       </div>
       {me && streak ? <CheckInCalendar key={me.user.publicId} open={calendarOpen} onOpenChange={setCalendarOpen}
-        streak={streak} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}
+        streak={streak} items={game.progress?.items} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}
         returnFocus={() => { if (calendarTrigger.current?.isConnected) calendarTrigger.current.focus(); }} /> : null}
       {me && screen === "home" ? <GameLeaderboardDialog key={`game:${me.user.publicId}`} open={gameOpen} onOpenChange={setGameOpen}
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}

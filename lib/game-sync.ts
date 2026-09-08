@@ -137,6 +137,7 @@ export class GameSyncClient {
         visibilityVersion: visibility.visibilityVersion,
       };
     }
+    if (this.progress) this.progress = { ...this.progress, items: [...new Set([...(previous?.items ?? []), ...(incoming.items ?? [])])] };
     this.emit();
   }
 

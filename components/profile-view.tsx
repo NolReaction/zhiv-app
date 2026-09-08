@@ -2,7 +2,8 @@
 
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
-import { Check, Clock3, Flame, Gamepad2, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
+import { GameLevelIcon } from "./game-level-icon";
+import { Check, Clock3, Flame, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
 import type { ClickerLevel, ClickerLevelProgress } from "@/lib/clicker-story";
 import {
@@ -252,10 +253,10 @@ export function ProfileView({
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="game" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><Gamepad2 size={20} aria-hidden="true" /><span>Игровой прогресс<small>{gameLoaded ? `Уровень ${clickerStats.level.level} · ${clickerStats.level.title}` : "Синхронизация с аккаунтом"}</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger}><span><GameLevelIcon level={clickerStats.level.level} /><span>Игровой прогресс<small>{gameLoaded ? `Уровень ${clickerStats.level.level} · ${clickerStats.level.title}` : "Синхронизация с аккаунтом"}</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "game"} className={styles.settingsContent}>
               {gameLoaded && <div className={styles.gameStats} aria-label="Игровой прогресс">
-            <span aria-hidden="true"><Gamepad2 size={20} /></span>
+            <span aria-hidden="true"><GameLevelIcon level={clickerStats.level.level} /></span>
             <div>
               <small>Уровень {clickerStats.level.level}</small>
               <strong>{clickerStats.level.title}</strong>

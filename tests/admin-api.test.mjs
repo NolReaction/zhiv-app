@@ -61,3 +61,23 @@ test("cancelled requests abort the underlying fetch", async () => {
   controller.abort();
   await assert.rejects(pending, error => error.name === "AbortError");
 });
+
+test("reward requests preserve catalog choice and exact retry payload without changing scores", async () => {
+  const body = { requestId: "9a272b65-8ada-4b0d-aad8-6a6ef845f41b", confirmationPublicId: publicId,
+    kind: "item", rewardId: "leaf_garland", reason: "Help with testing" };
+  const sent = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, `/api/v1/admin/users/${publicId}/grant-reward`);
+    assert.equal(options.method, "POST"); assert.equal(options.cache, "no-store");
+    sent.push(JSON.parse(options.body));
+    if (sent.length === 1) throw new TypeError("Response lost");
+    return Response.json({ requestId: body.requestId, kind: body.kind, rewardId: body.rewardId, granted: true, createdAt: serverTime });
+  };
+  await assert.rejects(api.grantAdminReward(publicId, body));
+  assert.equal((await api.grantAdminReward(publicId, body)).granted, true);
+  assert.deepEqual(sent, [body, body]);
+  globalThis.fetch = async () => Response.json({ publicId, serverTime, items: ["leaf_garland"], achievements: ["ten_thousand_series"] });
+  assert.deepEqual((await api.getAdminRewards(publicId)).items, ["leaf_garland"]);
+  globalThis.fetch = async () => Response.json({ publicId, serverTime, items: ["forged"], achievements: [] });
+  await assert.rejects(api.getAdminRewards(publicId), error => error.status === 502);
+});

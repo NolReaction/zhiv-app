@@ -66,3 +66,8 @@ test("writes a strict privacy-safe development log line", () => {
     /cookie|token|displayName|publicId|idempotency|eventId|event_id/i,
   );
 });
+
+test("current and queued ten-level telemetry coexist during upgrade", () => {
+  for (const level of [10, 100]) assert.ok(gameEvents.parseClickerSeriesEvent({ ...validEvent, lifetimeTaps: 1_231_250, level }));
+  assert.equal(gameEvents.parseClickerSeriesEvent({ ...validEvent, lifetimeTaps: 1_231_250, level: 99 }), null);
+});

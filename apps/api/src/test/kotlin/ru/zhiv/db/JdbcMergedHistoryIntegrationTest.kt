@@ -83,6 +83,7 @@ class JdbcMergedHistoryIntegrationTest {
         mergeFixture(retired, survivor)
 
         val me = assertNotNull(repository.findBySession(survivor.sessionHash))
+        assertEquals(anchor.minusHours(48).toInstant(),assertNotNull(repository.calendar(survivor.sessionHash,null)).streakStartedAt?.toInstant())
         assertEquals(5L, me.checkInCount)
         assertEquals(anchor.toInstant(), me.lastCheckInAt?.toInstant())
         assertEquals(3L, me.streak.currentDays)
@@ -257,6 +258,7 @@ class JdbcMergedHistoryIntegrationTest {
     fun `empty calendar uses server profile time and replay never adds another mark`() = runBlocking<Unit> {
         val owner = user("Empty calendar")
         val empty = assertNotNull(repository.calendar(owner.sessionHash, null))
+        assertNull(empty.streakStartedAt)
         assertEquals("Europe/Moscow", empty.timeZone)
         assertEquals(empty.serverTime.atZoneSameInstant(ZoneId.of(empty.timeZone)).toLocalDate(), empty.today)
         assertEquals(YearMonth.from(empty.today), empty.month)
@@ -266,7 +268,9 @@ class JdbcMergedHistoryIntegrationTest {
         val first = assertIs<CheckInResult.Accepted>(repository.record(owner.sessionHash, key))
         assertTrue(assertIs<CheckInResult.Accepted>(repository.record(owner.sessionHash, key)).replayed)
         val month = YearMonth.from(first.checkedAt.atZoneSameInstant(ZoneId.of(empty.timeZone)))
-        assertEquals(1L, assertNotNull(repository.calendar(owner.sessionHash, month)).days.sumOf { it.count })
+        val refreshed=assertNotNull(repository.calendar(owner.sessionHash, month))
+        assertEquals(1L, refreshed.days.sumOf { it.count })
+        assertEquals(first.checkedAt.toInstant(),refreshed.streakStartedAt?.toInstant())
         transaction { c -> c.update("UPDATE app_sessions SET created_at=clock_timestamp() - interval '2 days', expires_at=clock_timestamp() - interval '1 second' WHERE token_hash=?", owner.sessionHash) }
         assertNull(repository.calendar(owner.sessionHash, null))
         assertNull(repository.calendar(tokens.issue().hash, null))

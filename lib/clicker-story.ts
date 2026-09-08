@@ -113,7 +113,19 @@ export const CLICKER_LEVELS = [
   { level: 8, title: "Тысячник", minimumLifetimeTaps: 1_000 },
   { level: 9, title: "Титан", minimumLifetimeTaps: 2_500 },
   { level: 10, title: "Чемпион", minimumLifetimeTaps: 5_000 },
+  ...Array.from({ length: 90 }, (_, index) => {
+    const n = index + 1, level = n + 10;
+    const title = level === 100 ? "Легенда Мохлика" : level >= 90 ? "Хранитель леса"
+      : level >= 75 ? "Звезда леса" : level >= 60 ? "Мастер ритма" : level >= 50 ? "Виртуоз"
+      : level >= 40 ? "Следопыт" : level >= 30 ? "Исследователь" : level >= 20 ? "Искатель" : "Чемпион";
+    return { level, title, minimumLifetimeTaps: 5_000 + 2_500 * n + 125 * n * (n - 1) };
+  }),
 ] as const;
+
+export const CLICKER_ICON_LEVELS = [1, 10, 20, 30, 40, 50, 60, 75, 90, 100] as const;
+export function getClickerIconStage(level: number) {
+  return Math.max(0, CLICKER_ICON_LEVELS.findLastIndex(start => level >= start));
+}
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MILESTONE_EFFECTS = new Map<ClickerMilestone, ClickerEffect>([

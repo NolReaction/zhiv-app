@@ -117,8 +117,12 @@ const gameVisible = await api("PATCH", "/api/v1/game/visibility", { cookie: owne
 const gameBoard = await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie });
 assert.equal(gameBoard.headers["cache-control"], "no-store");
 assert.equal(gameBoard.data.entries[0].taps, 7);
-assert.deepEqual(Object.keys(gameBoard.data.entries[0]).sort(), ["displayName", "isMe", "rank", "taps"]);
+assert.deepEqual(Object.keys(gameBoard.data.entries[0]).sort(), ["displayName", "isMe", "rank", "score", "taps"]);
 assert.equal(gameBoard.data.scope, "global");
+const seriesBoard = await api("GET", "/api/v1/game/leaderboard?metric=best_series", { cookie: owner.cookie });
+assert.equal(seriesBoard.data.metric, "best_series");
+assert.equal(seriesBoard.data.entries[0].score, 7);
+assert.equal(seriesBoard.data.myRank, 1);
 const friendBoard = await api("GET", "/api/v1/game/leaderboard?scope=friends", { cookie: friend.cookie });
 assert.equal(friendBoard.data.scope, "friends");
 assert.equal(friendBoard.data.entries[0].displayName, owner.data.user.displayName);
@@ -134,11 +138,12 @@ assert.deepEqual((await api("GET", "/api/v1/game/leaderboard", { cookie: friend.
 assert.deepEqual((await api("GET", "/api/v1/game/leaderboard?scope=friends", { cookie: friend.cookie })).data.entries, []);
 assert.equal((await api("GET", "/api/v1/me", { cookie: owner.cookie })).data.checkInCount, marked.data.checkInCount);
 await api("GET", "/api/v1/game/achievements", { expected: 401 });
-const achievements = await api("GET", "/api/v1/game/achievements", { cookie: owner.cookie });
+const achievements = await api("GET", "/api/v1/game/achievements?catalog=3", { cookie: owner.cookie });
 assert.equal(achievements.headers["cache-control"], "no-store");
 assert.equal(achievements.data.ownerPublicId, owner.data.user.publicId);
 assert.deepEqual(achievements.data.achievements.map(item => [item.id, item.progress, item.target, item.unlockedAt]), [
   ["seven_day_streak", 1, 7, null], ["thousand_taps", 7, 1000, null], ["five_friends", 1, 5, null],
+  ["ten_thousand_series", 7, 10000, null], ["linked_email", 0, 1, null], ["saved_recovery_code", 0, 1, null],
 ]);
 
 await api("PUT", "/api/v1/me/status", { cookie: owner.cookie, body: { text: "гуляю" } });

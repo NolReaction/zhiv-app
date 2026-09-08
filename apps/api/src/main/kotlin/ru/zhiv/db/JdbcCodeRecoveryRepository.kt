@@ -46,13 +46,18 @@ class JdbcCodeRecoveryRepository(private val source: DataSource) : CodeRecoveryR
                 if (r.next()) Pair(r.getObject(1,UUID::class.java),r.getBoolean(2)) else null
             }
         }
-        if (prior!=null) return@tx prior.first==id && prior.second
+        if (prior!=null) {
+            val accepted = prior.first==id && prior.second
+            if (accepted) recordSecurityAchievements(c,id)
+            return@tx accepted
+        }
         c.prepareStatement("UPDATE account_recovery_codes SET revoked_at=clock_timestamp() WHERE user_id=? AND revoked_at IS NULL AND consumed_at IS NULL").use {
             it.setObject(1,id); it.executeUpdate()
         }
         c.prepareStatement("INSERT INTO account_recovery_codes(code_hash,user_id) VALUES (?,?)").use {
             it.setBytes(1,codeHash); it.setObject(2,id); it.executeUpdate()
         }
+        recordSecurityAchievements(c,id)
         true
     }
 

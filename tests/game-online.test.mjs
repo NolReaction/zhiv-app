@@ -149,7 +149,7 @@ test("leaderboard participation is private by default and stale visibility write
   let board = ok(game.getDevGameLeaderboard(owner.token));
   assert.equal(board.myRank, 2);
   assert.deepEqual(board.entries.map(entry => entry.displayName), ["Other", "Owner"]);
-  assert.deepEqual(Object.keys(board.entries[0]).sort(), ["displayName", "isMe", "rank", "taps"]);
+  assert.deepEqual(Object.keys(board.entries[0]).sort(), ["displayName", "isMe", "rank", "score", "taps"]);
   ok(identities.updateDevDisplayName(other.token, "Renamed", crypto.randomUUID()));
   assert.equal(ok(game.getDevGameLeaderboard(owner.token)).entries[0].displayName, "Renamed");
   assert.equal(ok(visibility(owner, false, 1)).visibilityVersion, 2);
@@ -324,4 +324,26 @@ test("purged receipts cannot be mistaken for expired but uncommitted batches", c
   assert.equal(game.submitDevGameBatch(owner.token, sent.request).code, "GAME_SESSION_GONE");
   assert.equal(ok(game.getDevGameProgress(owner.token)).lifetimeTaps, 9);
   assert.equal(game.submitDevGameBatch(player("Other").token, sent.request).code, "GAME_SESSION_GONE");
+});
+
+test("series ranking shares places, persists across months and keeps the top 100 bounded", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-30T23:59:59Z") });
+  const owner = player("Owner"); batch(owner, session(owner), 1); ok(visibility(owner, true, 0));
+  for (let i = 0; i < 101; i++) { const peer = player(`Peer ${i}`); batch(peer, session(peer), 2); ok(visibility(peer, true, 0)); }
+  const hidden = player("Hidden"); batch(hidden, session(hidden), 60);
+  let board = ok(game.getDevGameLeaderboard(owner.token, "global", Date.now(), "best_series"));
+  assert.equal(board.metric, "best_series"); assert.equal(board.bestSeries, 1);
+  assert.equal(board.entries.length, 100); assert.equal(board.myRank, 102);
+  assert.ok(board.entries.every(item => item.rank === 1 && item.score === 2));
+  context.mock.timers.setTime(Date.now() + 1_000);
+  board = ok(game.getDevGameLeaderboard(owner.token, "global", Date.now(), "best_series"));
+  assert.equal(board.myRank, 102); assert.equal(board.monthlyTaps, 0);
+  assert.deepEqual(ok(game.getDevGameLeaderboard(owner.token)).entries, []);
+  ok(visibility(owner, false, 1));
+  assert.equal(ok(game.getDevGameLeaderboard(owner.token, "global", Date.now(), "best_series")).myRank, null);
+});
+test("ranking metric rejects unknown or repeated parameters", () => {
+  assert.equal(validation.parseDevGameMetric(new URLSearchParams()), "monthly_taps");
+  assert.equal(validation.parseDevGameMetric(new URLSearchParams("metric=best_series")), "best_series");
+  for (const query of ["metric=all", "metric=", "metric=best_series&metric=best_series"]) assert.equal(validation.parseDevGameMetric(new URLSearchParams(query)), null);
 });

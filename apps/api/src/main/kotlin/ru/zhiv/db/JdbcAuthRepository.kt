@@ -190,6 +190,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             if (count >= 100) throw AuthFailure("AUTH_SESSION_LIMIT", "Закройте ненужные сеансы в разделе «Устройства»", 409)
             c.update("INSERT INTO app_sessions(user_id,token_hash,device_label,expires_at) VALUES (?,?,?,clock_timestamp()+(?*interval '1 day'))", userId, newSessionHash, label, sessionDays)
         }
+        if (flow.provider == "email") recordSecurityAchievements(c,userId)
         c.update("UPDATE account_login_flows SET display_name=NULL WHERE token_hash=?",flow.tokenHash)
         return userId
     }

@@ -54,6 +54,11 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                 val sort = call.parameter("sort", "created").takeIf { it in setOf("created", "activity", "taps") } ?: badQuery()
                 call.respond(repository.users(hash, query, sort, offset, limit))
             }
+            get("/users/{publicId}/rewards") {
+                val hash = call.adminSessionHash(config, codec)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                call.respond(repository.rewards(hash, target))
+            }
             get("/audit") {
                 val hash = call.adminSessionHash(config, codec)
                 val (offset, limit) = call.page()
@@ -61,6 +66,13 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
             }
         }
         rateLimit(RateLimitName("admin-write")) {
+            post("/users/{publicId}/grant-reward") {
+                val hash = call.adminSessionHash(config, codec, writing = true)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                val request = call.receive<AdminGrantRequest>()
+                val id = parseCanonicalUuidV4(request.requestId) ?: badQuery()
+                call.respond(repository.grantReward(hash, target, id, request))
+            }
             post("/users/{publicId}/revoke-sessions") {
                 val hash = call.adminSessionHash(config, codec, writing = true)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()

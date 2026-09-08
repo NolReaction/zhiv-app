@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Award, Check, LockKeyhole, RefreshCw } from "lucide-react";
+import { AchievementMedal } from "./achievement-medal";
+import { GAME_ACHIEVEMENTS } from "@/lib/game-rewards";
 import { ApiError } from "@/lib/check-in-api";
 import { getGameAchievements, type GameAchievementId, type GameAchievements } from "@/lib/game-api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -9,6 +11,9 @@ import boardStyles from "./game-leaderboard.module.css";
 import styles from "./game-achievements.module.css";
 
 const QUESTS: Record<GameAchievementId, { title: string; description: string; hint: string }> = {
+  ten_thousand_series: { title: "На одном дыхании", description: "Наберите 10 000 тапов за одну игру.", hint: "Пауза в 10 секунд завершает игру. Учитывается лучший результат, подтверждённый сервером." },
+  linked_email: { title: "На связи", description: "Привяжите и подтвердите почту.", hint: "Если вы зарегистрировались по почте, достижение уже ваше. Привязать почту можно в разделе «Вход и безопасность»." },
+  saved_recovery_code: { title: "Запасной ключ", description: "Сохраните резервный код восстановления.", hint: "В разделе «Вход и безопасность» сохраните код, подтвердите это и активируйте его." },
   seven_day_streak: {
     title: "В ритме",
     description: "Достигните серии из 7 дней с отметками.",
@@ -73,7 +78,7 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost 
     <button type="button" ref={trigger} className={styles.trigger} aria-haspopup="dialog"
       onClick={() => { setLoading(true); setReload(value => value + 1); setOpen(true); }}>
       <Award size={17} aria-hidden="true" />Достижения
-      {earned !== undefined && <span>{earned}/3</span>}
+      {earned !== undefined && <span>{earned}/{GAME_ACHIEVEMENTS.length}</span>}
     </button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className={`${boardStyles.dialog} ${styles.dialog}`} onCloseAutoFocus={event => {
@@ -84,23 +89,22 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost 
           <DialogDescription className={styles.description}>Ваши маленькие победы. Полученные награды остаются с вами.</DialogDescription>
         </DialogHeader>
         <div className={styles.summary}>
-          <span>{earned === undefined ? "Три цели для начала" : `Получено ${earned} из 3`}</span>
+          <span>{earned === undefined ? "Шесть целей для Мохлика" : `Получено ${earned} из ${GAME_ACHIEVEMENTS.length}`}</span>
           <button type="button" disabled={loading || !isOnline} aria-label="Обновить достижения"
             onClick={() => { setLoading(true); setReload(value => value + 1); }}><RefreshCw size={17} aria-hidden="true" /></button>
         </div>
         {!isOnline ? <p className={styles.notice} role="status">{visible ? "Офлайн · показаны последние загруженные достижения." : "Для загрузки достижений нужен интернет."}</p>
           : error ? <p className={styles.error} role="status">{error}</p>
           : !visible && loading ? <p className={styles.notice} role="status">Загружаем достижения…</p> : null}
-        <div className={styles.quests} aria-busy={loading && isOnline}>
-          {(Object.keys(QUESTS) as GameAchievementId[]).map(id => {
+        <ol className={styles.quests} aria-label="Список достижений" aria-busy={loading && isOnline}>
+          {GAME_ACHIEVEMENTS.map(({ id }) => {
             const quest = QUESTS[id];
             const state = visible?.achievements.find(item => item.id === id);
             const unlocked = Boolean(state?.unlockedAt);
-            return <article className={styles.quest} key={id} data-unlocked={unlocked || undefined}>
+            return <li key={id}><article className={styles.quest} data-unlocked={unlocked || undefined}>
               <div className={styles.art} aria-hidden="true">
-                {/* These local SVGs are small, original achievement illustrations. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/achievements/${id}.svg`} width={80} height={80} alt="" />
+                <AchievementMedal id={id} className={styles.medal} />
+
                 <span>{unlocked ? <Check size={13} /> : <LockKeyhole size={12} />}</span>
               </div>
               <div className={styles.questBody}>
@@ -113,9 +117,9 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost 
                 <progress value={state?.progress ?? 0} max={state?.target ?? 1} aria-label={`Прогресс достижения «${quest.title}»`} />
               </div>
               <p className={styles.questHint}>{quest.hint}</p>
-            </article>;
+            </article></li>;
           })}
-        </div>
+        </ol>
       </DialogContent>
     </Dialog>
   </>;

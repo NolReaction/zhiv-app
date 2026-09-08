@@ -28,6 +28,7 @@ export type MeResponse = {
 };
 
 export type CheckInCalendarResponse = {
+  streakStartedAt?: string | null;
   nextDayAt: string;
   lastMonth: string;
   month: string;

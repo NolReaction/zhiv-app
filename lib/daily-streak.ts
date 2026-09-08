@@ -70,3 +70,13 @@ export function getDailyStreakMessage(streak: DailyStreak): string {
   if (!streak.isActive || streak.currentDays === 0) return "Начните новую серию";
   return "Следующая серверная отметка продлит серию";
 }
+
+/** Latest uninterrupted run, using the same accepted timestamps as the streak. */
+export function rollingStreakStartedAt(checkInTimes: readonly string[], serverTime: Date): string | null {
+  const now = serverTime.getTime();
+  const events = [...new Set(checkInTimes.map(Date.parse).filter(at => Number.isFinite(at) && at <= now))].sort((a, b) => a - b);
+  if (!events.length || now > events.at(-1)! + DAY_MS) return null;
+  let start = events[0];
+  for (let i = 1; i < events.length; i++) if (events[i] - events[i - 1] > DAY_MS) start = events[i];
+  return new Date(start).toISOString();
+}
