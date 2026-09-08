@@ -1619,14 +1619,14 @@ export function CheckInApp() {
         />
       ) : null}
       </div>
-      {me && streak ? <CheckInCalendar key={me.user.publicId} open={calendarOpen} onOpenChange={setCalendarOpen}
+      {me && streak ? <CheckInCalendar key={`calendar:${me.user.publicId}`} open={calendarOpen} onOpenChange={setCalendarOpen}
         streak={streak} items={game.progress?.items} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}
         returnFocus={() => { if (calendarTrigger.current?.isConnected) calendarTrigger.current.focus(); }} /> : null}
       {me && screen === "home" ? <GameLeaderboardDialog key={`game:${me.user.publicId}`} open={gameOpen} onOpenChange={setGameOpen}
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
-      {worldMounted && me && <WorldPortal key={me.user.publicId} open={worldPortal.open} onClose={worldPortal.close}
+      {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
         origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal} lastCheckInLabel={serverStatus}
