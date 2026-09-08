@@ -102,7 +102,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             if (instant.isAfter(existing.expires.plusDays(2))) fail("GAME_QUEUE_EXPIRED", "Срок подтверждения этой очереди истёк", 410)
             return@tx GameSessionResponse(existing.id.toString(), existing.sequence + 1, existing.expires.toInstant().toString(), progress(c, actor, instant), existing.created.toInstant().toString(), existing.closed?.toInstant()?.toString())
         }
-        // Receipts remain available for a day after expiry. Old sessions never accept new batches.
+        // Retain receipts for two days; timed queues may deliver taps recorded during the permit.
         c.update("DELETE FROM game_sessions WHERE user_id=? AND expires_at < ?::timestamptz - interval '2 days'", actor.id, instant)
         val writer = c.one("SELECT writer_session_id,writer_until FROM game_profiles WHERE user_id=?", actor.id) {
             it.getObject(1, UUID::class.java) to it.getObject(2, OffsetDateTime::class.java)
@@ -132,9 +132,9 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             if (tapCount != game.taps || runId != game.lastRunId || tapTimes != game.tapTimes) fail("GAME_SEQUENCE_CONFLICT", "Игровой пакет уже использован")
             return@tx GameBatchResponse(sessionId.toString(), sequence, game.accepted, tapCount - game.accepted, true, progress(c, actor, instant), if (game.runId == runId) game.runTaps else 0L, game.rejectionCode)
         }
-        if (instant.isAfter(game.expires.plusDays(2))) fail("GAME_QUEUE_EXPIRED", "Срок подтверждения этой очереди истёк", 410)
         if (sequence != game.sequence + 1) fail("GAME_SEQUENCE_CONFLICT", "Нарушен порядок игровых пакетов")
         if (tapTimes == null && (!game.expires.isAfter(instant) || game.month != month(instant))) fail("GAME_SESSION_EXPIRED", "Начните новую игровую сессию")
+        if (instant.isAfter(game.expires.plusDays(2))) fail("GAME_QUEUE_EXPIRED", "Срок подтверждения этой очереди истёк", 410)
         if (tapTimes == null && game.closed != null) fail("GAME_ACTIVE_ELSEWHERE", "Игра активна на другом устройстве")
         val writer = c.one("SELECT writer_session_id,writer_until FROM game_profiles WHERE user_id=?", actor.id) {
             it.getObject(1, UUID::class.java) to it.getObject(2, OffsetDateTime::class.java)

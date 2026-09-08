@@ -7,6 +7,8 @@ import io.ktor.server.application.hooks.ResponseSent
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.util.AttributeKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.http.ApiErrorResponse
@@ -41,6 +43,7 @@ fun ApplicationCall.requestId(): String = trace().id
 /** Never trust client correlation headers, which may contain identifiers or log-injection payloads. */
 val RequestDiagnostics = createApplicationPlugin("RequestDiagnostics", ::RequestDiagnosticsConfig) {
     val persist = pluginConfig.persist
+    val persistenceSlots = java.util.concurrent.Semaphore(2)
     on(CallSetup) { call ->
         call.response.headers.append(REQUEST_ID_HEADER, call.requestId())
     }
@@ -72,9 +75,13 @@ val RequestDiagnostics = createApplicationPlugin("RequestDiagnostics", ::Request
                 else -> "INTERNAL_ERROR"
             }
             call.recordApiFailure(code, status)
-            if (call.request.path() != "/api/v1/client-incidents") {
-                try { persist?.invoke(call, code, status) } catch (error: kotlinx.coroutines.CancellationException) { throw error }
-                catch (_: Exception) { logger.warn("incident_storage_unavailable request_id={}", trace.id) }
+            if (persist != null && call.request.path() != "/api/v1/client-incidents" && persistenceSlots.tryAcquire()) {
+                // ResponseSent is not suspending. Bound work before scheduling it, and keep
+                // database latency outside the response path and the request's lifetime.
+                application.launch(Dispatchers.IO) {
+                    try { persist(call, code, status) } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                    catch (_: Exception) { logger.warn("incident_storage_unavailable request_id={}", trace.id) }
+                }.invokeOnCompletion { persistenceSlots.release() }
             }
         }
     }

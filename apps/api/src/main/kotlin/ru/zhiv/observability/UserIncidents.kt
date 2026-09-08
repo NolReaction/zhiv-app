@@ -64,13 +64,13 @@ class UserIncidentRepository(private val source: DataSource) {
         minOf(100000, count)
     }
     suspend fun record(hash: ByteArray, input: ClientIncident, server: Boolean = false) = withContext(Dispatchers.IO) {
-        val occurrences = if (server) serverCount(hash, input) else input.occurrences
-        if (occurrences == 0) return@withContext
         if (!slots.tryAcquire()) {
             if (server) return@withContext
             throw AuthFailure("DATABASE_BUSY", "Повторите отправку события позже", 503)
         }
         try {
+        val occurrences = if (server) serverCount(hash, input) else input.occurrences
+        if (occurrences == 0) return@withContext
         val id = parseCanonicalUuidV4(input.eventId) ?: invalid()
         val requestId = input.requestId?.let { parseCanonicalUuidV4(it) ?: invalid() }
         val occurred = runCatching { Instant.parse(input.occurredAt) }.getOrNull() ?: invalid()
