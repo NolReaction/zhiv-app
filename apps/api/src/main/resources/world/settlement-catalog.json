@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "gridSize": 10,
+  "footprint": 2,
+  "starter": { "wood": 140, "stone": 100 },
+  "areas": [
+    { "level": 1, "size": 6, "wood": 0, "stone": 0 },
+    { "level": 2, "size": 8, "wood": 60, "stone": 35 },
+    { "level": 3, "size": 10, "wood": 120, "stone": 75 }
+  ],
+  "buildings": [
+    { "kind": "workshop", "name": "Мастерская", "wood": 30, "stone": 15, "upgradeWood": 60, "upgradeStone": 35 },
+    { "kind": "storehouse", "name": "Склад", "wood": 25, "stone": 10, "upgradeWood": 50, "upgradeStone": 25 }
+  ],
+  "capacities": [200, 400, 800],
+  "gatherSeconds": 60,
+  "gatherWood": 20,
+  "gatherStone": 12,
+  "workshopBonusWood": 10,
+  "workshopBonusStone": 6
+}

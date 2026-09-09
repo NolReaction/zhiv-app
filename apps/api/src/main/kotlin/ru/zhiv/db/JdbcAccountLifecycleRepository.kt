@@ -219,6 +219,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         }
         val worldJourneys=worlds.flatMap { it.journeys }.distinctBy { it.id }
         val conflicts=buildList {
+            if(worlds.count { it.settlement != null } > 1) add("В обоих профилях уже есть поляны. Их объединение пока не поддерживается; обе сохранятся без изменений.")
             if(worldJourneys.size>32) add("Сначала завершите часть путешествий: после объединения их будет больше 32.")
             providers.filter { it.provider !in choices.providerChoices }.forEach { add("Выберите сохраняемый способ входа: ${it.provider}") }
 
@@ -227,6 +228,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         val groups=c.one("SELECT count(*) FROM circle_memberships m JOIN circles c ON c.id=m.circle_id WHERE m.user_id=? AND m.left_at IS NULL AND c.archived_at IS NULL",s.other) { it.getInt(1) } ?: 0
         return MergePreview("",a,b,if(choices.displayNameSource=="current")a.displayName else b.displayName,if(choices.statusSource=="current")a.status else b.status,
             listOf("Ресурсы мира сложатся; сохранятся лучшие улучшения построек, вещи и находки обоих профилей. Одежда останется как в открытом мире; если его ещё нет, перенесётся одежда второго профиля. Путешествия сохранятся: ${worldJourneys.size}. Дневной лимит искр не обновится.",
+                "Поляна с постройками и запасами перенесётся целиком, если она есть только в одном профиле. Две обустроенные поляны пока объединить нельзя.",
                 "Сохранится открытый профиль ${a.publicId}; прежний ID ${b.publicId} перестанет работать.",
                 "Личная история, число отметок, время последней отметки и серия объединятся. Совпадающие по времени отметки сохранятся; в серии они считаются одним моментом. Исторические аудитории других людей не расширятся.",
                 "Связей второго профиля: $direct; участий в группах: $groups. Новые связи и новые участия начнутся без показа отметок в обе стороны; совпадающие связи сохранят существующие настройки, запрет любой стороны сохранится.",

@@ -23,6 +23,7 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
     val journeys: List<WorldJourney> = emptyList(),
     val firstJourneyCompleted: Boolean = false,
     val completedJourneys: Long = 0,
+    val settlement: SettlementState? = null,
 )
 @Serializable data class WorldSnapshot(
     val ownerPublicId: String, val revision: Long, val serverTime: String,
@@ -52,6 +53,10 @@ object WorldRules {
         return state.copy(resources = WorldResources(r.sparks-cost.sparks, r.wood-cost.wood, r.stone-cost.stone))
     }
     fun apply(state: WorldState, command: WorldCommand, now: Instant): Pair<WorldState, String> = when(command.action) {
+        "settlement_build", "settlement_move", "settlement_upgrade", "settlement_expand", "settlement_gather", "settlement_claim" -> {
+            val (settlement, message) = SettlementRules.apply(state.settlement, command, now)
+            state.copy(settlement = settlement) to message
+        }
         "upgrade_house" -> {
             val cost = catalog.houseUpgrades.find { it.level == state.houseLevel+1 } ?: fail("WORLD_MAX_LEVEL", "Домик уже полностью улучшен")
             spend(state, cost).copy(houseLevel=cost.level) to "Домик стал уютнее. Открыты новые возможности!"
@@ -120,7 +125,8 @@ object WorldRules {
         val a=target.resources; val b=source.resources
         val collection=(target.collection+source.collection).distinct().sorted()
         val collectionReward=if(catalog.finds.all { it.id in collection }) listOf("explorer_cap") else emptyList()
-        return target.copy(resources=WorldResources(Math.addExact(a.sparks,b.sparks),Math.addExact(a.wood,b.wood),Math.addExact(a.stone,b.stone)),
+        return target.copy(settlement=SettlementRules.merge(target.settlement,source.settlement),
+            resources=WorldResources(Math.addExact(a.sparks,b.sparks),Math.addExact(a.wood,b.wood),Math.addExact(a.stone,b.stone)),
             houseLevel=maxOf(target.houseLevel,source.houseLevel),workshop=target.workshop||source.workshop,
             workshopLevel=maxOf(if(target.workshop) maxOf(1,target.workshopLevel) else 0,if(source.workshop) maxOf(1,source.workshopLevel) else 0),
             inventory=(target.inventory+source.inventory+collectionReward).distinct().sorted(),collection=collection,

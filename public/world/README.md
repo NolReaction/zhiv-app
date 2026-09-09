@@ -10,6 +10,9 @@
 | [buildings/workshop-atlas.webp](buildings/workshop-atlas.webp) | Исходный атлас; из него извлекается верстак для круглой сцены |
 | [routes/trail.webp](routes/trail.webp) | Иллюстрация выбора лесной тропы |
 | [routes/river.webp](routes/river.webp) | Иллюстрация выбора реки/ручья |
+| [settlement/grass.png](settlement/grass.png) | Общая текстура земли новой огороженной поляны |
+| [settlement/buildings.png](settlement/buildings.png) | Атлас 2 × 2: два уровня мастерской и два уровня склада |
+| [settlement/fence.png](settlement/fence.png) | Атлас секций ограды и ворот; нейтральный фон обрабатывается при загрузке |
 
 `forest-world.webp` удалён как неиспользуемая промежуточная карта; его можно найти в истории Git до коммита уборки. Он не должен снова накладываться поверх расширенного леса: это создавало дубли объектов.
 

@@ -87,6 +87,7 @@ import { copyText } from "@/lib/identity-sharing";
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
 const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
+const SettlementPortal = dynamic(() => import("@/features/settlement/settlement-portal"), { ssr: false });
 
 type PendingBootstrap = {
   version: 1;
@@ -360,7 +361,11 @@ export function CheckInApp() {
   const worldOwner = OPEN_WORLD_ENABLED && screen === "home" ? me?.user.publicId ?? null : null;
   const worldPortal = useWorldPortal(worldOwner);
   const [worldMounted, setWorldMounted] = useState(false);
-  const closeWorld = worldPortal.close;
+  const settlementOwner = screen === "home" ? me?.user.publicId ?? null : null;
+  const settlementPortal = useWorldPortal(settlementOwner, "zhivSettlementPortal");
+  const [settlementMounted, setSettlementMounted] = useState(false);
+  const closeLegacyWorld = worldPortal.close, closeSettlement = settlementPortal.close;
+  const closeWorld = useCallback(() => { closeLegacyWorld(); closeSettlement(); }, [closeLegacyWorld, closeSettlement]);
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
   const openGame = useCallback((trigger: HTMLButtonElement) => {
@@ -567,6 +572,7 @@ export function CheckInApp() {
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
   const world = useWorld(worldOwner, loseSession);
+  const settlementWorld = useWorld(settlementOwner, loseSession, settlementPortal.open);
   const worldRefresh = world.refresh;
   useEffect(() => { if (worldOwner) void worldRefresh(); }, [game.progress?.lifetimeTaps, worldOwner, worldRefresh]);
 
@@ -1417,7 +1423,7 @@ export function CheckInApp() {
             >
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
-              <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
+              <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || settlementPortal.open || calendarOpen || gameOpen || statusOpen}
                 wakeSignal={mochlikWakeSignal} nowMs={OPEN_WORLD_ENABLED ? world.now : adjustedNow} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
                 bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={world.snapshot?.state} worldGifts={world.snapshot?.gifts} />
             </div>}
@@ -1553,6 +1559,10 @@ export function CheckInApp() {
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
               gameStatus={game.status} gameNotice={gameNotice} gamePending={game.pendingTaps} gameArchived={game.archivedTaps} gameRequestId={game.requestId} onRetryGame={() => void game.refresh()}>
+              <button type="button" className={`${glass.button} ${styles.mapEntry}`} aria-haspopup="dialog" aria-label="Открыть поляну для строительства"
+                onPointerDown={event => event.stopPropagation()} onClick={event => {
+                  setSettlementMounted(true); settlementPortal.enter(event.currentTarget, null);
+                }}><Map size={20} aria-hidden="true" /><span>Моя поляна</span></button>
               {OPEN_WORLD_ENABLED && <button type="button" className={`${glass.button} ${styles.mapEntry}`}
                 aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
                 onPointerDown={event => event.stopPropagation()} onClick={event => {
@@ -1631,6 +1641,8 @@ export function CheckInApp() {
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
+      {settlementMounted && me && <SettlementPortal key={`settlement:${me.user.publicId}`} open={settlementPortal.open}
+        onClose={settlementPortal.close} returnFocus={settlementPortal.returnFocus} world={settlementWorld} />}
       <footer className={styles.footer}>
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />

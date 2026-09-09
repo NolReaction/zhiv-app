@@ -1,4 +1,5 @@
 import { naturalItems } from "@/features/game/game-rewards";
+import { applySettlement, SettlementError, SETTLEMENT_ACTIONS } from "@/features/settlement/model";
 // Development adapter only. Production requests are handled by Ktor/PostgreSQL.
 import { getDevIdentity, getDevItemStreak } from "@/lib/dev/api-store";
 import { canAfford, newWorldState, workshopLevel, worldCatalog as catalog, type WorldCommand, type WorldResources, type WorldSnapshot, type WorldState } from "@/features/world/model";
@@ -28,6 +29,16 @@ export function getDevWorld(token: string | undefined, now = Date.now()): WorldS
     dailySparksEarned: value.day === new Date(now).toISOString().slice(0, 10) ? value.earned : 0 };
 }
 function apply(state: WorldState, command: WorldCommand, now: number): string {
+  if ((SETTLEMENT_ACTIONS as readonly string[]).includes(command.action)) {
+    try {
+      const result = applySettlement(state.settlement, command.action, command.target, command.requestId, now);
+      state.settlement = result.state;
+      return result.message;
+    } catch (error) {
+      if (error instanceof SettlementError) throw new DevWorldError(error.code, error.message);
+      throw error;
+    }
+  }
   const spend = (cost: WorldResources) => {
     if (!canAfford(state.resources, cost)) fail("WORLD_RESOURCES", "Пока не хватает материалов. Их можно принести из путешествия.");
     for (const key of ["sparks", "wood", "stone"] as const) state.resources[key] -= cost[key];
@@ -92,6 +103,7 @@ function apply(state: WorldState, command: WorldCommand, now: number): string {
       state.journeys = state.journeys.filter(j => j.id !== journey.id);
       return command.action === "recall_journey" ? "Мохлик вернулся домой без находок" : "Мохлик принёс находку и материалы!";
     }
+    default: return fail("INVALID_WORLD_COMMAND", "Неизвестное действие.");
   }
 }
 export function commandDevWorld(token: string | undefined, command: WorldCommand, now = Date.now()) {

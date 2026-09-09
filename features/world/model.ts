@@ -1,5 +1,6 @@
 import { z } from "zod";
 import catalog from "@/apps/api/src/main/resources/world/catalog.json";
+import { settlementSchema, SETTLEMENT_ACTIONS } from "@/features/settlement/model";
 
 export const worldCatalog = catalog;
 const count = z.number().int().nonnegative().safe();
@@ -14,6 +15,7 @@ export const worldStateSchema = z.object({
   equipment: z.object({ palette: z.string(), head: z.string().nullable(), neck: z.string().nullable() }),
   collection: z.array(z.string()).max(100), journeys: z.array(journeySchema).max(32),
   firstJourneyCompleted: z.boolean(), completedJourneys: count,
+  settlement: settlementSchema.nullable().optional(),
 });
 export const worldSnapshotSchema = z.object({
   ownerPublicId: z.string().min(1), revision: count, serverTime: z.string().datetime(), state: worldStateSchema,
@@ -21,7 +23,7 @@ export const worldSnapshotSchema = z.object({
 });
 export const worldCommandSchema = z.object({
   requestId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), ownerPublicId: z.string().min(1).max(40), expectedRevision: count,
-  action: z.enum(["upgrade_house", "build_workshop", "upgrade_workshop", "craft", "equip", "start_journey", "recall_journey", "claim_journey", "dev_grant_resources"]),
+  action: z.enum(["upgrade_house", "build_workshop", "upgrade_workshop", "craft", "equip", "start_journey", "recall_journey", "claim_journey", "dev_grant_resources", ...SETTLEMENT_ACTIONS]),
   target: z.string().max(80).default(""),
 }).strict();
 export const worldResultSchema = z.object({ snapshot: worldSnapshotSchema, message: z.string(), replayed: z.boolean() });

@@ -1,10 +1,10 @@
 # Как работать с проектом
 
-Начните с [путеводителя](docs/repository-guide.md). Для игры сейчас используется ветка `feature/mochlik-world`. В `master` попадает отдельно проверенный релиз.
+Начните с [путеводителя](docs/repository-guide.md). Новая огороженная поляна развивается в `feature/mochlik-grid-world`, созданной от `master` 0.6.1. Прежний открытый мир остаётся в `feature/mochlik-world`. В `master` попадает отдельно проверенный релиз.
 
 ## Небольшое изменение
 
-1. Обновите рабочую ветку: `git pull --ff-only origin feature/mochlik-world`.
+1. Обновите рабочую ветку: `git pull --ff-only origin feature/mochlik-grid-world`.
 2. Запустите `npm run dev:local`. Для телефона в той же сети — `npm run dev:lan`.
 3. Найдите нужный раздел в `features/`. Компонент и его `.module.css` лежат рядом.
 4. Измените одну законченную вещь. Проверьте её на узком и широком экране; для графики также проверьте день и ночь.

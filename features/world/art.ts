@@ -4,6 +4,11 @@ export const WORLD_ART = {
   home: "/world/maps/home-clearing.webp",
   houseDetails: "/world/buildings/house-details.webp",
   workshop: "/world/buildings/workshop-atlas.webp",
+  settlement: {
+    grass: "/world/settlement/grass.png",
+    buildings: "/world/settlement/buildings.png",
+    fence: "/world/settlement/fence.png",
+  },
   routes: {
     trail: "/world/routes/trail.webp",
     river: "/world/routes/river.webp",

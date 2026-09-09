@@ -102,7 +102,9 @@ class JdbcWorldRepository(private val source: DataSource): WorldRepository {
         if(before.revision!=command.expectedRevision) throw AuthFailure("WORLD_REVISION_CONFLICT","Мир уже изменился. Обновите его и повторите действие.",409)
         val (state,message)=WorldRules.apply(before.state,command,now.toInstant())
         c.worldSave(actor.id,state)
-        val a=state.resources; val b=before.state.resources
+        val settlementCommand = command.action.startsWith("settlement_")
+        val a=if(settlementCommand) state.settlement?.resources?.let { WorldResources(0,it.wood,it.stone) } ?: WorldResources() else state.resources
+        val b=if(settlementCommand) before.state.settlement?.resources?.let { WorldResources(0,it.wood,it.stone) } ?: WorldResources() else before.state.resources
         c.worldUpdate("INSERT INTO world_ledger(user_id,source_key,kind,sparks,wood,stone) VALUES (?,?,?,?,?,?)",
             actor.id,if(command.action=="claim_journey") "journey:${command.target}" else "command:$id",command.action,a.sparks-b.sparks,a.wood-b.wood,a.stone-b.stone)
         c.worldUpdate("INSERT INTO world_commands(user_id,request_id,signature,message) VALUES (?,?,?,?)",actor.id,id,signature,message)

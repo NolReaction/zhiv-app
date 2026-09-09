@@ -3,13 +3,13 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { getWorld, sendWorldCommand } from "./api";
 import { createWorldSession } from "./session";
 
-export function useWorld(owner: string | null, onSessionLost: () => void) {
+export function useWorld(owner: string | null, onSessionLost: () => void, enabled = true) {
   const session = useMemo(() => createWorldSession(owner, { get: getWorld, send: sendWorldCommand }, () => {}), [owner]);
   useEffect(() => { session.setSessionLost(onSessionLost); }, [session, onSessionLost]);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!owner) return;
+    if (!owner || !enabled) return;
     const deactivate = session.activate();
     const refresh = () => { if (!document.hidden) void session.refresh(); };
     const kickoff = setTimeout(refresh, 0);
@@ -20,7 +20,7 @@ export function useWorld(owner: string | null, onSessionLost: () => void) {
       deactivate(); clearTimeout(kickoff); clearInterval(timer); clearInterval(polling);
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
-  }, [session, owner]);
+  }, [session, owner, enabled]);
   return { ...view, now, act: session.act, retry: session.retry, refresh: session.refresh };
 }
 export type WorldController = ReturnType<typeof useWorld>;
