@@ -1,7 +1,7 @@
 .scene { position: absolute; inset: 5px; border-radius: 50%; overflow: hidden; isolation: isolate; contain: layout paint; pointer-events: none; background: #172920; }
 .canvas { image-rendering: pixelated; position: absolute; inset: 0; display: block; width: 100%; height: 100%; opacity: 0; transition: opacity 400ms ease; }
 .scene[data-ready='true'] .canvas { opacity: 1; }
-.fallback { position: absolute; inset: 0; background: #172920 url('/world/forest-map-v3.webp') center / 400% 400%; }
+.fallback { position: absolute; inset: 0; background: #172920 url('/mochlik-pixel/forest.webp') center / cover; }
 .scene[data-light='dusk'] .fallback { filter: brightness(.43) saturate(.75); }
 .glass { position: absolute; inset: 0; border-radius: inherit; border: 1px solid #def2d83b; background: linear-gradient(155deg, #e8fae014, transparent 29%, transparent 73%, #d2eed205); box-shadow: inset 0 2px 4px #f6ffeb24, inset 0 -10px 28px #030d0738; }
 @media (prefers-reduced-motion: reduce) { .canvas { transition: none; } }

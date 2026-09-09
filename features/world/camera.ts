@@ -1,8 +1,9 @@
 export type Point = { x: number; y: number };
 export type Camera = Point & { zoom: number };
 export type Viewport = { width: number; height: number };
-import { MAP_SIZE, HOME_AREA } from "@/lib/mochlik/terrain";
-export { MAP_SIZE, HOME_AREA } from "@/lib/mochlik/terrain";
+export const MAP_SIZE = 1536;
+export const INNER_AREA = { x: 384, y: 384, size: 768 };
+export const HOME_AREA = { x: 576, y: 576, size: 384 };
 export function zoomLimits(view: Viewport) {
   const minimum = Math.max(view.width, view.height) / MAP_SIZE;
   return { minimum, maximum: Math.max(minimum * 3, 4) };
@@ -20,7 +21,7 @@ export function zoomAt(camera: Camera, view: Viewport, anchor: Point, factor: nu
   const zoom = Math.max(limits.minimum, Math.min(limits.maximum, camera.zoom * factor));
   return clampCamera({ zoom, x: before.x - (anchor.x - view.width / 2) / zoom, y: before.y - (anchor.y - view.height / 2) / zoom }, view);
 }
-export const homeCamera = (view: Viewport) => clampCamera({ x: HOME_AREA.x + HOME_AREA.size / 2, y: HOME_AREA.y + HOME_AREA.size / 2 - 2, zoom: Math.min(1.5, Math.min(view.width, view.height) / 400) }, view);
+export const homeCamera = (view: Viewport) => clampCamera({ x: HOME_AREA.x + HOME_AREA.size / 2, y: HOME_AREA.y + HOME_AREA.size / 2 - 2, zoom: Math.min(view.width, view.height) / 330 }, view);
 export const isMapTap = (distance: number, multiTouch: boolean, cancelled: boolean) => !cancelled && !multiTouch && distance < 8;
 export const viewportPoint = (client: Point, rect: { left: number; top: number; width: number; height: number }, view: Viewport): Point => ({
   x: (client.x - rect.left) * view.width / Math.max(1, rect.width),

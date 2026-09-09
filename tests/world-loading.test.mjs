@@ -11,7 +11,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
  const original=new Map(),pending=[],timers=new Map(),frames=new Map();let id=0,observed=0;
  const install=(name,value)=>{original.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{value,writable:true,configurable:true})};
  const pixels=(w,h)=>{const data=new Uint8ClampedArray(w*h*4).fill(255);data[0]=data[1]=data[2]=0;return {data}};
- const ctx=new Proxy({getImageData:(_x,_y,w,h)=>pixels(w,h),createImageData:pixels,createRadialGradient:()=>({addColorStop(){}})}, {get:(object,key)=>key in object?object[key]:()=>{}});
+ const ctx=new Proxy({getImageData:(_x,_y,w,h)=>pixels(w,h),createImageData:pixels,createRadialGradient:()=>({addColorStop(){}}),createLinearGradient:()=>({addColorStop(){}})}, {get:(object,key)=>key in object?object[key]:()=>{}});
  const canvas=()=>({width:256,height:256,clientWidth:393,clientHeight:740,getContext:()=>ctx,addEventListener(){},removeEventListener(){},hasPointerCapture(){return false}});
  install('Image',class {naturalWidth=1254;naturalHeight=1254;set src(path){pending.push({path,image:this})}});
  install('document',{hidden:false,createElement:canvas,addEventListener(){},removeEventListener(){}});install('window',{});
@@ -25,7 +25,8 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const abort=new AbortController();let ready=false;
   const first=createMapEngine(canvas(),options,()=>{},[],abort.signal).then(v=>{ready=true;return v});
   const cancelled=assert.rejects(first,error=>error.name==='AbortError');
-  finish('/world/forest-map-v3.webp');finish('/world/workshop-levels-v2.webp');finish('/world/stump-homes-v3.webp');await flush();
+  finish('/world/forest-expanded.webp');finish('/world/forest-world.webp');await flush();
+  finish('/world/house-details.webp');finish('/world/buildings-v1.webp');await flush();
   assert.equal(ready,false);assert.equal(observed,1);assert.equal(frames.size,0);
   abort.abort();await cancelled;assert.equal(observed,0);
   finish('/mochlik-pixel/forest.webp');await flush();assert.equal(frames.size,0);assert.equal(timers.size,0);

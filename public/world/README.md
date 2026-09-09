@@ -1,12 +1,13 @@
 # World art
 
-Generated for this project, September 2026; final assets are WebP, quality 88. The base terrain intentionally contains no house or workshop: interactive buildings are drawn once by the renderer.
+Map and interior artwork restored byte-for-byte from `915cbcdb673ba98ff58616fb43d29ca39ad8ed22`. The rollback changes presentation only; account progression, workshop upgrades and shared character state remain current.
 
-- `forest-map-v3.webp`: 1254 × 1254 terrain, displayed in a 1536 × 1536 world. The central home crop has an irregular forest backdrop, stepping stones, mossy rocks, roots and foreground ferns, continuous with the outer world. Interactive structures are not baked in.
-- `forest-map-v2.webp`: previous terrain, retained as the source reference for the v3 edit; no longer loaded by the app.
-- `stump-homes-v3.webp`: 1536 × 1024 atlas, six 512 × 512 cells. Five complete aligned stump houses, then one bush. Levels add a round window, chimney, entrance canopy, then a second window and doorstep. Generated with the built-in image tool from the original forest reference; the neutral matte is removed at load. Full house cells retain padding so doors and lanterns do not shift. The lamp glass is replaced by the shared day/night renderer.
-- `workshop-levels-v2.webp`: 2172 × 724 atlas, three 716 × 724 cells at x = 0, 716, 1432; the final 24 columns are unused. Levels add shelves and tools, then a stone hearth/chimney and window. The bench belongs inside this one building.
+- `forest-expanded.webp`: outer forest, drawn over the 1536 × 1536 world.
+- `forest-world.webp`: inner forest, drawn in the central 768 × 768 area.
+- `../mochlik-pixel/forest.webp`: original home clearing with the house, bush, stones and paths together; shown in the circle and the central 384 × 384 world area.
+- `house-details.webp`: original four-cell atlas of small additions for house levels 2–5. Patches leave the doorway and dynamic lantern glass untouched.
+- `buildings-v1.webp`: original workshop art. The workshop uses its original appearance at all three upgrade levels; upgrade costs, levels and saved progress are retained.
 
-Neutral atlas matte is removed once at load time by `lib/mochlik/assets.ts`. Extracted sprites and decoded source images are cached; no pixel extraction happens in animation frames. Building levels come from the account's world state, including legacy `workshop: true` states treated as level 1.
+The original rectangular edge feather joins the home, inner forest and outer forest. The workshop returns to the lower-left home area. Small current interaction markers follow the restored building positions.
 
-The circle is a crop of the same cached terrain used by the world camera. `terrain.ts` composites structures once per house/workshop level; the world adds only the transparent animated habitat layer. There is no blended inset or second clearing.
+Image downloads retain the shared 15-second timeout, retry after failure and readiness reporting. Atlas extraction happens once during loading. Night lighting, whole-map rain, character departure and circle/world continuity remain in the current renderer.

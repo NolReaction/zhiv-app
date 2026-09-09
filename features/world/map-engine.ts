@@ -1,14 +1,14 @@
 import { mountHabitat, type SceneOptions } from "@/lib/mochlik/scene";
-import { clampCamera, homeCamera, HOME_AREA, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
-import { loadTerrainArt, WORKSHOP_AREA } from "@/lib/mochlik/terrain";
-export { WORKSHOP_AREA } from "@/lib/mochlik/terrain";
+import { clampCamera, homeCamera, HOME_AREA, INNER_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
+import { loadHabitatImage } from "@/lib/mochlik/assets";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
 export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river" | "trail";
 export type MapAction = "home" | "in" | "out";
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
-  try { await loadTerrainArt(); }
+  let ground: HTMLImageElement, innerGround: HTMLImageElement;
+  try { [ground, innerGround] = await Promise.all([loadHabitatImage("/world/forest-expanded.webp"), loadHabitatImage("/world/forest-world.webp")]); }
   catch (error) { throw new MapLoadError("map", error); }
   signal?.throwIfAborted();
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -16,7 +16,21 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let options = initial, disposed = false, raf = 0, last = 0;
   let view = { width: 1, height: 1 }, camera = homeCamera(view), started = false;
   let inView = true;
-  const home = document.createElement("canvas");
+  const home = document.createElement("canvas"), blend = document.createElement("canvas"), mask = document.createElement("canvas");
+  blend.width = mask.width = 256; blend.height = mask.height = 256;
+  const blendContext = blend.getContext("2d")!, maskContext = mask.getContext("2d")!;
+  maskContext.fillStyle = "white"; maskContext.fillRect(0, 0, 256, 256);
+  maskContext.globalCompositeOperation = "destination-in";
+  for (const vertical of [false, true]) {
+    const gradient = maskContext.createLinearGradient(0, 0, vertical ? 0 : 256, vertical ? 256 : 0);
+    gradient.addColorStop(0, "transparent"); gradient.addColorStop(.075, "white"); gradient.addColorStop(.925, "white"); gradient.addColorStop(1, "transparent");
+    maskContext.fillStyle = gradient; maskContext.fillRect(0, 0, 256, 256);
+  }
+  // Cache the unchanged inner forest once; feather only its outer edge into the new terrain.
+  const inner = document.createElement("canvas"); inner.width = inner.height = 768;
+  const innerContext = inner.getContext("2d")!; innerContext.imageSmoothingEnabled = false;
+  innerContext.drawImage(innerGround, 0, 0, 768, 768);
+  innerContext.globalCompositeOperation = "destination-in"; innerContext.drawImage(mask, 0, 0, 768, 768);
   type Touch = { initial: Point; position: Point };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
@@ -37,8 +51,12 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
     ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-    habitat.paintTerrain(ctx);
-    ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
+    ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
+    ctx.drawImage(inner, INNER_AREA.x, INNER_AREA.y, INNER_AREA.size, INNER_AREA.size);
+    habitat.paintLighting(ctx);
+    blendContext.globalCompositeOperation = "copy"; blendContext.drawImage(home, 0, 0, 256, 256);
+    blendContext.globalCompositeOperation = "destination-in"; blendContext.drawImage(mask, 0, 0);
+    ctx.drawImage(blend, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
     habitat.paintWeather(ctx);
     for (const node of anchors) {
       const point = worldToScreen({ x: Number(node.dataset.x), y: Number(node.dataset.y) }, camera, view);
@@ -102,8 +120,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       const world = screenToWorld(p, camera, view);
       const x = (world.x - HOME_AREA.x) / HOME_AREA.size, y = (world.y - HOME_AREA.y) / HOME_AREA.size;
       if (habitat.hitPet(x, y)) onPlace("wardrobe");
-      else if (x > .58 && x < .88 && y > .13 && y < .50) onPlace("house");
-      else if (world.x >= WORKSHOP_AREA.x && world.x <= WORKSHOP_AREA.x + WORKSHOP_AREA.width && world.y >= WORKSHOP_AREA.y && world.y <= WORKSHOP_AREA.y + WORKSHOP_AREA.height) onPlace("workshop");
+      else if (x > .60 && x < .93 && y > .12 && y < .49) onPlace("house");
+      else if (x > .08 && x < .30 && y > .58 && y < .79 && options.worldState?.workshop) onPlace("workshop");
       else if (x > .10 && x < .31 && y > .35 && y < .52) habitat.invite("bush");
       else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
     }
