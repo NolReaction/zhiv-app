@@ -62,9 +62,9 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
     <div className={styles.mapAnchors} hidden={!ready}>
       <button data-map-anchor data-kind="house" data-x="847" data-y="730" onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
-      <button data-map-anchor data-kind="workshop" data-x="660" data-y="832" onClick={() => onPlace("workshop")} aria-label={state.workshop ? "Мастерская" : "Построить мастерскую"} title="Мастерская" />
-      <button data-map-anchor data-kind="river" data-x="1037" data-y="524" onClick={() => onPlace("river")} aria-label="Маршруты к реке и ручью" title="Река и ручей" />
-      <button data-map-anchor data-kind="trail" data-x="1024" data-y="934" onClick={() => onPlace("trail")} aria-label="Маршруты по лесной тропе" title="Лесная тропа" />
+      <button data-map-anchor data-kind="workshop" data-x="414" data-y="1020" onClick={() => onPlace("workshop")} aria-label={state.workshop ? "Мастерская" : "Построить мастерскую"} title="Мастерская" />
+      <button data-map-anchor data-kind="river" data-x="1090" data-y="492" onClick={() => onPlace("river")} aria-label="Маршруты к реке и ручью" title="Река и ручей" />
+      <button data-map-anchor data-kind="trail" data-x="1112" data-y="1020" onClick={() => onPlace("trail")} aria-label="Маршруты по лесной тропе" title="Лесная тропа" />
     </div>
     <div className={styles.cameraControls} aria-label="Управление картой">
       <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>

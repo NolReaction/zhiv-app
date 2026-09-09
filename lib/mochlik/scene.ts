@@ -66,7 +66,8 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
         ctx.drawImage(upgradeArt, cell.x + part.sx, cell.y + part.sy, part.sw, part.sh, part.x, part.y, part.w, part.h);
       }
     }
-    if (appearance.workshop && workshopArt) ctx.drawImage(workshopArt, 24, 151, 48, 44);
+    // In the circle the bench reflects construction; the full map already has its workshop.
+    if (options.view !== "world" && appearance.workshop && workshopArt) ctx.drawImage(workshopArt, 24, 151, 48, 44);
     const state = world.state, a = state.activity, p = state.progress;
     const visible = state.travel !== "away";
     const t = options.reducedMotion ? 0 : state.activityTime;

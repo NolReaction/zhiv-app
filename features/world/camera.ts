@@ -2,7 +2,6 @@ export type Point = { x: number; y: number };
 export type Camera = Point & { zoom: number };
 export type Viewport = { width: number; height: number };
 export const MAP_SIZE = 1536;
-export const INNER_AREA = { x: 384, y: 384, size: 768 };
 export const HOME_AREA = { x: 576, y: 576, size: 384 };
 export function zoomLimits(view: Viewport) {
   const minimum = Math.max(view.width, view.height) / MAP_SIZE;

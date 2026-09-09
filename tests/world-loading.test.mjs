@@ -25,7 +25,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const abort=new AbortController();let ready=false;
   const first=createMapEngine(canvas(),options,()=>{},[],abort.signal).then(v=>{ready=true;return v});
   const cancelled=assert.rejects(first,error=>error.name==='AbortError');
-  finish('/world/forest-expanded.webp');finish('/world/forest-world.webp');await flush();
+  finish('/world/forest-expanded.webp');await flush();
   finish('/world/house-details.webp');finish('/world/buildings-v1.webp');await flush();
   assert.equal(ready,false);assert.equal(observed,1);assert.equal(frames.size,0);
   abort.abort();await cancelled;assert.equal(observed,0);

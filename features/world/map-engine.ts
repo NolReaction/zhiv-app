@@ -1,5 +1,5 @@
 import { mountHabitat, type SceneOptions } from "@/lib/mochlik/scene";
-import { clampCamera, homeCamera, HOME_AREA, INNER_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
+import { clampCamera, homeCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
 import { loadHabitatImage } from "@/lib/mochlik/assets";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
@@ -7,8 +7,8 @@ export class MapLoadError extends Error {
 export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river" | "trail";
 export type MapAction = "home" | "in" | "out";
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
-  let ground: HTMLImageElement, innerGround: HTMLImageElement;
-  try { [ground, innerGround] = await Promise.all([loadHabitatImage("/world/forest-expanded.webp"), loadHabitatImage("/world/forest-world.webp")]); }
+  let ground: HTMLImageElement;
+  try { ground = await loadHabitatImage("/world/forest-expanded.webp"); }
   catch (error) { throw new MapLoadError("map", error); }
   signal?.throwIfAborted();
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -26,11 +26,6 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     gradient.addColorStop(0, "transparent"); gradient.addColorStop(.075, "white"); gradient.addColorStop(.925, "white"); gradient.addColorStop(1, "transparent");
     maskContext.fillStyle = gradient; maskContext.fillRect(0, 0, 256, 256);
   }
-  // Cache the unchanged inner forest once; feather only its outer edge into the new terrain.
-  const inner = document.createElement("canvas"); inner.width = inner.height = 768;
-  const innerContext = inner.getContext("2d")!; innerContext.imageSmoothingEnabled = false;
-  innerContext.drawImage(innerGround, 0, 0, 768, 768);
-  innerContext.globalCompositeOperation = "destination-in"; innerContext.drawImage(mask, 0, 0, 768, 768);
   type Touch = { initial: Point; position: Point };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
@@ -51,8 +46,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
     ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
+    // The expanded forest already contains every outer landmark. Drawing the old
+    // inner forest here again duplicates its pond, workshop, rocks and trail signs.
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
-    ctx.drawImage(inner, INNER_AREA.x, INNER_AREA.y, INNER_AREA.size, INNER_AREA.size);
     habitat.paintLighting(ctx);
     blendContext.globalCompositeOperation = "copy"; blendContext.drawImage(home, 0, 0, 256, 256);
     blendContext.globalCompositeOperation = "destination-in"; blendContext.drawImage(mask, 0, 0);
@@ -121,7 +117,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       const x = (world.x - HOME_AREA.x) / HOME_AREA.size, y = (world.y - HOME_AREA.y) / HOME_AREA.size;
       if (habitat.hitPet(x, y)) onPlace("wardrobe");
       else if (x > .60 && x < .93 && y > .12 && y < .49) onPlace("house");
-      else if (x > .08 && x < .30 && y > .58 && y < .79 && options.worldState?.workshop) onPlace("workshop");
+      else if (world.x > 335 && world.x < 500 && world.y > 950 && world.y < 1090) onPlace("workshop");
       else if (x > .10 && x < .31 && y > .35 && y < .52) habitat.invite("bush");
       else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
     }
