@@ -25,10 +25,12 @@ data class GameSessionResponse(
     val nextSequence: Long,
     val expiresAt: String,
     val progress: GameProgress,
+    val startedAt: String? = null,
+    val closedAt: String? = null,
 )
 
 @Serializable
-data class GameBatchRequest(val sessionId: String, val sequence: Long, val tapCount: Int, val runId: String)
+data class GameBatchRequest(val sessionId: String, val sequence: Long, val tapCount: Int, val runId: String, val tapTimes: List<Long>? = null)
 
 @Serializable
 data class GameBatchResponse(
@@ -39,6 +41,7 @@ data class GameBatchResponse(
     val replayed: Boolean,
     val progress: GameProgress,
     val runTaps: Long,
+    val rejectionCode: String? = null,
 )
 
 @Serializable
@@ -70,7 +73,7 @@ data class GameAchievements(val ownerPublicId: String, val serverTime: String, v
 interface GameRepository {
     suspend fun progress(sessionHash: ByteArray): GameProgress
     suspend fun openSession(sessionHash: ByteArray, requestId: UUID, ownerPublicId: String): GameSessionResponse
-    suspend fun submitBatch(sessionHash: ByteArray, sessionId: UUID, sequence: Long, tapCount: Int, runId: UUID): GameBatchResponse
+    suspend fun submitBatch(sessionHash: ByteArray, sessionId: UUID, sequence: Long, tapCount: Int, runId: UUID, tapTimes: List<Long>? = null): GameBatchResponse
     suspend fun setVisibility(sessionHash: ByteArray, visible: Boolean, expectedVersion: Long, ownerPublicId: String): GameProgress
     suspend fun leaderboard(sessionHash: ByteArray, scope: String = "global", metric: String = "monthly_taps"): GameLeaderboard
     suspend fun achievements(sessionHash: ByteArray): GameAchievements

@@ -223,6 +223,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly body?: ApiErrorResponse | CooldownResponse | DisplayNameCooldownResponse,
     requestId?: string | null,
+    readonly retryAfterMs?: number,
   ) {
     const safeRequestId = requestId && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId) ? requestId : undefined;
     super(status >= 500 && safeRequestId ? `${message}. Код ошибки: ${safeRequestId}` : message);

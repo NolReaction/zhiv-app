@@ -9,11 +9,11 @@ const vite = await createServer({
   resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false },
 });
-const { GameSyncClient } = await vite.ssrLoadModule("/lib/game-sync.ts");
+const { GameSyncClient } = await vite.ssrLoadModule("/features/game/game-sync.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
-const gameApi = await vite.ssrLoadModule("/lib/game-api.ts");
-const identities = await vite.ssrLoadModule("/lib/dev-api-store.ts");
-const devGame = await vite.ssrLoadModule("/lib/dev-game-store.ts");
+const gameApi = await vite.ssrLoadModule("/features/game/game-api.ts");
+const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const devGame = await vite.ssrLoadModule("/lib/dev/game-store.ts");
 after(async () => vite.close());
 
 const owner = "7K3P-2Q9M-W8ZR";
@@ -98,22 +98,17 @@ test("retries an unknown result exactly once before sending taps observed during
   f.client.dispose();
 });
 
-test("bounds outstanding memory, reports overflow and excludes new offline taps", async () => {
-  let resolveStart;
-  const f = fixture({ session: () => new Promise(resolve => { resolveStart = resolve; }) });
-  f.client.recordTap(1, runId);
-  assert.equal(f.client.recordTap(4_000, runId), 3_599);
-  assert.equal(f.client.snapshot().pendingTaps, 3_600);
-  assert.equal(f.client.snapshot().run.rejectedTaps, 401);
-  assert.equal(f.client.snapshot().rejectedTaps, 401);
+test("bounds the durable queue and reports overflow without counting taps never queued", async () => {
+  let resolveBatch;
+  const f = fixture({ batch: body => new Promise(resolve => { resolveBatch = () => resolve({ sessionId, sequence: body.sequence, acceptedTaps: body.tapCount, rejectedTaps: 0, runTaps: body.tapCount, replayed: false, progress: progress() }); }) });
+  f.client.recordTap(1, runId); await settle();
+  assert.equal(f.client.recordTap(31_000, runId), 29_999);
+  assert.equal(f.client.snapshot().pendingTaps, 30_000);
+  assert.equal(f.client.snapshot().errorCode, "QUEUE_FULL");
   f.client.setOnline(false);
-  assert.equal(f.client.recordTap(20, runId), 0);
-  assert.equal(f.client.snapshot().pendingTaps, 3_600);
-  assert.equal(f.client.snapshot().status, "offline");
-  resolveStart({ sessionId, nextSequence: 1, expiresAt: "2026-09-07T10:15:00.000Z", progress: progress() });
-  await settle();
-  assert.equal(f.calls.filter(call => call.kind === "batch").length, 0);
-  f.client.dispose();
+  assert.equal(f.client.recordTap(20, runId), 0); // A legacy server has no offline permit.
+  assert.equal(f.client.snapshot().pendingTaps, 30_000);
+  f.client.dispose(); resolveBatch(); await settle();
 });
 
 test("keeps one write in flight and never combines different runs in a batch", async () => {
@@ -235,7 +230,7 @@ test("API rejects malformed progress and aborts a caller-cancelled request", asy
 });
 
 
-test("keeps more than sixty observed taps through a slow startup and drains bounded batches", async () => {
+test("a slow initial handshake queues only the bounded initial burst", async () => {
   let resolveStart;
   const f = fixture({ session: () => new Promise(resolve => { resolveStart = resolve; }) });
   f.client.recordTap(1, runId);
@@ -243,12 +238,12 @@ test("keeps more than sixty observed taps through a slow startup and drains boun
     f.setNow(count * 35);
     f.client.recordTap(1, runId);
   }
-  assert.equal(f.client.snapshot().pendingTaps, 180);
+  assert.equal(f.client.snapshot().pendingTaps, 60);
   resolveStart({ sessionId, nextSequence: 1, expiresAt: "2026-09-07T10:15:00.000Z", progress: progress() });
   await settle();
-  assert.equal(f.client.snapshot().progress.lifetimeTaps, 180);
+  assert.equal(f.client.snapshot().progress.lifetimeTaps, 60);
   assert.equal(f.client.snapshot().pendingTaps, 0);
-  assert.deepEqual(f.calls.filter(call => call.kind === "batch").map(call => call.body.tapCount), [60, 60, 60]);
+  assert.deepEqual(f.calls.filter(call => call.kind === "batch").map(call => call.body.tapCount), [60]);
   f.client.dispose();
 });
 
@@ -292,8 +287,8 @@ test("a terminal rejected batch is reported while later observed taps stay queue
   f.client.recordTap(9, runId);
   rejectBatch(new ApiError("conflict", 409, { code: "GAME_SEQUENCE_CONFLICT", message: "conflict" }));
   await settle();
-  assert.equal(f.client.snapshot().pendingTaps, 9);
-  assert.equal(f.client.snapshot().run.rejectedTaps, 4);
+  assert.equal(f.client.snapshot().pendingTaps, 13);
+  assert.equal(f.client.snapshot().run.rejectedTaps, 0);
   assert.equal(f.client.snapshot().status, "error");
   f.client.dispose();
 });
@@ -358,9 +353,10 @@ function integratedFixture(context, { delayedStart = false, firstBatchDelay = 0 
   const batches = [];
   const client = new GameSyncClient(player.me.user.publicId, true, () => {}, () => assert.fail("owner changed"), {
     progress: async () => ok(devGame.getDevGameProgress(player.token)),
-    session: body => delayedStart ? new Promise(resolve => {
-      finishStart = () => resolve(ok(devGame.createDevGameSession(player.token, body.ownerPublicId, body.requestId)));
-    }) : Promise.resolve(ok(devGame.createDevGameSession(player.token, body.ownerPublicId, body.requestId))),
+    session: body => {
+      const granted = ok(devGame.createDevGameSession(player.token, body.ownerPublicId, body.requestId));
+      return delayedStart ? new Promise(resolve => { finishStart = () => resolve({ ...granted, progress: { ...granted.progress, serverTime: new Date().toISOString() } }); }) : Promise.resolve(granted);
+    },
     batch: async body => {
       if (batches.length === 0) advance(firstBatchDelay);
       const result = ok(devGame.submitDevGameBatch(player.token, body));
@@ -371,28 +367,30 @@ function integratedFixture(context, { delayedStart = false, firstBatchDelay = 0 
   return { client, batches, advance, finishStart: () => finishStart() };
 }
 
-test("pacing drains 180 delayed LTE taps through the real server bucket without artificial rejects", async context => {
+test("pacing drains 180 offline LTE taps through a granted modern permit without artificial rejects", async context => {
   const f = integratedFixture(context, { delayedStart: true });
-  f.client.recordTap(1, runId);
+  f.client.recordTap(1, runId); f.finishStart(); await f.client.flush();
+  f.client.setOnline(false);
   for (let count = 1; count < 180; count += 1) {
-    f.advance(35);
-    f.client.recordTap(1, runId);
+    f.advance(35); assert.equal(f.client.recordTap(1, runId), 1);
   }
-  f.finishStart();
-  await f.client.flush();
+  f.client.setOnline(true); await f.client.flush();
   assert.equal(f.client.snapshot().progress.lifetimeTaps, 180);
   assert.equal(f.client.snapshot().progress.bestSeries, 180);
   assert.equal(f.client.snapshot().run.acceptedTaps, 180);
   assert.equal(f.client.snapshot().rejectedTaps, 0);
-  assert.deepEqual(f.batches.map(item => item.tapCount), [60, 60, 60]);
-  assert.ok(f.batches[1].at - f.batches[0].at >= 2_000);
+  assert.deepEqual(f.batches.map(item => item.tapCount), [1, 60, 60, 59]);
   assert.ok(f.batches[2].at - f.batches[1].at >= 2_000);
+  assert.ok(f.batches[3].at - f.batches[2].at >= 2_000);
   f.client.dispose();
 });
 
 test("a delayed request arrival cannot refill the client budget before its acknowledgment", async context => {
   const f = integratedFixture(context, { firstBatchDelay: 3_000 });
-  f.client.recordTap(120, runId);
+  f.client.recordTap(60, runId);
+  await settle();
+  f.advance(2000);
+  f.client.recordTap(60, runId);
   await f.client.flush();
   assert.equal(f.client.snapshot().progress.lifetimeTaps, 120);
   assert.equal(f.client.snapshot().rejectedTaps, 0);
@@ -443,10 +441,13 @@ test("a committed batch whose receipt was purged is never replayed under a new s
   await f.client.flush();
   assert.deepEqual(sent[0], sent[1]);
   assert.equal(f.client.snapshot().pendingTaps, 0);
-  assert.equal(f.client.snapshot().run.rejectedTaps, 9);
-  assert.equal(f.client.snapshot().status, "error");
+  assert.equal(f.client.snapshot().archivedTaps, 9);
+  assert.equal(f.client.snapshot().run.rejectedTaps, 0);
+  assert.equal(f.client.snapshot().run.interrupted, true);
+  assert.equal(f.client.snapshot().status, "ready");
   f.setNow(6_000);
   await f.client.flush();
+  f.setNow(9_000);
   await f.client.refresh();
   assert.equal(attempts, 2);
   assert.equal(f.calls.filter(call => call.kind === "session").length, 1);
@@ -477,4 +478,138 @@ test("new client reads old monthly responses and explicitly asks for the expande
     };
     assert.equal((await gameApi.getGameAchievements()).achievements.length, 3);
   } finally { globalThis.fetch = oldFetch; }
+});
+
+test("durable outbox survives lost acknowledgment, offline taps and two reloads without double credit", async context => {
+  const epoch = Date.parse("2026-09-07T10:00:00Z");
+  context.mock.timers.enable({ apis: ["Date"], now: epoch });
+  identities.resetDevStoreForTests(); devGame.resetDevGameStoreForTests();
+  const player = identities.createDevIdentity("Durable", crypto.randomUUID(), "UTC");
+  let clock = 0, persisted = null, loseReply = true;
+  const bodies = [];
+  const advance = ms => { clock += ms; context.mock.timers.setTime(epoch + clock); };
+  const journal = { read: () => structuredClone(persisted), write: value => { persisted = structuredClone(value); } };
+  const ok = value => { assert.equal(value.kind, "ok", JSON.stringify(value)); return value.value; };
+  const api = {
+    progress: async () => ok(devGame.getDevGameProgress(player.token)),
+    session: async body => ok(devGame.createDevGameSession(player.token, body.ownerPublicId, body.requestId)),
+    batch: async body => {
+      assert.deepEqual(persisted.pendingBatch, body, "write-ahead must precede network dispatch");
+      bodies.push(structuredClone(body));
+      const result = ok(devGame.submitDevGameBatch(player.token, body));
+      if (loseReply) { loseReply = false; throw new Error("lost ACK"); }
+      return result;
+    },
+  };
+  const make = online => new GameSyncClient(player.me.user.publicId, online, () => {}, () => assert.fail("session lost"), api,
+    () => clock, () => crypto.randomUUID(), async delay => advance(delay), journal, () => epoch + clock);
+  let client = make(true);
+  client.recordTap(1, runId); await settle();
+  assert.equal(client.snapshot().pendingTaps, 1);
+  client.setOnline(false);
+  for (let i = 0; i < 20; i++) { advance(100); assert.equal(client.recordTap(1, runId), 1); }
+  client.dispose();
+  client = make(false);
+  assert.equal(client.snapshot().pendingTaps, 21);
+  advance(20 * 60_000); // Delivery after permit expiry preserves the original event-time run.
+  assert.equal(client.recordTap(1, runId), 0);
+  client.setOnline(true); await client.flush();
+  assert.deepEqual(bodies[0], bodies[1]);
+  assert.equal(client.snapshot().pendingTaps, 0);
+  assert.equal(client.snapshot().progress.lifetimeTaps, 21);
+  assert.equal(client.snapshot().progress.bestSeries, 21);
+  assert.equal(client.snapshot().run.interrupted, false);
+  client.dispose();
+  client = make(true);
+  await client.flush();
+  assert.equal(client.snapshot().progress.lifetimeTaps, 21);
+  assert.equal(bodies.length, 3);
+  client.dispose();
+});
+
+test("Retry-After survives reload and online/focus cannot bypass account throttling", async () => {
+  let clock = 0, persisted = null, attempts = 0;
+  const journal = { read: () => structuredClone(persisted), write: value => { persisted = structuredClone(value); } };
+  const api = { progress: async () => progress(), session: async () => {
+    attempts++; throw new ApiError("wait", 429, { code: "RATE_LIMITED", message: "wait" }, null, 60_000);
+  }, batch: async () => assert.fail("no permit") };
+  const make = () => new GameSyncClient(owner, true, () => {}, () => {}, api, () => clock, () => requestId,
+    async ms => { clock += ms; }, journal, () => 100000 + clock);
+  let client = make(); client.recordTap(1, runId); await settle(); client.dispose();
+  client = make(); clock = 10_000;
+  client.setOnline(false); client.setOnline(true); await client.flush(); await client.refresh();
+  assert.equal(attempts, 1);
+  assert.equal(client.snapshot().pendingTaps, 1);
+  clock = 60_000; await client.flush(); assert.equal(attempts, 2); client.dispose();
+});
+
+test("unreadable journal is retained and storage failure stops new counted taps", () => {
+  let writes = 0;
+  const client = new GameSyncClient(owner, true, () => {}, () => {}, undefined, undefined, undefined, undefined,
+    { read: () => { throw new Error("corrupt journal"); }, write: () => { writes++; } });
+  assert.equal(client.recordTap(1, runId), 0);
+  assert.equal(client.snapshot().errorCode, "STORAGE_FAILED");
+  client.dispose(); assert.equal(writes, 0);
+});
+
+test("journal validates account ownership and never imports another player's outbox", async () => {
+  const { gameJournalStore } = await vite.ssrLoadModule("/features/game/game-sync-journal.ts");
+  let raw = null;
+  const storage = { getItem: () => raw, setItem: (_key, value) => { raw = value; } };
+  const first = gameJournalStore(owner, storage);
+  const client = new GameSyncClient(owner, false, () => {}, () => {}, undefined, undefined, undefined, undefined, first);
+  client.dispose();
+  assert.throws(() => gameJournalStore(otherOwner, storage).read(), /owner mismatch/);
+});
+
+test("wall clock changes never reverse queued event timestamps and sleep ends the offline permit", async () => {
+  let clock = 0, wall = Date.parse("2026-09-07T10:00:00Z");
+  const batches = [];
+  const api = {
+    progress: async () => progress(),
+    session: async () => ({ sessionId, nextSequence: 1, startedAt: progress().serverTime, expiresAt: "2026-09-07T10:15:00.000Z", progress: progress() }),
+    batch: async body => { batches.push(body); return { sessionId, sequence: body.sequence, acceptedTaps: body.tapCount, rejectedTaps: 0, runTaps: body.tapCount, replayed: false, progress: progress() }; },
+  };
+  const client = new GameSyncClient(owner, true, () => {}, () => {}, api, () => clock, () => requestId,
+    async ms => { clock += ms; wall += ms; }, undefined, () => wall);
+  client.recordTap(1, runId); await client.flush();
+  client.setOnline(false);
+  clock += 1000; wall += 1000; client.recordTap(1, runId);
+  clock += 1000; wall -= 60000; client.recordTap(1, runId);
+  client.setOnline(true); await client.flush();
+  assert.ok(batches.at(-1).tapTimes[1] >= batches.at(-1).tapTimes[0]);
+  client.setOnline(false); wall += 21 * 60_000; // performance timer was paused by sleep.
+  assert.equal(client.recordTap(1, runId), 0);
+  client.dispose();
+});
+
+test("lost session opening reply remains recoverable after another device takes over", async context => {
+  const epoch = Date.parse("2026-09-07T10:00:00Z");
+  context.mock.timers.enable({ apis: ["Date"], now: epoch });
+  identities.resetDevStoreForTests(); devGame.resetDevGameStoreForTests();
+  const bootstrapKey = crypto.randomUUID();
+  const player = identities.createDevIdentity("Original", bootstrapKey, "UTC");
+  const other = identities.createDevIdentity("Other", bootstrapKey, "UTC");
+  let clock = 0, lost = true;
+  const advance = ms => { clock += ms; context.mock.timers.setTime(epoch + clock); };
+  const ok = value => {
+    if (value.kind !== "ok") throw new ApiError("blocked", 409, { code: value.code, message: "blocked" });
+    return value.value;
+  };
+  const api = {
+    progress: async () => ok(devGame.getDevGameProgress(player.token)),
+    session: async body => { const value = ok(devGame.createDevGameSession(player.token, body.ownerPublicId, body.requestId)); if (lost) { lost = false; throw new Error("open reply lost"); } return value; },
+    batch: async body => ok(devGame.submitDevGameBatch(player.token, body)),
+  };
+  const client = new GameSyncClient(player.me.user.publicId, true, () => {}, () => assert.fail("session lost"), api,
+    () => clock, () => crypto.randomUUID(), async ms => advance(ms), undefined, () => epoch + clock);
+  client.recordTap(1, runId); await settle();
+  advance(31000); ok(devGame.createDevGameSession(other.token, other.me.user.publicId, crypto.randomUUID()));
+  await client.flush(); // Opens the original permit receipt and delivers its initial tap, then waits for writer.
+  assert.equal(client.snapshot().progress.lifetimeTaps, 1);
+  assert.equal(client.recordTap(1, runId), 0);
+  advance(31000); await client.flush();
+  assert.equal(client.recordTap(1, runId), 1);
+  await client.flush(); assert.equal(client.snapshot().progress.lifetimeTaps, 2);
+  client.dispose();
 });

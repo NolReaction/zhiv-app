@@ -1,6 +1,6 @@
-import { updateDevGameVisibility } from "@/lib/dev-game-store";
-import { parseDevGameVisibility } from "@/lib/dev-game-validation";
-import { devGameContext, devGameResponse, gameRequestError, readDevGameBody } from "@/lib/dev-game-route";
+import { updateDevGameVisibility } from "@/lib/dev/game-store";
+import { parseDevGameVisibility } from "@/lib/dev/game-validation";
+import { devGameContext, devGameResponse, gameRequestError, readDevGameBody } from "@/lib/dev/game-route";
 
 export const dynamic = "force-dynamic";
 export async function PATCH(request: Request) {

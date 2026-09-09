@@ -11,8 +11,8 @@ const vite = await createServer({
   resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false },
 });
-const gameEvents = await vite.ssrLoadModule("/lib/game-events.ts");
-const devEvents = await vite.ssrLoadModule("/lib/dev-api-events.ts");
+const gameEvents = await vite.ssrLoadModule("/features/game/game-events.ts");
+const devEvents = await vite.ssrLoadModule("/lib/dev/api-events.ts");
 
 after(async () => vite.close());
 

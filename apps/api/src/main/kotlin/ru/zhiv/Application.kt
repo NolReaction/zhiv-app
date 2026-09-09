@@ -1,6 +1,7 @@
 package ru.zhiv
 
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.path
 import io.ktor.http.HttpHeaders
 import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
@@ -48,6 +49,9 @@ import ru.zhiv.invites.directInviteRoutes
 import ru.zhiv.recovery.CodeRecoveryRepository
 import ru.zhiv.recovery.codeRecoveryRoutes
 import ru.zhiv.game.gameEventRoutes
+import ru.zhiv.world.WorldRepository
+import ru.zhiv.world.worldRoutes
+import ru.zhiv.db.JdbcWorldRepository
 import ru.zhiv.game.gameRoutes
 import ru.zhiv.game.GameRepository
 import ru.zhiv.db.JdbcGameRepository
@@ -67,6 +71,11 @@ import ru.zhiv.admin.adminRoutes
 import ru.zhiv.db.JdbcAdminRepository
 import ru.zhiv.observability.RuntimeMetrics
 import ru.zhiv.observability.RequestMetrics
+import ru.zhiv.observability.requestId
+import ru.zhiv.observability.UserIncidentRepository
+import ru.zhiv.observability.userIncidentRoutes
+import ru.zhiv.observability.ClientIncident
+import ru.zhiv.observability.diagnosticOperation
 import ru.zhiv.observability.MonitoringService
 import java.security.MessageDigest
 
@@ -103,7 +112,9 @@ fun Application.module() {
         mailer = mailer,
         vk = vk,
         games = JdbcGameRepository(dataSource),
+        worlds = JdbcWorldRepository(dataSource),
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
+        incidents = UserIncidentRepository(dataSource),
     )
 }
 
@@ -124,12 +135,21 @@ fun Application.installZhivApi(
     mailer: LoginMailer? = null,
     vk: VkVerifier? = null,
     games: GameRepository? = null,
+    worlds: WorldRepository? = null,
     admin: AdminRepository? = null,
+    incidents: UserIncidentRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
     install(RequestMetrics) { this.metrics = metrics }
-    install(RequestDiagnostics)
+    install(RequestDiagnostics) {
+        persist = { call, code, status ->
+            val raw = call.sessionCookie(config)
+            if (raw != null && incidents != null) incidents.record(tokenCodec.hash(raw), ClientIncident(
+                java.util.UUID.randomUUID().toString(), diagnosticOperation(call.request.path()), code,
+                java.time.Instant.now().toString(), call.requestId(), status), server = true)
+        }
+    }
     install(DefaultHeaders)
     install(ForwardedHeaders)
     install(XForwardedHeaders)
@@ -145,15 +165,18 @@ fun Application.installZhivApi(
             "relationships" to 2_400,
             "game-events" to 2_400,
             "game-read" to 1_200,
+            "world-read" to 240,
+            "world-write" to 120,
             "game-session" to 120,
-            "game-write" to 4_800,
+            "game-write" to 90,
+            "client-incidents" to 120,
             "admin-read" to 3_600,
             "admin-write" to 30,
             "account-recovery-write" to 30,
             "account-recovery-read" to 600,
         )) {
             register(RateLimitName(name)) {
-                rateLimiter(limit = limit, refillPeriod = 1.hours)
+                rateLimiter(limit = limit, refillPeriod = if (name == "game-write") kotlin.time.Duration.parse("1m") else 1.hours)
                 requestKey { call ->
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))
@@ -187,6 +210,8 @@ fun Application.installZhivApi(
         exception<AuthFailure> { call, failure ->
             call.recordAuthFailure(failure, responseStatus = failure.status)
             call.response.header(HttpHeaders.CacheControl, "no-store")
+            if (failure.code == "GAME_ACTIVE_ELSEWHERE") call.response.header(HttpHeaders.RetryAfter, "30")
+            if (failure.code == "GAME_PACING") call.response.header(HttpHeaders.RetryAfter, "2")
             call.respond(HttpStatusCode.fromValue(failure.status), ApiErrorResponse(failure.code, failure.message))
         }
         exception<BadRequestException> { call, _ ->
@@ -257,6 +282,8 @@ fun Application.installZhivApi(
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         games?.let { gameRoutes(it, tokenCodec, config) }
+        incidents?.let { userIncidentRoutes(it, admin, config, tokenCodec) }
+        worlds?.let { worldRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
             rateLimit(RateLimitName("admin-read")) {
@@ -265,7 +292,9 @@ fun Application.installZhivApi(
                     call.response.header("X-Robots-Tag", "noindex, nofollow")
                     val raw = call.sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
                     repository.access(tokenCodec.hash(raw))
-                    call.respond(monitoring.snapshot())
+                    val range = call.request.queryParameters.getAll("rangeMinutes")?.singleOrNull()?.toIntOrNull() ?: if (call.request.queryParameters["rangeMinutes"] == null) 60 else 0
+                    if (range !in ru.zhiv.observability.MONITORING_RANGES) throw AuthFailure("INVALID_ADMIN_QUERY", "Выберите период", 400)
+                    call.respond(monitoring.snapshot(range))
                 }
             }
         }

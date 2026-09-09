@@ -1,0 +1,3 @@
+.route { display: inline-flex; align-items: center; gap: 0; width: min(230px, 100%); height: 46px; padding: 0 9px; border: 1px solid #c6d7a52e; border-radius: 14px; background: #142316df; color: #d0dfa4; vertical-align: middle; }
+.route canvas { min-width: 0; width: 100%; height: 42px; object-fit: contain; image-rendering: pixelated; }
+.route svg { flex-shrink: 0; }

@@ -5,8 +5,8 @@ import { createServer } from "vite";
 
 test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disposes RAF", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
-  const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
-  const { mountHabitat } = await vite.ssrLoadModule("/lib/mochlik/scene.ts");
+  const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+  const { mountHabitat } = await vite.ssrLoadModule("/features/mochlik/scene.ts");
   await vite.close(); // Close Vite timers before installing the scene clock.
   const scheduled = new Map(), saved = new Map(); let nextId = 1, disconnected = 0, drawCount = 0, now = 1;
   function install(key, value) { saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); }
@@ -16,12 +16,13 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   install("clearTimeout", id => timers.delete(id));
   const flushTimers = () => { for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); } };
   const context = new Proxy({
-    getImageData: (_x, _y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4).fill(255) }),
+    getImageData: (_x, _y, w, h) => { const data = new Uint8ClampedArray(w * h * 4).fill(255); data[0] = data[1] = data[2] = 0; return { data }; },
     createRadialGradient: () => ({ addColorStop() {} }), drawImage: source => { drawCount++; if (source.width === 48) spriteDraws++; },
   }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = () => ({ width: 16, height: 16, clientWidth: 320, getContext: () => context });
   install("document", { createElement: () => canvas() }); install("window", { devicePixelRatio: 2 });
-  install("Image", class { naturalWidth = 16; naturalHeight = 16; set src(_) { queueMicrotask(() => this.onload()); } });
+  const loadedImages = [];
+  install("Image", class { naturalWidth = 16; naturalHeight = 16; set src(path) { loadedImages.push(path); queueMicrotask(() => this.onload()); } });
   install("ResizeObserver", class { observe() {} disconnect() { disconnected++; } });
   install("requestAnimationFrame", callback => { const id = nextId++; scheduled.set(id, callback); return id; });
   install("cancelAnimationFrame", id => scheduled.delete(id));
@@ -33,6 +34,7 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
     scene = mountHabitat(canvas(), options, { activity: value => { activity = value; }, ready: () => ready++, failure: () => failures++ });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(ready, 1); assert.equal(failures, 0); assert.equal(scheduled.size, 1);
+    assert.deepEqual(loadedImages, ["/world/maps/home-clearing.webp"], "the release circle must not depend on open-world images");
     frames(2300); assert.equal(activity, "sleep");
     scene.configure({ ...options, paused: true }); const frozen = drawCount;
     for (let i = 0; i < 100; i++) scene.notice(); frames(100);
@@ -100,6 +102,16 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
     scene = mountHabitat(canvas(), { ...remembered, presenceKey: "mochlik:another-user" }, { activity: value => { activity = value; }, ready() {}, failure() { failures++; } });
     await new Promise(resolve => setImmediate(resolve)); assert.equal(activity, "idle"); scene.dispose();
     assert.equal(scheduled.size, 0); assert.equal(timers.size, 0); assert.equal(failures, 0);
+
+    // Covering the circle with an actively used map is not a long user absence.
+    const shared = { ...daylight, presenceKey: "mochlik:shared-map" };
+    scene = mountHabitat(canvas(), shared, { activity: value => { activity = value; }, ready() {}, failure() { failures++; } });
+    await new Promise(resolve => setImmediate(resolve));
+    scene.configure({ ...shared, backgrounded: true }); now += 360_000;
+    storage.set(shared.presenceKey, JSON.stringify({ seenAt: now, inactiveFor: 0, resting: false, deepSleep: false }));
+    scene.configure(shared); frames(3);
+    assert.notEqual(activity, "sleep"); assert.notEqual(activity, "stir");
+    scene.dispose(); assert.equal(scheduled.size, 0); assert.equal(timers.size, 0);
 
     // Render every extended moment through the real renderer and its cached pixel rig.
     const seen = new Set();

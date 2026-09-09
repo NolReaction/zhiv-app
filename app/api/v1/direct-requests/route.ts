@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { isValidPublicId, normalizePublicId } from "@/lib/check-in-presentation";
-import { guardDevApi } from "@/lib/dev-api-guard";
+import { guardDevApi } from "@/lib/dev/api-guard";
 import {
   devResultError,
   devSessionToken,
   invalidIdempotencyResponse,
   NO_STORE_HEADERS,
   parseIdempotencyKey,
-} from "@/lib/dev-api-route";
-import { listDevPeople, sendDevDirectRequest } from "@/lib/dev-api-store";
+} from "@/lib/dev/api-route";
+import { listDevPeople, sendDevDirectRequest } from "@/lib/dev/api-store";
 
 export const dynamic = "force-dynamic";
 

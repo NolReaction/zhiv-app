@@ -1,5 +1,5 @@
 import type { CheckInCalendarResponse } from "@/lib/check-in-contract";
-import { GAME_ITEMS, type GameItemId } from "@/lib/game-rewards";
+import { GAME_ITEMS, type GameItemId } from "@/features/game/game-rewards";
 import { formatLocalDate } from "@/lib/daily-streak";
 
 export function isCalendarMonth(value: string): boolean {

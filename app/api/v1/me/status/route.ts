@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { invalidIdempotencyResponse, NO_STORE_HEADERS, parseIdempotencyKey } from "@/lib/dev-api-route";
-import { SESSION_COOKIE, updateDevStatus } from "@/lib/dev-api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { invalidIdempotencyResponse, NO_STORE_HEADERS, parseIdempotencyKey } from "@/lib/dev/api-route";
+import { SESSION_COOKIE, updateDevStatus } from "@/lib/dev/api-store";
 import { MAX_STATUS_LENGTH, normalizeUserStatus, validStatusDuration } from "@/lib/user-status";
 
 export const dynamic = "force-dynamic";

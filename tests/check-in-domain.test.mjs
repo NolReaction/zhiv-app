@@ -13,10 +13,10 @@ const vite = await createServer({
 });
 
 const presentation = await vite.ssrLoadModule("/lib/check-in-presentation.ts");
-const clicker = await vite.ssrLoadModule("/lib/clicker-story.ts");
-const tapInput = await vite.ssrLoadModule("/lib/tap-input.ts");
+const clicker = await vite.ssrLoadModule("/features/game/clicker-story.ts");
+const tapInput = await vite.ssrLoadModule("/features/game/tap-input.ts");
 const dailyStreak = await vite.ssrLoadModule("/lib/daily-streak.ts");
-const devApiOrigin = await vite.ssrLoadModule("/lib/dev-api-origin.ts");
+const devApiOrigin = await vite.ssrLoadModule("/lib/dev/api-origin.ts");
 const groupInput = await vite.ssrLoadModule("/lib/group-input.ts");
 
 after(async () => {

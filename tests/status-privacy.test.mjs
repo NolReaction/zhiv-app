@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType:"custom", configFile:false, root, resolve:{alias:{"@":root}}, server:{middlewareMode:true,hmr:false} });
-const store = await vite.ssrLoadModule("/lib/dev-api-store.ts");
+const store = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const status = await vite.ssrLoadModule("/lib/user-status.ts");
 const api = await vite.ssrLoadModule("/lib/check-in-api.ts");
 after(() => vite.close());

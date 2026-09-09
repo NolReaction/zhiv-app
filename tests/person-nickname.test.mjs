@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const store = await vite.ssrLoadModule("/lib/dev-api-store.ts");
+const store = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const nickname = await vite.ssrLoadModule("/lib/person-nickname.ts");
 after(() => vite.close());
 const key = () => crypto.randomUUID();

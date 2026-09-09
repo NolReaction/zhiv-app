@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "dailySparkLimit": 60,
+  "tapsPerSpark": 5,
+  "houseUpgrades": [
+    {"level": 2, "sparks": 10, "wood": 6, "stone": 2},
+    {"level": 3, "sparks": 35, "wood": 18, "stone": 8},
+    {"level": 4, "sparks": 65, "wood": 35, "stone": 18},
+    {"level": 5, "sparks": 100, "wood": 60, "stone": 35}
+  ],
+  "workshopUpgrades": [
+    {"level": 2, "sparks": 35, "wood": 20, "stone": 10},
+    {"level": 3, "sparks": 70, "wood": 40, "stone": 25}
+  ],
+  "workshop": {"sparks": 20, "wood": 10, "stone": 4},
+  "items": [
+    {"id": "moss", "name": "Лесной мох", "slot": "palette", "color": "#7c8845", "sparks": 0, "starter": true},
+    {"id": "fern", "name": "Папоротник", "slot": "palette", "color": "#49816b", "sparks": 12, "starter": false},
+    {"id": "autumn", "name": "Золотая осень", "slot": "palette", "color": "#b27b42", "sparks": 12, "starter": false},
+    {"id": "amber_scarf", "name": "Тёплый шарф", "slot": "neck", "color": "#e2a44d", "sparks": 0, "starter": true},
+    {"id": "berry_scarf", "name": "Ягодный шарф", "slot": "neck", "color": "#b96374", "sparks": 10, "starter": false},
+    {"id": "leaf_cap", "name": "Шапочка из листьев", "slot": "head", "color": "#9cb764", "sparks": 16, "starter": false},
+    {"id": "explorer_cap", "name": "Шляпа следопыта", "slot": "head", "color": "#c29a61", "sparks": 0, "starter": false}
+  ],
+  "finds": [
+    {"id": "acorn", "name": "Первый жёлудь", "description": "Маленькое начало большого леса.", "symbol": "leaf"},
+    {"id": "feather", "name": "Пёрышко сойки", "description": "Кто-то недавно пролетел над тропой.", "symbol": "feather"},
+    {"id": "fern_leaf", "name": "Лист папоротника", "description": "Свёрнутый узор из прохладной чащи.", "symbol": "leaf"},
+    {"id": "moon_moth", "name": "Лунный мотылёк", "description": "Знакомство, оставшееся в лесном альбоме.", "symbol": "sparkles"},
+    {"id": "river_stone", "name": "Речной камешек", "description": "Вода сделала его удивительно гладким.", "symbol": "gem"},
+    {"id": "winged_seed", "name": "Крылатое семечко", "description": "До нашей поляны оно добралось по воздуху.", "symbol": "wind"}
+  ],
+  "routes": [
+    {"id": "first_path", "name": "Первый выход", "description": "Заглянуть за знакомый куст и принести первые материалы.", "seconds": 60, "houseLevel": 1, "once": true, "sparks": 12, "wood": 8, "stone": 4, "finds": ["acorn"]},
+    {"id": "forest_path", "name": "Тропа у дома", "description": "Тихая прогулка за ветками и лесными находками.", "seconds": 300, "houseLevel": 1, "once": false, "sparks": 6, "wood": 6, "stone": 2, "finds": ["feather", "fern_leaf", "winged_seed"]},
+    {"id": "brook_path", "name": "К ручью", "description": "Вода, гладкие камни и новые жители леса.", "seconds": 1800, "houseLevel": 2, "once": false, "sparks": 14, "wood": 8, "stone": 8, "finds": ["river_stone", "moon_moth"]}
+  ]
+}

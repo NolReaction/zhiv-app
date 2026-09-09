@@ -88,6 +88,18 @@ class MonitoringServiceTest {
     }
 
     @Test
+    fun `latency and throttling alerts are recognized without extending metric history`() {
+        val response=json("""{"status":"success","data":{"alerts":[
+          {"labels":{"alertname":"ZhivRateLimited"},"state":"firing"},
+          {"labels":{"alertname":"ZhivSlowApi"},"state":"pending"}
+        ]}}""")
+        val alerts=parseMonitoringAlerts(response)
+        assertEquals(2,alerts.size)
+        assertTrue(alerts.all { it.severity=="warning" })
+        assertFalse(43200 in MONITORING_RANGES)
+    }
+
+    @Test
     fun `snapshot uses fixed bounded queries and caches repeated reads`() = runBlocking {
         val requests = Collections.synchronizedList(mutableListOf<URI>())
         val service = MonitoringService("http://prometheus:9090", clock, MonitoringTransport { uri ->

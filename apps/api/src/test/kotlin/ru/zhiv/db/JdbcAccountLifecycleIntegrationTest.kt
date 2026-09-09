@@ -6,6 +6,8 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import kotlinx.serialization.encodeToString
+import ru.zhiv.world.*
 import ru.zhiv.installZhivApi
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.Test
@@ -410,6 +412,40 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("0",scalar("SELECT count(*) FROM game_items WHERE user_id=?",b.id))
         prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM game_items WHERE user_id IN (?,?)",a.id,b.id))
+    }
+
+    @Test fun `world merge retains trips possessions and colliding ledger keys then deletion clears data`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash;val world=JdbcWorldRepository(source)
+        world.snapshot(a.session);world.snapshot(b.session)
+        val finds=WorldRules.catalog.finds.map { it.id }
+        execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=20 WHERE user_id=?",
+            worldJson.encodeToString(WorldState(resources=WorldResources(20,8,4),collection=finds.take(3),equipment=WorldEquipment(neck="amber_scarf"))),a.id)
+        execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=50 WHERE user_id=?",
+            worldJson.encodeToString(WorldState(resources=WorldResources(50,20,10),houseLevel=2,workshop=true,collection=finds.drop(3))),b.id)
+        val sharedKey=UUID.randomUUID().toString()
+        suspend fun upgrade(account: Account) {
+            val snapshot=world.snapshot(account.session)
+            world.command(account.session,WorldCommand(sharedKey,snapshot.ownerPublicId,snapshot.revision,"upgrade_house"))
+        }
+        suspend fun travel(account: Account): WorldJourney {
+            val snapshot=world.snapshot(account.session)
+            return world.command(account.session,WorldCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"start_journey","first_path")).snapshot.state.journeys.single()
+        }
+        upgrade(a);upgrade(b);val tripA=travel(a)
+        val stale=readyMerge(a,b,browser);val tripB=travel(b)
+        assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,stale) }.code)
+        val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
+        val merged=JdbcWorldRepository(source).snapshot(a.session)
+        assertEquals(WorldResources(25,4,4),merged.state.resources);assertEquals(3,merged.state.houseLevel);assertTrue(merged.state.workshop)
+        assertEquals("amber_scarf",merged.state.equipment.neck);assertEquals(finds.toSet(),merged.state.collection.toSet())
+        assertTrue("explorer_cap" in merged.state.inventory)
+        assertEquals(setOf(tripA.id,tripB.id),merged.state.journeys.map { it.id }.toSet());assertEquals(60,merged.dailySparksEarned)
+        assertEquals("2",scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND kind='upgrade_house'",a.id))
+        auth.confirmMerge(a.session,browser,key);assertEquals(merged.state,world.snapshot(a.session).state)
+        for(table in listOf("world_profiles","world_commands","world_ledger")) assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id=?",b.id))
+        prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
+        for(table in listOf("world_profiles","world_commands","world_ledger")) assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id IN (?,?)",a.id,b.id))
+        assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { world.snapshot(a.session) }.code)
     }
 
 }

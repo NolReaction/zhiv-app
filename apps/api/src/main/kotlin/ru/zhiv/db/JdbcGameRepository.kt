@@ -75,11 +75,16 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         progress(c, actor, instant)
     }
     private data class PlaySession(
+        val eventTokens: Double, val eventUpdated: OffsetDateTime?,
+        val created: OffsetDateTime, val closed: OffsetDateTime?, val tapTimes: List<Long>?, val rejectionCode: String?,
         val id: UUID, val authSession: UUID, val month: LocalDate, val expires: OffsetDateTime,
         val sequence: Long, val taps: Int, val accepted: Int, val lastRunId: UUID?,
         val lastBatch: OffsetDateTime?, val runId: UUID?, val runUpdatedAt: OffsetDateTime?, val runTaps: Long,
     )
     private fun sessionRow(r: ResultSet) = PlaySession(
+        r.getDouble("event_tokens"), r.getObject("event_updated_at", OffsetDateTime::class.java),
+        r.getObject("created_at", OffsetDateTime::class.java), r.getObject("closed_at", OffsetDateTime::class.java),
+        (r.getArray("last_tap_times")?.array as? Array<*>)?.map { (it as Number).toLong() }, r.getString("last_rejection_code"),
         r.getObject("id", UUID::class.java), r.getObject("auth_session_id", UUID::class.java),
         r.getObject("month", LocalDate::class.java), r.getObject("expires_at", OffsetDateTime::class.java),
         r.getLong("last_sequence"), r.getInt("last_tap_count"), r.getInt("last_accepted"),
@@ -94,13 +99,17 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         val existing = c.one("SELECT * FROM game_sessions WHERE user_id=? AND request_id=?", actor.id, requestId, map = ::sessionRow)
         if (existing != null) {
             if (existing.authSession != actor.authSessionId) fail("GAME_SESSION_CONFLICT", "Запрос уже использован в другом сеансе")
-            if (!existing.expires.isAfter(instant)) fail("GAME_SESSION_EXPIRED", "Начните новую игровую сессию")
-            return@tx GameSessionResponse(existing.id.toString(), existing.sequence + 1, existing.expires.toInstant().toString(), progress(c, actor, instant))
+            if (instant.isAfter(existing.expires.plusDays(2))) fail("GAME_QUEUE_EXPIRED", "Срок подтверждения этой очереди истёк", 410)
+            return@tx GameSessionResponse(existing.id.toString(), existing.sequence + 1, existing.expires.toInstant().toString(), progress(c, actor, instant), existing.created.toInstant().toString(), existing.closed?.toInstant()?.toString())
         }
-        // Receipts remain available for a day after expiry. Old sessions never accept new batches.
-        c.update("DELETE FROM game_sessions WHERE user_id=? AND expires_at < ?::timestamptz - interval '1 day'", actor.id, instant)
-        val active = c.one("SELECT count(*) FROM game_sessions WHERE user_id=? AND expires_at>?", actor.id, instant) { it.getInt(1) }!!
-        if (active >= 8) fail("GAME_SESSION_LIMIT", "Слишком много игровых окон. Закройте лишние и попробуйте позже.", 429)
+        // Retain receipts for two days; timed queues may deliver taps recorded during the permit.
+        c.update("DELETE FROM game_sessions WHERE user_id=? AND expires_at < ?::timestamptz - interval '2 days'", actor.id, instant)
+        val writer = c.one("SELECT writer_session_id,writer_until FROM game_profiles WHERE user_id=?", actor.id) {
+            it.getObject(1, UUID::class.java) to it.getObject(2, OffsetDateTime::class.java)
+        }!!
+        if (writer.first != null && writer.second?.isAfter(instant) == true) fail("GAME_ACTIVE_ELSEWHERE", "Игра активна в другом окне или на другом устройстве")
+        // Only a real takeover closes the old permit. Delayed pre-takeover taps remain deliverable.
+        writer.first?.let { c.update("UPDATE game_sessions SET closed_at=COALESCE(closed_at,?) WHERE id=?", instant, it) }
         val scoreMonth = month(instant)
         val endOfMonth = scoreMonth.plusMonths(1).atStartOfDay().atOffset(ZoneOffset.UTC)
         val expires = minOf(instant.plusMinutes(15), endOfMonth)
@@ -108,28 +117,63 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             INSERT INTO game_sessions(user_id,auth_session_id,request_id,month,created_at,expires_at)
             VALUES (?,?,?,?,?,?) RETURNING id
         """.trimIndent(), actor.id, actor.authSessionId, requestId, scoreMonth, instant, expires) { it.getObject(1, UUID::class.java) }!!
-        GameSessionResponse(id.toString(), 1, expires.toInstant().toString(), progress(c, actor, instant))
+        c.update("UPDATE game_profiles SET writer_session_id=?,writer_until=? WHERE user_id=?", id, minOf(instant.plusSeconds(30), expires), actor.id)
+        GameSessionResponse(id.toString(), 1, expires.toInstant().toString(), progress(c, actor, instant), instant.toInstant().toString())
     }
-    override suspend fun submitBatch(sessionHash: ByteArray, sessionId: UUID, sequence: Long, tapCount: Int, runId: UUID): GameBatchResponse = tx { c ->
+    override suspend fun submitBatch(sessionHash: ByteArray, sessionId: UUID, sequence: Long, tapCount: Int, runId: UUID, tapTimes: List<Long>?): GameBatchResponse = tx { c ->
         if (sequence !in 1L until MAX_SAFE_INTEGER || tapCount !in 1..MAX_BATCH_TAPS) fail("INVALID_GAME_BATCH", "Некорректный игровой пакет", 400)
+        if (tapTimes != null && (tapTimes.size != tapCount || tapTimes.any { it !in 0L..253_402_300_799_000L } || tapTimes.zipWithNext().any { it.first > it.second })) fail("INVALID_GAME_BATCH", "Некорректное время нажатий", 400)
         val actor = lockActor(c, sessionHash)
         val game = c.one("SELECT * FROM game_sessions WHERE id=? AND user_id=? FOR UPDATE", sessionId, actor.id, map = ::sessionRow)
             ?: fail("GAME_SESSION_GONE", "Игровая сессия больше недоступна", 410)
         if (game.authSession != actor.authSessionId) fail("GAME_SESSION_CONFLICT", "Игровая сессия открыта на другом устройстве")
         val instant = now(c)
         if (sequence == game.sequence) {
-            if (tapCount != game.taps || runId != game.lastRunId) fail("GAME_SEQUENCE_CONFLICT", "Игровой пакет уже использован")
-            return@tx GameBatchResponse(sessionId.toString(), sequence, game.accepted, tapCount - game.accepted, true, progress(c, actor, instant), if (game.runId == runId) game.runTaps else 0L)
+            if (tapCount != game.taps || runId != game.lastRunId || tapTimes != game.tapTimes) fail("GAME_SEQUENCE_CONFLICT", "Игровой пакет уже использован")
+            return@tx GameBatchResponse(sessionId.toString(), sequence, game.accepted, tapCount - game.accepted, true, progress(c, actor, instant), if (game.runId == runId) game.runTaps else 0L, game.rejectionCode)
         }
         if (sequence != game.sequence + 1) fail("GAME_SEQUENCE_CONFLICT", "Нарушен порядок игровых пакетов")
-        if (!game.expires.isAfter(instant) || game.month != month(instant)) fail("GAME_SESSION_EXPIRED", "Начните новую игровую сессию")
+        if (tapTimes == null && (!game.expires.isAfter(instant) || game.month != month(instant))) fail("GAME_SESSION_EXPIRED", "Начните новую игровую сессию")
+        if (instant.isAfter(game.expires.plusDays(2))) fail("GAME_QUEUE_EXPIRED", "Срок подтверждения этой очереди истёк", 410)
+        if (tapTimes == null && game.closed != null) fail("GAME_ACTIVE_ELSEWHERE", "Игра активна на другом устройстве")
+        val writer = c.one("SELECT writer_session_id,writer_until FROM game_profiles WHERE user_id=?", actor.id) {
+            it.getObject(1, UUID::class.java) to it.getObject(2, OffsetDateTime::class.java)
+        }!!
+        if (game.closed == null && writer.first != sessionId) {
+            if (writer.first != null) fail("GAME_ACTIVE_ELSEWHERE", "Игра активна на другом устройстве")
+            // First live write after an upgrade elects one old session, under the user lock.
+            c.update("UPDATE game_sessions SET closed_at=COALESCE(closed_at,?) WHERE user_id=? AND id<>?", instant, actor.id, sessionId)
+            c.update("UPDATE game_profiles SET writer_session_id=?,writer_until=? WHERE user_id=?", sessionId, minOf(instant.plusSeconds(30),game.expires), actor.id)
+        }
+        val cutoff = minOf(game.expires, game.closed ?: game.expires).toInstant().toEpochMilli()
+        val nowMs = instant.toInstant().toEpochMilli()
+        val createdMs = game.created.toInstant().toEpochMilli() + if (game.created.nano % 1_000_000 == 0) 0 else 1
+        val earliest = game.eventUpdated?.toInstant()?.toEpochMilli() ?: createdMs
+        var eventTokens = game.eventTokens
+        var eventAt = earliest
+        val validTimes = tapTimes?.map { if (game.sequence == 0L && it >= createdMs - 8_000) maxOf(createdMs, it) else it }
+            ?.filter { it >= earliest && it < cutoff && it <= nowMs + 2_000 && nowMs - it <= 86_400_000 }
+        // A closed permit cannot farm the same past instant with fresh sequences.
+        val eligible = validTimes?.filter { at ->
+            eventTokens = minOf(BUCKET_CAPACITY, eventTokens + (at - eventAt).coerceAtLeast(0) * TAPS_PER_SECOND / 1000)
+            eventAt = maxOf(eventAt, at)
+            if (eventTokens >= 1) { eventTokens -= 1; true } else false
+        }
+        val eligibleCount = eligible?.size ?: tapCount
+        val eventStart = eligible?.firstOrNull()?.let { java.time.Instant.ofEpochMilli(it).atOffset(ZoneOffset.UTC) } ?: instant
+        val eventEnd = eligible?.lastOrNull()?.let { java.time.Instant.ofEpochMilli(it).atOffset(ZoneOffset.UTC) } ?: instant
+        val rejectionCode = if (validTimes != null && validTimes.size < tapCount) "GAME_PERMIT_CLOSED" else if (eligibleCount < tapCount) "GAME_TAP_RATE" else null
+        if (game.closed == null && game.expires.isAfter(instant)) {
+            c.update("UPDATE game_profiles SET writer_until=? WHERE user_id=? AND writer_session_id=?", minOf(instant.plusSeconds(30), game.expires), actor.id, sessionId)
+        }
         data class Budget(val tokens: Double, val updated: OffsetDateTime, val lifetime: Long)
         val bucket = c.one("SELECT bucket_tokens,bucket_updated_at,lifetime_taps FROM game_profiles WHERE user_id=? FOR UPDATE", actor.id) {
             Budget(it.getDouble(1), it.getObject(2, OffsetDateTime::class.java), it.getLong(3))
         } ?: error("Game session without profile")
         val elapsed = Duration.between(bucket.updated, instant).toNanos().coerceAtLeast(0).toDouble() / 1_000_000_000.0
         val available = minOf(BUCKET_CAPACITY, bucket.tokens + elapsed * TAPS_PER_SECOND)
-        val accepted = minOf(tapCount, floor(available).toInt(), (MAX_SAFE_INTEGER - bucket.lifetime).coerceAtMost(MAX_BATCH_TAPS.toLong()).toInt())
+        if (tapTimes != null && eligibleCount > floor(available).toInt()) fail("GAME_PACING", "Очередь сохранена. Продолжаем отправку через несколько секунд", 429)
+        val accepted = minOf(eligibleCount, floor(available).toInt(), (MAX_SAFE_INTEGER - bucket.lifetime).coerceAtMost(MAX_BATCH_TAPS.toLong()).toInt())
         // Transport-session renewal must not split an uninterrupted run. Inherit at
         // most one expired predecessor from this authenticated device, never an active
         // parallel session. The user lock serializes this one-use continuation claim.
@@ -138,27 +182,40 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
                 AND expires_at<=? AND run_id=? AND NOT continuation_claimed
                 AND run_updated_at BETWEEN ?::timestamptz - interval '12 seconds' AND ?
             ORDER BY run_updated_at DESC,expires_at DESC,id DESC LIMIT 1 FOR UPDATE
-        """.trimIndent(), actor.id, actor.authSessionId, sessionId, instant, runId, instant, instant, map = ::sessionRow) else null
+        """.trimIndent(), actor.id, actor.authSessionId, sessionId, instant, runId, eventStart, eventStart, map = ::sessionRow) else null
         val priorRun = predecessor ?: game
-        val continuing = gameRunContinues(priorRun.runId, runId, priorRun.runUpdatedAt, instant)
-        val runTaps = if (accepted == 0) game.runTaps else if (continuing) minOf(MAX_SAFE_INTEGER, priorRun.runTaps + accepted) else accepted.toLong()
+        val continuing = gameRunContinues(priorRun.runId, runId, priorRun.runUpdatedAt, eventStart)
+        var runTaps = if (accepted == 0) game.runTaps else if (continuing) minOf(MAX_SAFE_INTEGER, priorRun.runTaps + accepted) else accepted.toLong()
+        var bestRun = runTaps
+        if (eligible != null && accepted > 0) {
+            runTaps = if (continuing) priorRun.runTaps else 0L
+            var previousAt = if (continuing) priorRun.runUpdatedAt?.toInstant()?.toEpochMilli() else null
+            bestRun = runTaps
+            for (at in eligible.take(accepted)) {
+                if (previousAt != null && at - previousAt > 12_000) runTaps = 0L
+                runTaps = minOf(MAX_SAFE_INTEGER, runTaps + 1)
+                bestRun = maxOf(bestRun, runTaps)
+                previousAt = at
+            }
+        }
         if (predecessor != null) c.update("UPDATE game_sessions SET continuation_claimed=true WHERE id=?", predecessor.id)
         c.update("""
             UPDATE game_profiles SET lifetime_taps=lifetime_taps+?,best_series=GREATEST(best_series,?),
                 bucket_tokens=?,bucket_updated_at=GREATEST(bucket_updated_at,?),updated_at=? WHERE user_id=?
-        """.trimIndent(), accepted, runTaps, available - accepted, instant, instant, actor.id)
+        """.trimIndent(), accepted, bestRun, available - accepted, instant, instant, actor.id)
         if (bucket.lifetime < 1000 && bucket.lifetime + accepted >= 1000) {
             recordGameAchievement(c, actor.id, "thousand_taps", instant)
         }
-        if (accepted > 0 && runTaps >= 10000) recordGameAchievement(c, actor.id, "ten_thousand_series", instant)
+        if (accepted > 0 && bestRun >= 10000) recordGameAchievement(c, actor.id, "ten_thousand_series", instant)
         if (accepted > 0) c.update("""
             INSERT INTO game_monthly_scores(user_id,month,taps,updated_at) VALUES (?,?,?,?)
             ON CONFLICT(user_id,month) DO UPDATE SET taps=LEAST(9007199254740991,game_monthly_scores.taps+EXCLUDED.taps),updated_at=EXCLUDED.updated_at
         """.trimIndent(), actor.id, game.month, accepted, instant)
         c.update("""
-            UPDATE game_sessions SET last_sequence=?,last_tap_count=?,last_accepted=?,last_run_id=?,last_batch_at=?,run_taps=?,run_id=?,run_updated_at=? WHERE id=?
-        """.trimIndent(), sequence, tapCount, accepted, runId, instant, runTaps, if (accepted > 0) runId else game.runId, if (accepted > 0) instant else game.runUpdatedAt, sessionId)
-        GameBatchResponse(sessionId.toString(), sequence, accepted, tapCount - accepted, false, progress(c, actor, instant), if (accepted > 0 || game.runId == runId) runTaps else 0L)
+            UPDATE game_sessions SET last_sequence=?,last_tap_count=?,last_accepted=?,last_run_id=?,last_batch_at=?,run_taps=?,run_id=?,run_updated_at=?,last_tap_times=?,last_rejection_code=?,event_tokens=?,event_updated_at=? WHERE id=?
+        """.trimIndent(), sequence, tapCount, accepted, runId, instant, runTaps, if (accepted > 0) runId else game.runId, if (accepted > 0) eventEnd else game.runUpdatedAt, tapTimes?.let { c.createArrayOf("bigint", it.toTypedArray()) }, rejectionCode, eventTokens, if (validTimes?.isNotEmpty() == true) java.time.Instant.ofEpochMilli(eventAt).atOffset(ZoneOffset.UTC) else game.eventUpdated, sessionId)
+        creditWorldTaps(c, actor.id, "tap:$sessionId:$sequence", accepted, instant)
+        GameBatchResponse(sessionId.toString(), sequence, accepted, tapCount - accepted, false, progress(c, actor, instant), if (accepted > 0 || game.runId == runId) runTaps else 0L, rejectionCode)
     }
     override suspend fun setVisibility(sessionHash: ByteArray, visible: Boolean, expectedVersion: Long, ownerPublicId: String): GameProgress = tx { c ->
         if (expectedVersion !in 0L until MAX_SAFE_INTEGER) fail("INVALID_GAME_VISIBILITY", "Некорректная версия настроек", 400)

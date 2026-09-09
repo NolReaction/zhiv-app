@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { NO_STORE_HEADERS } from "@/lib/dev-api-route";
-import { getDevCheckInCalendar, SESSION_COOKIE } from "@/lib/dev-api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { NO_STORE_HEADERS } from "@/lib/dev/api-route";
+import { getDevCheckInCalendar, SESSION_COOKIE } from "@/lib/dev/api-store";
 import { isCalendarMonth } from "@/lib/check-in-calendar";
 
 export const dynamic = "force-dynamic";

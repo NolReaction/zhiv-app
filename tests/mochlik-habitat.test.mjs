@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
-const { createHabitat, HOME, FRONT, INACTIVITY_SECONDS } = await vite.ssrLoadModule("/lib/mochlik/habitat.ts");
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const { createHabitat, HOME, FRONT, INACTIVITY_SECONDS } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 after(() => vite.close());
 const advance = (world, seconds) => { for (let i = 0; i < Math.ceil(seconds / .025); i++) world.update(.025); };
 function until(world, predicate, seconds = 150) {
@@ -130,11 +130,11 @@ test("reduced motion supports explicit still wake and object changes", () => {
 });
 
 test("2D rendering and pet controls never write to accounts or record game taps", async () => {
-  for (const path of ["lib/mochlik/habitat.ts", "lib/mochlik/scene.ts", "components/mochlik-terrarium.tsx"]) {
+  for (const path of ["features/mochlik/habitat.ts", "features/mochlik/scene.ts", "features/mochlik/mochlik-terrarium.tsx"]) {
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     assert.doesNotMatch(source, /registerTap\(|recordGameTap\(|createCheckIn\(|fetch\(|from ["']three["']|WebGLRenderer/);
   }
-  const app = await readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8");
+  const app = await readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8");
   const handler = app.slice(app.indexOf("function handleGameAreaPointerDown"), app.indexOf("function handlePrimaryPointerDown"));
   assert.ok(handler.indexOf("data-pet-interaction") < handler.indexOf("registerTap("));
   assert.match(handler, /data-pet-interaction/);
@@ -205,7 +205,7 @@ test("a wake request during the last part of eating consumes just one mushroom",
 });
 
 test("foliage envelopes meet continuously and jump direction is preserved", async () => {
-  const { pixelFrame } = await vite.ssrLoadModule("/lib/mochlik/pixel-frame.ts");
+  const { pixelFrame } = await vite.ssrLoadModule("/features/mochlik/pixel-frame.ts");
   const base = createHabitat().state;
   const at = (activity, progress) => pixelFrame({ ...base, activity, progress, direction: "back", layer: "bush" });
   for (const [left, lp, right, rp] of [["jump", 1, "hide", 0], ["hide", 1, "peek", 0], ["peek", 1, "hide", 0], ["hide", 1, "emerge", 0]]) {
@@ -239,7 +239,7 @@ test("enabling reduced motion during a visit settles it and still allows idle sl
 
 
 test("bush exits never displace the pet below its ground anchor", async () => {
-  const { pixelFrame } = await vite.ssrLoadModule("/lib/mochlik/pixel-frame.ts");
+  const { pixelFrame } = await vite.ssrLoadModule("/features/mochlik/pixel-frame.ts");
   const world = createHabitat(); until(world, s => s.activity === "emerge");
   const startY = world.state.position.y;
   while (world.state.activity === "emerge") {
@@ -251,8 +251,8 @@ test("bush exits never displace the pet below its ground anchor", async () => {
 });
 
 test("feeding reaches, lifts the same mushroom, bites three times, then swallows", async () => {
-  const { feedingFrame, CONSUMED_PROGRESS } = await vite.ssrLoadModule("/lib/mochlik/feeding.ts");
-  const { pixelFrame } = await vite.ssrLoadModule("/lib/mochlik/pixel-frame.ts");
+  const { feedingFrame, CONSUMED_PROGRESS } = await vite.ssrLoadModule("/features/mochlik/feeding.ts");
+  const { pixelFrame } = await vite.ssrLoadModule("/features/mochlik/pixel-frame.ts");
   const world = createHabitat(); world.elapse(80); world.invite("mushrooms");
   until(world, s => s.activity === "eat");
   const phases = new Set(), poses = new Set(), bites = new Set();
@@ -271,7 +271,7 @@ test("feeding reaches, lifts the same mushroom, bites three times, then swallows
 });
 
 test("day and dusk use the profile timezone including DST and midnight", async () => {
-  const { habitatLighting } = await vite.ssrLoadModule("/lib/mochlik/lighting.ts");
+  const { habitatLighting } = await vite.ssrLoadModule("/features/mochlik/lighting.ts");
   const at = (time, zone) => habitatLighting(Date.parse(time), zone);
   assert.deepEqual(at("2026-09-08T15:59:00Z", "Europe/Moscow"), { dusk: false, lampOn: false });
   assert.deepEqual(at("2026-09-08T16:00:00Z", "Europe/Moscow"), { dusk: true, lampOn: true });
@@ -341,7 +341,7 @@ test("deep waking and insect play work with still scenes and batched rapid taps"
 });
 
 test("presence handles the five-minute boundary, invalid clocks, corruption and denied storage", async () => {
-  const { decodePresence, readPresence, writePresence } = await vite.ssrLoadModule("/lib/mochlik/presence.ts");
+  const { decodePresence, readPresence, writePresence } = await vite.ssrLoadModule("/features/mochlik/presence.ts");
   const now = 1_000_000;
   const saved = seconds => JSON.stringify({ seenAt: now - seconds * 1000, inactiveFor: 0, resting: false, deepSleep: false });
   assert.equal(decodePresence(saved(299), now).deepSleep, false);

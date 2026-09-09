@@ -1,5 +1,5 @@
-import { getDevGameAchievements } from "@/lib/dev-game-store";
-import { devGameContext, devGameResponse, gameRequestError } from "@/lib/dev-game-route";
+import { getDevGameAchievements } from "@/lib/dev/game-store";
+import { devGameContext, devGameResponse, gameRequestError } from "@/lib/dev/game-route";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {

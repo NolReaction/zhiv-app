@@ -1,8 +1,8 @@
 
 import {NextResponse} from "next/server";
-import {guardDevApi} from "@/lib/dev-api-guard";
-import {NO_STORE_HEADERS} from "@/lib/dev-api-route";
-import {SESSION_COOKIE,redeemDevRecoveryCode} from "@/lib/dev-api-store";
+import {guardDevApi} from "@/lib/dev/api-guard";
+import {NO_STORE_HEADERS} from "@/lib/dev/api-route";
+import {SESSION_COOKIE,redeemDevRecoveryCode} from "@/lib/dev/api-store";
 import {normalizeRecoveryCode} from "@/lib/recovery-code";
 import {isCapabilityToken} from "@/lib/capability-token";
 export const dynamic="force-dynamic";

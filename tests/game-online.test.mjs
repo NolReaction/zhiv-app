@@ -6,9 +6,9 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const identities = await vite.ssrLoadModule("/lib/dev-api-store.ts");
-const game = await vite.ssrLoadModule("/lib/dev-game-store.ts");
-const validation = await vite.ssrLoadModule("/lib/dev-game-validation.ts");
+const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const game = await vite.ssrLoadModule("/lib/dev/game-store.ts");
+const validation = await vite.ssrLoadModule("/lib/dev/game-validation.ts");
 beforeEach(() => { identities.resetDevStoreForTests(); game.resetDevGameStoreForTests(); });
 after(() => vite.close());
 
@@ -46,19 +46,17 @@ test("game progress is shared by an account while game sessions are tied to thei
   assert.equal(game.updateDevGameVisibility(owner.token, stranger.me.user.publicId, true, 0).code, "GAME_OWNER_CHANGED");
 });
 
-test("multiple sessions share one tap allowance and new sessions cannot refill it", context => {
+test("only one device can acquire the active writer and takeover closes the old live session", context => {
   context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T10:00:00Z") });
   const owner = player();
   const first = session(owner);
-  assert.equal(batch(owner, first, 60).value.acceptedTaps, 60);
+  const sent = batch(owner, first, 60);
+  assert.equal(game.createDevGameSession(owner.token, owner.me.user.publicId, crypto.randomUUID()).code, "GAME_ACTIVE_ELSEWHERE");
+  context.mock.timers.setTime(Date.now() + 30_001);
   const second = session(owner);
-  assert.equal(batch(owner, second, 60).value.acceptedTaps, 0);
-  context.mock.timers.setTime(Date.now() + 1_000);
-  const sent = batch(owner, second, 60, 2).value;
-  assert.equal(sent.acceptedTaps, 30);
-  assert.equal(sent.rejectedTaps, 30);
-  assert.equal(sent.progress.lifetimeTaps, 90);
-  assert.equal(sent.progress.monthlyTaps, 90);
+  assert.equal(batch(owner, second, 60).value.acceptedTaps, 60);
+  assert.equal(game.submitDevGameBatch(owner.token, { ...sent.request, sequence: 2 }).code, "GAME_ACTIVE_ELSEWHERE");
+  assert.equal(ok(game.submitDevGameBatch(owner.token, sent.request)).replayed, true);
 });
 
 test("batch retries return the accepted receipt once, including after expiry, and compare the payload", context => {
@@ -94,10 +92,9 @@ test("session creation is idempotent, capped per account, and expires without re
   assert.equal(session(owner, key).sessionId, active.sessionId);
   const secondDevice = identities.createDevIdentity("Ignored", owner.bootstrapKey);
   assert.equal(game.createDevGameSession(secondDevice.token, owner.me.user.publicId, key).code, "GAME_SESSION_CONFLICT");
-  for (let index = 0; index < 7; index++) session(owner);
-  assert.equal(game.createDevGameSession(owner.token, owner.me.user.publicId, crypto.randomUUID()).code, "GAME_SESSION_LIMIT");
+  assert.equal(game.createDevGameSession(owner.token, owner.me.user.publicId, crypto.randomUUID()).code, "GAME_ACTIVE_ELSEWHERE");
   context.mock.timers.setTime(Date.parse(active.expiresAt));
-  assert.equal(game.createDevGameSession(owner.token, owner.me.user.publicId, key).code, "GAME_SESSION_EXPIRED");
+  assert.equal(ok(game.createDevGameSession(owner.token, owner.me.user.publicId, key)).expiresAt, active.expiresAt);
   assert.notEqual(session(owner).sessionId, active.sessionId);
 });
 
@@ -111,6 +108,7 @@ test("best series follows a server-bounded run and cannot combine different sess
   assert.equal(batch(owner, active, 20, 2, run).value.progress.bestSeries, 40);
   context.mock.timers.setTime(Date.now() + 12_001);
   assert.equal(batch(owner, active, 10, 3, run).value.progress.bestSeries, 40);
+  context.mock.timers.setTime(Date.now() + 30_001);
   const second = session(owner);
   assert.equal(batch(owner, second, 35, 1, run).value.progress.bestSeries, 40);
   assert.equal(ok(game.getDevGameProgress(owner.token)).lifetimeTaps, 85);
@@ -212,11 +210,8 @@ test("an uninterrupted run survives session renewal and its expired predecessor 
   const inherited = batch(owner, renewed, 5, 1, run).value;
   assert.equal(inherited.progress.bestSeries, 455);
   assert.equal(inherited.progress.lifetimeTaps, 455);
-  const parallel = session(owner);
-  batch(owner, parallel, 5, 1, run);
+  assert.equal(game.createDevGameSession(owner.token, owner.me.user.publicId, crypto.randomUUID()).code, "GAME_ACTIVE_ELSEWHERE");
   context.mock.timers.setTime(Date.now() + 1_000);
-  // A second successor starts its own run instead of reusing the already-claimed 450 taps.
-  assert.equal(batch(owner, parallel, 6, 2, run).value.progress.bestSeries, 455);
   assert.equal(batch(owner, renewed, 5, 2, run).value.progress.bestSeries, 460);
 });
 
@@ -247,7 +242,7 @@ test("renewal cannot inherit an idle run or a run from another login session", c
   batch(owner, first, 20, 1, run);
   context.mock.timers.setTime(Date.parse(first.expiresAt));
   assert.equal(batch(secondDevice, session(secondDevice), 15, 1, run).value.progress.bestSeries, 20);
-  context.mock.timers.setTime(Date.now() + 12_001);
+  context.mock.timers.setTime(Date.now() + 30_001);
   assert.equal(batch(owner, session(owner), 15, 1, run).value.progress.bestSeries, 20);
 });
 
@@ -260,9 +255,7 @@ test("a rejected batch does not claim the predecessor before a successor actuall
   context.mock.timers.setTime(Date.parse(first.expiresAt));
   const waiting = session(owner);
   assert.equal(batch(owner, waiting, 1, 1, run).value.acceptedTaps, 0);
-  const successor = session(owner);
-  context.mock.timers.setTime(Date.now() + 100);
-  assert.equal(batch(owner, successor, 1, 1, run).value.progress.bestSeries, 61);
+  assert.equal(game.createDevGameSession(owner.token, owner.me.user.publicId, crypto.randomUUID()).code, "GAME_ACTIVE_ELSEWHERE");
   context.mock.timers.setTime(Date.now() + 100);
   assert.equal(batch(owner, waiting, 1, 2, run).value.progress.bestSeries, 61);
 });
@@ -319,7 +312,7 @@ test("purged receipts cannot be mistaken for expired but uncommitted batches", c
   const owner = player();
   const active = session(owner);
   const sent = batch(owner, active, 9);
-  context.mock.timers.setTime(Date.parse(active.expiresAt) + 86_400_001);
+  context.mock.timers.setTime(Date.parse(active.expiresAt) + 172_800_001);
   session(owner); // Another active device/session triggers the retention cleanup.
   assert.equal(game.submitDevGameBatch(owner.token, sent.request).code, "GAME_SESSION_GONE");
   assert.equal(ok(game.getDevGameProgress(owner.token)).lifetimeTaps, 9);
@@ -346,4 +339,53 @@ test("ranking metric rejects unknown or repeated parameters", () => {
   assert.equal(validation.parseDevGameMetric(new URLSearchParams()), "monthly_taps");
   assert.equal(validation.parseDevGameMetric(new URLSearchParams("metric=best_series")), "best_series");
   for (const query of ["metric=all", "metric=", "metric=best_series&metric=best_series"]) assert.equal(validation.parseDevGameMetric(new URLSearchParams(query)), null);
+});
+
+test("timed batches preserve delayed runs, split at takeover and cannot repeatedly farm the past", context => {
+  const start = Date.parse("2026-09-07T10:00:00Z");
+  context.mock.timers.enable({ apis: ["Date"], now: start });
+  const owner = player(), secondDevice = identities.createDevIdentity("Ignored", owner.bootstrapKey);
+  const first = session(owner), runId = crypto.randomUUID();
+  const payload = { sessionId: first.sessionId, sequence: 1, runId, tapCount: 1, tapTimes: [start] };
+  assert.equal(ok(game.submitDevGameBatch(owner.token, payload)).runTaps, 1);
+  assert.equal(game.createDevGameSession(secondDevice.token, owner.me.user.publicId, crypto.randomUUID()).code, "GAME_ACTIVE_ELSEWHERE");
+  context.mock.timers.setTime(start + 31_000);
+  const second = session(secondDevice);
+  assert.equal(batch(secondDevice, second, 1).value.acceptedTaps, 1);
+  const delayed = { ...payload, sequence: 2, tapCount: 3, tapTimes: [start + 1000, start + 2000, start + 32000] };
+  const result = ok(game.submitDevGameBatch(owner.token, delayed));
+  assert.equal(result.acceptedTaps, 2); assert.equal(result.rejectedTaps, 1); assert.equal(result.runTaps, 3);
+  assert.equal(result.rejectionCode, "GAME_PERMIT_CLOSED");
+  assert.equal(ok(game.submitDevGameBatch(owner.token, delayed)).replayed, true);
+  // Delivery-time refill does not replenish the old permit's event-time budget.
+  let accepted = 0;
+  for (let sequence = 3; sequence < 10; sequence++) {
+    context.mock.timers.setTime(Date.now() + 3000);
+    accepted += ok(game.submitDevGameBatch(owner.token, { ...payload, sequence, tapCount: 60, tapTimes: Array(60).fill(start + 2000) })).acceptedTaps;
+  }
+  assert.ok(accepted <= 60);
+});
+
+test("future timestamps cannot poison the next packet and an internal idle gap splits a timed run", context => {
+  const start = Date.parse("2026-09-07T10:00:00Z");
+  context.mock.timers.enable({ apis: ["Date"], now: start });
+  const owner = player(), active = session(owner), runId = crypto.randomUUID();
+  const payload = { sessionId: active.sessionId, sequence: 1, runId, tapCount: 1, tapTimes: [start + 60000] };
+  assert.equal(ok(game.submitDevGameBatch(owner.token, payload)).acceptedTaps, 0);
+  context.mock.timers.setTime(start + 20000);
+  const result = ok(game.submitDevGameBatch(owner.token, { ...payload, sequence: 2, tapCount: 4, tapTimes: [start, start + 1000, start + 19000, start + 20000] }));
+  assert.equal(result.acceptedTaps, 4); assert.equal(result.runTaps, 2); assert.equal(result.progress.bestSeries, 2);
+});
+
+test("temporary delivery budget exhaustion is a non-commit and the exact batch succeeds later", context => {
+  const start = Date.parse("2026-09-07T10:00:00Z");
+  context.mock.timers.enable({ apis: ["Date"], now: start });
+  const owner = player(), active = session(owner), runId = crypto.randomUUID();
+  context.mock.timers.setTime(start + 4000);
+  const payload = { sessionId: active.sessionId, sequence: 1, runId, tapCount: 60, tapTimes: Array(60).fill(start) };
+  ok(game.submitDevGameBatch(owner.token, payload));
+  const next = { ...payload, sequence: 2, tapTimes: Array(60).fill(start + 3000) };
+  assert.equal(game.submitDevGameBatch(owner.token, next).code, "GAME_PACING");
+  context.mock.timers.setTime(start + 6000);
+  assert.equal(ok(game.submitDevGameBatch(owner.token, next)).acceptedTaps, 60);
 });

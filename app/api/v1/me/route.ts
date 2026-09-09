@@ -4,13 +4,13 @@ import {
   getDevIdentity,
   SESSION_COOKIE,
   updateDevDisplayName,
-} from "@/lib/dev-api-store";
-import { guardDevApi } from "@/lib/dev-api-guard";
+} from "@/lib/dev/api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
 import {
   invalidIdempotencyResponse,
   NO_STORE_HEADERS,
   parseIdempotencyKey,
-} from "@/lib/dev-api-route";
+} from "@/lib/dev/api-route";
 import {
   isValidDisplayName,
   normalizeDisplayName,

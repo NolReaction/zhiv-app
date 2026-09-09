@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { getDevIdentity, SESSION_COOKIE } from "@/lib/dev-api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { getDevIdentity, SESSION_COOKIE } from "@/lib/dev/api-store";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {

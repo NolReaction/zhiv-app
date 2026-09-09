@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const api = await vite.ssrLoadModule("/lib/account-lifecycle.ts");
-const { AccountLifecycle } = await vite.ssrLoadModule("/components/account-lifecycle.tsx");
+const { AccountLifecycle } = await vite.ssrLoadModule("/features/account/account-lifecycle.tsx");
 after(() => vite.close());
 
 test("account proofs explicitly bind the action and profile role; they never request registration", async t => {

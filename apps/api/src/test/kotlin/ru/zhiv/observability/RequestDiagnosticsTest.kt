@@ -12,12 +12,15 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.server.application.install
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -45,6 +48,32 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RequestDiagnosticsTest {
+    @Test
+    fun `server incident persistence outlives the response without delaying it`() = testApplication {
+        val started = CompletableDeferred<Triple<String, String, Int>>()
+        val release = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        application {
+            install(RequestDiagnostics) {
+                persist = { call, code, status ->
+                    started.complete(Triple(call.requestId(), code, status))
+                    release.await()
+                    finished.complete(Unit)
+                }
+            }
+            routing { get("/test/persistence") { call.respond(HttpStatusCode.InternalServerError, "Unavailable") } }
+        }
+        try {
+            val response = withTimeout(5000) { client.get("/test/persistence") }
+            assertEquals(HttpStatusCode.InternalServerError, response.status)
+            val event = withTimeout(5000) { started.await() }
+            assertEquals(Triple(response.headers[REQUEST_ID_HEADER], "INTERNAL_ERROR", 500), event)
+            assertFalse(finished.isCompleted, "The response must not wait for database work")
+            release.complete(Unit)
+            withTimeout(5000) { finished.await() }
+        } finally { release.complete(Unit) }
+    }
+
     @Test
     fun `plain exceptions and explicit server errors both produce one correlated event`() = capture { logs ->
         val ids = mutableSetOf<String>()

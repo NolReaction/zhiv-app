@@ -72,7 +72,7 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
                 if (sessionId == null || runId == null || request.sequence !in 1L until 9_007_199_254_740_991L || request.tapCount !in 1..60) {
                     throw AuthFailure("INVALID_GAME_BATCH", "Некорректный игровой пакет", 400)
                 }
-                val receipt = repository.submitBatch(hash, sessionId, request.sequence, request.tapCount, runId)
+                val receipt = repository.submitBatch(hash, sessionId, request.sequence, request.tapCount, runId, request.tapTimes)
                 RuntimeMetrics.shared.recordGameBatch(receipt.acceptedTaps, receipt.rejectedTaps, receipt.replayed)
                 call.respond(receipt)
             }

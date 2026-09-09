@@ -16,6 +16,7 @@ class RuntimeMetrics {
     private data class ResponseKey(val method: String, val operation: String, val status: String)
     private val requests = LongAdder()
     private val errors = LongAdder()
+    private val throttled = LongAdder()
     private val responses = ConcurrentHashMap<ResponseKey, LongAdder>()
     private val durationSum = DoubleAdder()
     private val durationBuckets = BOUNDS.map { LongAdder() }
@@ -30,6 +31,7 @@ class RuntimeMetrics {
         responses.computeIfAbsent(key) { LongAdder() }.increment()
         requests.increment()
         if (status >= 500) errors.increment()
+        if (status == 429) throttled.increment()
         val seconds = elapsedNanos.coerceAtLeast(0).toDouble() / 1_000_000_000
         durationSum.add(seconds)
         BOUNDS.forEachIndexed { index, bound -> if (seconds <= bound) durationBuckets[index].increment() }
@@ -52,6 +54,7 @@ class RuntimeMetrics {
         append("# TYPE zhiv_http_requests_total counter\nzhiv_http_requests_total ${requests.sum()}\n")
         append("# HELP zhiv_http_errors_total Completed HTTP responses with 5xx status.\n")
         append("# TYPE zhiv_http_errors_total counter\nzhiv_http_errors_total ${errors.sum()}\n")
+        append("# TYPE zhiv_http_throttled_total counter\nzhiv_http_throttled_total ${throttled.sum()}\n")
         append("# TYPE zhiv_http_responses_total counter\n")
         responses.entries.sortedBy { "${it.key.operation}:${it.key.method}:${it.key.status}" }.forEach { (key, count) ->
             append("zhiv_http_responses_total{method=\"${key.method}\",operation=\"${key.operation}\",status=\"${key.status}\"} ${count.sum()}\n")

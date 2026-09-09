@@ -42,7 +42,7 @@ cleanup() {
     "${compose[@]}" exec -T db dropdb -U zhiv --if-exists "$restore_db" || true
   fi
   if $services_stopped; then
-    echo 'Site services may be stopped. Check the error before restarting; see docs/reset-database.md.' >&2
+    echo 'Site services may be stopped. Check the error before restarting; see docs/operations/reset-database.md.' >&2
     if $database_replaced; then
       echo 'The old database was already deleted; restarting services does not restore its data.' >&2
     fi

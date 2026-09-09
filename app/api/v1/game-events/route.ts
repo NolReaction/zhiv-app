@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { logDevClickerSeries } from "@/lib/dev-api-events";
-import { getDevIdentity, SESSION_COOKIE } from "@/lib/dev-api-store";
-import { parseClickerSeriesEvent } from "@/lib/game-events";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { logDevClickerSeries } from "@/lib/dev/api-events";
+import { getDevIdentity, SESSION_COOKIE } from "@/lib/dev/api-store";
+import { parseClickerSeriesEvent } from "@/features/game/game-events";
 
 export const dynamic = "force-dynamic";
 

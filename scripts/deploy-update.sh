@@ -29,5 +29,11 @@ dc up -d --no-build --wait --wait-timeout 240
 # A changed bind-mounted Caddyfile does not trigger a Compose recreation.
 # Recreate only the edge so the newly checked-out routing/headers take effect.
 dc up -d --no-deps --no-build --force-recreate --wait --wait-timeout 60 caddy
+# Alert rules are bind-mounted too. Reload them when monitoring is already active;
+# do not enable the optional monitoring stack on installations that don't use it.
+if dc ps --services --status running | grep -qx prometheus; then
+  dc run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alerts.yml
+  dc up -d --no-deps --no-build --force-recreate --wait --wait-timeout 90 prometheus
+fi
 dc ps -a
 echo 'Update complete. Check the public home page and /readyz before reopening the app.'

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createDevCheckIn, SESSION_COOKIE } from "@/lib/dev-api-store";
-import { guardDevApi } from "@/lib/dev-api-guard";
+import { createDevCheckIn, SESSION_COOKIE } from "@/lib/dev/api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
 
 export const dynamic = "force-dynamic";
 

@@ -262,11 +262,12 @@ test("applies clickjacking protection to the root page and nested routes", async
 });
 
 test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrome", async () => {
-  const [app, appStyles, peopleStyles, profileStyles] = await Promise.all([
-    readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/profile-view.module.css", import.meta.url), "utf8"),
+  const [app, appStyles, peopleStyles, profileStyles, navigation] = await Promise.all([
+    readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/profile-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8"),
   ]);
 
   const mobileQuery = "@media (max-width: 700px), (hover: none) and (pointer: coarse)";
@@ -288,11 +289,10 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   const mobileBottomNav = mobileAppStyles.match(/\.bottomNav\s*\{[^}]*\}/s)?.[0] ?? "";
 
   assert.match(app, /data-active-view=\{activeView\}/);
-  assert.match(app, /className=\{styles\.navLens\}/);
-  assert.equal(
-    (app.match(/aria-current=\{activeView === "[^"]+" \? "page" : undefined\}/g) ?? []).length,
-    3,
-  );
+  assert.match(app, /<AppNavigation active=\{activeView\}/);
+  assert.match(navigation, /className=\{styles\.navLens\}/);
+  assert.match(navigation, /aria-current=\{active === id \? "page" : undefined\}/);
+  assert.equal((navigation.match(/name: "/g) ?? []).length, 3);
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*overflow-y:\s*auto;/s);
@@ -367,9 +367,9 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
 
 test("keeps the ten-second clicker lightweight and motion-safe", async () => {
   const [app, appStyles, clicker] = await Promise.all([
-    readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../lib/clicker-story.ts", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/game/clicker-story.ts", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(clicker, /CLICKER_FINAL_TAP|rotateClickerStory/);
@@ -431,13 +431,13 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
       readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
       readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
-      readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-      readFile(new URL("../components/people-view.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
-      readFile(new URL("../components/groups-section.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../components/groups-section.module.css", import.meta.url), "utf8"),
-      readFile(new URL("../components/profile-view.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/people-view.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/groups-section.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/groups-section.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../features/account/profile-view.tsx", import.meta.url), "utf8"),
     ]);
 
   assert.match(layout, /minimumScale:\s*1/);
@@ -500,7 +500,16 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, />\s*подряд\s*</);
   assert.match(app, /formatDayCount\(streak\.currentDays\)/);
 
-  assert.match(app, /<span>Люди<\/span>/);
+  const navigation = await readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8");
+  assert.match(navigation, /id: "people", name: "Люди"/);
+  assert.doesNotMatch(navigation, /id: "world"/);
+  const featureFlags = await readFile(new URL("../features/app/feature-flags.ts", import.meta.url), "utf8");
+  assert.match(featureFlags, /export const OPEN_WORLD_ENABLED = false;/);
+  assert.match(app, /\{OPEN_WORLD_ENABLED && <button[^]*?aria-label="Войти в мир Мохлика"/);
+  assert.match(app, /\{OPEN_WORLD_ENABLED && worldMounted && me && <WorldPortal/);
+  assert.match(app, /const worldOwner = OPEN_WORLD_ENABLED && screen === "home" \? me\?\.user\.publicId \?\? null : null/);
+  assert.match(app, /useWorld\(worldOwner, loseSession\)/);
+  assert.match(app, /if \(worldOwner\) void worldRefresh\(\)/);
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);
@@ -538,9 +547,9 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
 
 test("uses a wide desktop dashboard without changing the mobile navigation contract", async () => {
   const [appStyles, peopleStyles, profileStyles] = await Promise.all([
-    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/profile-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/profile-view.module.css", import.meta.url), "utf8"),
   ]);
 
   const desktopQuery = "@media (min-width: 960px) and (hover: hover) and (pointer: fine)";
@@ -575,8 +584,8 @@ test("keeps local development origins out of production Docker builds", async ()
 
 test("keeps invitations through browser login and retains the legacy PWA fallback", async () => {
   const [landing, landingStyles] = await Promise.all([
-    readFile(new URL("../components/capability-landing.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/capability-landing.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/capability-landing.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/capability-landing.module.css", import.meta.url), "utf8"),
   ]);
 
   assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT,\s*handler\)/);

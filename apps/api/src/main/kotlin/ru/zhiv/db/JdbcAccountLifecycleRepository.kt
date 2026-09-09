@@ -1,5 +1,8 @@
 package ru.zhiv.db
 
+import ru.zhiv.world.WorldState
+import ru.zhiv.world.worldJson
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -211,14 +214,20 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         val a=profile(c,s.current); val b=profile(c,s.other)
         val ai=identities(c,s.current); val bi=identities(c,s.other)
         val providers=ai.keys.intersect(bi.keys).map { MergeProviderConflict(it,label(it,ai.getValue(it)),label(it,bi.getValue(it))) }
+        val worlds=c.rows("SELECT state::text FROM world_profiles WHERE user_id IN (?,?)",s.current,s.other) {
+            worldJson.decodeFromString<WorldState>(it.getString(1))
+        }
+        val worldJourneys=worlds.flatMap { it.journeys }.distinctBy { it.id }
         val conflicts=buildList {
+            if(worldJourneys.size>32) add("Сначала завершите часть путешествий: после объединения их будет больше 32.")
             providers.filter { it.provider !in choices.providerChoices }.forEach { add("Выберите сохраняемый способ входа: ${it.provider}") }
 
         }
         val direct=c.one("SELECT count(*) FROM circles WHERE kind='DIRECT' AND archived_at IS NULL AND ? IN (direct_user_low_id,direct_user_high_id)",s.other) { it.getInt(1) } ?: 0
         val groups=c.one("SELECT count(*) FROM circle_memberships m JOIN circles c ON c.id=m.circle_id WHERE m.user_id=? AND m.left_at IS NULL AND c.archived_at IS NULL",s.other) { it.getInt(1) } ?: 0
         return MergePreview("",a,b,if(choices.displayNameSource=="current")a.displayName else b.displayName,if(choices.statusSource=="current")a.status else b.status,
-            listOf("Сохранится открытый профиль ${a.publicId}; прежний ID ${b.publicId} перестанет работать.",
+            listOf("Ресурсы мира сложатся; сохранятся лучшие улучшения построек, вещи и находки обоих профилей. Одежда останется как в открытом мире; если его ещё нет, перенесётся одежда второго профиля. Путешествия сохранятся: ${worldJourneys.size}. Дневной лимит искр не обновится.",
+                "Сохранится открытый профиль ${a.publicId}; прежний ID ${b.publicId} перестанет работать.",
                 "Личная история, число отметок, время последней отметки и серия объединятся. Совпадающие по времени отметки сохранятся; в серии они считаются одним моментом. Исторические аудитории других людей не расширятся.",
                 "Связей второго профиля: $direct; участий в группах: $groups. Новые связи и новые участия начнутся без показа отметок в обе стороны; совпадающие связи сохранят существующие настройки, запрет любой стороны сохранится.",
                 "Ваши группы сохранятся, права владельца второго профиля перейдут сохраняемому профилю. Новые участия начнутся с текущего момента: чужие отметки за время до нового вступления не откроются.",
@@ -249,6 +258,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM user_timezone_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
             "SELECT jsonb_build_array(user_id,lifetime_taps,best_series,leaderboard_opt_in,visibility_version)::text FROM game_profiles WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM game_monthly_scores t WHERE user_id IN (?,?) ORDER BY user_id,month",
+            "SELECT to_jsonb(t)::text FROM world_profiles t WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM game_items t WHERE user_id IN (?,?) ORDER BY user_id,item_id",
             "SELECT to_jsonb(t)::text FROM game_achievements t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id",
             "SELECT to_jsonb(t)::text FROM account_merge_sources t WHERE target_user_id IN (?,?) ORDER BY source_user_id"
@@ -308,6 +318,10 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         """.trimIndent(),target)
     }
     private fun tombstone(c: Connection,id: UUID) {
+        c.update("DELETE FROM user_incidents WHERE user_id=?",id)
+        c.update("DELETE FROM world_commands WHERE user_id=?",id)
+        c.update("DELETE FROM world_ledger WHERE user_id=?",id)
+        c.update("DELETE FROM world_profiles WHERE user_id=?",id)
         c.update("DELETE FROM game_items WHERE user_id=?",id)
         c.update("DELETE FROM game_achievements WHERE user_id=?",id)
         c.update("DELETE FROM game_sessions WHERE user_id=?",id)
@@ -372,6 +386,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("UPDATE account_merge_sources SET target_user_id=? WHERE target_user_id=?",id,s.other)
         c.update("INSERT INTO account_merge_sources(source_user_id,target_user_id) VALUES (?,?)",s.other,id)
         c.update("UPDATE app_users SET last_check_in_at=(SELECT last_check_in_at FROM account_check_in_summary(?)),updated_at=clock_timestamp() WHERE id=?",id,id)
+        mergeWorldProfiles(c,id,s.other)
         mergeGameProgress(c,id,s.other)
         c.update("""
             INSERT INTO game_achievements(user_id,achievement_id,unlocked_at)

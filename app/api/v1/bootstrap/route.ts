@@ -1,8 +1,8 @@
 import { isTimeZone } from "@/lib/time-zone";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createDevIdentity, getDevIdentity, SESSION_COOKIE } from "@/lib/dev-api-store";
-import { guardDevApi } from "@/lib/dev-api-guard";
+import { createDevIdentity, getDevIdentity, SESSION_COOKIE } from "@/lib/dev/api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
 import { isValidDisplayName, normalizeDisplayName } from "@/lib/check-in-presentation";
 
 export const dynamic = "force-dynamic";
