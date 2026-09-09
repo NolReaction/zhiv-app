@@ -25,7 +25,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const abort=new AbortController();let ready=false;
   const first=createMapEngine(canvas(),options,()=>{},[],abort.signal).then(v=>{ready=true;return v});
   const cancelled=assert.rejects(first,error=>error.name==='AbortError');
-  finish('/world/forest-map-v2.webp');finish('/world/workshop-levels-v2.webp');finish('/world/stump-homes-v3.webp');await flush();
+  finish('/world/forest-map-v3.webp');finish('/world/workshop-levels-v2.webp');finish('/world/stump-homes-v3.webp');await flush();
   assert.equal(ready,false);assert.equal(observed,1);assert.equal(frames.size,0);
   abort.abort();await cancelled;assert.equal(observed,0);
   finish('/mochlik-pixel/forest.webp');await flush();assert.equal(frames.size,0);assert.equal(timers.size,0);

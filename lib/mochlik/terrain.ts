@@ -7,7 +7,7 @@ import { loadWorkshopArt } from "./workshop-art";
 export const MAP_SIZE = 1536;
 export const HOME_AREA = { x: 576, y: 576, size: 384 };
 export const WORKSHOP_AREA = { x: 335, y: 875, width: 190, height: 180 };
-export const TERRAIN_PATH = "/world/forest-map-v2.webp";
+export const TERRAIN_PATH = "/world/forest-map-v3.webp";
 export const habitatPoint = (x: number, y: number) => ({ x: HOME_AREA.x + x / 256 * HOME_AREA.size, y: HOME_AREA.y + y / 256 * HOME_AREA.size });
 export const WEATHER_BOUNDS = { x: -HOME_AREA.x * 256 / HOME_AREA.size, y: -HOME_AREA.y * 256 / HOME_AREA.size, width: MAP_SIZE * 256 / HOME_AREA.size, height: MAP_SIZE * 256 / HOME_AREA.size };
 
