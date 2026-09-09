@@ -19,7 +19,7 @@ export function loadHabitatImage(path: string): Promise<HTMLImageElement> {
 }
 
 /** Remove only the neutral atlas matte; preserve saturated flowers and pale wood. */
-export function atlasSprite(image: HTMLImageElement, cell: { x: number; y: number; width: number; height: number }) {
+export function atlasSprite(image: HTMLImageElement, cell: { x: number; y: number; width: number; height: number }, trim = true) {
   const canvas = document.createElement("canvas"); canvas.width = cell.width; canvas.height = cell.height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true }); if (!ctx) throw new HabitatAssetError();
   ctx.drawImage(image, cell.x, cell.y, cell.width, cell.height, 0, 0, cell.width, cell.height);
@@ -32,6 +32,7 @@ export function atlasSprite(image: HTMLImageElement, cell: { x: number; y: numbe
   }
   if (right < left || bottom < top) throw new HabitatAssetError();
   ctx.putImageData(pixels, 0, 0);
+  if (!trim) return canvas;
   const result = document.createElement("canvas"); result.width = right - left + 1; result.height = bottom - top + 1;
   result.getContext("2d")!.drawImage(canvas, left, top, result.width, result.height, 0, 0, result.width, result.height);
   return result;

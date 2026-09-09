@@ -1,19 +1,14 @@
 import { mountHabitat, type SceneOptions } from "@/lib/mochlik/scene";
-import { clampCamera, homeCamera, HOME_AREA, isMapTap, MAP_SIZE, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
-import { loadHabitatImage } from "@/lib/mochlik/assets";
-import { loadHouseAccessories } from "@/lib/mochlik/house-details";
-import { loadWorkshopArt } from "@/lib/mochlik/workshop-art";
-import { workshopLevel } from "./model";
-export const WORKSHOP_AREA = { x: 335, y: 875, width: 190, height: 180 };
+import { clampCamera, homeCamera, HOME_AREA, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
+import { loadTerrainArt, WORKSHOP_AREA } from "@/lib/mochlik/terrain";
+export { WORKSHOP_AREA } from "@/lib/mochlik/terrain";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
 export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river" | "trail";
 export type MapAction = "home" | "in" | "out";
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
-  let ground: HTMLImageElement;
-  let workshopArt: HTMLCanvasElement[] | null = null;
-  try { [ground, workshopArt] = await Promise.all([loadHabitatImage("/world/forest-map-v2.webp"), loadWorkshopArt(), loadHouseAccessories()]); }
+  try { await loadTerrainArt(); }
   catch (error) { throw new MapLoadError("map", error); }
   signal?.throwIfAborted();
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -21,20 +16,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let options = initial, disposed = false, raf = 0, last = 0;
   let view = { width: 1, height: 1 }, camera = homeCamera(view), started = false;
   let inView = true;
-  const home = document.createElement("canvas"), blend = document.createElement("canvas"), mask = document.createElement("canvas");
-  blend.width = mask.width = 256; blend.height = mask.height = 256;
-  const blendContext = blend.getContext("2d")!, maskContext = mask.getContext("2d")!;
-  // An irregular oval follows the clearing; a rectangular feather left a visible
-  // straight seam across the northern path and doubled the edge vegetation.
-  const edge = maskContext.createImageData(256, 256);
-  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
-    const dx = (x - 128) / 132, dy = (y - 130) / 140, angle = Math.atan2(dy, dx);
-    const radius = Math.hypot(dx, dy) + .025 * Math.sin(angle * 5) + .018 * Math.cos(angle * 9);
-    const at = (y * 256 + x) * 4;
-    edge.data[at] = edge.data[at + 1] = edge.data[at + 2] = 255;
-    edge.data[at + 3] = Math.round(Math.max(0, Math.min(1, (1 - radius) / .17, x / 12, (255 - x) / 12, y / 12, (255 - y) / 12)) * 255);
-  }
-  maskContext.putImageData(edge, 0, 0);
+  const home = document.createElement("canvas");
   type Touch = { initial: Point; position: Point };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
@@ -55,16 +37,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
     ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-    ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
-    if (options.worldState?.workshop && workshopArt) {
-      const sprite = workshopArt[workshopLevel(options.worldState) - 1];
-      const height = WORKSHOP_AREA.width * sprite.height / sprite.width;
-      ctx.drawImage(sprite, WORKSHOP_AREA.x, WORKSHOP_AREA.y + WORKSHOP_AREA.height - height, WORKSHOP_AREA.width, height);
-    }
-    if (options.dusk) { ctx.fillStyle = "rgba(8,17,35,.57)"; ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE); }
-    blendContext.globalCompositeOperation = "copy"; blendContext.drawImage(home, 0, 0, 256, 256);
-    blendContext.globalCompositeOperation = "destination-in"; blendContext.drawImage(mask, 0, 0);
-    ctx.drawImage(blend, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
+    habitat.paintTerrain(ctx);
+    ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
+    habitat.paintWeather(ctx);
     for (const node of anchors) {
       const point = worldToScreen({ x: Number(node.dataset.x), y: Number(node.dataset.y) }, camera, view);
       node.style.transform = `translate(${Math.round(point.x)}px, ${Math.round(point.y)}px) translate(-50%, -50%)`;
@@ -127,7 +102,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       const world = screenToWorld(p, camera, view);
       const x = (world.x - HOME_AREA.x) / HOME_AREA.size, y = (world.y - HOME_AREA.y) / HOME_AREA.size;
       if (habitat.hitPet(x, y)) onPlace("wardrobe");
-      else if (x > .60 && x < .93 && y > .12 && y < .49) onPlace("house");
+      else if (x > .58 && x < .88 && y > .13 && y < .50) onPlace("house");
       else if (world.x >= WORKSHOP_AREA.x && world.x <= WORKSHOP_AREA.x + WORKSHOP_AREA.width && world.y >= WORKSHOP_AREA.y && world.y <= WORKSHOP_AREA.y + WORKSHOP_AREA.height) onPlace("workshop");
       else if (x > .10 && x < .31 && y > .35 && y < .52) habitat.invite("bush");
       else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);

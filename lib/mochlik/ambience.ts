@@ -76,16 +76,17 @@ export function drawProp(ctx: CanvasRenderingContext2D, state: HabitatState, red
   ctx.restore();
 }
 
-export function drawWeather(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean) {
+export function drawWeather(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean, tint = true,
+  field = { x: 0, y: 0, width: 256, height: 256 }) {
   if (state.rain < .01) return;
   ctx.save();
-  ctx.globalAlpha = state.rain * .12; rect(ctx, "#45697d", 0, 0, 256, 256);
+  if (tint) { ctx.globalAlpha = state.rain * .12; rect(ctx, "#45697d", field.x, field.y, field.width, field.height); }
   const time = reducedMotion ? 0 : state.elapsed;
   const shelter = SHELTER_ART;
-  const count = reducedMotion ? 10 : 38;
+  const count = Math.min(reducedMotion ? 40 : 150, Math.ceil((reducedMotion ? 10 : 38) * field.width * field.height / 65536));
   for (let i = 0; i < count; i++) {
-    const y = (i * 61 + time * 118) % 270 - 7;
-    const x = ((i * 47 - time * 20) % 256 + 256) % 256;
+    const y = field.y + (i * 61 + time * 118) % (field.height + 14) - 7;
+    const x = field.x + ((i * 47 - time * 20) % field.width + field.width) % field.width;
     // The cap actually shields the pet; drops stop above it.
     if (x > shelter.x && x < shelter.x + shelter.width
       && y > shelter.y + shelter.capHeight / 2 && y < shelter.ground + 3) continue;

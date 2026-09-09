@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disposes RAF", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
-  const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
+  const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
   const { mountHabitat } = await vite.ssrLoadModule("/lib/mochlik/scene.ts");
   await vite.close(); // Close Vite timers before installing the scene clock.
   const scheduled = new Map(), saved = new Map(); let nextId = 1, disconnected = 0, drawCount = 0, now = 1;
@@ -16,7 +16,7 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   install("clearTimeout", id => timers.delete(id));
   const flushTimers = () => { for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); } };
   const context = new Proxy({
-    getImageData: (_x, _y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4).fill(255) }),
+    getImageData: (_x, _y, w, h) => { const data = new Uint8ClampedArray(w * h * 4).fill(255); data[0] = data[1] = data[2] = 0; return { data }; },
     createRadialGradient: () => ({ addColorStop() {} }), drawImage: source => { drawCount++; if (source.width === 48) spriteDraws++; },
   }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = () => ({ width: 16, height: 16, clientWidth: 320, getContext: () => context });

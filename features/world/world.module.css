@@ -9,7 +9,7 @@
 .world button:hover:not(:disabled), .sheet button:hover:not(:disabled) { background: #33452bee; border-color: #d4e8a78c; }
 .world button:disabled, .sheet button:disabled { opacity: .5; cursor: default; }
 .world button:focus-visible, .sheet button:focus-visible, .sheet summary:focus-visible, .scene > canvas:focus-visible { outline: 2px solid #e1eeb6; outline-offset: 3px; }
-.scene { position: absolute; inset: 0; overflow: hidden; background: #1a2a1d url('/mochlik-pixel/forest.webp') center / cover; }
+.scene { position: absolute; inset: 0; overflow: hidden; background: #1a2a1d; }
 .scene > canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 .scene > canvas:active { cursor: grabbing; }
 .sceneLoading { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); width: min(340px, 80%); border: 1px solid #c1d59340; border-radius: 16px; background: #152017ef; padding: 18px; text-align: center; font-size: 1rem; }
@@ -28,8 +28,14 @@
 .balances svg { color: #cdda9d; flex-shrink: 0; }
 .balances strong { font-size: .875rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .mapAnchors { position: absolute; inset: 0; pointer-events: none; }
-.mapAnchors button { position: absolute; top: 0; left: 0; pointer-events: auto; min-height: 44px; padding: 7px 10px; border-radius: 12px 12px 12px 3px; font-size: .75rem; background: #142319eb; box-shadow: 0 3px 9px #0a160960; white-space: nowrap; }
-.mapAnchors button > svg { color: #d8e5a6; }
+/* A small landmark hint inside a full touch target; buildings stay visible. */
+.mapAnchors button { --place-color: #d2e695; position: absolute; top: 0; left: 0; pointer-events: auto; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; box-shadow: none; }
+.mapAnchors button::after { content: ''; width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid #142317; border-radius: 1px; background: var(--place-color); box-shadow: 0 0 0 2px #14231780, 0 1px 5px #0a170999; transition: transform .18s, box-shadow .18s; }
+.mapAnchors button[data-kind='house'] { --place-color: #efc97a; }
+.mapAnchors button[data-kind='river'] { --place-color: #8fd5db; }
+.mapAnchors button[data-kind='workshop'] { --place-color: #ddad7a; }
+.world .mapAnchors button:hover { background: transparent; border: 0; }
+.mapAnchors button:hover::after, .mapAnchors button:focus-visible::after { transform: rotate(45deg) scale(1.25); box-shadow: 0 0 0 3px #14231799, 0 0 10px var(--place-color); }
 .cameraControls { position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: calc(160px + env(safe-area-inset-bottom)); display: grid; gap: 6px; }
 .cameraControls button { width: 44px; padding: 8px; background: #132018eb; }
 .away { position: absolute; top: calc(120px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 90px); font-size: .875rem; }
@@ -119,11 +125,6 @@
 .portal[data-state='open'] .hud, .portal[data-state='open'] .bottomHud { animation: hud-arrive 500ms ease 350ms both; }
 @keyframes terrain-arrive { from { transform: scale(1.055); } to { transform: scale(1); } }
 @keyframes hud-arrive { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
-.mapAnchors button { --place-color: #cedf8a; width: 56px; height: 44px; min-height: 44px; padding: 0; border: 1px solid color-mix(in srgb, var(--place-color) 60%, transparent); border-radius: 50%; background: radial-gradient(ellipse, color-mix(in srgb, var(--place-color) 26%, transparent), transparent 70%); box-shadow: 0 0 12px color-mix(in srgb, var(--place-color) 25%, transparent), inset 0 0 10px color-mix(in srgb, var(--place-color) 12%, transparent); }
-.mapAnchors button[data-kind='house'] { --place-color: #efc97a; }
-.mapAnchors button[data-kind='river'] { --place-color: #8fd5db; }
-.mapAnchors button[data-kind='workshop'] { --place-color: #ddad7a; }
-.mapAnchors button:hover { background: color-mix(in srgb, var(--place-color) 32%, transparent) !important; }
 .scene .away { border: 0; padding: 0; background: none; min-height: 46px; top: calc(112px + env(safe-area-inset-top)); }
 .routeChooser { overflow: hidden; margin: 8px 0 14px; border-radius: 16px; border: 1px solid #c9dca438; background: #152418; }
 .routeChooser > img { display: block; width: 100%; height: clamp(115px, 20dvh, 190px); object-fit: cover; image-rendering: pixelated; }

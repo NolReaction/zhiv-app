@@ -13,19 +13,19 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { DialogPortal } = await vite.ssrLoadModule("/components/ui/dialog.tsx");
-const { houseAtlasCell, houseDetailPatches } = await vite.ssrLoadModule("/lib/mochlik/house-details.ts");
+const { houseAtlasCell, HOUSE_ART, HOUSE_LAMP } = await vite.ssrLoadModule("/lib/mochlik/house-details.ts");
 const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
 
-test("every house detail leaves the original doorway and dynamic lamp untouched", () => {
-  const protectedAreas = [{ x: 169, y: 86, w: 23, h: 23 }, { x: 194, y: 101, w: 5, h: 5 }];
-  for (let level = 1; level <= 5; level++) {
-    const patches = houseDetailPatches(level), cell = houseAtlasCell(level);
-    assert.equal(patches.length, level - 1);
-    for (const part of patches) {
-      assert.ok(cell.x + 627 <= 1254 && cell.y + 627 <= 1254);
-      assert.ok(part.index >= 0 && part.index < 4);
-      for (const area of protectedAreas) assert.ok(part.x >= area.x + area.w || part.x + part.w <= area.x || part.y >= area.y + area.h || part.y + part.h <= area.y);
-    }
+test("five complete house frames retain one doorway and lantern coordinate system", () => {
+  const cells = Array.from({ length: 5 }, (_, index) => houseAtlasCell(index + 1));
+  assert.equal(new Set(cells.map(cell => `${cell.x}:${cell.y}`)).size, 5);
+  for (const cell of cells) {
+    assert.ok(cell.x + cell.width <= 1536 && cell.y + cell.height <= 1024);
+    assert.equal(cell.width, 512); assert.equal(cell.height, 512);
+  }
+  for (const point of [{ x: 181, y: 104 }, HOUSE_LAMP]) {
+    assert.ok(point.x > HOUSE_ART.x && point.x < HOUSE_ART.x + HOUSE_ART.width);
+    assert.ok(point.y > HOUSE_ART.y && point.y < HOUSE_ART.y + HOUSE_ART.height);
   }
 });
 
