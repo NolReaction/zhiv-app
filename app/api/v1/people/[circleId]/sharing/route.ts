@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SharingMode } from "@/lib/check-in-contract";
-import { guardDevApi } from "@/lib/dev-api-guard";
+import { guardDevApi } from "@/lib/dev/api-guard";
 import {
   devResultError,
   devSessionToken,
@@ -8,8 +8,8 @@ import {
   NO_STORE_HEADERS,
   parseIdempotencyKey,
   parseUuid,
-} from "@/lib/dev-api-route";
-import { updateDevSharing } from "@/lib/dev-api-store";
+} from "@/lib/dev/api-route";
+import { updateDevSharing } from "@/lib/dev/api-store";
 
 export const dynamic = "force-dynamic";
 

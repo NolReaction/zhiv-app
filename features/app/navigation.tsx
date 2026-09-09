@@ -1,6 +1,6 @@
 "use client";
 import { HeartPulse, UserRound, Users } from "lucide-react";
-import styles from "@/components/check-in-app.module.css";
+import styles from "@/features/check-in/check-in-app.module.css";
 export type AppView = "check-in" | "people" | "profile";
 export const appViews: AppView[] = ["check-in", "people", "profile"];
 const entries = [{ id: "check-in", name: "Я живой", icon: HeartPulse },

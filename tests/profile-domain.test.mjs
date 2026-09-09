@@ -12,7 +12,7 @@ const vite = await createServer({
   server: { middlewareMode: true, hmr: false },
 });
 
-const store = await vite.ssrLoadModule("/lib/dev-api-store.ts");
+const store = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 
 beforeEach(() => store.resetDevStoreForTests());
 after(async () => vite.close());

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { devResultError, devSessionToken, NO_STORE_HEADERS } from "@/lib/dev-api-route";
-import { listDevPeople } from "@/lib/dev-api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { devResultError, devSessionToken, NO_STORE_HEADERS } from "@/lib/dev/api-route";
+import { listDevPeople } from "@/lib/dev/api-store";
 
 export const dynamic = "force-dynamic";
 

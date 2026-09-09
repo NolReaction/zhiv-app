@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const store = await vite.ssrLoadModule("/lib/dev-api-store.ts");
+const store = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const dates = await vite.ssrLoadModule("/lib/check-in-calendar.ts");
 beforeEach(() => store.resetDevStoreForTests());
 after(async () => vite.close());

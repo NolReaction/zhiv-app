@@ -7,8 +7,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createWorldSession } = await vite.ssrLoadModule("/features/world/session.ts");
 const { newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
-const { homeAppearance, journeyLabel } = await vite.ssrLoadModule("/lib/mochlik/home-state.ts");
-const { createHabitat } = await vite.ssrLoadModule("/lib/mochlik/habitat.ts");
+const { homeAppearance, journeyLabel } = await vite.ssrLoadModule("/features/mochlik/home-state.ts");
+const { createHabitat } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 const camera = await vite.ssrLoadModule("/features/world/camera.ts");
 const now = Date.parse("2026-09-08T12:00:00Z");
 const snapshot = (owner = "OWNER", revision = 0) => ({ ownerPublicId: owner, revision, serverTime: new Date(now).toISOString(), state: newWorldState(), gifts: [], dailySparksEarned: 0, catalogVersion: 1 });

@@ -1,6 +1,9 @@
-import { mountHabitat, type SceneOptions } from "@/lib/mochlik/scene";
+import { HOME_CANVAS_SIZE } from "@/features/mochlik/home-layout";
+import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
 import { clampCamera, homeCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
-import { loadHabitatImage } from "@/lib/mochlik/assets";
+import { loadHabitatImage } from "@/features/mochlik/assets";
+import { WORLD_ART } from "./art";
+import { MAP_PLACES, containsPoint, worldToHome } from "./map-layout";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -8,7 +11,7 @@ export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river
 export type MapAction = "home" | "in" | "out";
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
   let ground: HTMLImageElement;
-  try { ground = await loadHabitatImage("/world/forest-expanded.webp"); }
+  try { ground = await loadHabitatImage(WORLD_ART.map); }
   catch (error) { throw new MapLoadError("map", error); }
   signal?.throwIfAborted();
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -17,14 +20,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let view = { width: 1, height: 1 }, camera = homeCamera(view), started = false;
   let inView = true;
   const home = document.createElement("canvas"), blend = document.createElement("canvas"), mask = document.createElement("canvas");
-  blend.width = mask.width = 256; blend.height = mask.height = 256;
+  blend.width = mask.width = HOME_CANVAS_SIZE; blend.height = mask.height = HOME_CANVAS_SIZE;
   const blendContext = blend.getContext("2d")!, maskContext = mask.getContext("2d")!;
-  maskContext.fillStyle = "white"; maskContext.fillRect(0, 0, 256, 256);
+  maskContext.fillStyle = "white"; maskContext.fillRect(0, 0, HOME_CANVAS_SIZE, HOME_CANVAS_SIZE);
   maskContext.globalCompositeOperation = "destination-in";
   for (const vertical of [false, true]) {
-    const gradient = maskContext.createLinearGradient(0, 0, vertical ? 0 : 256, vertical ? 256 : 0);
+    const gradient = maskContext.createLinearGradient(0, 0, vertical ? 0 : HOME_CANVAS_SIZE, vertical ? HOME_CANVAS_SIZE : 0);
     gradient.addColorStop(0, "transparent"); gradient.addColorStop(.075, "white"); gradient.addColorStop(.925, "white"); gradient.addColorStop(1, "transparent");
-    maskContext.fillStyle = gradient; maskContext.fillRect(0, 0, 256, 256);
+    maskContext.fillStyle = gradient; maskContext.fillRect(0, 0, HOME_CANVAS_SIZE, HOME_CANVAS_SIZE);
   }
   type Touch = { initial: Point; position: Point };
   const pointers = new Map<number, Touch>();
@@ -50,7 +53,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     // inner forest here again duplicates its pond, workshop, rocks and trail signs.
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
     habitat.paintLighting(ctx);
-    blendContext.globalCompositeOperation = "copy"; blendContext.drawImage(home, 0, 0, 256, 256);
+    blendContext.globalCompositeOperation = "copy"; blendContext.drawImage(home, 0, 0, HOME_CANVAS_SIZE, HOME_CANVAS_SIZE);
     blendContext.globalCompositeOperation = "destination-in"; blendContext.drawImage(mask, 0, 0);
     ctx.drawImage(blend, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
     habitat.paintWeather(ctx);
@@ -114,10 +117,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     pointers.delete(event.pointerId);
     if (!pointers.size && isMapTap(travelled, multiTouch, cancelled)) {
       const world = screenToWorld(p, camera, view);
-      const x = (world.x - HOME_AREA.x) / HOME_AREA.size, y = (world.y - HOME_AREA.y) / HOME_AREA.size;
+      const { x, y } = worldToHome(world);
       if (habitat.hitPet(x, y)) onPlace("wardrobe");
-      else if (x > .60 && x < .93 && y > .12 && y < .49) onPlace("house");
-      else if (world.x > 335 && world.x < 500 && world.y > 950 && world.y < 1090) onPlace("workshop");
+      else if (containsPoint({ x, y }, MAP_PLACES.house.homeBounds)) onPlace("house");
+      else if (containsPoint(world, MAP_PLACES.workshop.worldBounds)) onPlace("workshop");
       else if (x > .10 && x < .31 && y > .35 && y < .52) habitat.invite("bush");
       else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
     }

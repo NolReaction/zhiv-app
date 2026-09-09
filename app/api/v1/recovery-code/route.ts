@@ -1,9 +1,9 @@
 
 import {cookies} from "next/headers";
 import {NextResponse} from "next/server";
-import {guardDevApi} from "@/lib/dev-api-guard";
-import {NO_STORE_HEADERS} from "@/lib/dev-api-route";
-import {SESSION_COOKIE,devRecoveryCodeState,activateDevRecoveryCode} from "@/lib/dev-api-store";
+import {guardDevApi} from "@/lib/dev/api-guard";
+import {NO_STORE_HEADERS} from "@/lib/dev/api-route";
+import {SESSION_COOKIE,devRecoveryCodeState,activateDevRecoveryCode} from "@/lib/dev/api-store";
 import {normalizeRecoveryCode} from "@/lib/recovery-code";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){

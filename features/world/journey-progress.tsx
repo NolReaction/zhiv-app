@@ -20,7 +20,7 @@ export function JourneyProgress({ journey, equipment, now, paused = false }: { j
   useEffect(() => {
     let disposed = false, frame = 0, last = 0;
     const media = matchMedia("(prefers-reduced-motion: reduce)");
-    let sprite: typeof import("@/lib/mochlik/pixel-sprite").pixelSprite | undefined;
+    let sprite: typeof import("@/features/mochlik/pixel-sprite").pixelSprite | undefined;
     function draw(time: number) {
       const ctx = canvas.current?.getContext("2d"); if (!ctx) return;
       const value = source.current;
@@ -38,7 +38,7 @@ export function JourneyProgress({ journey, equipment, now, paused = false }: { j
       if (!media.matches) frame = requestAnimationFrame(tick);
     }
     function resume() { cancelAnimationFrame(frame); frame = 0; if (!disposed && !document.hidden && !source.current.paused) { draw(performance.now()); if (!media.matches) frame = requestAnimationFrame(tick); } }
-    void import("@/lib/mochlik/pixel-sprite").then(module => { if (!disposed) { sprite = module.pixelSprite; resume(); } });
+    void import("@/features/mochlik/pixel-sprite").then(module => { if (!disposed) { sprite = module.pixelSprite; resume(); } });
     // Refresh reduced-motion progress and resume after the circle becomes visible again.
     const timer = setInterval(() => { if (media.matches || !frame) resume(); }, 1000);
     document.addEventListener("visibilitychange", resume); media.addEventListener("change", resume);

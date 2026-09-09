@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, X, Feather, Gem, Hammer, House, Leaf, LockKeyhole, Shirt, Sparkles, Sprout, Trees, Wind } from "lucide-react";
-import { GAME_ITEMS } from "@/lib/game-rewards";
+import { GAME_ITEMS } from "@/features/game/game-rewards";
 import type { WorldPortalProps } from "./world-portal";
-import { GameLevelIcon } from "@/components/game-level-icon";
+import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "./world-scene";

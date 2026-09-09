@@ -6,7 +6,7 @@ import { createServer } from "vite";
 test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disposes RAF", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-  const { mountHabitat } = await vite.ssrLoadModule("/lib/mochlik/scene.ts");
+  const { mountHabitat } = await vite.ssrLoadModule("/features/mochlik/scene.ts");
   await vite.close(); // Close Vite timers before installing the scene clock.
   const scheduled = new Map(), saved = new Map(); let nextId = 1, disconnected = 0, drawCount = 0, now = 1;
   function install(key, value) { saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); }

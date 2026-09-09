@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import type { DevResult } from "@/lib/dev-api-store";
-import { NO_STORE_HEADERS } from "@/lib/dev-api-route";
+import type { DevResult } from "@/lib/dev/api-store";
+import { NO_STORE_HEADERS } from "@/lib/dev/api-route";
 
 export function directInviteResultError<T>(
   result: Exclude<DevResult<T>, { kind: "ok" }>,

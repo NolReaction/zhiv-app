@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { devSessionToken, invalidIdempotencyResponse, isExactJsonObject, NO_STORE_HEADERS, parseIdempotencyKey } from "@/lib/dev-api-route";
-import { updateDevTimeZone } from "@/lib/dev-api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { devSessionToken, invalidIdempotencyResponse, isExactJsonObject, NO_STORE_HEADERS, parseIdempotencyKey } from "@/lib/dev/api-route";
+import { updateDevTimeZone } from "@/lib/dev/api-store";
 import { isTimeZone } from "@/lib/time-zone";
 
 export const dynamic = "force-dynamic";

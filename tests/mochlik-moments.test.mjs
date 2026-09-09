@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
-const { createHabitat, decorationLevel, rainAt, depositedPosition, HOME } = await vite.ssrLoadModule("/lib/mochlik/habitat.ts");
-const { pixelFrame } = await vite.ssrLoadModule("/lib/mochlik/pixel-frame.ts");
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const { createHabitat, decorationLevel, rainAt, depositedPosition, HOME } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
+const { pixelFrame } = await vite.ssrLoadModule("/features/mochlik/pixel-frame.ts");
 after(() => vite.close());
 const fresh = (kind = "butterfly") => { const world = createHabitat(); world.setInsects(kind); return world; };
 function seek(world, condition, active = true, seconds = 900) {
@@ -153,7 +153,7 @@ test("delivery reaches the deposited anchor and a stopped shower releases the sh
 });
 
 test("an individually granted garland does not unlock other decor, and props respect facing", async () => {
-  const { propBehindBody, drawDecor } = await vite.ssrLoadModule("/lib/mochlik/ambience.ts");
+  const { propBehindBody, drawDecor } = await vite.ssrLoadModule("/features/mochlik/ambience.ts");
   const world = fresh(); world.setDecor(0, ["leaf_garland"]);
   assert.deepEqual(world.state.decorItems, ["leaf_garland"]);
   world.setDecor(0, []); assert.deepEqual(world.state.decorItems, ["leaf_garland"]);

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { AdminDashboard } from "@/components/admin-dashboard";
+import { AdminDashboard } from "@/features/admin/admin-dashboard";
 
 export const metadata: Metadata = {
   title: "Управление · Я живой",

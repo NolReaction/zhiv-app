@@ -2,7 +2,7 @@
 import type { CSSProperties } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import type { GameItemId } from "@/lib/game-rewards";
+import type { GameItemId } from "@/features/game/game-rewards";
 import type { WorldController } from "./use-world";
 import WorldView from "./world-view";
 import styles from "./world.module.css";

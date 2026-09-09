@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { previewDevDirectInvite } from "@/lib/dev-api-store";
-import { isExactJsonObject, NO_STORE_HEADERS } from "@/lib/dev-api-route";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { previewDevDirectInvite } from "@/lib/dev/api-store";
+import { isExactJsonObject, NO_STORE_HEADERS } from "@/lib/dev/api-route";
 import { isCapabilityToken } from "@/lib/capability-token";
 import { directInviteResultError } from "../_shared";
 

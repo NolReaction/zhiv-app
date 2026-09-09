@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
-const { pixelSprite } = await vite.ssrLoadModule("/lib/mochlik/pixel-sprite.ts");
+const { pixelSprite } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 globalThis.document = {
   createElement(tag) {

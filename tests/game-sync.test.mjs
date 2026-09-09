@@ -9,11 +9,11 @@ const vite = await createServer({
   resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false },
 });
-const { GameSyncClient } = await vite.ssrLoadModule("/lib/game-sync.ts");
+const { GameSyncClient } = await vite.ssrLoadModule("/features/game/game-sync.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
-const gameApi = await vite.ssrLoadModule("/lib/game-api.ts");
-const identities = await vite.ssrLoadModule("/lib/dev-api-store.ts");
-const devGame = await vite.ssrLoadModule("/lib/dev-game-store.ts");
+const gameApi = await vite.ssrLoadModule("/features/game/game-api.ts");
+const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const devGame = await vite.ssrLoadModule("/lib/dev/game-store.ts");
 after(async () => vite.close());
 
 const owner = "7K3P-2Q9M-W8ZR";
@@ -551,7 +551,7 @@ test("unreadable journal is retained and storage failure stops new counted taps"
 });
 
 test("journal validates account ownership and never imports another player's outbox", async () => {
-  const { gameJournalStore } = await vite.ssrLoadModule("/lib/game-sync-journal.ts");
+  const { gameJournalStore } = await vite.ssrLoadModule("/features/game/game-sync-journal.ts");
   let raw = null;
   const storage = { getItem: () => raw, setItem: (_key, value) => { raw = value; } };
   const first = gameJournalStore(owner, storage);

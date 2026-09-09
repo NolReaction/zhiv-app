@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { LoginForm } = await vite.ssrLoadModule("/components/account-entry.tsx");
+const { LoginForm } = await vite.ssrLoadModule("/features/account/account-entry.tsx");
 const api = await vite.ssrLoadModule("/lib/auth-api.ts");
 after(() => vite.close());
 const options = { vk: true, email: true, telegram: true, legacy: false };

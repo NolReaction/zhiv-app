@@ -1,13 +1,29 @@
-# World art
+# Рабочие изображения мира
 
-Map and interior artwork restored byte-for-byte from `915cbcdb673ba98ff58616fb43d29ca39ad8ed22`. The rollback changes presentation only; account progression, workshop upgrades and shared character state remain current.
+Здесь находятся изображения, которые загружает игра. Пути перечислены в [features/world/art.ts](../../features/world/art.ts). Все растровые файлы при наведении порядка перенесены **без изменения изображения**.
 
-- `forest-expanded.webp`: outer forest, drawn over the 1536 × 1536 world.
-- `forest-world.webp`: historical inner-forest reference, retained as an art source and not loaded by the renderer. Its landmarks already exist in the expanded forest.
-- `../mochlik-pixel/forest.webp`: original home clearing with the house, bush, stones and paths together; shown in the circle and the central 384 × 384 world area.
-- `house-details.webp`: original four-cell atlas of small additions for house levels 2–5. Patches leave the doorway and dynamic lantern glass untouched.
-- `buildings-v1.webp`: original workshop art. The workshop uses its original appearance at all three upgrade levels; upgrade costs, levels and saved progress are retained.
+| Файл | Сейчас используется для |
+|---|---|
+| [maps/forest-expanded.webp](maps/forest-expanded.webp) | Внешняя карта; рисуется один раз в мире 1536 × 1536 |
+| [maps/home-clearing.webp](maps/home-clearing.webp) | Поляна с домом, кустом и дорожками: круглая кнопка и центр большой карты |
+| [buildings/house-details.webp](buildings/house-details.webp) | Атлас деталей дома для уровней 2–5; пока это фрагменты, а не отдельные дома |
+| [buildings/workshop-atlas.webp](buildings/workshop-atlas.webp) | Исходный атлас; из него извлекается верстак для круглой сцены |
+| [routes/trail.webp](routes/trail.webp) | Иллюстрация выбора лесной тропы |
+| [routes/river.webp](routes/river.webp) | Иллюстрация выбора реки/ручья |
 
-The expanded forest is drawn once. The original rectangular edge feather joins only the home clearing into it; drawing the old inner forest again caused doubled landmarks along its edges. The circle keeps its construction-dependent bench. In the full map that extra sprite is omitted; the workshop marker and hit area point to the single workshop already drawn on the expanded background. River and trail markers follow that background too.
+`forest-world.webp` удалён как неиспользуемая промежуточная карта; его можно найти в истории Git до коммита уборки. Он не должен снова накладываться поверх расширенного леса: это создавало дубли объектов.
 
-Image downloads retain the shared 15-second timeout, retry after failure and readiness reporting. Atlas extraction happens once during loading. Night lighting, whole-map rain, character departure and circle/world continuity remain in the current renderer.
+## Почему карты пока две
+
+Одна содержит внешнее окружение, вторая — прежнюю поляну с уже нарисованным домом. Рендер уменьшает поляну до 256 × 256 и помещает её в центральные 384 × 384 координат мира с мягким краем. На большой карте мастерская уже есть в фоне; второй верстак поверх неё не рисуется.
+
+Раздельные здания и единая сцена — [следующий этап](../../docs/game/map-assets-plan.md). WebP — формат файла, а не особая структура карты: он может хранить картинку с потерями или без, а также прозрачность. Расширение `.webp` само по себе не гарантирует маленькую память при декодировании.
+
+## Где менять настройки
+
+- Размер мира, положение поляны, метки и зоны нажатия: [map-layout.ts](../../features/world/map-layout.ts).
+- Вход в дом и фонарь: [home-layout.ts](../../features/mochlik/home-layout.ts).
+- Фрагменты улучшений: [house-details.ts](../../features/mochlik/house-details.ts).
+- Отрисовка поляны: [scene.ts](../../features/mochlik/scene.ts); большая карта: [map-engine.ts](../../features/world/map-engine.ts).
+
+Не добавляйте в этот каталог альтернативные `final-v2` и неиспользуемые копии. Художественные концепты и запросы генерации находятся в [docs/game/concepts/](../../docs/game/concepts/). Перед удалением проверяйте каталог `art.ts` и обращения в коде.

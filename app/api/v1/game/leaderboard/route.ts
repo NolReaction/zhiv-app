@@ -1,6 +1,6 @@
-import { getDevGameLeaderboard } from "@/lib/dev-game-store";
-import { devGameContext, devGameResponse, gameRequestError } from "@/lib/dev-game-route";
-import { parseDevGameMetric, parseDevGameScope } from "@/lib/dev-game-validation";
+import { getDevGameLeaderboard } from "@/lib/dev/game-store";
+import { devGameContext, devGameResponse, gameRequestError } from "@/lib/dev/game-route";
+import { parseDevGameMetric, parseDevGameScope } from "@/lib/dev/game-validation";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {

@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, FlaskConical, Gem, 
 import { worldCatalog as catalog, type WorldResources } from "./model";
 import type { WorldController } from "./use-world";
 import { JourneyProgress } from "./journey-progress";
+import { WORLD_ART } from "./art";
 import styles from "./world.module.css";
 
 export function Materials({ cost }: { cost: WorldResources }) {
@@ -23,7 +24,7 @@ export function WorldJourneys({ world, destination }: { world: WorldController; 
   const switchRoute = () => setSelected(value => value === "river" ? "trail" : "river");
   return <div className={styles.panel}>
     <div className={styles.routeChooser}>
-      <Image src={`/world/route-${selected}.webp`} alt="" width={600} height={400} unoptimized />
+      <Image src={WORLD_ART.routes[selected]} alt="" width={600} height={400} unoptimized />
       <div><button onClick={switchRoute} aria-label={selected === "trail" ? "Выбрать реку" : "Выбрать лесную тропу"}><ArrowLeft size={20} /></button>
         <span aria-live="polite"><strong>{selected === "trail" ? "Лесная тропа" : "Река и ручей"}</strong><small>{selected === "trail" ? "1 / 2" : "2 / 2"}</small></span>
         <button onClick={switchRoute} aria-label={selected === "trail" ? "Выбрать реку" : "Выбрать лесную тропу"}><ArrowRight size={20} /></button></div>

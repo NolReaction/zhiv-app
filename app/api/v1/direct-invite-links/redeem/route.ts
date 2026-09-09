@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { redeemDevDirectInvite } from "@/lib/dev-api-store";
-import { devSessionToken, invalidIdempotencyResponse, isExactJsonObject, NO_STORE_HEADERS, parseIdempotencyKey } from "@/lib/dev-api-route";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { redeemDevDirectInvite } from "@/lib/dev/api-store";
+import { devSessionToken, invalidIdempotencyResponse, isExactJsonObject, NO_STORE_HEADERS, parseIdempotencyKey } from "@/lib/dev/api-route";
 import { isCapabilityToken } from "@/lib/capability-token";
 import { directInviteResultError } from "../_shared";
 

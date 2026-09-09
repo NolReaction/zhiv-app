@@ -3,9 +3,9 @@ import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 const root=fileURLToPath(new URL('..',import.meta.url));
-const vite=await createServer({appType:'custom',configFile:false,root,server:{middlewareMode:true,hmr:false}});
-const {connectHabitat}=await vite.ssrLoadModule('/lib/mochlik/session.ts');
-const {createHabitat}=await vite.ssrLoadModule('/lib/mochlik/habitat.ts');
+const vite=await createServer({appType:'custom',configFile:false,root,resolve:{alias:{"@":root}},server:{middlewareMode:true,hmr:false}});
+const {connectHabitat}=await vite.ssrLoadModule('/features/mochlik/session.ts');
+const {createHabitat}=await vite.ssrLoadModule('/features/mochlik/habitat.ts');
 after(()=>vite.close());
 const advance=(world,seconds)=>{for(let i=0;i<seconds*40;i++)world.update(.025)};
 function until(world,condition,max=180){for(let i=0;i<max*40&&!condition(world.state);i++)world.update(.025);assert.ok(condition(world.state),world.state.activity)}

@@ -6,9 +6,9 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const identities = await vite.ssrLoadModule("/lib/dev-api-store.ts");
-const game = await vite.ssrLoadModule("/lib/dev-game-store.ts");
-const validation = await vite.ssrLoadModule("/lib/dev-game-validation.ts");
+const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const game = await vite.ssrLoadModule("/lib/dev/game-store.ts");
+const validation = await vite.ssrLoadModule("/lib/dev/game-validation.ts");
 beforeEach(() => { identities.resetDevStoreForTests(); game.resetDevGameStoreForTests(); });
 after(() => vite.close());
 

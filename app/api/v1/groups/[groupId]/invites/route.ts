@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
+import { guardDevApi } from "@/lib/dev/api-guard";
 import {
   devResultError,
   devSessionToken,
@@ -7,8 +7,8 @@ import {
   NO_STORE_HEADERS,
   parseIdempotencyKey,
   parseUuid,
-} from "@/lib/dev-api-route";
-import { inviteDevGroupMember } from "@/lib/dev-api-store";
+} from "@/lib/dev/api-route";
+import { inviteDevGroupMember } from "@/lib/dev/api-store";
 
 export const dynamic = "force-dynamic";
 

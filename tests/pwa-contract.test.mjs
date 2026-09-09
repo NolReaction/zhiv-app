@@ -263,10 +263,10 @@ test("applies clickjacking protection to the root page and nested routes", async
 
 test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrome", async () => {
   const [app, appStyles, peopleStyles, profileStyles, navigation] = await Promise.all([
-    readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/profile-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/profile-view.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8"),
   ]);
 
@@ -367,9 +367,9 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
 
 test("keeps the ten-second clicker lightweight and motion-safe", async () => {
   const [app, appStyles, clicker] = await Promise.all([
-    readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../lib/clicker-story.ts", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/game/clicker-story.ts", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(clicker, /CLICKER_FINAL_TAP|rotateClickerStory/);
@@ -431,13 +431,13 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
       readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
       readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
-      readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-      readFile(new URL("../components/people-view.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
-      readFile(new URL("../components/groups-section.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../components/groups-section.module.css", import.meta.url), "utf8"),
-      readFile(new URL("../components/profile-view.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/people-view.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/groups-section.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/people/groups-section.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../features/account/profile-view.tsx", import.meta.url), "utf8"),
     ]);
 
   assert.match(layout, /minimumScale:\s*1/);
@@ -541,9 +541,9 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
 
 test("uses a wide desktop dashboard without changing the mobile navigation contract", async () => {
   const [appStyles, peopleStyles, profileStyles] = await Promise.all([
-    readFile(new URL("../components/check-in-app.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/people-view.module.css", import.meta.url), "utf8"),
-    readFile(new URL("../components/profile-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/profile-view.module.css", import.meta.url), "utf8"),
   ]);
 
   const desktopQuery = "@media (min-width: 960px) and (hover: hover) and (pointer: fine)";
@@ -578,8 +578,8 @@ test("keeps local development origins out of production Docker builds", async ()
 
 test("keeps invitations through browser login and retains the legacy PWA fallback", async () => {
   const [landing, landingStyles] = await Promise.all([
-    readFile(new URL("../components/capability-landing.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/capability-landing.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/capability-landing.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/account/capability-landing.module.css", import.meta.url), "utf8"),
   ]);
 
   assert.match(landing, /window\.addEventListener\(INVITE_IMPORT_EVENT,\s*handler\)/);

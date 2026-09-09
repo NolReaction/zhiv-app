@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const api = await vite.ssrLoadModule("/lib/admin-api.ts");
+const api = await vite.ssrLoadModule("/features/admin/admin-api.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });

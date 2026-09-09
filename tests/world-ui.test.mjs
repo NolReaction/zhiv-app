@@ -13,7 +13,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { DialogPortal } = await vite.ssrLoadModule("/components/ui/dialog.tsx");
-const { houseAtlasCell, houseDetailPatches } = await vite.ssrLoadModule("/lib/mochlik/house-details.ts");
+const { houseAtlasCell, houseDetailPatches } = await vite.ssrLoadModule("/features/mochlik/house-details.ts");
 const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
 
 test("every house detail leaves the original doorway and dynamic lamp untouched", () => {
@@ -51,7 +51,7 @@ test("the fullscreen forest mounts raw modal content without centered-dialog geo
 });
 
 test("account-owned sibling dialogs have distinct keys and remount on account changes", async () => {
-  const source = await readFile(new URL("../components/check-in-app.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8");
   const tree = ts.createSourceFile("check-in-app.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const dialogs = new Set(["CheckInCalendar", "GameLeaderboardDialog", "WorldPortal"]);
   const expressions = new Map();

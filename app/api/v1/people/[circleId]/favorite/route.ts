@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { guardDevApi } from "@/lib/dev-api-guard";
-import { devResultError, devSessionToken, invalidIdempotencyResponse, NO_STORE_HEADERS, parseIdempotencyKey, parseUuid } from "@/lib/dev-api-route";
-import { updateDevFavorite } from "@/lib/dev-api-store";
+import { guardDevApi } from "@/lib/dev/api-guard";
+import { devResultError, devSessionToken, invalidIdempotencyResponse, NO_STORE_HEADERS, parseIdempotencyKey, parseUuid } from "@/lib/dev/api-route";
+import { updateDevFavorite } from "@/lib/dev/api-store";
 
 export const dynamic = "force-dynamic";
 

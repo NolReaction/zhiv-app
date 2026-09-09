@@ -2,13 +2,15 @@
 import { useEffect, useRef, useState } from "react";
 import { LocateFixed, Minus, Plus, LoaderCircle } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
-import { HabitatAssetError } from "@/lib/mochlik/assets";
-import { habitatLighting } from "@/lib/mochlik/lighting";
+import { HabitatAssetError } from "@/features/mochlik/assets";
+import { habitatLighting } from "@/features/mochlik/lighting";
 import { JourneyProgress } from "./journey-progress";
-import type { GameItemId } from "@/lib/game-rewards";
-import type { SceneOptions } from "@/lib/mochlik/scene";
+import type { GameItemId } from "@/features/game/game-rewards";
+import type { SceneOptions } from "@/features/mochlik/scene";
 import type { WorldState } from "./model";
 import type { createMapEngine, MapAction, WorldPlace } from "./map-engine";
+import { WORLD_ART } from "./art";
+import { MAP_PLACES } from "./map-layout";
 import styles from "./world.module.css";
 
 type Props = { state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void };
@@ -57,14 +59,14 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
     else pendingWake.current += taps;
   }, [wakeSignal]);
   const control = (action: MapAction) => engine.current?.control(action);
-  return <div ref={root} className={styles.scene} data-ready={ready}>
+  return <div ref={root} className={styles.scene} style={{ backgroundImage: `url(${WORLD_ART.home})` }} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home возвращает к дому. Все места также доступны кнопками." />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
     <div className={styles.mapAnchors} hidden={!ready}>
-      <button data-map-anchor data-kind="house" data-x="847" data-y="730" onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
-      <button data-map-anchor data-kind="workshop" data-x="414" data-y="1020" onClick={() => onPlace("workshop")} aria-label={state.workshop ? "Мастерская" : "Построить мастерскую"} title="Мастерская" />
-      <button data-map-anchor data-kind="river" data-x="1090" data-y="492" onClick={() => onPlace("river")} aria-label="Маршруты к реке и ручью" title="Река и ручей" />
-      <button data-map-anchor data-kind="trail" data-x="1112" data-y="1020" onClick={() => onPlace("trail")} aria-label="Маршруты по лесной тропе" title="Лесная тропа" />
+      <button data-map-anchor data-kind="house" data-x={MAP_PLACES.house.marker.x} data-y={MAP_PLACES.house.marker.y} onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
+      <button data-map-anchor data-kind="workshop" data-x={MAP_PLACES.workshop.marker.x} data-y={MAP_PLACES.workshop.marker.y} onClick={() => onPlace("workshop")} aria-label={state.workshop ? "Мастерская" : "Построить мастерскую"} title="Мастерская" />
+      <button data-map-anchor data-kind="river" data-x={MAP_PLACES.river.marker.x} data-y={MAP_PLACES.river.marker.y} onClick={() => onPlace("river")} aria-label="Маршруты к реке и ручью" title="Река и ручей" />
+      <button data-map-anchor data-kind="trail" data-x={MAP_PLACES.trail.marker.x} data-y={MAP_PLACES.trail.marker.y} onClick={() => onPlace("trail")} aria-label="Маршруты по лесной тропе" title="Лесная тропа" />
     </div>
     <div className={styles.cameraControls} aria-label="Управление картой">
       <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>

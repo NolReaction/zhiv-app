@@ -1,4 +1,4 @@
-import { guardDevApi } from "@/lib/dev-api-guard";
+import { guardDevApi } from "@/lib/dev/api-guard";
 
 export const dynamic = "force-dynamic";
 
