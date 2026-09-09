@@ -34,12 +34,12 @@ data class UserIncident(val id: Long, val publicId: String, val displayName: Str
     val operation: String, val code: String, val occurredAt: String, val receivedAt: String,
     val requestId: String?, val httpStatus: Int?, val pendingTaps: Int, val occurrences: Int)
 @Serializable
-data class IncidentPage(val serverTime: String, val total: Long, val offset: Int, val limit: Int, val events: List<UserIncident>)
+data class IncidentPage(val serverTime: String, val total: Long, val offset: Int, val limit: Int, val events: List<UserIncident>, val totalOccurrences: Long, val affectedUsers: Long)
 
 val CLIENT_INCIDENT_CODES = setOf("NETWORK_ERROR", "TIMEOUT", "RATE_LIMITED", "SERVER_ERROR", "SYNC_RECOVERED",
     "RECEIPT_INVALID", "QUEUE_FULL", "STORAGE_FAILED", "GAME_ACTIVE_ELSEWHERE", "GAME_SESSION_EXPIRED",
     "GAME_QUEUE_EXPIRED", "GAME_TAP_RATE", "GAME_PERMIT_CLOSED", "GAME_SESSION_GONE", "GAME_SEQUENCE_CONFLICT", "GAME_SESSION_CONFLICT", "GAME_PACING",
-    "UNAUTHORIZED", "GAME_OWNER_CHANGED", "SYNC_ERROR", "PAGE_ERROR", "UNHANDLED_REJECTION", "OFFLINE")
+    "UNAUTHORIZED", "GAME_OWNER_CHANGED", "SYNC_ERROR", "PAGE_ERROR", "UNHANDLED_REJECTION", "OFFLINE", "WORLD_MAP_FAILED", "WORLD_MAP_TIMEOUT", "WORLD_CHARACTER_FAILED", "WORLD_CHARACTER_TIMEOUT")
 private val CLIENT_OPERATIONS = setOf("game.progress", "game.session", "game.batch", "game.storage", "check-in", "world", "page")
 
 /** No browser-supplied identity, free-form message, URL, stack or credentials are stored. */
@@ -107,21 +107,34 @@ class UserIncidentRepository(private val source: DataSource) {
         }
         } finally { slots.release() }
     }
-    suspend fun list(range: Int, query: String, offset: Int, limit: Int): IncidentPage = withContext(Dispatchers.IO) {
-        if (range !in MONITORING_RANGES || query.length > 100 || query.any(Char::isISOControl) || offset !in 0..100000 || limit !in 1..100) invalid()
+    suspend fun list(range: Int, query: String, offset: Int, limit: Int, sourceFilter: String = "", codeFilter: String = ""): IncidentPage = withContext(Dispatchers.IO) {
+        if (range !in setOf(60,360,1440,10080,43200) || query.length > 100 || query.any(Char::isISOControl) || offset !in 0..100000 || limit !in 1..100
+            || sourceFilter !in setOf("", "client", "server") || (codeFilter.isNotEmpty() && !Regex("^[A-Z][A-Z0-9_]{0,63}$").matches(codeFilter))) invalid()
+        val now = Instant.now()
         source.connection.use { c ->
-            val filter = "FROM user_incidents i JOIN app_users u ON u.id=i.user_id WHERE i.received_at >= clock_timestamp() - (? * interval '1 minute') AND (?='' OR u.public_id=? OR position(lower(?) in lower(u.display_name))>0)"
-            fun java.sql.PreparedStatement.parameters() { setInt(1, range); setString(2, query); setString(3, query.uppercase()); setString(4, query); queryTimeout = 3 }
-            val total = c.prepareStatement("SELECT count(*) $filter").use { s -> s.parameters(); s.executeQuery().use { r -> r.next(); r.getLong(1) } }
-            val rows = c.prepareStatement("SELECT i.*,u.public_id,u.display_name $filter ORDER BY i.received_at DESC,i.id DESC OFFSET ? LIMIT ?").use { s ->
-                s.parameters(); s.setInt(5, offset); s.setInt(6, limit)
-                s.executeQuery().use { r -> buildList { while (r.next()) add(UserIncident(r.getLong("id"), r.getString("public_id"), r.getString("display_name"),
-                    r.getString("source"), r.getString("operation"), r.getString("code"), r.getObject("occurred_at", OffsetDateTime::class.java).toInstant().toString(),
-                    r.getObject("received_at", OffsetDateTime::class.java).toInstant().toString(), r.getObject("request_id")?.toString(), r.getObject("http_status") as? Int,
-                    r.getInt("pending_taps"), r.getInt("occurrences"))) } }
-            }
-            c.commit()
-            IncidentPage(Instant.now().toString(), total, offset, limit, rows)
+            c.autoCommit = false
+            c.transactionIsolation = java.sql.Connection.TRANSACTION_REPEATABLE_READ
+            c.isReadOnly = true
+            try {
+                val filter = "FROM user_incidents i JOIN app_users u ON u.id=i.user_id WHERE i.received_at >= ? AND i.received_at <= ? AND (?='' OR u.public_id=? OR position(lower(?) in lower(u.display_name))>0) AND (?='' OR i.source=?) AND (?='' OR i.code=?)"
+                fun java.sql.PreparedStatement.parameters() {
+                    listOf(now.minusSeconds(range.toLong()*60).atOffset(ZoneOffset.UTC), now.atOffset(ZoneOffset.UTC), query, query.uppercase(), query,
+                        sourceFilter, sourceFilter, codeFilter, codeFilter).forEachIndexed { i, value -> setObject(i+1,value) }
+                    queryTimeout = 3
+                }
+                val summary = c.prepareStatement("SELECT count(*), coalesce(sum(i.occurrences),0), count(DISTINCT i.user_id) $filter").use { s ->
+                    s.parameters(); s.executeQuery().use { r -> r.next(); Triple(r.getLong(1),r.getLong(2),r.getLong(3)) }
+                }
+                val rows = c.prepareStatement("SELECT i.*,u.public_id,u.display_name $filter ORDER BY i.received_at DESC,i.id DESC OFFSET ? LIMIT ?").use { s ->
+                    s.parameters(); s.setInt(10, offset); s.setInt(11, limit)
+                    s.executeQuery().use { r -> buildList { while (r.next()) add(UserIncident(r.getLong("id"), r.getString("public_id"), r.getString("display_name"),
+                        r.getString("source"), r.getString("operation"), r.getString("code"), r.getObject("occurred_at", OffsetDateTime::class.java).toInstant().toString(),
+                        r.getObject("received_at", OffsetDateTime::class.java).toInstant().toString(), r.getObject("request_id")?.toString(), r.getObject("http_status") as? Int,
+                        r.getInt("pending_taps"), r.getInt("occurrences"))) } }
+                }
+                c.commit()
+                IncidentPage(now.toString(), summary.first, offset, limit, rows, summary.second, summary.third)
+            } catch (error: Exception) { c.rollback(); throw error }
         }
     }
     private fun invalid(): Nothing = throw AuthFailure("INVALID_INCIDENT", "Некорректное событие", 400)
@@ -147,7 +160,7 @@ fun Route.userIncidentRoutes(repository: UserIncidentRepository, admin: AdminRep
             val raw = call.sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль", 401)
             admin.access(codec.hash(raw))
             fun param(name: String, fallback: String) = call.request.queryParameters.getAll(name)?.singleOrNull() ?: if (call.request.queryParameters[name] == null) fallback else "!"
-            call.respond(repository.list(param("rangeMinutes", "1440").toIntOrNull() ?: 0, param("q", "").trim(), param("offset", "0").toIntOrNull() ?: -1, param("limit", "25").toIntOrNull() ?: 0))
+            call.respond(repository.list(param("rangeMinutes", "1440").toIntOrNull() ?: 0, param("q", "").trim(), param("offset", "0").toIntOrNull() ?: -1, param("limit", "25").toIntOrNull() ?: 0, param("source", ""), param("code", "")))
         }
     }
 }

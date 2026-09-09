@@ -7,7 +7,7 @@ const ease = (value: number) => { const t = Math.max(0, Math.min(1, value)); ret
 /** A single sprite and a continuous foliage envelope for every phase of bush play. */
 export function pixelFrame(state: HabitatState, reducedMotion = false) {
   const a = state.activity, p = state.progress, t = reducedMotion ? 0 : state.activityTime;
-  const walking = ["walk", "approach", "enter", "leave", "chase", "carry"].includes(a);
+  const walking = ["walk", "approach", "enter", "leave", "chase", "carry", "depart"].includes(a);
   const airborne = a === "jump" || a === "emerge" || a === "pounce";
   let pose: PixelPose = walking ? "walk" : "idle";
   if (a === "sleep") pose = state.wakeTaps > 1 ? "drowsy" : "sleep";
@@ -33,7 +33,9 @@ export function pixelFrame(state: HabitatState, reducedMotion = false) {
   else if (a === "groom" || a === "greet" || a === "sniff") pose = a;
   else if (!walking && t % 4.7 > 4.45) pose = "blink";
   let sink = 0, opacity = 1;
-  if (a === "hide") opacity = 0;
+  if (state.travel === "away") opacity = 0;
+  else if (a === "depart") opacity = 1 - ease((p - .75) / .25);
+  else if (a === "hide") opacity = 0;
   else if (a === "jump") { opacity = 1 - ease((p - .65) / .35); }
   else if (a === "peek") {
     const reveal = Math.sin(Math.PI * p) ** 2;

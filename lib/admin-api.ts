@@ -106,12 +106,12 @@ export function grantAdminReward(target: string, body: AdminGrantRequest, signal
     z.object({ requestId: z.string().uuid(), kind: z.enum(["item", "achievement"]), rewardId: rewardIdSchema, granted: z.boolean(), createdAt: instant }), signal, body);
 }
 
-const incidentsSchema = z.object({ ...page, events: z.array(z.object({
+const incidentsSchema = z.object({ ...page, totalOccurrences: count, affectedUsers: count, events: z.array(z.object({
   id: count, publicId, displayName: z.string(), source: z.enum(["client", "server"]),
   operation: z.string().max(100), code: z.string().max(64), occurredAt: instant, receivedAt: instant,
   requestId: z.string().uuid().nullable(), httpStatus: z.number().int().min(100).max(599).nullable(), pendingTaps: count, occurrences: count,
 })).max(100) });
 export type AdminIncidents = z.infer<typeof incidentsSchema>;
-export function getAdminIncidents(options: { rangeMinutes: number; q: string; offset: number }, signal?: AbortSignal) {
-  return adminRequest(`incidents?${new URLSearchParams({ rangeMinutes: String(options.rangeMinutes), q: options.q, offset: String(options.offset), limit: "25" })}`, incidentsSchema, signal);
+export function getAdminIncidents(options: { rangeMinutes: number; q: string; offset: number; source?: "" | "client" | "server"; code?: string }, signal?: AbortSignal) {
+  return adminRequest(`incidents?${new URLSearchParams({ rangeMinutes: String(options.rangeMinutes), q: options.q, source: options.source ?? "", code: options.code ?? "", offset: String(options.offset), limit: "25" })}`, incidentsSchema, signal);
 }

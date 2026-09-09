@@ -43,3 +43,17 @@ groups:
           severity: warning
         annotations:
           summary: More than ten percent of gameplay taps are rejected.
+      - alert: ZhivRateLimited
+        expr: (sum(rate(zhiv_http_throttled_total{job="api"}[5m])) / clamp_min(sum(rate(zhiv_http_requests_total{job="api"}[5m])), 0.001) > 0.05) and (sum(increase(zhiv_http_throttled_total{job="api"}[5m])) >= 10) and on() (max(up{job="api"}) == 1)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: API rate limiting affects a sustained share of requests.
+      - alert: ZhivSlowApi
+        expr: (histogram_quantile(0.95, sum by (le) (rate(zhiv_http_request_duration_seconds_bucket{job="api"}[5m]))) > 2) and (sum(increase(zhiv_http_request_duration_seconds_count{job="api"}[5m])) >= 30) and on() (max(up{job="api"}) == 1)
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: API p95 response latency exceeds two seconds.

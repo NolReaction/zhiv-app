@@ -7,7 +7,7 @@ import { GameLevelIcon } from "@/components/game-level-icon";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "./world-scene";
-import { canAfford, worldCatalog as catalog } from "./model";
+import { canAfford, workshopLevel, worldCatalog as catalog } from "./model";
 import type { WorldPlace } from "./map-engine";
 import styles from "./world.module.css";
 import { Materials, WorldJourneys } from "./world-journeys";
@@ -31,6 +31,8 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
   if (!snapshot) return <section className={styles.loading} aria-live="polite"><button id="world-exit" onClick={onClose}><ArrowLeft size={18} />Назад</button><Compass size={32} /><h1>Лес Мохлика</h1>
     <p>{world.error ?? "Открываем вашу полянку…"}</p>{world.error && <button onClick={() => void world.retry()}>Попробовать ещё раз</button>}</section>;
   const state = snapshot.state;
+  const shopLevel = workshopLevel(state);
+  const shopCost = catalog.workshopUpgrades.find(c => c.level === shopLevel + 1);
   const locked = busy || uncertain;
   const houseCost = catalog.houseUpgrades.find(c => c.level === state.houseLevel + 1);
   const goal = !state.firstJourneyCompleted ? "Отправьте Мохлика на первую прогулку. Через минуту он принесёт материалы для домика."
@@ -80,10 +82,13 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
         {panel === "build" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>СВОЁ МЕСТО В ЛЕСУ</span><h2>Больше уюта</h2><p>Постройки меняют полянку и открывают новые возможности.</p></div>
           {snapshot.gifts.length > 0 && <article className={styles.card}><h3>Подарки за отметки</h3><p>Уже украшают домик: {GAME_ITEMS.filter(item => snapshot.gifts.includes(item.id)).map(item => item.title.toLowerCase()).join(", ")}. Полученные подарки остаются и в этом мире.</p></article>}
           <article className={styles.card}><House className={styles.cardIcon} /><h3>Домик Мохлика <span className={styles.kicker}>ур. {state.houseLevel}/5</span></h3>
-            <p>{["", "На втором уровне появятся маленькое окно и вьющаяся зелень. Откроется путь к ручью.", "Следующий шаг — цветы у окна и зелень на крыше.", "Добавим аккуратную деревянную отделку и маленькую жердочку.", "Остался листовой знак и последние уютные детали.", "Дом полностью обустроен. Дверь и любимый фонарь всегда на своих местах."][state.houseLevel]}</p>
+            <p>{["", "На втором уровне появится окно с деревянной рамой. Откроется путь к ручью.", "Следующий шаг — каменная труба с мхом на крыше.", "Добавим заметный деревянный навес над входом.", "Осталось круглое боковое окно с цветами на подоконнике.", "Дом полностью обустроен. Дверь и любимый фонарь всегда на своих местах."][state.houseLevel]}</p>
             {houseCost ? <><Materials cost={houseCost} /><button className={styles.primary} disabled={locked || !canAfford(state.resources, houseCost)} onClick={() => act("upgrade_house")}>{canAfford(state.resources, houseCost) ? `Улучшить до ${houseCost.level} уровня` : "Нужны материалы из путешествий"}</button></> : <span className={styles.kicker}><Check size={16} />Все улучшения открыты</span>}</article>
-          <article className={styles.card}><Hammer className={styles.cardIcon} /><h3>Лесная мастерская</h3><p>Шарфы, головные уборы и новые оттенки мха. Всё сделанное остаётся в гардеробе.</p>
-            {state.workshop ? <button onClick={() => openPanel("wardrobe")}>Выбрать, что изготовить<ArrowRight size={16} /></button> : <><Materials cost={catalog.workshop} /><button disabled={locked || !canAfford(state.resources, catalog.workshop)} onClick={() => act("build_workshop")}>{canAfford(state.resources, catalog.workshop) ? "Построить мастерскую" : "Накопите материалы на мастерскую"}</button></>}</article>
+          <article className={styles.card}><Hammer className={styles.cardIcon} /><h3>Лесная мастерская <span className={styles.kicker}>{state.workshop ? `ур. ${shopLevel}/3` : "Ещё не построена"}</span></h3><p>Шарфы, головные уборы и новые оттенки мха. Всё сделанное остаётся в гардеробе.</p>
+            {state.workshop ? <>
+              <p>{shopLevel === 1 ? "Добавим полки с материалами, стену и новые инструменты." : shopLevel === 2 ? "Устроим каменный очаг с трубой и окно под крышей." : "Мастерская полностью обустроена."}</p>
+              {shopCost && <><Materials cost={shopCost} /><button className={styles.primary} disabled={locked || !canAfford(state.resources, shopCost)} onClick={() => act("upgrade_workshop")}>Улучшить до {shopCost.level} уровня</button></>}
+              <button onClick={() => openPanel("wardrobe")}>Выбрать, что изготовить<ArrowRight size={16} /></button></> : <><Materials cost={catalog.workshop} /><button disabled={locked || !canAfford(state.resources, catalog.workshop)} onClick={() => act("build_workshop")}>{canAfford(state.resources, catalog.workshop) ? "Построить мастерскую" : "Накопите материалы на мастерскую"}</button></>}</article>
         </div>}
         {panel === "wardrobe" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ХАРАКТЕР В ДЕТАЛЯХ</span><h2>Твой Мохлик</h2><p>Одежда и оттенки мха видны и здесь, и в круглой кнопке.</p></div>
           <div className={styles.wardrobe}>{catalog.items.map(item => {
@@ -98,7 +103,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
         </div>}
         {panel === "stats" && <div className={styles.statsPanel}>
           <div className={styles.statsIdentity}><GameLevelIcon level={level} size={42} /><h2>{displayName}</h2><span>Уровень {level}</span></div>
-          <dl><div><dt>Домик</dt><dd>{state.houseLevel} / 5</dd></div><div><dt>Мастерская</dt><dd>{state.workshop ? "Построена" : "Не построена"}</dd></div>
+          <dl><div><dt>Домик</dt><dd>{state.houseLevel} / 5</dd></div><div><dt>Мастерская</dt><dd>{state.workshop ? `${shopLevel} / 3` : "Не построена"}</dd></div>
           <div><dt>Путешествия</dt><dd>{state.completedJourneys}</dd></div><div><dt>Лесные находки</dt><dd>{state.collection.length} / {catalog.finds.length}</dd></div>
           <div><dt>Гардероб</dt><dd>{state.inventory.length} вещей</dd></div><div><dt>Лучшая серия отметок</dt><dd>{bestStreakDays} дн.</dd></div></dl>
           <button onClick={() => openPanel("build")}><House size={18} />Обустроить дом</button>

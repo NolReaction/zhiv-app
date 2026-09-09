@@ -1,16 +1,21 @@
 import { mountHabitat, type SceneOptions } from "@/lib/mochlik/scene";
-import { clampCamera, homeCamera, HOME_AREA, INNER_AREA, isMapTap, MAP_SIZE, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
+import { clampCamera, homeCamera, HOME_AREA, isMapTap, MAP_SIZE, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
+import { loadHabitatImage } from "@/lib/mochlik/assets";
+import { loadHouseAccessories } from "@/lib/mochlik/house-details";
+import { loadWorkshopArt } from "@/lib/mochlik/workshop-art";
+import { workshopLevel } from "./model";
+export const WORKSHOP_AREA = { x: 335, y: 875, width: 190, height: 180 };
+export class MapLoadError extends Error {
+  constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
+}
 export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river" | "trail";
 export type MapAction = "home" | "in" | "out";
-const terrainCache = new Map<string, Promise<HTMLImageElement>>();
-function terrain(path: string) {
-  if (!terrainCache.has(path)) terrainCache.set(path, new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = path;
-  }).catch(error => { terrainCache.delete(path); throw error; }));
-  return terrainCache.get(path)!;
-}
-export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[]) {
-  const [ground, innerGround] = await Promise.all([terrain("/world/forest-expanded.webp"), terrain("/world/forest-world.webp")]);
+export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
+  let ground: HTMLImageElement;
+  let workshopArt: HTMLCanvasElement[] | null = null;
+  try { [ground, workshopArt] = await Promise.all([loadHabitatImage("/world/forest-map-v2.webp"), loadWorkshopArt(), loadHouseAccessories()]); }
+  catch (error) { throw new MapLoadError("map", error); }
+  signal?.throwIfAborted();
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
   let options = initial, disposed = false, raf = 0, last = 0;
@@ -19,22 +24,31 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const home = document.createElement("canvas"), blend = document.createElement("canvas"), mask = document.createElement("canvas");
   blend.width = mask.width = 256; blend.height = mask.height = 256;
   const blendContext = blend.getContext("2d")!, maskContext = mask.getContext("2d")!;
-  maskContext.fillStyle = "white"; maskContext.fillRect(0, 0, 256, 256);
-  maskContext.globalCompositeOperation = "destination-in";
-  for (const vertical of [false, true]) {
-    const gradient = maskContext.createLinearGradient(0, 0, vertical ? 0 : 256, vertical ? 256 : 0);
-    gradient.addColorStop(0, "transparent"); gradient.addColorStop(.075, "white"); gradient.addColorStop(.925, "white"); gradient.addColorStop(1, "transparent");
-    maskContext.fillStyle = gradient; maskContext.fillRect(0, 0, 256, 256);
+  // An irregular oval follows the clearing; a rectangular feather left a visible
+  // straight seam across the northern path and doubled the edge vegetation.
+  const edge = maskContext.createImageData(256, 256);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+    const dx = (x - 128) / 132, dy = (y - 130) / 140, angle = Math.atan2(dy, dx);
+    const radius = Math.hypot(dx, dy) + .025 * Math.sin(angle * 5) + .018 * Math.cos(angle * 9);
+    const at = (y * 256 + x) * 4;
+    edge.data[at] = edge.data[at + 1] = edge.data[at + 2] = 255;
+    edge.data[at + 3] = Math.round(Math.max(0, Math.min(1, (1 - radius) / .17, x / 12, (255 - x) / 12, y / 12, (255 - y) / 12)) * 255);
   }
-  // Cache the unchanged inner forest once; feather only its outer edge into the new terrain.
-  const inner = document.createElement("canvas"); inner.width = inner.height = 768;
-  const innerContext = inner.getContext("2d")!; innerContext.imageSmoothingEnabled = false;
-  innerContext.drawImage(innerGround, 0, 0, 768, 768);
-  innerContext.globalCompositeOperation = "destination-in"; innerContext.drawImage(mask, 0, 0, 768, 768);
+  maskContext.putImageData(edge, 0, 0);
   type Touch = { initial: Point; position: Point };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
-  const habitat = mountHabitat(home, initial, { activity() {}, ready: () => draw(), failure: () => draw(), rendered: () => { if (options.reducedMotion) draw(); } });
+  let readyResolve!: () => void, readyReject!: (error: unknown) => void;
+  const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+  const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: document.hidden }, {
+    activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
+    rendered: () => { if (options.reducedMotion) draw(); },
+  });
+  const abort = () => { disposed = true; habitat.dispose(); readyReject(signal?.reason ?? new DOMException("Aborted", "AbortError")); };
+  signal?.addEventListener("abort", abort, { once: true });
+  try { await habitatReady; signal?.throwIfAborted(); }
+  catch (error) { habitat.dispose(); throw error; }
+  finally { signal?.removeEventListener("abort", abort); }
   function draw() {
     if (disposed || !ctx) return;
     const ratio = canvas.width / view.width;
@@ -42,7 +56,11 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
     ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
-    ctx.drawImage(inner, INNER_AREA.x, INNER_AREA.y, INNER_AREA.size, INNER_AREA.size);
+    if (options.worldState?.workshop && workshopArt) {
+      const sprite = workshopArt[workshopLevel(options.worldState) - 1];
+      const height = WORKSHOP_AREA.width * sprite.height / sprite.width;
+      ctx.drawImage(sprite, WORKSHOP_AREA.x, WORKSHOP_AREA.y + WORKSHOP_AREA.height - height, WORKSHOP_AREA.width, height);
+    }
     if (options.dusk) { ctx.fillStyle = "rgba(8,17,35,.57)"; ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE); }
     blendContext.globalCompositeOperation = "copy"; blendContext.drawImage(home, 0, 0, 256, 256);
     blendContext.globalCompositeOperation = "destination-in"; blendContext.drawImage(mask, 0, 0);
@@ -66,7 +84,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       pointers.clear();
     }
     cancelAnimationFrame(raf); raf = 0;
-    habitat.configure({ ...options, backgrounded: document.hidden || !inView });
+    habitat.configure({ ...options, view: "world", backgrounded: document.hidden || !inView });
     if (!disposed && !document.hidden && inView) { draw(); if (!options.reducedMotion) raf = requestAnimationFrame(tick); }
   }
   function resize() {
@@ -110,7 +128,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       const x = (world.x - HOME_AREA.x) / HOME_AREA.size, y = (world.y - HOME_AREA.y) / HOME_AREA.size;
       if (habitat.hitPet(x, y)) onPlace("wardrobe");
       else if (x > .60 && x < .93 && y > .12 && y < .49) onPlace("house");
-      else if (x > .08 && x < .30 && y > .58 && y < .79 && options.worldState?.workshop) onPlace("workshop");
+      else if (world.x >= WORKSHOP_AREA.x && world.x <= WORKSHOP_AREA.x + WORKSHOP_AREA.width && world.y >= WORKSHOP_AREA.y && world.y <= WORKSHOP_AREA.y + WORKSHOP_AREA.height) onPlace("workshop");
       else if (x > .10 && x < .31 && y > .35 && y < .52) habitat.invite("bush");
       else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
     }
@@ -132,7 +150,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   document.addEventListener("visibilitychange", visibility); visibility();
   return {
     control,
-    update(next: SceneOptions) { options = next; visibility(); },
+    update(next: SceneOptions) {
+      options = next;
+      visibility();
+    },
     notice() { habitat.notice(); draw(); },
     dispose() {
       disposed = true; cancelAnimationFrame(raf); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();

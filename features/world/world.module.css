@@ -14,14 +14,14 @@
 .scene > canvas:active { cursor: grabbing; }
 .sceneLoading { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); width: min(340px, 80%); border: 1px solid #c1d59340; border-radius: 16px; background: #152017ef; padding: 18px; text-align: center; font-size: 1rem; }
 .hud { position: absolute; top: 0; left: 0; right: 0; z-index: 3; padding: calc(12px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 36px max(12px, env(safe-area-inset-left)); pointer-events: none; background: linear-gradient(#0d180dc9, transparent); }
-.playerBar { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; }
+.playerBar { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; }
 .playerBar > button { pointer-events: auto; min-width: 44px; box-shadow: 0 4px 14px #0610073d; }
-.playerBar .player { min-width: 0; max-width: 260px; justify-content: flex-start; gap: 9px; padding: 7px 12px; }
+.playerBar .player { min-width: 0; max-width: none; height: 56px; justify-content: flex-start; gap: 9px; padding: 7px 12px; }
 .player > svg { flex-shrink: 0; }
 .player > span { min-width: 0; text-align: left; display: grid; gap: 1px; }
 .player strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .875rem; }
 .player small { font-size: .75rem; color: #b4c49c; }
-.playerBar .checkIn { margin-left: auto; flex-shrink: 0; color: #e5efc9; }
+.playerBar .checkIn { width: 100%; height: 56px; margin: 0; padding: 8px; color: #e5efc9; }
 .balances { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 8px auto 0; width: fit-content; max-width: 100%; border: 1px solid #d9e8b324; border-radius: 12px; background: #172619eb; padding: 7px 12px; box-shadow: 0 4px 14px #06100733; }
 .balances > span { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; min-width: 0; }
 .balances > span + span { border-left: 1px solid #d4e4b42c; }
@@ -153,3 +153,8 @@
 .statsPanel dd { margin: 0; text-align: right; }
 .statsPanel > button { width: 100%; }
 @media (prefers-reduced-motion: reduce) { .portal .scene, .portal .hud, .portal .bottomHud, .notice, .notice i { animation: none !important; transform: none; } }
+
+.sceneLoading p { display: grid; justify-items: center; gap: 10px; margin: 0 0 8px; }
+.loadingSpinner { animation: loading-spin 1.5s linear infinite; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loadingSpinner { animation: none; } }

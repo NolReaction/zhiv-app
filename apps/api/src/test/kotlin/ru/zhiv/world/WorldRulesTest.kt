@@ -25,6 +25,20 @@ class WorldRulesTest {
     }
 
     @Test
+    fun `workshop upgrades preserve legacy ownership and stop at three`() {
+        var state = WorldState(workshop=true,resources=WorldResources(200,200,200))
+        state = WorldRules.apply(state,command("upgrade_workshop"),now).first
+        assertEquals(2,state.workshopLevel)
+        state = WorldRules.apply(state,command("upgrade_workshop"),now).first
+        assertEquals(3,state.workshopLevel)
+        assertEquals(WorldResources(95,140,165),state.resources)
+        assertEquals("WORLD_MAX_LEVEL",assertFailsWith<AuthFailure> { WorldRules.apply(state,command("upgrade_workshop"),now) }.code)
+        assertEquals("WORLD_WORKSHOP_REQUIRED",assertFailsWith<AuthFailure> { WorldRules.apply(WorldState(),command("upgrade_workshop"),now) }.code)
+        assertEquals(3,WorldRules.merge(WorldState(),state).workshopLevel)
+        assertEquals(1,WorldRules.merge(WorldState(),WorldState(workshop=true)).workshopLevel)
+    }
+
+    @Test
     fun `production rules never grant development resources`() {
         assertEquals("INVALID_WORLD_COMMAND", assertFailsWith<AuthFailure> {
             WorldRules.apply(WorldState(), command("dev_grant_resources"), now)

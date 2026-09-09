@@ -16,6 +16,7 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
     val resources: WorldResources = WorldResources(),
     val houseLevel: Int = 1,
     val workshop: Boolean = false,
+    val workshopLevel: Int = 0,
     val inventory: List<String> = listOf("moss", "amber_scarf"),
     val equipment: WorldEquipment = WorldEquipment(),
     val collection: List<String> = emptyList(),
@@ -39,7 +40,7 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
 @Serializable data class WorldRoute(val id: String, val name: String, val description: String, val seconds: Long, val houseLevel: Int,
     val once: Boolean, val sparks: Long, val wood: Long, val stone: Long, val finds: List<String>)
 @Serializable data class WorldCatalog(val version: Int, val dailySparkLimit: Int, val tapsPerSpark: Int,
-    val houseUpgrades: List<WorldCost>, val workshop: WorldCost, val items: List<WorldItem>, val finds: List<WorldFind>, val routes: List<WorldRoute>)
+    val houseUpgrades: List<WorldCost>, val workshop: WorldCost, val workshopUpgrades: List<WorldCost>, val items: List<WorldItem>, val finds: List<WorldFind>, val routes: List<WorldRoute>)
 
 object WorldRules {
     val catalog: WorldCatalog = worldJson.decodeFromString(
@@ -57,7 +58,13 @@ object WorldRules {
         }
         "build_workshop" -> {
             if (state.workshop) fail("WORLD_ALREADY_BUILT", "Мастерская уже построена")
-            spend(state, catalog.workshop).copy(workshop=true) to "Мастерская готова. Теперь можно делать одежду!"
+            spend(state, catalog.workshop).copy(workshop=true,workshopLevel=1) to "Мастерская готова. Теперь можно делать одежду!"
+        }
+        "upgrade_workshop" -> {
+            if (!state.workshop) fail("WORLD_WORKSHOP_REQUIRED", "Сначала постройте мастерскую")
+            val cost = catalog.workshopUpgrades.find { it.level == maxOf(1,state.workshopLevel)+1 }
+                ?: fail("WORLD_MAX_LEVEL", "Мастерская уже полностью улучшена")
+            spend(state,cost).copy(workshopLevel=cost.level) to "Мастерская стала уютнее и просторнее"
         }
         "craft" -> {
             val item = catalog.items.find { it.id == command.target && !it.starter && it.sparks > 0 } ?: fail("WORLD_ITEM", "Этот предмет нельзя изготовить")
@@ -115,6 +122,7 @@ object WorldRules {
         val collectionReward=if(catalog.finds.all { it.id in collection }) listOf("explorer_cap") else emptyList()
         return target.copy(resources=WorldResources(Math.addExact(a.sparks,b.sparks),Math.addExact(a.wood,b.wood),Math.addExact(a.stone,b.stone)),
             houseLevel=maxOf(target.houseLevel,source.houseLevel),workshop=target.workshop||source.workshop,
+            workshopLevel=maxOf(if(target.workshop) maxOf(1,target.workshopLevel) else 0,if(source.workshop) maxOf(1,source.workshopLevel) else 0),
             inventory=(target.inventory+source.inventory+collectionReward).distinct().sorted(),collection=collection,
             journeys=journeys,firstJourneyCompleted=target.firstJourneyCompleted||source.firstJourneyCompleted,
             completedJourneys=target.completedJourneys+source.completedJourneys)

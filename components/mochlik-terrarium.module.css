@@ -7,3 +7,5 @@
 @media (prefers-reduced-motion: reduce) { .canvas { transition: none; } }
 
 .journey { position: absolute; bottom: 24%; left: 50%; transform: translateX(-50%); width: 46%; max-width: 220px; }
+
+.loadState { position: absolute; top: 53%; left: 50%; transform: translate(-50%, -50%); max-width: 75%; width: max-content; padding: 9px 14px; border-radius: 14px; background: #152317e8; color: #deebca; font-size: clamp(12px, 2.8vw, 16px); line-height: 1.4; text-align: center; }

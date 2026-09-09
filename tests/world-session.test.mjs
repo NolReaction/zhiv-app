@@ -62,13 +62,13 @@ test("background GET started before a command cannot overwrite its result", asyn
   read.resolve(snapshot()); await pendingRead; assert.equal(session.getSnapshot().snapshot.state.houseLevel, 2);
 });
 
-test("journey departure suspends character actions but keeps ecology; return clears deep sleep", () => {
+test("journey departure finishes the current bite, then suspends actions and keeps ecology", () => {
   const habitat = createHabitat(); habitat.elapse(130); habitat.invite("mushrooms");
   for (let i = 0; i < 5000 && habitat.state.activity !== "eat"; i++) habitat.update(.025);
   assert.equal(habitat.state.activity, "eat"); const eaten = habitat.state.eaten;
   habitat.setAway(true);
   for (let i = 0; i < 8000; i++) habitat.update(.025);
-  assert.equal(habitat.state.eaten, eaten); assert.equal(habitat.state.feedingId, null); assert.equal(habitat.state.prop, null); assert.equal(habitat.state.playing, false);
+  assert.equal(habitat.state.eaten, eaten + 1); assert.equal(habitat.state.feedingId, null); assert.equal(habitat.state.prop, null); assert.equal(habitat.state.playing, false);
   assert.ok(habitat.state.mushrooms.every(item => item.growth === 1));
   habitat.restAfterAbsence(); habitat.setAway(false);
   assert.equal(habitat.state.wakeTapsNeeded, 1); assert.equal(habitat.state.resting, false);

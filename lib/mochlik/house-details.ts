@@ -1,10 +1,18 @@
-// Small atlas additions only: the original house, doorway and dynamic bulb remain intact.
+import { atlasSprite, loadHabitatImage } from "./assets";
+// Additions stay outside the doorway and the original dynamic lamp.
 export function houseDetailPatches(level: number) {
-  if (level < 2) return [];
-  const patches = [{ sx: 506, sy: 188, sw: 64, sh: 53, x: 201, y: 73, w: 21, h: 18 }];
-  if (level >= 3) patches.push({ sx: 519, sy: 228, sw: 52, sh: 40, x: 205, y: 88, w: 18, h: 14 });
-  if (level >= 4) patches.push({ sx: 564, sy: 171, sw: 43, sh: 42, x: 222, y: 68, w: 14, h: 14 });
-  if (level >= 5) patches.push({ sx: 441, sy: 126, sw: 73, sh: 47, x: 180, y: 48, w: 24, h: 15 });
-  return patches;
+  const patches = [
+    { index: 0, x: 201, y: 72, w: 21, h: 22 },
+    { index: 1, x: 178, y: 37, w: 17, h: 27 },
+    { index: 2, x: 161, y: 71, w: 35, h: 14 },
+    { index: 3, x: 220, y: 86, w: 18, h: 22 },
+  ];
+  return patches.slice(0, Math.max(0, Math.min(4, level - 1)));
 }
 export function houseAtlasCell(level: number) { const index = Math.max(0, Math.min(3, level - 2)); return { x: index % 2 * 627, y: Math.floor(index / 2) * 627 }; }
+let cached: Promise<HTMLCanvasElement[]> | null = null;
+export function loadHouseAccessories() {
+  return cached ??= loadHabitatImage("/world/house-accessories-v2.webp")
+    .then(image => Array.from({ length: 4 }, (_, index) => atlasSprite(image, { ...houseAtlasCell(index + 2), width: 627, height: 627 })))
+    .catch(error => { cached = null; throw error; });
+}

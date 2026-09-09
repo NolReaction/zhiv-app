@@ -14,7 +14,7 @@ after(() => vite.close());
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { DialogPortal } = await vite.ssrLoadModule("/components/ui/dialog.tsx");
 const { houseAtlasCell, houseDetailPatches } = await vite.ssrLoadModule("/lib/mochlik/house-details.ts");
-const { journeyFraction } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
+const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
 
 test("every house detail leaves the original doorway and dynamic lamp untouched", () => {
   const protectedAreas = [{ x: 169, y: 86, w: 23, h: 23 }, { x: 194, y: 101, w: 5, h: 5 }];
@@ -22,7 +22,8 @@ test("every house detail leaves the original doorway and dynamic lamp untouched"
     const patches = houseDetailPatches(level), cell = houseAtlasCell(level);
     assert.equal(patches.length, level - 1);
     for (const part of patches) {
-      assert.ok(cell.x + part.sx + part.sw <= 1254 && cell.y + part.sy + part.sh <= 1254);
+      assert.ok(cell.x + 627 <= 1254 && cell.y + 627 <= 1254);
+      assert.ok(part.index >= 0 && part.index < 4);
       for (const area of protectedAreas) assert.ok(part.x >= area.x + area.w || part.x + part.w <= area.x || part.y >= area.y + area.h || part.y + part.h <= area.y);
     }
   }
@@ -69,4 +70,15 @@ test("account-owned sibling dialogs have distinct keys and remount on account ch
   const first = keysFor("0CR4-WEMX-KEG1"), second = keysFor("ANOTHER-ACCOUNT");
   assert.equal(new Set(first).size, dialogs.size, "calendar and world must coexist without duplicate React keys");
   first.forEach((key, index) => assert.notEqual(key, second[index], "account changes must reset each modal"));
+});
+
+test("journey spends half its time walking to the destination and half returning", () => {
+  const start = Date.parse("2026-09-08T12:00:00Z");
+  const journey = { startedAt: new Date(start).toISOString(), finishesAt: new Date(start + 60000).toISOString() };
+  const at = seconds => journeyLeg(journey, start + seconds * 1000);
+  assert.deepEqual(at(0), { progress: 0, returning: false, position: 0 });
+  assert.equal(at(15).position, .5); assert.equal(at(15).returning, false);
+  assert.equal(at(30).position, 1); assert.equal(at(30).returning, true);
+  assert.equal(at(45).position, .5); assert.equal(at(45).returning, true);
+  assert.equal(at(60).position, 0); assert.equal(at(120).position, 0);
 });

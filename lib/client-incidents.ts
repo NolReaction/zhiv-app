@@ -2,6 +2,8 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { ApiError } from "@/lib/check-in-api";
 
 export const INCIDENT_MESSAGES: Record<string, string> = {
+  WORLD_MAP_FAILED: "Не загрузилась карта леса", WORLD_MAP_TIMEOUT: "Карта леса загружается слишком долго",
+  WORLD_CHARACTER_FAILED: "Не загрузилась сцена Мохлика", WORLD_CHARACTER_TIMEOUT: "Сцена Мохлика загружается слишком долго",
   NETWORK_ERROR: "Запрос не дошёл или ответ не получен", TIMEOUT: "Сервер не ответил вовремя",
   RATE_LIMITED: "Сработало ограничение частоты запросов", SERVER_ERROR: "Ошибка API",
   SYNC_RECOVERED: "Связь восстановлена, отправка очереди продолжается", RECEIPT_INVALID: "Не удалось проверить подтверждение нажатий",

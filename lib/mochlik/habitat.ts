@@ -7,7 +7,7 @@ export type Activity = "idle" | "walk" | "sniff" | "groom" | "look" | "crouch" |
   | "hide" | "peek" | "emerge" | "enter" | "sleep" | "stir" | "wake" | "leave" | "approach" | "greet" | "eat"
   | "watch" | "chase" | "pounce" | "balance" | "release"
   | "sneeze" | "scratch" | "yawn" | "shake" | "leaf-drift" | "pickup" | "toss" | "catch" | "carry" | "place"
-  | "rain-notice" | "shelter" | "shelter-peek" | "wonder" | "discover" | "show";
+  | "rain-notice" | "shelter" | "shelter-peek" | "wonder" | "discover" | "show" | "depart";
 export type InsectKind = "butterfly" | "firefly";
 export type Moment = "insects" | "leaf" | "find" | "rain" | "wonder" | "emotion";
 export type PropKind = "leaf" | "cone" | "stone";
@@ -40,6 +40,7 @@ const sizeAt = (p: Point) => clamp(.17 + (p.y - .50) * .22, .15, .23);
 
 type Segment = { activity: Activity; duration: number; to?: Point; size?: number; layer?: Layer };
 export type HabitatState = {
+  travel: "home" | "departing" | "away";
   position: Point; size: number; activity: Activity; activityTime: number; duration: number;
   elapsed: number; distance: number; layer: Layer; progress: number; lift: number;
   direction: "front" | "back" | "left" | "right"; lampOn: boolean; visiting: boolean;
@@ -73,7 +74,7 @@ export function nextWeatherChange(seconds: number) {
 }
 
 export function createHabitat() {
-  const state: HabitatState = { position: { ...START }, size: sizeAt(START), activity: "idle", activityTime: 0,
+  const state: HabitatState = { travel: "home", position: { ...START }, size: sizeAt(START), activity: "idle", activityTime: 0,
     duration: 4, elapsed: 0, distance: 0, layer: "clearing", progress: 0, lift: 0,
     direction: "front", lampOn: true, visiting: false, inactiveFor: 0, resting: false,
     mushrooms: MUSHROOM_PATCHES.map((position, id) => ({ id, position: { ...position }, growth: .12 - id * .04, growSeconds: 70 + id * 30 })),
@@ -90,6 +91,8 @@ export function createHabitat() {
   let cycle = 0, visitPending = false, homePending = false, visitCooldown = 0, biteTaken = false;
   let playPending = false, playCycle = 0;
   let momentCycle = 0, emotionCycle = 0, findCycle = 0, nextGathering = 135, nextShelter = 0;
+  let engaged = false, departurePending = false;
+  let departureExit = { x: .80, y: .70 };
 
   function begin(next: Segment) {
     segment = next; origin = { ...state.position }; originSize = state.size;
@@ -241,6 +244,9 @@ export function createHabitat() {
       state.prop = null;
     }
     state.lift = 0;
+    if (state.activity === "depart") { state.travel = "away"; queue = []; return; }
+    if (departurePending) { startDeparture(); return; }
+    if (state.travel === "departing") { if (queue.length) begin(queue.shift()!); return; }
     if (visitPending && !state.visiting) { startVisit(); return; }
     if (playPending && !state.playing) { play(); return; }
     if (destination && !state.visiting) { startDestination(); return; }
@@ -269,15 +275,38 @@ export function createHabitat() {
     activate(); destination = place; requestedMushroom = mushroomId ?? null; return true;
   }
   let away = false;
-  function setAway(value: boolean) {
+  function startDeparture() {
+    const steps = leaveSteps(), from = outside();
+    clearMoment(); departurePending = false; state.feedingId = null;
+    const exit = walk(departureExit, from, "depart"); exit.duration = Math.max(2.8, exit.duration * .65);
+    plan([...steps, { activity: "greet", duration: 1.15, layer: "clearing" }, exit]);
+  }
+  function setAway(value: boolean, animate = true, river = false) {
     if (value === away) return;
-    away = value; clearMoment(); queue = []; visitPending = false; playPending = false; homePending = false; destination = null;
-    state.visiting = false; state.feedingId = null; state.gathering = 0; state.wakeTapsNeeded = 1; state.wakeTaps = 0;
+    const wasAway = state.travel === "away";
+    away = value; visitPending = false; playPending = false; homePending = false; destination = null;
+    state.visiting = false; state.gathering = 0; state.wakeTapsNeeded = 1; state.wakeTaps = 0;
     state.resting = false; state.inactiveFor = 0;
-    if (!value) {
-      state.position = { x: .76, y: .65 }; state.size = sizeAt(state.position);
-      plan([walk(START, state.position), { activity: "greet", duration: 4, layer: "clearing" }]);
+    if (value) departureExit = river ? { x: .80, y: .53 } : { x: .80, y: .73 };
+    if (value) {
+      state.travel = animate ? "departing" : "away";
+      if (!animate) { clearMoment(); queue = []; departurePending = false; }
+      else if (ATOMIC.has(state.activity)) departurePending = true;
+      else startDeparture();
+    } else {
+      if (!wasAway && ATOMIC.has(state.activity)) { departurePending = false; state.travel = "home"; visitPending = true; return; }
+      clearMoment(); departurePending = false; state.travel = "home";
+      if (wasAway) { state.position = { ...departureExit }; state.size = sizeAt(state.position); state.layer = "clearing"; }
+      plan([...leaveSteps(), walk(START, outside()), { activity: "greet", duration: 4, layer: "clearing" }]);
     }
+  }
+  function setEngaged(value: boolean) {
+    if (engaged === value) return;
+    engaged = value;
+    if (!value || away) return;
+    const waking = state.resting || ["sleep", "stir", "enter"].includes(state.activity);
+    activate();
+    if (waking) { state.wakeTapsNeeded = 1; state.wakeTaps = 0; visitPending = true; }
   }
   function moveTo(target: Point) {
     if (away || ATOMIC.has(state.activity)) return false;
@@ -289,6 +318,7 @@ export function createHabitat() {
     return true;
   }
   function notice() {
+    if (away) return false;
     const waking = state.resting || state.activity === "sleep";
     if (waking && state.wakeTapsNeeded > 1) {
       state.wakeTaps = Math.min(state.wakeTapsNeeded, state.wakeTaps + 1);
@@ -326,7 +356,7 @@ export function createHabitat() {
   /** Age only the local ecology and inactivity clock; never fast-forward a movement. */
   function elapse(seconds: number) {
     if (!Number.isFinite(seconds) || seconds <= 0) return;
-    state.inactiveFor += seconds;
+    state.inactiveFor = engaged ? 0 : state.inactiveFor + seconds;
     state.ecologyTime += seconds; state.rain = state.insectKind ? rainAt(state.ecologyTime) : 0;
     for (const mushroom of state.mushrooms) {
       if (state.feedingId !== mushroom.id) mushroom.growth = Math.min(1, mushroom.growth + seconds / mushroom.growSeconds);
@@ -339,7 +369,7 @@ export function createHabitat() {
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     const dt = Math.min(seconds, .05);
     state.elapsed += dt; if (age) elapse(dt);
-    if (away) return;
+    if (away && state.travel !== "departing") return;
     if (visitPending && !state.visiting && !ATOMIC.has(state.activity)) { startVisit(); }
     else if (playPending && !state.playing && !ATOMIC.has(state.activity)) play();
     else if (destination && !state.visiting && !visitPending && !ATOMIC.has(state.activity)) startDestination();
@@ -393,7 +423,7 @@ export function createHabitat() {
   }
   /** Reduced motion: explicit controls change a still scene without animation frames. */
   function settle() {
-    if (away) return;
+    if (away) { state.travel = "away"; departurePending = false; queue = []; return; }
     visitCooldown = 0;
     state.decorReveal = 1; state.gathering = 0;
     if (playPending && !state.resting) play();
@@ -438,5 +468,5 @@ export function createHabitat() {
 
     }
   }
-  return { state, notice, invite, moveTo, update, elapse, setLamp, setInsects, setDecor, setAway, restAfterAbsence, settle };
+  return { state, notice, invite, moveTo, update, elapse, setLamp, setInsects, setDecor, setAway, setEngaged, restAfterAbsence, settle };
 }

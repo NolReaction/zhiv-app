@@ -221,6 +221,8 @@ private val ALERT_DEFINITIONS = mapOf(
     "ZhivApiDown" to ("critical" to "API не отвечает на сбор метрик больше минуты"),
     "ZhivNodeDown" to ("warning" to "Не удаётся получить показатели сервера"),
     "ZhivHighErrorRate" to ("critical" to "Повышена доля ответов API с ошибкой 5xx"),
+    "ZhivRateLimited" to ("warning" to "Повышена доля ограничений 429: проверьте частоту запросов"),
+    "ZhivSlowApi" to ("warning" to "95-й процентиль времени ответа API превышает 2 секунды"),
     "ZhivDiskLow" to ("critical" to "На основном диске осталось меньше 10% свободного места"),
     "ZhivMemoryPressure" to ("warning" to "На сервере доступно меньше 10% оперативной памяти"),
     "ZhivGameRejects" to ("warning" to "Сервер отклоняет заметную долю игровых нажатий"),

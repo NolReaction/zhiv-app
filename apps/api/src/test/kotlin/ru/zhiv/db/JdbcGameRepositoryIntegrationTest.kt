@@ -670,6 +670,23 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(0L,repository.list(1440,stranger.publicId,0,25).total)
     }
 
+    @Test fun `incident filters include thirty days and aggregate beyond the page`() = runBlocking<Unit> {
+        val a=player();val b=player();val repo=ru.zhiv.observability.UserIncidentRepository(source)
+        suspend fun record(p: Player,code: String,count: Int,server: Boolean=false) {
+            repo.record(p.hash,ru.zhiv.observability.ClientIncident(UUID.randomUUID().toString(),"world",code,java.time.Instant.now().toString(),occurrences=count,ownerPublicId=p.publicId),server)
+        }
+        record(a,"WORLD_MAP_TIMEOUT",2);record(a,"WORLD_MAP_TIMEOUT",5);record(b,"WORLD_MAP_TIMEOUT",9)
+        val all=repo.list(43200,"",0,1,"client","WORLD_MAP_TIMEOUT")
+        assertEquals(3L,all.total);assertEquals(16L,all.totalOccurrences);assertEquals(2L,all.affectedUsers);assertEquals(1,all.events.size)
+        assertEquals(7L,repo.list(43200,a.publicId,0,25,"client","WORLD_MAP_TIMEOUT").totalOccurrences)
+        assertEquals(0L,repo.list(43200,"",0,25,"server","WORLD_MAP_TIMEOUT").total)
+        execute("UPDATE user_incidents SET received_at=clock_timestamp()-interval '10 days' WHERE user_id=?",b.id)
+        assertEquals(2L,repo.list(10080,"",0,25,"client","WORLD_MAP_TIMEOUT").total)
+        assertEquals(3L,repo.list(43200,"",0,25,"client","WORLD_MAP_TIMEOUT").total)
+        assertEquals("INVALID_INCIDENT",assertFailsWith<AuthFailure>{repo.list(43200,"",0,25,"other","")}.code)
+        assertEquals("INVALID_INCIDENT",assertFailsWith<AuthFailure>{repo.list(43200,"",0,25,"","bad code")}.code)
+    }
+
     @Test fun `incident HTTP access is authenticated private and verifies trusted writes`() = testApplication {
         val admin=player();val ordinary=player()
         val incidentRepo=ru.zhiv.observability.UserIncidentRepository(source)

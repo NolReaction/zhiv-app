@@ -132,3 +132,22 @@ test("local world supports all five house levels and preserves state when the ma
     assert.deepEqual(world.getDevWorld(p.token, now), finalState);
   } finally { if (before === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = before; }
 });
+
+test("workshop upgrades charge once, stop at three and accept legacy built states", () => {
+  assert.equal(model.workshopLevel({workshop: true}), 1);
+  assert.equal(model.worldStateSchema.safeParse({...model.newWorldState(),workshopLevel:4}).success,false);
+  const before=process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV='development';const p=player();
+    assert.throws(()=>issue(p,'upgrade_workshop'),{code:'WORLD_WORKSHOP_REQUIRED'});
+    for(let i=0;i<4;i++)issue(p,'dev_grant_resources');issue(p,'build_workshop');
+    for(let level=2;level<=3;level++){
+      const upgrade=command(p,'upgrade_workshop');const result=world.commandDevWorld(p.token,upgrade,now);
+      assert.equal(result.snapshot.state.workshopLevel,level);
+      assert.equal(world.commandDevWorld(p.token,upgrade,now).replayed,true);
+    }
+    const saved=world.getDevWorld(p.token,now);assert.throws(()=>issue(p,'upgrade_workshop'),{code:'WORLD_MAX_LEVEL'});
+    assert.deepEqual(world.getDevWorld(p.token,now),saved);
+    assert.deepEqual(saved.state.resources,{sparks:75,wood:130,stone:161});
+  } finally {if(before===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=before;}
+});

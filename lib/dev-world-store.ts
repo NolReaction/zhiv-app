@@ -1,7 +1,7 @@
 import { naturalItems } from "@/lib/game-rewards";
 // Development adapter only. Production requests are handled by Ktor/PostgreSQL.
 import { getDevIdentity, getDevItemStreak } from "@/lib/dev-api-store";
-import { canAfford, newWorldState, worldCatalog as catalog, type WorldCommand, type WorldResources, type WorldSnapshot, type WorldState } from "@/features/world/model";
+import { canAfford, newWorldState, workshopLevel, worldCatalog as catalog, type WorldCommand, type WorldResources, type WorldSnapshot, type WorldState } from "@/features/world/model";
 
 type Profile = { state: WorldState; revision: number; day: string; earned: number; remainder: number;
   receipts: Map<string, { signature: string; message: string }>; tapKeys: Set<string> };
@@ -43,7 +43,13 @@ function apply(state: WorldState, command: WorldCommand, now: number): string {
     }
     case "build_workshop":
       if (state.workshop) return fail("WORLD_ALREADY_BUILT", "Мастерская уже построена");
-      spend(catalog.workshop); state.workshop = true; return "Мастерская готова. Теперь можно делать одежду!";
+      spend(catalog.workshop); state.workshop = true; state.workshopLevel = 1; return "Мастерская готова. Теперь можно делать одежду!";
+    case "upgrade_workshop": {
+      if (!state.workshop) return fail("WORLD_WORKSHOP_REQUIRED", "Сначала постройте мастерскую");
+      const cost = catalog.workshopUpgrades.find(c => c.level === workshopLevel(state) + 1);
+      if (!cost) return fail("WORLD_MAX_LEVEL", "Мастерская уже полностью улучшена");
+      spend(cost); state.workshopLevel = cost.level; return "Мастерская стала уютнее и просторнее";
+    }
     case "craft": {
       const item = catalog.items.find(i => i.id === command.target && !i.starter && i.sparks > 0);
       if (!item) return fail("WORLD_ITEM", "Этот предмет нельзя изготовить");
