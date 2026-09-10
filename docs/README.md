@@ -11,6 +11,7 @@
 - [Устройство мира и игровые правила](game/world-foundation.md)
 - [Анимации, уборка кода и следующий этап мира](game/world-animation-audit.md)
 - [Свет, маршруты и размещение календарных подарков](game/world-lighting.md)
+- [Звуки окружения: запросы для подбора](game/sound-search.md)
 - [Прогресс и награды](game/mochlik-progression.md)
 - [Синхронизация тапов и восстановление после сбоя](game/game-sync-reliability.md)
 - [План единой карты и отдельных построек](game/map-assets-plan.md)

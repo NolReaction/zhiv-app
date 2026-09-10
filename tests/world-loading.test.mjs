@@ -9,11 +9,15 @@ test('map readiness waits for the character, aborted loading releases its scene,
  const {createMapEngine}=await vite.ssrLoadModule('/features/world/map-engine.ts');
  const {WORLD_ART}=await vite.ssrLoadModule('/features/world/art.ts');
  const {MAP_PLACES}=await vite.ssrLoadModule('/features/world/map-layout.ts');
+ const {connectHabitat}=await vite.ssrLoadModule('/features/mochlik/session.ts');
+ const {mountHabitat}=await vite.ssrLoadModule('/features/mochlik/scene.ts');
+ const {BIRD_FLIGHTS,birdFlightPose}=await vite.ssrLoadModule('/features/world/bird-ambience.ts');
  const {loadHabitatImage,HabitatAssetError}=await vite.ssrLoadModule('/features/mochlik/assets.ts');await vite.close();
  const original=new Map(),pending=[],timers=new Map(),frames=new Map();let id=0,observed=0;
  const install=(name,value)=>{original.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{value,writable:true,configurable:true})};
  const pixels=(w,h)=>{const data=new Uint8ClampedArray(w*h*4).fill(255);data[0]=data[1]=data[2]=0;return {data}};
- const ctx=new Proxy({getImageData:(_x,_y,w,h)=>pixels(w,h),createImageData:pixels,createRadialGradient:()=>({addColorStop(){}}),createLinearGradient:()=>({addColorStop(){}})}, {get:(object,key)=>key in object?object[key]:()=>{}});
+ const translations=[];
+ const ctx=new Proxy({translate:(x,y)=>translations.push({x,y}),getImageData:(_x,_y,w,h)=>pixels(w,h),createImageData:pixels,createRadialGradient:()=>({addColorStop(){}}),createLinearGradient:()=>({addColorStop(){}})}, {get:(object,key)=>key in object?object[key]:()=>{}});
  const canvas=()=>({width:256,height:256,clientWidth:393,clientHeight:740,getContext:()=>ctx,addEventListener(){},removeEventListener(){},hasPointerCapture(){return false}});
  install('Image',class {naturalWidth=1254;naturalHeight=1254;set src(path){pending.push({path,image:this})}});
  install('document',{hidden:false,createElement:canvas,addEventListener(){},removeEventListener(){}});install('window',{});
@@ -36,6 +40,18 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const surface=canvas();
   const engine=await createMapEngine(surface,options,()=>{},[bush,house]);assert.equal(observed,3);
   finish(WORLD_ART.boatWreck);await flush();
+  // An already-running flight keeps its actual source-map position in either renderer.
+  const shared=connectHabitat(options.presenceKey,'circle',false,()=>assert.fail('reuse map state'),()=>{});
+  shared.world.state.elapsed=41.5;
+  const bird=birdFlightPose(BIRD_FLIGHTS[1],41.5,0);
+  assert.ok(bird.x>=486&&bird.x<=742&&bird.y>=514&&bird.y<=770,'flight crosses the home crop');
+  const seesBird=()=>translations.some(point=>Math.abs(point.x-bird.x)<1e-8&&Math.abs(point.y-bird.y)<1e-8);
+  translations.length=0;engine.control('home');assert.ok(seesBird(),'map samples the shared flight, not a new timer');
+  translations.length=0;
+  const circle=mountHabitat(canvas(),{...options,view:'circle',paused:true},{activity(){},ready(){},failure(error){throw error}});
+  await flush();assert.ok(seesBird(),'circle draws the same bird in world coordinates');
+  assert.equal(circle.ambience().elapsed,41.5,'changing view never resets bird time');
+  circle.dispose();shared.release();translations.length=0;engine.control('overview');
   const detail=pending.find(item=>item.path===WORLD_ART.homeDetail);assert.ok(detail);
   pending.splice(pending.indexOf(detail),1);detail.image.onerror();await flush();
   assert.equal(observed,3,'failed detail keeps the base map and character mounted');

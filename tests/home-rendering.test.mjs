@@ -9,7 +9,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { homeBackingSize, HOME_TEXTURE_SIZE } = await vite.ssrLoadModule("/features/mochlik/home-art.ts");
-const { drawLanternLight, drawLanternGlass, drawSceneShade, NIGHT_SHADE } = await vite.ssrLoadModule("/features/mochlik/lantern-light.ts");
+const { drawLanternLight, drawSceneShade, NIGHT_SHADE } = await vite.ssrLoadModule("/features/mochlik/lantern-light.ts");
+const { drawLanternGlass } = await vite.ssrLoadModule("/features/mochlik/lantern-glass.ts");
 const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
 
 test("detail has enough real pixels for retina circles and a bounded detached world canvas", async () => {
@@ -39,13 +40,16 @@ test("lantern emits only at night, with separate soft clearing and glass falloff
 });
 
 
-test("daytime glass keeps texture; dark night receives separate cool moonlight", () => {
+test("daytime glass uses its sampled texture; dark night receives separate cool moonlight", () => {
   const fills = [];
+  const glass = { texture: {}, scale: 4 }, panes = [];
   const ctx = new Proxy({ createRadialGradient: () => ({ addColorStop() {} }),
+    drawImage(image) { panes.push({ image, mode: this.globalCompositeOperation }); },
     fillRect() { fills.push({ mode: this.globalCompositeOperation, color: this.fillStyle }); } },
     { get: (object, key) => key in object ? object[key] : () => {} });
-  drawLanternGlass(ctx, 1); assert.equal(fills.length, 0);
-  drawLanternGlass(ctx, 0); assert.equal(fills.length, 1); assert.equal(fills[0].mode, "multiply");
+  drawLanternGlass(ctx, 1, glass); assert.equal(panes.length, 0);
+  drawLanternGlass(ctx, 0, glass); assert.equal(fills.length, 0, "no painted spot covers the glass");
+  assert.deepEqual(panes, [{ image: glass.texture, mode: "source-over" }]);
   fills.length = 0; drawSceneShade(ctx, 1, 0, 256);
   assert.ok(NIGHT_SHADE >= .5 && NIGHT_SHADE < .65, "night returns to a dark base with lit clearings");
   assert.equal(fills[0].color, `rgba(8,17,37,${NIGHT_SHADE})`);

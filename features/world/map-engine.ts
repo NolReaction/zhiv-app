@@ -6,7 +6,6 @@ import { mapPlaceAt, worldToHome } from "./map-layout";
 import { drawWaterAmbience } from "./water-ambience";
 import { drawRouteProps } from "./route-props";
 import { drawBoatWreck, prepareBoatWreck } from "./boat-wreck";
-import { drawBirdAmbience } from "./bird-ambience";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -20,7 +19,6 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
   let options = initial, disposed = false, raf = 0, last = 0;
-  let waterTime = 0, previousWaterFrame: number | null = null;
   let boatArt: HTMLCanvasElement | null = null;
   let view = { width: 1, height: 1 }, camera = worldCamera(view);
   let framing: "world" | "home" | "overview" | "manual" = "world";
@@ -56,12 +54,13 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     // contains the original map pixels; animation coordinates remain unchanged.
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
     const weather = habitat.ambience();
-    drawWaterAmbience(ctx, waterTime, options.reducedMotion, weather.rain);
+    drawWaterAmbience(ctx, weather.elapsed, options.reducedMotion, weather.rain);
     if (boatArt) drawBoatWreck(ctx, boatArt);
     drawRouteProps(ctx);
+    habitat.paintVisitors(ctx, "ground");
     habitat.paintLighting(ctx);
     ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
-    drawBirdAmbience(ctx, waterTime, options.reducedMotion, weather.dusk, weather.rain);
+    habitat.paintVisitors(ctx, "air");
     habitat.paintWeather(ctx);
     for (const node of anchors) {
       const point = worldToScreen({ x: Number(node.dataset.x), y: Number(node.dataset.y) }, camera, view);
@@ -75,8 +74,6 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     raf = 0;
     if (disposed || document.hidden || !inView || options.paused || options.backgrounded) return;
     if (time - last >= 1000 / 30) {
-      if (previousWaterFrame !== null) waterTime += Math.min((time - previousWaterFrame) / 1000, .05);
-      previousWaterFrame = time;
       draw(); last = time;
     }
     if (!options.reducedMotion) raf = requestAnimationFrame(tick);
@@ -88,7 +85,6 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       pointers.clear();
     }
     cancelAnimationFrame(raf); raf = 0;
-    previousWaterFrame = null;
     const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
     habitat.configure({ ...options, view: "world", backgrounded });
     if (!disposed && !backgrounded) { draw(); if (!options.reducedMotion && !options.paused) raf = requestAnimationFrame(tick); }

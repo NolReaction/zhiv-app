@@ -29,7 +29,8 @@
 | Факелы и камни на тропинках | [features/world/route-props.ts](../features/world/route-props.ts) |
 | Рыбки, всплески и дождевые кольца реки | [features/world/water-ambience.ts](../features/world/water-ambience.ts) |
 | Птицы и разбитая лодка | `features/world/bird-ambience.ts`, `features/world/boat-wreck.ts` |
-| Ночь, лунный свет и фонарь | [features/mochlik/lighting.ts](../features/mochlik/lighting.ts), `lantern-light.ts`, `scene.ts` |
+| Редкие животные по погоде | `features/world/weather-visitors.ts` |
+| Ночь, лунный свет и фонарь | [features/mochlik/lighting.ts](../features/mochlik/lighting.ts), `lantern-light.ts`, `lantern-glass.ts`, `scene.ts` |
 | Цены зданий, длительность походов, коллекции | [Единый каталог мира](../apps/api/src/main/resources/world/catalog.json) |
 | Админку, сообщения о сбоях и награды | [features/admin/](../features/admin/), [серверные обработчики](../apps/api/src/main/kotlin/ru/zhiv/admin/) |
 | Локальный API для тестирования | [lib/dev/](../lib/dev/) |

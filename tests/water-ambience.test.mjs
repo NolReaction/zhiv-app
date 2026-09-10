@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { FISH_PATROLS, WATER_RIPPLES, RAIN_IMPACTS, fishPose, fishSurfaceEvent, drawWaterAmbience } = await vite.ssrLoadModule("/features/world/water-ambience.ts");
+const { FISH_PATROLS, WATER_RIPPLES, WIND_RIPPLES, RAIN_IMPACTS, fishPose, fishSurfaceEvent, windRipplePose, drawWaterAmbience } = await vite.ssrLoadModule("/features/world/water-ambience.ts");
 const { BIRD_FLIGHTS, birdFlightPose, drawBirdAmbience } = await vite.ssrLoadModule("/features/world/bird-ambience.ts");
 const { mapPlaceAt } = await vite.ssrLoadModule("/features/world/map-layout.ts");
 
@@ -30,6 +30,32 @@ test("expanding ripples remain inside the shoreline", () => {
   for (const ripple of WATER_RIPPLES) for (let step = 0; step < 36; step++) {
     const angle = step * Math.PI / 18;
     assert.equal(mapPlaceAt({ x: ripple.x + Math.cos(angle) * 14, y: ripple.y + Math.sin(angle) * 5 }), "fishing");
+  }
+});
+
+test("the breeze travels over open water and fades before each calm interval", () => {
+  let activeFrames = 0;
+  for (let step = 0; step < 280; step++) {
+    const seconds = step / 10;
+    let active = false;
+    for (const ripple of WIND_RIPPLES) {
+      const pose = windRipplePose(ripple, seconds);
+      if (!pose) continue;
+      active = true;
+      assert.ok(pose.opacity >= 0 && pose.opacity <= 1);
+      for (const x of [-ripple.width / 2 - 3, 0, ripple.width / 2]) for (const y of [-1, 0, 6]) {
+        assert.equal(mapPlaceAt({ x: pose.x + x, y: pose.y + y }), "fishing", "the full moving wavelet stays off the bank");
+      }
+    }
+    if (active) activeFrames++;
+  }
+  assert.ok(activeFrames > 0 && activeFrames < 140, "passing gusts leave the river calm for most of the cycle");
+  for (const ripple of WIND_RIPPLES) {
+    const start = 3 + ripple.delay;
+    const first = windRipplePose(ripple, start + .001);
+    const last = windRipplePose(ripple, start + 7.499);
+    assert.ok(last.x - first.x > 35 && last.y > first.y, "waves visibly travel with the breeze");
+    assert.ok(first.opacity < .001 && last.opacity < .001, "a packet never pops in or teleports at loop boundaries");
   }
 });
 

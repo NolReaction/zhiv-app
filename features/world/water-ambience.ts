@@ -63,9 +63,31 @@ export const WATER_RIPPLES = [
   { x: 903, y: 1202, phase: 6.2, period: 12 },
 ] as const;
 
-export const RAIN_IMPACTS = Array.from({ length: 160 }, (_, i) => ({
+const WIND_PERIOD = 28;
+// Each footprint includes the full drift and the wavelet width, keeping it off land.
+export const WIND_RIPPLES = Array.from({ length: 120 }, (_, i) => ({
+  x: 708 + (i * 137 % 528), y: 746 + (i * 211 % 486),
+  delay: (i % 7) * .46, width: 10 + i % 9,
+})).filter(point => openWater(point, 34));
+type WindRipple = typeof WIND_RIPPLES[number];
+
+export function windRipplePose(ripple: WindRipple, seconds: number) {
+  const phase = seconds % WIND_PERIOD;
+  const age = phase - 3 - ripple.delay;
+  if (age <= 0 || age >= 7.5) return null;
+  const life = age / 7.5;
+  // A passing gust lifts the small wave packets and then leaves a long calm gap.
+  const gust = Math.sin(Math.min(1, (phase - 3) / 13) * Math.PI) ** 2;
+  return {
+    x: ripple.x - 18 + life * 36,
+    y: ripple.y - 4 + life * 8,
+    opacity: Math.sin(life * Math.PI) ** 2 * gust,
+  };
+}
+
+export const RAIN_IMPACTS = Array.from({ length: 256 }, (_, i) => ({
   x: 699 + (i * 97 % 548), y: 733 + (i * 173 % 512),
-  delay: (i * .618034) % 2, period: 1.3 + (i % 9) * .19,
+  delay: (i * .618034) % 2, period: 1.2 + (i % 9) * .18,
 })).filter(point => openWater(point, 12));
 
 function drawRing(ctx: CanvasRenderingContext2D, point: MapPoint, life: number, radius: number, opacity: number) {
@@ -126,6 +148,17 @@ export function drawWaterAmbience(ctx: CanvasRenderingContext2D, seconds: number
   ctx.closePath(); ctx.clip();
   for (const patrol of FISH_PATROLS) drawFish(ctx, patrol, time, reducedMotion);
   if (!reducedMotion) {
+    ctx.strokeStyle = "#bed8c2"; ctx.lineWidth = .75;
+    for (const ripple of WIND_RIPPLES) {
+      const pose = windRipplePose(ripple, time);
+      if (!pose) continue;
+      ctx.globalAlpha = pose.opacity * .16 * (1 - rainfall * .4);
+      ctx.beginPath(); ctx.moveTo(pose.x - ripple.width / 2, pose.y);
+      ctx.quadraticCurveTo(pose.x, pose.y + 2.5, pose.x + ripple.width / 2, pose.y - 1); ctx.stroke();
+      ctx.globalAlpha *= .55;
+      ctx.beginPath(); ctx.moveTo(pose.x - ripple.width / 2 - 3, pose.y + 4);
+      ctx.quadraticCurveTo(pose.x - 3, pose.y + 6, pose.x + ripple.width / 2 - 5, pose.y + 3); ctx.stroke();
+    }
     ctx.fillStyle = "#b5d2b8";
     for (const glint of glints) {
       const phase = time * TAU / glint.period + glint.phase;
@@ -145,7 +178,8 @@ export function drawWaterAmbience(ctx: CanvasRenderingContext2D, seconds: number
       ctx.strokeStyle = "#c6ddcb"; ctx.lineWidth = .75;
       for (const drop of RAIN_IMPACTS) {
         const age = (time + drop.delay) % drop.period;
-        drawRing(ctx, drop, age / .78, 7, rainfall * .36);
+        // More impacts, with shorter, slightly smaller rings so the rain stays soft.
+        drawRing(ctx, drop, age / .68, 6.3, rainfall * .32);
         if (age < .13) {
           ctx.globalAlpha = (1 - age / .13) * rainfall * .55;
           ctx.fillStyle = "#cee0ce";
