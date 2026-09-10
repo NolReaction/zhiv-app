@@ -24,8 +24,8 @@ export const BUSH_EDGE = worldToHome(FOREST_MAP.bush.approach);
 export const DOORSTEP = HOUSE_ANCHORS.doorstep;
 export const HOME = HOUSE_ANCHORS.inside;
 export const FRONT = worldToHome(FOREST_MAP.clearing.front);
-export const SHELTER_ART = { x: 94, y: 70, width: 38, capHeight: 18, ground: 120 };
-export const SHELTER = { x: (SHELTER_ART.x + SHELTER_ART.width / 2 + 5) / 256, y: SHELTER_ART.ground / 256 };
+// The existing recessed doorway shelters Mochlik without another object over the lawn.
+export const SHELTER = HOME;
 export const LEAF_SPOT = { x: .46, y: .66 };
 export const FIND_SPOT = { x: .60, y: .69 };
 export const KEEPSAKE_SPOT = worldToHome(FOREST_MAP.clearing.keepsake);
@@ -193,11 +193,14 @@ export function createHabitat() {
         { activity: "place", duration: 1.4 }, { activity: "greet", duration: 1.8 }]);
     } else if (kind === "rain") {
       nextShelter = state.ecologyTime + 90;
-      const shelterWalk = walk(SHELTER, from); shelterWalk.duration *= .65;
-      plan([...steps, { activity: "rain-notice", duration: 1.2, layer: "clearing" }, shelterWalk,
-        { activity: "shelter", duration: 6 }, { activity: "shelter-peek", duration: 2.4 },
-        { activity: "shelter", duration: 4 }, { activity: "shelter-peek", duration: 2.4 },
-        walk(START, SHELTER), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
+      const shelterWalk = walk(DOORSTEP, from); shelterWalk.duration *= .65;
+      const inside = state.layer === "house";
+      plan([...(inside ? [] : steps), { activity: "rain-notice", duration: 1.2, layer: inside ? "house" : "clearing" },
+        ...(inside ? [] : [shelterWalk, { activity: "enter" as const, to: SHELTER, size: .118, duration: 2.6, layer: "house" as const }]),
+        { activity: "shelter", duration: 6, layer: "house" }, { activity: "shelter-peek", duration: 2.4, layer: "house" },
+        { activity: "shelter", duration: 4, layer: "house" }, { activity: "shelter-peek", duration: 2.4, layer: "house" },
+        { activity: "leave", to: DOORSTEP, size: sizeAt(DOORSTEP), duration: 2.6, layer: "house" },
+        walk(START, DOORSTEP), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
     } else if (kind === "wonder") {
       nextGathering = state.elapsed + 180;
       plan([...steps, walk(START, from), { activity: "wonder", duration: 10, layer: "clearing" },
@@ -219,7 +222,9 @@ export function createHabitat() {
     }
   }
   function leaveRain() {
-    plan([walk(START), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
+    const inside = state.layer === "house";
+    plan([...(inside ? [{ activity: "leave" as const, to: DOORSTEP, size: sizeAt(DOORSTEP), duration: 2.6, layer: "house" as const }] : []),
+      walk(START, inside ? DOORSTEP : state.position), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
   }
   function routine() {
     if (state.layer === "house") { plan([...leaveSteps(), walk(START, DOORSTEP), { activity: "sniff", duration: 4 }]); return; }
@@ -438,8 +443,8 @@ export function createHabitat() {
         else { state.keepsake = state.prop; state.discoveries++; }
       }
       clearMoment(); queue = [];
-      state.position = { ...(kind === "rain" ? SHELTER : START) }; state.size = sizeAt(state.position);
-      begin({ activity: kind === "rain" ? "shelter" : kind === "emotion" ? "scratch" : "greet", duration: 4, layer: "clearing" });
+      state.position = { ...(kind === "rain" ? SHELTER : START) }; state.size = kind === "rain" ? .118 : sizeAt(state.position);
+      begin({ activity: kind === "rain" ? "shelter" : kind === "emotion" ? "scratch" : "greet", duration: 4, layer: kind === "rain" ? "house" : "clearing" });
     }
     if (playPending || state.playing) {
       playPending = false; clearMoment(); queue = []; state.feedingId = null;

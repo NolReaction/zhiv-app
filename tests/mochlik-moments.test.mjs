@@ -148,7 +148,7 @@ test("delivery reaches the deposited anchor and a stopped shower releases the sh
   }
   const world = fresh(); seek(world, s => s.activity === "shelter" && s.rain > 0);
   world.elapse(220 - world.state.ecologyTime % 720); world.notice(); world.update(.025);
-  assert.equal(world.state.rain, 0); assert.equal(world.state.activity, "walk");
+  assert.equal(world.state.rain, 0); assert.equal(world.state.activity, "leave", "rain ends with an actual doorway exit");
   seek(world, s => s.activity === "shake", false, 12);
 });
 
@@ -166,4 +166,23 @@ test("an individually granted garland does not unlock other decor, and props res
   drawDecor({ save() {}, restore() {}, translate() {}, fillRect(...rect) { rectangles.push(rect); } }, { ...world.state, decorItems: ["leaf_garland"] }, true);
   assert.ok(rectangles.length > 0);
   assert.ok(rectangles.every(([, y]) => y < 90), "only the garland is painted, not the bed, flower or keepsakes");
+});
+
+test("rain shelter enters the existing doorway and reduced motion preserves its depth", () => {
+  const world = fresh();
+  seek(world, state => state.moment === "rain" && state.activity === "enter");
+  assert.equal(world.state.layer, "house");
+  const before = { ...world.state.position };
+  world.update(.025);
+  assert.ok(Math.hypot(world.state.position.x - before.x, world.state.position.y - before.y) < .012);
+  seek(world, state => state.activity === "shelter");
+  assert.deepEqual(world.state.position, HOME);
+  assert.equal(world.state.layer, "house");
+  assert.equal(world.state.size, .118);
+  world.settle();
+  assert.deepEqual(world.state.position, HOME);
+  assert.equal(world.state.layer, "house");
+  assert.equal(world.state.size, .118);
+  const still = pixelFrame({ ...world.state, activity: "shelter-peek", progress: .5 }, true);
+  assert.equal(still.offsetX, 0);
 });

@@ -4,6 +4,7 @@ import { loadHabitatImage } from "@/features/mochlik/assets";
 import { WORLD_ART } from "./art";
 import { mapPlaceAt, worldToHome } from "./map-layout";
 import { drawWaterAmbience } from "./water-ambience";
+import { drawRouteProps } from "./route-props";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -47,6 +48,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     // contains the original map pixels; animation coordinates remain unchanged.
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
     drawWaterAmbience(ctx, waterTime, options.reducedMotion);
+    drawRouteProps(ctx);
     habitat.paintLighting(ctx);
     ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
     habitat.paintWeather(ctx);

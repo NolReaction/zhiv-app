@@ -1,4 +1,5 @@
 import { WORLD_ART } from "@/features/world/art";
+import { drawRouteLights } from "@/features/world/route-props";
 import { HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
 import type { WorldState } from "@/features/world/model";
 import { homeAppearance } from "./home-state";
@@ -6,18 +7,18 @@ import { houseVariantFor, type HouseVariant } from "./house-variants";
 import { FOREST_MAP } from "@/features/world/map-manifest";
 import { HOME_AREA, MAP_SIZE } from "@/features/world/map-layout";
 import type { GameItemId } from "@/features/game/game-rewards";
-import { SHELTER, SHELTER_ART, nextWeatherChange, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
+import { nextWeatherChange, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
 import { connectHabitat } from "./session";
 import { loadHabitatImage } from "./assets";
 import { homeBackingSize, loadHomeDetail } from "./home-art";
-import { drawLanternLight } from "./lantern-light";
+import { drawLanternGlass, drawLanternLight, drawSceneShade } from "./lantern-light";
 import { pixelSprite } from "./pixel-sprite";
 import { pixelFrame } from "./pixel-frame";
 import { drawBushReaction, prepareBushFoliage } from "./bush-reaction";
 import { feedingFrame } from "./feeding";
 import { drawInsects } from "./insects";
 import { readPresence, writePresence } from "./presence";
-import { propBehindBody, drawDecor, drawShelter, drawProp, drawWeather, drawMomentAccents } from "./ambience";
+import { propBehindBody, drawDecor, drawProp, drawWeather, drawMomentAccents } from "./ambience";
 
 const WEATHER_BOUNDS = { x: -HOME_AREA.x * HOME_CANVAS_SIZE / HOME_AREA.size, y: -HOME_AREA.y * HOME_CANVAS_SIZE / HOME_AREA.size, width: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size, height: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size };
 
@@ -93,6 +94,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       const lamp = HOUSE_ANCHORS.lamp; ctx.rect(lamp.x, lamp.y, lamp.width, lamp.height); ctx.clip("evenodd");
       ctx.drawImage(upgradeArt, at.x, at.y, slot.width * scale, slot.height * scale); ctx.restore();
     }
+    drawLanternGlass(ctx, lampGlow);
     const state = world.state, a = state.activity, p = state.progress;
     const visible = state.travel !== "away";
     const t = options.reducedMotion ? 0 : state.activityTime;
@@ -101,9 +103,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     const size = Math.round(state.size * width), x = Math.round((state.position.x + sprite.offsetX) * width);
     const y = Math.round((state.position.y - state.lift + sprite.sink + sprite.offsetY) * width);
     drawDecor(ctx, state, options.reducedMotion);
-    const shelterInFront = state.position.y < SHELTER_ART.ground / HOME_CANVAS_SIZE;
-    if (mushroomArt && !shelterInFront) drawShelter(ctx, mushroomArt);
-    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "enter" && p > .48 || a === "leave" && p < .52);
+    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "shelter" || a === "shelter-peek" || a === "rain-notice" || a === "enter" && p > .48 || a === "leave" && p < .52);
     const drawMushroom = (mushroom: Mushroom) => {
       if (!mushroomArt || mushroom.growth < .06) return;
       if (state.feedingId === mushroom.id && a === "eat" && food.lifted) return;
@@ -123,8 +123,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
         ctx.clip();
       }
       const stir = a === "stir" && !options.reducedMotion ? Math.round(Math.sin(p * Math.PI * 4) * (1 - p)) : 0;
-      const breathing = a === "sleep" && !options.reducedMotion ? Math.round(Math.sin(state.elapsed * 1.6) * .65) : 0;
-      ctx.drawImage(pixelSprite(sprite.pose, sprite.direction, sprite.frame, appearance.equipment), x - Math.floor(size / 2) + stir, y - size + breathing, size, size);
+      ctx.drawImage(pixelSprite(sprite.pose, sprite.direction, sprite.frame, appearance.equipment), x - Math.floor(size / 2) + stir, y - size, size, size);
       if (a === "eat" && food.lifted && food.remaining > 0 && mushroomArt) {
         const mushroom = state.mushrooms.find(item => item.id === state.feedingId);
         if (mushroom) {
@@ -148,16 +147,12 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       drawBushReaction(ctx, bushArt, state, options.reducedMotion);
     }
     state.mushrooms.filter(item => item.position.y > state.position.y).forEach(drawMushroom);
-    if (mushroomArt && shelterInFront) drawShelter(ctx, mushroomArt);
-    else if (mushroomArt && (state.moment === "rain" || ["shelter", "shelter-peek"].includes(a))
-      && Math.hypot(state.position.x - SHELTER.x, state.position.y - SHELTER.y) < .06) drawShelter(ctx, mushroomArt, true);
     if (visible && !propBehindBody(state)) drawProp(ctx, state, options.reducedMotion);
     if (visible && a === "eat" && food.phase === "chew" && food.bites > 0 && !options.reducedMotion) {
       ctx.fillStyle = "#dfbe82";
       for (let i = 0; i < 3; i++) ctx.fillRect(x - 3 + i * 3, y - Math.round(size * .35) + Math.floor((t * 6 + i) % 4), 1, 1);
     }
-    ctx.fillStyle = `rgba(8,17,35,${dusk * .57})`; ctx.fillRect(0, 0, width, width);
-    ctx.fillStyle = `rgba(69,105,125,${state.rain * .12})`; ctx.fillRect(0, 0, width, width);
+    drawSceneShade(ctx, dusk, state.rain, width);
     drawLanternLight(ctx, lampGlow, dusk);
     drawInsects(ctx, state, dusk, options.reducedMotion);
     if (options.view !== "world") drawWeather(ctx, state, options.reducedMotion, false, WEATHER_BOUNDS);
@@ -298,8 +293,10 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     },
     paintLighting(context) {
       if (disposed) return;
-      context.fillStyle = `rgba(8,17,35,${dusk * .57})`; context.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
-      context.fillStyle = `rgba(69,105,125,${world.state.rain * .12})`; context.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+      drawSceneShade(context, dusk, world.state.rain, MAP_SIZE);
+      context.save(); context.translate(HOME_AREA.x, HOME_AREA.y);
+      drawLanternLight(context, lampGlow, dusk); context.restore();
+      drawRouteLights(context, dusk, world.state.elapsed, options.reducedMotion);
     },
     paintWeather(context) {
       if (disposed) return;

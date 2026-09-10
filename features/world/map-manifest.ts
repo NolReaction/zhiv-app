@@ -9,11 +9,11 @@ export const FOREST_MAP = {
   homeDetail: { image: "/world/maps/home-detail-v1.png", originalRim: 2, feather: 12 },
   house: {
     id: "home",
-    inside: { x: 665, y: 607 },
+    inside: { x: 667, y: 612 },
     doorstep: { x: 650, y: 633 },
     marker: { x: 672, y: 569 },
     hitArea: [{ x: 615, y: 599 }, { x: 642, y: 549 }, { x: 695, y: 543 }, { x: 714, y: 581 }, { x: 739, y: 618 }, { x: 706, y: 640 }, { x: 643, y: 620 }],
-    doorway: [{ x: 653, y: 610 }, { x: 653, y: 596 }, { x: 659, y: 586 }, { x: 667, y: 583 }, { x: 675, y: 587 }, { x: 681, y: 597 }, { x: 679, y: 610 }],
+    doorway: [{ x: 653, y: 610 }, { x: 653, y: 596 }, { x: 659, y: 586 }, { x: 667, y: 583 }, { x: 675, y: 587 }, { x: 681, y: 597 }, { x: 677, y: 615 }],
     lamp: { x: 684, y: 603, width: 5, height: 9 },
     sleep: { x: 665, y: 579 },
     upgradeSlot: { x: 610, y: 536, width: 132, height: 112 },

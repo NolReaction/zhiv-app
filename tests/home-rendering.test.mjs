@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { homeBackingSize, HOME_TEXTURE_SIZE } = await vite.ssrLoadModule("/features/mochlik/home-art.ts");
-const { drawLanternLight } = await vite.ssrLoadModule("/features/mochlik/lantern-light.ts");
+const { drawLanternLight, drawLanternGlass, drawSceneShade, NIGHT_SHADE } = await vite.ssrLoadModule("/features/mochlik/lantern-light.ts");
 const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
 
 test("detail has enough real pixels for retina circles and a bounded detached world canvas", async () => {
@@ -25,13 +25,28 @@ test("detail has enough real pixels for retina circles and a bounded detached wo
   assert.deepEqual(FOREST_MAP.homeCrop, { x: 486, y: 514, size: 256 }, "quality change preserves the accepted scale");
 });
 
-test("unlit lantern leaves original artwork untouched; light fades to a transparent edge", () => {
+test("lantern emits only at night, with separate soft clearing and glass falloff", () => {
   const stops = [], fills = [];
   const gradient = { addColorStop: (...stop) => stops.push(stop) };
   const ctx = { save() {}, restore() {}, createRadialGradient: () => gradient, fillRect() { fills.push({ paint: this.fillStyle, mode: this.globalCompositeOperation }); } };
   drawLanternLight(ctx, 0, 0);
   assert.equal(fills.length, 0);
+  drawLanternLight(ctx, 1, 0);
+  assert.equal(fills.length, 0, "daytime never emits light");
   drawLanternLight(ctx, 1, 1);
-  assert.deepEqual(fills, [{ paint: gradient, mode: "screen" }]);
+  assert.deepEqual(fills, [{ paint: gradient, mode: "screen" }, { paint: gradient, mode: "screen" }]);
   assert.deepEqual(stops.at(-1), [1, "rgba(255,181,65,0)"]);
+});
+
+
+test("daytime glass keeps texture through multiply and night exposure remains readable", () => {
+  const fills = [];
+  const ctx = new Proxy({ createRadialGradient: () => ({ addColorStop() {} }),
+    fillRect() { fills.push({ mode: this.globalCompositeOperation, color: this.fillStyle }); } },
+    { get: (object, key) => key in object ? object[key] : () => {} });
+  drawLanternGlass(ctx, 1); assert.equal(fills.length, 0);
+  drawLanternGlass(ctx, 0); assert.equal(fills.length, 1); assert.equal(fills[0].mode, "multiply");
+  fills.length = 0; drawSceneShade(ctx, 1, 0, 256);
+  assert.ok(NIGHT_SHADE > .15 && NIGHT_SHADE <= .35, "night remains distinct without concealing gameplay");
+  assert.equal(fills[0].color, `rgba(15,27,48,${NIGHT_SHADE})`);
 });

@@ -1,5 +1,6 @@
-import { HOUSE_ANCHORS } from "./home-layout";
-import { SHELTER_ART, depositedPosition, type HabitatState, type PropKind } from "./habitat";
+import { HOUSE_ANCHORS, HOME_DECOR } from "./home-layout";
+import { pointInPolygon } from "@/features/world/map-layout";
+import { depositedPosition, type HabitatState, type PropKind } from "./habitat";
 
 const rect = (ctx: CanvasRenderingContext2D, color: string, x: number, y: number, w: number, h: number) => {
   ctx.fillStyle = color; ctx.fillRect(Math.round(x), Math.round(y), w, h);
@@ -29,18 +30,50 @@ function prop(ctx: CanvasRenderingContext2D, kind: PropKind, x: number, y: numbe
 /** Shared retained gift artwork for the check-in habitat and personal world. */
 export function drawOwnedDecor(ctx: CanvasRenderingContext2D, items: readonly string[], t = 0) {
   if (items.includes("flower")) {
+    const { x, y } = HOME_DECOR.flower;
     const bend = Math.round(Math.sin(t * 1.3));
-    rect(ctx, "#647e3c", 160, 104, 2, 10); rect(ctx, "#a6af57", 157, 109, 4, 2);
-    rect(ctx, "#e4c889", 158 + bend, 100, 5, 5); rect(ctx, "#fff0bc", 159 + bend, 98, 3, 8);
-    rect(ctx, "#bd8440", 160 + bend, 101, 2, 2);
+    rect(ctx, "#465d32", x - 3, y, 7, 2);
+    rect(ctx, "#647e3c", x, y - 9, 1, 10); rect(ctx, "#a6af57", x - 3, y - 5, 3, 2);
+    rect(ctx, "#8f9a45", x + 1, y - 7, 3, 2);
+    rect(ctx, "#cba961", x - 2 + bend, y - 11, 5, 3);
+    rect(ctx, "#eee0a6", x - 1 + bend, y - 12, 3, 5);
+    rect(ctx, "#fff0bc", x + bend, y - 12, 1, 5);
+    rect(ctx, "#b97e3b", x + bend, y - 11, 2, 2);
   }
-  if (items.includes("leaf_bed")) for (let i = 0; i < 4; i++) prop(ctx, "leaf", 174 + i * 4, 109 - i % 2, i);
-  if (items.includes("keepsakes")) { prop(ctx, "cone", 205, 120); prop(ctx, "stone", 200, 122); prop(ctx, "stone", 213, 122); }
+  if (items.includes("leaf_bed")) {
+    const bed = HOME_DECOR.bed;
+    ctx.save(); ctx.beginPath();
+    HOUSE_ANCHORS.doorway.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+    ctx.closePath(); ctx.clip();
+    // Flat overlapping leaves follow the threshold's perspective, beneath the sleeper.
+    for (let i = 0; i < 5; i++) {
+      const x = bed.x - 9 + i * 4, y = bed.y + Math.floor(i / 2);
+      rect(ctx, "#4d5530", x - 3, y - 1, 7, 3);
+      rect(ctx, i % 2 ? "#8b9545" : "#ac9a4e", x - 3, y - 1, 7, 2);
+      rect(ctx, i % 2 ? "#8b9545" : "#ac9a4e", x - 2, y - 2, 5, 4);
+      rect(ctx, "#c1b268", x - 1, y - 2, 3, 1);
+      rect(ctx, "#616d34", x - 1, y, 4, 1);
+    }
+    ctx.restore();
+  }
+  if (items.includes("keepsakes")) {
+    const { x, y } = HOME_DECOR.keepsakes;
+    // A small root-side collection, below and away from the lantern and doorway.
+    rect(ctx, "#455338", x - 6, y - 1, 13, 2);
+    rect(ctx, "#4e3d2b", x - 4, y - 8, 3, 1); rect(ctx, "#6f5337", x - 5, y - 7, 5, 6);
+    rect(ctx, "#9c7849", x - 4, y - 6, 3, 4); rect(ctx, "#c09b60", x - 4, y - 6, 2, 1);
+    rect(ctx, "#59462f", x - 3, y - 5, 2, 1); rect(ctx, "#c09b60", x - 4, y - 3, 2, 1);
+    rect(ctx, "#45565a", x + 1, y - 3, 5, 3); rect(ctx, "#728e90", x + 2, y - 4, 4, 3);
+    rect(ctx, "#b4d1c3", x + 2, y - 4, 2, 1); rect(ctx, "#a8bbb0", x + 6, y - 2, 2, 2);
+  }
   if (items.includes("leaf_garland")) {
+    const { left, right, sag } = HOME_DECOR.garland;
     for (let i = 0; i < 8; i++) {
-      const x = 168 + i * 4, y = 78 + Math.round(Math.sin(i / 7 * Math.PI) * 5);
+      const p = i / 7, x = left.x + (right.x - left.x) * p;
+      const y = left.y + (right.y - left.y) * p + Math.sin(p * Math.PI) * sag;
       rect(ctx, "#6c7141", x, y, 4, 1);
-      rect(ctx, i % 2 ? "#adb861" : "#7f9950", x, y + 1, 3, 3);
+      rect(ctx, i % 2 ? "#adb861" : "#7f9950", x, y + 1, 3, 2);
+      rect(ctx, i % 2 ? "#8f9e4a" : "#637e41", x + 1, y + 3, 2, 1);
       rect(ctx, "#d9d68b", x + 1, y + 2, 1, 1);
     }
   }
@@ -49,18 +82,10 @@ export function drawOwnedDecor(ctx: CanvasRenderingContext2D, items: readonly st
 export function drawDecor(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean) {
   const t = reducedMotion ? 0 : state.elapsed;
   ctx.save(); ctx.globalAlpha = reducedMotion ? 1 : .35 + state.decorReveal * .65;
-  ctx.translate(HOUSE_ANCHORS.inside.x * 256 - 181, HOUSE_ANCHORS.inside.y * 256 - 104);
   drawOwnedDecor(ctx, state.decorItems, t);
   ctx.restore();
   if (state.leafDelivered) { const at = depositedPosition("leaf"); prop(ctx, "leaf", at.x * 256, at.y * 256); }
   if (state.keepsake) { const at = depositedPosition(state.keepsake); prop(ctx, state.keepsake, at.x * 256, at.y * 256); }
-}
-
-/** Reuse the existing textured mushroom, with a wide cap and a tall stem. It is never food. */
-export function drawShelter(ctx: CanvasRenderingContext2D, art: HTMLCanvasElement, capOnly = false) {
-  const { x, y, width, capHeight, ground } = SHELTER_ART;
-  if (!capOnly) ctx.drawImage(art, 5, 11, 6, 9, x + width / 2 - 4, y + capHeight - 2, 9, ground - y - capHeight + 2);
-  ctx.drawImage(art, 0, 0, 16, 11, x, y, width, capHeight);
 }
 
 /** Held objects are occluded by the body when it faces away; ground finds stay visible. */
@@ -84,14 +109,13 @@ export function drawWeather(ctx: CanvasRenderingContext2D, state: HabitatState, 
   ctx.save();
   if (tint) { ctx.globalAlpha = state.rain * .12; rect(ctx, "#45697d", field.x, field.y, field.width, field.height); }
   const time = reducedMotion ? 0 : state.elapsed;
-  const shelter = SHELTER_ART;
   const count = Math.min(reducedMotion ? 40 : 150, Math.ceil((reducedMotion ? 10 : 38) * field.width * field.height / 65536));
   for (let i = 0; i < count; i++) {
     const y = field.y + (i * 61 + time * 118) % (field.height + 14) - 7;
     const x = field.x + ((i * 47 - time * 20) % field.width + field.width) % field.width;
-    // The cap actually shields the pet; drops stop above it.
-    if (x > shelter.x && x < shelter.x + shelter.width
-      && y > shelter.y + shelter.capHeight / 2 && y < shelter.ground + 3) continue;
+    // The existing doorway is a real dry recess, including the bottom of each drop.
+    if (pointInPolygon({ x, y }, HOUSE_ANCHORS.doorway)
+      || pointInPolygon({ x: x - 1, y: y + 6 }, HOUSE_ANCHORS.doorway)) continue;
     ctx.globalAlpha = state.rain * (.22 + i % 3 * .08);
     rect(ctx, "#c0d5d9", x, y, 1, 4); rect(ctx, "#c0d5d9", x - 1, y + 4, 1, 2);
   }
