@@ -128,7 +128,7 @@ class JdbcZhivRepository(
         WITH request_clock AS MATERIALIZED (
             SELECT clock_timestamp() AS server_time
         )
-        SELECT u.id, u.public_id, u.display_name, u.timezone_id, history.last_check_in_at,
+        SELECT u.id, u.public_id, u.display_name, u.tag_text, u.tag_color, u.timezone_id, history.last_check_in_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
@@ -203,7 +203,7 @@ class JdbcZhivRepository(
            AND s.user_id = ?
            AND u.id = s.user_id
            AND s.revoked_at IS NULL
-           AND u.deleted_at IS NULL
+           AND u.deleted_at IS NULL AND u.banned_at IS NULL
         """.trimIndent(),
     ).use { statement ->
         statement.setBytes(1, sessionTokenHash)
@@ -221,7 +221,7 @@ class JdbcZhivRepository(
                     SELECT s.user_id FROM app_sessions s
                     JOIN app_users u ON u.id = s.user_id
                     WHERE s.token_hash = ? AND s.revoked_at IS NULL
-                      AND s.expires_at > clock_timestamp() AND u.deleted_at IS NULL
+                      AND s.expires_at > clock_timestamp() AND u.deleted_at IS NULL AND u.banned_at IS NULL
                     """.trimIndent(),
                 ).use { statement ->
                     statement.setBytes(1, sessionTokenHash)
@@ -243,7 +243,7 @@ class JdbcZhivRepository(
                     WITH request_clock AS MATERIALIZED (
                         SELECT clock_timestamp() AS server_time
                     )
-                    SELECT u.id, u.public_id, u.display_name, u.timezone_id, history.last_check_in_at,
+                    SELECT u.id, u.public_id, u.display_name, u.tag_text, u.tag_color, u.timezone_id, history.last_check_in_at,
                            CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
@@ -263,7 +263,7 @@ class JdbcZhivRepository(
                     WHERE s.token_hash = ?
                       AND s.revoked_at IS NULL
                       AND s.expires_at > clock.server_time
-                      AND u.deleted_at IS NULL
+                      AND u.deleted_at IS NULL AND u.banned_at IS NULL
                     """.trimIndent(),
                 ).use { statement ->
                     statement.setBytes(1, sessionTokenHash)
@@ -508,7 +508,7 @@ class JdbcZhivRepository(
              WHERE session.token_hash = ?
                AND session.revoked_at IS NULL
                AND session.expires_at > clock_timestamp()
-               AND user_account.deleted_at IS NULL
+               AND user_account.deleted_at IS NULL AND user_account.banned_at IS NULL
             """.trimIndent(),
         ).use { statement ->
             statement.setBytes(1, tokenHash)
@@ -522,7 +522,7 @@ class JdbcZhivRepository(
         if (session == null) return null
 
         val activeUser = connection.prepareStatement(
-            "SELECT id FROM app_users WHERE id = ? AND deleted_at IS NULL FOR NO KEY UPDATE",
+            "SELECT id FROM app_users WHERE id = ? AND deleted_at IS NULL AND banned_at IS NULL FOR NO KEY UPDATE",
         ).use { statement ->
             statement.setObject(1, session.userId)
             statement.executeQuery().use { result ->
@@ -553,7 +553,7 @@ class JdbcZhivRepository(
                AND session.token_hash = ?
                AND session.revoked_at IS NULL
                AND session.expires_at > ?
-               AND user_account.deleted_at IS NULL
+               AND user_account.deleted_at IS NULL AND user_account.banned_at IS NULL
             """.trimIndent(),
         ).use { statement ->
             statement.setObject(1, session.sessionId)
@@ -643,7 +643,7 @@ class JdbcZhivRepository(
         WITH request_clock AS MATERIALIZED (
             SELECT CAST(? AS timestamptz) AS server_time
         )
-        SELECT u.id, u.public_id, u.display_name, u.timezone_id, history.last_check_in_at,
+        SELECT u.id, u.public_id, u.display_name, u.tag_text, u.tag_color, u.timezone_id, history.last_check_in_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_text END AS status_text,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_updated_at END AS status_updated_at,
                CASE WHEN u.status_expires_at IS NULL OR u.status_expires_at > statement_timestamp() THEN u.status_expires_at END AS status_expires_at,
@@ -659,7 +659,7 @@ class JdbcZhivRepository(
           JOIN app_users u ON u.id = ?
           CROSS JOIN LATERAL account_check_in_summary(u.id) history
           CROSS JOIN LATERAL rolling_check_in_streak(u.id, clock.server_time) streak
-         WHERE u.deleted_at IS NULL
+         WHERE u.deleted_at IS NULL AND u.banned_at IS NULL
         """.trimIndent(),
     ).use { statement ->
         statement.setObject(1, serverTime)
@@ -711,6 +711,7 @@ class JdbcZhivRepository(
         id = getObject("id", UUID::class.java),
         publicId = getString("public_id"),
         displayName = getString("display_name"),
+        tag = playerTag(),
         timeZone = getString("timezone_id"),
         lastCheckInAt = getObject("last_check_in_at", OffsetDateTime::class.java),
         checkInCount = getLong("check_in_count"),

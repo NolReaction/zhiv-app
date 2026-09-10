@@ -16,6 +16,8 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.admin.AdminConfig
+import ru.zhiv.admin.AdminPlayerCommand
+import ru.zhiv.identity.PlayerTag
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.installZhivApi
@@ -84,6 +86,9 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(401, assertFailsWith<AuthFailure> { repo.access(tokens.issue().hash) }.status)
         assertEquals(403, assertFailsWith<AuthFailure> { repository().access(admin.hash) }.status)
         val denied = listOf<suspend () -> Any>(
+            { repo.player(visitor.hash,admin.publicId) },
+            { repo.tapActivity(visitor.hash,admin.publicId) },
+            { repo.managePlayer(visitor.hash,admin.publicId,UUID.randomUUID(),AdminPlayerCommand(UUID.randomUUID().toString(),admin.publicId,"Attempt unauthorized grant","grant_resource","wood",10)) },
             { repo.access(visitor.hash) }, { repo.overview(visitor.hash, 7) },
             { repo.users(visitor.hash, "", "created", 0, 25) }, { repo.audit(visitor.hash, 0, 25) },
             { repo.revokeSessions(visitor.hash, admin.publicId, UUID.randomUUID(), admin.publicId, "Проверка защиты доступа") },
@@ -394,6 +399,165 @@ class JdbcAdminRepositoryIntegrationTest {
         }
         assertEquals(HttpStatusCode.OK,accepted.status);assertEquals("no-store",accepted.headers[HttpHeaders.CacheControl])
         assertEquals(listOf("flower"),repo.rewards(admin.hash,target.publicId).items)
+    }
+
+    private fun command(target: User, action: String, value: String="", amount: Long=0, tag: PlayerTag?=null): AdminPlayerCommand =
+        AdminPlayerCommand(UUID.randomUUID().toString(),target.publicId,"Проверка административного действия",action,value,amount,tag)
+
+    @Test
+    fun `automatic tap signal persists without banning and can be cleared idempotently`() = runBlocking<Unit> {
+        val admin = user()
+        val target = user()
+        val repo = repository(admin)
+        source.connection.use { c ->
+            c.autoCommit = false
+            try {
+                c.prepareStatement("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE").use { statement ->
+                    statement.setObject(1, target.id)
+                    statement.executeQuery().use { result -> assertTrue(result.next()) }
+                }
+                val recordedAt = c.createStatement().use { statement ->
+                    statement.executeQuery("SELECT clock_timestamp()").use { result ->
+                        assertTrue(result.next())
+                        result.getObject(1, OffsetDateTime::class.java)
+                    }
+                }
+                // 100 taps/minute for 15 completed minutes, stored as second buckets.
+                c.prepareStatement("""
+                    WITH taps AS (
+                        SELECT i, date_trunc('minute', ?::timestamptz)
+                            - interval '15 minutes' + i * interval '600 milliseconds' AS tapped_at
+                        FROM generate_series(0,1499) AS series(i)
+                    ), buckets AS (
+                        SELECT date_trunc('second',tapped_at) AS bucket_at, count(*) AS taps,
+                            count(*) FILTER (WHERE i>0) AS intervals
+                        FROM taps GROUP BY 1
+                    )
+                    INSERT INTO game_tap_activity_seconds(
+                        user_id,bucket_at,received_taps,event_taps,interval_count,
+                        interval_sum_ms,interval_squared_sum_ms
+                    )
+                    SELECT ?,bucket_at,taps,taps,intervals,intervals*600.0,intervals*360000.0 FROM buckets
+                """.trimIndent()).use { statement ->
+                    statement.setObject(1, recordedAt)
+                    statement.setObject(2, target.id)
+                    statement.executeUpdate()
+                }
+                recordTapActivity(c, target.id, recordedAt, accepted=1, rejected=0,
+                    times=listOf(recordedAt.toInstant().toEpochMilli()), previous=null)
+                c.commit()
+            } catch (error: Exception) { c.rollback(); throw error }
+        }
+        // A fresh repository sees the committed automatic signal.
+        val flagged = repository(admin).player(admin.hash, target.publicId)
+        assertNotNull(flagged.tapSignalAt)
+        assertNull(flagged.bannedAt)
+        assertFalse(flagged.watchlisted)
+        assertNotNull(identities.findBySession(target.hash))
+        assertEquals(0L, repo.audit(admin.hash, 0, 25).total)
+
+        val clear = command(target, "clear_signal")
+        val requestId = UUID.fromString(clear.requestId)
+        assertEquals(403, assertFailsWith<AuthFailure> {
+            repo.managePlayer(target.hash, target.publicId, requestId, clear)
+        }.status)
+        assertNotNull(repo.player(admin.hash, target.publicId).tapSignalAt)
+        val receipt = repo.managePlayer(admin.hash, target.publicId, requestId, clear)
+        assertTrue(receipt.changed)
+        assertEquals(0, receipt.affectedSessions)
+        assertEquals(receipt, repo.managePlayer(admin.hash, target.publicId, requestId, clear))
+
+        val cleared = repo.player(admin.hash, target.publicId)
+        assertNull(cleared.tapSignalAt)
+        assertNull(cleared.bannedAt)
+        assertFalse(cleared.watchlisted)
+        assertNotNull(identities.findBySession(target.hash))
+        val audit = repo.audit(admin.hash, 0, 25)
+        assertEquals(1L, audit.total)
+        assertEquals("clear_signal", audit.events.single().action)
+    }
+
+    @Test fun `world grants are atomic replayable bounded and preserve normal progression`() = runBlocking<Unit> {
+        val admin=user(); val target=user(); val repo=repository(admin)
+        val grant=command(target,"grant_resource","wood",25)
+        val receipts=coroutineScope { List(2) { async(Dispatchers.IO) { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(grant.requestId),grant) } }.awaitAll() }
+        assertEquals(receipts[0],receipts[1]); assertEquals(25L,repo.player(admin.hash,target.publicId).world.resources.wood)
+        assertEquals(1L,repo.player(admin.hash,target.publicId).revision)
+        assertEquals("0",scalar("SELECT tap_sparks FROM world_profiles WHERE user_id=?",target.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_monthly_scores WHERE user_id=?",target.id))
+        val duplicate=command(target,"grant_world_item","moss")
+        assertFalse(repo.managePlayer(admin.hash,target.publicId,UUID.fromString(duplicate.requestId),duplicate).changed)
+        assertEquals(1L,repo.player(admin.hash,target.publicId).revision)
+        assertEquals(409,assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(grant.requestId),grant.copy(amount=26)) }.status)
+        for(bad in listOf(grant.copy(requestId=UUID.randomUUID().toString(),amount=-1),grant.copy(requestId=UUID.randomUUID().toString(),amount=100001),command(target,"grant_world_item","unknown"))) {
+            assertEquals(400,assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(bad.requestId),bad) }.status)
+        }
+        for(find in ru.zhiv.world.WorldRules.catalog.finds) {
+            val request=command(target,"grant_find",find.id)
+            repo.managePlayer(admin.hash,target.publicId,UUID.fromString(request.requestId),request)
+        }
+        assertTrue("explorer_cap" in repo.player(admin.hash,target.publicId).world.inventory)
+    }
+
+    @Test fun `tags are public metadata and a normal profile edit cannot replace them`() = runBlocking<Unit> {
+        val admin=user(); val target=user("Игрок"); val repo=repository(admin)
+        val request=command(target,"set_tag",tag=PlayerTag("Tester","blue"))
+        repo.managePlayer(admin.hash,target.publicId,UUID.fromString(request.requestId),request)
+        assertEquals(PlayerTag("Tester","blue"),identities.findBySession(target.hash)!!.tag)
+        assertEquals("Игрок",identities.findBySession(target.hash)!!.displayName)
+        identities.updateDisplayName(target.hash,"Новое имя",UUID.randomUUID())
+        assertEquals(PlayerTag("Tester","blue"),identities.findBySession(target.hash)!!.tag)
+        assertEquals(PlayerTag("Tester","blue"),repo.users(admin.hash,target.publicId,"created",0,25).users.single().tag)
+        for(tag in listOf(PlayerTag("<admin>","red"),PlayerTag("Admin","url(unsafe)"))) {
+            val bad=command(target,"set_tag",tag=tag)
+            assertEquals(400,assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(bad.requestId),bad) }.status)
+        }
+        val clear=command(target,"set_tag")
+        repo.managePlayer(admin.hash,target.publicId,UUID.fromString(clear.requestId),clear)
+        assertNull(identities.findBySession(target.hash)!!.tag)
+    }
+
+    @Test fun `ban closes sessions prevents new sessions and a retried old ban cannot undo an unban`() = runBlocking<Unit> {
+        val admin=user(); val target=user(); val repo=repository(admin)
+        val recovery=JdbcCodeRecoveryRepository(source); val code=tokens.issue().hash
+        assertTrue(recovery.activate(target.hash,code))
+        execute("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('email','blocked@example.test',?)",target.id)
+        val ban=command(target,"ban")
+        val receipt=repo.managePlayer(admin.hash,target.publicId,UUID.fromString(ban.requestId),ban)
+        assertTrue(receipt.changed); assertNull(identities.findBySession(target.hash))
+        assertNotNull(repo.player(admin.hash,target.publicId).bannedAt)
+        assertFailsWith<SQLException> { extraSession(target) }
+        assertEquals("ACCOUNT_BANNED",assertFailsWith<AuthFailure> { recovery.redeem(code,tokens.issue().hash,tokens.issue().hash,365) }.code)
+        val flow=ru.zhiv.auth.LoginFlow(tokens.issue().hash,tokens.issue().hash,"email","login",null,null,"blocked@example.test",null,null,null)
+        assertEquals("ACCOUNT_BANNED",assertFailsWith<AuthFailure> { JdbcAuthRepository(source).finish(flow,"blocked@example.test",tokens.issue().hash,365,"Test") }.code)
+        assertEquals("ACCOUNT_BANNED",assertFailsWith<AuthFailure> { JdbcAuthRepository(source).prepareRegistration(flow,"blocked@example.test",tokens.issue().hash) }.code)
+        for(protected in listOf(admin)) {
+            val request=command(protected,"ban")
+            assertEquals("ADMIN_PROTECTED_ACCOUNT",assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,protected.publicId,UUID.fromString(request.requestId),request) }.code)
+        }
+        val unban=command(target,"unban")
+        repo.managePlayer(admin.hash,target.publicId,UUID.fromString(unban.requestId),unban)
+        assertEquals(receipt,repo.managePlayer(admin.hash,target.publicId,UUID.fromString(ban.requestId),ban))
+        assertNull(repo.player(admin.hash,target.publicId).bannedAt)
+        assertNull(identities.findBySession(target.hash))
+        assertNotNull(identities.findBySession(extraSession(target)))
+    }
+
+    @Test fun `accepted tap telemetry survives retries and is private to the selected user`() = runBlocking<Unit> {
+        val admin=user(); val target=user(); val other=user(); val repo=repository(admin); val games=JdbcGameRepository(source)
+        val session=games.openSession(target.hash,UUID.randomUUID(),target.publicId)
+        val run=UUID.randomUUID()
+        val first=games.submitBatch(target.hash,UUID.fromString(session.sessionId),1,3,run,null)
+        assertEquals(3,first.acceptedTaps)
+        assertTrue(games.submitBatch(target.hash,UUID.fromString(session.sessionId),1,3,run,null).replayed)
+        assertEquals("3",scalar("SELECT sum(received_taps) FROM game_tap_activity_seconds WHERE user_id=?",target.id))
+        assertEquals("3",scalar("SELECT sum(legacy_taps) FROM game_tap_activity_seconds WHERE user_id=?",target.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_tap_activity_seconds WHERE user_id=?",other.id))
+        assertEquals("insufficient_data",repo.tapActivity(admin.hash,target.publicId).analysis.status)
+        assertEquals(403,assertFailsWith<AuthFailure> { repo.tapActivity(other.hash,target.publicId) }.status)
+        execute("INSERT INTO game_tap_activity_seconds(user_id,bucket_at,received_taps) VALUES (?,clock_timestamp()-interval '3 hours',7)",target.id)
+        assertEquals(1,purgeTapActivity(source))
+        assertEquals("3",scalar("SELECT sum(received_taps) FROM game_tap_activity_seconds WHERE user_id=?",target.id))
     }
 
 }

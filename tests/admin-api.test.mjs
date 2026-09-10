@@ -14,6 +14,33 @@ after(() => vite.close());
 const serverTime = "2026-09-07T12:00:00Z";
 const publicId = "7K3P-2Q9M-W8ZR";
 
+test("player management preserves a lost grant request through rate limiting", async () => {
+  const body = { requestId: "9a272b65-8ada-4b0d-aad8-6a6ef845f41b", confirmationPublicId: publicId, reason: "World reward correction", action: "grant_resource", target: "wood", amount: 20 };
+  const sent = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, `/api/v1/admin/users/${publicId}/manage`);
+    sent.push(JSON.parse(options.body));
+    if (sent.length === 1) throw new TypeError("Response lost after commit");
+    if (sent.length === 2) return Response.json({ code: "RATE_LIMITED", message: "Wait" }, { status: 429 });
+    return Response.json({ requestId: body.requestId, action: body.action, changed: true, affectedSessions: 0, createdAt: serverTime });
+  };
+  await assert.rejects(api.manageAdminPlayer(publicId, body));
+  await assert.rejects(api.manageAdminPlayer(publicId, body), error => error.status === 429);
+  assert.equal((await api.manageAdminPlayer(publicId, body)).changed, true);
+  assert.deepEqual(sent, [body, body, body]);
+});
+
+test("player tags accept only the known colors and preserve plain display names", async () => {
+  const { playerTagSchema } = await vite.ssrLoadModule("/lib/player-tag.ts");
+  for (const tag of [{ text: "Admin", color: "url(unsafe)" }, { text: "[Owner]", color: "red" }, { text: "<script>", color: "red" }]) assert.equal(playerTagSchema.safeParse(tag).success, false);
+  assert.deepEqual(playerTagSchema.parse({ text: "Тестер_1", color: "green" }), { text: "Тестер_1", color: "green" });
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const React = await import("react");
+  const { PlayerName } = await vite.ssrLoadModule("/components/player-name.tsx");
+  const html = renderToStaticMarkup(React.createElement(PlayerName, { name: "<Admin>", tag: { text: "Tester", color: "blue" } }));
+  assert.ok(html.includes("&lt;Admin&gt;")); assert.ok(html.includes("[Tester]")); assert.ok(!html.includes("<Admin>"));
+});
+
 test("admin requests use same-origin authentication and bypass caches", async () => {
   globalThis.fetch = async (url, options) => {
     assert.equal(url, "/api/v1/admin/access");

@@ -11,7 +11,7 @@ export function useWorld(owner: string | null, onSessionLost: () => void) {
   useEffect(() => {
     if (!owner) return;
     const deactivate = session.activate();
-    const refresh = () => { if (!document.hidden) void session.refresh(); };
+    const refresh = () => { if (!document.hidden) void session.refreshSoft(); };
     const kickoff = setTimeout(refresh, 0);
     const timer = setInterval(() => { if (!document.hidden) setNow(session.now()); }, 1000);
     const polling = setInterval(refresh, 30000);
@@ -21,6 +21,6 @@ export function useWorld(owner: string | null, onSessionLost: () => void) {
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
   }, [session, owner]);
-  return { ...view, now, act: session.act, retry: session.retry, refresh: session.refresh };
+  return { ...view, now, act: session.act, retry: session.retry, refresh: session.refreshSoft };
 }
 export type WorldController = ReturnType<typeof useWorld>;

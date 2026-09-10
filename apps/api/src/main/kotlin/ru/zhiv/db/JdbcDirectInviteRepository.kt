@@ -191,7 +191,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
         connection.prepareStatement(
             """SELECT u.id FROM app_sessions s JOIN app_users u ON u.id = s.user_id
                WHERE s.token_hash = ? AND s.revoked_at IS NULL
-                 AND s.expires_at > clock_timestamp() AND u.deleted_at IS NULL""",
+                 AND s.expires_at > clock_timestamp() AND u.deleted_at IS NULL AND u.banned_at IS NULL""",
         ).use { statement ->
             statement.setBytes(1, hash)
             statement.executeQuery().use { result ->
@@ -315,7 +315,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
                   FROM circles c WHERE c.id = ? AND c.kind = 'DIRECT' AND c.archived_at IS NULL
                     AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
             )
-            SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id circle_id, direct_person.created_at, other.public_id, other.display_name, private_name.nickname,
+            SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id circle_id, direct_person.created_at, other.public_id, other.display_name, other.tag_text, other.tag_color, private_name.nickname,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
@@ -350,9 +350,9 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
         }
 
     private fun user(connection: Connection, id: UUID): UserReference? =
-        connection.prepareStatement("SELECT public_id, display_name FROM app_users WHERE id = ? AND deleted_at IS NULL").use { statement ->
+        connection.prepareStatement("SELECT public_id, display_name, tag_text, tag_color FROM app_users WHERE id = ? AND deleted_at IS NULL AND banned_at IS NULL").use { statement ->
             statement.setObject(1, id)
-            statement.executeQuery().use { result -> if (result.next()) UserReference(result.getString(1), result.getString(2)) else null }
+            statement.executeQuery().use { result -> if (result.next()) UserReference(result.getString(1), result.getString(2), result.playerTag()) else null }
         }
 
     private fun serverTime(connection: Connection): OffsetDateTime =
@@ -367,7 +367,7 @@ class JdbcDirectInviteRepository(private val dataSource: DataSource) : DirectInv
     )
 
     private fun ResultSet.toPerson() = PersonSnapshot(
-        getObject("circle_id", UUID::class.java), UserReference(getString("public_id"), getString("display_name")),
+        getObject("circle_id", UUID::class.java), UserReference(getString("public_id"), getString("display_name"), playerTag()),
         getObject("created_at", OffsetDateTime::class.java), SharingMode.valueOf(getString("my_sharing_mode")),
         SharingMode.valueOf(getString("their_sharing_mode")), PersonCheckInState.valueOf(getString("check_in_state")),
         getObject("last_check_in_at", OffsetDateTime::class.java),

@@ -468,13 +468,13 @@ class JdbcGroupRepository(
     ): List<GroupMemberSnapshot> = connection.prepareStatement(
         """
         SELECT membership.id AS membership_id, membership.user_id, membership.role,
-               membership.joined_at, person.public_id, person.display_name,
+               membership.joined_at, person.public_id, person.display_name, person.tag_text, person.tag_color,
                CASE WHEN (membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since)) AND (person.status_expires_at IS NULL OR person.status_expires_at > statement_timestamp()) THEN person.status_text END AS status_text,
                CASE WHEN (membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since)) AND (person.status_expires_at IS NULL OR person.status_expires_at > statement_timestamp()) THEN person.status_updated_at END AS status_updated_at,
                CASE WHEN (membership.id=CAST(? AS uuid) OR (preference.sharing_mode<>'OFF' AND person.status_updated_at>=preference.enabled_since)) AND (person.status_expires_at IS NULL OR person.status_expires_at > statement_timestamp()) THEN person.status_expires_at END AS status_expires_at,
                preference.sharing_mode, latest.checked_at AS last_check_in_at
           FROM circle_memberships membership
-          JOIN app_users person ON person.id = membership.user_id AND person.deleted_at IS NULL
+          JOIN app_users person ON person.id = membership.user_id AND person.deleted_at IS NULL AND person.banned_at IS NULL
           CROSS JOIN LATERAL effective_recipient_sharing(membership.user_id,CAST(? AS uuid)) preference
           LEFT JOIN LATERAL (
               SELECT event.checked_at
@@ -518,6 +518,7 @@ class JdbcGroupRepository(
                             user = UserReference(
                                 result.getString("public_id"),
                                 result.getString("display_name"),
+                            result.playerTag(),
                             ),
                             role = GroupRole.valueOf(result.getString("role")),
                             sharingMode = SharingMode.valueOf(result.getString("sharing_mode")),
@@ -542,7 +543,7 @@ class JdbcGroupRepository(
         SELECT invite.id, invite.circle_id, invite.inviter_user_id,
                invite.invitee_user_id, invite.created_at, invite.expires_at,
                circle.title, circle.emoji,
-               person.public_id, person.display_name
+               person.public_id, person.display_name, person.tag_text, person.tag_color
           FROM circle_invites invite
           JOIN circles circle
             ON circle.id = invite.circle_id
@@ -552,7 +553,7 @@ class JdbcGroupRepository(
             ON person.id = CASE WHEN invite.invitee_user_id = ?
                                 THEN invite.inviter_user_id
                                 ELSE invite.invitee_user_id END
-           AND person.deleted_at IS NULL
+           AND person.deleted_at IS NULL AND person.banned_at IS NULL
          WHERE invite.status = 'PENDING'
            AND invite.expires_at > clock_timestamp()
            AND ? IN (invite.inviter_user_id, invite.invitee_user_id)
@@ -582,6 +583,7 @@ class JdbcGroupRepository(
                             user = UserReference(
                                 result.getString("public_id"),
                                 result.getString("display_name"),
+                            result.playerTag(),
                             ),
                             createdAt = result.getObject("created_at", OffsetDateTime::class.java),
                             expiresAt = result.getObject("expires_at", OffsetDateTime::class.java),
@@ -601,7 +603,7 @@ class JdbcGroupRepository(
              WHERE session.token_hash = ?
                AND session.revoked_at IS NULL
                AND session.expires_at > clock_timestamp()
-               AND user_account.deleted_at IS NULL
+               AND user_account.deleted_at IS NULL AND user_account.banned_at IS NULL
             """.trimIndent(),
         ).use { statement ->
             statement.setBytes(1, tokenHash)

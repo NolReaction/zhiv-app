@@ -503,13 +503,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   const navigation = await readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8");
   assert.match(navigation, /id: "people", name: "Люди"/);
   assert.doesNotMatch(navigation, /id: "world"/);
-  const featureFlags = await readFile(new URL("../features/app/feature-flags.ts", import.meta.url), "utf8");
-  assert.match(featureFlags, /export const OPEN_WORLD_ENABLED = false;/);
-  assert.match(app, /\{OPEN_WORLD_ENABLED && <button[^]*?aria-label="Войти в мир Мохлика"/);
-  assert.match(app, /\{OPEN_WORLD_ENABLED && worldMounted && me && <WorldPortal/);
-  assert.match(app, /const worldOwner = OPEN_WORLD_ENABLED && screen === "home" \? me\?\.user\.publicId \?\? null : null/);
-  assert.match(app, /useWorld\(worldOwner, loseSession\)/);
-  assert.match(app, /if \(worldOwner\) void worldRefresh\(\)/);
+  assert.match(app, /aria-label="Войти в мир Мохлика"/);
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);

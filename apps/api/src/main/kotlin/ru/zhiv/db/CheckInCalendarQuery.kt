@@ -23,7 +23,7 @@ internal suspend fun readCheckInCalendar(
                        (statement_timestamp() AT TIME ZONE u.timezone_id)::date AS today
                   FROM app_sessions s JOIN app_users u ON u.id = s.user_id
                  WHERE s.token_hash = ? AND s.revoked_at IS NULL
-                   AND s.expires_at > statement_timestamp() AND u.deleted_at IS NULL
+                   AND s.expires_at > statement_timestamp() AND u.deleted_at IS NULL AND u.banned_at IS NULL
             ), bounds AS (
                 SELECT v.*, COALESCE(?::date, date_trunc('month', v.today)::date) AS month_start
                   FROM viewer v

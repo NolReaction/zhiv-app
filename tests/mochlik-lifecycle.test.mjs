@@ -17,12 +17,11 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   const flushTimers = () => { for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); } };
   const context = new Proxy({
     getImageData: (_x, _y, w, h) => { const data = new Uint8ClampedArray(w * h * 4).fill(255); data[0] = data[1] = data[2] = 0; return { data }; },
-    createRadialGradient: () => ({ addColorStop() {} }), drawImage: source => { drawCount++; if (source.width === 48) spriteDraws++; },
+    createRadialGradient: () => ({ addColorStop() {} }), createLinearGradient: () => ({ addColorStop() {} }), drawImage: source => { drawCount++; if (source.width === 48) spriteDraws++; },
   }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = () => ({ width: 16, height: 16, clientWidth: 320, getContext: () => context });
   install("document", { createElement: () => canvas() }); install("window", { devicePixelRatio: 2 });
-  const loadedImages = [];
-  install("Image", class { naturalWidth = 16; naturalHeight = 16; set src(path) { loadedImages.push(path); queueMicrotask(() => this.onload()); } });
+  install("Image", class { naturalWidth = 1254; naturalHeight = 1254; set src(_) { queueMicrotask(() => this.onload()); } });
   install("ResizeObserver", class { observe() {} disconnect() { disconnected++; } });
   install("requestAnimationFrame", callback => { const id = nextId++; scheduled.set(id, callback); return id; });
   install("cancelAnimationFrame", id => scheduled.delete(id));
@@ -31,10 +30,11 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   try {
     let activity, ready = 0, failures = 0;
     const options = { paused: false, reducedMotion: false, lampOn: false, dusk: false };
-    scene = mountHabitat(canvas(), options, { activity: value => { activity = value; }, ready: () => ready++, failure: () => failures++ });
+    const surface = canvas();
+    scene = mountHabitat(surface, options, { activity: value => { activity = value; }, ready: () => ready++, failure: () => failures++ });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(ready, 1); assert.equal(failures, 0); assert.equal(scheduled.size, 1);
-    assert.deepEqual(loadedImages, ["/world/maps/home-clearing.webp"], "the release circle must not depend on open-world images");
+    assert.equal(surface.width, 640, "320 CSS pixels at DPR 2 retain background detail");
     frames(2300); assert.equal(activity, "sleep");
     scene.configure({ ...options, paused: true }); const frozen = drawCount;
     for (let i = 0; i < 100; i++) scene.notice(); frames(100);

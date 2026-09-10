@@ -1,26 +1,34 @@
+import { drawFishingJourney } from "@/features/world/fishing-journey";
+import { FISHING_PREPARE_MS, isFishingJourney, sceneJourney } from "@/features/world/journey-timeline";
 import { WORLD_ART } from "@/features/world/art";
-import { OPEN_WORLD_ENABLED } from "@/features/app/feature-flags";
-import { HOUSE_ANCHORS, HOME_CANVAS_SIZE } from "./home-layout";
+import { drawBirdAmbience } from "@/features/world/bird-ambience";
+import { drawWeatherGround, drawWeatherAir, type WeatherVisitorState } from "@/features/world/weather-visitors";
+import { drawRouteLights } from "@/features/world/route-props";
+import { HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
 import type { WorldState } from "@/features/world/model";
 import { homeAppearance } from "./home-state";
-import { houseAtlasCell, houseDetailPatches } from "./house-details";
-import { loadWorkshopArt } from "./workshop-art";
+import { houseVariantFor, type HouseVariant } from "./house-variants";
+import { FOREST_MAP } from "@/features/world/map-manifest";
 import { HOME_AREA, MAP_SIZE } from "@/features/world/map-layout";
 import type { GameItemId } from "@/features/game/game-rewards";
-import { SHELTER, SHELTER_ART, nextWeatherChange, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
+import { nextWeatherChange, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
 import { connectHabitat } from "./session";
 import { loadHabitatImage } from "./assets";
+import { homeBackingSize, loadHomeDetail } from "./home-art";
+import { drawLanternLight, drawSceneShade } from "./lantern-light";
+import { drawLanternGlass, prepareLanternGlass, type LanternGlass } from "./lantern-glass";
 import { pixelSprite } from "./pixel-sprite";
 import { pixelFrame } from "./pixel-frame";
+import { drawBushReaction, prepareBushFoliage } from "./bush-reaction";
 import { feedingFrame } from "./feeding";
 import { drawInsects } from "./insects";
 import { readPresence, writePresence } from "./presence";
-import { propBehindBody, drawDecor, drawShelter, drawProp, drawWeather, drawMomentAccents } from "./ambience";
+import { propBehindBody, drawDecor, drawProp, drawWeather, drawMomentAccents } from "./ambience";
 
 const WEATHER_BOUNDS = { x: -HOME_AREA.x * HOME_CANVAS_SIZE / HOME_AREA.size, y: -HOME_AREA.y * HOME_CANVAS_SIZE / HOME_AREA.size, width: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size, height: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size };
 
-export type SceneOptions = { lampOn: boolean; dusk: boolean; paused: boolean; reducedMotion: boolean; view?: "circle" | "world"; backgrounded?: boolean; presenceKey?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[] };
-export type HabitatScene = { configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; dispose: () => void };
+export type SceneOptions = { serverNow?: number; lampOn: boolean; dusk: boolean; paused: boolean; reducedMotion: boolean; view?: "circle" | "world"; backgrounded?: boolean; presenceKey?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[] };
+export type HabitatScene = { setTime: (now: number) => void; paintJourney: (context: CanvasRenderingContext2D) => void; configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; ambience: () => WeatherVisitorState; paintVisitors: (context: CanvasRenderingContext2D, layer: "ground" | "air") => void; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; dispose: () => void };
 type Callbacks = { activity: (activity: Activity) => void; ready: () => void; failure: (error?: unknown) => void; rendered?: () => void };
 function loadArt() { return loadHabitatImage(WORLD_ART.home); }
 
@@ -28,8 +36,12 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
   const context = canvas.getContext("2d", { alpha: true });
   if (!context) throw new Error("2D canvas unavailable");
   const ctx = context;
+  let serverTime = initial.serverNow ?? Date.now(), receivedTime = performance.now();
+  const journeyNow = () => serverTime + (options.paused ? 0 : performance.now() - receivedTime);
   let options = { ...initial }, disposed = false, art: HTMLImageElement | null = null;
-  let upgradeArt: HTMLImageElement | null = null, workshopArt: HTMLCanvasElement | null = null;
+  let detail: HTMLCanvasElement | null = null;
+  let lanternGlass: LanternGlass | null = null;
+  let upgradeArt: HTMLImageElement | null = null, variant: HouseVariant | null = null, variantRequest = 0;
   let appearance = homeAppearance(initial.worldState, initial.worldGifts, initial.items);
   let frame = 0, previous = 0, lastDraw = 0, width = 1;
   let lampGlow = initial.lampOn ? 1 : 0, dusk = initial.dusk ? 1 : 0;
@@ -43,11 +55,27 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       world.elapse(saved.absentFor); world.state.inactiveFor += saved.inactiveFor;
       if (saved.resting || saved.deepSleep) world.restAfterAbsence(saved.deepSleep);
     }
-    world.setAway(appearance.away, false, initial.worldState?.journeys[0]?.routeId === "brook_path");
+    const trip = sceneJourney(initial.worldState, serverTime);
+    world.setAway(Boolean(trip && (isFishingJourney(trip) || serverTime < Date.parse(trip.finishesAt))), false, trip?.routeId === "brook_path");
   }, () => { if (!disposed) { cancelAnimationFrame(frame); frame = 0; previous = 0; resume(); } });
   const world = session.world;
+  let wasFishing = Boolean(initial.worldState?.journeys.some(isFishingJourney));
+  function syncJourney(animate = true) {
+    if (!session.isOwner()) return;
+    const now = journeyNow(), trip = sceneJourney(options.worldState, now);
+    const fishing = Boolean(trip && isFishingJourney(trip));
+    const preparing = Boolean(fishing && trip && now - Date.parse(trip.startedAt) < FISHING_PREPARE_MS && !options.reducedMotion);
+    world.setAway(Boolean(trip && (fishing || now < Date.parse(trip.finishesAt))), preparing || animate && !options.reducedMotion && !fishing && !wasFishing, trip?.routeId === "brook_path", fishing);
+    wasFishing = fishing;
+  }
+  function paintJourney(context: CanvasRenderingContext2D) {
+    if (disposed) return;
+    const now = journeyNow(), trip = sceneJourney(options.worldState, now);
+    if (trip && isFishingJourney(trip) && world.state.travel === "away") drawFishingJourney(context, trip, now, appearance.equipment, options.reducedMotion);
+  }
   let stillTimer: ReturnType<typeof setTimeout> | null = null;
   let mushroomArt: HTMLCanvasElement | null = null;
+  let bushArt: HTMLCanvasElement | null = null;
   // Stable random paths: rerenders do not scramble particles, sleep cycles do not reset them.
   const sleepParticles = Array.from({ length: 5 }, (_, i) => ({
     delay: i * .85 + Math.random(), duration: 3.8 + Math.random() * 2.4,
@@ -59,29 +87,50 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     world.setInsects(options.dusk ? "firefly" : "butterfly");
     world.setDecor(options.bestStreakDays ?? 0, appearance.items);
   }
+  function drawGround() {
+    if (detail) {
+      ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(detail, 0, 0, width, width); ctx.restore(); return;
+    }
+    if (art) ctx.drawImage(art, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size, 0, 0, width, width);
+  }
+  function loadVariant() {
+    const next = houseVariantFor(appearance.houseLevel);
+    if (next === variant) return;
+    variant = next; upgradeArt = null; const request = ++variantRequest;
+    if (!next) return;
+    void loadHabitatImage(next.image).then(image => {
+      if (disposed || request !== variantRequest) return;
+      if (image.naturalWidth !== next.slot.width || image.naturalHeight !== next.slot.height) return;
+      upgradeArt = image; draw();
+    }).catch(() => { /* The approved base house remains a complete visual fallback. */ });
+  }
   function draw() {
     if (!art || disposed) return;
-    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(art, 0, 0, width, width);
-    if (upgradeArt && appearance.houseLevel > 1) {
-      const cell = houseAtlasCell(appearance.houseLevel);
-      for (const part of houseDetailPatches(appearance.houseLevel)) {
-        ctx.drawImage(upgradeArt, cell.x + part.sx, cell.y + part.sy, part.sw, part.sh, part.x, part.y, part.w, part.h);
-      }
+    syncJourney();
+    const resolution = canvas.width / HOME_CANVAS_SIZE;
+    ctx.setTransform(resolution, 0, 0, resolution, 0, 0); ctx.imageSmoothingEnabled = false;
+    drawGround();
+    if (upgradeArt && variant) {
+      const slot = variant.slot, at = homePixel(slot), scale = HOME_CANVAS_SIZE / HOME_AREA.size;
+      ctx.save(); ctx.beginPath(); ctx.rect(at.x, at.y, slot.width * scale, slot.height * scale);
+      HOUSE_ANCHORS.doorway.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath();
+      const lamp = HOUSE_ANCHORS.lamp; ctx.rect(lamp.x, lamp.y, lamp.width, lamp.height); ctx.clip("evenodd");
+      ctx.drawImage(upgradeArt, at.x, at.y, slot.width * scale, slot.height * scale); ctx.restore();
     }
-    // In the circle the bench reflects construction; the full map already has its workshop.
-    if (options.view !== "world" && appearance.workshop && workshopArt) ctx.drawImage(workshopArt, 24, 151, 48, 44);
+    drawLanternGlass(ctx, lampGlow, lanternGlass);
     const state = world.state, a = state.activity, p = state.progress;
     const visible = state.travel !== "away";
     const t = options.reducedMotion ? 0 : state.activityTime;
     const sprite = pixelFrame(state, options.reducedMotion);
+    // Departure to a visible rendezvous must not fade out before handing over.
+    if (wasFishing && state.travel === "departing" && a === "depart") sprite.opacity = 1;
     const food = feedingFrame(p);
     const size = Math.round(state.size * width), x = Math.round((state.position.x + sprite.offsetX) * width);
     const y = Math.round((state.position.y - state.lift + sprite.sink + sprite.offsetY) * width);
     drawDecor(ctx, state, options.reducedMotion);
-    const shelterInFront = state.position.y < SHELTER_ART.ground / HOME_CANVAS_SIZE;
-    if (mushroomArt && !shelterInFront) drawShelter(ctx, mushroomArt);
-    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "enter" && p > .48 || a === "leave" && p < .52);
+    drawHomeVisitors("ground");
+    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "shelter" || a === "shelter-peek" || a === "rain-notice" || a === "enter" && p > .48 || a === "leave" && p < .52);
     const drawMushroom = (mushroom: Mushroom) => {
       if (!mushroomArt || mushroom.growth < .06) return;
       if (state.feedingId === mushroom.id && a === "eat" && food.lifted) return;
@@ -97,12 +146,11 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       ctx.save(); ctx.globalAlpha = sprite.opacity;
       if (inside) {
         ctx.beginPath();
-        for (const area of HOUSE_ANCHORS.doorway) ctx.rect(area.x, area.y, area.width, area.height);
+        HOUSE_ANCHORS.doorway.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath();
         ctx.clip();
       }
       const stir = a === "stir" && !options.reducedMotion ? Math.round(Math.sin(p * Math.PI * 4) * (1 - p)) : 0;
-      const breathing = a === "sleep" && !options.reducedMotion ? Math.round(Math.sin(state.elapsed * 1.6) * .65) : 0;
-      ctx.drawImage(pixelSprite(sprite.pose, sprite.direction, sprite.frame, appearance.equipment), x - Math.floor(size / 2) + stir, y - size + breathing, size, size);
+      ctx.drawImage(pixelSprite(sprite.pose, sprite.direction, sprite.frame, appearance.equipment), x - Math.floor(size / 2) + stir, y - size, size, size);
       if (a === "eat" && food.lifted && food.remaining > 0 && mushroomArt) {
         const mushroom = state.mushrooms.find(item => item.id === state.feedingId);
         if (mushroom) {
@@ -118,44 +166,25 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       }
       ctx.restore();
     }
-    // Restore the same foliage pixels in place. Moving the whole map under a mask
-    // caused seams; bush entry/exit now use the single sprite's concealment envelope.
+    // Keep one pet sprite behind the original foliage, then flex only its interior.
     if (visible && state.layer === "bush") {
       ctx.save(); ctx.beginPath();
-      ctx.moveTo(24, 115); ctx.lineTo(28, 99); ctx.lineTo(40, 91); ctx.lineTo(56, 89);
-      ctx.lineTo(71, 96); ctx.lineTo(78, 109); ctx.lineTo(76, 123); ctx.lineTo(29, 128); ctx.closePath(); ctx.clip();
-      ctx.drawImage(art, 0, 0, width, width); ctx.restore();
-      if (!options.reducedMotion && (a === "jump" && p > .65 || a === "emerge" && p < .55)) {
-        const burst = a === "jump" ? (p - .65) / .35 : p / .55;
-        ctx.fillStyle = "#adb65f";
-        for (let i = 0; i < 4; i++) {
-          ctx.fillRect(Math.round(47 + i * 6 + (i - 1.5) * burst * 5), Math.round(99 - Math.sin(burst * Math.PI) * (7 + i)), 2, 1);
-        }
-      }
+      BUSH_FOLIAGE.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath(); ctx.clip();
+      drawGround(); ctx.restore();
+      drawBushReaction(ctx, bushArt, state, options.reducedMotion);
     }
     state.mushrooms.filter(item => item.position.y > state.position.y).forEach(drawMushroom);
-    if (mushroomArt && shelterInFront) drawShelter(ctx, mushroomArt);
-    else if (mushroomArt && (state.moment === "rain" || ["shelter", "shelter-peek"].includes(a))
-      && Math.hypot(state.position.x - SHELTER.x, state.position.y - SHELTER.y) < .06) drawShelter(ctx, mushroomArt, true);
     if (visible && !propBehindBody(state)) drawProp(ctx, state, options.reducedMotion);
     if (visible && a === "eat" && food.phase === "chew" && food.bites > 0 && !options.reducedMotion) {
       ctx.fillStyle = "#dfbe82";
       for (let i = 0; i < 3; i++) ctx.fillRect(x - 3 + i * 3, y - Math.round(size * .35) + Math.floor((t * 6 + i) % 4), 1, 1);
     }
-    ctx.fillStyle = `rgba(8,17,35,${dusk * .57})`; ctx.fillRect(0, 0, width, width);
-    ctx.fillStyle = `rgba(69,105,125,${state.rain * .12})`; ctx.fillRect(0, 0, width, width);
-    // Replace the painted bulb, so OFF is truly dark even in the day scene.
-    ctx.fillStyle = "#493e2a"; ctx.fillRect(HOUSE_ANCHORS.lamp.x, HOUSE_ANCHORS.lamp.y, HOUSE_ANCHORS.lamp.width, HOUSE_ANCHORS.lamp.height);
-    if (lampGlow > .01) {
-      ctx.save(); ctx.globalAlpha = lampGlow;
-      ctx.fillStyle = "#ffc965"; ctx.fillRect(HOUSE_ANCHORS.lamp.x, HOUSE_ANCHORS.lamp.y, HOUSE_ANCHORS.lamp.width, HOUSE_ANCHORS.lamp.height);
-      ctx.fillStyle = "#fff2bc"; ctx.fillRect(HOUSE_ANCHORS.lampHighlight.x, HOUSE_ANCHORS.lampHighlight.y, HOUSE_ANCHORS.lampHighlight.width, HOUSE_ANCHORS.lampHighlight.height);
-      ctx.fillStyle = `rgba(255,200,85,${.06 + dusk * .09})`;
-      for (const area of HOUSE_ANCHORS.lampGlow) ctx.fillRect(area.x, area.y, area.width, area.height);
-      ctx.restore();
-    }
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, width, width); ctx.clip();
+    ctx.scale(HOME_CANVAS_SIZE / HOME_AREA.size, HOME_CANVAS_SIZE / HOME_AREA.size);
+    ctx.translate(-HOME_AREA.x, -HOME_AREA.y); paintJourney(ctx); ctx.restore();
+    drawSceneShade(ctx, dusk, state.rain, width, width, HOME_AREA);
+    drawLanternLight(ctx, lampGlow, dusk);
     drawInsects(ctx, state, dusk, options.reducedMotion);
-    if (options.view !== "world") drawWeather(ctx, state, options.reducedMotion, false, WEATHER_BOUNDS);
     if (visible) drawMomentAccents(ctx, state, options.reducedMotion);
     if (visible && (a === "sleep" || a === "stir")) {
       ctx.save(); ctx.fillStyle = "#efe8c1";
@@ -164,9 +193,9 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       for (let i = 0; i < count; i++) {
         const particle = sleepParticles[i];
         const phase = options.reducedMotion ? .25 + i * .22 : ((state.elapsed + particle.delay) / particle.duration) % 1;
-        const px = options.reducedMotion ? 174 + i * 8
-          : Math.round(180 + particle.drift * phase + Math.sin(phase * Math.PI * 2 + particle.phase) * particle.wobble);
-        const py = options.reducedMotion ? 83 - i * 5 : Math.round(90 - particle.rise * phase);
+        const px = options.reducedMotion ? HOUSE_ANCHORS.sleep.x - 6 + i * 8
+          : Math.round(HOUSE_ANCHORS.sleep.x + particle.drift * phase + Math.sin(phase * Math.PI * 2 + particle.phase) * particle.wobble);
+        const py = options.reducedMotion ? HOUSE_ANCHORS.sleep.y - 7 - i * 5 : Math.round(HOUSE_ANCHORS.sleep.y - particle.rise * phase);
         ctx.globalAlpha = options.reducedMotion ? .65 : Math.sin(phase * Math.PI) * .85;
         for (let row = 0; row < glyph.length; row++) for (let col = 0; col < glyph[row].length; col++) {
           if (glyph[row][col] === "1") ctx.fillRect(px + col, py + row, 1, 1);
@@ -176,12 +205,34 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       if (state.wakeTapsNeeded > 1) {
         for (let i = 0; i < state.wakeTapsNeeded; i++) {
           ctx.fillStyle = i < state.wakeTaps ? "#fff0b9" : "#b4c29966";
-          ctx.fillRect(174 + i * 5, 78, 3, 2);
+          ctx.fillRect(HOUSE_ANCHORS.sleep.x - 6 + i * 5, HOUSE_ANCHORS.sleep.y - 12, 3, 2);
         }
       }
     }
+    if (options.view !== "world") {
+      drawHomeVisitors("air");
+      drawWeather(ctx, state, options.reducedMotion, false, WEATHER_BOUNDS);
+    }
     if (lastActivity !== a) { lastActivity = a; callbacks.activity(a); }
     callbacks.rendered?.();
+  }
+  function ambience(): WeatherVisitorState {
+    const { elapsed, ecologyTime, rain } = world.state;
+    return { elapsed, ecologyTime, rain, dusk };
+  }
+  function paintVisitors(context: CanvasRenderingContext2D, layer: "ground" | "air") {
+    if (disposed) return;
+    const environment = ambience();
+    if (layer === "ground") drawWeatherGround(context, environment, options.reducedMotion);
+    else {
+      drawBirdAmbience(context, environment.elapsed, options.reducedMotion, dusk, environment.rain);
+      drawWeatherAir(context, environment, options.reducedMotion);
+    }
+  }
+  function drawHomeVisitors(layer: "ground" | "air") {
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, width, width); ctx.clip();
+    ctx.scale(HOME_CANVAS_SIZE / HOME_AREA.size, HOME_CANVAS_SIZE / HOME_AREA.size);
+    ctx.translate(-HOME_AREA.x, -HOME_AREA.y); paintVisitors(ctx, layer); ctx.restore();
   }
   // Wall time ages mushrooms/inactivity even when the tab is hidden. A deliberate
   // pause freezes both clocks; animation movement always keeps its bounded step.
@@ -226,13 +277,23 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     if (!frame) { syncClock(); previous = 0; lastDraw = 0; frame = requestAnimationFrame(tick); }
   }
   function resize() {
-    const next = HOME_CANVAS_SIZE; // Fixed logical pixels; CSS scales with nearest-neighbour sampling.
-    if (next !== width) { width = next; canvas.width = width; canvas.height = width; draw(); }
+    width = HOME_CANVAS_SIZE;
+    const next = homeBackingSize(canvas.clientWidth, window.devicePixelRatio, options.view === "world");
+    if (canvas.width !== next || canvas.height !== next) { canvas.width = next; canvas.height = next; draw(); }
   }
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
-  void Promise.all([loadArt(), OPEN_WORLD_ENABLED ? loadHabitatImage(WORLD_ART.houseDetails) : null,
-    OPEN_WORLD_ENABLED ? loadWorkshopArt() : null]).then(([result, details, workshop]) => {
-    if (disposed) return; art = result; upgradeArt = details; workshopArt = workshop;
+  void loadArt().then(result => {
+    if (disposed) return;
+    if (result.naturalWidth !== MAP_SIZE || result.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
+    art = result; bushArt = prepareBushFoliage(result, HOME_AREA);
+    lanternGlass = prepareLanternGlass(result, HOME_AREA); loadVariant();
+    void loadHomeDetail(result).then(tile => {
+      if (disposed) return;
+      detail = tile;
+      lanternGlass = prepareLanternGlass(tile, { x: 0, y: 0, size: tile.width });
+      bushArt = prepareBushFoliage(tile, { x: 0, y: 0, size: tile.width });
+      if (!options.backgrounded && !options.paused) draw();
+    }).catch(() => { /* Keep the complete original crop if the detail download fails. */ });
     // Reuse the painted forest mushroom, cut along its contour once, so new growth
     // shares the map's palette and texture instead of introducing another art style.
     mushroomArt = document.createElement("canvas"); mushroomArt.width = 16; mushroomArt.height = 22;
@@ -241,12 +302,13 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     mc.imageSmoothingEnabled = false; mc.beginPath();
     const contour = [[7, 0], [11, 2], [12, 4], [14, 6], [14, 9], [10, 11], [10, 15], [11, 19], [6, 19], [5, 16], [5, 11], [1, 11], [0, 9], [1, 6], [3, 4], [3, 2]];
     contour.forEach(([cx, cy], i) => { if (i) mc.lineTo(cx, cy); else mc.moveTo(cx, cy); }); mc.closePath(); mc.clip();
-    mc.drawImage(art, 208 / HOME_CANVAS_SIZE * art.naturalWidth, 101 / HOME_CANVAS_SIZE * art.naturalHeight, 16 / HOME_CANVAS_SIZE * art.naturalWidth, 22 / HOME_CANVAS_SIZE * art.naturalHeight, 0, 0, 16, 22);
+    const source = FOREST_MAP.house.mushroomSource;
+    mc.drawImage(art, source.x, source.y, source.width, source.height, 0, 0, 16, 22);
     if (options.reducedMotion && !options.paused && !options.backgrounded && session.isOwner()) world.settle();
     draw(); callbacks.ready(); persist(); resume();
   }).catch(error => { if (!disposed) { dispose(); callbacks.failure(error); } });
   function dispose() {
-    if (disposed) return; syncClock(); persist(); disposed = true; session.release(); cancelStillTimer(); cancelAnimationFrame(frame); frame = 0; observer.disconnect(); art = null; mushroomArt = null;
+    if (disposed) return; syncClock(); persist(); disposed = true; session.release(); cancelStillTimer(); cancelAnimationFrame(frame); frame = 0; observer.disconnect(); art = null; detail = null; lanternGlass = null; mushroomArt = null; bushArt = null;
   }
   return {
     configure(next) {
@@ -265,9 +327,9 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
         hiddenAt = null;
       }
       const animateJourney = Boolean(options.worldState);
-      options = { ...next }; appearance = homeAppearance(options.worldState, options.worldGifts, options.items);
+      options = { ...next }; appearance = homeAppearance(options.worldState, options.worldGifts, options.items); loadVariant();
       session.configure(options.view ?? "circle", !options.backgrounded);
-      if (session.isOwner()) world.setAway(appearance.away, animateJourney, options.worldState?.journeys[0]?.routeId === "brook_path");
+      syncJourney(animateJourney);
       if (session.isOwner()) { world.setLamp(options.lampOn); world.setInsects(options.dusk ? "firefly" : "butterfly"); world.setDecor(options.bestStreakDays ?? 0, appearance.items); }
       cancelStillTimer();
       if (options.paused || options.backgrounded || options.reducedMotion) { cancelAnimationFrame(frame); frame = 0; previous = 0; }
@@ -282,10 +344,18 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
         && Math.abs(x - state.position.x) < state.size * .45
         && y > state.position.y - state.size && y < state.position.y;
     },
+    setTime(now) {
+      if (disposed || !Number.isFinite(now)) return;
+      serverTime = now; receivedTime = performance.now();
+      if (options.reducedMotion && !options.paused && !options.backgrounded) draw();
+    },
+    ambience, paintVisitors, paintJourney,
     paintLighting(context) {
       if (disposed) return;
-      context.fillStyle = `rgba(8,17,35,${dusk * .57})`; context.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
-      context.fillStyle = `rgba(69,105,125,${world.state.rain * .12})`; context.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+      drawSceneShade(context, dusk, world.state.rain, MAP_SIZE);
+      context.save(); context.translate(HOME_AREA.x, HOME_AREA.y);
+      drawLanternLight(context, lampGlow, dusk); context.restore();
+      drawRouteLights(context, dusk, world.state.elapsed, options.reducedMotion);
     },
     paintWeather(context) {
       if (disposed) return;

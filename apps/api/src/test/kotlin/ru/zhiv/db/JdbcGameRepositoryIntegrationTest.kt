@@ -57,6 +57,31 @@ class JdbcGameRepositoryIntegrationTest {
         val user = identities.bootstrap(name, tokens.issue().hash, token.hash, 365)
         return Player(user.id, user.publicId, token.hash, token.raw)
     }
+    // Historical migration fixtures must not call repositories requiring newer columns.
+    private fun historicalPlayer(db: HikariDataSource, name: String): Player {
+        val token = tokens.issue()
+        val publicId = ru.zhiv.identity.PublicIdGenerator().next()
+        return db.connection.use { c ->
+            c.autoCommit = false
+            try {
+                val id = c.prepareStatement("INSERT INTO app_users(public_id,display_name) VALUES (?,?) RETURNING id").use { statement ->
+                    statement.setString(1, publicId)
+                    statement.setString(2, name)
+                    statement.executeQuery().use { result ->
+                        check(result.next())
+                        result.getObject(1, UUID::class.java)
+                    }
+                }
+                c.prepareStatement("INSERT INTO app_sessions(user_id,token_hash,expires_at) VALUES (?,?,clock_timestamp()+interval '365 days')").use { statement ->
+                    statement.setObject(1, id)
+                    statement.setBytes(2, token.hash)
+                    statement.executeUpdate()
+                }
+                c.commit()
+                Player(id, publicId, token.hash, token.raw)
+            } catch (error: Exception) { c.rollback(); throw error }
+        }
+    }
     private fun secondDevice(player: Player): ByteArray {
         val token = tokens.issue()
         execute("INSERT INTO app_sessions(user_id,token_hash,expires_at) VALUES (?,?,clock_timestamp()+interval '1 year')", player.id, token.hash)
@@ -462,9 +487,8 @@ class JdbcGameRepositoryIntegrationTest {
             val upgraded=DatabaseFactory.create(config.copy(databaseUrl=postgres.jdbcUrl.substringBeforeLast('/')+"/"+database))
             upgraded.use { db ->
                 Flyway.configure().dataSource(db).locations("classpath:db/migration").target("20").load().migrate()
-                val repo=JdbcZhivRepository(db); val token=tokens.issue()
-                val owner=repo.bootstrap("До обновления",tokens.issue().hash,token.hash,365)
-                val friends=List(5) { repo.bootstrap("Друг",tokens.issue().hash,tokens.issue().hash,365) }
+                val owner=historicalPlayer(db,"До обновления")
+                val friends=List(5) { historicalPlayer(db,"Друг") }
                 db.connection.use { c ->
                     c.prepareStatement("INSERT INTO game_profiles(user_id,lifetime_taps) VALUES (?,1000)").use { it.setObject(1,owner.id);it.executeUpdate() }
                     c.prepareStatement("""
@@ -473,7 +497,7 @@ class JdbcGameRepositoryIntegrationTest {
                         FROM app_sessions s CROSS JOIN LATERAL (
                             SELECT statement_timestamp()-interval '20 days'+i*interval '24 hours' AS at FROM generate_series(0,6) i
                         ) d WHERE s.token_hash=?
-                    """.trimIndent()).use { it.setObject(1,owner.id);it.setBytes(2,token.hash);it.executeUpdate() }
+                    """.trimIndent()).use { it.setObject(1,owner.id);it.setBytes(2,owner.hash);it.executeUpdate() }
                     c.prepareStatement("INSERT INTO circles(kind,created_by_user_id,direct_user_low_id,direct_user_high_id) VALUES ('DIRECT',?,LEAST(?::uuid,?::uuid),GREATEST(?::uuid,?::uuid))").use {
                         friends.forEach { friend ->
                             it.setObject(1,owner.id);it.setObject(2,owner.id);it.setObject(3,friend.id);it.setObject(4,owner.id);it.setObject(5,friend.id);it.addBatch()
@@ -488,14 +512,14 @@ class JdbcGameRepositoryIntegrationTest {
                         it.executeQuery().use { rows -> assertTrue(rows.next());assertEquals(3,rows.getInt(1),"migration must award before the first achievements read") }
                     }
                 }
-                val first=JdbcGameRepository(db).achievements(token.hash).achievements
+                val first=JdbcGameRepository(db).achievements(owner.hash).achievements
                 assertEquals(listOf(7L,1000L,5L,0L,0L,0L),first.map { it.progress })
                 assertTrue(first.take(3).all { it.unlockedAt!=null }); assertTrue(first.drop(3).all { it.unlockedAt==null })
                 db.connection.use { c ->
                     c.prepareStatement("UPDATE circles SET archived_at=clock_timestamp() WHERE kind='DIRECT' AND ? IN (direct_user_low_id,direct_user_high_id)").use { it.setObject(1,owner.id);it.executeUpdate() };c.commit()
                 }
                 DatabaseFactory.migrate(db)
-                assertEquals(first,JdbcGameRepository(db).achievements(token.hash).achievements)
+                assertEquals(first,JdbcGameRepository(db).achievements(owner.hash).achievements)
             }
         } finally {
             source.connection.use { c -> c.autoCommit=true;c.createStatement().use { it.execute("DROP DATABASE $database WITH (FORCE)") } }
@@ -508,9 +532,8 @@ class JdbcGameRepositoryIntegrationTest {
         try {
             DatabaseFactory.create(config.copy(databaseUrl=postgres.jdbcUrl.substringBeforeLast('/')+"/"+database)).use { db ->
                 Flyway.configure().dataSource(db).locations("classpath:db/migration").target("23").load().migrate()
-                val repo=JdbcZhivRepository(db); val token=tokens.issue(); val championToken=tokens.issue()
-                val owner=repo.bootstrap("Before update",tokens.issue().hash,token.hash,365)
-                val champion=repo.bootstrap("Champion",tokens.issue().hash,championToken.hash,365)
+                val owner=historicalPlayer(db,"Before update")
+                val champion=historicalPlayer(db,"Champion")
                 fun write(sql: String,vararg args: Any) = db.connection.use { c ->
                     c.prepareStatement(sql).use { q -> args.forEachIndexed { i,v -> q.setObject(i+1,v) }; q.executeUpdate() };c.commit()
                 }
@@ -527,12 +550,12 @@ class JdbcGameRepositoryIntegrationTest {
                         }
                     }
                 }
-                val current=JdbcGameRepository(db).achievements(token.hash).achievements
+                val current=JdbcGameRepository(db).achievements(owner.hash).achievements
                 assertNull(current.single { it.id=="ten_thousand_series" }.unlockedAt)
                 assertEquals(100L,current.single { it.id=="ten_thousand_series" }.progress)
-                assertNotNull(JdbcGameRepository(db).achievements(championToken.hash).achievements.single { it.id=="ten_thousand_series" }.unlockedAt)
+                assertNotNull(JdbcGameRepository(db).achievements(champion.hash).achievements.single { it.id=="ten_thousand_series" }.unlockedAt)
                 DatabaseFactory.migrate(db)
-                assertEquals(current,JdbcGameRepository(db).achievements(token.hash).achievements)
+                assertEquals(current,JdbcGameRepository(db).achievements(owner.hash).achievements)
             }
         } finally {
             source.connection.use { c -> c.autoCommit=true;c.createStatement().use { it.execute("DROP DATABASE $database WITH (FORCE)") } }

@@ -2,6 +2,8 @@ import { naturalItems, type GameItemId } from "@/features/game/game-rewards";
 import { CONSUMED_PROGRESS, EAT_DURATION } from "./feeding";
 
 import { HOUSE_ANCHORS } from "./home-layout";
+import { FOREST_MAP } from "@/features/world/map-manifest";
+import { homeToWorld, worldToHome, pointInPolygon } from "@/features/world/map-layout";
 
 /** Screen-space choreography for a pixel 2D habitat. No account or game state. */
 export type Point = { x: number; y: number };
@@ -16,17 +18,17 @@ export type PropKind = "leaf" | "cone" | "stone";
 export type Layer = "clearing" | "bush" | "house";
 export type Destination = "bush" | "home" | "mushrooms";
 export type Mushroom = { id: number; position: Point; growth: number; growSeconds: number };
-export const START = { x: .48, y: .61 };
-export const BUSH = { x: .225, y: .475 };
-export const BUSH_EDGE = { x: .36, y: .55 };
+export const START = worldToHome(FOREST_MAP.clearing.spawn);
+export const BUSH = worldToHome(FOREST_MAP.bush.inside);
+export const BUSH_EDGE = worldToHome(FOREST_MAP.bush.approach);
 export const DOORSTEP = HOUSE_ANCHORS.doorstep;
 export const HOME = HOUSE_ANCHORS.inside;
-export const FRONT = { x: .5, y: .76 };
-export const SHELTER_ART = { x: 94, y: 70, width: 38, capHeight: 18, ground: 120 };
-export const SHELTER = { x: (SHELTER_ART.x + SHELTER_ART.width / 2 + 5) / 256, y: SHELTER_ART.ground / 256 };
+export const FRONT = worldToHome(FOREST_MAP.clearing.front);
+// The existing recessed doorway shelters Mochlik without another object over the lawn.
+export const SHELTER = HOME;
 export const LEAF_SPOT = { x: .46, y: .66 };
 export const FIND_SPOT = { x: .60, y: .69 };
-export const KEEPSAKE_SPOT = { x: .635, y: .505 };
+export const KEEPSAKE_SPOT = worldToHome(FOREST_MAP.clearing.keepsake);
 export const depositedPosition = (kind: PropKind): Point => ({
   x: KEEPSAKE_SPOT.x + (kind === "leaf" ? -5 : 4) / 256, y: KEEPSAKE_SPOT.y + 2 / 256,
 });
@@ -191,11 +193,14 @@ export function createHabitat() {
         { activity: "place", duration: 1.4 }, { activity: "greet", duration: 1.8 }]);
     } else if (kind === "rain") {
       nextShelter = state.ecologyTime + 90;
-      const shelterWalk = walk(SHELTER, from); shelterWalk.duration *= .65;
-      plan([...steps, { activity: "rain-notice", duration: 1.2, layer: "clearing" }, shelterWalk,
-        { activity: "shelter", duration: 6 }, { activity: "shelter-peek", duration: 2.4 },
-        { activity: "shelter", duration: 4 }, { activity: "shelter-peek", duration: 2.4 },
-        walk(START, SHELTER), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
+      const shelterWalk = walk(DOORSTEP, from); shelterWalk.duration *= .65;
+      const inside = state.layer === "house";
+      plan([...(inside ? [] : steps), { activity: "rain-notice", duration: 1.2, layer: inside ? "house" : "clearing" },
+        ...(inside ? [] : [shelterWalk, { activity: "enter" as const, to: SHELTER, size: .118, duration: 2.6, layer: "house" as const }]),
+        { activity: "shelter", duration: 6, layer: "house" }, { activity: "shelter-peek", duration: 2.4, layer: "house" },
+        { activity: "shelter", duration: 4, layer: "house" }, { activity: "shelter-peek", duration: 2.4, layer: "house" },
+        { activity: "leave", to: DOORSTEP, size: sizeAt(DOORSTEP), duration: 2.6, layer: "house" },
+        walk(START, DOORSTEP), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
     } else if (kind === "wonder") {
       nextGathering = state.elapsed + 180;
       plan([...steps, walk(START, from), { activity: "wonder", duration: 10, layer: "clearing" },
@@ -217,7 +222,9 @@ export function createHabitat() {
     }
   }
   function leaveRain() {
-    plan([walk(START), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
+    const inside = state.layer === "house";
+    plan([...(inside ? [{ activity: "leave" as const, to: DOORSTEP, size: sizeAt(DOORSTEP), duration: 2.6, layer: "house" as const }] : []),
+      walk(START, inside ? DOORSTEP : state.position), { activity: "shake", duration: 1.5 }, { activity: "scratch", duration: 2.2 }]);
   }
   function routine() {
     if (state.layer === "house") { plan([...leaveSteps(), walk(START, DOORSTEP), { activity: "sniff", duration: 4 }]); return; }
@@ -283,19 +290,29 @@ export function createHabitat() {
     const exit = walk(departureExit, from, "depart"); exit.duration = Math.max(2.8, exit.duration * .65);
     plan([...steps, { activity: "greet", duration: 1.15, layer: "clearing" }, exit]);
   }
-  function setAway(value: boolean, animate = true, river = false) {
-    if (value === away) return;
+  function setAway(value: boolean, animate = true, river = false, stageAtHome = false) {
+    if (value === away) {
+      if (value && !animate && state.travel === "departing") {
+        clearMoment(); queue = []; departurePending = false; state.travel = "away";
+      }
+      return;
+    }
     const wasAway = state.travel === "away";
     away = value; visitPending = false; playPending = false; homePending = false; destination = null;
     state.visiting = false; state.gathering = 0; state.wakeTapsNeeded = 1; state.wakeTaps = 0;
     state.resting = false; state.inactiveFor = 0;
-    if (value) departureExit = river ? { x: .80, y: .53 } : { x: .80, y: .73 };
+    if (value) departureExit = stageAtHome ? { ...START } : river ? { x: .80, y: .53 } : { x: .80, y: .73 };
     if (value) {
       state.travel = animate ? "departing" : "away";
       if (!animate) { clearMoment(); queue = []; departurePending = false; }
       else if (ATOMIC.has(state.activity)) departurePending = true;
       else startDeparture();
     } else {
+      if (!animate) {
+        clearMoment(); departurePending = false; state.travel = "home";
+        state.position = { ...START }; state.size = sizeAt(START); state.layer = "clearing"; state.lift = 0;
+        plan([{ activity: "greet", duration: 4, layer: "clearing" }]); return;
+      }
       if (!wasAway && ATOMIC.has(state.activity)) { departurePending = false; state.travel = "home"; visitPending = true; return; }
       clearMoment(); departurePending = false; state.travel = "home";
       if (wasAway) { state.position = { ...departureExit }; state.size = sizeAt(state.position); state.layer = "clearing"; }
@@ -313,7 +330,7 @@ export function createHabitat() {
   function moveTo(target: Point) {
     if (away || ATOMIC.has(state.activity)) return false;
     // Ground controls stay within the familiar walkable clearing, away from door/bush masks.
-    if (target.x < .34 || target.x > .76 || target.y < .53 || target.y > .80) return false;
+    if (!pointInPolygon(homeToWorld(target), FOREST_MAP.clearing.walkable)) return false;
     activate(); clearMoment(); visitPending = false; playPending = false; destination = null;
     state.visiting = false; state.feedingId = null;
     plan([...leaveSteps(), walk(target, outside()), { activity: "look", duration: 2, layer: "clearing" }]);
@@ -436,8 +453,8 @@ export function createHabitat() {
         else { state.keepsake = state.prop; state.discoveries++; }
       }
       clearMoment(); queue = [];
-      state.position = { ...(kind === "rain" ? SHELTER : START) }; state.size = sizeAt(state.position);
-      begin({ activity: kind === "rain" ? "shelter" : kind === "emotion" ? "scratch" : "greet", duration: 4, layer: "clearing" });
+      state.position = { ...(kind === "rain" ? SHELTER : START) }; state.size = kind === "rain" ? .118 : sizeAt(state.position);
+      begin({ activity: kind === "rain" ? "shelter" : kind === "emotion" ? "scratch" : "greet", duration: 4, layer: kind === "rain" ? "house" : "clearing" });
     }
     if (playPending || state.playing) {
       playPending = false; clearMoment(); queue = []; state.feedingId = null;

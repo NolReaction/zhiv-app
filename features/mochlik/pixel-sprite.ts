@@ -1,6 +1,6 @@
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
-  | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present";
+  | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
@@ -26,22 +26,31 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       rect(x - half, y + row, half * 2 + 1, 1, color);
     }
   };
-  const walking = pose === "walk" || pose === "carry";
+  const walking = pose === "walk" || pose === "carry" || pose === "fishing-walk";
   const c = appearance?.palette === "fern" ? { ...colors, moss: "#49816b", mossLight: "#7fb99a", mossDark: "#345649" }
     : appearance?.palette === "autumn" ? { ...colors, moss: "#b27b42", mossLight: "#d8ae63", mossDark: "#7a5637" } : colors;
   const step = walking ? [0, -1, 0, 1][frame % 4] : 0;
   const bob = walking && frame % 2 === 1 ? -1 : pose === "chew" ? [0, 1, 0, 1][frame % 4] : 0;
   let headOffset = bob;
   if (pose === "sleep" || pose === "drowsy") {
-    oval(26, 35, 16, 9, c.outline); oval(26, 34, 15, 8, c.moss);
-    oval(17, 36, 11, 7, c.shade); oval(17, 34, 10, 6, c.cream);
-    oval(8, 36, 5, 4, c.shade); oval(8, 35, 4, 3, c.cream);
-    oval(30, 37, 7, 4, c.shade); oval(30, 36, 6, 3, c.cream);
-    rect(12, 35, 3, 1, c.eye); rect(21, 35, 3, 1, c.eye); rect(17, 38, 2, 1, c.eye);
-    if (pose === "drowsy") { rect(12, 34, 3, 1, c.eye); rect(21, 34, 3, 1, c.eye); rect(7, 30, 3, 3, c.cream); }
-    rect(24, 28, 4, 2, c.mossLight);
+    const breath = frame === 1 ? -1 : 0;
+    // A rounded curl: raised back, folded ears, cheek on paws and tail around the feet.
+    // Only the back expands; the face and floor contact never bob up and down.
+    oval(27, 30 + breath, 14, 14, c.outline); oval(27, 29 + breath, 13, 13, c.mossDark);
+    oval(26, 28 + breath, 12, 12, c.moss); oval(28, 22 + breath, 7, 4, c.mossLight);
+    rect(25, 18 + breath, 4, 2, c.mossLight); rect(32, 23 + breath, 3, 3, c.mossDark);
+    const earLift = pose === "drowsy" ? -1 : 0;
+    oval(12, 27 + earLift, 5, 7, c.shade); oval(12, 26 + earLift, 4, 6, c.cream);
+    oval(11, 27 + earLift, 2, 4, c.moss);
+    oval(21, 33, 11, 10, c.shade); oval(20, 31, 10, 9, c.cream);
+    oval(20, 30, 8, 7, c.light); rect(19, 22, 5, 3, c.moss); rect(22, 24, 3, 2, c.mossLight);
+    rect(14, 31, 4, 1, c.eye); rect(23, 31, 4, 1, c.eye);
+    if (pose === "drowsy") { rect(16, 32, 1, 1, c.eye); rect(25, 32, 1, 1, c.eye); }
+    rect(20, 34, 2, 2, c.outline); rect(21, 36, 2, 1, c.outline);
+    oval(21, 41, 7, 3, c.shade); oval(20, 40, 6, 2, c.cream); rect(17, 39, 5, 1, c.light);
+    oval(33, 38, 7, 6, c.mossDark); oval(33, 37, 6, 5, c.moss); rect(32, 34, 4, 2, c.mossLight);
   } else {
-    const crouch = pose === "crouch" ? 4 : pose === "sniff" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0;
+    const crouch = pose === "crouch" ? 4 : pose === "sniff" || pose === "fish" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0;
     const stretch = pose === "stretch" ? -3 : pose === "yawn" ? [0, -2, -3, 0][frame % 4]
       : pose === "sneeze" ? [-2, -1, 4, 1][frame % 4] : pose === "wonder" ? -2 : 0;
     const faceY = 20 + bob + crouch + stretch;
@@ -96,7 +105,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
         rect(15 + look, faceY + 4, 3, 2, c.shade); rect(30 + look, faceY + 4, 3, 2, c.shade);
       }
     }
-    const feeding = ["reach", "hold", "chew", "carry", "toss", "present"].includes(pose);
+    const fishing = pose === "fish" || pose === "fishing-walk";
+    const feeding = fishing || ["reach", "hold", "chew", "carry", "toss", "present"].includes(pose);
     const armY = pose === "stretch" || pose === "jump" ? 23 : pose === "reach" ? 35 + frame % 4
       : pose === "hold" ? [37, 34, 31, 29][frame % 4] : pose === "chew" ? 29 + frame % 2
         : pose === "carry" ? 30 + bob : pose === "toss" ? [28, 17, 21, 29][frame % 4]
@@ -104,7 +114,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     if (direction === "back") drawTail();
     // Hands holding an object cannot show through the back either.
     const frontHands = feeding && direction !== "back";
-    const leftHand = frontHands ? 19 : 14, rightHand = frontHands ? 29 : 34;
+    const leftHand = fishing && direction === "left" ? 12 : frontHands ? 19 : 14;
+    const rightHand = fishing && direction !== "left" ? 36 : frontHands ? 29 : 34;
     const swing = pose === "walk" ? step : 0;
     const armShade = direction === "back" ? c.mossDark : c.shade;
     const armLight = direction === "back" ? c.moss : c.cream;

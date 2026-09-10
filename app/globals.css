@@ -46,6 +46,20 @@ button {
   touch-action: pan-y;
 }
 
+/* App controls must not summon iOS text selection on a long press. Keep
+   editable fields and explicitly copyable content usable. */
+:where(button, [role="button"], [role="tab"], summary),
+:where(button, [role="button"], [role="tab"], summary) :where(*) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+:where(input, textarea, [contenteditable="true"], [data-copyable]) {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 ::selection {
   background: rgba(245, 232, 91, 0.28);
 }

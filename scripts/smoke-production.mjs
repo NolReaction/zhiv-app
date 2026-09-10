@@ -135,7 +135,8 @@ const gameVisible = await api("PATCH", "/api/v1/game/visibility", { cookie: owne
 const gameBoard = await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie });
 assert.equal(gameBoard.headers["cache-control"], "no-store");
 assert.equal(gameBoard.data.entries[0].taps, 7);
-assert.deepEqual(Object.keys(gameBoard.data.entries[0]).sort(), ["displayName", "isMe", "rank", "score", "taps"]);
+assert.deepEqual(Object.keys(gameBoard.data.entries[0]).sort(), ["displayName", "isMe", "rank", "score", "tag", "taps"]);
+assert.equal(gameBoard.data.entries[0].tag, null);
 assert.equal(gameBoard.data.scope, "global");
 const seriesBoard = await api("GET", "/api/v1/game/leaderboard?metric=best_series", { cookie: owner.cookie });
 assert.equal(seriesBoard.data.metric, "best_series");

@@ -436,7 +436,7 @@ class JdbcRelationshipRepository(
              WHERE s.token_hash = ?
                AND s.revoked_at IS NULL
                AND s.expires_at > clock_timestamp()
-               AND u.deleted_at IS NULL
+               AND u.deleted_at IS NULL AND u.banned_at IS NULL
             """.trimIndent(),
         ).use { statement ->
             statement.setBytes(1, tokenHash)
@@ -450,7 +450,7 @@ class JdbcRelationshipRepository(
 
     private fun findUserByPublicId(connection: Connection, publicId: String): UserRow? =
         connection.prepareStatement(
-            "SELECT id, public_id, display_name FROM app_users WHERE public_id = ? AND deleted_at IS NULL",
+            "SELECT id, public_id, display_name, tag_text, tag_color FROM app_users WHERE public_id = ? AND deleted_at IS NULL AND banned_at IS NULL",
         ).use { statement ->
             statement.setString(1, publicId)
             statement.executeQuery().use { result ->
@@ -460,12 +460,12 @@ class JdbcRelationshipRepository(
 
     private fun findUser(connection: Connection, userId: UUID): UserReference =
         connection.prepareStatement(
-            "SELECT public_id, display_name FROM app_users WHERE id = ?",
+            "SELECT public_id, display_name, tag_text, tag_color FROM app_users WHERE id = ?",
         ).use { statement ->
             statement.setObject(1, userId)
             statement.executeQuery().use { result ->
                 check(result.next())
-                UserReference(result.getString("public_id"), result.getString("display_name"))
+                UserReference(result.getString("public_id"), result.getString("display_name"), result.playerTag())
             }
         }
 
@@ -711,7 +711,7 @@ class JdbcRelationshipRepository(
                    AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
             )
             SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_people.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_people.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_people.id AS circle_id, direct_people.created_at,
-                   other.public_id, other.display_name, private_name.nickname,
+                   other.public_id, other.display_name, other.tag_text, other.tag_color, private_name.nickname,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
@@ -728,7 +728,7 @@ class JdbcRelationshipRepository(
               FROM direct_people
               JOIN app_users other
                 ON other.id = direct_people.other_user_id
-               AND other.deleted_at IS NULL
+               AND other.deleted_at IS NULL AND other.banned_at IS NULL
               LEFT JOIN private_person_nicknames private_name
                 ON private_name.subject_user_id = direct_people.other_user_id
                AND private_name.viewer_user_id = CASE
@@ -788,13 +788,13 @@ class JdbcRelationshipRepository(
             """
             SELECT r.id, r.requester_user_id, r.recipient_user_id,
                    r.created_at, r.expires_at,
-                   other.public_id, other.display_name
+                   other.public_id, other.display_name, other.tag_text, other.tag_color
               FROM direct_requests r
               JOIN app_users other
                 ON other.id = CASE WHEN r.requester_user_id = ?
                                    THEN r.recipient_user_id
                                    ELSE r.requester_user_id END
-               AND other.deleted_at IS NULL
+               AND other.deleted_at IS NULL AND other.banned_at IS NULL
              WHERE r.status = 'PENDING'
                AND ? IN (r.requester_user_id, r.recipient_user_id)
              ORDER BY r.created_at DESC
@@ -814,6 +814,7 @@ class JdbcRelationshipRepository(
                                 user = UserReference(
                                     result.getString("public_id"),
                                     result.getString("display_name"),
+                                result.playerTag(),
                                 ),
                                 createdAt = result.getObject("created_at", OffsetDateTime::class.java),
                                 expiresAt = result.getObject("expires_at", OffsetDateTime::class.java),
@@ -840,7 +841,7 @@ class JdbcRelationshipRepository(
                AND ? IN (c.direct_user_low_id, c.direct_user_high_id)
         )
         SELECT EXISTS (SELECT 1 FROM direct_person_favorites f JOIN circles fc ON fc.id=f.circle_id WHERE f.circle_id=direct_person.id AND f.user_id=CASE WHEN fc.direct_user_low_id=direct_person.other_user_id THEN fc.direct_user_high_id ELSE fc.direct_user_low_id END) AS is_favorite, direct_person.id AS circle_id, direct_person.created_at,
-               other.public_id, other.display_name, private_name.nickname,
+               other.public_id, other.display_name, other.tag_text, other.tag_color, private_name.nickname,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_text END AS status_text,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_updated_at END AS status_updated_at,
                    CASE WHEN theirs.sharing_mode<>'OFF' AND other.status_updated_at>=theirs.enabled_since AND (other.status_expires_at IS NULL OR other.status_expires_at > statement_timestamp()) THEN other.status_expires_at END AS status_expires_at,
@@ -857,7 +858,7 @@ class JdbcRelationshipRepository(
           FROM direct_person
           JOIN app_users other
             ON other.id = direct_person.other_user_id
-           AND other.deleted_at IS NULL
+           AND other.deleted_at IS NULL AND other.banned_at IS NULL
           LEFT JOIN private_person_nicknames private_name
                 ON private_name.subject_user_id = direct_person.other_user_id
                AND private_name.viewer_user_id = CASE
@@ -946,7 +947,7 @@ class JdbcRelationshipRepository(
 
     private fun ResultSet.toUserRow() = UserRow(
         id = getObject("id", UUID::class.java),
-        reference = UserReference(getString("public_id"), getString("display_name")),
+        reference = UserReference(getString("public_id"), getString("display_name"), playerTag()),
     )
 
     private fun ResultSet.toRequestRow() = RequestRow(
@@ -968,7 +969,7 @@ class JdbcRelationshipRepository(
         statusExpiresAt = getObject("status_expires_at", OffsetDateTime::class.java),
         isFavorite = getBoolean("is_favorite"),
         circleId = getObject("circle_id", UUID::class.java),
-        user = UserReference(getString("public_id"), getString("display_name")),
+        user = UserReference(getString("public_id"), getString("display_name"), playerTag()),
         connectedAt = getObject("created_at", OffsetDateTime::class.java),
         mySharingMode = SharingMode.valueOf(getString("my_sharing_mode")),
         theirSharingMode = SharingMode.valueOf(getString("their_sharing_mode")),

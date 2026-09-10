@@ -44,6 +44,8 @@ export function pixelFrame(state: HabitatState, reducedMotion = false) {
   const direction: PixelDirection = walking || airborne || a === "crouch" ? state.direction : "front";
   // Distance-driven footsteps stay in contact with the ground as movement eases in/out.
   let frame = reducedMotion ? 0 : Math.floor(walking ? state.distance * 160 : t * (a === "eat" ? 5 : 2)) % 4;
+  // Sleep breathes through the curled torso, with its paws anchored to the bed.
+  if (!reducedMotion && (a === "sleep" || a === "stir")) frame = Math.floor(state.elapsed * .7) % 4;
   if (a === "balance" && state.insectKind === "firefly") frame = 3;
   if (["yawn", "sneeze", "toss"].includes(a)) frame = Math.min(3, Math.floor(p * 4));
   if (a === "sneeze" && p < .25) pose = "sniff";
@@ -56,7 +58,7 @@ export function pixelFrame(state: HabitatState, reducedMotion = false) {
     if (pose === "hold") frame = Math.min(3, Math.floor((p - .22) / .20 * 4));
   }
   const offsetX = reducedMotion ? 0 : a === "shake" ? Math.sin(t * 34) * .007 * Math.sin(Math.PI * p)
-    : a === "shelter-peek" ? Math.sin(Math.PI * p) * .025 : 0;
+    : a === "shelter-peek" ? Math.sin(Math.PI * p) * .006 : 0;
   const offsetY = reducedMotion ? 0 : a === "sneeze" ? Math.sin(Math.PI * p) ** 4 * .012 : 0;
   return { pose, direction, frame, sink, opacity, offsetX, offsetY };
 }

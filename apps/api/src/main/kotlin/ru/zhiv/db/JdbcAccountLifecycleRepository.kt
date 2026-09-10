@@ -63,7 +63,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
     }
     private fun user(c: Connection, session: ByteArray): UUID = c.one("""
         SELECT u.id FROM app_sessions s JOIN app_users u ON u.id=s.user_id
-        WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL
+        WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL AND u.banned_at IS NULL
     """.trimIndent(), session) { it.getObject(1, UUID::class.java) }
         ?: fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
 
@@ -109,14 +109,14 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         WHERE p.user_id=? AND p.session_hash=? AND p.browser_hash=? AND p.action=? AND p.role=?
           AND p.expires_at>clock_timestamp() AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
           AND (p.proved_user_id IS NULL OR EXISTS(SELECT 1 FROM account_login_identities i JOIN app_users u ON u.id=i.user_id
-               WHERE i.provider=p.provider AND i.subject=p.subject AND i.user_id=p.proved_user_id AND u.deleted_at IS NULL))
+               WHERE i.provider=p.provider AND i.subject=p.subject AND i.user_id=p.proved_user_id AND u.deleted_at IS NULL AND u.banned_at IS NULL))
         ORDER BY p.created_at DESC LIMIT 1
     """.trimIndent(), id, session, browser, action, role) {
         Proof(it.getBytes("flow_hash"), it.getString("subject"), it.getString("provider"), it.getObject("proved_user_id", UUID::class.java), it.getObject("expires_at", OffsetDateTime::class.java))
     }
     private fun profile(c: Connection, id: UUID): AccountProfile = c.one("""
         SELECT public_id,display_name,CASE WHEN status_expires_at IS NULL OR status_expires_at>clock_timestamp() THEN status_text END AS status
-        FROM app_users WHERE id=? AND deleted_at IS NULL
+        FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL
     """.trimIndent(), id) { AccountProfile(it.getString(1), it.getString(2), it.getString(3)) } ?: proofRequired()
     private fun label(provider: String, subject: String): String = when (provider) {
         "email" -> subject.take(1) + "•••@" + subject.substringAfter('@')
@@ -127,6 +127,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         val session = flow.sessionHash ?: proofRequired()
         val initialOwner=c.one("SELECT user_id FROM account_login_identities WHERE provider=? AND subject=?",flow.provider,subject){it.getObject(1,UUID::class.java)}
         val id = lockAccountGraph(c, session, initialOwner)
+        initialOwner?.let { requireUnbannedAccount(c,it) }
         if (flow.intent != "account" || flow.provider !in setOf("email", "vk")) proofRequired()
         if(c.one("SELECT 1 FROM account_identity_retirements r JOIN account_login_flows f ON f.token_hash=? WHERE r.provider=? AND r.subject_hash=sha256(convert_to(?, 'UTF8')) AND r.retired_at>=f.created_at",flow.tokenHash,flow.provider,subject){true}==true) proofRequired()
         // The verifier consumes the challenge first; this separate marker prevents proof replay,
@@ -138,7 +139,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
               AND account_proved_at IS NULL AND expires_at>clock_timestamp()
         """.trimIndent(), flow.tokenHash, session, flow.browserHash, flow.action, flow.role, flow.provider) != 1) proofRequired()
         if (flow.provider == "email" && flow.subject != subject) proofRequired()
-        val owner = c.one("SELECT i.user_id FROM account_login_identities i JOIN app_users u ON u.id=i.user_id WHERE provider=? AND subject=? AND u.deleted_at IS NULL", flow.provider, subject) { it.getObject(1, UUID::class.java) }
+        val owner = c.one("SELECT i.user_id FROM account_login_identities i JOIN app_users u ON u.id=i.user_id WHERE provider=? AND subject=? AND u.deleted_at IS NULL AND u.banned_at IS NULL", flow.provider, subject) { it.getObject(1, UUID::class.java) }
         when (flow.role) {
             "current" -> if (owner != id) fail("ACCOUNT_WRONG_PROFILE", "Этот способ входа не связан с открытым профилем")
             "other" -> if (flow.action != "merge" || owner == null || owner == id) fail("ACCOUNT_OTHER_PROFILE_REQUIRED", "Подтвердите вход во второй существующий профиль")
@@ -322,13 +323,14 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM world_commands WHERE user_id=?",id)
         c.update("DELETE FROM world_ledger WHERE user_id=?",id)
         c.update("DELETE FROM world_profiles WHERE user_id=?",id)
+        c.update("DELETE FROM game_tap_activity_seconds WHERE user_id=?",id)
         c.update("DELETE FROM game_items WHERE user_id=?",id)
         c.update("DELETE FROM game_achievements WHERE user_id=?",id)
         c.update("DELETE FROM game_sessions WHERE user_id=?",id)
         c.update("DELETE FROM game_monthly_scores WHERE user_id=?",id)
         c.update("DELETE FROM game_profiles WHERE user_id=?",id)
         c.update("DELETE FROM account_login_identities WHERE user_id=?",id)
-        c.update("UPDATE app_users SET display_name='Удалённый профиль',status_text=NULL,status_updated_at=NULL,status_expires_at=NULL,last_check_in_at=NULL,avatar_storage_key=NULL,avatar_updated_at=NULL,display_name_changed_at=NULL,display_name_change_key=NULL,updated_at=clock_timestamp(),deleted_at=clock_timestamp() WHERE id=?",id)
+        c.update("UPDATE app_users SET tag_text=NULL,tag_color=NULL,tap_watchlisted=false,tap_signal_at=NULL,tap_analyzed_at=NULL,display_name='Удалённый профиль',status_text=NULL,status_updated_at=NULL,status_expires_at=NULL,last_check_in_at=NULL,avatar_storage_key=NULL,avatar_updated_at=NULL,display_name_changed_at=NULL,display_name_change_key=NULL,updated_at=clock_timestamp(),deleted_at=clock_timestamp() WHERE id=?",id)
     }
     override suspend fun confirmMerge(sessionHash: ByteArray,browserHash: ByteArray,previewHash: ByteArray): Unit = tx { c ->
         if (receipt(c,"merge",previewHash,sessionHash,browserHash)) return@tx
@@ -386,6 +388,9 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("UPDATE account_merge_sources SET target_user_id=? WHERE target_user_id=?",id,s.other)
         c.update("INSERT INTO account_merge_sources(source_user_id,target_user_id) VALUES (?,?)",s.other,id)
         c.update("UPDATE app_users SET last_check_in_at=(SELECT last_check_in_at FROM account_check_in_summary(?)),updated_at=clock_timestamp() WHERE id=?",id,id)
+        c.update("UPDATE app_users SET tap_watchlisted=tap_watchlisted OR (SELECT tap_watchlisted FROM app_users WHERE id=?) WHERE id=?",s.other,id)
+        c.update("DELETE FROM game_tap_activity_seconds WHERE user_id IN (?,?)",id,s.other)
+        c.update("UPDATE app_users SET tap_signal_at=GREATEST(tap_signal_at,(SELECT tap_signal_at FROM app_users WHERE id=?)) WHERE id=?",s.other,id)
         mergeWorldProfiles(c,id,s.other)
         mergeGameProgress(c,id,s.other)
         c.update("""

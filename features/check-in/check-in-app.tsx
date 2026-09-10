@@ -1,5 +1,6 @@
 "use client";
 
+import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
 import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
@@ -76,7 +77,6 @@ import { CheckInReceipt } from "./check-in-receipt";
 import { useSimpleView } from "@/features/check-in/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useWorld } from "@/features/world/use-world";
-import { OPEN_WORLD_ENABLED } from "@/features/app/feature-flags";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
 import styles from "./check-in-app.module.css";
 import glass from "@/components/glass-action.module.css";
@@ -357,8 +357,7 @@ export function CheckInApp() {
   const [statusOpen, setStatusOpen] = useState(false);
   const { simpleView, appearanceReady, setSimpleView } = useSimpleView();
   const mochlikVisible = appearanceReady && !simpleView;
-  const worldOwner = OPEN_WORLD_ENABLED && screen === "home" ? me?.user.publicId ?? null : null;
-  const worldPortal = useWorldPortal(worldOwner);
+  const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
   const [worldMounted, setWorldMounted] = useState(false);
   const closeWorld = worldPortal.close;
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
@@ -566,9 +565,9 @@ export function CheckInApp() {
 
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
-  const world = useWorld(worldOwner, loseSession);
+  const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
   const worldRefresh = world.refresh;
-  useEffect(() => { if (worldOwner) void worldRefresh(); }, [game.progress?.lifetimeTaps, worldOwner, worldRefresh]);
+  useEffect(() => { if (screen === "home" && me) void worldRefresh(); }, [game.progress?.lifetimeTaps, me, screen, worldRefresh]);
 
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
     // A mutation response supersedes a background read that started before it.
@@ -1359,12 +1358,13 @@ export function CheckInApp() {
             onClick={handleIdentityAction}
           >
             <span className={styles.identityText}>
-              <span className={styles.nameRow}><strong>{me?.user.displayName}</strong>
+              <span className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong>
+                <span className={styles.betaBadge}>beta-режим</span>
                 {game.progress && <span className={styles.levelBadge} title={`Уровень ${clickerLevel.level} из 100 · ${clickerLevel.title}`}>
                   <GameLevelIcon level={clickerLevel.level} size={15} /><span>ур. {clickerLevel.level}</span>
                 </span>}
               </span>
-              <span>{me?.user.publicId}</span>
+              <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
             </span>
             <Copy size={16} />
           </button>
@@ -1418,7 +1418,7 @@ export function CheckInApp() {
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
               <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
-                wakeSignal={mochlikWakeSignal} nowMs={OPEN_WORLD_ENABLED ? world.now : adjustedNow} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
+                wakeSignal={mochlikWakeSignal} nowMs={world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
                 bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={world.snapshot?.state} worldGifts={world.snapshot?.gifts} />
             </div>}
             <button
@@ -1553,13 +1553,13 @@ export function CheckInApp() {
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
               gameStatus={game.status} gameNotice={gameNotice} gamePending={game.pendingTaps} gameArchived={game.archivedTaps} gameRequestId={game.requestId} onRetryGame={() => void game.refresh()}>
-              {OPEN_WORLD_ENABLED && <button type="button" className={`${glass.button} ${styles.mapEntry}`}
+              <button type="button" className={`${glass.button} ${styles.mapEntry}`}
                 aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
                 onPointerDown={event => event.stopPropagation()} onClick={event => {
                   setWorldMounted(true); worldPortal.enter(event.currentTarget, buttonOrbit.current); void world.refresh();
                 }}>
                 <Map size={20} aria-hidden="true" /><span>Войти в мир</span>
-              </button>}
+              </button>
             </CheckInReceipt>
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} onOpenChange={setStatusOpen} /> : null}
             <span className={styles.srOnly}>
@@ -1626,7 +1626,7 @@ export function CheckInApp() {
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
-      {OPEN_WORLD_ENABLED && worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
+      {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
         origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}

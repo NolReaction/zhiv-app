@@ -1,4 +1,5 @@
 export type PublicUser = {
+  tag?: import("./player-tag").PlayerTag | null;
   publicId: string;
   displayName: string;
 };

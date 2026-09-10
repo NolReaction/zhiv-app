@@ -47,7 +47,7 @@ npm run dev:local
 - `features/mochlik/pixel-frame.ts` — поза, направление, выглядывание.
 - `features/mochlik/pixel-sprite.ts` — редактируемый спрайт 48×48 и позы лап/лица.
 - `features/mochlik/scene.ts` — Canvas 256×256, листва, удерживаемый гриб, свет и буквы сна.
-- `public/world/maps/home-clearing.webp` — лесная карта.
+- `public/world/maps/home-clearing.webp` — прежняя лесная карта; теперь доступна в истории Git. Текущие файлы перечислены в [каталоге графики](../../../public/world/README.md).
 
 Персонаж нарисован кодом по мотивам концепта. Карта — уменьшенный концепт, не тайлсет. Референсы ImageGen сохранены ниже; исходные запросы — в `prompts.txt`.
 

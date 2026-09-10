@@ -247,9 +247,12 @@ class JdbcAccountLifecycleIntegrationTest {
         val newSession=tokens.issue().hash
         source.connection.use { blocker ->
             blocker.prepareStatement("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE").use { q->q.setObject(1,a.id);q.executeQuery().close() }
+            val blockerPid=blocker.createStatement().use { s ->
+                s.executeQuery("SELECT pg_backend_pid()").use { r -> r.next(); r.getInt(1) }
+            }
             val attempt=async(Dispatchers.IO){runCatching{auth.finish(verified,email,newSession,365,"Old email")}}
             withTimeout(5_000) {
-                while(scalar("SELECT count(*) FROM pg_stat_activity WHERE application_name='zhiv-api' AND wait_event_type='Lock' AND query LIKE '%deleted_at IS NULL FOR UPDATE%'")=="0") delay(10)
+                while(scalar("SELECT count(*) FROM pg_stat_activity WHERE application_name='zhiv-api' AND ?=ANY(pg_blocking_pids(pid))",blockerPid)=="0") delay(10)
             }
             blocker.prepareStatement("INSERT INTO account_identity_retirements(provider,subject_hash) VALUES ('email',sha256(convert_to(?,'UTF8')))").use{q->q.setString(1,email);q.executeUpdate()}
             blocker.prepareStatement("DELETE FROM account_login_identities WHERE user_id=? AND provider='email'").use{q->q.setObject(1,a.id);q.executeUpdate()}

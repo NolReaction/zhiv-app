@@ -76,3 +76,21 @@ test("sprite cache is bounded, reuses hot frames and normalizes frame input", ()
   }
   assert.notEqual(pixelSprite("idle", "front", 0), first, "cold frames must be evicted instead of retaining every outfit forever");
 });
+
+test("sleep stays rounded and breathing keeps the face and paws grounded", () => {
+  const base = pixelSprite("sleep", "front", 0).pixels;
+  const points = [...base.keys()].map(point => point.split(":").map(Number));
+  const width = Math.max(...points.map(([x]) => x)) - Math.min(...points.map(([x]) => x)) + 1;
+  const height = Math.max(...points.map(([, y]) => y)) - Math.min(...points.map(([, y]) => y)) + 1;
+  assert.ok(height / width > .7, "a sleeping curl retains body height instead of becoming a pancake");
+  const paws = pixels => new Map([...pixels].filter(([point]) => {
+    const [x, y] = point.split(":").map(Number);
+    return y >= 40 && (x >= 14 && x <= 26 || x >= 30 && x <= 39);
+  }));
+  for (let frame = 0; frame < 4; frame++) {
+    const sleeping = pixelSprite("sleep", "front", frame).pixels;
+    assert.deepEqual(paws(sleeping), paws(base));
+    assert.equal(sleeping.get("15:31"), "#30291d", "closed eye stays on the cheek through a breath");
+  }
+  assert.notDeepEqual(pixelSprite("sleep", "front", 1).pixels, base, "only the curled back expands");
+});

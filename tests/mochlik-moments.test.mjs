@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { createHabitat, decorationLevel, rainAt, depositedPosition, HOME } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
+const { createHabitat, decorationLevel, rainAt, depositedPosition, HOME, BUSH, SHELTER } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 const { pixelFrame } = await vite.ssrLoadModule("/features/mochlik/pixel-frame.ts");
 after(() => vite.close());
 const fresh = (kind = "butterfly") => { const world = createHabitat(); world.setInsects(kind); return world; };
@@ -27,7 +27,7 @@ test("a living session includes all moments and emotions, with both finds and co
       moments.add(s.moment); activities.add(s.activity);
       if (s.activity === "show") found.add(s.prop);
       assert.ok(Math.hypot(s.position.x - previous.x, s.position.y - previous.y) < .012);
-      assert.ok(s.position.x >= .14 && s.position.x <= .75 && s.position.y >= .4 && s.position.y <= .82);
+      assert.ok(s.position.x >= .14 && s.position.x <= .75 && s.position.y >= Math.min(HOME.y, BUSH.y, SHELTER.y) - 1e-9 && s.position.y <= .82);
       if (s.prop) {
         assert.ok(s.propPosition.x > .15 && s.propPosition.x < .8 && s.propPosition.y > .25 && s.propPosition.y < .85);
         if (previousProp && s.prop === previousProp.kind && s.activity !== "leaf-drift") {
@@ -148,7 +148,7 @@ test("delivery reaches the deposited anchor and a stopped shower releases the sh
   }
   const world = fresh(); seek(world, s => s.activity === "shelter" && s.rain > 0);
   world.elapse(220 - world.state.ecologyTime % 720); world.notice(); world.update(.025);
-  assert.equal(world.state.rain, 0); assert.equal(world.state.activity, "walk");
+  assert.equal(world.state.rain, 0); assert.equal(world.state.activity, "leave", "rain ends with an actual doorway exit");
   seek(world, s => s.activity === "shake", false, 12);
 });
 
@@ -163,7 +163,26 @@ test("an individually granted garland does not unlock other decor, and props res
   assert.equal(propBehindBody({ ...state, direction: "front" }), false);
   assert.equal(propBehindBody({ ...state, activity: "discover" }), false);
   const rectangles = [];
-  drawDecor({ save() {}, restore() {}, fillRect(...rect) { rectangles.push(rect); } }, { ...world.state, decorItems: ["leaf_garland"] }, true);
+  drawDecor({ save() {}, restore() {}, translate() {}, fillRect(...rect) { rectangles.push(rect); } }, { ...world.state, decorItems: ["leaf_garland"] }, true);
   assert.ok(rectangles.length > 0);
   assert.ok(rectangles.every(([, y]) => y < 90), "only the garland is painted, not the bed, flower or keepsakes");
+});
+
+test("rain shelter enters the existing doorway and reduced motion preserves its depth", () => {
+  const world = fresh();
+  seek(world, state => state.moment === "rain" && state.activity === "enter");
+  assert.equal(world.state.layer, "house");
+  const before = { ...world.state.position };
+  world.update(.025);
+  assert.ok(Math.hypot(world.state.position.x - before.x, world.state.position.y - before.y) < .012);
+  seek(world, state => state.activity === "shelter");
+  assert.deepEqual(world.state.position, HOME);
+  assert.equal(world.state.layer, "house");
+  assert.equal(world.state.size, .118);
+  world.settle();
+  assert.deepEqual(world.state.position, HOME);
+  assert.equal(world.state.layer, "house");
+  assert.equal(world.state.size, .118);
+  const still = pixelFrame({ ...world.state, activity: "shelter-peek", progress: .5 }, true);
+  assert.equal(still.offsetX, 0);
 });

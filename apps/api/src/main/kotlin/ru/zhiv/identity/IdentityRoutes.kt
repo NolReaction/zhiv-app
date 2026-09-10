@@ -321,7 +321,7 @@ fun Route.identityRoutes(
 
 internal fun UserSnapshot.toResponse() = MeResponse(
     status = statusText?.let { text -> statusUpdatedAt?.let { UserStatusDto(text, it.toInstant().toString(), statusExpiresAt?.toInstant()?.toString()) } },
-    user = PublicUserDto(publicId = publicId, displayName = displayName),
+    user = PublicUserDto(publicId = publicId, displayName = displayName, tag = tag),
     lastCheckInAt = lastCheckInAt?.toInstant()?.toString(),
     checkInCount = checkInCount,
     streak = DailyStreakDto(

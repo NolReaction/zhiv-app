@@ -2,6 +2,8 @@ import { z } from "zod";
 import { GAME_ITEMS, GAME_ACHIEVEMENTS, type GameItemId } from "@/features/game/game-rewards";
 import type { GameAchievementId } from "@/features/game/game-api";
 import { ApiError } from "@/lib/check-in-api";
+import { playerTagSchema } from "@/lib/player-tag";
+import { worldStateSchema } from "@/features/world/model";
 
 const count = z.number().int().nonnegative().safe();
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
@@ -20,6 +22,7 @@ const overviewSchema = z.object({
   services: z.object({ databaseReady: z.boolean(), databaseBytes: count, databaseConnections: count, activeSessions: count }),
 });
 const userSchema = z.object({
+  tag: playerTagSchema.nullable().optional(), bannedAt: instant.nullable().optional(), watchlisted: z.boolean().optional(), tapSignalAt: instant.nullable().optional(),
   publicId, displayName: z.string(), createdAt: instant, lastCheckInAt: instant.nullable(),
   checkInCount: count, friendCount: count, lifetimeTaps: count, bestSeries: count, monthlyTaps: count,
   leaderboardOptIn: z.boolean(), activeSessions: count, loginMethods: z.array(z.string()).max(10), isAdmin: z.boolean(),
@@ -27,7 +30,7 @@ const userSchema = z.object({
 const usersSchema = z.object({ ...page, users: z.array(userSchema).max(100) });
 const auditSchema = z.object({ ...page, events: z.array(z.object({
   requestId: z.string().uuid(), actorPublicId: publicId, targetPublicId: publicId,
-  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement"]), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
+  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
 })).max(100) });
 const metric = z.number().finite().nullable();
 const monitoringSchema = z.object({
@@ -49,7 +52,7 @@ export type AdminAudit = z.infer<typeof auditSchema>;
 export type AdminMonitoring = z.infer<typeof monitoringSchema>;
 export type AdminRevokeRequest = { requestId: string; confirmationPublicId: string; reason: string };
 
-async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: AdminRevokeRequest | AdminGrantRequest): Promise<T> {
+async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: AdminRevokeRequest | AdminGrantRequest | AdminPlayerCommand): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort();
@@ -78,7 +81,7 @@ async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, 
 
 export const getAdminAccess = (signal?: AbortSignal) => adminRequest("access", accessSchema, signal);
 export const getAdminOverview = (days: 7 | 30 | 90, signal?: AbortSignal) => adminRequest(`overview?days=${days}`, overviewSchema, signal);
-export function getAdminUsers(options: { q: string; sort: "created" | "activity" | "taps"; offset: number; limit: number }, signal?: AbortSignal) {
+export function getAdminUsers(options: { q: string; sort: "created" | "activity" | "taps" | "review"; offset: number; limit: number }, signal?: AbortSignal) {
   const query = new URLSearchParams({ q: options.q, sort: options.sort, offset: String(options.offset), limit: String(options.limit) });
   return adminRequest(`users?${query}`, usersSchema, signal);
 }
@@ -115,3 +118,28 @@ export type AdminIncidents = z.infer<typeof incidentsSchema>;
 export function getAdminIncidents(options: { rangeMinutes: number; q: string; offset: number; source?: "" | "client" | "server"; code?: string }, signal?: AbortSignal) {
   return adminRequest(`incidents?${new URLSearchParams({ rangeMinutes: String(options.rangeMinutes), q: options.q, source: options.source ?? "", code: options.code ?? "", offset: String(options.offset), limit: "25" })}`, incidentsSchema, signal);
 }
+
+const playerSchema = z.object({ publicId, displayName: z.string(), tag: playerTagSchema.nullable(),
+  tapSignalAt: instant.nullable().optional(), bannedAt: instant.nullable(), banReason: z.string().nullable(), watchlisted: z.boolean(),
+  world: worldStateSchema, revision: count, serverTime: instant });
+export type AdminPlayer = z.infer<typeof playerSchema>;
+export type AdminPlayerCommand = AdminRevokeRequest & {
+  action: "grant_resource" | "grant_world_item" | "grant_find" | "set_tag" | "ban" | "unban" | "watch" | "unwatch" | "clear_signal";
+  target?: string; amount?: number; tag?: z.infer<typeof playerTagSchema> | null;
+};
+export const getAdminPlayer = (target: string, signal?: AbortSignal) => adminRequest(`users/${encodeURIComponent(target)}/player`, playerSchema, signal);
+export const manageAdminPlayer = (target: string, body: AdminPlayerCommand, signal?: AbortSignal) =>
+  adminRequest(`users/${encodeURIComponent(target)}/manage`, z.object({ requestId: z.string().uuid(), action: z.string(),
+    changed: z.boolean(), affectedSessions: count, createdAt: instant }), signal, body);
+
+const tapActivitySchema = z.object({ publicId, displayName: z.string(), watchlisted: z.boolean(), serverTime: instant,
+  windows: z.array(z.object({ seconds: z.number().int().positive(), receivedTaps: count, eventTaps: count, tapsPerSecond: z.number().finite().nonnegative() })).length(4),
+  minutes: z.array(z.object({ at: instant, receivedTaps: count, eventTaps: count, complete: z.boolean() })).max(31),
+  rejectedTaps: count, delayedTaps: count, legacyTaps: count,
+  analysis: z.object({ status: z.enum(["insufficient_data", "no_signal", "review"]), stableMinutes: count, activeMinutes: count,
+    meanTapsPerMinute: z.number().finite().nullable(), minuteVariation: z.number().finite().nullable(),
+    intervalVariation: z.number().finite().nullable(), intervalSamples: count, reasons: z.array(z.string()).max(10) }),
+});
+export type AdminTapActivity = z.infer<typeof tapActivitySchema>;
+export const getAdminTapActivity = (target: string, signal?: AbortSignal) =>
+  adminRequest(`users/${encodeURIComponent(target)}/tap-activity`, tapActivitySchema, signal);

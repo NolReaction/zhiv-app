@@ -36,7 +36,7 @@ enum class RequestAction {
 
 data class UserReference(
     val publicId: String,
-    val displayName: String,
+    val displayName: String, val tag: ru.zhiv.identity.PlayerTag? = null,
 )
 
 data class UserLookupSnapshot(

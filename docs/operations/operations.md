@@ -14,7 +14,7 @@ Production-контур запускается из `deploy/compose.yml`. Postgr
 
 1. Убедиться, что CI прошёл полностью, включая PostgreSQL integration suite.
 2. Создать и проверить свежую резервную копию.
-3. Выполнить `docker compose --env-file deploy/.env -f deploy/compose.yml up --build --detach --wait --wait-timeout 240`.
+3. Из чистого checkout проверенного коммита выполнить `bash scripts/deploy-update.sh`: скрипт повторно сохраняет и проверяет backup, применяет миграции, обновляет сервисы и пересоздаёт Caddy.
 4. Проверить главную страницу, `/healthz` и `/readyz`, затем просмотреть логи API.
 
 Compose сначала запускает `provision` для подготовки ролей, затем отдельный сервис

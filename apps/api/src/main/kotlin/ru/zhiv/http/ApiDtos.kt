@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonElement
 data class PublicUserDto(
     val publicId: String,
     val displayName: String,
+    val tag: ru.zhiv.identity.PlayerTag? = null,
 )
 
 @Serializable

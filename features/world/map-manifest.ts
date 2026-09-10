@@ -1,0 +1,72 @@
+/** Geometry authored against the wide forest region PNG, in source pixels.
+ * Change the revision and recalibrate this manifest when changing the artwork. */
+export type MapPoint = { x: number; y: number };
+export const FOREST_MAP = {
+  id: "forest-region-v3",
+  image: "/world/maps/forest-region-v3.png",
+  size: 1254,
+  homeCrop: { x: 486, y: 514, size: 256 },
+  homeDetail: { image: "/world/maps/home-detail-v1.png", originalRim: 2, feather: 12 },
+  house: {
+    id: "home",
+    inside: { x: 667, y: 612 },
+    doorstep: { x: 650, y: 633 },
+    marker: { x: 672, y: 569 },
+    hitArea: [{ x: 615, y: 599 }, { x: 642, y: 549 }, { x: 695, y: 543 }, { x: 714, y: 581 }, { x: 739, y: 618 }, { x: 706, y: 640 }, { x: 643, y: 620 }],
+    doorway: [{ x: 653, y: 610 }, { x: 653, y: 596 }, { x: 659, y: 586 }, { x: 667, y: 583 }, { x: 675, y: 587 }, { x: 681, y: 597 }, { x: 677, y: 615 }],
+    lamp: { x: 684, y: 603, width: 5, height: 9 },
+    sleep: { x: 665, y: 579 },
+    upgradeSlot: { x: 610, y: 536, width: 132, height: 112 },
+    groundAnchor: { x: 665, y: 615 },
+    mushroomSource: { x: 702, y: 608, width: 16, height: 27 },
+  },
+  bush: {
+    id: "bush",
+    inside: { x: 536, y: 607 },
+    approach: { x: 575, y: 632 },
+    marker: { x: 537, y: 589 },
+    foliage: [{ x: 503, y: 600 }, { x: 507, y: 579 }, { x: 519, y: 565 }, { x: 537, y: 560 }, { x: 556, y: 567 }, { x: 571, y: 584 }, { x: 573, y: 604 }, { x: 561, y: 620 }, { x: 527, y: 623 }, { x: 511, y: 615 }],
+  },
+  cave: {
+    id: "cave",
+    marker: { x: 160, y: 179 },
+    entrance: { x: 162, y: 197 },
+    approach: { x: 172, y: 222 },
+    hitArea: [{ x: 93, y: 184 }, { x: 104, y: 162 }, { x: 121, y: 144 }, { x: 150, y: 133 }, { x: 174, y: 140 }, { x: 192, y: 158 }, { x: 202, y: 185 }, { x: 197, y: 206 }, { x: 178, y: 216 }, { x: 137, y: 213 }, { x: 109, y: 203 }],
+  },
+  water: {
+    id: "water",
+    marker: { x: 980, y: 1000 },
+    // Concave shoreline includes every bay and excludes wooded peninsulas.
+    hitArea: [
+      { x: 1234, y: 717 }, { x: 1254, y: 720 }, { x: 1254, y: 809 }, { x: 1196, y: 891 },
+      { x: 1218, y: 903 }, { x: 1235, y: 896 }, { x: 1235, y: 919 }, { x: 1254, y: 920 },
+      { x: 1254, y: 990 }, { x: 1216, y: 970 }, { x: 1175, y: 1021 }, { x: 1158, y: 994 },
+      { x: 1134, y: 1007 }, { x: 1119, y: 994 }, { x: 1103, y: 1039 }, { x: 1145, y: 1055 },
+      { x: 1156, y: 1074 }, { x: 1181, y: 1070 }, { x: 1210, y: 1101 }, { x: 1197, y: 1114 },
+      { x: 1214, y: 1127 }, { x: 1207, y: 1148 }, { x: 1254, y: 1142 }, { x: 1254, y: 1254 },
+      { x: 1142, y: 1254 }, { x: 1122, y: 1224 }, { x: 1099, y: 1237 }, { x: 1093, y: 1190 },
+      { x: 1068, y: 1177 }, { x: 1041, y: 1201 }, { x: 1007, y: 1193 }, { x: 988, y: 1222 },
+      { x: 967, y: 1210 }, { x: 944, y: 1224 }, { x: 947, y: 1237 }, { x: 924, y: 1239 },
+      { x: 927, y: 1226 }, { x: 913, y: 1221 }, { x: 888, y: 1254 }, { x: 703, y: 1254 },
+      { x: 695, y: 1213 }, { x: 712, y: 1204 }, { x: 711, y: 1179 }, { x: 733, y: 1178 },
+      { x: 736, y: 1165 }, { x: 875, y: 1173 }, { x: 904, y: 1148 }, { x: 958, y: 1151 },
+      { x: 988, y: 1127 }, { x: 977, y: 1102 }, { x: 965, y: 1112 }, { x: 963, y: 1080 },
+      { x: 905, y: 1084 }, { x: 894, y: 1075 }, { x: 908, y: 1064 }, { x: 898, y: 1044 },
+      { x: 875, y: 1047 }, { x: 859, y: 1020 }, { x: 821, y: 1005 }, { x: 800, y: 1015 },
+      { x: 787, y: 978 }, { x: 821, y: 987 }, { x: 821, y: 944 }, { x: 848, y: 934 },
+      { x: 948, y: 939 }, { x: 959, y: 946 }, { x: 954, y: 968 }, { x: 979, y: 971 },
+      { x: 1048, y: 947 }, { x: 1053, y: 930 }, { x: 1082, y: 931 }, { x: 1061, y: 899 },
+      { x: 1070, y: 879 }, { x: 1056, y: 870 }, { x: 1077, y: 869 }, { x: 1071, y: 847 },
+      { x: 1085, y: 844 }, { x: 1084, y: 828 }, { x: 1141, y: 824 }, { x: 1140, y: 799 },
+      { x: 1163, y: 789 }, { x: 1151, y: 764 }, { x: 1185, y: 762 }, { x: 1185, y: 734 },
+    ],
+  },
+  clearing: {
+    spawn: { x: 611, y: 665 },
+    front: { x: 614, y: 704 },
+    keepsake: { x: 649, y: 635 },
+    // Convex ground: straight routes between accepted targets stay on grass.
+    walkable: [{ x: 576, y: 624 }, { x: 652, y: 625 }, { x: 700, y: 644 }, { x: 681, y: 675 }, { x: 645, y: 704 }, { x: 595, y: 710 }, { x: 550, y: 688 }, { x: 531, y: 654 }],
+  },
+} as const;
