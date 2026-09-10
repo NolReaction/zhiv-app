@@ -3,7 +3,7 @@ import { gameProgressSchema, gameSessionSchema } from "@/features/game/game-api"
 
 const count = z.number().int().safe().nonnegative();
 const times = z.array(count).max(60);
-const queueSchema = z.array(z.object({ runId: z.string().uuid(), count: count.min(1).max(60), times: times.optional() })
+const queueSchema = z.array(z.object({ runId: z.string().uuid(), count: count.min(1).max(60), times: times.optional(), deferred: z.boolean().optional() })
   .refine(value => !value.times || value.times.length === value.count)).max(30000);
 const batchSchema = z.object({ sessionId: z.string().uuid(), sequence: count.min(1), tapCount: count.min(1).max(60),
   runId: z.string().uuid(), tapTimes: times.optional() }).refine(value => !value.tapTimes || value.tapTimes.length === value.tapCount).nullable();
@@ -17,11 +17,12 @@ export const gameJournalSchema = z.object({
   version: z.literal(1), ownerPublicId: z.string(), savedAt: count,
   progress: gameProgressSchema.nullable(), session: gameSessionSchema.nullable(),
   run: z.object({ runId: z.string().uuid(), acceptedTaps: count, rejectedTaps: count, interrupted: z.boolean() }).nullable(),
+  deferredQueue: queueSchema.default([]), catchUpMode: z.boolean().default(false),
   queue: queueSchema, pendingBatch: batchSchema, startRequest: startSchema,
   archivedQueues: z.array(archiveSchema).max(100).default([]),
   recordingStopped: z.boolean().default(false), lastEventAt: count.default(0),
   rejectedTaps: count, serverOffset: z.number().finite(), retryAfter: count, retryRemaining: count.max(3600000).default(0),
-}).refine(value => value.queue.reduce((sum, item) => sum + item.count, value.pendingBatch?.tapCount ?? 0) <= 30000);
+}).refine(value => [...value.queue, ...value.deferredQueue].reduce((sum, item) => sum + item.count, value.pendingBatch?.tapCount ?? 0) <= 30000);
 export type GameJournal = z.infer<typeof gameJournalSchema>;
 export interface GameJournalStore { read(): GameJournal | null; write(value: GameJournal): void }
 

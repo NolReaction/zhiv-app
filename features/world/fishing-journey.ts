@@ -4,20 +4,21 @@ import { FOREST_MAP } from "./map-manifest";
 import { journeyTimeline, type Journey } from "./journey-timeline";
 import { drawFishingRod, fishingTackle } from "./fishing-tackle";
 
-// Pass between the boulders, over the low plants and along the visible ground.
+// Follow the narrow ground south of the shrub and north of the lower boulder.
 // Trees north of the path are behind the character, not a mask over the earth.
 export const FISHING_PATH = [
   { x: 611, y: 665 }, { x: 648, y: 685 }, { x: 665, y: 704 },
-  { x: 676, y: 708 }, { x: 691, y: 710 }, { x: 703, y: 711 },
-  { x: 711, y: 715 }, { x: 721, y: 724 }, { x: 735, y: 736 },
+  { x: 674, y: 718 }, { x: 681, y: 721 }, { x: 691, y: 721 },
+  { x: 701, y: 723 }, { x: 713, y: 726 }, { x: 724, y: 728 }, { x: 734, y: 733 }, { x: 746, y: 741 },
   { x: 760, y: 748 }, { x: 788, y: 778 }, { x: 811, y: 790 },
   { x: 833, y: 816 }, { x: 861, y: 837 }, { x: 889, y: 865 },
   { x: 927, y: 885 }, { x: 967, y: 901 }, { x: 996, y: 918 },
 ] as const;
 export const FISHING_BOBBER = { x: 1035, y: 965 };
-// Only actual reeds in front of the bank can cover this actor. The passage
+// Only the lower boulder and actual bank reeds can cover this actor. The passage
 // must remain visible; a single forest polygon used to erase open ground too.
 export const FISHING_FOREGROUND = [
+  [{ x: 683, y: 725 }, { x: 690, y: 719 }, { x: 701, y: 719 }, { x: 713, y: 722 }, { x: 723, y: 730 }, { x: 724, y: 741 }, { x: 718, y: 749 }, { x: 705, y: 754 }, { x: 690, y: 750 }, { x: 680, y: 741 }, { x: 678, y: 732 }],
   [{ x: 1008, y: 926 }, { x: 1012, y: 909 }, { x: 1020, y: 899 }, { x: 1025, y: 905 }, { x: 1032, y: 910 }, { x: 1030, y: 926 }],
 ];
 const lengths = FISHING_PATH.slice(1).map((point, i) => Math.hypot(point.x - FISHING_PATH[i].x, point.y - FISHING_PATH[i].y));
@@ -62,7 +63,7 @@ export function drawFishingJourney(ctx: CanvasRenderingContext2D, journey: Journ
   if (state.phase !== "home") {
     const fishing = state.phase === "fishing", lift = Math.sin(state.catchProgress * Math.PI);
     const rod = fishingTackle(state), hand = rod.grip, tip = rod.tip;
-    drawFishingRod(ctx, rod);
+    drawFishingRod(ctx, rod, equipment.rod === "willow_rod");
     // Fingers close around the handle rather than letting it float over the paw.
     ctx.fillStyle = "#f4e4ae"; ctx.fillRect(Math.round(hand.x - 1), Math.round(hand.y - 1), 3, 2);
     if (fishing) {

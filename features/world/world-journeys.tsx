@@ -1,12 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, FlaskConical, Gem, Leaf, LockKeyhole, Sparkles, Trees } from "lucide-react";
 import { worldCatalog as catalog, type WorldResources } from "./model";
 import type { WorldController } from "./use-world";
 import { JourneyProgress } from "./journey-progress";
 import { WORLD_ART } from "./art";
-import { isFishingJourney, journeyPhaseLabel } from "./journey-timeline";
+import { journeyPhaseLabel } from "./journey-timeline";
 import styles from "./world.module.css";
 
 export function Materials({ cost }: { cost: WorldResources }) {
@@ -20,9 +20,10 @@ export function WorldJourneys({ world, destination, onClaim }: { world: WorldCon
   const [selected, setSelected] = useState(destination);
   const [recalling, setRecalling] = useState<string | null>(null);
   const [fishingMinutes, setFishingMinutes] = useState(15);
+  const [forestMinutes, setForestMinutes] = useState(5);
   if (!world.snapshot) return null;
   const state = world.snapshot.state, locked = world.busy || world.uncertain;
-  const routes = catalog.routes.filter(route => (selected === "river" ? route.id === `fishing_${fishingMinutes}` : !isFishingJourney({ routeId: route.id })) && (!route.once || !state.firstJourneyCompleted));
+  const routes = catalog.routes.filter(route => (selected === "river" ? route.id === `fishing_${fishingMinutes}` : route.id === (forestMinutes === 5 ? "forest_path" : "forest_10")) && (!route.once || !state.firstJourneyCompleted));
   const switchRoute = () => setSelected(value => value === "river" ? "trail" : "river");
   return <div className={styles.panel}>
     <div className={styles.routeChooser}>
@@ -42,12 +43,17 @@ export function WorldJourneys({ world, destination, onClaim }: { world: WorldCon
             : <button className={styles.textButton} disabled={locked} onClick={() => setRecalling(journey.id)}>Позвать домой</button>}
       </article>;
     })}
-    {selected === "river" && <>
-      <div className={styles.fishingModes} role="group" aria-label="Длительность рыбалки вместе с дорогой">
-        {[5, 15, 30, 60].map(minutes => <button key={minutes} aria-pressed={minutes === fishingMinutes} onClick={() => setFishingMinutes(minutes)}>{minutes} мин</button>)}
-      </div>
-      <p className={styles.hint}>45 секунд до берега, рыбалка и 45 секунд домой — всё входит в выбранное время. Удочка с собой; рыбок Мохлик отпускает, материалы собирает по дороге.</p>
-    </>}
+    {selected === "trail" && !state.firstJourneyCompleted && <article className={styles.card}>
+      <div className={styles.cardTop}><h3>Первая прогулка</h3><span className={styles.kicker}><Clock3 size={14} />1 мин</span></div>
+      <p>Короткое знакомство с лесом и первые материалы для домика.</p>
+      <Materials cost={catalog.routes.find(route => route.id === "first_path")!} />
+      <button className={styles.primary} disabled={locked || state.journeys.length > 0} onClick={() => world.act("start_journey", "first_path")}>Познакомиться с лесом<ChevronRight size={16} /></button>
+    </article>}
+    <div className={styles.fishingModes} style={{ "--mode-count": selected === "river" ? 4 : 2 } as CSSProperties} role="group" aria-label="Длительность путешествия вместе с дорогой">
+      {(selected === "river" ? [5, 15, 30, 60] : [5, 10]).map(minutes => <button key={minutes}
+        aria-pressed={minutes === (selected === "river" ? fishingMinutes : forestMinutes)}
+        onClick={() => selected === "river" ? setFishingMinutes(minutes) : setForestMinutes(minutes)}>{minutes} мин</button>)}
+    </div>
     {routes.map(route => {
       const gate = route.houseLevel > state.houseLevel;
       return <article className={styles.card} key={route.id}>

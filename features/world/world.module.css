@@ -172,3 +172,8 @@
 .fishingModes button { min-height: 44px; padding: 8px 4px; font-size: .875rem; }
 .fishingModes button[aria-pressed="true"] { border-color: #d1df9e; background: #34432c; color: #f0f4d6; box-shadow: inset 0 0 0 1px #d1df9e; }
 .tripStatus { margin: 2px 0 12px; color: #d6e0b9; font-size: .875rem; text-align: center; }
+
+.routeChooser > img, .routeChooser > .fishingPreview { display: block; width: 100%; height: clamp(115px, 20dvh, 190px); aspect-ratio: auto; object-fit: cover; }
+.fishingModes { grid-template-columns: repeat(var(--mode-count, 4), minmax(0, 1fr)); }
+.albumHeading { margin: 4px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 18px; }
+.albumReward { display: flex; align-items: center; gap: 8px; color: #dece98; font-size: 14px; }

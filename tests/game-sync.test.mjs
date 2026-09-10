@@ -106,7 +106,7 @@ test("bounds the durable queue and reports overflow without counting taps never 
   assert.equal(f.client.snapshot().pendingTaps, 30_000);
   assert.equal(f.client.snapshot().errorCode, "QUEUE_FULL");
   f.client.setOnline(false);
-  assert.equal(f.client.recordTap(20, runId), 0); // A legacy server has no offline permit.
+  assert.equal(f.client.recordTap(20, runId), 0); // The shared durable queue is full, including offline intents.
   assert.equal(f.client.snapshot().pendingTaps, 30_000);
   f.client.dispose(); resolveBatch(); await settle();
 });
@@ -230,7 +230,7 @@ test("API rejects malformed progress and aborts a caller-cancelled request", asy
 });
 
 
-test("a slow initial handshake queues only the bounded initial burst", async () => {
+test("a slow initial handshake keeps the initial burst and defers every later tap", async () => {
   let resolveStart;
   const f = fixture({ session: () => new Promise(resolve => { resolveStart = resolve; }) });
   f.client.recordTap(1, runId);
@@ -238,12 +238,12 @@ test("a slow initial handshake queues only the bounded initial burst", async () 
     f.setNow(count * 35);
     f.client.recordTap(1, runId);
   }
-  assert.equal(f.client.snapshot().pendingTaps, 60);
+  assert.equal(f.client.snapshot().pendingTaps, 180);
   resolveStart({ sessionId, nextSequence: 1, expiresAt: "2026-09-07T10:15:00.000Z", progress: progress() });
   await settle();
-  assert.equal(f.client.snapshot().progress.lifetimeTaps, 60);
+  assert.equal(f.client.snapshot().progress.lifetimeTaps, 180);
   assert.equal(f.client.snapshot().pendingTaps, 0);
-  assert.deepEqual(f.calls.filter(call => call.kind === "batch").map(call => call.body.tapCount), [60]);
+  assert.deepEqual(f.calls.filter(call => call.kind === "batch").map(call => call.body.tapCount), [60, 60, 60]);
   f.client.dispose();
 });
 
@@ -472,7 +472,7 @@ test("new client reads old monthly responses and explicitly asks for the expande
       entries: [{ rank: 1, displayName: "Owner", taps: 5, isMe: true }], myRank: 1, monthlyTaps: 5, leaderboardOptIn: true });
     assert.equal((await gameApi.getGameLeaderboard()).entries[0].score, 5);
     globalThis.fetch = async url => {
-      assert.equal(url, "/api/v1/game/achievements?catalog=3");
+      assert.equal(url, "/api/v1/game/achievements?catalog=4");
       return Response.json({ ownerPublicId: owner, serverTime: "2026-09-07T10:00:00Z",
         achievements: [["seven_day_streak",7],["thousand_taps",1000],["five_friends",5]].map(([id,target]) => ({ id, target, progress: 0, unlockedAt: null })) });
     };
@@ -512,18 +512,23 @@ test("durable outbox survives lost acknowledgment, offline taps and two reloads 
   client = make(false);
   assert.equal(client.snapshot().pendingTaps, 21);
   advance(20 * 60_000); // Delivery after permit expiry preserves the original event-time run.
-  assert.equal(client.recordTap(1, runId), 0);
+  const nextRunId = crypto.randomUUID();
+  assert.equal(client.recordTap(1, nextRunId), 1);
+  assert.equal(client.snapshot().pendingTaps, 22);
   client.setOnline(true); await client.flush();
   assert.deepEqual(bodies[0], bodies[1]);
   assert.equal(client.snapshot().pendingTaps, 0);
-  assert.equal(client.snapshot().progress.lifetimeTaps, 21);
+  assert.equal(client.snapshot().progress.lifetimeTaps, 22);
   assert.equal(client.snapshot().progress.bestSeries, 21);
+  assert.equal(client.snapshot().run.runId, nextRunId);
+  assert.equal(client.snapshot().run.acceptedTaps, 1);
   assert.equal(client.snapshot().run.interrupted, false);
   client.dispose();
   client = make(true);
   await client.flush();
-  assert.equal(client.snapshot().progress.lifetimeTaps, 21);
-  assert.equal(bodies.length, 3);
+  assert.equal(client.snapshot().progress.lifetimeTaps, 22);
+  assert.equal(bodies.length, 4);
+  assert.equal(bodies[3].tapTimes, undefined);
   client.dispose();
 });
 
@@ -562,7 +567,7 @@ test("journal validates account ownership and never imports another player's out
   assert.throws(() => gameJournalStore(otherOwner, storage).read(), /owner mismatch/);
 });
 
-test("wall clock changes never reverse queued event timestamps and sleep ends the offline permit", async () => {
+test("wall clock changes preserve event order and sleep defers fresh offline taps", async () => {
   let clock = 0, wall = Date.parse("2026-09-07T10:00:00Z");
   const batches = [];
   const api = {
@@ -579,7 +584,8 @@ test("wall clock changes never reverse queued event timestamps and sleep ends th
   client.setOnline(true); await client.flush();
   assert.ok(batches.at(-1).tapTimes[1] >= batches.at(-1).tapTimes[0]);
   client.setOnline(false); wall += 21 * 60_000; // performance timer was paused by sleep.
-  assert.equal(client.recordTap(1, runId), 0);
+  assert.equal(client.recordTap(1, runId), 1);
+  assert.equal(client.snapshot().pendingTaps, 1);
   client.dispose();
 });
 
@@ -607,9 +613,11 @@ test("lost session opening reply remains recoverable after another device takes 
   advance(31000); ok(devGame.createDevGameSession(other.token, other.me.user.publicId, crypto.randomUUID()));
   await client.flush(); // Opens the original permit receipt and delivers its initial tap, then waits for writer.
   assert.equal(client.snapshot().progress.lifetimeTaps, 1);
-  assert.equal(client.recordTap(1, runId), 0);
+  assert.equal(client.recordTap(1, runId), 1);
+  assert.equal(client.snapshot().pendingTaps, 1);
+  await client.flush(); // Observe the blocked response before advancing the retry clock.
   advance(31000); await client.flush();
   assert.equal(client.recordTap(1, runId), 1);
-  await client.flush(); assert.equal(client.snapshot().progress.lifetimeTaps, 2);
+  await client.flush(); assert.equal(client.snapshot().progress.lifetimeTaps, 3);
   client.dispose();
 });

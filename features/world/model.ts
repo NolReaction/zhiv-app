@@ -11,13 +11,13 @@ export const journeySchema = z.object({
 export const worldStateSchema = z.object({
   schemaVersion: z.literal(1), resources: resourcesSchema, houseLevel: z.number().int().min(1).max(5),
   workshop: z.boolean(), workshopLevel: z.number().int().min(0).max(3).optional(), inventory: z.array(z.string()).max(100),
-  equipment: z.object({ palette: z.string(), head: z.string().nullable(), neck: z.string().nullable() }),
+  equipment: z.object({ palette: z.string(), head: z.string().nullable(), neck: z.string().nullable(), rod: z.string().nullable().optional() }),
   collection: z.array(z.string()).max(100), journeys: z.array(journeySchema).max(32),
   firstJourneyCompleted: z.boolean(), completedJourneys: count,
 });
 export const worldSnapshotSchema = z.object({
   ownerPublicId: z.string().min(1), revision: count, serverTime: z.string().datetime(), state: worldStateSchema,
-  gifts: z.array(z.string()).max(100), dailySparksEarned: count, catalogVersion: z.union([z.literal(1), z.literal(2)]), devTools: z.boolean().optional(),
+  gifts: z.array(z.string()).max(100), dailySparksEarned: count, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]), devTools: z.boolean().optional(),
 });
 export const worldCommandSchema = z.object({
   requestId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), ownerPublicId: z.string().min(1).max(40), expectedRevision: count,
@@ -40,4 +40,13 @@ export function canAfford(resources: WorldResources, cost: WorldResources) {
 
 export function workshopLevel(state: Pick<WorldState, "workshop" | "workshopLevel">) {
   return state.workshop ? Math.max(1, Math.min(3, state.workshopLevel ?? 1)) : 0;
+}
+
+export function collectionRewards(collection: readonly string[]): string[] {
+  return ([['forest', 'explorer_cap'], ['fishing', 'willow_rod']] as const)
+    .filter(([group]) => catalog.finds.filter(find => find.group === group).every(find => collection.includes(find.id)))
+    .map(([, item]) => item);
+}
+export function collectionCount(collection: readonly string[]) {
+  return catalog.finds.filter(find => collection.includes(find.id)).length;
 }

@@ -7,6 +7,7 @@ const lamp = { ...homePixel(FOREST_MAP.house.lamp), width: FOREST_MAP.house.lamp
 export const HOUSE_ANCHORS = {
   inside: worldToHome(FOREST_MAP.house.inside),
   doorstep: worldToHome(FOREST_MAP.house.doorstep),
+  threshold: worldToHome({ x: 667, y: 616 }),
   doorway: FOREST_MAP.house.doorway.map(homePixel),
   sleep: homePixel(FOREST_MAP.house.sleep),
   lamp,
@@ -20,3 +21,8 @@ export const HOME_DECOR = {
   keepsakes: homePixel({ x: 690, y: 634 }),
   garland: { left: homePixel({ x: 651, y: 580 }), right: homePixel({ x: 682, y: 582 }), sag: 1.5 },
 } as const;
+
+/** Depth follows the threshold, so the same position has the same occlusion in both directions. */
+export function isBehindDoorThreshold(position: { y: number }): boolean {
+  return position.y <= HOUSE_ANCHORS.threshold.y;
+}

@@ -55,3 +55,17 @@ test("daytime glass uses its sampled texture; dark night receives separate cool 
   assert.equal(fills[0].color, `rgba(8,17,37,${NIGHT_SHADE})`);
   assert.ok(fills.some(fill => fill.mode === "screen"), "moonlight opens up the dark base");
 });
+
+
+test("the doorway clips only after the feet cross the threshold, in either direction", async () => {
+  const { HOUSE_ANCHORS, isBehindDoorThreshold } = await vite.ssrLoadModule("/features/mochlik/home-layout.ts");
+  const { inside, doorstep } = HOUSE_ANCHORS;
+  assert.equal(isBehindDoorThreshold(doorstep), false);
+  assert.equal(isBehindDoorThreshold({ y: (doorstep.y + inside.y) / 2 }), false);
+  assert.equal(isBehindDoorThreshold(inside), true);
+  for (let step = 0; step <= 100; step++) {
+    const y = doorstep.y + (inside.y - doorstep.y) * step / 100;
+    const reverseY = inside.y + (doorstep.y - inside.y) * (100 - step) / 100;
+    assert.equal(isBehindDoorThreshold({ y }), isBehindDoorThreshold({ y: reverseY }));
+  }
+});

@@ -126,12 +126,12 @@ class JdbcWorldRepositoryIntegrationTest {
     @Test
     fun `fishing modes persist full durations and credit only confirmed returns`() = runBlocking<Unit> {
         val modes = listOf(
-            Triple("fishing_5", 300L, WorldResources(4, 2, 2)),
-            Triple("fishing_15", 900L, WorldResources(9, 5, 5)),
-            Triple("fishing_30", 1800L, WorldResources(14, 8, 8)),
-            Triple("fishing_60", 3600L, WorldResources(24, 14, 14)),
+            Triple("fishing_5", 300L, WorldResources(4, 2, 6)),
+            Triple("fishing_15", 900L, WorldResources(12, 6, 18)),
+            Triple("fishing_30", 1800L, WorldResources(24, 12, 36)),
+            Triple("fishing_60", 3600L, WorldResources(48, 24, 72)),
         )
-        assertEquals(2, WorldRules.catalog.version)
+        assertEquals(3, WorldRules.catalog.version)
         for ((routeId, seconds, rewards) in modes) {
             val p = player()
             val initial = world.snapshot(p.hash)
@@ -141,10 +141,10 @@ class JdbcWorldRepositoryIntegrationTest {
             val started = world.command(p.hash, start)
             val journey = started.snapshot.state.journeys.single()
             assertEquals(routeId, journey.routeId)
-            assertEquals(2, journey.catalogVersion)
-            assertEquals(2, started.snapshot.catalogVersion)
+            assertEquals(3, journey.catalogVersion)
+            assertEquals(3, started.snapshot.catalogVersion)
             assertEquals(rewards, journey.rewards)
-            assertEquals(listOf("river_stone", "moon_moth"), journey.finds)
+            assertEquals(listOf("river_stone", "moon_moth", "river_shell", "water_lily_seed", "amber_pebble", "pearl_scale", "old_float", "river_pearl"), journey.finds)
             assertEquals(Duration.ofSeconds(seconds), Duration.between(Instant.parse(journey.startedAt), Instant.parse(journey.finishesAt)))
             assertTrue(world.command(p.hash, start).replayed)
             assertEquals(journey, JdbcWorldRepository(source).snapshot(p.hash).state.journeys.single())
@@ -181,7 +181,7 @@ class JdbcWorldRepositoryIntegrationTest {
         val saved = initial.state.copy(houseLevel = 2, resources = WorldResources(3, 4, 5), collection = listOf("river_stone"), firstJourneyCompleted = true, completedJourneys = 7, journeys = listOf(legacy))
         execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?", worldJson.encodeToString(saved), p.id)
         val restored = JdbcWorldRepository(source).snapshot(p.hash)
-        assertEquals(2, restored.catalogVersion)
+        assertEquals(3, restored.catalogVersion)
         assertEquals(1, restored.state.journeys.single().catalogVersion)
         assertEquals(saved, restored.state)
         val claim = WorldCommand(UUID.randomUUID().toString(), p.publicId, restored.revision, "claim_journey", legacy.id)
@@ -197,4 +197,32 @@ class JdbcWorldRepositoryIntegrationTest {
             world.command(p.hash, claim.copy(requestId = UUID.randomUUID().toString(), expectedRevision = paid.snapshot.revision, action = "start_journey", target = "brook_path"))
         }.code)
     }
+
+    @Test
+    fun `collection medal counts only known finds and commits with the final claim exactly once`() = runBlocking<Unit> {
+        val p = player()
+        val initial = world.snapshot(p.hash)
+        val known = WorldRules.catalog.finds.map { it.id }
+        val missing = known.last()
+        val trip = WorldJourney(UUID.randomUUID().toString(), "fishing_5", "2000-01-01T00:00:00Z", "2000-01-01T00:05:00Z",
+            WorldResources(4, 2, 6), listOf(missing), false, 3)
+        val partial = initial.state.copy(houseLevel = 2,
+            collection = known.dropLast(1) + known.first() + "unknown", journeys = listOf(trip))
+        execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?", worldJson.encodeToString(partial), p.id)
+        val progress = games.achievements(p.hash).achievements.single { it.id == "full_collection" }
+        assertEquals(11L, progress.progress); assertEquals(12L, progress.target); assertNull(progress.unlockedAt)
+        assertEquals("0", scalar("SELECT count(*) FROM game_achievements WHERE user_id=? AND achievement_id='full_collection'", p.id))
+        val claim = WorldCommand(UUID.randomUUID().toString(), p.publicId, initial.revision, "claim_journey", trip.id)
+        val paid = world.command(p.hash, claim)
+        assertTrue("willow_rod" in paid.snapshot.state.inventory)
+        assertTrue("explorer_cap" in paid.snapshot.state.inventory)
+        // Verify the qualifying transaction awards the medal before any achievement read.
+        val at = scalar("SELECT unlocked_at::text FROM game_achievements WHERE user_id=? AND achievement_id='full_collection'", p.id)
+        assertTrue(world.command(secondDevice(p), claim).replayed)
+        assertEquals(at, scalar("SELECT unlocked_at::text FROM game_achievements WHERE user_id=? AND achievement_id='full_collection'", p.id))
+        assertEquals("1", scalar("SELECT count(*) FROM game_achievements WHERE user_id=? AND achievement_id='full_collection'", p.id))
+        val unlocked = JdbcGameRepository(source).achievements(p.hash).achievements.single { it.id == "full_collection" }
+        assertEquals(12L, unlocked.progress); assertEquals(12L, unlocked.target); assertNotNull(unlocked.unlockedAt)
+    }
+
 }

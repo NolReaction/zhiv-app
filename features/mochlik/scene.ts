@@ -4,7 +4,7 @@ import { WORLD_ART } from "@/features/world/art";
 import { drawBirdAmbience } from "@/features/world/bird-ambience";
 import { drawWeatherGround, drawWeatherAir, type WeatherVisitorState } from "@/features/world/weather-visitors";
 import { drawRouteLights } from "@/features/world/route-props";
-import { HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
+import { isBehindDoorThreshold, HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
 import type { WorldState } from "@/features/world/model";
 import { homeAppearance } from "./home-state";
 import { houseVariantFor, type HouseVariant } from "./house-variants";
@@ -130,7 +130,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     const y = Math.round((state.position.y - state.lift + sprite.sink + sprite.offsetY) * width);
     drawDecor(ctx, state, options.reducedMotion);
     drawHomeVisitors("ground");
-    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "shelter" || a === "shelter-peek" || a === "rain-notice" || a === "enter" && p > .48 || a === "leave" && p < .52);
+    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "shelter" || a === "shelter-peek" || a === "rain-notice" || (a === "enter" || a === "leave") && isBehindDoorThreshold(state.position));
     const drawMushroom = (mushroom: Mushroom) => {
       if (!mushroomArt || mushroom.growth < .06) return;
       if (state.feedingId === mushroom.id && a === "eat" && food.lifted) return;

@@ -11,7 +11,7 @@ import { GAME_ITEMS, GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  Activity, ArrowLeft, ArrowUpRight, Check, ChevronLeft, ChevronRight, CircleAlert,
+  Activity, RefreshCw, ArrowLeft, ArrowUpRight, Check, ChevronLeft, ChevronRight, CircleAlert,
   Clock3, Cpu, Database, Gift, HeartPulse, LayoutDashboard, LoaderCircle,
   LogOut, Search, Server, ShieldCheck, ShieldX, Terminal, Trophy, Users,
 } from "lucide-react";
@@ -205,7 +205,7 @@ function UsersTable({ data, access, busy, onPage, onRevoke, onRewards, onManage,
     {data.users.length === 0 ? <Empty>Пользователи не найдены. Попробуйте другое имя или ID.</Empty> : <Table className={styles.userTable}>
       <TableHeader><TableRow><TableHead>Пользователь</TableHead><TableHead>Последняя отметка</TableHead><TableHead>Отметки / друзья</TableHead><TableHead>Игра</TableHead><TableHead>Сеансы</TableHead><TableHead><span className={styles.srOnly}>Действия</span></TableHead></TableRow></TableHeader>
       <TableBody>{data.users.map(user => <TableRow key={user.publicId}>
-        <TableCell><div className={styles.userIdentity}><strong><PlayerName name={user.displayName} tag={user.tag} /></strong>{user.bannedAt && <span className={styles.warning}>Бан</span>}{user.tapSignalAt && <span className={styles.warning}>Проверить клики</span>}{user.watchlisted && <span className={styles.adminBadge}>Наблюдение</span>}{user.isAdmin && <span className={styles.adminBadge}>Админ</span>}</div><code>{user.publicId}</code><small>Создан {time(user.createdAt, true)}</small></TableCell>
+        <TableCell><div className={styles.userIdentity}><strong><PlayerName name={user.displayName} tag={user.tag} /></strong>{user.bannedAt && <span className={styles.warning}>Бан</span>}{user.tapSignalAt && <span className={styles.warning}>Проверить клики</span>}{user.watchlisted && <span className={styles.watchBadge}>Наблюдение</span>}{user.isAdmin && <span className={styles.adminBadge}>Админ</span>}</div><code>{user.publicId}</code><small>Создан {time(user.createdAt, true)}</small></TableCell>
         <TableCell>{user.lastCheckInAt ? time(user.lastCheckInAt) : "Ещё не отмечался"}<small>UTC</small></TableCell>
         <TableCell><strong>{count(user.checkInCount)}</strong> отметок<small>{count(user.friendCount)} друзей</small></TableCell>
         <TableCell><strong>{count(user.lifetimeTaps)}</strong> тапов<small>Месяц {count(user.monthlyTaps)} · рекорд ×{count(user.bestSeries)}</small><small>{user.leaderboardOptIn ? "Участвует в рейтинге" : "Рейтинг скрыт"}</small></TableCell>
@@ -482,7 +482,7 @@ export function AdminDashboard() {
               <TabsTrigger className={styles.tab} value="incidents"><CircleAlert size={18} />Сбои у пользователей</TabsTrigger>
               <TabsTrigger className={styles.tab} value="audit"><Terminal size={18} />Журнал</TabsTrigger>
             </TabsList>
-            <div className={styles.refreshGroup}><span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span><button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <Activity size={19} />}</button></div>
+            <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>
           </div>
           <div className={styles.viewHeading}><div><h1>{tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, ресурсы, теги и модерация" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
             {tab === "monitoring" && <label className={styles.selectLabel}><span>История</span><select className={styles.select} value={rangeMinutes} onChange={event => setRangeMinutes(Number(event.target.value))}><option value={60}>1 час</option><option value={360}>6 часов</option><option value={1440}>24 часа</option><option value={10080}>7 дней</option></select></label>}

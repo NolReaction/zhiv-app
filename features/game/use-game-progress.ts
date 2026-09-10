@@ -41,8 +41,16 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
       current.setOnline(navigator.onLine); void current.flush(); void current.refresh();
       void flushIncidents(ownerPublicId);
     };
+    const release = () => {
+      // Dispose persists the immutable outbox before another visible tab may read it.
+      const previous = current;
+      previous?.dispose(); current = null;
+      if (client.current === previous) client.current = null;
+      try { if (owns()) localStorage.removeItem(leaseKey); } catch { /* Preserve storage failure in the snapshot. */ }
+    };
     const heartbeat = () => {
       if (stopped) return;
+      if (document.hidden) { release(); return; }
       try {
         const lease = JSON.parse(localStorage.getItem(leaseKey) ?? "null");
         if (lease?.id !== leaseId && lease?.until > Date.now()) {
@@ -56,7 +64,7 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
           // Verify ownership after competing tabs have observed the same storage event.
           window.setTimeout(() => {
             claiming = false;
-            if (stopped || !owns()) return;
+            if (stopped || document.hidden || !owns()) return;
             const journal = gameJournalStore(ownerPublicId);
             const guardedJournal = { read: journal.read, write: (value: Parameters<typeof journal.write>[0]) => {
               if (!owns()) throw new Error("Writer changed");
@@ -73,9 +81,9 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
         setState({ ...initialSnapshot, ownerPublicId, status: "error", errorCode: "STORAGE_FAILED", durable: false });
       }
     };
-    const visibility = () => { if (!document.hidden) { heartbeat(); synchronize(); } else if (owns()) void current?.flush(); };
+    const resume = () => { heartbeat(); synchronize(); };
+    const visibility = () => { if (document.hidden) release(); else resume(); };
     const offline = () => current?.setOnline(false);
-    const flushOnHide = () => { if (owns()) void current?.flush(); };
     const storage = (event: StorageEvent) => { if (event.key === leaseKey && !owns()) heartbeat(); };
     const pageError = () => reportIncident(ownerPublicId, "page", "PAGE_ERROR");
     const rejection = () => reportIncident(ownerPublicId, "page", "UNHANDLED_REJECTION");
@@ -83,9 +91,9 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
     heartbeat();
     window.addEventListener("online", synchronize);
     window.addEventListener("offline", offline);
-    window.addEventListener("focus", synchronize);
-    window.addEventListener("pageshow", synchronize);
-    window.addEventListener("pagehide", flushOnHide);
+    window.addEventListener("focus", resume);
+    window.addEventListener("pageshow", resume);
+    window.addEventListener("pagehide", release);
     window.addEventListener("storage", storage);
     window.addEventListener("error", pageError);
     window.addEventListener("unhandledrejection", rejection);
@@ -97,9 +105,9 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
       window.clearInterval(flushInterval);
       window.removeEventListener("online", synchronize);
       window.removeEventListener("offline", offline);
-      window.removeEventListener("focus", synchronize);
-      window.removeEventListener("pageshow", synchronize);
-      window.removeEventListener("pagehide", flushOnHide);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("pageshow", resume);
+      window.removeEventListener("pagehide", release);
       window.removeEventListener("storage", storage);
       window.removeEventListener("error", pageError);
       window.removeEventListener("unhandledrejection", rejection);

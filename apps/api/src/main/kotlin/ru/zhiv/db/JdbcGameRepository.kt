@@ -172,7 +172,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         } ?: error("Game session without profile")
         val elapsed = Duration.between(bucket.updated, instant).toNanos().coerceAtLeast(0).toDouble() / 1_000_000_000.0
         val available = minOf(BUCKET_CAPACITY, bucket.tokens + elapsed * TAPS_PER_SECOND)
-        if (tapTimes != null && eligibleCount > floor(available).toInt()) fail("GAME_PACING", "Очередь сохранена. Продолжаем отправку через несколько секунд", 429)
+        if (eligibleCount > floor(available).toInt()) fail("GAME_PACING", "Очередь сохранена. Продолжаем отправку через несколько секунд", 429)
         val accepted = minOf(eligibleCount, floor(available).toInt(), (MAX_SAFE_INTEGER - bucket.lifetime).coerceAtMost(MAX_BATCH_TAPS.toLong()).toInt())
         // Transport-session renewal must not split an uninterrupted run. Inherit at
         // most one expired predecessor from this authenticated device, never an active
@@ -260,12 +260,14 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         val actor = lockActor(c, sessionHash)
         val instant = now(c)
         recordSecurityAchievements(c, actor.id)
+        val collectionCount = recordCollectionAchievement(c, actor.id, instant)
         val awards = c.rows("""
             WITH targets(id,target,position) AS (VALUES
                 ('seven_day_streak',7::bigint,1),('thousand_taps',1000::bigint,2),('five_friends',5::bigint,3),
-                ('ten_thousand_series',10000::bigint,4),('linked_email',1::bigint,5),('saved_recovery_code',1::bigint,6))
+                ('ten_thousand_series',10000::bigint,4),('linked_email',1::bigint,5),('saved_recovery_code',1::bigint,6),('full_collection',12::bigint,7))
             SELECT t.id,t.target,a.unlocked_at,
                    CASE WHEN a.unlocked_at IS NOT NULL THEN t.target ELSE LEAST(t.target,CASE t.id
+                       WHEN 'full_collection' THEN ?::bigint
                        WHEN 'ten_thousand_series' THEN COALESCE((SELECT best_series FROM game_profiles WHERE user_id=?),0)
                        WHEN 'seven_day_streak' THEN (SELECT longest_days FROM rolling_check_in_streak(?,?))
                        WHEN 'linked_email' THEN 0
@@ -275,7 +277,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
                    END) END AS progress
             FROM targets t LEFT JOIN game_achievements a ON a.user_id=? AND a.achievement_id=t.id
             ORDER BY t.position
-        """.trimIndent(), actor.id, actor.id, instant, actor.id, actor.id, actor.id) {
+        """.trimIndent(), collectionCount, actor.id, actor.id, instant, actor.id, actor.id, actor.id) {
             GameAchievement(it.getString("id"), it.getLong("progress"), it.getLong("target"),
                 it.getObject("unlocked_at", OffsetDateTime::class.java)?.toInstant()?.toString())
         }

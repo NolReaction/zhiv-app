@@ -4,6 +4,9 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertFailsWith
 import ru.zhiv.auth.AuthFailure
 
@@ -12,16 +15,22 @@ class WorldRulesTest {
     private fun command(action: String) = WorldCommand(UUID.randomUUID().toString(), "OWNER", 0, action)
 
     @Test
-    fun `house grows through five levels and cannot charge for level six`() {
-        var state = WorldState(resources = WorldResources(300, 200, 100))
-        for (level in 2..5) {
-            state = WorldRules.apply(state, command("upgrade_house"), now).first
-            assertEquals(level, state.houseLevel)
-        }
-        assertEquals(WorldResources(90, 81, 37), state.resources)
+    fun `new houses stop at two without charging again and preserve legacy higher levels`() {
+        val initial = WorldState(resources = WorldResources(300, 200, 100))
+        val state = WorldRules.apply(initial, command("upgrade_house"), now).first
+        assertEquals(2, state.houseLevel)
+        assertEquals(WorldResources(290, 194, 98), state.resources)
         assertEquals("WORLD_MAX_LEVEL", assertFailsWith<AuthFailure> {
             WorldRules.apply(state, command("upgrade_house"), now)
         }.code)
+        assertEquals(WorldResources(290, 194, 98), state.resources)
+        for (level in 3..5) {
+            val legacy = state.copy(houseLevel = level)
+            assertEquals("WORLD_MAX_LEVEL", assertFailsWith<AuthFailure> {
+                WorldRules.apply(legacy, command("upgrade_house"), now)
+            }.code)
+            assertEquals(legacy.copy(inventory = legacy.inventory.sorted()), WorldRules.merge(legacy, WorldState()))
+        }
     }
 
     @Test
@@ -66,4 +75,92 @@ class WorldRulesTest {
             }.code)
         }
     }
+
+    @Test
+    fun `all twelve finds are reachable with independent album equipment rewards`() {
+        var state = WorldState()
+        var time = now
+        val schedule = listOf("first_path") + List(3) { "forest_path" } + List(8) { "fishing_5" }
+        for ((index, route) in schedule.withIndex()) {
+            state = WorldRules.apply(state, command("start_journey").copy(target = route), time).first
+            val trip = state.journeys.single()
+            time = Instant.parse(trip.finishesAt)
+            state = WorldRules.apply(state, command("claim_journey").copy(target = trip.id), time).first
+            assertEquals(index + 1, state.collection.size)
+            if (index == 0) state = WorldRules.apply(state, command("upgrade_house"), time).first
+            if (index == 5) {
+                assertTrue("explorer_cap" in state.inventory)
+                assertFalse("willow_rod" in state.inventory)
+            }
+        }
+        assertEquals(now.plusSeconds(56 * 60), time)
+        assertEquals(WorldRules.catalog.finds.map { it.id }.sorted(), state.collection)
+        assertEquals(1, state.inventory.count { it == "explorer_cap" })
+        assertEquals(1, state.inventory.count { it == "willow_rod" })
+        state = WorldRules.apply(state, command("equip").copy(target = "willow_rod"), time).first
+        assertEquals("willow_rod", state.equipment.rod)
+        state = WorldRules.apply(state, command("equip").copy(target = "remove_rod"), time).first
+        assertNull(state.equipment.rod)
+        assertEquals("WORLD_ITEM", assertFailsWith<AuthFailure> {
+            WorldRules.apply(state, command("craft").copy(target = "willow_rod"), time)
+        }.code)
+    }
+
+    @Test
+    fun `group rewards exclude unknown ids and merge preserves earned equipment`() {
+        val forest = WorldRules.catalog.finds.filter { it.group == "forest" }.map { it.id }
+        val fishing = WorldRules.catalog.finds.filter { it.group == "fishing" }.map { it.id }
+        assertEquals(6, forest.size); assertEquals(6, fishing.size)
+        assertEquals(listOf("explorer_cap"), WorldRules.collectionRewards(forest + forest))
+        assertEquals(listOf("willow_rod"), WorldRules.collectionRewards(fishing))
+        assertEquals(emptyList(), WorldRules.collectionRewards(forest.drop(1) + fishing.drop(1) + List(12) { "unknown" }))
+        val merged = WorldRules.merge(WorldState(collection = forest, houseLevel = 5), WorldState(collection = fishing))
+        assertEquals(5, merged.houseLevel)
+        assertEquals(12, merged.collection.size)
+        assertEquals(1, merged.inventory.count { it == "explorer_cap" })
+        assertEquals(1, merged.inventory.count { it == "willow_rod" })
+    }
+
+    @Test
+    fun `longer forest and fishing modes retain reward rates and access to finds`() {
+        val families = listOf(
+            WorldRules.catalog.routes.filter { it.id == "forest_path" || it.id == "forest_10" },
+            WorldRules.catalog.routes.filter { it.id.startsWith("fishing_") },
+        )
+        assertEquals(listOf(300L, 600L), families[0].map { it.seconds })
+        assertEquals(listOf(300L, 900L, 1800L, 3600L), families[1].map { it.seconds })
+        for (family in families) {
+            val first = family.first()
+            for (route in family) {
+                assertEquals(first.sparks * route.seconds, route.sparks * first.seconds)
+                assertEquals(first.wood * route.seconds, route.wood * first.seconds)
+                assertEquals(first.stone * route.seconds, route.stone * first.seconds)
+                assertEquals(first.finds, route.finds)
+            }
+        }
+    }
+
+    @Test
+    fun `saved catalog two fishing trip keeps its original rewards and duration`() {
+        val trip = WorldJourney(UUID.randomUUID().toString(), "fishing_15", now.toString(), now.plusSeconds(900).toString(),
+            WorldResources(9, 5, 5), listOf("river_stone", "moon_moth"), false, 2)
+        val saved = WorldState(houseLevel = 5, journeys = listOf(trip), collection = listOf("river_stone"))
+        val paid = WorldRules.apply(saved, command("claim_journey").copy(target = trip.id), now.plusSeconds(900)).first
+        assertEquals(WorldResources(9, 5, 5), paid.resources)
+        assertEquals(listOf("moon_moth", "river_stone"), paid.collection)
+        assertEquals(5, paid.houseLevel)
+        assertTrue(paid.journeys.isEmpty())
+    }
+
+    @Test
+    fun `missing introductory acorn remains reachable after completing introduction`() {
+        for (route in listOf("forest_path", "forest_10")) {
+            val before = WorldState(firstJourneyCompleted = true, collection = listOf("feather", "fern_leaf", "winged_seed"))
+            val started = WorldRules.apply(before, command("start_journey").copy(target = route), now).first
+            val trip = started.journeys.single()
+            val paid = WorldRules.apply(started, command("claim_journey").copy(target = trip.id), Instant.parse(trip.finishesAt)).first
+            assertTrue("acorn" in paid.collection)
+        }
+    }
+
 }

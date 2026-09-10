@@ -69,7 +69,7 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost 
           <DialogDescription className={styles.description}>Ваши маленькие победы. Полученные награды остаются с вами.</DialogDescription>
         </DialogHeader>
         <div className={styles.summary}>
-          <span>{earned === undefined ? "Шесть целей для Мохлика" : `Получено ${earned} из ${GAME_ACHIEVEMENTS.length}`}</span>
+          <span>{earned === undefined ? `${GAME_ACHIEVEMENTS.length} целей для Мохлика` : `Получено ${earned} из ${GAME_ACHIEVEMENTS.length}`}</span>
           <button type="button" disabled={loading || !isOnline} aria-label="Обновить достижения"
             onClick={() => { setLoading(true); setReload(value => value + 1); }}><RefreshCw size={17} aria-hidden="true" /></button>
         </div>

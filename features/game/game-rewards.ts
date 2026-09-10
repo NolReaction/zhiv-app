@@ -49,6 +49,11 @@ export const GAME_ACHIEVEMENTS = [
     description: "Сохраните резервный код восстановления.",
     hint: "В разделе «Вход и безопасность» сохраните код, подтвердите это и активируйте его.",
   },
+  {
+    id: "full_collection", title: "Хранитель находок", target: 12,
+    description: "Соберите все 12 находок леса и рыбалки.",
+    hint: "Завершайте прогулки и рыбалку. Каждый выход сначала приносит одну недостающую находку своего маршрута.",
+  },
 ] as const;
 export function naturalItems(bestStreakDays: number): GameItemId[] {
   return GAME_ITEMS.filter(item => bestStreakDays >= item.days).map(item => item.id);

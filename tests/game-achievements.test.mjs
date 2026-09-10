@@ -165,11 +165,11 @@ test("only accepted server taps unlock a thousand taps and retries preserve the 
     if (index) context.mock.timers.setTime(Date.now() + 5_000);
     ok(game.submitDevGameBatch(owner.token, { sessionId: active.sessionId, sequence: index + 1, tapCount: 60, runId }));
   }
-  const rejected = ok(game.submitDevGameBatch(owner.token, { sessionId: active.sessionId, sequence: 17, tapCount: 40, runId }));
-  assert.equal(rejected.acceptedTaps, 0);
+  const waiting = game.submitDevGameBatch(owner.token, { sessionId: active.sessionId, sequence: 17, tapCount: 40, runId });
+  assert.equal(waiting.code, "GAME_PACING");
   assert.deepEqual(achievement(owner, "thousand_taps"), { id: "thousand_taps", progress: 960, target: 1_000, unlockedAt: null });
   context.mock.timers.setTime(Date.now() + 5_000);
-  const request = { sessionId: active.sessionId, sequence: 18, tapCount: 40, runId };
+  const request = { sessionId: active.sessionId, sequence: 17, tapCount: 40, runId };
   const qualifiedAt = new Date().toISOString();
   assert.equal(ok(game.submitDevGameBatch(owner.token, request)).progress.lifetimeTaps, 1_000);
   context.mock.timers.setTime(Date.now() + 60_000);
@@ -178,7 +178,7 @@ test("only accepted server taps unlock a thousand taps and retries preserve the 
   const anotherDevice = identities.createDevIdentity("Ignored", owner.bootstrapKey);
   const response = ok(game.getDevGameAchievements(anotherDevice.token));
   assert.equal(response.ownerPublicId, owner.me.user.publicId);
-  assert.deepEqual(response.achievements.map(item => item.id), ["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code"]);
+  assert.deepEqual(response.achievements.map(item => item.id), ["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code", "full_collection"]);
   assert.equal(response.achievements[1].unlockedAt, qualifiedAt);
   assert.equal(game.getDevGameAchievements(undefined).code, "UNAUTHORIZED");
   identities.resetDevStoreForTests();

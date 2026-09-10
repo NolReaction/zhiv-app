@@ -167,15 +167,16 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(20L,games.submitBatch(p.hash,id,1,20,previous).runTaps)
         execute("UPDATE game_profiles SET bucket_tokens=0,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?", p.id)
         val next = UUID.randomUUID()
-        val rejected = games.submitBatch(p.hash,id,2,4,next)
+        val future = OffsetDateTime.parse(opened.startedAt).toInstant().toEpochMilli() + 60_000
+        val rejected = games.submitBatch(p.hash,id,2,4,next,List(4){future})
         assertEquals(0,rejected.acceptedTaps)
         assertEquals(0L,rejected.runTaps)
         assertEquals(20L,rejected.progress.bestSeries)
-        val replay = games.submitBatch(p.hash,id,2,4,next)
+        val replay = games.submitBatch(p.hash,id,2,4,next,List(4){future})
         assertTrue(replay.replayed)
         assertEquals(0L,replay.runTaps)
         assertEquals(20L,replay.progress.lifetimeTaps)
-        assertEquals(20L,games.submitBatch(p.hash,id,3,1,previous).runTaps)
+        assertEquals(20L,games.submitBatch(p.hash,id,3,1,previous,listOf(future)).runTaps)
     }
 
     @Test fun `a purged receipt is gone rather than an uncommitted expired batch`() = runBlocking<Unit> {
@@ -468,10 +469,12 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(3,json.getValue("achievements").jsonArray.size)
         val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
-        for (query in listOf("catalog=4","catalog=3&catalog=3"))
+        for (query in listOf("catalog=5","catalog=3&catalog=3"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
         val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
+        val current=client.get("/api/v1/game/achievements?catalog=4") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(7,Json.parseToJsonElement(current.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
         for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
 
@@ -513,7 +516,7 @@ class JdbcGameRepositoryIntegrationTest {
                     }
                 }
                 val first=JdbcGameRepository(db).achievements(owner.hash).achievements
-                assertEquals(listOf(7L,1000L,5L,0L,0L,0L),first.map { it.progress })
+                assertEquals(listOf(7L,1000L,5L,0L,0L,0L,0L),first.map { it.progress })
                 assertTrue(first.take(3).all { it.unlockedAt!=null }); assertTrue(first.drop(3).all { it.unlockedAt==null })
                 db.connection.use { c ->
                     c.prepareStatement("UPDATE circles SET archived_at=clock_timestamp() WHERE kind='DIRECT' AND ? IN (direct_user_low_id,direct_user_high_id)").use { it.setObject(1,owner.id);it.executeUpdate() };c.commit()
@@ -670,6 +673,8 @@ class JdbcGameRepositoryIntegrationTest {
         val p=player();val play=session(p);val id=UUID.fromString(play.sessionId);val run=UUID.randomUUID()
         val at=OffsetDateTime.parse(play.startedAt).toInstant().toEpochMilli()+1
         execute("UPDATE game_profiles SET bucket_tokens=0,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?",p.id)
+        assertEquals("GAME_PACING",assertFailsWith<AuthFailure>{games.submitBatch(p.hash,id,1,1,run)}.code)
+        assertEquals("0",scalar("SELECT last_sequence FROM game_sessions WHERE id=?",id))
         assertEquals("GAME_PACING",assertFailsWith<AuthFailure>{games.submitBatch(p.hash,id,1,1,run,listOf(at))}.code)
         assertEquals("0",scalar("SELECT last_sequence FROM game_sessions WHERE id=?",id))
         execute("UPDATE game_profiles SET bucket_tokens=60 WHERE user_id=?",p.id)

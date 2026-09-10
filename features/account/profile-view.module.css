@@ -74,7 +74,9 @@
   transition: transform 220ms ease;
 }
 
-.gameStats > span {
+.levelButton {
+  border: 0;
+  cursor: pointer;
   display: grid;
   width: 42px;
   height: 42px;
@@ -502,3 +504,5 @@
 .appearanceSetting label { display: grid; gap: 8px; cursor: pointer; }
 .appearanceSetting label span { color: #aab49f; font-size: 14px; line-height: 1.5; }
 .appearanceSetting button { flex-shrink: 0; }
+
+.levelButton:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }

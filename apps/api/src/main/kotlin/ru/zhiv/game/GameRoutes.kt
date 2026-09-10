@@ -49,9 +49,13 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
                 val hash = call.gameSessionHash(config, codec)
                 val versions = call.request.queryParameters.getAll("catalog")
                 val version = versions?.singleOrNull() ?: if (versions == null) "1" else null
-                if (version !in setOf("1", "2", "3")) throw AuthFailure("INVALID_GAME_CATALOG", "Неизвестный каталог достижений", 400)
+                if (version !in setOf("1", "2", "3", "4")) throw AuthFailure("INVALID_GAME_CATALOG", "Неизвестный каталог достижений", 400)
                 val result = repository.achievements(hash)
-                call.respond(if (version != "3") result.copy(achievements=result.achievements.take(3)) else result)
+                call.respond(when (version) {
+                    "4" -> result
+                    "3" -> result.copy(achievements = result.achievements.take(6))
+                    else -> result.copy(achievements = result.achievements.take(3))
+                })
             }
         }
         rateLimit(RateLimitName("game-session")) {

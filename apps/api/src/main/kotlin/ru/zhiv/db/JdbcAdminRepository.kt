@@ -342,8 +342,8 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                     "grant_world_item" -> if(request.target in before.inventory) before else before.copy(inventory=(before.inventory+request.target).sorted())
                     "grant_find" -> {
                         val collection=if(request.target in before.collection) before.collection else (before.collection+request.target).sorted()
-                        val completed=WorldRules.catalog.finds.all { it.id in collection }
-                        before.copy(collection=collection,inventory=if(completed && "explorer_cap" !in before.inventory) (before.inventory+"explorer_cap").sorted() else before.inventory)
+                        val rewards=WorldRules.collectionRewards(collection)
+                        before.copy(collection=collection,inventory=(before.inventory+rewards).distinct().sorted())
                     }
                     else -> invalid()
                 }
@@ -352,6 +352,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                     c.update("INSERT INTO world_ledger(user_id,source_key,kind,sparks,wood,stone) VALUES (?,?,'admin_grant',?,?,?)",
                         target,"admin:$requestId",after.resources.sparks-before.resources.sparks,after.resources.wood-before.resources.wood,after.resources.stone-before.resources.stone)
                 }
+                if(request.action=="grant_find") recordCollectionAchievement(c,target,now(c))
                 after!=before
             }
         }
@@ -360,6 +361,23 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
             requestId,current.id,target,current.publicId,targetPublicId,request.action,request.reason,affected,payload,changed) {
             AdminPlayerReceipt(requestId.toString(),request.action,changed,affected,it.time("created_at")!!)
         }!!
+    }
+
+    override suspend fun tapHistory(sessionHash: ByteArray, targetPublicId: String): AdminTapHistory = tx { c ->
+        actor(c,sessionHash)
+        val target=c.one("SELECT id FROM app_users WHERE public_id=? AND deleted_at IS NULL",targetPublicId) { it.getObject(1,UUID::class.java) }
+            ?: fail("ADMIN_USER_NOT_FOUND","Профиль не найден",404)
+        val instant=now(c).toInstant()
+        val minute=instant.truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+        val from=minute.minusSeconds(30L*86400)
+        val rows=c.rows("SELECT * FROM game_tap_activity_minutes WHERE user_id=? AND bucket_at>=? AND bucket_at<=? ORDER BY bucket_at LIMIT 43201",
+            target,from.atOffset(ZoneOffset.UTC),instant.atOffset(ZoneOffset.UTC)) { r ->
+            val at=r.getObject("bucket_at",OffsetDateTime::class.java).toInstant()
+            AdminTapHistoryMinute(at.toString(),r.getLong("received_taps"),r.getLong("rejected_taps"),r.getLong("event_taps"),
+                r.getLong("delayed_taps"),r.getLong("legacy_taps"),r.getLong("interval_count"),r.getDouble("interval_sum_ms"),r.getDouble("interval_squared_sum_ms"),
+                r.getBoolean("review_signal"),r.getBoolean("watchlisted"),at.isBefore(minute))
+        }
+        AdminTapHistory(targetPublicId,instant.toString(),from.toString(),rows)
     }
 
     override suspend fun tapActivity(sessionHash: ByteArray, targetPublicId: String): AdminTapActivity = tx { c ->

@@ -64,6 +64,7 @@ data class AdminGrantReceipt(val requestId: String, val kind: String, val reward
 interface AdminRepository {
     suspend fun player(sessionHash: ByteArray, targetPublicId: String): AdminPlayer = throw UnsupportedOperationException()
     suspend fun managePlayer(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminPlayerCommand): AdminPlayerReceipt = throw UnsupportedOperationException()
+    suspend fun tapHistory(sessionHash: ByteArray, targetPublicId: String): AdminTapHistory = throw UnsupportedOperationException()
     suspend fun tapActivity(sessionHash: ByteArray, targetPublicId: String): AdminTapActivity = throw UnsupportedOperationException()
     suspend fun rewards(sessionHash: ByteArray, targetPublicId: String): AdminRewards
     suspend fun grantReward(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminGrantRequest): AdminGrantReceipt

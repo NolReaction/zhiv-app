@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 
-import { GameLevelIcon } from "@/features/game/game-level-icon";
+import { GameLevelsButton } from "@/features/game/game-levels-button";
+import { BetaInfo } from "./beta-info";
 
 import type {
   CSSProperties,
@@ -899,7 +900,8 @@ export function CheckInApp() {
       if (runId && runId !== recordAtRunStart.current.runId) {
         recordAtRunStart.current = { runId, bestSeries: game.progress?.bestSeries ?? null };
       }
-      if (runId) recordGameTap(steps, runId);
+      const recorded = runId ? recordGameTap(steps, runId) : 0;
+      if (recorded === 0) { setNotice("Не удалось сохранить нажатие на устройстве. Откройте значок сервера для проверки."); return false; }
       if (transition.finishedSeries) {
         reportFinishedSeries(transition.finishedSeries, transition.progress);
         triggerSeriesBreakEffect();
@@ -912,6 +914,7 @@ export function CheckInApp() {
       ) persistClickerRun(transition.progress);
       if (transition.effect) triggerStoryEffect(transition.effect);
       resetClickerLater();
+      return true;
     },
     [
       recordGameTap,
@@ -1044,9 +1047,9 @@ export function CheckInApp() {
       tappedAtMs,
       Boolean(pendingCheckIn.current),
     );
-    registerTap(1, tappedAtMs);
+    const recorded = registerTap(1, tappedAtMs);
     if (tapPlan !== "REQUEST_SERVER") {
-      if (tapPlan === "START_LOCAL") setNotice(null);
+      if (tapPlan === "START_LOCAL" && recorded) setNotice(null);
       return;
     }
     if (checkInSending.current) return;
@@ -1349,25 +1352,20 @@ export function CheckInApp() {
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>
-          <button
-            type="button"
-            className={styles.identity}
-            aria-label={`Скопировать ID${game.progress ? `. Уровень ${clickerLevel.level} из 100` : ""}`}
-            aria-busy={isIdentityActionPending}
-            disabled={isIdentityActionPending}
-            onClick={handleIdentityAction}
-          >
-            <span className={styles.identityText}>
-              <span className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong>
-                <span className={styles.betaBadge}>beta-режим</span>
-                {game.progress && <span className={styles.levelBadge} title={`Уровень ${clickerLevel.level} из 100 · ${clickerLevel.title}`}>
-                  <GameLevelIcon level={clickerLevel.level} size={15} /><span>ур. {clickerLevel.level}</span>
-                </span>}
-              </span>
+          <div className={styles.identity}>
+            <div className={styles.identityText}>
+              <div className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong></div>
+              <div className={styles.identityBadges}>
+                <BetaInfo />
+                {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
+              </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
-            </span>
-            <Copy size={16} />
-          </button>
+            </div>
+            <button type="button" className={styles.copyIdentity} aria-label="Скопировать ID"
+              aria-busy={isIdentityActionPending} disabled={isIdentityActionPending} onClick={handleIdentityAction}>
+              <Copy size={18} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </header>
 
