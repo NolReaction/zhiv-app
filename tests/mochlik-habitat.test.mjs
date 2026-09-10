@@ -22,7 +22,7 @@ test("autonomous bush play leads to persistent sleep after inactivity", () => {
   const world = createHabitat(), seen = new Set();
   for (let i = 0; i < 24_000; i++) {
     world.update(.025); seen.add(world.state.activity);
-    assert.ok(world.state.position.x >= .20 && world.state.position.x <= .75);
+    assert.ok(world.state.position.x >= Math.min(.20, BUSH.x) && world.state.position.x <= .75);
     assert.ok(world.state.position.y >= Math.min(HOME.y, BUSH.y) - 1e-9 && world.state.position.y <= .82);
     if (world.state.activity === "sleep") {
       assert.equal(world.state.layer, "house"); assert.deepEqual(world.state.position, HOME);

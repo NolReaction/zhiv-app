@@ -7,6 +7,8 @@ test('map readiness waits for the character, aborted loading releases its scene,
  const root=fileURLToPath(new URL('..',import.meta.url));
  const vite=await createServer({appType:'custom',configFile:false,root,resolve:{alias:{'@':root}},server:{middlewareMode:true,hmr:false}});
  const {createMapEngine}=await vite.ssrLoadModule('/features/world/map-engine.ts');
+ const {WORLD_ART}=await vite.ssrLoadModule('/features/world/art.ts');
+ const {MAP_PLACES}=await vite.ssrLoadModule('/features/world/map-layout.ts');
  const {loadHabitatImage,HabitatAssetError}=await vite.ssrLoadModule('/features/mochlik/assets.ts');await vite.close();
  const original=new Map(),pending=[],timers=new Map(),frames=new Map();let id=0,observed=0;
  const install=(name,value)=>{original.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{value,writable:true,configurable:true})};
@@ -26,10 +28,17 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const first=createMapEngine(canvas(),options,()=>{},[],abort.signal).then(v=>{ready=true;return v});
   const cancelled=assert.rejects(first,error=>error.name==='AbortError');
   assert.equal(ready,false);assert.equal(observed,0);assert.equal(frames.size,0);
-  abort.abort();finish('/world/maps/forest-home-v2.png');await cancelled;await flush();
+  abort.abort();finish(WORLD_ART.map);await cancelled;await flush();
   assert.equal(observed,0);assert.equal(frames.size,0);assert.equal(timers.size,0);
   assert.equal(pending.length,0,"one shared background; no incompatible legacy atlases are requested");
-  const engine=await createMapEngine(canvas(),options,()=>{},[]);assert.equal(observed,3);engine.dispose();await flush();
+  const bush={dataset:{kind:'bush',...MAP_PLACES.bush.marker},style:{}};
+  const house={dataset:{kind:'house',...MAP_PLACES.house.marker},style:{}};
+  const engine=await createMapEngine(canvas(),options,()=>{},[bush,house]);assert.equal(observed,3);
+  assert.equal(bush.style.visibility,'hidden','tiny overlapping bush target is suppressed in overview');
+  assert.equal(house.style.visibility,'visible');
+  engine.control('home');assert.equal(bush.style.visibility,'visible');
+  engine.control('overview');assert.equal(bush.style.visibility,'hidden');
+  engine.dispose();await flush();
   assert.equal(observed,0);assert.equal(frames.size,0);assert.equal(timers.size,0);
   const stalled=loadHabitatImage('/qa-timeout.webp');const failed=assert.rejects(stalled,error=>error instanceof HabitatAssetError&&error.timedOut);
   const timer=[...timers.values()].find(value=>value.ms===15000);assert.ok(timer);timer.fn();await failed;

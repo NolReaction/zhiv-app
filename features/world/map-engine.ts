@@ -1,5 +1,5 @@
 import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
-import { clampCamera, homeCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
+import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { WORLD_ART } from "./art";
 import { mapPlaceAt, worldToHome } from "./map-layout";
@@ -7,7 +7,7 @@ export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
 export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
-export type MapAction = "home" | "in" | "out";
+export type MapAction = "home" | "overview" | "in" | "out";
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
   let ground: HTMLImageElement;
   try { ground = await loadHabitatImage(WORLD_ART.map); }
@@ -16,7 +16,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
   let options = initial, disposed = false, raf = 0, last = 0;
-  let view = { width: 1, height: 1 }, camera = homeCamera(view), started = false;
+  let view = { width: 1, height: 1 }, camera = worldCamera(view);
+  let framing: "world" | "home" | "overview" | "manual" = "world";
   let inView = true;
   const home = document.createElement("canvas");
   type Touch = { initial: Point; position: Point };
@@ -48,7 +49,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     for (const node of anchors) {
       const point = worldToScreen({ x: Number(node.dataset.x), y: Number(node.dataset.y) }, camera, view);
       node.style.transform = `translate(${Math.round(point.x)}px, ${Math.round(point.y)}px) translate(-50%, -50%)`;
-      node.style.visibility = point.x < -60 || point.y < 0 || point.x > view.width + 60 || point.y > view.height + 50 ? "hidden" : "visible";
+      // At region scale, the small bush target would overlap the house button.
+      const smallDetail = node.dataset.kind === "bush" && HOME_AREA.size * camera.zoom < 200;
+      node.style.visibility = smallDetail || point.x < -60 || point.y < 0 || point.x > view.width + 60 || point.y > view.height + 50 ? "hidden" : "visible";
     }
   }
   function tick(time: number) {
@@ -72,7 +75,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     view = { width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight) };
     const scale = Math.min(1, 1100 / Math.max(view.width, view.height));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
-    camera = started ? clampCamera(camera, view) : homeCamera(view); started = true; draw();
+    camera = framing === "world" ? worldCamera(view) : framing === "home" ? homeCamera(view) : framing === "overview" ? overviewCamera(view) : clampCamera(camera, view); draw();
   }
   const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas); resize();
   const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; visibility(); }); observer.observe(canvas);
@@ -89,6 +92,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const touch = pointers.get(event.pointerId); if (!touch) return;
     const p = point(event), before = touch.position, oldDistance = separation();
     const oldCenter = pointers.size >= 2 ? midpoint() : null;
+    framing = "manual";
     travelled = Math.max(travelled, Math.hypot(p.x - touch.initial.x, p.y - touch.initial.y));
     touch.position = p;
     if (oldCenter && oldDistance > 2) {
@@ -116,13 +120,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     draw();
   }
-  function wheel(event: WheelEvent) { event.preventDefault(); camera = zoomAt(camera, view, point(event as unknown as PointerEvent), Math.exp(-event.deltaY * .0015)); draw(); }
+  function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event as unknown as PointerEvent), Math.exp(-event.deltaY * .0015)); draw(); }
   function control(action: MapAction) {
-    camera = action === "home" ? homeCamera(view) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8); draw();
+    framing = action === "home" || action === "overview" ? action : "manual";
+    camera = action === "home" ? homeCamera(view) : action === "overview" ? overviewCamera(view) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8); draw();
   }
   function key(event: KeyboardEvent) {
     const delta = { ArrowUp: [0, -40], ArrowDown: [0, 40], ArrowLeft: [-40, 0], ArrowRight: [40, 0] }[event.key];
-    if (delta) { event.preventDefault(); camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view); draw(); }
+    if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view); draw(); }
     else if (["+", "=", "-", "Home"].includes(event.key)) { event.preventDefault(); control(event.key === "Home" ? "home" : event.key === "-" ? "out" : "in"); }
   }
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);

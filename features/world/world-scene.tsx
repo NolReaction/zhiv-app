@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { LocateFixed, Minus, Plus, LoaderCircle } from "lucide-react";
+import { LocateFixed, Minus, Plus, LoaderCircle, Scan } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
 import { habitatLighting } from "@/features/mochlik/lighting";
@@ -71,6 +71,7 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
     <div className={styles.cameraControls} aria-label="Управление картой">
       <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>
       <button onClick={() => control("out")} disabled={!ready} aria-label="Отдалить карту"><Minus size={19} /></button>
+      <button onClick={() => control("overview")} disabled={!ready} aria-label="Показать всю карту" title="Вся карта"><Scan size={19} /></button>
       <button onClick={() => control("home")} disabled={!ready} aria-label="Вернуться камерой к дому"><LocateFixed size={19} /></button>
     </div>
     {state.journeys[0] && <button className={styles.away} onClick={() => onPlace("journeys")} aria-label="Открыть текущее путешествие"><JourneyProgress journey={state.journeys[0]} equipment={state.equipment} now={now} /></button>}

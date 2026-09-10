@@ -84,7 +84,7 @@ test("home journey status distinguishes travelling, rewards ready, and claimed",
   state.journeys = []; assert.equal(journeyLabel(state, now), null); assert.equal(homeAppearance(state).away, false);
 });
 
-test("camera zoom keeps the touched terrain point stable and clamps every viewport to map edges", () => {
+test("camera zoom keeps the touched terrain point stable, allows overview, and clamps detailed views", () => {
   assert.deepEqual(camera.viewportPoint({ x: 105, y: 230 }, { left: 5, top: 30, width: 420, height: 840 }, { width: 400, height: 800 }), { x: 100 * 400 / 420, y: 200 * 800 / 840 });
   const view = { width: 393, height: 700 }, initial = { x: 384, y: 384, zoom: 1.6 }, anchor = { x: 155, y: 210 };
   const before = camera.screenToWorld(anchor, initial, view), zoomed = camera.zoomAt(initial, view, anchor, 1.35), afterZoom = camera.screenToWorld(anchor, zoomed, view);
@@ -92,9 +92,25 @@ test("camera zoom keeps the touched terrain point stable and clamps every viewpo
   for (const dimensions of [view, { width: 1920, height: 1080 }, { width: 844, height: 390 }]) {
     for (const x of [-1e6, 384, 1e6]) {
       const bounded = camera.clampCamera({ x, y: -x, zoom: .001 }, dimensions);
-      const first = camera.screenToWorld({ x: 0, y: 0 }, bounded, dimensions), last = camera.screenToWorld({ x: dimensions.width, y: dimensions.height }, bounded, dimensions);
+      assert.equal(bounded.x, camera.MAP_SIZE / 2); assert.equal(bounded.y, camera.MAP_SIZE / 2);
+      const topLeft = camera.worldToScreen({ x: 0, y: 0 }, bounded, dimensions);
+      const bottomRight = camera.worldToScreen({ x: camera.MAP_SIZE, y: camera.MAP_SIZE }, bounded, dimensions);
+      assert.ok(topLeft.x >= -1e-6 && topLeft.y >= -1e-6 && bottomRight.x <= dimensions.width + 1e-6 && bottomRight.y <= dimensions.height + 1e-6);
+      const detail = camera.clampCamera({ x, y: -x, zoom: 4 }, dimensions);
+      const first = camera.screenToWorld({ x: 0, y: 0 }, detail, dimensions), last = camera.screenToWorld({ x: dimensions.width, y: dimensions.height }, detail, dimensions);
       assert.ok(first.x >= -1e-6 && first.y >= -1e-6 && last.x <= camera.MAP_SIZE + .000001 && last.y <= camera.MAP_SIZE + .000001);
     }
+  }
+});
+
+test("world opens approximately five times wider than home on phone, desktop and landscape", () => {
+  for (const view of [{ width: 393, height: 852 }, { width: 1440, height: 900 }, { width: 852, height: 393 }]) {
+    const wide = camera.worldCamera(view), home = camera.homeCamera(view), overview = camera.overviewCamera(view);
+    assert.ok(home.zoom / wide.zoom >= 4.8);
+    assert.ok(camera.HOME_AREA.size * wide.zoom <= Math.min(view.width, view.height) * .21);
+    assert.ok(overview.zoom <= wide.zoom);
+    const target = { x: camera.HOME_AREA.x + camera.HOME_AREA.size / 2, y: camera.HOME_AREA.y + camera.HOME_AREA.size / 2 };
+    assert.deepEqual(camera.worldToScreen(target, home, view), { x: view.width / 2, y: view.height / 2 });
   }
 });
 

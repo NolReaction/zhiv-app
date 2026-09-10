@@ -13,18 +13,18 @@ const { worldToScreen, screenToWorld, viewportPoint } = await vite.ssrLoadModule
 const { houseVariantFor } = await vite.ssrLoadModule("/features/mochlik/house-variants.ts");
 const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 
-test("approved image bytes and source resolution are preserved, home is an integer crop", async () => {
+test("wide region source resolution is preserved, home is an integer crop", async () => {
   const bytes = await readFile(`${root}/public${FOREST_MAP.image}`);
-  assert.equal(createHash("sha256").update(bytes).digest("hex"), "af3654bd7fe0d3737bbc8749924e46e54fe581ce043315e1247f06bbb84b139f");
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), "6bc7d8274bc1f1e660de570f0ac4d9eb1f7651ad1a38a84abba9e5b01c45be59");
   assert.equal(bytes.readUInt32BE(16), MAP_SIZE); assert.equal(bytes.readUInt32BE(20), MAP_SIZE);
   assert.ok(HOME_AREA.x >= 0 && HOME_AREA.y >= 0 && HOME_AREA.x + HOME_AREA.size <= MAP_SIZE && HOME_AREA.y + HOME_AREA.size <= MAP_SIZE);
   assert.equal(HOME_AREA.size % 256, 0, "integer effect scaling, without downsampling the background");
 });
 
 test("all visible water is a destination, with land excluded and boundary taps included", () => {
-  for (const [x, y] of [[1233, 972], [1200, 989], [1161, 1085], [1254, 963], [1253, 980], [1205, 1040], [1210, 1100], [1080, 1130], [1035, 1160], [1100, 1240], [1254, 1254]])
+  for (const [x, y] of [[1235, 735], [1160, 850], [900, 985], [1050, 1100], [750, 1225], [1225, 1200], [1254, 750], [1254, 1254]])
     assert.equal(mapPlaceAt({ x, y }), "fishing", `${x},${y}`);
-  for (const [x, y] of [[990, 1100], [1110, 1020], [950, 1220], [1190, 950], [1255, 1200]])
+  for (const [x, y] of [[800, 950], [1000, 955], [1160, 1020], [1040, 1230], [1255, 1200]])
     assert.notEqual(mapPlaceAt({ x, y }), "fishing", `land ${x},${y}`);
   assert.equal(mapPlaceAt(FOREST_MAP.cave.entrance), "cave");
   assert.equal(mapPlaceAt({ x: NaN, y: 1000 }), null);
@@ -47,7 +47,7 @@ test("house, bush and approaches use the same coordinates in the habitat and ful
   for (const [local, source] of [[HOME, FOREST_MAP.house.inside], [DOORSTEP, FOREST_MAP.house.doorstep], [BUSH, FOREST_MAP.bush.inside], [BUSH_EDGE, FOREST_MAP.bush.approach]])
     assert.deepEqual(homeToWorld(local), source);
   const habitat = createHabitat();
-  assert.equal(habitat.moveTo(worldToHome({ x: 600, y: 740 })), true);
+  assert.equal(habitat.moveTo(worldToHome(FOREST_MAP.clearing.spawn)), true);
   assert.equal(habitat.moveTo(worldToHome(FOREST_MAP.cave.entrance)), false);
   assert.equal(habitat.moveTo(worldToHome(FOREST_MAP.water.marker)), false);
   assert.equal(habitat.moveTo({ x: Infinity, y: .6 }), false);
