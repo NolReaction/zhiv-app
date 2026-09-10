@@ -10,7 +10,7 @@ Production-контур: Caddy → Next.js / Ktor → PostgreSQL 18.
 - Открыть входящие 80/443; доступ к SSH ограничить администраторами.
 - Не публиковать PostgreSQL 5432, API 8080, web 3000 и Caddy admin 2019.
 
-Первый запуск и команды: [README](../../README.md#selectel-vps).
+Первый запуск и команды: [настройка сервера](server-setup.md).
 
 ## Пароли и вход
 

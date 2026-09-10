@@ -1,5 +1,6 @@
 "use client";
 
+import { PlayerName } from "@/components/player-name";
 import { TransientNotice } from "@/components/app-notifications";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
@@ -396,7 +397,7 @@ export function GroupsSection({
                             {initials(member.user.displayName)}
                           </span>
                           <div className={styles.cardText}>
-                            <strong>{member.user.displayName}{member.isMe ? " · вы" : ""}</strong>
+                            <strong><PlayerName name={member.user.displayName} tag={member.user.tag} />{member.isMe ? " · вы" : ""}</strong>
                             <UserStatusDisplay status={member.status} nowMs={nowMs} />
                             <span>
                               {member.isMe
@@ -429,7 +430,7 @@ export function GroupsSection({
                       <strong>Ждём ответа</strong>
                       {group.pendingInvites.map((invite) => (
                         <div key={invite.inviteId}>
-                          <span>{invite.user.displayName}</span>
+                          <span><PlayerName name={invite.user.displayName} tag={invite.user.tag} /></span>
                           <button
                             type="button"
                             disabled={Boolean(pending)}
@@ -552,7 +553,7 @@ export function GroupsSection({
                       })}
                     />
                     <span>{initials(person.user.displayName)}</span>
-                    <strong>{person.user.displayName}</strong>
+                    <strong><PlayerName name={person.user.displayName} tag={person.user.tag} /></strong>
                   </label>
                 ))}
                 {visibleCreatePeople.length === 0 ? (
@@ -617,7 +618,7 @@ export function GroupsSection({
                 })}
               >
                 <span>{initials(person.user.displayName)}</span>
-                <strong>{person.user.displayName}</strong>
+                <strong><PlayerName name={person.user.displayName} tag={person.user.tag} /></strong>
                 <Plus size={17} />
               </button>
             ))}

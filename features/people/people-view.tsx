@@ -1,5 +1,6 @@
 "use client";
 
+import { PlayerName } from "@/components/player-name";
 import { TransientNotice } from "@/components/app-notifications";
 import { DataFreshness } from "@/components/data-freshness";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -503,7 +504,7 @@ export function PeopleView({
                   <article className={styles.requestCard} key={request.requestId}>
                     <div className={styles.avatar}>{initials(request.user.displayName)}</div>
                     <div className={styles.cardText}>
-                      <strong>{request.user.displayName}</strong>
+                      <strong><PlayerName name={request.user.displayName} tag={request.user.tag} /></strong>
                       <span>{request.user.publicId} · {requestExpiry(request.expiresAt)}</span>
                     </div>
                     <div className={styles.requestActions}>
@@ -542,7 +543,7 @@ export function PeopleView({
                       {initials(request.user.displayName)}
                     </div>
                     <div className={styles.cardText}>
-                      <strong>{request.user.displayName}</strong>
+                      <strong><PlayerName name={request.user.displayName} tag={request.user.tag} /></strong>
                       <span>Заявка отправлена · {requestExpiry(request.expiresAt)}</span>
                     </div>
                     <button
@@ -603,7 +604,7 @@ export function PeopleView({
                           {initials(displayName)}
                         </span>
                         <span className={styles.cardText}>
-                          <strong>{displayName}</strong>
+                          <strong><PlayerName name={displayName} tag={person.user.tag} /></strong>
                           <UserStatusDisplay id={`person-status-${person.circleId}`} status={person.status} nowMs={nowMs} inline />
                           <span id={`person-checkin-${person.circleId}`} className={styles.personStatus}>
                             <i style={{ background: statusColor }} />
@@ -795,7 +796,7 @@ export function PeopleView({
             <div className={styles.lookupCard}>
               <div className={styles.avatar}>{initials(lookup.user.displayName)}</div>
               <div className={styles.cardText}>
-                <strong>{lookup.user.displayName}</strong>
+                <strong><PlayerName name={lookup.user.displayName} tag={lookup.user.tag} /></strong>
                 <span>{lookup.user.publicId}</span>
               </div>
               {lookup.relationshipState === "NONE" ? (

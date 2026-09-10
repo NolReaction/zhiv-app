@@ -14,6 +14,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   let view: View = { snapshot: null, error: null, notice: "", busy: false, uncertain: false, feedbackAt: 0 };
   let pending: WorldCommand | null = null;
   let active = false, epoch = 0, readSequence = 0;
+  let reading: Promise<void> | null = null, lastReadAt = -Infinity, blockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
   const publish = (patch: Partial<View>) => {
@@ -28,15 +29,29 @@ export function createWorldSession(owner: string | null, transport: Transport, o
     publish({ snapshot: value }); return true;
   }
   const controller = () => { const request = new AbortController(); requests.add(request); return request; };
-  async function refresh() {
-    if (!active || !owner || view.busy) return;
+  function refresh(force = true): Promise<void> {
+    if (!active || !owner || view.busy || performance.now() < blockedUntil) return Promise.resolve();
+    if (reading) return reading;
+    if (!force && performance.now() - lastReadAt < 15_000) return Promise.resolve();
+    lastReadAt = performance.now();
+    const task = read(); reading = task;
+    void task.finally(() => { if (reading === task) reading = null; });
+    return task;
+  }
+  async function read() {
     const generation = epoch, sequence = ++readSequence, request = controller();
     try {
       const snapshot = await transport.get(request.signal);
-      if (valid(generation) && sequence === readSequence && adopt(snapshot) && !pending) publish({ error: null });
+      if (valid(generation) && sequence === readSequence && adopt(snapshot)) {
+        failures = 0; blockedUntil = 0;
+        if (!pending) publish({ error: null });
+      }
     } catch (error) {
       if (!valid(generation) || sequence !== readSequence) return;
-      reportIncident(owner, "world", incidentCode(error), 0, error);
+      failures++;
+      blockedUntil = performance.now() + (error instanceof ApiError && error.status === 429
+        ? Math.max(1000, error.retryAfterMs ?? 60_000) : Math.min(60_000, 2000 * 2 ** Math.min(failures - 1, 5)));
+      if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
       if (error instanceof ApiError && error.status === 401) onSessionLost();
       else if (!pending) publish({ error: error instanceof ApiError ? error.message : "Нет связи. Сохранённый мир появится после подключения." });
     } finally { requests.delete(request); }
@@ -75,11 +90,13 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       active = true;
       return () => {
         active = false; epoch++; readSequence++;
+        reading = null;
         requests.forEach(request => request.abort()); requests.clear();
         if (view.busy) publish({ busy: false, uncertain: Boolean(pending) });
       };
     },
     refresh,
+    refreshSoft: () => refresh(false),
     act(action: WorldCommand["action"], target = "") {
       if (!owner || !view.snapshot || pending || !active) return;
       void execute({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, target });

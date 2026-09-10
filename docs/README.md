@@ -22,6 +22,7 @@
 
 - [Первичная настройка](operations/server-setup.md), [VPS](operations/vps.md)
 - [Эксплуатация, резервные копии и восстановление](operations/operations.md)
+- [Модерация игроков и анализ кликов](operations/player-moderation.md)
 - [Админка](operations/admin-panel.md), [реагирование на сбои](operations/incident-response.md)
 - [Вход через ВК и почту](operations/auth-0.5.0.md)
 - [Управление аккаунтом](operations/account-0.5.1.md)

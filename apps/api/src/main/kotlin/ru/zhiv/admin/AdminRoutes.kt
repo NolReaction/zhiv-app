@@ -51,13 +51,23 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                 val hash = call.adminSessionHash(config, codec)
                 val (offset, limit) = call.page()
                 val query = call.parameter("q", "").trim().takeIf { it.length <= 100 && it.none(Char::isISOControl) } ?: badQuery()
-                val sort = call.parameter("sort", "created").takeIf { it in setOf("created", "activity", "taps") } ?: badQuery()
+                val sort = call.parameter("sort", "created").takeIf { it in setOf("created", "activity", "taps", "review") } ?: badQuery()
                 call.respond(repository.users(hash, query, sort, offset, limit))
             }
             get("/users/{publicId}/rewards") {
                 val hash = call.adminSessionHash(config, codec)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
                 call.respond(repository.rewards(hash, target))
+            }
+            get("/users/{publicId}/player") {
+                val hash = call.adminSessionHash(config, codec)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                call.respond(repository.player(hash, target))
+            }
+            get("/users/{publicId}/tap-activity") {
+                val hash = call.adminSessionHash(config, codec)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                call.respond(repository.tapActivity(hash, target))
             }
             get("/audit") {
                 val hash = call.adminSessionHash(config, codec)
@@ -66,6 +76,13 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
             }
         }
         rateLimit(RateLimitName("admin-write")) {
+            post("/users/{publicId}/manage") {
+                val hash = call.adminSessionHash(config, codec, writing = true)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                val request = call.receive<AdminPlayerCommand>()
+                val id = parseCanonicalUuidV4(request.requestId) ?: badQuery()
+                call.respond(repository.managePlayer(hash, target, id, request))
+            }
             post("/users/{publicId}/grant-reward") {
                 val hash = call.adminSessionHash(config, codec, writing = true)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()

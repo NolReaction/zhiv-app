@@ -1,3 +1,4 @@
+import { playerTagSchema } from "@/lib/player-tag";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 
@@ -44,6 +45,7 @@ const gameLeaderboardSchema = z.object({
   entries: z.array(z.object({
     rank: z.number().int().positive().safe(),
     displayName: z.string().min(1).max(100),
+    tag: playerTagSchema.nullable().optional(),
     taps: count,
     score: count.optional(),
     isMe: z.boolean(),

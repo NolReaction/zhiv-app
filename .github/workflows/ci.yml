@@ -81,7 +81,7 @@ jobs:
             echo "Authentication integration tests must run with PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest; do
+          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest; do
             lifecycle_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${lifecycle_report}"
             if grep --quiet '<skipped' "${lifecycle_report}"; then

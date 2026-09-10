@@ -328,7 +328,7 @@ private suspend fun ApplicationCall.respondError(
     respond(status, ApiErrorResponse(code, message))
 }
 
-private fun UserReference.toDto() = PublicUserDto(publicId = publicId, displayName = displayName)
+private fun UserReference.toDto() = PublicUserDto(publicId = publicId, displayName = displayName, tag = tag)
 
 private fun UserLookupSnapshot.toDto() = UserLookupResponse(
     user = user.toDto(),

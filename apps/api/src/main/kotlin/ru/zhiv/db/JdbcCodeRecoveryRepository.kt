@@ -13,13 +13,13 @@ class JdbcCodeRecoveryRepository(private val source: DataSource) : CodeRecoveryR
     private fun sessionUser(c: Connection, hash: ByteArray): UUID? =
         c.prepareStatement("""SELECT s.user_id FROM app_sessions s JOIN app_users u ON u.id=s.user_id
             WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
-            AND u.deleted_at IS NULL""").use {
+            AND u.deleted_at IS NULL AND u.banned_at IS NULL""").use {
             it.setBytes(1, hash)
             it.executeQuery().use { r -> if (r.next()) r.getObject(1, UUID::class.java) else null }
         }
 
     private fun lockUser(c: Connection, id: UUID): Boolean =
-        c.prepareStatement("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL FOR UPDATE").use {
+        c.prepareStatement("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL FOR UPDATE").use {
             it.setObject(1,id); it.executeQuery().use { r -> r.next() }
         }
 
@@ -66,7 +66,9 @@ class JdbcCodeRecoveryRepository(private val source: DataSource) : CodeRecoveryR
             it.setBytes(1,codeHash); it.executeQuery().use { r -> if(r.next()) r.getObject(1,UUID::class.java) else null }
         } ?: return@tx false
         // Same lock order as all identity mutations: user, then session/code rows.
+        requireUnbannedAccount(c,id)
         if (!lockUser(c,id)) return@tx false
+        requireUnbannedAccount(c,id)
         val state=c.prepareStatement("""SELECT revoked_at IS NOT NULL, consumed_at IS NOT NULL FROM account_recovery_codes
             WHERE code_hash=? FOR UPDATE""").use {
             it.setBytes(1,codeHash); it.executeQuery().use { r -> check(r.next()); Pair(r.getBoolean(1),r.getBoolean(2)) }

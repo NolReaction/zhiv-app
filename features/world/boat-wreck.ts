@@ -3,7 +3,7 @@
 export const BOAT_WRECK = {
   id: "river_wreck",
   anchor: { x: 898, y: 956 },
-  bounds: { x: 860, y: 919, width: 76, height: 47 },
+  bounds: { x: 850, y: 909, width: 96, height: 59 },
 } as const;
 
 /** Sample once at the map's pixel density; zoom uses the same grid as the shore. */

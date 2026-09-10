@@ -24,7 +24,10 @@ import type {
   UserLookupResponse,
 } from "@/lib/check-in-contract";
 
+import { playerTagSchema } from "./player-tag";
+
 const userSchema = z.object({
+  tag: playerTagSchema.nullable().optional(),
   publicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
   displayName: z.string().refine((value) => {
     const length = Array.from(value).length;

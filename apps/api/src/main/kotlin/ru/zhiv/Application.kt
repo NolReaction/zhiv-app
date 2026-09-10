@@ -82,6 +82,7 @@ import java.security.MessageDigest
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
     val dataSource = DatabaseFactory.create(config)
+    val tapMaintenance = ru.zhiv.db.TapActivityMaintenance(dataSource)
     val repository = JdbcZhivRepository(dataSource)
     val relationships = JdbcRelationshipRepository(dataSource)
     val groups = JdbcGroupRepository(dataSource)
@@ -93,6 +94,7 @@ fun Application.module() {
     val mailer = if (authConfig.emailEnabled) SmtpLoginMailer(authConfig) else null
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+        tapMaintenance.close()
         telegram?.close()
         vk?.close()
         dataSource.close()
@@ -165,7 +167,7 @@ fun Application.installZhivApi(
             "relationships" to 2_400,
             "game-events" to 2_400,
             "game-read" to 1_200,
-            "world-read" to 240,
+            "world-read" to 60,
             "world-write" to 120,
             "game-session" to 120,
             "game-write" to 90,
@@ -176,7 +178,7 @@ fun Application.installZhivApi(
             "account-recovery-read" to 600,
         )) {
             register(RateLimitName(name)) {
-                rateLimiter(limit = limit, refillPeriod = if (name == "game-write") kotlin.time.Duration.parse("1m") else 1.hours)
+                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read")) kotlin.time.Duration.parse("1m") else 1.hours)
                 requestKey { call ->
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))

@@ -1,5 +1,6 @@
 "use client";
 
+import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
 import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
@@ -1356,7 +1357,8 @@ export function CheckInApp() {
             onClick={handleIdentityAction}
           >
             <span className={styles.identityText}>
-              <span className={styles.nameRow}><strong>{me?.user.displayName}</strong>
+              <span className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong>
+                <span className={styles.betaBadge}>beta-режим</span>
                 {game.progress && <span className={styles.levelBadge} title={`Уровень ${clickerLevel.level} из 100 · ${clickerLevel.title}`}>
                   <GameLevelIcon level={clickerLevel.level} size={15} /><span>ур. {clickerLevel.level}</span>
                 </span>}

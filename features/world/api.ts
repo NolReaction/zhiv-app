@@ -16,7 +16,10 @@ async function request<T>(path: string, schema: z.ZodType<T>, command?: WorldCom
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(body);
-      throw new ApiError(error.success ? error.data.message : "Не удалось связаться с миром", response.status, error.success ? error.data : undefined, response.headers.get("X-Request-ID"));
+      const retry = response.headers.get("Retry-After");
+      const retryMs = retry == null ? undefined : /^\d+(?:\.\d+)?$/.test(retry) ? Number(retry) * 1000 : Date.parse(retry) - Date.now();
+      throw new ApiError(error.success ? error.data.message : "Не удалось связаться с миром", response.status, error.success ? error.data : undefined,
+        response.headers.get("X-Request-ID"), retryMs != null && Number.isFinite(retryMs) ? Math.max(0, retryMs) : undefined);
     }
     const result = schema.safeParse(body);
     if (!result.success) throw new ApiError("Обновите приложение: мир получил новую версию", 502);

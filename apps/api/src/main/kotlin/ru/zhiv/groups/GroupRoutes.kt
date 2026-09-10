@@ -317,7 +317,7 @@ private suspend fun ApplicationCall.respondError(
     respond(status, ApiErrorResponse(code, message))
 }
 
-private fun UserReference.toDto() = PublicUserDto(publicId = publicId, displayName = displayName)
+private fun UserReference.toDto() = PublicUserDto(publicId = publicId, displayName = displayName, tag = tag)
 
 private fun GroupMemberSnapshot.toDto() = GroupMemberDto(
     status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text,it.toInstant().toString(),statusExpiresAt?.toInstant()?.toString()) } },

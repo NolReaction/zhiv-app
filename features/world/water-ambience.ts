@@ -63,12 +63,12 @@ export const WATER_RIPPLES = [
   { x: 903, y: 1202, phase: 6.2, period: 12 },
 ] as const;
 
-const WIND_PERIOD = 28;
+const WIND_PERIOD = 16;
 // Each footprint includes the full drift and the wavelet width, keeping it off land.
 export const WIND_RIPPLES = Array.from({ length: 120 }, (_, i) => ({
   x: 708 + (i * 137 % 528), y: 746 + (i * 211 % 486),
-  delay: (i % 7) * .46, width: 10 + i % 9,
-})).filter(point => openWater(point, 34));
+  delay: (i % 7) * .46, width: 18 + i % 9,
+})).filter(point => openWater(point, 39));
 type WindRipple = typeof WIND_RIPPLES[number];
 
 export function windRipplePose(ripple: WindRipple, seconds: number) {
@@ -76,12 +76,10 @@ export function windRipplePose(ripple: WindRipple, seconds: number) {
   const age = phase - 3 - ripple.delay;
   if (age <= 0 || age >= 7.5) return null;
   const life = age / 7.5;
-  // A passing gust lifts the small wave packets and then leaves a long calm gap.
-  const gust = Math.sin(Math.min(1, (phase - 3) / 13) * Math.PI) ** 2;
   return {
     x: ripple.x - 18 + life * 36,
     y: ripple.y - 4 + life * 8,
-    opacity: Math.sin(life * Math.PI) ** 2 * gust,
+    opacity: Math.sin(life * Math.PI) ** 2,
   };
 }
 
@@ -148,11 +146,18 @@ export function drawWaterAmbience(ctx: CanvasRenderingContext2D, seconds: number
   ctx.closePath(); ctx.clip();
   for (const patrol of FISH_PATROLS) drawFish(ctx, patrol, time, reducedMotion);
   if (!reducedMotion) {
-    ctx.strokeStyle = "#bed8c2"; ctx.lineWidth = .75;
+    ctx.lineWidth = 1.35;
     for (const ripple of WIND_RIPPLES) {
       const pose = windRipplePose(ripple, time);
       if (!pose) continue;
-      ctx.globalAlpha = pose.opacity * .16 * (1 - rainfall * .4);
+      // A dark trough followed by a pale crest reads as moving water even when
+      // the full map is zoomed out. Both follow the same small, fading packet.
+      ctx.strokeStyle = "#235d65";
+      ctx.globalAlpha = pose.opacity * .24 * (1 - rainfall * .4);
+      ctx.beginPath(); ctx.moveTo(pose.x - ripple.width / 2, pose.y + 1.5);
+      ctx.quadraticCurveTo(pose.x, pose.y + 4, pose.x + ripple.width / 2, pose.y + .5); ctx.stroke();
+      ctx.strokeStyle = "#d0e6d0";
+      ctx.globalAlpha = pose.opacity * .40 * (1 - rainfall * .4);
       ctx.beginPath(); ctx.moveTo(pose.x - ripple.width / 2, pose.y);
       ctx.quadraticCurveTo(pose.x, pose.y + 2.5, pose.x + ripple.width / 2, pose.y - 1); ctx.stroke();
       ctx.globalAlpha *= .55;

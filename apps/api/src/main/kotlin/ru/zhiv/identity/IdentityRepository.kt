@@ -18,6 +18,7 @@ data class UserSnapshot(
     val statusUpdatedAt: OffsetDateTime? = null,
     val statusExpiresAt: OffsetDateTime? = null,
     val timeZone: String = "Europe/Moscow",
+    val tag: PlayerTag? = null,
 )
 
 sealed interface DisplayNameUpdateResult {

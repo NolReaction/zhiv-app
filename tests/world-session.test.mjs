@@ -15,6 +15,30 @@ const snapshot = (owner = "OWNER", revision = 0) => ({ ownerPublicId: owner, rev
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
+test("rapid tap acknowledgements share one world read and respect background spacing", async () => {
+  const response = deferred(); let reads = 0;
+  const session = createWorldSession("OWNER", { get: () => { reads++; return response.promise; }, send: async () => { throw Error(); } }, () => assert.fail());
+  const stop = session.activate();
+  const requests = Array.from({ length: 60 }, () => session.refreshSoft());
+  assert.equal(reads, 1);
+  response.resolve(snapshot()); await Promise.all(requests);
+  for (let i = 0; i < 60; i++) await session.refreshSoft();
+  assert.equal(reads, 1, "normal tap acknowledgements cannot exhaust the read limit");
+  stop();
+});
+
+test("a throttled world read honors Retry-After even for manual refresh", async () => {
+  const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
+  let reads = 0;
+  const session = createWorldSession("OWNER", { get: async () => { reads++; throw new ApiError("Wait", 429, undefined, undefined, 60_000); }, send: async () => { throw Error(); } }, () => assert.fail());
+  const stop = session.activate();
+  await session.refresh();
+  for (let i = 0; i < 10; i++) { await session.refresh(); await session.refreshSoft(); }
+  assert.equal(reads, 1);
+  assert.equal(session.getSnapshot().error, "Wait");
+  stop();
+});
+
 test("a late response from a previous owner cannot update the active account or lose its session", async () => {
   const oldRead = deferred(); let lost = 0;
   const old = createWorldSession("OLD", { get: () => oldRead.promise, send: async () => { throw Error(); } }, () => lost++);

@@ -65,7 +65,7 @@ internal fun mergeWorldProfiles(c: Connection, target: UUID, source: UUID) {
 class JdbcWorldRepository(private val source: DataSource): WorldRepository {
     private data class Actor(val id: UUID,val publicId: String)
     private fun actor(c: Connection, hash: ByteArray): Actor = c.worldRows("""SELECT u.id,u.public_id FROM app_users u
-        JOIN app_sessions s ON s.user_id=u.id WHERE s.token_hash=? AND u.deleted_at IS NULL
+        JOIN app_sessions s ON s.user_id=u.id WHERE s.token_hash=? AND u.deleted_at IS NULL AND u.banned_at IS NULL
         AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()""",hash) { Actor(it.getObject(1,UUID::class.java),it.getString(2)) }.firstOrNull()
         ?: throw AuthFailure("UNAUTHORIZED","Войдите в профиль ещё раз",401)
     private suspend fun <T> transaction(hash: ByteArray, block: (Connection,Actor,OffsetDateTime)->T): T = withContext(Dispatchers.IO) {

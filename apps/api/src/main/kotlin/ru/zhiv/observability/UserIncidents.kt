@@ -82,7 +82,7 @@ class UserIncidentRepository(private val source: DataSource) {
         source.connection.use { c ->
             c.autoCommit = false
             try {
-            c.prepareStatement("SELECT u.public_id FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL").use { s ->
+            c.prepareStatement("SELECT u.public_id FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL AND u.banned_at IS NULL").use { s ->
                 s.queryTimeout = 2; s.setBytes(1, hash)
                 s.executeQuery().use { r ->
                     if (!r.next()) throw AuthFailure("UNAUTHORIZED", "Войдите в профиль", 401)
@@ -92,7 +92,7 @@ class UserIncidentRepository(private val source: DataSource) {
             c.prepareStatement("""
                 INSERT INTO user_incidents(user_id,event_id,source,operation,code,occurred_at,request_id,http_status,pending_taps,occurrences)
                 SELECT u.id,?,?,?,?,?,?,?,?,? FROM app_sessions s JOIN app_users u ON u.id=s.user_id
-                WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL AND (?::text IS NULL OR u.public_id=?)
+                WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL AND u.banned_at IS NULL AND (?::text IS NULL OR u.public_id=?)
                 ON CONFLICT(user_id,event_id) DO NOTHING
             """.trimIndent()).use { s ->
                 s.queryTimeout = 2

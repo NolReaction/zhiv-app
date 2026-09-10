@@ -48,7 +48,7 @@ data class GameBatchResponse(
 data class GameVisibilityRequest(val leaderboardOptIn: Boolean, val expectedVersion: Long, val ownerPublicId: String)
 
 @Serializable
-data class GameLeaderboardEntry(val rank: Long, val displayName: String, val taps: Long, val isMe: Boolean, val score: Long = taps)
+data class GameLeaderboardEntry(val rank: Long, val displayName: String, val taps: Long, val isMe: Boolean, val score: Long = taps, val tag: ru.zhiv.identity.PlayerTag? = null)
 
 @Serializable
 data class GameLeaderboard(

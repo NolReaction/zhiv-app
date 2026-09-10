@@ -41,7 +41,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
     private data class Actor(val id: UUID, val authSessionId: UUID, val publicId: String)
     private fun actor(c: Connection, hash: ByteArray): Actor = c.one("""
         SELECT u.id, s.id AS session_id, u.public_id FROM app_users u JOIN app_sessions s ON s.user_id=u.id
-        WHERE s.token_hash=? AND u.deleted_at IS NULL AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+        WHERE s.token_hash=? AND u.deleted_at IS NULL AND u.banned_at IS NULL AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
     """.trimIndent(), hash) { Actor(it.getObject(1, UUID::class.java), it.getObject(2, UUID::class.java), it.getString(3)) }
         ?: fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
     private fun lockActor(c: Connection, hash: ByteArray): Actor {
@@ -215,6 +215,8 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             UPDATE game_sessions SET last_sequence=?,last_tap_count=?,last_accepted=?,last_run_id=?,last_batch_at=?,run_taps=?,run_id=?,run_updated_at=?,last_tap_times=?,last_rejection_code=?,event_tokens=?,event_updated_at=? WHERE id=?
         """.trimIndent(), sequence, tapCount, accepted, runId, instant, runTaps, if (accepted > 0) runId else game.runId, if (accepted > 0) eventEnd else game.runUpdatedAt, tapTimes?.let { c.createArrayOf("bigint", it.toTypedArray()) }, rejectionCode, eventTokens, if (validTimes?.isNotEmpty() == true) java.time.Instant.ofEpochMilli(eventAt).atOffset(ZoneOffset.UTC) else game.eventUpdated, sessionId)
         creditWorldTaps(c, actor.id, "tap:$sessionId:$sequence", accepted, instant)
+        recordTapActivity(c, actor.id, instant, accepted, tapCount-accepted, eligible?.take(accepted),
+            if(continuing) priorRun.runUpdatedAt?.toInstant()?.toEpochMilli() else null)
         GameBatchResponse(sessionId.toString(), sequence, accepted, tapCount - accepted, false, progress(c, actor, instant), if (accepted > 0 || game.runId == runId) runTaps else 0L, rejectionCode)
     }
     override suspend fun setVisibility(sessionHash: ByteArray, visible: Boolean, expectedVersion: Long, ownerPublicId: String): GameProgress = tx { c ->
@@ -241,14 +243,14 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         val ranked = c.rows("""
             WITH eligible AS (
                 SELECT $place AS place, row_number() OVER (ORDER BY $score DESC,${if (metric == "monthly_taps") "m.updated_at," else ""}u.id) AS position,
-                       u.display_name,$score AS score,u.id=? AS is_me
+                       u.display_name,u.tag_text,u.tag_color,$score AS score,u.id=? AS is_me
                 FROM game_profiles p JOIN app_users u ON u.id=p.user_id
                 LEFT JOIN game_monthly_scores m ON m.user_id=u.id AND m.month=?
-                WHERE $score>0 AND p.leaderboard_opt_in AND u.deleted_at IS NULL
+                WHERE $score>0 AND p.leaderboard_opt_in AND u.deleted_at IS NULL AND u.banned_at IS NULL
                   AND (?='global' OR u.id=? OR u.id IN (SELECT user_id FROM active_direct_friend_ids(?)))
-            ) SELECT place,display_name,score,is_me,position FROM eligible WHERE position<=100 OR is_me ORDER BY position
+            ) SELECT place,display_name,score,is_me,position,tag_text,tag_color FROM eligible WHERE position<=100 OR is_me ORDER BY position
         """.trimIndent(), actor.id, month(instant), scope, actor.id, actor.id) {
-            it.getLong(5) to GameLeaderboardEntry(it.getLong(1), it.getString(2), it.getLong(3), it.getBoolean(4))
+            it.getLong(5) to GameLeaderboardEntry(it.getLong(1), it.getString(2), it.getLong(3), it.getBoolean(4), tag=it.playerTag())
         }
         GameLeaderboard(actor.publicId, current.month, current.serverTime, ranked.filter { it.first <= 100 }.map { it.second },
             ranked.firstOrNull { it.second.isMe }?.second?.rank, current.monthlyTaps, current.leaderboardOptIn, scope, metric, current.bestSeries)

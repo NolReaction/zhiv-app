@@ -49,7 +49,7 @@ test("the breeze travels over open water and fades before each calm interval", (
     }
     if (active) activeFrames++;
   }
-  assert.ok(activeFrames > 0 && activeFrames < 140, "passing gusts leave the river calm for most of the cycle");
+  assert.ok(activeFrames > 140 && activeFrames < 260, "visible wave packets recur without removing the calm intervals");
   for (const ripple of WIND_RIPPLES) {
     const start = 3 + ripple.delay;
     const first = windRipplePose(ripple, start + .001);

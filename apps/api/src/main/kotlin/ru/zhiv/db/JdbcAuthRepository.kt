@@ -43,11 +43,11 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
     private fun unauthorized(): Nothing = throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
     private fun invalid(): Nothing = throw AuthFailure("AUTH_EXPIRED", "Код или запрос входа недействителен. Начните вход заново.")
     private fun sessionUser(c: Connection, hash: ByteArray): UUID? = c.query(
-        "SELECT s.user_id FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL", hash,
+        "SELECT s.user_id FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.deleted_at IS NULL AND u.banned_at IS NULL", hash,
     ) { it.getObject(1, UUID::class.java) }
     private fun lockSessionUser(c: Connection, hash: ByteArray): UUID {
         val id = sessionUser(c, hash) ?: unauthorized()
-        c.query("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL FOR UPDATE", id) { true } ?: unauthorized()
+        c.query("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL FOR UPDATE", id) { true } ?: unauthorized()
         if (sessionUser(c, hash) != id) unauthorized()
         return id
     }
@@ -120,7 +120,8 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
         require(flow.intent == "login")
         lock(c,"identity:${flow.provider}:$subject")
         val owner=c.query("SELECT user_id FROM account_login_identities WHERE provider=? AND subject=?",flow.provider,subject){it.getObject(1,UUID::class.java)}
-        if(owner!=null)c.query("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL FOR UPDATE",owner){true} ?: invalid()
+        if(owner!=null) requireUnbannedAccount(c,owner)
+        if(owner!=null)c.query("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL FOR UPDATE",owner){true} ?: invalid()
         // Converting a verified login into a signup ticket must not reset proof age or jump over
         // a retirement that happened after the initial AUTH_NOT_LINKED result.
         val times=c.query("SELECT created_at,expires_at FROM account_login_flows WHERE token_hash=?",flow.tokenHash){it.getObject(1,OffsetDateTime::class.java) to it.getObject(2,OffsetDateTime::class.java)}
@@ -165,7 +166,8 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             if (owner != null && owner != current) throw AuthFailure("AUTH_ALREADY_LINKED", "Этот способ входа уже связан с другим профилем", 409)
             current
         } else if (owner != null) {
-            c.query("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL FOR UPDATE", owner) { true } ?: unauthorized()
+            requireUnbannedAccount(c,owner)
+            c.query("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL FOR UPDATE", owner) { true } ?: unauthorized()
             owner
         } else {
             if (flow.intent != "register") throw AuthFailure("AUTH_NOT_LINKED", "Этот способ входа пока не связан с профилем. Привяжите его в прежнем профиле или явно создайте новый.", 409)
@@ -176,6 +178,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             }
             allocated ?: error("Could not allocate public ID")
         }
+        requireUnbannedAccount(c,userId)
         // A lifecycle transaction may have retired or moved this exact identity while this
         // login waited for its owner's row lock. Never mint access from the pre-lock lookup.
         requireUnchangedIdentity()

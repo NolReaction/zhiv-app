@@ -1,5 +1,6 @@
 "use client";
 
+import { PlayerName } from "@/components/player-name";
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Trophy, Users } from "lucide-react";
 import { ApiError } from "@/lib/check-in-api";
@@ -123,7 +124,7 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
         : visibleData?.entries.length ? <ol className={styles.list} tabIndex={0} aria-label={`${scope === "friends" ? "Среди друзей" : "Топ 100"}: ${metric === "monthly_taps" ? "тапы за месяц" : "лучшая серия"}`} aria-busy={loading}>
           {visibleData.entries.map((entry, index) => <li key={`${scope}:${metric}:${index}`} data-me={entry.isMe || undefined}>
             <span className={styles.rank} data-podium={entry.rank <= 3 || undefined}>{entry.rank <= 3 ? <Trophy size={14} aria-hidden="true" /> : null}{entry.rank}</span>
-            <span className={styles.name}>{entry.displayName}{entry.isMe && <small>Вы</small>}</span>
+            <span className={styles.name}><PlayerName name={entry.displayName} tag={entry.tag} />{entry.isMe && <small>Вы</small>}</span>
             <strong>{entry.score.toLocaleString("ru-RU")}</strong>
           </li>)}
         </ol> : !error ? <p className={styles.empty}>{metric === "best_series" ? "Рекордов участников пока нет. Включите участие и сыграйте серию." : scope === "friends" ? "Пока нет участников среди друзей с игровыми тапами за этот месяц." : "В этом месяце ещё нет участников. Можно стать первым."}</p> : null}

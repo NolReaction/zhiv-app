@@ -1,5 +1,6 @@
 "use client";
 
+import { PlayerName } from "@/components/player-name";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch";
@@ -183,7 +184,7 @@ export function ProfileView({
             </div>
             <div className={styles.identity}>
               <div className={styles.identityTitle}>
-                <strong>{me.user.displayName}</strong>
+                <strong><PlayerName name={me.user.displayName} tag={me.user.tag} /></strong>
                 <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} />
               </div>
               <span>{me.user.publicId}</span>

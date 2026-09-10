@@ -135,7 +135,7 @@ private fun DirectInviteLinkSnapshot.toDto() = DirectInviteLinkResponse(
     inviteId.toString(), expiresAt.toInstant().toString(), replayed, serverTime.toInstant().toString(),
 )
 private fun DirectInvitePreviewSnapshot.toDto() = DirectInvitePreviewResponse(
-    PublicUserDto(inviter.publicId, inviter.displayName), expiresAt.toInstant().toString(),
+    PublicUserDto(inviter.publicId, inviter.displayName, inviter.tag), expiresAt.toInstant().toString(),
     serverTime.toInstant().toString(),
 )
 private fun DirectInviteRedeemSnapshot.toDto() = DirectInviteRedeemResponse(
@@ -145,7 +145,7 @@ private fun PersonSnapshot.toDto() = PersonDto(
     nickname = nickname,
     isFavorite = isFavorite,
     circleId = circleId.toString(),
-    user = PublicUserDto(user.publicId, user.displayName),
+    user = PublicUserDto(user.publicId, user.displayName, user.tag),
     connectedAt = connectedAt.toInstant().toString(),
     mySharingMode = mySharingMode.name,
     theirSharingMode = theirSharingMode.name,

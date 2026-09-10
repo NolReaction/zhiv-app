@@ -1,5 +1,6 @@
 package ru.zhiv.admin
 
+import ru.zhiv.identity.PlayerTag
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
@@ -34,6 +35,8 @@ data class AdminUser(
     val checkInCount: Long, val friendCount: Long, val lifetimeTaps: Long, val bestSeries: Long,
     val monthlyTaps: Long, val leaderboardOptIn: Boolean, val activeSessions: Long,
     val loginMethods: List<String>, val isAdmin: Boolean,
+    val tag: PlayerTag? = null, val bannedAt: String? = null, val watchlisted: Boolean = false,
+    val tapSignalAt: String? = null,
 )
 @Serializable
 data class AdminUsers(val serverTime: String, val total: Long, val offset: Int, val limit: Int, val users: List<AdminUser>)
@@ -46,6 +49,7 @@ data class AdminAuditEvent(
     val requestId: String, val actorPublicId: String, val targetPublicId: String, val action: String,
     val reason: String, val affectedSessions: Int, val createdAt: String,
     val rewardId: String? = null, val granted: Boolean? = null,
+    val details: String? = null,
 )
 @Serializable
 data class AdminAudit(val serverTime: String, val total: Long, val offset: Int, val limit: Int, val events: List<AdminAuditEvent>)
@@ -58,6 +62,9 @@ data class AdminGrantRequest(val requestId: String, val confirmationPublicId: St
 data class AdminGrantReceipt(val requestId: String, val kind: String, val rewardId: String, val granted: Boolean, val createdAt: String)
 
 interface AdminRepository {
+    suspend fun player(sessionHash: ByteArray, targetPublicId: String): AdminPlayer = throw UnsupportedOperationException()
+    suspend fun managePlayer(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminPlayerCommand): AdminPlayerReceipt = throw UnsupportedOperationException()
+    suspend fun tapActivity(sessionHash: ByteArray, targetPublicId: String): AdminTapActivity = throw UnsupportedOperationException()
     suspend fun rewards(sessionHash: ByteArray, targetPublicId: String): AdminRewards
     suspend fun grantReward(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminGrantRequest): AdminGrantReceipt
     suspend fun access(sessionHash: ByteArray): AdminAccess
