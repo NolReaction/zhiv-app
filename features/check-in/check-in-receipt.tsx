@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
-import { Check, CircleAlert, LoaderCircle, Server, WifiOff } from "lucide-react";
+import { Check, CircleAlert, Clock3, Server, WifiOff } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import styles from "./check-in-receipt.module.css";
 import glass from "@/components/glass-action.module.css";
@@ -23,7 +23,7 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
 }) {
   const titleId = useId();
   const gameIssue = gameStatus === "error" || gameStatus === "blocked";
-  const state = gameIssue ? "pending" : isSending || gameStatus === "syncing" ? "sending" : unconfirmed ? "pending" : !isOnline ? "offline" : lastCheckInAt ? "saved" : "empty";
+  const state = gameIssue ? "pending" : isSending ? "sending" : unconfirmed ? "pending" : !isOnline ? "offline" : lastCheckInAt ? "saved" : "empty";
   const title = gameIssue ? "Проверить соединение" : state === "sending" ? "Сохраняем данные" : state === "pending" ? "Нужна проверка отправки"
     : state === "offline" ? "Нет интернета" : state === "saved" ? "Отметка сохранена" : "Ваша первая отметка";
   const timestamp = lastCheckInAt ? new Date(lastCheckInAt).toLocaleString("ru-RU", {
@@ -35,9 +35,9 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
         <PopoverTrigger asChild>
           <button type="button" className={`${glass.button} ${styles.indicator}`} aria-label={`${title}. ${lastCheckInLabel}. Подробнее об отметке`}
             onPointerDown={event => event.stopPropagation()}>
-            <Server size={20} aria-hidden="true" className={styles.server} />
-            <span key={`${state}:${lastCheckInAt ?? "first"}`} className={styles.badge} aria-hidden="true">
-              {state === "sending" ? <LoaderCircle size={11} /> : state === "pending" ? <CircleAlert size={11} />
+            <Server size={20} aria-hidden="true" />
+            <span className={styles.badge} aria-hidden="true">
+              {state === "sending" ? <Clock3 size={11} /> : state === "pending" ? <CircleAlert size={11} />
                 : state === "offline" ? <WifiOff size={11} /> : state === "saved" ? <Check size={11} /> : null}
             </span>
           </button>

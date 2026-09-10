@@ -1,17 +1,17 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { House, Trees, Waves } from "lucide-react";
+import { Fish, House, Trees, Waves } from "lucide-react";
 import type { WorldState } from "./model";
+import { isFishingJourney, journeyTimeline, journeyPhaseLabel } from "./journey-timeline";
 import styles from "./journey-progress.module.css";
 
 type Journey = WorldState["journeys"][number];
 export function journeyFraction(journey: Journey, now: number) {
-  const start = Date.parse(journey.startedAt), end = Date.parse(journey.finishesAt);
-  return Math.max(0, Math.min(1, (now - start) / Math.max(1, end - start)));
+  return journeyTimeline(journey, now).progress;
 }
 export function journeyLeg(journey: Journey, now: number) {
-  const progress = journeyFraction(journey, now);
-  return { progress, returning: progress >= .5, position: progress < .5 ? progress * 2 : (1 - progress) * 2 };
+  const timeline = journeyTimeline(journey, now);
+  return { progress: timeline.progress, returning: timeline.phase === "returning" || timeline.phase === "home", position: timeline.position };
 }
 export function JourneyProgress({ journey, equipment, now, paused = false }: { journey: Journey; equipment: WorldState["equipment"]; now: number; paused?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -24,12 +24,21 @@ export function JourneyProgress({ journey, equipment, now, paused = false }: { j
     function draw(time: number) {
       const ctx = canvas.current?.getContext("2d"); if (!ctx) return;
       const value = source.current;
-      const { progress, returning, position } = journeyLeg(value.journey, value.now + time - value.received);
+      const clock = value.now + time - value.received;
+      const { progress, returning, position } = journeyLeg(value.journey, clock);
+      const fishing = isFishingJourney(value.journey) && journeyTimeline(value.journey, clock).phase === "fishing";
       ctx.clearRect(0, 0, 200, 42); ctx.imageSmoothingEnabled = false;
       ctx.setLineDash([2, 5]); ctx.lineWidth = 2; ctx.strokeStyle = "#92a57b66";
       ctx.beginPath(); ctx.moveTo(14, 32); ctx.lineTo(182, 32); ctx.stroke();
       ctx.strokeStyle = "#d0dfa4"; ctx.beginPath(); ctx.moveTo(returning ? 182 : 14, 32); ctx.lineTo(14 + position * 168, 32); ctx.stroke();
-      if (sprite) ctx.drawImage(sprite(progress < 1 ? "walk" : "greet", progress < 1 ? returning ? "left" : "right" : "front", media.matches ? 0 : Math.floor(time / 150) % 4, value.equipment), 2 + position * 160, 2, 32, 32);
+      if (sprite) ctx.drawImage(sprite(progress < 1 ? fishing ? "fish" : "walk" : "greet", progress < 1 ? returning ? "left" : "right" : "front", media.matches ? 0 : Math.floor(time / 150) % 4, value.equipment), 2 + position * 160, 2, 32, 32);
+      if (fishing) {
+        ctx.setLineDash([]); ctx.strokeStyle = "#d8c393"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(183, 23); ctx.lineTo(191, 9); ctx.stroke();
+        ctx.strokeStyle = "#dae5cc88"; ctx.lineWidth = .7;
+        ctx.beginPath(); ctx.moveTo(191, 9); ctx.lineTo(197, 34); ctx.stroke();
+        ctx.fillStyle = "#cb8060"; ctx.fillRect(196, 32, 2, 3);
+      }
     }
     function tick(time: number) {
       frame = 0;
@@ -44,9 +53,9 @@ export function JourneyProgress({ journey, equipment, now, paused = false }: { j
     document.addEventListener("visibilitychange", resume); media.addEventListener("change", resume);
     return () => { disposed = true; cancelAnimationFrame(frame); clearInterval(timer); document.removeEventListener("visibilitychange", resume); media.removeEventListener("change", resume); };
   }, []);
-  const { progress: fraction, returning } = journeyLeg(journey, now);
-  const river = journey.routeId === "brook_path", Destination = river ? Waves : Trees;
-  return <span className={styles.route} role="progressbar" aria-label={river ? "Путешествие к ручью и обратно" : "Прогулка по тропе и обратно"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)} aria-valuetext={fraction === 1 ? "Мохлик вернулся с находками" : `${returning ? "Возвращается домой" : river ? "Идёт к ручью" : "Идёт по лесной тропе"}. Пройдено ${Math.round(fraction * 100)}% пути`}>
+  const fraction = journeyFraction(journey, now);
+  const fishing = isFishingJourney(journey), river = journey.routeId === "brook_path", Destination = fishing ? Fish : river ? Waves : Trees;
+  return <span className={styles.route} role="progressbar" aria-label={fishing ? "Рыбалка с дорогой туда и обратно" : river ? "Путешествие к воде и обратно" : "Прогулка по тропе и обратно"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)} aria-valuetext={`${journeyPhaseLabel(journey, now)}. ${Math.round(fraction * 100)}% времени прогулки`}>
     <House size={20} aria-hidden /><canvas ref={canvas} width={200} height={42} aria-hidden /><Destination size={20} aria-hidden />
   </span>;
 }

@@ -4,7 +4,8 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import ts from "typescript";
-import { Children } from "react";
+import { Children, createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { createServer } from "vite";
 
@@ -14,6 +15,15 @@ after(() => vite.close());
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { DialogPortal } = await vite.ssrLoadModule("/components/ui/dialog.tsx");
 const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
+
+const { journeyTimeline, sceneJourney } = await vite.ssrLoadModule("/features/world/journey-timeline.ts");
+const { fishingFrame, fishingPosition, FISHING_PATH, FISHING_BOBBER } = await vite.ssrLoadModule("/features/world/fishing-journey.ts");
+const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
+const { pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
+const { resourceCountAt } = await vite.ssrLoadModule("/features/world/world-balances.tsx");
+const { CheckInReceipt } = await vite.ssrLoadModule("/features/check-in/check-in-receipt.tsx");
+
+const { BOAT_WRECK } = await vite.ssrLoadModule("/features/world/boat-wreck.ts");
 
 test("travel progress derives from absolute journey time and remains bounded after return", () => {
   const start = Date.parse("2026-09-08T12:00:00Z"), journey = { startedAt: new Date(start).toISOString(), finishesAt: new Date(start + 60000).toISOString() };
@@ -67,4 +77,66 @@ test("journey spends half its time walking to the destination and half returning
   assert.equal(at(30).position, 1); assert.equal(at(30).returning, true);
   assert.equal(at(45).position, .5); assert.equal(at(45).returning, true);
   assert.equal(at(60).position, 0); assert.equal(at(120).position, 0);
+});
+
+
+
+test("fishing includes preparation, walking, fishing and return for all four durations", () => {
+  const start = Date.parse("2026-09-10T12:00:00Z");
+  for (const minutes of [5, 15, 30, 60]) {
+    const duration = minutes * 60000;
+    const trip = { id: "saved-trip", routeId: `fishing_${minutes}`, startedAt: new Date(start).toISOString(), finishesAt: new Date(start + duration).toISOString() };
+    const at = elapsed => fishingFrame(trip, start + elapsed);
+    assert.equal(at(10000).walking, false);
+    assert.equal(at(30000).walking, true);
+    assert.equal(at(44999).phase, "outbound");
+    assert.equal(at(45000).phase, "fishing");
+    assert.equal(at(duration - 45001).phase, "fishing");
+    assert.equal(at(duration - 45000).phase, "returning");
+    assert.equal(at(duration).phase, "home");
+    for (const elapsed of [-1000, 0, 15000, 45000, duration - 45000, duration, duration + 60000]) {
+      const frame = at(elapsed);
+      assert.ok(frame.position >= 0 && frame.position <= 1);
+      const restored = JSON.parse(JSON.stringify(trip));
+      assert.deepEqual(fishingFrame(restored, start + elapsed), frame, "remounts use the same saved timestamps");
+      const still = fishingFrame(restored, start + elapsed, true);
+      assert.equal(still.x, frame.x); assert.equal(still.y, frame.y);
+      assert.equal(still.frame, 0); assert.equal(still.bob, 0); assert.equal(still.catchProgress, 0); assert.equal(still.casting, false);
+    }
+    for (const edge of [15000, 45000, duration - 45000, duration]) {
+      const before = at(edge - 1), after = at(edge);
+      assert.ok(Math.hypot(after.x - before.x, after.y - before.y) < .025, "phase changes never jump along the map");
+    }
+    assert.deepEqual({ x: at(duration).x, y: at(duration).y }, FOREST_MAP.clearing.spawn);
+    assert.equal(journeyTimeline(trip, start + duration).remaining, 0);
+  }
+});
+
+test("fishing route stays on land and casts beside the bank, clear of the wreck", () => {
+  for (let step = 0; step <= 1000; step++) assert.equal(pointInPolygon(fishingPosition(step / 1000), FOREST_MAP.water.hitArea), false);
+  assert.deepEqual(FISHING_PATH[0], FOREST_MAP.clearing.spawn);
+  assert.equal(pointInPolygon(FISHING_BOBBER, FOREST_MAP.water.hitArea), true);
+  const bank = FISHING_PATH.at(-1), boat = BOAT_WRECK.bounds;
+  assert.ok(bank.x - 24 > boat.x + boat.width, "the character fits beside the boat");
+  const done = { id: "done", routeId: "fishing_5", finishesAt: "2026-09-10T12:05:00Z" };
+  const active = { id: "active", routeId: "fishing_60", finishesAt: "2026-09-10T13:00:00Z" };
+  assert.equal(sceneJourney({ journeys: [done, active] }, Date.parse("2026-09-10T12:20:00Z")), active);
+});
+
+test("resource credit counts monotonically to the exact confirmed total", () => {
+  for (const [from, target] of [[0, 1], [12, 36], [3, 50000]]) {
+    const values = Array.from({ length: 101 }, (_, i) => resourceCountAt(from, target, i / 100));
+    assert.equal(values[0], from); assert.equal(values.at(-1), target);
+    values.forEach((value, i) => { assert.ok(Number.isInteger(value)); assert.ok(value <= target); if (i) assert.ok(value >= values[i - 1]); });
+  }
+  assert.equal(resourceCountAt(25, 7, 0), 7);
+  assert.equal(resourceCountAt(25, 25, .5), 25);
+});
+
+test("ordinary tap syncing keeps the saved receipt calm and real errors remain visible", () => {
+  const props = { lastCheckInAt: "2026-09-10T12:00:00Z", lastCheckInLabel: "Сегодня", timeZone: "UTC", isSending: false, unconfirmed: false, isOnline: true, onRetry() {} };
+  const markup = status => renderToStaticMarkup(createElement(CheckInReceipt, { ...props, gameStatus: status }));
+  for (const status of ["idle", "syncing"]) assert.match(markup(status), /data-state="saved"/);
+  for (const status of ["error", "blocked"]) assert.match(markup(status), /data-state="pending"/);
+  assert.doesNotMatch(markup("syncing"), /lucide-loader|animate-spin/);
 });

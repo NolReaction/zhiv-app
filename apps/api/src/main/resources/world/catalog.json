@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "dailySparkLimit": 60,
   "tapsPerSpark": 5,
   "houseUpgrades": [
@@ -33,6 +33,9 @@
   "routes": [
     {"id": "first_path", "name": "Первый выход", "description": "Заглянуть за знакомый куст и принести первые материалы.", "seconds": 60, "houseLevel": 1, "once": true, "sparks": 12, "wood": 8, "stone": 4, "finds": ["acorn"]},
     {"id": "forest_path", "name": "Тропа у дома", "description": "Тихая прогулка за ветками и лесными находками.", "seconds": 300, "houseLevel": 1, "once": false, "sparks": 6, "wood": 6, "stone": 2, "finds": ["feather", "fern_leaf", "winged_seed"]},
-    {"id": "brook_path", "name": "К ручью", "description": "Вода, гладкие камни и новые жители леса.", "seconds": 1800, "houseLevel": 2, "once": false, "sparks": 14, "wood": 8, "stone": 8, "finds": ["river_stone", "moon_moth"]}
+    {"id": "fishing_5", "name": "Рыбалка · 5 мин", "description": "Дойти до берега, порыбачить и принести речные находки домой.", "seconds": 300, "houseLevel": 2, "once": false, "sparks": 4, "wood": 2, "stone": 2, "finds": ["river_stone", "moon_moth"]},
+    {"id": "fishing_15", "name": "Рыбалка · 15 мин", "description": "Дойти до берега, порыбачить и принести речные находки домой.", "seconds": 900, "houseLevel": 2, "once": false, "sparks": 9, "wood": 5, "stone": 5, "finds": ["river_stone", "moon_moth"]},
+    {"id": "fishing_30", "name": "Рыбалка · 30 мин", "description": "Дойти до берега, порыбачить и принести речные находки домой.", "seconds": 1800, "houseLevel": 2, "once": false, "sparks": 14, "wood": 8, "stone": 8, "finds": ["river_stone", "moon_moth"]},
+    {"id": "fishing_60", "name": "Рыбалка · 60 мин", "description": "Дойти до берега, порыбачить и принести речные находки домой.", "seconds": 3600, "houseLevel": 2, "once": false, "sparks": 24, "wood": 14, "stone": 14, "finds": ["river_stone", "moon_moth"]}
   ]
 }

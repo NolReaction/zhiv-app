@@ -58,6 +58,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (boatArt) drawBoatWreck(ctx, boatArt);
     drawRouteProps(ctx);
     habitat.paintVisitors(ctx, "ground");
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, MAP_SIZE, MAP_SIZE);
+    ctx.rect(HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size); ctx.clip("evenodd");
+    habitat.paintJourney(ctx); ctx.restore();
     habitat.paintLighting(ctx);
     ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
     habitat.paintVisitors(ctx, "air");
@@ -155,6 +158,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   document.addEventListener("visibilitychange", visibility); visibility();
   return {
     control,
+    setTime(now: number) { habitat.setTime(now); },
     update(next: SceneOptions) {
       options = next;
       visibility();

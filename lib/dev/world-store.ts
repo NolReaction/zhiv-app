@@ -24,7 +24,7 @@ export function getDevWorld(token: string | undefined, now = Date.now()): WorldS
   const { owner, value } = profile(token, now);
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(),
     devTools: process.env.NODE_ENV === "development",
-    state: structuredClone(value.state), gifts: naturalItems(getDevItemStreak(owner, now)), catalogVersion: catalog.version as 1,
+    state: structuredClone(value.state), gifts: naturalItems(getDevItemStreak(owner, now)), catalogVersion: catalog.version as WorldSnapshot["catalogVersion"],
     dailySparksEarned: value.day === new Date(now).toISOString().slice(0, 10) ? value.earned : 0 };
 }
 function apply(state: WorldState, command: WorldCommand, now: number): string {

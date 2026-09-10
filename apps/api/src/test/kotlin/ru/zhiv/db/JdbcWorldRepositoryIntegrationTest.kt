@@ -18,6 +18,8 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.world.*
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
 
@@ -120,5 +122,79 @@ class JdbcWorldRepositoryIntegrationTest {
         assertEquals(HttpStatusCode.Conflict,post(worldJson.encodeToString(command.copy(ownerPublicId="XXXX-XXXX-XXXX"))).status)
         assertEquals(HttpStatusCode.OK,post(worldJson.encodeToString(command)).status)
         assertEquals("amber_scarf",world.snapshot(p.hash).state.equipment.neck)
+    }
+    @Test
+    fun `fishing modes persist full durations and credit only confirmed returns`() = runBlocking<Unit> {
+        val modes = listOf(
+            Triple("fishing_5", 300L, WorldResources(4, 2, 2)),
+            Triple("fishing_15", 900L, WorldResources(9, 5, 5)),
+            Triple("fishing_30", 1800L, WorldResources(14, 8, 8)),
+            Triple("fishing_60", 3600L, WorldResources(24, 14, 14)),
+        )
+        assertEquals(2, WorldRules.catalog.version)
+        for ((routeId, seconds, rewards) in modes) {
+            val p = player()
+            val initial = world.snapshot(p.hash)
+            val start = WorldCommand(UUID.randomUUID().toString(), p.publicId, initial.revision, "start_journey", routeId)
+            assertEquals("WORLD_HOUSE_REQUIRED", assertFailsWith<AuthFailure> { world.command(p.hash, start) }.code)
+            execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?", worldJson.encodeToString(initial.state.copy(houseLevel = 2)), p.id)
+            val started = world.command(p.hash, start)
+            val journey = started.snapshot.state.journeys.single()
+            assertEquals(routeId, journey.routeId)
+            assertEquals(2, journey.catalogVersion)
+            assertEquals(2, started.snapshot.catalogVersion)
+            assertEquals(rewards, journey.rewards)
+            assertEquals(listOf("river_stone", "moon_moth"), journey.finds)
+            assertEquals(Duration.ofSeconds(seconds), Duration.between(Instant.parse(journey.startedAt), Instant.parse(journey.finishesAt)))
+            assertTrue(world.command(p.hash, start).replayed)
+            assertEquals(journey, JdbcWorldRepository(source).snapshot(p.hash).state.journeys.single())
+            val claim = start.copy(requestId = UUID.randomUUID().toString(), expectedRevision = started.snapshot.revision, action = "claim_journey", target = journey.id)
+            assertEquals("WORLD_JOURNEY_NOT_READY", assertFailsWith<AuthFailure> { world.command(p.hash, claim) }.code)
+            assertEquals(WorldResources(), world.snapshot(p.hash).state.resources)
+            assertEquals("0", scalar("SELECT count(*) FROM world_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(claim.requestId)))
+            // Advance the saved trip, without sleeping or changing production clocks.
+            val completed = journey.copy(startedAt = "2000-01-01T00:00:00Z", finishesAt = Instant.parse("2000-01-01T00:00:00Z").plusSeconds(seconds).toString())
+            execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?", worldJson.encodeToString(started.snapshot.state.copy(journeys = listOf(completed))), p.id)
+            val other = secondDevice(p)
+            val returned = JdbcWorldRepository(source).snapshot(other)
+            assertEquals(WorldResources(), returned.state.resources)
+            assertEquals(completed, returned.state.journeys.single())
+            assertEquals(started.snapshot.revision, returned.revision)
+            val paid = JdbcWorldRepository(source).command(other, claim)
+            assertFalse(paid.replayed)
+            assertEquals(rewards, paid.snapshot.state.resources)
+            assertEquals(listOf("river_stone"), paid.snapshot.state.collection)
+            assertEquals(1L, paid.snapshot.state.completedJourneys)
+            assertTrue(paid.snapshot.state.journeys.isEmpty())
+            assertTrue(world.command(p.hash, claim).replayed)
+            assertEquals(paid.snapshot.state, world.snapshot(p.hash).state)
+            assertEquals("1", scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND source_key=?", p.id, "journey:${journey.id}"))
+        }
+    }
+
+    @Test
+    fun `saved catalog one brook trips remain claimable after retiring the route`() = runBlocking<Unit> {
+        assertTrue(WorldRules.catalog.routes.none { it.id == "brook_path" })
+        val p = player()
+        val initial = world.snapshot(p.hash)
+        val legacy = WorldJourney(UUID.randomUUID().toString(), "brook_path", "2000-01-01T00:00:00Z", "2000-01-01T00:30:00Z", WorldResources(14, 8, 8), listOf("river_stone", "moon_moth"), false, 1)
+        val saved = initial.state.copy(houseLevel = 2, resources = WorldResources(3, 4, 5), collection = listOf("river_stone"), firstJourneyCompleted = true, completedJourneys = 7, journeys = listOf(legacy))
+        execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?", worldJson.encodeToString(saved), p.id)
+        val restored = JdbcWorldRepository(source).snapshot(p.hash)
+        assertEquals(2, restored.catalogVersion)
+        assertEquals(1, restored.state.journeys.single().catalogVersion)
+        assertEquals(saved, restored.state)
+        val claim = WorldCommand(UUID.randomUUID().toString(), p.publicId, restored.revision, "claim_journey", legacy.id)
+        val paid = world.command(p.hash, claim)
+        assertEquals(WorldResources(17, 12, 13), paid.snapshot.state.resources)
+        assertEquals(listOf("moon_moth", "river_stone"), paid.snapshot.state.collection)
+        assertEquals(8L, paid.snapshot.state.completedJourneys)
+        assertTrue(paid.snapshot.state.firstJourneyCompleted)
+        assertTrue(paid.snapshot.state.journeys.isEmpty())
+        assertTrue(world.command(secondDevice(p), claim).replayed)
+        assertEquals("1", scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND source_key=?", p.id, "journey:${legacy.id}"))
+        assertEquals("WORLD_ROUTE", assertFailsWith<AuthFailure> {
+            world.command(p.hash, claim.copy(requestId = UUID.randomUUID().toString(), expectedRevision = paid.snapshot.revision, action = "start_journey", target = "brook_path"))
+        }.code)
     }
 }

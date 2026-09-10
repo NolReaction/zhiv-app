@@ -7,6 +7,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { createHabitat, HOME, BUSH, FRONT, INACTIVITY_SECONDS } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
+const mapManifest = await vite.ssrLoadModule("/features/world/map-manifest.ts");
 after(() => vite.close());
 const advance = (world, seconds) => { for (let i = 0; i < Math.ceil(seconds / .025); i++) world.update(.025); };
 function until(world, predicate, seconds = 150) {
@@ -351,4 +352,21 @@ test("presence handles the five-minute boundary, invalid clocks, corruption and 
   for (const raw of [null, "{", "null", "{}", saved(-10), JSON.stringify({ seenAt: 0 })]) assert.equal(decodePresence(raw, now), null);
   assert.equal(readPresence("no-window", now), null);
   assert.doesNotThrow(() => writePresence("no-window", { seenAt: now, inactiveFor: 0, resting: false, deepSleep: false }));
+});
+
+
+test("fishing preparation leaves the house before handing over and claim does not walk home twice", () => {
+  const world = sleeping();
+  const initial = { ...world.state.position };
+  world.setAway(true, true, false, true);
+  assert.deepEqual(world.state.position, initial);
+  assert.equal(world.state.travel, "departing");
+  until(world, state => state.travel === "away", 15);
+  const { FOREST_MAP } = mapManifest;
+  assert.ok(Math.abs(world.state.position.x - (FOREST_MAP.clearing.spawn.x - FOREST_MAP.homeCrop.x) / FOREST_MAP.homeCrop.size) < 1e-8);
+  const rendezvous = { ...world.state.position };
+  world.setAway(false, false);
+  assert.deepEqual(world.state.position, rendezvous);
+  assert.equal(world.state.activity, "greet");
+  assert.equal(world.state.travel, "home");
 });

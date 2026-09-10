@@ -27,7 +27,7 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
 @Serializable data class WorldSnapshot(
     val ownerPublicId: String, val revision: Long, val serverTime: String,
     val state: WorldState, val gifts: List<String> = emptyList(), val dailySparksEarned: Int = 0,
-    val catalogVersion: Int = 1,
+    val catalogVersion: Int = 2,
 )
 @Serializable data class WorldCommand(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,

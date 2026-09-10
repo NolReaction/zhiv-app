@@ -44,4 +44,26 @@ class WorldRulesTest {
             WorldRules.apply(WorldState(), command("dev_grant_resources"), now)
         }.code)
     }
+    @Test
+    fun `fishing claim becomes valid exactly when the complete outing ends`() {
+        for (minutes in listOf(5L, 15L, 30L, 60L)) {
+            val before = WorldState(houseLevel = 2)
+            val started = WorldRules.apply(before, command("start_journey").copy(target = "fishing_$minutes"), now).first
+            val journey = started.journeys.single()
+            val finish = now.plusSeconds(minutes * 60)
+            val claim = command("claim_journey").copy(target = journey.id)
+            assertEquals(finish, Instant.parse(journey.finishesAt))
+            assertEquals(before.resources, started.resources)
+            assertEquals("WORLD_JOURNEY_NOT_READY", assertFailsWith<AuthFailure> {
+                WorldRules.apply(started, claim, finish.minusNanos(1))
+            }.code)
+            val paid = WorldRules.apply(started, claim, finish).first
+            assertEquals(journey.rewards, paid.resources)
+            assertEquals(1L, paid.completedJourneys)
+            assertEquals(emptyList(), paid.journeys)
+            assertEquals("WORLD_JOURNEY_GONE", assertFailsWith<AuthFailure> {
+                WorldRules.apply(paid, claim, finish)
+            }.code)
+        }
+    }
 }

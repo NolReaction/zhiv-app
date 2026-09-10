@@ -1363,7 +1363,7 @@ export function CheckInApp() {
                   <GameLevelIcon level={clickerLevel.level} size={15} /><span>ур. {clickerLevel.level}</span>
                 </span>}
               </span>
-              <span>{me?.user.publicId}</span>
+              <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
             </span>
             <Copy size={16} />
           </button>

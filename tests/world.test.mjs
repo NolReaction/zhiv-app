@@ -76,9 +76,9 @@ test("route finds fill the collection without duplicates and unlock a wearable",
   }
   travel("first_path"); issue(p, "upgrade_house", "", time);
   for (let i = 0; i < 3; i++) travel("forest_path");
-  travel("brook_path"); const complete = travel("brook_path");
+  travel("fishing_30"); const complete = travel("fishing_30");
   assert.equal(complete.collection.length, 6); assert.ok(complete.inventory.includes("explorer_cap"));
-  assert.equal(travel("brook_path").collection.length, 6);
+  assert.equal(travel("fishing_30").collection.length, 6);
   issue(p, "equip", "explorer_cap", time); assert.equal(world.getDevWorld(p.token, time).state.equipment.head, "explorer_cap");
   issue(p, "build_workshop", "", time); issue(p, "craft", "berry_scarf", time);
   assert.throws(() => issue(p, "craft", "berry_scarf", time), { code: "WORLD_ITEM_OWNED" });
@@ -150,4 +150,31 @@ test("workshop upgrades charge once, stop at three and accept legacy built state
     assert.deepEqual(world.getDevWorld(p.token,now),saved);
     assert.deepEqual(saved.state.resources,{sparks:75,wood:130,stone:161});
   } finally {if(before===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=before;}
+});
+
+
+test("every fishing duration includes return time and needs an explicit, idempotent claim", () => {
+  for (const minutes of [5, 15, 30, 60]) {
+    const p = player();
+    assert.throws(() => issue(p, "start_journey", `fishing_${minutes}`), { code: "WORLD_HOUSE_REQUIRED" });
+    const intro = issue(p, "start_journey", "first_path").snapshot.state.journeys[0];
+    issue(p, "claim_journey", intro.id, now + 60_000); issue(p, "upgrade_house", "", now + 60_000);
+    const start = now + 60_000;
+    const before = world.getDevWorld(p.token, start).state.resources;
+    const started = issue(p, "start_journey", `fishing_${minutes}`, start);
+    const trip = started.snapshot.state.journeys[0], finish = start + minutes * 60_000;
+    assert.equal(Date.parse(trip.finishesAt), finish);
+    assert.equal(trip.catalogVersion, 2);
+    assert.deepEqual(started.snapshot.state.resources, before);
+    const claim = command(p, "claim_journey", trip.id, finish - 1);
+    assert.throws(() => world.commandDevWorld(p.token, claim, finish - 1), { code: "WORLD_JOURNEY_NOT_READY" });
+    assert.deepEqual(world.getDevWorld(p.token, finish).state.resources, before);
+    assert.equal(world.getDevWorld(p.token, finish).state.journeys.length, 1);
+    const paid = world.commandDevWorld(p.token, claim, finish);
+    for (const key of ["sparks", "wood", "stone"]) assert.equal(paid.snapshot.state.resources[key], before[key] + trip.rewards[key]);
+    assert.equal(paid.snapshot.state.journeys.length, 0);
+    assert.equal(world.commandDevWorld(p.token, claim, finish + 1).replayed, true);
+    assert.deepEqual(world.getDevWorld(p.token, finish + 1).state.resources, paid.snapshot.state.resources);
+  }
+  assert.equal(model.worldCatalog.routes.some(route => route.id === "brook_path"), false);
 });

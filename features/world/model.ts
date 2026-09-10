@@ -17,7 +17,7 @@ export const worldStateSchema = z.object({
 });
 export const worldSnapshotSchema = z.object({
   ownerPublicId: z.string().min(1), revision: count, serverTime: z.string().datetime(), state: worldStateSchema,
-  gifts: z.array(z.string()).max(100), dailySparksEarned: count, catalogVersion: z.literal(1), devTools: z.boolean().optional(),
+  gifts: z.array(z.string()).max(100), dailySparksEarned: count, catalogVersion: z.union([z.literal(1), z.literal(2)]), devTools: z.boolean().optional(),
 });
 export const worldCommandSchema = z.object({
   requestId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), ownerPublicId: z.string().min(1).max(40), expectedRevision: count,

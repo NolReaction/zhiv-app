@@ -1,6 +1,6 @@
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
-  | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present";
+  | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish";
 export type PixelDirection = "front" | "back" | "left" | "right";
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
@@ -50,7 +50,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(21, 41, 7, 3, c.shade); oval(20, 40, 6, 2, c.cream); rect(17, 39, 5, 1, c.light);
     oval(33, 38, 7, 6, c.mossDark); oval(33, 37, 6, 5, c.moss); rect(32, 34, 4, 2, c.mossLight);
   } else {
-    const crouch = pose === "crouch" ? 4 : pose === "sniff" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0;
+    const crouch = pose === "crouch" ? 4 : pose === "sniff" || pose === "fish" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0;
     const stretch = pose === "stretch" ? -3 : pose === "yawn" ? [0, -2, -3, 0][frame % 4]
       : pose === "sneeze" ? [-2, -1, 4, 1][frame % 4] : pose === "wonder" ? -2 : 0;
     const faceY = 20 + bob + crouch + stretch;
@@ -105,7 +105,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
         rect(15 + look, faceY + 4, 3, 2, c.shade); rect(30 + look, faceY + 4, 3, 2, c.shade);
       }
     }
-    const feeding = ["reach", "hold", "chew", "carry", "toss", "present"].includes(pose);
+    const feeding = ["reach", "hold", "chew", "carry", "toss", "present", "fish"].includes(pose);
     const armY = pose === "stretch" || pose === "jump" ? 23 : pose === "reach" ? 35 + frame % 4
       : pose === "hold" ? [37, 34, 31, 29][frame % 4] : pose === "chew" ? 29 + frame % 2
         : pose === "carry" ? 30 + bob : pose === "toss" ? [28, 17, 21, 29][frame % 4]

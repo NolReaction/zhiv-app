@@ -206,7 +206,7 @@
   white-space: nowrap;
 }
 
-.identityText > span {
+.identityText > .publicId {
   color: #82877b;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;

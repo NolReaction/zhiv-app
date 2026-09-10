@@ -166,3 +166,9 @@
 .destination > svg { color: #c8dba8; }
 .destination h2 { font-size: 1.5rem; margin: 0; }
 .destination p { font-size: 1rem; line-height: 1.6; color: #b5c2a8; margin: 0 0 8px; }
+
+.routeChooser > .fishingPreview { display: block; padding: 0; aspect-ratio: 340 / 210; background-size: 368.824%; background-position: 87.527% 77.586%; image-rendering: pixelated; }
+.fishingModes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 14px 0 8px; }
+.fishingModes button { min-height: 44px; padding: 8px 4px; font-size: .875rem; }
+.fishingModes button[aria-pressed="true"] { border-color: #d1df9e; background: #34432c; color: #f0f4d6; box-shadow: inset 0 0 0 1px #d1df9e; }
+.tripStatus { margin: 2px 0 12px; color: #d6e0b9; font-size: .875rem; text-align: center; }

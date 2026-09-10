@@ -290,19 +290,29 @@ export function createHabitat() {
     const exit = walk(departureExit, from, "depart"); exit.duration = Math.max(2.8, exit.duration * .65);
     plan([...steps, { activity: "greet", duration: 1.15, layer: "clearing" }, exit]);
   }
-  function setAway(value: boolean, animate = true, river = false) {
-    if (value === away) return;
+  function setAway(value: boolean, animate = true, river = false, stageAtHome = false) {
+    if (value === away) {
+      if (value && !animate && state.travel === "departing") {
+        clearMoment(); queue = []; departurePending = false; state.travel = "away";
+      }
+      return;
+    }
     const wasAway = state.travel === "away";
     away = value; visitPending = false; playPending = false; homePending = false; destination = null;
     state.visiting = false; state.gathering = 0; state.wakeTapsNeeded = 1; state.wakeTaps = 0;
     state.resting = false; state.inactiveFor = 0;
-    if (value) departureExit = river ? { x: .80, y: .53 } : { x: .80, y: .73 };
+    if (value) departureExit = stageAtHome ? { ...START } : river ? { x: .80, y: .53 } : { x: .80, y: .73 };
     if (value) {
       state.travel = animate ? "departing" : "away";
       if (!animate) { clearMoment(); queue = []; departurePending = false; }
       else if (ATOMIC.has(state.activity)) departurePending = true;
       else startDeparture();
     } else {
+      if (!animate) {
+        clearMoment(); departurePending = false; state.travel = "home";
+        state.position = { ...START }; state.size = sizeAt(START); state.layer = "clearing"; state.lift = 0;
+        plan([{ activity: "greet", duration: 4, layer: "clearing" }]); return;
+      }
       if (!wasAway && ATOMIC.has(state.activity)) { departurePending = false; state.travel = "home"; visitPending = true; return; }
       clearMoment(); departurePending = false; state.travel = "home";
       if (wasAway) { state.position = { ...departureExit }; state.size = sizeAt(state.position); state.layer = "clearing"; }

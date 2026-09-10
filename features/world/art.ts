@@ -7,6 +7,5 @@ export const WORLD_ART = {
   boatWreck: "/world/objects/boat-wreck-v1.png",
   routes: {
     trail: "/world/routes/trail.webp",
-    river: "/world/routes/river.webp",
   },
 } as const;
