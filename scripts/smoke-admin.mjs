@@ -150,7 +150,11 @@ assert.equal(new Set([...users.data.users, ...secondPage.data.users].map((user) 
 const adminRow = (await api("GET", "/api/v1/admin/users?q=" + admin.publicId, { cookie: admin.cookie })).data.users[0];
 assert.equal(adminRow.isAdmin, true);
 assert.deepEqual(adminRow.loginMethods, ["email"]);
-assert.deepEqual(Object.keys(adminRow).sort(), ["activeSessions", "bestSeries", "checkInCount", "createdAt", "displayName", "friendCount", "isAdmin", "lastCheckInAt", "leaderboardOptIn", "lifetimeTaps", "loginMethods", "monthlyTaps", "publicId"]);
+assert.deepEqual(Object.keys(adminRow).sort(), ["activeSessions", "bannedAt", "bestSeries", "checkInCount", "createdAt", "displayName", "friendCount", "isAdmin", "lastCheckInAt", "leaderboardOptIn", "lifetimeTaps", "loginMethods", "monthlyTaps", "publicId", "tag", "tapSignalAt", "watchlisted"]);
+assert.equal(adminRow.tag, null);
+assert.equal(adminRow.bannedAt, null);
+assert.equal(adminRow.tapSignalAt, null);
+assert.equal(adminRow.watchlisted, false);
 assert.equal(JSON.stringify(adminRow).includes("admin-primary@example.invalid"), false);
 assert.equal((await api("GET", "/api/v1/admin/users?q=%25_", { cookie: admin.cookie })).data.total, 0);
 await api("GET", "/api/v1/admin/users?limit=101", { cookie: admin.cookie, expected: 400 });
@@ -204,6 +208,47 @@ await api("POST", grantPath, { cookie: admin.cookie, body: achievementGrant });
 assert.equal((await api("GET", "/api/v1/game/achievements?catalog=3", { cookie: freshCookie })).data.achievements.find(item => item.id === "ten_thousand_series").progress, 10000);
 assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 3);
 
+// Exercise moderation through HTTPS using the restricted production database role.
+const playerPath = `/api/v1/admin/users/${target.publicId}/player`;
+const managePath = `/api/v1/admin/users/${target.publicId}/manage`;
+const clicksPath = `/api/v1/admin/users/${target.publicId}/tap-activity`;
+for (const privatePath of [playerPath, clicksPath]) {
+  await api("GET", privatePath, { expected: 401 });
+  await api("GET", privatePath, { cookie: ordinary.cookie, expected: 403 });
+}
+const beforeManagement = await api("GET", playerPath, { cookie: admin.cookie });
+const management = (action, extra = {}) => ({ requestId: randomUUID(), confirmationPublicId: target.publicId,
+  reason: "CI isolated moderation validation", action, ...extra });
+const resourceGrant = management("grant_resource", { target: "wood", amount: 25 });
+await api("POST", managePath, { cookie: ordinary.cookie, body: resourceGrant, expected: 403 });
+await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant, source: "https://untrusted.invalid", expected: 403 });
+const resourceReceipt = await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant });
+assert.equal(resourceReceipt.data.changed, true);
+assert.deepEqual((await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant })).data, resourceReceipt.data);
+assert.equal((await api("GET", "/api/v1/world", { cookie: freshCookie })).data.state.resources.wood,
+  beforeManagement.data.world.resources.wood + 25);
+const tag = { text: "Tester", color: "blue" };
+await api("POST", managePath, { cookie: admin.cookie, body: management("set_tag", { tag }) });
+assert.deepEqual((await api("GET", "/api/v1/me", { cookie: freshCookie })).data.user.tag, tag);
+const clicks = await api("GET", clicksPath, { cookie: admin.cookie });
+assert.equal(clicks.headers["cache-control"], "no-store");
+assert.deepEqual(clicks.data.windows.map(window => window.seconds), [10, 30, 60, 1800]);
+assert.equal(clicks.data.analysis.status, "insufficient_data");
+assert.equal(sql(`SELECT sum(received_taps) FROM game_tap_activity_seconds WHERE user_id=(SELECT id FROM app_users WHERE public_id='${target.publicId}');`), "9");
+const ban = management("ban");
+const banned = await api("POST", managePath, { cookie: admin.cookie, body: ban });
+assert.equal(banned.data.changed, true);
+await api("GET", "/api/v1/me", { cookie: freshCookie, expected: 401 });
+assert.ok((await api("GET", playerPath, { cookie: admin.cookie })).data.bannedAt);
+await api("POST", managePath, { cookie: admin.cookie, body: management("unban") });
+assert.deepEqual((await api("POST", managePath, { cookie: admin.cookie, body: ban })).data, banned.data);
+assert.equal((await api("GET", playerPath, { cookie: admin.cookie })).data.bannedAt, null);
+await api("GET", "/api/v1/me", { cookie: freshCookie, expected: 401 });
+const unbannedCookie = addSession(target.publicId);
+assert.deepEqual((await api("GET", "/api/v1/me", { cookie: unbannedCookie })).data.user.tag, tag);
+assert.equal((await api("GET", "/api/v1/game/progress", { cookie: unbannedCookie })).data.lifetimeTaps, 9);
+assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 7);
+
 // Two 15-second scrapes are required for rate(). The API cache lasts 10 seconds.
 // Keep a hard wall-clock deadline and print only the readiness result, not raw metrics.
 const deadline = performance.now() + 60_000;
@@ -231,4 +276,4 @@ while (performance.now() < deadline) {
   await delay(Math.max(0, Math.min(2_000, deadline - performance.now())));
 }
 assert.ok(monitoringReady, "Real API/node scrapes and CPU, memory, disk values must appear within 60 seconds");
-console.log("Admin production smoke passed: private authorization, restricted SQL grants, statistics, idempotent session revocation, audit, internal metrics and real host monitoring.");
+console.log("Admin production smoke passed: authorization, restricted SQL grants, tags, bans, tap telemetry, idempotent audit, internal metrics and real host monitoring.");
