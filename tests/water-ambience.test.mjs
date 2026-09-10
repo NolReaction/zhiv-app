@@ -7,7 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { FISH_PATROLS, WATER_RIPPLES, fishPose } = await vite.ssrLoadModule("/features/world/water-ambience.ts");
+const { FISH_PATROLS, WATER_RIPPLES, RAIN_IMPACTS, fishPose, fishSurfaceEvent, drawWaterAmbience } = await vite.ssrLoadModule("/features/world/water-ambience.ts");
+const { BIRD_FLIGHTS, birdFlightPose, drawBirdAmbience } = await vite.ssrLoadModule("/features/world/bird-ambience.ts");
 const { mapPlaceAt } = await vite.ssrLoadModule("/features/world/map-layout.ts");
 
 test("fish bodies and fins stay underwater for their entire patrol", () => {
@@ -29,5 +30,62 @@ test("expanding ripples remain inside the shoreline", () => {
   for (const ripple of WATER_RIPPLES) for (let step = 0; step < 36; step++) {
     const angle = step * Math.PI / 18;
     assert.equal(mapPlaceAt({ x: ripple.x + Math.cos(angle) * 14, y: ripple.y + Math.sin(angle) * 5 }), "fishing");
+  }
+});
+
+function drawing() {
+  const calls = [];
+  const ctx = new Proxy({}, { get: (_, name) => (...args) => { calls.push([name, ...args]); },
+    set: (_, name, value) => { calls.push([name, value]); return true; } });
+  return { ctx, calls };
+}
+
+test("rain impacts stay on water, appear only in rain, and freeze in reduced motion", () => {
+  assert.ok(RAIN_IMPACTS.length > 20, "rain reaches the whole open river");
+  for (const point of RAIN_IMPACTS) for (let step = 0; step < 36; step++) {
+    const angle = step * Math.PI / 18;
+    assert.equal(mapPlaceAt({ x: point.x + Math.cos(angle) * 8, y: point.y + Math.sin(angle) * 3 }), "fishing");
+  }
+  const dry = drawing(), rain = drawing();
+  drawWaterAmbience(dry.ctx, 12, false, 0); drawWaterAmbience(rain.ctx, 12, false, 1);
+  assert.ok(rain.calls.filter(call => call[0] === "ellipse").length > dry.calls.filter(call => call[0] === "ellipse").length);
+  const first = drawing(), later = drawing();
+  drawWaterAmbience(first.ctx, 12, true, 1); drawWaterAmbience(later.ctx, 145, true, 1);
+  assert.deepEqual(first.calls, later.calls, "reduced motion has no swimming, raindrop or splash animation");
+});
+
+test("fish surface separately, land smoothly and leave their splash rings inside water", () => {
+  let activeFrames = 0;
+  for (let step = 0; step < 2080; step++) {
+    const seconds = step / 10;
+    const events = FISH_PATROLS.map(patrol => fishSurfaceEvent(patrol, seconds)).filter(Boolean);
+    assert.ok(events.length <= 1, "surface jumps must not become constant synchronized splashing");
+    if (events.length) activeFrames++;
+    for (const event of events) {
+      for (const point of [event.takeoff, event.landing]) for (let angle = 0; angle < Math.PI * 2; angle += .25) {
+        assert.equal(mapPlaceAt({ x: point.x + Math.cos(angle) * 17, y: point.y + Math.sin(angle) * 6 }), "fishing");
+      }
+    }
+  }
+  assert.ok(activeFrames / 2080 < .25, "the river is quiet most of the time");
+  for (const patrol of FISH_PATROLS) {
+    assert.equal(fishSurfaceEvent(patrol, patrol.surfaceAt).lift, 0);
+    assert.ok(fishSurfaceEvent(patrol, patrol.surfaceAt + .525).lift > 8.9);
+    assert.ok(fishSurfaceEvent(patrol, patrol.surfaceAt + 1.05).lift < 1e-8);
+  }
+});
+
+test("birds visit in small daytime flocks and disappear for night, rain and reduced motion", () => {
+  const daytime = drawing(); drawBirdAmbience(daytime.ctx, 12, false, 0, 0);
+  assert.ok(daytime.calls.some(call => call[0] === "fillRect"));
+  for (const [reduced, dusk, rain] of [[true, 0, 0], [false, 1, 0], [false, 0, 1]]) {
+    const hidden = drawing(); drawBirdAmbience(hidden.ctx, 12, reduced, dusk, rain);
+    assert.equal(hidden.calls.length, 0);
+  }
+  for (const flight of BIRD_FLIGHTS) {
+    assert.equal(birdFlightPose(flight, flight.startsAt - .01, 0), null);
+    assert.equal(birdFlightPose(flight, flight.startsAt, 0).opacity, 0);
+    assert.ok(birdFlightPose(flight, flight.startsAt + flight.duration - .01, 0).opacity < .01);
+    assert.equal(birdFlightPose(flight, flight.startsAt + flight.duration + .01, 0), null);
   }
 });

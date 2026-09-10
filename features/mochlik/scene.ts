@@ -23,7 +23,7 @@ import { propBehindBody, drawDecor, drawProp, drawWeather, drawMomentAccents } f
 const WEATHER_BOUNDS = { x: -HOME_AREA.x * HOME_CANVAS_SIZE / HOME_AREA.size, y: -HOME_AREA.y * HOME_CANVAS_SIZE / HOME_AREA.size, width: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size, height: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size };
 
 export type SceneOptions = { lampOn: boolean; dusk: boolean; paused: boolean; reducedMotion: boolean; view?: "circle" | "world"; backgrounded?: boolean; presenceKey?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[] };
-export type HabitatScene = { configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; dispose: () => void };
+export type HabitatScene = { configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; ambience: () => { rain: number; dusk: number }; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; dispose: () => void };
 type Callbacks = { activity: (activity: Activity) => void; ready: () => void; failure: (error?: unknown) => void; rendered?: () => void };
 function loadArt() { return loadHabitatImage(WORLD_ART.home); }
 
@@ -152,7 +152,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       ctx.fillStyle = "#dfbe82";
       for (let i = 0; i < 3; i++) ctx.fillRect(x - 3 + i * 3, y - Math.round(size * .35) + Math.floor((t * 6 + i) % 4), 1, 1);
     }
-    drawSceneShade(ctx, dusk, state.rain, width);
+    drawSceneShade(ctx, dusk, state.rain, width, width, HOME_AREA);
     drawLanternLight(ctx, lampGlow, dusk);
     drawInsects(ctx, state, dusk, options.reducedMotion);
     if (options.view !== "world") drawWeather(ctx, state, options.reducedMotion, false, WEATHER_BOUNDS);
@@ -291,6 +291,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
         && Math.abs(x - state.position.x) < state.size * .45
         && y > state.position.y - state.size && y < state.position.y;
     },
+    ambience() { return { rain: world.state.rain, dusk }; },
     paintLighting(context) {
       if (disposed) return;
       drawSceneShade(context, dusk, world.state.rain, MAP_SIZE);

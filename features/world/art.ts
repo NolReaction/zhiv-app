@@ -4,6 +4,7 @@ export const WORLD_ART = {
   map: FOREST_MAP.image,
   home: FOREST_MAP.image,
   homeDetail: FOREST_MAP.homeDetail.image,
+  boatWreck: "/world/objects/boat-wreck-v1.png",
   routes: {
     trail: "/world/routes/trail.webp",
     river: "/world/routes/river.webp",

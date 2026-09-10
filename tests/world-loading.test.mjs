@@ -35,6 +35,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const house={dataset:{kind:'house',...MAP_PLACES.house.marker},style:{}};
   const surface=canvas();
   const engine=await createMapEngine(surface,options,()=>{},[bush,house]);assert.equal(observed,3);
+  finish(WORLD_ART.boatWreck);await flush();
   const detail=pending.find(item=>item.path===WORLD_ART.homeDetail);assert.ok(detail);
   pending.splice(pending.indexOf(detail),1);detail.image.onerror();await flush();
   assert.equal(observed,3,'failed detail keeps the base map and character mounted');

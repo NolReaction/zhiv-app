@@ -39,7 +39,7 @@ test("lantern emits only at night, with separate soft clearing and glass falloff
 });
 
 
-test("daytime glass keeps texture through multiply and night exposure remains readable", () => {
+test("daytime glass keeps texture; dark night receives separate cool moonlight", () => {
   const fills = [];
   const ctx = new Proxy({ createRadialGradient: () => ({ addColorStop() {} }),
     fillRect() { fills.push({ mode: this.globalCompositeOperation, color: this.fillStyle }); } },
@@ -47,6 +47,7 @@ test("daytime glass keeps texture through multiply and night exposure remains re
   drawLanternGlass(ctx, 1); assert.equal(fills.length, 0);
   drawLanternGlass(ctx, 0); assert.equal(fills.length, 1); assert.equal(fills[0].mode, "multiply");
   fills.length = 0; drawSceneShade(ctx, 1, 0, 256);
-  assert.ok(NIGHT_SHADE > .15 && NIGHT_SHADE <= .35, "night remains distinct without concealing gameplay");
-  assert.equal(fills[0].color, `rgba(15,27,48,${NIGHT_SHADE})`);
+  assert.ok(NIGHT_SHADE >= .5 && NIGHT_SHADE < .65, "night returns to a dark base with lit clearings");
+  assert.equal(fills[0].color, `rgba(8,17,37,${NIGHT_SHADE})`);
+  assert.ok(fills.some(fill => fill.mode === "screen"), "moonlight opens up the dark base");
 });

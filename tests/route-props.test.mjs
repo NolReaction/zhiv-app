@@ -16,7 +16,7 @@ test("route markers stay on land and torch light does not clip at the home tile"
   for (const at of ROUTE_TORCHES) {
     assert.notEqual(mapPlaceAt(at), "fishing");
     const dx = Math.max(HOME_AREA.x - at.x, 0, at.x - HOME_AREA.x - HOME_AREA.size);
-    const dy = Math.max(HOME_AREA.y - (at.y - 20), 0, at.y - 20 - HOME_AREA.y - HOME_AREA.size);
+    const dy = Math.max(HOME_AREA.y - (at.y - at.height - 2), 0, at.y - at.height - 2 - HOME_AREA.y - HOME_AREA.size);
     assert.ok(Math.hypot(dx, dy) > TORCH_RADIUS, "torch pool remains outside detailed tile");
   }
 });
@@ -31,4 +31,5 @@ test("daytime torches emit nothing; reduced motion draws identical still flames"
   assert.deepEqual(render(0, 20, false), []);
   assert.ok(render(1, 20, true).length > 0);
   assert.deepEqual(render(1, 20, true), render(1, 123, true));
+  assert.notDeepEqual(render(1, 20, false), render(1, 20.25, false), "burning flame changes silhouette");
 });

@@ -1,13 +1,36 @@
 import { HOUSE_ANCHORS } from "./home-layout";
+import type { MapPoint } from "@/features/world/map-manifest";
 
-export const NIGHT_SHADE = .30;
+export const NIGHT_SHADE = .56;
 const bounded = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+const moonPools = [
+  { x: 340, y: 280, radius: 290, light: .17 },
+  { x: 623, y: 655, radius: 220, light: .20 },
+  { x: 960, y: 670, radius: 270, light: .15 },
+  { x: 1060, y: 1080, radius: 360, light: .23 },
+];
 
-/** The same readable moonlit exposure is used for both the home and the region. */
-export function drawSceneShade(ctx: CanvasRenderingContext2D, night: number, rain: number, width: number, height = width) {
+/** Moonlight belongs to the map, so a home crop samples exactly the same light.
+ * Canopies remain dark while open paths, the clearing and water catch cool light. */
+export function drawSceneShade(ctx: CanvasRenderingContext2D, night: number, rain: number, width: number, height = width, origin: MapPoint = { x: 0, y: 0 }) {
+  const dusk = bounded(night), cloud = bounded(rain);
   ctx.save();
-  ctx.fillStyle = `rgba(15,27,48,${bounded(night) * NIGHT_SHADE})`; ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = `rgba(69,105,125,${bounded(rain) * .07})`; ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = `rgba(8,17,37,${dusk * NIGHT_SHADE})`; ctx.fillRect(0, 0, width, height);
+  if (dusk > .01) {
+    ctx.beginPath(); ctx.rect(0, 0, width, height); ctx.clip();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = dusk * (1 - cloud * .35);
+    for (const pool of moonPools) {
+      const x = pool.x - origin.x, y = pool.y - origin.y, radius = pool.radius;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      glow.addColorStop(0, `rgba(137,176,216,${pool.light})`);
+      glow.addColorStop(.42, `rgba(112,154,203,${pool.light * .68})`);
+      glow.addColorStop(1, "rgba(94,137,195,0)");
+      ctx.fillStyle = glow; ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    }
+  }
+  ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+  ctx.fillStyle = `rgba(69,105,125,${cloud * .07})`; ctx.fillRect(0, 0, width, height);
   ctx.restore();
 }
 
