@@ -1,6 +1,6 @@
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
-  | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish";
+  | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
@@ -26,7 +26,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       rect(x - half, y + row, half * 2 + 1, 1, color);
     }
   };
-  const walking = pose === "walk" || pose === "carry";
+  const walking = pose === "walk" || pose === "carry" || pose === "fishing-walk";
   const c = appearance?.palette === "fern" ? { ...colors, moss: "#49816b", mossLight: "#7fb99a", mossDark: "#345649" }
     : appearance?.palette === "autumn" ? { ...colors, moss: "#b27b42", mossLight: "#d8ae63", mossDark: "#7a5637" } : colors;
   const step = walking ? [0, -1, 0, 1][frame % 4] : 0;
@@ -105,7 +105,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
         rect(15 + look, faceY + 4, 3, 2, c.shade); rect(30 + look, faceY + 4, 3, 2, c.shade);
       }
     }
-    const feeding = ["reach", "hold", "chew", "carry", "toss", "present", "fish"].includes(pose);
+    const fishing = pose === "fish" || pose === "fishing-walk";
+    const feeding = fishing || ["reach", "hold", "chew", "carry", "toss", "present"].includes(pose);
     const armY = pose === "stretch" || pose === "jump" ? 23 : pose === "reach" ? 35 + frame % 4
       : pose === "hold" ? [37, 34, 31, 29][frame % 4] : pose === "chew" ? 29 + frame % 2
         : pose === "carry" ? 30 + bob : pose === "toss" ? [28, 17, 21, 29][frame % 4]
@@ -113,7 +114,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     if (direction === "back") drawTail();
     // Hands holding an object cannot show through the back either.
     const frontHands = feeding && direction !== "back";
-    const leftHand = frontHands ? 19 : 14, rightHand = frontHands ? 29 : 34;
+    const leftHand = fishing && direction === "left" ? 12 : frontHands ? 19 : 14;
+    const rightHand = fishing && direction !== "left" ? 36 : frontHands ? 29 : 34;
     const swing = pose === "walk" ? step : 0;
     const armShade = direction === "back" ? c.mossDark : c.shade;
     const armLight = direction === "back" ? c.moss : c.cream;

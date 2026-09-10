@@ -17,13 +17,15 @@ const { DialogPortal } = await vite.ssrLoadModule("/components/ui/dialog.tsx");
 const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
 
 const { journeyTimeline, sceneJourney } = await vite.ssrLoadModule("/features/world/journey-timeline.ts");
-const { fishingFrame, fishingPosition, FISHING_PATH, FISHING_BOBBER } = await vite.ssrLoadModule("/features/world/fishing-journey.ts");
+const { fishingFrame, fishingPosition, FISHING_PATH, FISHING_BOBBER, FISHING_FOREGROUND } = await vite.ssrLoadModule("/features/world/fishing-journey.ts");
 const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
 const { pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
 const { resourceCountAt } = await vite.ssrLoadModule("/features/world/world-balances.tsx");
 const { CheckInReceipt } = await vite.ssrLoadModule("/features/check-in/check-in-receipt.tsx");
 
 const { BOAT_WRECK } = await vite.ssrLoadModule("/features/world/boat-wreck.ts");
+
+const { fishingTackle } = await vite.ssrLoadModule("/features/world/fishing-tackle.ts");
 
 test("travel progress derives from absolute journey time and remains bounded after return", () => {
   const start = Date.parse("2026-09-08T12:00:00Z"), journey = { startedAt: new Date(start).toISOString(), finishesAt: new Date(start + 60000).toISOString() };
@@ -139,4 +141,36 @@ test("ordinary tap syncing keeps the saved receipt calm and real errors remain v
   for (const status of ["idle", "syncing"]) assert.match(markup(status), /data-state="saved"/);
   for (const status of ["error", "blocked"]) assert.match(markup(status), /data-state="pending"/);
   assert.doesNotMatch(markup("syncing"), /lucide-loader|animate-spin/);
+});
+
+
+test("the visible southeast passage never clips the character under the ground", () => {
+  for (let step = 0; step <= 1000; step++) {
+    const feet = fishingPosition(step / 1000);
+    for (const x of [-8, 0, 8]) for (const y of [-34, -22, -8]) {
+      assert.equal(FISHING_FOREGROUND.some(polygon => pointInPolygon({ x: feet.x + x, y: feet.y + y }, polygon)), false,
+        `body remains visible at ${feet.x},${feet.y}`);
+    }
+  }
+  assert.ok(FISHING_FOREGROUND.some(polygon => pointInPolygon({ x: 1020, y: 914 }, polygon)), "the actual foreground reeds retain their depth");
+});
+
+test("the rod stays in the leading hand and beside the face on both walking legs", () => {
+  const start = Date.parse("2026-09-10T12:00:00Z");
+  const journey = { id: "rod-test", routeId: "fishing_5", startedAt: new Date(start).toISOString(), finishesAt: new Date(start + 300000).toISOString() };
+  for (const time of [16000, 16150, 16300, 16450, 45000, 45900, 46800, 72000, 110000, 260000, 260150, 260300, 260450]) {
+    const state = fishingFrame(journey, start + time), rod = fishingTackle(state);
+    assert.equal(rod.grip.x, state.x + rod.side * 12);
+    assert.ok((rod.tip.x - rod.grip.x) * rod.side > 0, "carry tip never crosses the face toward the opposite shoulder");
+    for (const [from, to] of [[rod.grip, rod.lower], [rod.lower, rod.upper], [rod.upper, rod.bend], [rod.bend, rod.tip]]) {
+      for (let step = 0; step <= 30; step++) {
+        const x = from.x + (to.x - from.x) * step / 30 - state.x;
+        const y = from.y + (to.y - from.y) * step / 30 - state.y;
+        assert.ok(!(Math.abs(x) < 13 && y > -39 && y < -22), "shaft cannot cover eyes or muzzle");
+      }
+    }
+  }
+  const first = fishingTackle(fishingFrame(journey, start + 60000, true));
+  const later = fishingTackle(fishingFrame(journey, start + 120000, true));
+  assert.deepEqual(first, later, "reduced motion keeps the waiting rod still");
 });
