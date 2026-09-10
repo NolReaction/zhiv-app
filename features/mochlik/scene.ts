@@ -1,9 +1,9 @@
 import { WORLD_ART } from "@/features/world/art";
-import { HOUSE_ANCHORS, HOME_CANVAS_SIZE } from "./home-layout";
+import { HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
 import type { WorldState } from "@/features/world/model";
 import { homeAppearance } from "./home-state";
-import { houseAtlasCell, houseDetailPatches } from "./house-details";
-import { loadWorkshopArt } from "./workshop-art";
+import { houseVariantFor, type HouseVariant } from "./house-variants";
+import { FOREST_MAP } from "@/features/world/map-manifest";
 import { HOME_AREA, MAP_SIZE } from "@/features/world/map-layout";
 import type { GameItemId } from "@/features/game/game-rewards";
 import { SHELTER, SHELTER_ART, nextWeatherChange, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
@@ -28,7 +28,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
   if (!context) throw new Error("2D canvas unavailable");
   const ctx = context;
   let options = { ...initial }, disposed = false, art: HTMLImageElement | null = null;
-  let upgradeArt: HTMLImageElement | null = null, workshopArt: HTMLCanvasElement | null = null;
+  let upgradeArt: HTMLImageElement | null = null, variant: HouseVariant | null = null, variantRequest = 0;
   let appearance = homeAppearance(initial.worldState, initial.worldGifts, initial.items);
   let frame = 0, previous = 0, lastDraw = 0, width = 1;
   let lampGlow = initial.lampOn ? 1 : 0, dusk = initial.dusk ? 1 : 0;
@@ -58,18 +58,32 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     world.setInsects(options.dusk ? "firefly" : "butterfly");
     world.setDecor(options.bestStreakDays ?? 0, appearance.items);
   }
+  function drawGround() {
+    if (art) ctx.drawImage(art, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size, 0, 0, width, width);
+  }
+  function loadVariant() {
+    const next = houseVariantFor(appearance.houseLevel);
+    if (next === variant) return;
+    variant = next; upgradeArt = null; const request = ++variantRequest;
+    if (!next) return;
+    void loadHabitatImage(next.image).then(image => {
+      if (disposed || request !== variantRequest) return;
+      if (image.naturalWidth !== next.slot.width || image.naturalHeight !== next.slot.height) return;
+      upgradeArt = image; draw();
+    }).catch(() => { /* The approved base house remains a complete visual fallback. */ });
+  }
   function draw() {
     if (!art || disposed) return;
-    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(art, 0, 0, width, width);
-    if (upgradeArt && appearance.houseLevel > 1) {
-      const cell = houseAtlasCell(appearance.houseLevel);
-      for (const part of houseDetailPatches(appearance.houseLevel)) {
-        ctx.drawImage(upgradeArt, cell.x + part.sx, cell.y + part.sy, part.sw, part.sh, part.x, part.y, part.w, part.h);
-      }
+    const resolution = canvas.width / HOME_CANVAS_SIZE;
+    ctx.setTransform(resolution, 0, 0, resolution, 0, 0); ctx.imageSmoothingEnabled = false;
+    drawGround();
+    if (upgradeArt && variant) {
+      const slot = variant.slot, at = homePixel(slot), scale = HOME_CANVAS_SIZE / HOME_AREA.size;
+      ctx.save(); ctx.beginPath(); ctx.rect(at.x, at.y, slot.width * scale, slot.height * scale);
+      HOUSE_ANCHORS.doorway.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath();
+      const lamp = HOUSE_ANCHORS.lamp; ctx.rect(lamp.x, lamp.y, lamp.width, lamp.height); ctx.clip("evenodd");
+      ctx.drawImage(upgradeArt, at.x, at.y, slot.width * scale, slot.height * scale); ctx.restore();
     }
-    // In the circle the bench reflects construction; the full map already has its workshop.
-    if (options.view !== "world" && appearance.workshop && workshopArt) ctx.drawImage(workshopArt, 24, 151, 48, 44);
     const state = world.state, a = state.activity, p = state.progress;
     const visible = state.travel !== "away";
     const t = options.reducedMotion ? 0 : state.activityTime;
@@ -96,7 +110,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       ctx.save(); ctx.globalAlpha = sprite.opacity;
       if (inside) {
         ctx.beginPath();
-        for (const area of HOUSE_ANCHORS.doorway) ctx.rect(area.x, area.y, area.width, area.height);
+        HOUSE_ANCHORS.doorway.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath();
         ctx.clip();
       }
       const stir = a === "stir" && !options.reducedMotion ? Math.round(Math.sin(p * Math.PI * 4) * (1 - p)) : 0;
@@ -121,14 +135,13 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     // caused seams; bush entry/exit now use the single sprite's concealment envelope.
     if (visible && state.layer === "bush") {
       ctx.save(); ctx.beginPath();
-      ctx.moveTo(24, 115); ctx.lineTo(28, 99); ctx.lineTo(40, 91); ctx.lineTo(56, 89);
-      ctx.lineTo(71, 96); ctx.lineTo(78, 109); ctx.lineTo(76, 123); ctx.lineTo(29, 128); ctx.closePath(); ctx.clip();
-      ctx.drawImage(art, 0, 0, width, width); ctx.restore();
+      BUSH_FOLIAGE.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath(); ctx.clip();
+      drawGround(); ctx.restore();
       if (!options.reducedMotion && (a === "jump" && p > .65 || a === "emerge" && p < .55)) {
         const burst = a === "jump" ? (p - .65) / .35 : p / .55;
         ctx.fillStyle = "#adb65f";
         for (let i = 0; i < 4; i++) {
-          ctx.fillRect(Math.round(47 + i * 6 + (i - 1.5) * burst * 5), Math.round(99 - Math.sin(burst * Math.PI) * (7 + i)), 2, 1);
+          ctx.fillRect(Math.round(homePixel(FOREST_MAP.bush.inside).x - 9 + i * 6 + (i - 1.5) * burst * 5), Math.round(homePixel(FOREST_MAP.bush.inside).y - 10 - Math.sin(burst * Math.PI) * (7 + i)), 2, 1);
         }
       }
     }
@@ -163,9 +176,9 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       for (let i = 0; i < count; i++) {
         const particle = sleepParticles[i];
         const phase = options.reducedMotion ? .25 + i * .22 : ((state.elapsed + particle.delay) / particle.duration) % 1;
-        const px = options.reducedMotion ? 174 + i * 8
-          : Math.round(180 + particle.drift * phase + Math.sin(phase * Math.PI * 2 + particle.phase) * particle.wobble);
-        const py = options.reducedMotion ? 83 - i * 5 : Math.round(90 - particle.rise * phase);
+        const px = options.reducedMotion ? HOUSE_ANCHORS.sleep.x - 6 + i * 8
+          : Math.round(HOUSE_ANCHORS.sleep.x + particle.drift * phase + Math.sin(phase * Math.PI * 2 + particle.phase) * particle.wobble);
+        const py = options.reducedMotion ? HOUSE_ANCHORS.sleep.y - 7 - i * 5 : Math.round(HOUSE_ANCHORS.sleep.y - particle.rise * phase);
         ctx.globalAlpha = options.reducedMotion ? .65 : Math.sin(phase * Math.PI) * .85;
         for (let row = 0; row < glyph.length; row++) for (let col = 0; col < glyph[row].length; col++) {
           if (glyph[row][col] === "1") ctx.fillRect(px + col, py + row, 1, 1);
@@ -175,7 +188,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       if (state.wakeTapsNeeded > 1) {
         for (let i = 0; i < state.wakeTapsNeeded; i++) {
           ctx.fillStyle = i < state.wakeTaps ? "#fff0b9" : "#b4c29966";
-          ctx.fillRect(174 + i * 5, 78, 3, 2);
+          ctx.fillRect(HOUSE_ANCHORS.sleep.x - 6 + i * 5, HOUSE_ANCHORS.sleep.y - 12, 3, 2);
         }
       }
     }
@@ -226,11 +239,13 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
   }
   function resize() {
     const next = HOME_CANVAS_SIZE; // Fixed logical pixels; CSS scales with nearest-neighbour sampling.
-    if (next !== width) { width = next; canvas.width = width; canvas.height = width; draw(); }
+    if (next !== width) { width = next; canvas.width = HOME_AREA.size; canvas.height = HOME_AREA.size; draw(); }
   }
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
-  void Promise.all([loadArt(), loadHabitatImage(WORLD_ART.houseDetails), loadWorkshopArt()]).then(([result, details, workshop]) => {
-    if (disposed) return; art = result; upgradeArt = details; workshopArt = workshop;
+  void loadArt().then(result => {
+    if (disposed) return;
+    if (result.naturalWidth !== MAP_SIZE || result.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
+    art = result; loadVariant();
     // Reuse the painted forest mushroom, cut along its contour once, so new growth
     // shares the map's palette and texture instead of introducing another art style.
     mushroomArt = document.createElement("canvas"); mushroomArt.width = 16; mushroomArt.height = 22;
@@ -239,7 +254,8 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     mc.imageSmoothingEnabled = false; mc.beginPath();
     const contour = [[7, 0], [11, 2], [12, 4], [14, 6], [14, 9], [10, 11], [10, 15], [11, 19], [6, 19], [5, 16], [5, 11], [1, 11], [0, 9], [1, 6], [3, 4], [3, 2]];
     contour.forEach(([cx, cy], i) => { if (i) mc.lineTo(cx, cy); else mc.moveTo(cx, cy); }); mc.closePath(); mc.clip();
-    mc.drawImage(art, 208 / HOME_CANVAS_SIZE * art.naturalWidth, 101 / HOME_CANVAS_SIZE * art.naturalHeight, 16 / HOME_CANVAS_SIZE * art.naturalWidth, 22 / HOME_CANVAS_SIZE * art.naturalHeight, 0, 0, 16, 22);
+    const source = FOREST_MAP.house.mushroomSource;
+    mc.drawImage(art, source.x, source.y, source.width, source.height, 0, 0, 16, 22);
     if (options.reducedMotion && !options.paused && !options.backgrounded && session.isOwner()) world.settle();
     draw(); callbacks.ready(); persist(); resume();
   }).catch(error => { if (!disposed) { dispose(); callbacks.failure(error); } });
@@ -263,7 +279,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
         hiddenAt = null;
       }
       const animateJourney = Boolean(options.worldState);
-      options = { ...next }; appearance = homeAppearance(options.worldState, options.worldGifts, options.items);
+      options = { ...next }; appearance = homeAppearance(options.worldState, options.worldGifts, options.items); loadVariant();
       session.configure(options.view ?? "circle", !options.backgrounded);
       if (session.isOwner()) world.setAway(appearance.away, animateJourney, options.worldState?.journeys[0]?.routeId === "brook_path");
       if (session.isOwner()) { world.setLamp(options.lampOn); world.setInsects(options.dusk ? "firefly" : "butterfly"); world.setDecor(options.bestStreakDays ?? 0, appearance.items); }

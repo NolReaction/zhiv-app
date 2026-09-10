@@ -6,7 +6,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { createHabitat, HOME, FRONT, INACTIVITY_SECONDS } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
+const { createHabitat, HOME, BUSH, FRONT, INACTIVITY_SECONDS } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 after(() => vite.close());
 const advance = (world, seconds) => { for (let i = 0; i < Math.ceil(seconds / .025); i++) world.update(.025); };
 function until(world, predicate, seconds = 150) {
@@ -23,7 +23,7 @@ test("autonomous bush play leads to persistent sleep after inactivity", () => {
   for (let i = 0; i < 24_000; i++) {
     world.update(.025); seen.add(world.state.activity);
     assert.ok(world.state.position.x >= .20 && world.state.position.x <= .75);
-    assert.ok(world.state.position.y >= .40 && world.state.position.y <= .82);
+    assert.ok(world.state.position.y >= Math.min(HOME.y, BUSH.y) - 1e-9 && world.state.position.y <= .82);
     if (world.state.activity === "sleep") {
       assert.equal(world.state.layer, "house"); assert.deepEqual(world.state.position, HOME);
     }

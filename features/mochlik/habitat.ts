@@ -2,6 +2,8 @@ import { naturalItems, type GameItemId } from "@/features/game/game-rewards";
 import { CONSUMED_PROGRESS, EAT_DURATION } from "./feeding";
 
 import { HOUSE_ANCHORS } from "./home-layout";
+import { FOREST_MAP } from "@/features/world/map-manifest";
+import { homeToWorld, worldToHome, pointInPolygon } from "@/features/world/map-layout";
 
 /** Screen-space choreography for a pixel 2D habitat. No account or game state. */
 export type Point = { x: number; y: number };
@@ -16,17 +18,17 @@ export type PropKind = "leaf" | "cone" | "stone";
 export type Layer = "clearing" | "bush" | "house";
 export type Destination = "bush" | "home" | "mushrooms";
 export type Mushroom = { id: number; position: Point; growth: number; growSeconds: number };
-export const START = { x: .48, y: .61 };
-export const BUSH = { x: .225, y: .475 };
-export const BUSH_EDGE = { x: .36, y: .55 };
+export const START = worldToHome(FOREST_MAP.clearing.spawn);
+export const BUSH = worldToHome(FOREST_MAP.bush.inside);
+export const BUSH_EDGE = worldToHome(FOREST_MAP.bush.approach);
 export const DOORSTEP = HOUSE_ANCHORS.doorstep;
 export const HOME = HOUSE_ANCHORS.inside;
-export const FRONT = { x: .5, y: .76 };
+export const FRONT = worldToHome(FOREST_MAP.clearing.front);
 export const SHELTER_ART = { x: 94, y: 70, width: 38, capHeight: 18, ground: 120 };
 export const SHELTER = { x: (SHELTER_ART.x + SHELTER_ART.width / 2 + 5) / 256, y: SHELTER_ART.ground / 256 };
 export const LEAF_SPOT = { x: .46, y: .66 };
 export const FIND_SPOT = { x: .60, y: .69 };
-export const KEEPSAKE_SPOT = { x: .635, y: .505 };
+export const KEEPSAKE_SPOT = worldToHome(FOREST_MAP.clearing.keepsake);
 export const depositedPosition = (kind: PropKind): Point => ({
   x: KEEPSAKE_SPOT.x + (kind === "leaf" ? -5 : 4) / 256, y: KEEPSAKE_SPOT.y + 2 / 256,
 });
@@ -313,7 +315,7 @@ export function createHabitat() {
   function moveTo(target: Point) {
     if (away || ATOMIC.has(state.activity)) return false;
     // Ground controls stay within the familiar walkable clearing, away from door/bush masks.
-    if (target.x < .34 || target.x > .76 || target.y < .53 || target.y > .80) return false;
+    if (!pointInPolygon(homeToWorld(target), FOREST_MAP.clearing.walkable)) return false;
     activate(); clearMoment(); visitPending = false; playPending = false; destination = null;
     state.visiting = false; state.feedingId = null;
     plan([...leaveSteps(), walk(target, outside()), { activity: "look", duration: 2, layer: "clearing" }]);

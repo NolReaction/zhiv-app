@@ -64,9 +64,9 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
     <div className={styles.mapAnchors} hidden={!ready}>
       <button data-map-anchor data-kind="house" data-x={MAP_PLACES.house.marker.x} data-y={MAP_PLACES.house.marker.y} onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
-      <button data-map-anchor data-kind="workshop" data-x={MAP_PLACES.workshop.marker.x} data-y={MAP_PLACES.workshop.marker.y} onClick={() => onPlace("workshop")} aria-label={state.workshop ? "Мастерская" : "Построить мастерскую"} title="Мастерская" />
-      <button data-map-anchor data-kind="river" data-x={MAP_PLACES.river.marker.x} data-y={MAP_PLACES.river.marker.y} onClick={() => onPlace("river")} aria-label="Маршруты к реке и ручью" title="Река и ручей" />
-      <button data-map-anchor data-kind="trail" data-x={MAP_PLACES.trail.marker.x} data-y={MAP_PLACES.trail.marker.y} onClick={() => onPlace("trail")} aria-label="Маршруты по лесной тропе" title="Лесная тропа" />
+      <button data-map-anchor data-kind="bush" data-x={MAP_PLACES.bush.marker.x} data-y={MAP_PLACES.bush.marker.y} onClick={() => engine.current?.visitBush()} aria-label="Позвать Мохлика к кустику" title="Кустик" />
+      <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />
+      <button data-map-anchor data-kind="fishing" data-x={MAP_PLACES.fishing.marker.x} data-y={MAP_PLACES.fishing.marker.y} onClick={() => onPlace("fishing")} aria-label="Открыть рыбалку" title="Рыбалка" />
     </div>
     <div className={styles.cameraControls} aria-label="Управление картой">
       <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>

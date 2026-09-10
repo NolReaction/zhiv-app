@@ -159,3 +159,10 @@
 .loadingSpinner { animation: loading-spin 1.5s linear infinite; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .loadingSpinner { animation: none; } }
+
+.mapAnchors button[data-kind='fishing'] { --place-color: #8fd5db; }
+.mapAnchors button[data-kind='cave'] { --place-color: #d4c4a4; }
+.destination { min-height: 320px; display: grid; align-content: center; justify-items: center; gap: 18px; text-align: center; padding: 32px 12px; }
+.destination > svg { color: #c8dba8; }
+.destination h2 { font-size: 1.5rem; margin: 0; }
+.destination p { font-size: 1rem; line-height: 1.6; color: #b5c2a8; margin: 0 0 8px; }

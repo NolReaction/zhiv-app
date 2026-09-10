@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { WORLD_ART } from "@/features/world/art";
+import { HOME_BACKGROUND_STYLE } from "@/features/world/map-layout";
 import type { WorldState } from "@/features/world/model";
 import { JourneyProgress } from "@/features/world/journey-progress";
 import type { GameItemId } from "@/features/game/game-rewards";
@@ -80,7 +80,7 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
   }, [attempt, userId]);
 
   return <div className={styles.scene} data-pet-interaction data-ready={ready} data-light={dusk ? "dusk" : "day"} aria-hidden="true">
-    <div className={styles.fallback} style={{ backgroundImage: `url(${WORLD_ART.home})` }} />
+    <div className={styles.fallback} style={HOME_BACKGROUND_STYLE} />
     <canvas ref={canvas} className={styles.canvas} />
     <div className={styles.glass} />
     {!ready && <span className={styles.loadState}>{failed ? "Лес не загрузился. Нажми, чтобы повторить" : "Загружаем Мохлика…"}</span>}

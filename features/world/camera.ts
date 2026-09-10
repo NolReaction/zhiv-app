@@ -20,7 +20,7 @@ export function zoomAt(camera: Camera, view: Viewport, anchor: Point, factor: nu
   const zoom = Math.max(limits.minimum, Math.min(limits.maximum, camera.zoom * factor));
   return clampCamera({ zoom, x: before.x - (anchor.x - view.width / 2) / zoom, y: before.y - (anchor.y - view.height / 2) / zoom }, view);
 }
-export const homeCamera = (view: Viewport) => clampCamera({ x: HOME_AREA.x + HOME_AREA.size / 2, y: HOME_AREA.y + HOME_AREA.size / 2 - 2, zoom: Math.min(view.width, view.height) / 330 }, view);
+export const homeCamera = (view: Viewport) => clampCamera({ x: HOME_AREA.x + HOME_AREA.size / 2, y: HOME_AREA.y + HOME_AREA.size / 2, zoom: Math.min(view.width, view.height) / HOME_AREA.size }, view);
 export const isMapTap = (distance: number, multiTouch: boolean, cancelled: boolean) => !cancelled && !multiTouch && distance < 8;
 export const viewportPoint = (client: Point, rect: { left: number; top: number; width: number; height: number }, view: Viewport): Point => ({
   x: (client.x - rect.left) * view.width / Math.max(1, rect.width),

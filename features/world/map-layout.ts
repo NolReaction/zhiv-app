@@ -1,31 +1,34 @@
-/** World coordinates. Changing the camera must never move gameplay anchors. */
-export const MAP_SIZE = 1536;
-export const HOME_AREA = { x: 576, y: 576, size: 384 } as const;
+import { FOREST_MAP, type MapPoint } from "./map-manifest";
+export const MAP_SIZE = FOREST_MAP.size;
+export const HOME_AREA = FOREST_MAP.homeCrop;
+export const MAP_PLACES = { house: FOREST_MAP.house, bush: FOREST_MAP.bush, cave: FOREST_MAP.cave, fishing: FOREST_MAP.water } as const;
+export const worldToHome = (point: MapPoint): MapPoint => ({ x: (point.x - HOME_AREA.x) / HOME_AREA.size, y: (point.y - HOME_AREA.y) / HOME_AREA.size });
+export const homeToWorld = (point: MapPoint): MapPoint => ({ x: HOME_AREA.x + point.x * HOME_AREA.size, y: HOME_AREA.y + point.y * HOME_AREA.size });
+export const containsPoint = (point: MapPoint, bounds: { left: number; right: number; top: number; bottom: number }) =>
+  point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom;
 
-type Point = { x: number; y: number };
-type Bounds = { left: number; right: number; top: number; bottom: number };
-export const MAP_PLACES = {
-  house: {
-    marker: { x: 847, y: 730 },
-    // Normalized coordinates inside HOME_AREA, not world pixels.
-    homeBounds: { left: .60, right: .93, top: .12, bottom: .49 },
-  },
-  workshop: {
-    marker: { x: 414, y: 1020 },
-    worldBounds: { left: 335, right: 500, top: 950, bottom: 1090 },
-  },
-  river: { marker: { x: 1090, y: 492 } },
-  trail: { marker: { x: 1112, y: 1020 } },
+/** Boundary-inclusive polygon test: shoreline pixels and canvas edges remain clickable. */
+export function pointInPolygon(point: MapPoint, polygon: readonly MapPoint[]) {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[j], b = polygon[i];
+    const cross = (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
+    if (Math.abs(cross) < 1e-7 && point.x >= Math.min(a.x, b.x) && point.x <= Math.max(a.x, b.x)
+      && point.y >= Math.min(a.y, b.y) && point.y <= Math.max(a.y, b.y)) return true;
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+export function mapPlaceAt(point: MapPoint): "house" | "bush" | "cave" | "fishing" | null {
+  if (pointInPolygon(point, FOREST_MAP.water.hitArea)) return "fishing";
+  if (pointInPolygon(point, FOREST_MAP.cave.hitArea)) return "cave";
+  if (pointInPolygon(point, FOREST_MAP.house.hitArea)) return "house";
+  if (pointInPolygon(point, FOREST_MAP.bush.foliage)) return "bush";
+  return null;
+}
+export const HOME_BACKGROUND_STYLE = {
+  backgroundImage: `url(${FOREST_MAP.image})`,
+  backgroundSize: `${MAP_SIZE / HOME_AREA.size * 100}%`,
+  backgroundPosition: `${HOME_AREA.x / (MAP_SIZE - HOME_AREA.size) * 100}% ${HOME_AREA.y / (MAP_SIZE - HOME_AREA.size) * 100}%`,
 } as const;
-
-export const containsPoint = (point: Point, bounds: Bounds) =>
-  point.x > bounds.left && point.x < bounds.right && point.y > bounds.top && point.y < bounds.bottom;
-
-export const worldToHome = (point: Point): Point => ({
-  x: (point.x - HOME_AREA.x) / HOME_AREA.size,
-  y: (point.y - HOME_AREA.y) / HOME_AREA.size,
-});
-export const homeToWorld = (point: Point): Point => ({
-  x: HOME_AREA.x + point.x * HOME_AREA.size,
-  y: HOME_AREA.y + point.y * HOME_AREA.size,
-});

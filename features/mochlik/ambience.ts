@@ -1,3 +1,4 @@
+import { HOUSE_ANCHORS } from "./home-layout";
 import { SHELTER_ART, depositedPosition, type HabitatState, type PropKind } from "./habitat";
 
 const rect = (ctx: CanvasRenderingContext2D, color: string, x: number, y: number, w: number, h: number) => {
@@ -48,6 +49,7 @@ export function drawOwnedDecor(ctx: CanvasRenderingContext2D, items: readonly st
 export function drawDecor(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean) {
   const t = reducedMotion ? 0 : state.elapsed;
   ctx.save(); ctx.globalAlpha = reducedMotion ? 1 : .35 + state.decorReveal * .65;
+  ctx.translate(HOUSE_ANCHORS.inside.x * 256 - 181, HOUSE_ANCHORS.inside.y * 256 - 104);
   drawOwnedDecor(ctx, state.decorItems, t);
   ctx.restore();
   if (state.leafDelivered) { const at = depositedPosition("leaf"); prop(ctx, "leaf", at.x * 256, at.y * 256); }
