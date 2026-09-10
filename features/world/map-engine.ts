@@ -3,6 +3,7 @@ import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SI
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { WORLD_ART } from "./art";
 import { mapPlaceAt, worldToHome } from "./map-layout";
+import { drawWaterAmbience } from "./water-ambience";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -16,6 +17,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
   let options = initial, disposed = false, raf = 0, last = 0;
+  let waterTime = 0, previousWaterFrame: number | null = null;
   let view = { width: 1, height: 1 }, camera = worldCamera(view);
   let framing: "world" | "home" | "overview" | "manual" = "world";
   let inView = true;
@@ -25,7 +27,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let travelled = 0, multiTouch = false, cancelled = false;
   let readyResolve!: () => void, readyReject!: (error: unknown) => void;
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-  const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: document.hidden }, {
+  const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
     rendered: () => { if (options.reducedMotion) draw(); },
   });
@@ -44,6 +46,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     // Both views share the detailed tile and fixed world anchors. Its outer rim
     // contains the original map pixels; animation coordinates remain unchanged.
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
+    drawWaterAmbience(ctx, waterTime, options.reducedMotion);
     habitat.paintLighting(ctx);
     ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
     habitat.paintWeather(ctx);
@@ -57,8 +60,12 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function tick(time: number) {
     raf = 0;
-    if (disposed || document.hidden || !inView) return;
-    if (time - last >= (options.reducedMotion ? 250 : 1000 / 30)) { draw(); last = time; }
+    if (disposed || document.hidden || !inView || options.paused || options.backgrounded) return;
+    if (time - last >= 1000 / 30) {
+      if (previousWaterFrame !== null) waterTime += Math.min((time - previousWaterFrame) / 1000, .05);
+      previousWaterFrame = time;
+      draw(); last = time;
+    }
     if (!options.reducedMotion) raf = requestAnimationFrame(tick);
   }
   function visibility() {
@@ -68,8 +75,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       pointers.clear();
     }
     cancelAnimationFrame(raf); raf = 0;
-    habitat.configure({ ...options, view: "world", backgrounded: document.hidden || !inView });
-    if (!disposed && !document.hidden && inView) { draw(); if (!options.reducedMotion) raf = requestAnimationFrame(tick); }
+    previousWaterFrame = null;
+    const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
+    habitat.configure({ ...options, view: "world", backgrounded });
+    if (!disposed && !backgrounded) { draw(); if (!options.reducedMotion && !options.paused) raf = requestAnimationFrame(tick); }
   }
   function resize() {
     // CSS entrance scaling changes the visual rect, not the map's layout viewport.

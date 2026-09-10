@@ -13,20 +13,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { DialogPortal } = await vite.ssrLoadModule("/components/ui/dialog.tsx");
-const { houseAtlasCell, houseDetailPatches } = await vite.ssrLoadModule("/features/mochlik/house-details.ts");
 const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
-
-test("every house detail leaves the original doorway and dynamic lamp untouched", () => {
-  const protectedAreas = [{ x: 169, y: 86, w: 23, h: 23 }, { x: 194, y: 101, w: 5, h: 5 }];
-  for (let level = 1; level <= 5; level++) {
-    const patches = houseDetailPatches(level), cell = houseAtlasCell(level);
-    assert.equal(patches.length, level - 1);
-    for (const part of patches) {
-      assert.ok(cell.x + part.sx + part.sw <= 1254 && cell.y + part.sy + part.sh <= 1254);
-      for (const area of protectedAreas) assert.ok(part.x >= area.x + area.w || part.x + part.w <= area.x || part.y >= area.y + area.h || part.y + part.h <= area.y);
-    }
-  }
-});
 
 test("travel progress derives from absolute journey time and remains bounded after return", () => {
   const start = Date.parse("2026-09-08T12:00:00Z"), journey = { startedAt: new Date(start).toISOString(), finishesAt: new Date(start + 60000).toISOString() };

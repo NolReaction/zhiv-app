@@ -42,6 +42,10 @@ test('map readiness waits for the character, aborted loading releases its scene,
   assert.equal(house.style.visibility,'visible');
   engine.control('home');assert.equal(bush.style.visibility,'visible');
   engine.control('overview');assert.equal(bush.style.visibility,'hidden');
+  engine.update({...options,paused:true});assert.equal(frames.size,0,'paused map and habitat stop both animation loops');
+  engine.update({...options,backgrounded:true});assert.equal(frames.size,0,'backgrounded map cannot restart its detached habitat');
+  engine.update({...options,reducedMotion:true});assert.equal(frames.size,0,'reduced motion has no water or habitat RAF');
+  engine.update(options);assert.equal(frames.size,2,'resume keeps the original two loops, no additional water timer');
   engine.dispose();await flush();
   assert.equal(observed,0);assert.equal(frames.size,0);assert.equal(timers.size,0);
   // A disposed view must not restart animation when the shared detail arrives.

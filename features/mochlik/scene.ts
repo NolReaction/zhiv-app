@@ -13,6 +13,7 @@ import { homeBackingSize, loadHomeDetail } from "./home-art";
 import { drawLanternLight } from "./lantern-light";
 import { pixelSprite } from "./pixel-sprite";
 import { pixelFrame } from "./pixel-frame";
+import { drawBushReaction, prepareBushFoliage } from "./bush-reaction";
 import { feedingFrame } from "./feeding";
 import { drawInsects } from "./insects";
 import { readPresence, writePresence } from "./presence";
@@ -50,6 +51,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
   const world = session.world;
   let stillTimer: ReturnType<typeof setTimeout> | null = null;
   let mushroomArt: HTMLCanvasElement | null = null;
+  let bushArt: HTMLCanvasElement | null = null;
   // Stable random paths: rerenders do not scramble particles, sleep cycles do not reset them.
   const sleepParticles = Array.from({ length: 5 }, (_, i) => ({
     delay: i * .85 + Math.random(), duration: 3.8 + Math.random() * 2.4,
@@ -138,19 +140,12 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       }
       ctx.restore();
     }
-    // Restore the same foliage pixels in place. Moving the whole map under a mask
-    // caused seams; bush entry/exit now use the single sprite's concealment envelope.
+    // Keep one pet sprite behind the original foliage, then flex only its interior.
     if (visible && state.layer === "bush") {
       ctx.save(); ctx.beginPath();
       BUSH_FOLIAGE.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath(); ctx.clip();
       drawGround(); ctx.restore();
-      if (!options.reducedMotion && (a === "jump" && p > .65 || a === "emerge" && p < .55)) {
-        const burst = a === "jump" ? (p - .65) / .35 : p / .55;
-        ctx.fillStyle = "#adb65f";
-        for (let i = 0; i < 4; i++) {
-          ctx.fillRect(Math.round(homePixel(FOREST_MAP.bush.inside).x - 9 + i * 6 + (i - 1.5) * burst * 5), Math.round(homePixel(FOREST_MAP.bush.inside).y - 10 - Math.sin(burst * Math.PI) * (7 + i)), 2, 1);
-        }
-      }
+      drawBushReaction(ctx, bushArt, state, options.reducedMotion);
     }
     state.mushrooms.filter(item => item.position.y > state.position.y).forEach(drawMushroom);
     if (mushroomArt && shelterInFront) drawShelter(ctx, mushroomArt);
@@ -244,10 +239,11 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
   void loadArt().then(result => {
     if (disposed) return;
     if (result.naturalWidth !== MAP_SIZE || result.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
-    art = result; loadVariant();
+    art = result; bushArt = prepareBushFoliage(result, HOME_AREA); loadVariant();
     void loadHomeDetail(result).then(tile => {
       if (disposed) return;
       detail = tile;
+      bushArt = prepareBushFoliage(tile, { x: 0, y: 0, size: tile.width });
       if (!options.backgrounded && !options.paused) draw();
     }).catch(() => { /* Keep the complete original crop if the detail download fails. */ });
     // Reuse the painted forest mushroom, cut along its contour once, so new growth
@@ -264,7 +260,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     draw(); callbacks.ready(); persist(); resume();
   }).catch(error => { if (!disposed) { dispose(); callbacks.failure(error); } });
   function dispose() {
-    if (disposed) return; syncClock(); persist(); disposed = true; session.release(); cancelStillTimer(); cancelAnimationFrame(frame); frame = 0; observer.disconnect(); art = null; detail = null; mushroomArt = null;
+    if (disposed) return; syncClock(); persist(); disposed = true; session.release(); cancelStillTimer(); cancelAnimationFrame(frame); frame = 0; observer.disconnect(); art = null; detail = null; mushroomArt = null; bushArt = null;
   }
   return {
     configure(next) {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
@@ -13,6 +14,7 @@ const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts
 
 test("detail has enough real pixels for retina circles and a bounded detached world canvas", async () => {
   const bytes = await readFile(`${root}/public${FOREST_MAP.homeDetail.image}`);
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), "f14fba0d71b976ed63530726e3b4a86241ab72a409e8e837a7a5b36fae5ef8bd", "approved home texture stays unchanged");
   assert.ok(bytes.readUInt32BE(16) >= HOME_TEXTURE_SIZE);
   assert.equal(bytes.readUInt32BE(16), bytes.readUInt32BE(20));
   assert.equal(homeBackingSize(320, 2), 640);
