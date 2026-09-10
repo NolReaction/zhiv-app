@@ -30,7 +30,7 @@ test("every achievement has one readable SVG and a catalog description", async (
 });
 
 test("all registered maps, building atlases and both journey cards exist", async () => {
-  const paths = [WORLD_ART.map, WORLD_ART.home, WORLD_ART.houseDetails, WORLD_ART.workshop, ...Object.values(WORLD_ART.routes)];
+  const paths = [WORLD_ART.map, WORLD_ART.home, WORLD_ART.homeDetail, WORLD_ART.houseDetails, WORLD_ART.workshop, ...Object.values(WORLD_ART.routes)];
   for (const path of paths) {
     const bytes = await readFile(`${root}/public${path}`);
     if (path.endsWith(".png")) assert.equal(bytes.toString("hex", 0, 8), "89504e470d0a1a0a", path);

@@ -9,6 +9,8 @@ import type { GameItemId } from "@/features/game/game-rewards";
 import { SHELTER, SHELTER_ART, nextWeatherChange, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
 import { connectHabitat } from "./session";
 import { loadHabitatImage } from "./assets";
+import { homeBackingSize, loadHomeDetail } from "./home-art";
+import { drawLanternLight } from "./lantern-light";
 import { pixelSprite } from "./pixel-sprite";
 import { pixelFrame } from "./pixel-frame";
 import { feedingFrame } from "./feeding";
@@ -28,6 +30,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
   if (!context) throw new Error("2D canvas unavailable");
   const ctx = context;
   let options = { ...initial }, disposed = false, art: HTMLImageElement | null = null;
+  let detail: HTMLCanvasElement | null = null;
   let upgradeArt: HTMLImageElement | null = null, variant: HouseVariant | null = null, variantRequest = 0;
   let appearance = homeAppearance(initial.worldState, initial.worldGifts, initial.items);
   let frame = 0, previous = 0, lastDraw = 0, width = 1;
@@ -59,6 +62,10 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     world.setDecor(options.bestStreakDays ?? 0, appearance.items);
   }
   function drawGround() {
+    if (detail) {
+      ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(detail, 0, 0, width, width); ctx.restore(); return;
+    }
     if (art) ctx.drawImage(art, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size, 0, 0, width, width);
   }
   function loadVariant() {
@@ -156,16 +163,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     }
     ctx.fillStyle = `rgba(8,17,35,${dusk * .57})`; ctx.fillRect(0, 0, width, width);
     ctx.fillStyle = `rgba(69,105,125,${state.rain * .12})`; ctx.fillRect(0, 0, width, width);
-    // Replace the painted bulb, so OFF is truly dark even in the day scene.
-    ctx.fillStyle = "#493e2a"; ctx.fillRect(HOUSE_ANCHORS.lamp.x, HOUSE_ANCHORS.lamp.y, HOUSE_ANCHORS.lamp.width, HOUSE_ANCHORS.lamp.height);
-    if (lampGlow > .01) {
-      ctx.save(); ctx.globalAlpha = lampGlow;
-      ctx.fillStyle = "#ffc965"; ctx.fillRect(HOUSE_ANCHORS.lamp.x, HOUSE_ANCHORS.lamp.y, HOUSE_ANCHORS.lamp.width, HOUSE_ANCHORS.lamp.height);
-      ctx.fillStyle = "#fff2bc"; ctx.fillRect(HOUSE_ANCHORS.lampHighlight.x, HOUSE_ANCHORS.lampHighlight.y, HOUSE_ANCHORS.lampHighlight.width, HOUSE_ANCHORS.lampHighlight.height);
-      ctx.fillStyle = `rgba(255,200,85,${.06 + dusk * .09})`;
-      for (const area of HOUSE_ANCHORS.lampGlow) ctx.fillRect(area.x, area.y, area.width, area.height);
-      ctx.restore();
-    }
+    drawLanternLight(ctx, lampGlow, dusk);
     drawInsects(ctx, state, dusk, options.reducedMotion);
     if (options.view !== "world") drawWeather(ctx, state, options.reducedMotion, false, WEATHER_BOUNDS);
     if (visible) drawMomentAccents(ctx, state, options.reducedMotion);
@@ -238,14 +236,20 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     if (!frame) { syncClock(); previous = 0; lastDraw = 0; frame = requestAnimationFrame(tick); }
   }
   function resize() {
-    const next = HOME_CANVAS_SIZE; // Fixed logical pixels; CSS scales with nearest-neighbour sampling.
-    if (next !== width) { width = next; canvas.width = HOME_AREA.size; canvas.height = HOME_AREA.size; draw(); }
+    width = HOME_CANVAS_SIZE;
+    const next = homeBackingSize(canvas.clientWidth, window.devicePixelRatio, options.view === "world");
+    if (canvas.width !== next || canvas.height !== next) { canvas.width = next; canvas.height = next; draw(); }
   }
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
   void loadArt().then(result => {
     if (disposed) return;
     if (result.naturalWidth !== MAP_SIZE || result.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
     art = result; loadVariant();
+    void loadHomeDetail(result).then(tile => {
+      if (disposed) return;
+      detail = tile;
+      if (!options.backgrounded && !options.paused) draw();
+    }).catch(() => { /* Keep the complete original crop if the detail download fails. */ });
     // Reuse the painted forest mushroom, cut along its contour once, so new growth
     // shares the map's palette and texture instead of introducing another art style.
     mushroomArt = document.createElement("canvas"); mushroomArt.width = 16; mushroomArt.height = 22;
@@ -260,7 +264,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     draw(); callbacks.ready(); persist(); resume();
   }).catch(error => { if (!disposed) { dispose(); callbacks.failure(error); } });
   function dispose() {
-    if (disposed) return; syncClock(); persist(); disposed = true; session.release(); cancelStillTimer(); cancelAnimationFrame(frame); frame = 0; observer.disconnect(); art = null; mushroomArt = null;
+    if (disposed) return; syncClock(); persist(); disposed = true; session.release(); cancelStillTimer(); cancelAnimationFrame(frame); frame = 0; observer.disconnect(); art = null; detail = null; mushroomArt = null;
   }
   return {
     configure(next) {

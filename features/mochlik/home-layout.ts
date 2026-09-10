@@ -10,7 +10,5 @@ export const HOUSE_ANCHORS = {
   doorway: FOREST_MAP.house.doorway.map(homePixel),
   sleep: homePixel(FOREST_MAP.house.sleep),
   lamp,
-  lampHighlight: { x: lamp.x + 1, y: lamp.y, width: 1, height: lamp.height - 1 },
-  lampGlow: [{ x: lamp.x - 3, y: lamp.y - 2, width: lamp.width + 6, height: lamp.height + 4 }],
 } as const;
 export const BUSH_FOLIAGE = FOREST_MAP.bush.foliage.map(homePixel);

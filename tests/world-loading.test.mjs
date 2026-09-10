@@ -33,12 +33,20 @@ test('map readiness waits for the character, aborted loading releases its scene,
   assert.equal(pending.length,0,"one shared background; no incompatible legacy atlases are requested");
   const bush={dataset:{kind:'bush',...MAP_PLACES.bush.marker},style:{}};
   const house={dataset:{kind:'house',...MAP_PLACES.house.marker},style:{}};
-  const engine=await createMapEngine(canvas(),options,()=>{},[bush,house]);assert.equal(observed,3);
+  const surface=canvas();
+  const engine=await createMapEngine(surface,options,()=>{},[bush,house]);assert.equal(observed,3);
+  const detail=pending.find(item=>item.path===WORLD_ART.homeDetail);assert.ok(detail);
+  pending.splice(pending.indexOf(detail),1);detail.image.onerror();await flush();
+  assert.equal(observed,3,'failed detail keeps the base map and character mounted');
   assert.equal(bush.style.visibility,'hidden','tiny overlapping bush target is suppressed in overview');
   assert.equal(house.style.visibility,'visible');
   engine.control('home');assert.equal(bush.style.visibility,'visible');
   engine.control('overview');assert.equal(bush.style.visibility,'hidden');
   engine.dispose();await flush();
+  assert.equal(observed,0);assert.equal(frames.size,0);assert.equal(timers.size,0);
+  // A disposed view must not restart animation when the shared detail arrives.
+  const late=await createMapEngine(canvas(),options,()=>{},[]);
+  late.dispose();finish(WORLD_ART.homeDetail);await flush();
   assert.equal(observed,0);assert.equal(frames.size,0);assert.equal(timers.size,0);
   const stalled=loadHabitatImage('/qa-timeout.webp');const failed=assert.rejects(stalled,error=>error instanceof HabitatAssetError&&error.timedOut);
   const timer=[...timers.values()].find(value=>value.ms===15000);assert.ok(timer);timer.fn();await failed;

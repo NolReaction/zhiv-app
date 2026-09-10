@@ -37,11 +37,12 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function draw() {
     if (disposed || !ctx) return;
     const ratio = canvas.width / view.width;
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.imageSmoothingEnabled = false;
+    ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
     ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-    // The home canvas is the exact same source crop at source resolution: no
-    // second painting, feathered seam, or independently positioned home artwork.
+    // Both views share the detailed tile and fixed world anchors. Its outer rim
+    // contains the original map pixels; animation coordinates remain unchanged.
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
     habitat.paintLighting(ctx);
     ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
@@ -73,7 +74,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function resize() {
     // CSS entrance scaling changes the visual rect, not the map's layout viewport.
     view = { width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight) };
-    const scale = Math.min(1, 1100 / Math.max(view.width, view.height));
+    const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
     camera = framing === "world" ? worldCamera(view) : framing === "home" ? homeCamera(view) : framing === "overview" ? overviewCamera(view) : clampCamera(camera, view); draw();
   }

@@ -6,6 +6,7 @@ export const FOREST_MAP = {
   image: "/world/maps/forest-region-v3.png",
   size: 1254,
   homeCrop: { x: 486, y: 514, size: 256 },
+  homeDetail: { image: "/world/maps/home-detail-v1.png", originalRim: 2, feather: 12 },
   house: {
     id: "home",
     inside: { x: 665, y: 607 },
