@@ -1,10 +1,10 @@
-import { drawFishingJourney } from "@/features/world/fishing-journey";
+import { drawFishingJourney, fishingFrame } from "@/features/world/fishing-journey";
 import { FISHING_PREPARE_MS, isFishingJourney, sceneJourney } from "@/features/world/journey-timeline";
 import { WORLD_ART } from "@/features/world/art";
 import { drawBirdAmbience } from "@/features/world/bird-ambience";
 import { drawWeatherGround, drawWeatherAir, type WeatherVisitorState } from "@/features/world/weather-visitors";
 import { drawRouteLights } from "@/features/world/route-props";
-import { HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
+import { isBehindDoorThreshold, HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
 import type { WorldState } from "@/features/world/model";
 import { homeAppearance } from "./home-state";
 import { houseVariantFor, type HouseVariant } from "./house-variants";
@@ -23,14 +23,14 @@ import { drawBushReaction, prepareBushFoliage } from "./bush-reaction";
 import { feedingFrame } from "./feeding";
 import { drawInsects } from "./insects";
 import { readPresence, writePresence } from "./presence";
-import { propBehindBody, drawDecor, drawProp, drawWeather, drawMomentAccents } from "./ambience";
+import { propBehindBody, drawDecor, drawGarlandLights, drawProp, drawWeather, drawMomentAccents } from "./ambience";
 
 const WEATHER_BOUNDS = { x: -HOME_AREA.x * HOME_CANVAS_SIZE / HOME_AREA.size, y: -HOME_AREA.y * HOME_CANVAS_SIZE / HOME_AREA.size, width: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size, height: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size };
 
 export type SceneOptions = { serverNow?: number; lampOn: boolean; dusk: boolean; paused: boolean; reducedMotion: boolean; view?: "circle" | "world"; backgrounded?: boolean; presenceKey?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[] };
-export type HabitatScene = { setTime: (now: number) => void; paintJourney: (context: CanvasRenderingContext2D) => void; configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; ambience: () => WeatherVisitorState; paintVisitors: (context: CanvasRenderingContext2D, layer: "ground" | "air") => void; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; dispose: () => void };
+export type HabitatScene = { position: () => { x: number; y: number }; setTime: (now: number) => void; paintJourney: (context: CanvasRenderingContext2D) => void; configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; ambience: () => WeatherVisitorState; paintVisitors: (context: CanvasRenderingContext2D, layer: "ground" | "air") => void; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; dispose: () => void };
 type Callbacks = { activity: (activity: Activity) => void; ready: () => void; failure: (error?: unknown) => void; rendered?: () => void };
-function loadArt() { return loadHabitatImage(WORLD_ART.home); }
+function loadArt() { return loadHabitatImage(WORLD_ART.homePreview); }
 
 export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, callbacks: Callbacks): HabitatScene {
   const context = canvas.getContext("2d", { alpha: true });
@@ -40,6 +40,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
   const journeyNow = () => serverTime + (options.paused ? 0 : performance.now() - receivedTime);
   let options = { ...initial }, disposed = false, art: HTMLImageElement | null = null;
   let detail: HTMLCanvasElement | null = null;
+  let artCrop = { x: 0, y: 0, size: HOME_AREA.size };
   let lanternGlass: LanternGlass | null = null;
   let upgradeArt: HTMLImageElement | null = null, variant: HouseVariant | null = null, variantRequest = 0;
   let appearance = homeAppearance(initial.worldState, initial.worldGifts, initial.items);
@@ -92,7 +93,7 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
       ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
       ctx.drawImage(detail, 0, 0, width, width); ctx.restore(); return;
     }
-    if (art) ctx.drawImage(art, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size, 0, 0, width, width);
+    if (art) ctx.drawImage(art, artCrop.x, artCrop.y, artCrop.size, artCrop.size, 0, 0, width, width);
   }
   function loadVariant() {
     const next = houseVariantFor(appearance.houseLevel);
@@ -128,9 +129,9 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     const food = feedingFrame(p);
     const size = Math.round(state.size * width), x = Math.round((state.position.x + sprite.offsetX) * width);
     const y = Math.round((state.position.y - state.lift + sprite.sink + sprite.offsetY) * width);
-    drawDecor(ctx, state, options.reducedMotion);
+    drawDecor(ctx, state, options.reducedMotion, appearance.hiddenGifts);
     drawHomeVisitors("ground");
-    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "shelter" || a === "shelter-peek" || a === "rain-notice" || a === "enter" && p > .48 || a === "leave" && p < .52);
+    const inside = state.layer === "house" && (a === "sleep" || a === "stir" || a === "wake" || a === "shelter" || a === "shelter-peek" || a === "rain-notice" || (a === "enter" || a === "leave") && isBehindDoorThreshold(state.position));
     const drawMushroom = (mushroom: Mushroom) => {
       if (!mushroomArt || mushroom.growth < .06) return;
       if (state.feedingId === mushroom.id && a === "eat" && food.lifted) return;
@@ -184,6 +185,9 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     ctx.translate(-HOME_AREA.x, -HOME_AREA.y); paintJourney(ctx); ctx.restore();
     drawSceneShade(ctx, dusk, state.rain, width, width, HOME_AREA);
     drawLanternLight(ctx, lampGlow, dusk);
+    if (state.decorItems.includes("leaf_garland") && !appearance.hiddenGifts.includes("leaf_garland")) {
+      drawGarlandLights(ctx, options.reducedMotion ? 0 : state.elapsed, dusk);
+    }
     drawInsects(ctx, state, dusk, options.reducedMotion);
     if (visible) drawMomentAccents(ctx, state, options.reducedMotion);
     if (visible && (a === "sleep" || a === "stir")) {
@@ -282,18 +286,34 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     if (canvas.width !== next || canvas.height !== next) { canvas.width = next; canvas.height = next; draw(); }
   }
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
-  void loadArt().then(result => {
-    if (disposed) return;
-    if (result.naturalWidth !== MAP_SIZE || result.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
-    art = result; bushArt = prepareBushFoliage(result, HOME_AREA);
-    lanternGlass = prepareLanternGlass(result, HOME_AREA); loadVariant();
-    void loadHomeDetail(result).then(tile => {
+  let upgrading = false;
+  async function upgradeDetail() {
+    if (disposed || !art || detail || upgrading) return;
+    upgrading = true;
+    try {
+      const map = await loadHabitatImage(WORLD_ART.map, "low");
+      if (disposed) return;
+      if (map.naturalWidth !== MAP_SIZE || map.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
+      art = map; artCrop = { ...HOME_AREA };
+      const tile = await loadHomeDetail(map);
       if (disposed) return;
       detail = tile;
       lanternGlass = prepareLanternGlass(tile, { x: 0, y: 0, size: tile.width });
       bushArt = prepareBushFoliage(tile, { x: 0, y: 0, size: tile.width });
       if (!options.backgrounded && !options.paused) draw();
-    }).catch(() => { /* Keep the complete original crop if the detail download fails. */ });
+    } catch { /* A reconnect or focus retries; the complete preview stays usable. */ }
+    finally { upgrading = false; }
+  }
+  const retryDetail = () => { if (!options.backgrounded) void upgradeDetail(); };
+  window.addEventListener?.("online", retryDetail); window.addEventListener?.("focus", retryDetail);
+  void loadArt().then(result => {
+    if (disposed) return;
+    if (result.naturalWidth !== HOME_AREA.size || result.naturalHeight !== HOME_AREA.size) throw new Error("Home preview dimensions do not match its manifest");
+    art = result; bushArt = prepareBushFoliage(result, artCrop);
+    lanternGlass = prepareLanternGlass(result, artCrop); loadVariant();
+    // The 28 KiB home starts the character immediately. Full artwork never
+    // blocks input, the first frame or entering the world.
+    void upgradeDetail();
     // Reuse the painted forest mushroom, cut along its contour once, so new growth
     // shares the map's palette and texture instead of introducing another art style.
     mushroomArt = document.createElement("canvas"); mushroomArt.width = 16; mushroomArt.height = 22;
@@ -303,14 +323,25 @@ export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, c
     const contour = [[7, 0], [11, 2], [12, 4], [14, 6], [14, 9], [10, 11], [10, 15], [11, 19], [6, 19], [5, 16], [5, 11], [1, 11], [0, 9], [1, 6], [3, 4], [3, 2]];
     contour.forEach(([cx, cy], i) => { if (i) mc.lineTo(cx, cy); else mc.moveTo(cx, cy); }); mc.closePath(); mc.clip();
     const source = FOREST_MAP.house.mushroomSource;
-    mc.drawImage(art, source.x, source.y, source.width, source.height, 0, 0, 16, 22);
+    mc.drawImage(art, source.x - HOME_AREA.x, source.y - HOME_AREA.y, source.width, source.height, 0, 0, 16, 22);
     if (options.reducedMotion && !options.paused && !options.backgrounded && session.isOwner()) world.settle();
     draw(); callbacks.ready(); persist(); resume();
   }).catch(error => { if (!disposed) { dispose(); callbacks.failure(error); } });
   function dispose() {
     if (disposed) return; syncClock(); persist(); disposed = true; session.release(); cancelStillTimer(); cancelAnimationFrame(frame); frame = 0; observer.disconnect(); art = null; detail = null; lanternGlass = null; mushroomArt = null; bushArt = null;
+    window.removeEventListener?.("online", retryDetail); window.removeEventListener?.("focus", retryDetail);
   }
   return {
+    position() {
+      const trip = sceneJourney(options.worldState, journeyNow());
+      if (trip && isFishingJourney(trip) && world.state.travel === "away") {
+        const pose = fishingFrame(trip, journeyNow(), options.reducedMotion);
+        return { x: pose.x, y: pose.y - 22 };
+      }
+      const state = world.state;
+      return { x: HOME_AREA.x + state.position.x * HOME_AREA.size,
+        y: HOME_AREA.y + (state.position.y - state.size * .5 - state.lift) * HOME_AREA.size };
+    },
     configure(next) {
       if (disposed) return; syncClock();
       if (next.backgrounded && !options.backgrounded) { persist(); hiddenAt = Date.now(); }

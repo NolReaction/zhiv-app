@@ -10,7 +10,6 @@ import type { GameItemId } from "@/features/game/game-rewards";
 import type { SceneOptions } from "@/features/mochlik/scene";
 import type { WorldState } from "./model";
 import type { createMapEngine, MapAction, WorldPlace } from "./map-engine";
-import { WORLD_ART } from "./art";
 import { MAP_PLACES } from "./map-layout";
 import styles from "./world.module.css";
 
@@ -63,8 +62,8 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
   }, [wakeSignal]);
   const journey = sceneJourney(state, now);
   const control = (action: MapAction) => engine.current?.control(action);
-  return <div ref={root} className={styles.scene} style={{ backgroundImage: `url(${WORLD_ART.home})` }} data-ready={ready}>
-    <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home возвращает к дому. Все места также доступны кнопками." />
+  return <div ref={root} className={styles.scene} data-ready={ready}>
+    <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика. Все места также доступны кнопками." />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
     <div className={styles.mapAnchors} hidden={!ready}>
       <button data-map-anchor data-kind="house" data-x={MAP_PLACES.house.marker.x} data-y={MAP_PLACES.house.marker.y} onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
@@ -76,7 +75,7 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
       <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>
       <button onClick={() => control("out")} disabled={!ready} aria-label="Отдалить карту"><Minus size={19} /></button>
       <button onClick={() => control("overview")} disabled={!ready} aria-label="Показать всю карту" title="Вся карта"><Scan size={19} /></button>
-      <button onClick={() => control("home")} disabled={!ready} aria-label="Вернуться камерой к дому"><LocateFixed size={19} /></button>
+      <button onClick={() => control("pet")} disabled={!ready} aria-label="Найти Мохлика" title="Найти Мохлика"><LocateFixed size={19} /></button>
     </div>
     {journey && <button className={styles.away} onClick={() => onPlace("journeys")} aria-label="Открыть текущее путешествие"><JourneyProgress journey={journey} equipment={state.equipment} now={now} /></button>}
   </div>;

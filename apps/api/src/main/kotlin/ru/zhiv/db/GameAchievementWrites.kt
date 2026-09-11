@@ -50,6 +50,7 @@ internal fun recordMergedAchievements(connection: Connection, userId: UUID, at: 
     }
     recordFriendAchievement(connection,userId,at)
     recordSecurityAchievements(connection,userId)
+    recordCollectionAchievement(connection,userId,at)
 }
 
 /** Only verified identities and activated code hashes qualify; never raw secrets. */
@@ -66,4 +67,15 @@ internal fun recordSecurityAchievements(connection: Connection, userId: UUID) {
         for (index in 1..4) it.setObject(index,userId)
         it.executeUpdate()
     }
+}
+
+/** Count only current catalog IDs, never duplicates or arbitrary JSON values. */
+internal fun recordCollectionAchievement(connection: Connection, userId: UUID, at: OffsetDateTime): Long {
+    val collection = connection.prepareStatement("SELECT state FROM world_profiles WHERE user_id=?").use { s ->
+        s.setObject(1,userId)
+        s.executeQuery().use { r -> if(r.next()) ru.zhiv.world.worldJson.decodeFromString<ru.zhiv.world.WorldState>(r.getString(1)).collection else emptyList() }
+    }
+    val count = ru.zhiv.world.WorldRules.catalog.finds.count { it.id in collection }.toLong()
+    if(count >= ru.zhiv.game.GameRewards.achievements.getValue("full_collection")) recordGameAchievement(connection,userId,"full_collection",at)
+    return count
 }

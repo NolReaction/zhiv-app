@@ -1,4 +1,4 @@
-import { creditDevWorldTaps } from "@/lib/dev/world-store";
+import { creditDevWorldTaps, getDevCollectionCount } from "@/lib/dev/world-store";
 import { naturalItems } from "@/features/game/game-rewards";
 import { getDevItemStreak, getDevIdentity, lookupDevUser, getDevFriendPublicIds, getDevAchievements, awardDevGameTaps } from "@/lib/dev/api-store";
 import type { GameProgress, GameLeaderboard, GameSession, GameBatchResponse, GameAchievements, GameLeaderboardMetric, GameLeaderboardScope } from "@/features/game/game-api";
@@ -130,7 +130,7 @@ export function getDevGameAchievements(token: string | undefined, now = Date.now
   const identity = getDevIdentity(token);
   if (!identity) return error("UNAUTHORIZED");
   const lifetimeTaps = store().profiles.get(identity.user.publicId)?.lifetimeTaps ?? 0;
-  return { kind: "ok", value: getDevAchievements(token, lifetimeTaps, now, store().profiles.get(identity.user.publicId)?.bestSeries ?? 0)! };
+  return { kind: "ok", value: getDevAchievements(token, lifetimeTaps, now, store().profiles.get(identity.user.publicId)?.bestSeries ?? 0, getDevCollectionCount(identity.user.publicId))! };
 }
 
 export function createDevGameSession(token: string | undefined, ownerPublicId: string, requestId: string, now = Date.now()): DevGameResult<GameSession> {
@@ -211,7 +211,7 @@ export function submitDevGameBatch(
   const elapsed = Math.max(0, now - own.refilledAt);
   own.tokens = Math.min(TAP_BUCKET_CAPACITY, own.tokens + elapsed * TAP_RATE_PER_SECOND / 1_000);
   own.refilledAt = Math.max(own.refilledAt, now);
-  if (times && eligibleCount > Math.floor(own.tokens)) return error("GAME_PACING");
+  if (eligibleCount > Math.floor(own.tokens)) return error("GAME_PACING");
   const acceptedTaps = Math.min(eligibleCount, Math.floor(own.tokens));
   if (times) { session.eventTokens = eventTokens; session.eventAt = eventAt; }
   if (session.closedAt == null && own.writerId === session.id && now < session.expiresAt) own.writerUntil = Math.min(now + 30000, session.expiresAt);

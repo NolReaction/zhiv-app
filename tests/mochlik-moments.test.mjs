@@ -166,6 +166,9 @@ test("an individually granted garland does not unlock other decor, and props res
   drawDecor({ save() {}, restore() {}, translate() {}, fillRect(...rect) { rectangles.push(rect); } }, { ...world.state, decorItems: ["leaf_garland"] }, true);
   assert.ok(rectangles.length > 0);
   assert.ok(rectangles.every(([, y]) => y < 90), "only the garland is painted, not the bed, flower or keepsakes");
+  rectangles.length = 0;
+  drawDecor({ save() {}, restore() {}, fillRect(...rect) { rectangles.push(rect); } }, { ...world.state, decorItems: ["leaf_garland"] }, true, ["leaf_garland"]);
+  assert.equal(rectangles.length, 0, "hidden gifts stay owned without being drawn again by natural streak rewards");
 });
 
 test("rain shelter enters the existing doorway and reduced motion preserves its depth", () => {

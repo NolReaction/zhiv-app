@@ -5,6 +5,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { PlayerName } from "@/components/player-name";
 import { ApiError } from "@/lib/check-in-api";
 import { getAdminTapActivity, getAdminUsers, type AdminTapActivity, type AdminUser } from "./admin-api";
+import { AdminTapHistoryPanel } from "./admin-tap-history-panel";
 import styles from "./admin-management.module.css";
 
 const format = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
@@ -69,11 +70,11 @@ export function AdminTapActivityPanel({ initialTarget, refreshVersion, onManage,
     <div className={styles.search}><label>Найти игрока по имени или ID<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Например ABCD-EFGH-JKLM" maxLength={100} /></label></div>
     {searchError && <p role="alert" className={styles.error}>{searchError}</p>}
     <div className={styles.results}>{players.map(player => <button key={player.publicId} aria-pressed={target?.publicId === player.publicId} onClick={() => { setTarget(player); setError(""); }}>
-      <PlayerName name={player.displayName} tag={player.tag} /> · {player.publicId}{player.tapSignalAt ? " · проверить клики" : ""}{player.watchlisted ? " · наблюдение" : ""}
+      <PlayerName name={player.displayName} tag={player.tag} /> · {player.publicId}{player.tapSignalAt ? " · проверить клики" : ""}{player.watchlisted && <span className={styles.watchBadge}>Наблюдение</span>}
     </button>)}</div>
     {!players.length && !searchError && <p className={styles.hint}>По этому запросу игроков не найдено.</p>}
     {!target ? <p>Выберите игрока. Здесь появятся частота нажатий и история за последние полчаса.</p> : <>
-      <div className={styles.search}><h2><PlayerName name={current?.displayName ?? selected?.displayName} tag={selected?.tag} /></h2><code>{target.publicId}</code><button onClick={() => onManage(selected ?? target)}>Управление / наблюдение</button></div>
+      <div className={styles.search}><h2><PlayerName name={current?.displayName ?? selected?.displayName} tag={selected?.tag} /></h2><code>{target.publicId}</code>{(current?.watchlisted ?? selected?.watchlisted) && <span className={styles.watchBadge}>Наблюдение</span>}<button onClick={() => onManage(selected ?? target)}>Управление / наблюдение</button></div>
       {error && <p className={styles.error} role="alert">{error}{current ? " Показан последний полученный снимок." : ""}</p>}
       {!current ? <p>{loading ? "Собираем статистику…" : "Данные пока не получены."}</p> : <>
         <div className={styles.metrics}>{current.windows.map(window => <div className={styles.metric} key={window.seconds}>
@@ -101,6 +102,7 @@ export function AdminTapActivityPanel({ initialTarget, refreshVersion, onManage,
         <p className={styles.hint}>Отброшено в обработанных пакетах: {format.format(current.rejectedTaps)}. С задержкой &gt;10 с: {format.format(current.delayedTaps)}. Без временных меток: {format.format(current.legacyTaps)}.</p>
         <p className={styles.hint}>Снимок {time(current.serverTime)} UTC. Обновление каждые 10 секунд. Окна включают последние полные секунды; текущая неполная минута не участвует в оценке равномерности. История начинается после обновления сервера.</p>
       </>}
+      <AdminTapHistoryPanel key={target.publicId} target={target.publicId} refreshVersion={refreshVersion} onAccessError={onAccessError} />
     </>}
   </section>;
 }

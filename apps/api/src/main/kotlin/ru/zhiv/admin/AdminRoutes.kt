@@ -64,6 +64,11 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
                 call.respond(repository.player(hash, target))
             }
+            get("/users/{publicId}/tap-history") {
+                val hash = call.adminSessionHash(config, codec)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                call.respond(repository.tapHistory(hash, target))
+            }
             get("/users/{publicId}/tap-activity") {
                 val hash = call.adminSessionHash(config, codec)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()

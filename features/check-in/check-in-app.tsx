@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 
-import { GameLevelIcon } from "@/features/game/game-level-icon";
+import { GameLevelsButton } from "@/features/game/game-levels-button";
+import { BetaInfo } from "./beta-info";
 
 import type {
   CSSProperties,
@@ -359,6 +360,16 @@ export function CheckInApp() {
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
   const [worldMounted, setWorldMounted] = useState(false);
+  useEffect(() => {
+    if (screen !== "home" || !mochlikVisible) return;
+    // Warm lazy modules after the initial screen. The service worker retains
+    // their hashed responses, so entering the world also works after reconnects.
+    const timer = setTimeout(() => {
+      void import("@/features/world/world-portal").catch(() => undefined);
+      void import("@/features/world/map-engine").catch(() => undefined);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [screen, mochlikVisible]);
   const closeWorld = worldPortal.close;
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
@@ -899,7 +910,8 @@ export function CheckInApp() {
       if (runId && runId !== recordAtRunStart.current.runId) {
         recordAtRunStart.current = { runId, bestSeries: game.progress?.bestSeries ?? null };
       }
-      if (runId) recordGameTap(steps, runId);
+      const recorded = runId ? recordGameTap(steps, runId) : 0;
+      if (recorded === 0) { setNotice("Не удалось сохранить нажатие на устройстве. Откройте значок сервера для проверки."); return false; }
       if (transition.finishedSeries) {
         reportFinishedSeries(transition.finishedSeries, transition.progress);
         triggerSeriesBreakEffect();
@@ -912,6 +924,7 @@ export function CheckInApp() {
       ) persistClickerRun(transition.progress);
       if (transition.effect) triggerStoryEffect(transition.effect);
       resetClickerLater();
+      return true;
     },
     [
       recordGameTap,
@@ -1044,9 +1057,9 @@ export function CheckInApp() {
       tappedAtMs,
       Boolean(pendingCheckIn.current),
     );
-    registerTap(1, tappedAtMs);
+    const recorded = registerTap(1, tappedAtMs);
     if (tapPlan !== "REQUEST_SERVER") {
-      if (tapPlan === "START_LOCAL") setNotice(null);
+      if (tapPlan === "START_LOCAL" && recorded) setNotice(null);
       return;
     }
     if (checkInSending.current) return;
@@ -1184,16 +1197,18 @@ export function CheckInApp() {
   const clickerLevelProgress = getClickerLevelProgress(game.progress?.lifetimeTaps ?? 0);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
   const gameNotice = game.errorCode === "GAME_STARTING" ? "Получаем разрешение на игру. Первые нажатия в очереди; продолжить можно после подключения."
+    : game.errorCode === "QUEUE_FULL" ? "Очередь на устройстве заполнена. Дождитесь отправки сохранённых нажатий, прежде чем продолжать."
     : game.errorCode === "GAME_ACTIVE_ELSEWHERE" ? "Игра активна в другом окне или на другом устройстве. Очередь сохранена; отправка продолжится после освобождения игры."
     : game.errorCode === "STORAGE_FAILED" ? "Браузер не смог сохранить очередь. Новые игровые нажатия приостановлены. Освободите место и проверьте доступ к хранилищу."
+    : game.errorCode === "GAME_TAP_RATE" ? "Слишком высокая скорость нажатий. Сервер применил ограничение частоты; можно продолжать играть в обычном темпе."
     : game.errorCode === "GAME_SESSION_EXPIRED" && !isOnline ? "Разрешение на игру без связи истекло. Уже сделанные нажатия остаются в очереди; подключитесь, чтобы продолжить."
     : game.errorCode === "GAME_PERMIT_CLOSED" ? "Игра была передана другому устройству или разрешение закончилось. Допустимые нажатия сохранены; поздние не входят в рейтинг."
     : game.status === "error" ? "Не удалось получить подтверждение. Очередь остаётся на этом устройстве; повторим отправку автоматически."
-    : !isOnline ? "Офлайн. Нажатия сохраняются на этом устройстве в пределах разрешения на игру. После подключения отправим очередь."
+    : !isOnline ? "Офлайн. Нажатия сохраняются на этом устройстве. После подключения отправим очередь; при заполнении хранилища покажем предупреждение."
     : game.status === "loading" ? "Загружаем игровой прогресс…"
     : game.pendingTaps ? `Ожидают подтверждения: ${game.pendingTaps.toLocaleString("ru-RU")} тапов. Можно продолжать играть.`
     : game.archivedTaps ? `Не удалось проверить ${game.archivedTaps.toLocaleString("ru-RU")} прежних нажатий. Запись сохранена на этом устройстве для разбора; можно продолжать играть. Подтверждённый прогресс остаётся в аккаунте.`
-    : game.rejectedTaps ? `Сохранённый прогресс обновлён. Не вошли в рейтинг: ${game.rejectedTaps.toLocaleString("ru-RU")} нажатий.`
+    : game.rejectedTaps ? `Прогресс сохранён. Сервер не засчитал ${game.rejectedTaps.toLocaleString("ru-RU")} нажатий по правилам игры.`
     : "Прогресс сохранён в аккаунте и доступен на других устройствах.";
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =
@@ -1219,9 +1234,10 @@ export function CheckInApp() {
   ].includes(effectType);
   const displayedRunId = clickerRun.activeSeries?.eventId ?? seriesSummary?.eventId;
   const displayedRun = game.run?.runId === displayedRunId ? game.run : null;
-  const visualTapCount = (displayedRun?.acceptedTaps ?? 0) + (displayedRun?.pendingTaps ?? 0);
+  const creditedRunTaps = displayedRun?.creditedTaps ?? displayedRun?.acceptedTaps ?? 0;
+  const visualTapCount = creditedRunTaps + (displayedRun?.pendingTaps ?? 0);
   const isConfirmedRecord = Boolean(seriesSummary && !clickerRun.activeSeries && displayedRun
-    && displayedRun.pendingTaps === 0 && recordAtRunStart.current.bestSeries !== null
+    && displayedRun.pendingTaps === 0 && !displayedRun.interrupted && recordAtRunStart.current.bestSeries !== null
     && displayedRun.acceptedTaps > recordAtRunStart.current.bestSeries
     && displayedRun.acceptedTaps === game.progress?.bestSeries);
   const buttonStyle = useMemo(
@@ -1349,25 +1365,20 @@ export function CheckInApp() {
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>
-          <button
-            type="button"
-            className={styles.identity}
-            aria-label={`Скопировать ID${game.progress ? `. Уровень ${clickerLevel.level} из 100` : ""}`}
-            aria-busy={isIdentityActionPending}
-            disabled={isIdentityActionPending}
-            onClick={handleIdentityAction}
-          >
-            <span className={styles.identityText}>
-              <span className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong>
-                <span className={styles.betaBadge}>beta-режим</span>
-                {game.progress && <span className={styles.levelBadge} title={`Уровень ${clickerLevel.level} из 100 · ${clickerLevel.title}`}>
-                  <GameLevelIcon level={clickerLevel.level} size={15} /><span>ур. {clickerLevel.level}</span>
-                </span>}
-              </span>
+          <div className={styles.identity}>
+            <div className={styles.identityText}>
+              <div className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong></div>
+              <div className={styles.identityBadges}>
+                <BetaInfo />
+                {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
+              </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
-            </span>
-            <Copy size={16} />
-          </button>
+            </div>
+            <button type="button" className={styles.copyIdentity} aria-label="Скопировать ID"
+              aria-busy={isIdentityActionPending} disabled={isIdentityActionPending} onClick={handleIdentityAction}>
+              <Copy size={18} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1439,7 +1450,7 @@ export function CheckInApp() {
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
-                Текущая серия: {visualTapCount.toLocaleString("ru-RU")}. Сохранено: {displayedRun?.acceptedTaps ?? 0}.
+                Текущая серия: {visualTapCount.toLocaleString("ru-RU")}. Сохранено: {creditedRunTaps}.
                 {displayedRun?.pendingTaps ? `Ожидают сохранения: ${displayedRun.pendingTaps}.` : ""}
               </span>
             ) : null}

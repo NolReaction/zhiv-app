@@ -662,7 +662,7 @@ export function awardDevGameTaps(ownerPublicId: string, lifetimeTaps: number, no
   if (userId && bestSeries >= 10_000) awardAchievement(userId, "ten_thousand_series", new Date(now).toISOString());
 }
 
-export function getDevAchievements(token: string | undefined, lifetimeTaps: number, now: number, bestSeries = 0): GameAchievements | null {
+export function getDevAchievements(token: string | undefined, lifetimeTaps: number, now: number, bestSeries = 0, collectionCount = 0): GameAchievements | null {
   const user = sessionUser(token);
   if (!user) return null;
   const serverTime = new Date(now);
@@ -676,6 +676,7 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
     // Development mode intentionally does not simulate verified email identities.
     { id: "linked_email", progress: 0, target: 1 },
     { id: "saved_recovery_code", progress: [...store().recoveryCodes.values()].some(row => row.userId === user.id) ? 1 : 0, target: 1 },
+    { id: "full_collection", progress: collectionCount, target: 12 },
   ] as const;
   // Backfill milestones for a running development store upgraded from an older version.
   for (const value of values) {

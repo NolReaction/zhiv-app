@@ -257,3 +257,5 @@
 .incidentItem > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .incidentItem p { margin: 8px 0; }
 .incidentItem small { display: block; color: #a3af9c; margin-top: 6px; }
+
+.watchBadge { display: inline-flex; align-items: center; margin: 3px; padding: 4px 8px; border: 1px solid #c94958; border-radius: 8px; color: #ff8a8a; background: #411d24; font-size: 14px; font-weight: 750; line-height: 1.3; }

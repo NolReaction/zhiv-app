@@ -22,15 +22,15 @@ export function fishingTackle(state: Frame) {
   return { grip, lower, upper, bend, tip, along, normal, side };
 }
 
-export function drawFishingRod(ctx: CanvasRenderingContext2D, rod: ReturnType<typeof fishingTackle>) {
+export function drawFishingRod(ctx: CanvasRenderingContext2D, rod: ReturnType<typeof fishingTackle>, special = false) {
   const { grip, lower, upper, tip, bend, along, normal, side } = rod;
   ctx.save(); ctx.lineCap = "round";
   const stroke = (from: Point, to: Point, width: number, color: string) => {
     ctx.strokeStyle = color; ctx.lineWidth = width;
     ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
   };
-  stroke(grip, lower, 2.2, "#8b663b"); stroke(grip, lower, .7, "#d0af70");
-  stroke(lower, upper, 1.6, "#a68b55");
+  stroke(grip, lower, 2.2, special ? "#809657" : "#8b663b"); stroke(grip, lower, .7, special ? "#e9d38a" : "#d0af70");
+  stroke(lower, upper, 1.6, special ? "#aec381" : "#a68b55");
   ctx.strokeStyle = "#bda777"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(upper.x, upper.y); ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y); ctx.stroke();
   const butt = { x: grip.x - along.x * 4, y: grip.y - along.y * 4 };
@@ -42,7 +42,7 @@ export function drawFishingRod(ctx: CanvasRenderingContext2D, rod: ReturnType<ty
   }
   const reel = { x: grip.x - side * 3, y: grip.y + 3 };
   ctx.fillStyle = "#424b3b"; ctx.beginPath(); ctx.arc(reel.x, reel.y, 2.6, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = "#a2a58b"; ctx.lineWidth = .8; ctx.stroke();
+  ctx.strokeStyle = special ? "#edd591" : "#a2a58b"; ctx.lineWidth = .8; ctx.stroke();
   ctx.fillStyle = "#bba77b"; ctx.fillRect(Math.round(reel.x), Math.round(reel.y), 1, 1);
   stroke(reel, { x: reel.x - side * 3, y: reel.y + 1 }, .8, "#a2a58b");
   for (const guide of [lower, upper, tip]) {

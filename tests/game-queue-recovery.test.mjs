@@ -91,10 +91,16 @@ test("failed archive storage preserves the active outbox until a later successfu
   assert.equal(client.snapshot().pendingTaps, 13);
   assert.equal(client.snapshot().archivedTaps, 0);
   assert.deepEqual(f.journal.read().pendingBatch, f.original.pendingBatch);
-  assert.equal(client.recordTap(1, runId), 0);
+  assert.equal(client.recordTap(1, runId), 1);
+  assert.equal(client.snapshot().pendingTaps, 14);
+  assert.deepEqual(f.journal.read().pendingBatch, f.original.pendingBatch);
+  assert.equal(f.journal.read().deferredQueue[0].count, 1);
   f.fail(false); f.advance(); await client.flush();
-  assert.equal(client.snapshot().pendingTaps, 0);
+  assert.equal(client.snapshot().pendingTaps, 1);
   assert.equal(client.snapshot().archivedTaps, 13);
+  await client.flush();
+  assert.equal(client.snapshot().pendingTaps, 0);
+  assert.equal(client.snapshot().progress.lifetimeTaps, 101);
   client.dispose();
 });
 

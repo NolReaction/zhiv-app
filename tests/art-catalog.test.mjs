@@ -14,13 +14,19 @@ const { AchievementMedal } = await vite.ssrLoadModule("/features/game/achievemen
 const { MAP_PLACES, worldToHome, homeToWorld, pointInPolygon, mapPlaceAt } = await vite.ssrLoadModule("/features/world/map-layout.ts");
 const { HOUSE_ANCHORS, HOME_CANVAS_SIZE } = await vite.ssrLoadModule("/features/mochlik/home-layout.ts");
 
-test("every achievement has one readable SVG and a catalog description", async () => {
-  const files = (await readdir(new URL("../public/achievements/", import.meta.url))).filter(name => name.endsWith(".svg"));
-  assert.deepEqual(files.sort(), GAME_ACHIEVEMENTS.map(item => `${item.id}.svg`).sort());
+test("every achievement has one readable asset and a catalog description", async () => {
+  const files = (await readdir(new URL("../public/achievements/", import.meta.url))).filter(name => /\.(svg|png)$/.test(name));
+  assert.deepEqual(files.sort(), GAME_ACHIEVEMENTS.map(item => `${item.id}.${item.id === "full_collection" ? "png" : "svg"}`).sort());
   for (const item of GAME_ACHIEVEMENTS) {
     const medal = AchievementMedal({ id: item.id });
     assert.equal(medal.type, "img");
     assert.equal(medal.props.alt, "");
+    if (item.id === "full_collection") {
+      const bytes = await readFile(`${root}/public${medal.props.src}`);
+      assert.equal(bytes.toString("hex", 0, 8), "89504e470d0a1a0a");
+      assert.ok(medal.props.style.clipPath.startsWith("circle("));
+      continue;
+    }
     const svg = await readFile(`${root}/public${medal.props.src}`, "utf8");
     assert.match(svg, /<svg\s/);
     assert.match(svg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);

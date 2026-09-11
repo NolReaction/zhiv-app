@@ -25,6 +25,9 @@ internal fun purgeTapActivity(source: DataSource): Int = source.connection.use {
         val count=c.prepareStatement("""DELETE FROM game_tap_activity_seconds WHERE ctid IN
             (SELECT ctid FROM game_tap_activity_seconds WHERE bucket_at<clock_timestamp()-interval '2 hours'
              ORDER BY bucket_at LIMIT 5000 FOR UPDATE SKIP LOCKED)""").use { it.executeUpdate() }
-        c.commit(); count
+        val minutes=c.prepareStatement("""DELETE FROM game_tap_activity_minutes WHERE ctid IN
+            (SELECT ctid FROM game_tap_activity_minutes WHERE bucket_at<date_trunc('minute',clock_timestamp())-interval '30 days'
+             ORDER BY bucket_at LIMIT 5000 FOR UPDATE SKIP LOCKED)""").use { it.executeUpdate() }
+        c.commit(); maxOf(count,minutes)
     } catch(error: Exception) { c.rollback(); throw error }
 }

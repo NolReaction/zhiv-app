@@ -19,7 +19,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
  const translations=[];
  const ctx=new Proxy({translate:(x,y)=>translations.push({x,y}),getImageData:(_x,_y,w,h)=>pixels(w,h),createImageData:pixels,createRadialGradient:()=>({addColorStop(){}}),createLinearGradient:()=>({addColorStop(){}})}, {get:(object,key)=>key in object?object[key]:()=>{}});
  const canvas=()=>({width:256,height:256,clientWidth:393,clientHeight:740,getContext:()=>ctx,addEventListener(){},removeEventListener(){},hasPointerCapture(){return false}});
- install('Image',class {naturalWidth=1254;naturalHeight=1254;set src(path){pending.push({path,image:this})}});
+ install('Image',class {naturalWidth=1254;naturalHeight=1254;set src(path){if(!path)return;this.naturalWidth=this.naturalHeight=path===WORLD_ART.homePreview?256:path===WORLD_ART.mapPreview?384:1254;pending.push({path,image:this})}});
  install('document',{hidden:false,createElement:canvas,addEventListener(){},removeEventListener(){}});install('window',{});
  install('setTimeout',(fn,ms)=>{timers.set(++id,{fn,ms});return id});install('clearTimeout',key=>timers.delete(key));
  install('requestAnimationFrame',fn=>{frames.set(++id,fn);return id});install('cancelAnimationFrame',key=>frames.delete(key));
@@ -32,16 +32,22 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const first=createMapEngine(canvas(),options,()=>{},[],abort.signal).then(v=>{ready=true;return v});
   const cancelled=assert.rejects(first,error=>error.name==='AbortError');
   assert.equal(ready,false);assert.equal(observed,0);assert.equal(frames.size,0);
-  abort.abort();finish(WORLD_ART.map);await cancelled;await flush();
+  abort.abort();finish(WORLD_ART.mapPreview);finish(WORLD_ART.homePreview);await cancelled;await flush();
   assert.equal(observed,0);assert.equal(frames.size,0);assert.equal(timers.size,0);
-  assert.equal(pending.length,0,"one shared background; no incompatible legacy atlases are requested");
+  assert.equal(pending.length,0,"only lightweight previews are needed before the view mounts");
   const bush={dataset:{kind:'bush',...MAP_PLACES.bush.marker},style:{}};
   const house={dataset:{kind:'house',...MAP_PLACES.house.marker},style:{}};
   const surface=canvas();
   const engine=await createMapEngine(surface,options,()=>{},[bush,house]);assert.equal(observed,3);
+  assert.ok(pending.some(item=>item.path===WORLD_ART.map),'the complete scene is already interactive while full artwork is downloading');
+  finish(WORLD_ART.map);await flush();
   finish(WORLD_ART.boatWreck);await flush();
   // An already-running flight keeps its actual source-map position in either renderer.
   const shared=connectHabitat(options.presenceKey,'circle',false,()=>assert.fail('reuse map state'),()=>{});
+  translations.length=0;engine.control('pet');
+  const petX=486+shared.world.state.position.x*256;
+  const petY=514+(shared.world.state.position.y-shared.world.state.size*.5-shared.world.state.lift)*256;
+  assert.ok(translations.some(point=>Math.abs(point.x+petX)<1e-8&&Math.abs(point.y+petY)<1e-8),'the crosshair centers the actual character, not the clearing');
   shared.world.state.elapsed=41.5;
   const bird=birdFlightPose(BIRD_FLIGHTS[1],41.5,0);
   assert.ok(bird.x>=486&&bird.x<=742&&bird.y>=514&&bird.y<=770,'flight crosses the home crop');

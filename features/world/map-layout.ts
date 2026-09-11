@@ -1,4 +1,5 @@
 import { FOREST_MAP, type MapPoint } from "./map-manifest";
+import runtimeArt from "./runtime-art.json";
 export const MAP_SIZE = FOREST_MAP.size;
 export const HOME_AREA = FOREST_MAP.homeCrop;
 export const MAP_PLACES = { house: FOREST_MAP.house, bush: FOREST_MAP.bush, cave: FOREST_MAP.cave, fishing: FOREST_MAP.water } as const;
@@ -28,7 +29,7 @@ export function mapPlaceAt(point: MapPoint): "house" | "bush" | "cave" | "fishin
   return null;
 }
 export const HOME_BACKGROUND_STYLE = {
-  backgroundImage: `url(${FOREST_MAP.image})`,
-  backgroundSize: `${MAP_SIZE / HOME_AREA.size * 100}%`,
-  backgroundPosition: `${HOME_AREA.x / (MAP_SIZE - HOME_AREA.size) * 100}% ${HOME_AREA.y / (MAP_SIZE - HOME_AREA.size) * 100}%`,
+  backgroundImage: `url(${runtimeArt.homePreview})`,
+  backgroundSize: "cover",
+  backgroundPosition: "center",
 } as const;

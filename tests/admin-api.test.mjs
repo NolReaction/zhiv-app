@@ -119,3 +119,39 @@ test("incident filters encode separately and the summary covers the whole result
   const result=await api.getAdminIncidents({rangeMinutes:43200,source:'client',code:'WORLD_MAP_TIMEOUT',q:'A & B',offset:25});
   assert.equal(result.affectedUsers,8);assert.equal(result.totalOccurrences,130);
 });
+
+
+test("monthly tap history uses authenticated no-store reads and validates counters", async () => {
+  const minute = { at: serverTime, receivedTaps: 100, rejectedTaps: 0, eventTaps: 98, delayedTaps: 2,
+    legacyTaps: 0, intervalCount: 97, intervalSumMs: 58000, intervalSquaredSumMs: 35000000,
+    reviewSignal: true, watchlisted: true, complete: false };
+  const body = { publicId, serverTime, from: "2026-08-08T12:00:00Z", minutes: [minute] };
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, `/api/v1/admin/users/${publicId}/tap-history`);
+    assert.equal(options.credentials, "same-origin"); assert.equal(options.cache, "no-store");
+    return Response.json(body);
+  };
+  assert.deepEqual(await api.getAdminTapHistory(publicId), body);
+  body.minutes[0].receivedTaps = -1;
+  await assert.rejects(api.getAdminTapHistory(publicId), error => error.status === 502);
+});
+
+test("monthly export preserves event and delivery counters, UTC days and partial minutes", async () => {
+  const { tapHistoryCsv, tapHistoryDays } = await vite.ssrLoadModule("/features/admin/tap-history.ts");
+  const base = { receivedTaps: 30, eventTaps: 20, rejectedTaps: 2, delayedTaps: 10, legacyTaps: 3,
+    intervalCount: 19, intervalSumMs: 1900, intervalSquaredSumMs: 190000, reviewSignal: true, watchlisted: true, complete: true };
+  const history = { publicId, serverTime, from: "2026-08-08T12:00:00Z", minutes: [
+    { ...base, at: "2026-09-06T23:59:00Z" }, { ...base, at: "2026-09-07T00:00:00Z" },
+    { ...base, at: "2026-09-07T12:00:00Z", complete: false, reviewSignal: false },
+  ] };
+  assert.deepEqual(tapHistoryDays(history), [
+    { day: "2026-09-06", received: 30, events: 20, rejected: 2, signals: 1, watched: 1 },
+    { day: "2026-09-07", received: 60, events: 40, rejected: 4, signals: 1, watched: 2 },
+  ]);
+  const csv = tapHistoryCsv(history);
+  assert.equal(csv.charCodeAt(0), 0xfeff);
+  const rows = csv.trimEnd().split("\r\n");
+  assert.equal(rows.length, 4); assert.ok(rows.every(row => row.split(",").length === 13));
+  assert.match(rows[3], /,0,1,0$/);
+  assert.ok(rows[1].includes("30,20,2,10,3,19,1900,190000"));
+});

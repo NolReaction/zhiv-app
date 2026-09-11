@@ -254,10 +254,11 @@ test("a rejected batch does not claim the predecessor before a successor actuall
   batch(owner, first, 60, 1, run);
   context.mock.timers.setTime(Date.parse(first.expiresAt));
   const waiting = session(owner);
-  assert.equal(batch(owner, waiting, 1, 1, run).value.acceptedTaps, 0);
+  const waitingRequest = { sessionId: waiting.sessionId, sequence: 1, tapCount: 1, runId: run };
+  assert.equal(game.submitDevGameBatch(owner.token, waitingRequest).code, "GAME_PACING");
   assert.equal(game.createDevGameSession(owner.token, owner.me.user.publicId, crypto.randomUUID()).code, "GAME_ACTIVE_ELSEWHERE");
   context.mock.timers.setTime(Date.now() + 100);
-  assert.equal(batch(owner, waiting, 1, 2, run).value.progress.bestSeries, 61);
+  assert.equal(ok(game.submitDevGameBatch(owner.token, waitingRequest)).progress.bestSeries, 61);
 });
 
 
@@ -293,10 +294,11 @@ test("receipt run counts describe the requested run after a rejection or a serve
   const firstRun = crypto.randomUUID();
   assert.equal(batch(owner, active, 60, 1, firstRun).value.runTaps, 60);
   const secondRun = crypto.randomUUID();
-  const rejected = batch(owner, active, 4, 2, secondRun);
-  assert.equal(rejected.value.acceptedTaps, 0);
-  assert.equal(rejected.value.runTaps, 0);
-  assert.equal(ok(game.submitDevGameBatch(owner.token, rejected.request)).runTaps, 0);
+  const request = { sessionId: active.sessionId, sequence: 2, tapCount: 4, runId: secondRun, tapTimes: Array(4).fill(Date.now() + 60_000) };
+  const rejected = ok(game.submitDevGameBatch(owner.token, request));
+  assert.equal(rejected.acceptedTaps, 0);
+  assert.equal(rejected.runTaps, 0);
+  assert.equal(ok(game.submitDevGameBatch(owner.token, request)).runTaps, 0);
   context.mock.timers.setTime(Date.now() + 1_000);
   assert.equal(batch(owner, active, 20, 3, secondRun).value.runTaps, 20);
   context.mock.timers.setTime(Date.now() + 12_001);

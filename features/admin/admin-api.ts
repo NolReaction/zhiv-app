@@ -97,7 +97,7 @@ export function revokeAdminSessions(targetPublicId: string, body: AdminRevokeReq
 const rewardIdSchema = z.string().refine(id => [...GAME_ITEMS, ...GAME_ACHIEVEMENTS].some(item => item.id === id));
 const rewardsSchema = z.object({ publicId, serverTime: instant,
   items: z.array(z.custom<GameItemId>(id => GAME_ITEMS.some(item => item.id === id))).max(4),
-  achievements: z.array(z.custom<GameAchievementId>(id => GAME_ACHIEVEMENTS.some(item => item.id === id))).max(6),
+  achievements: z.array(z.custom<GameAchievementId>(id => GAME_ACHIEVEMENTS.some(item => item.id === id))).max(7),
 });
 export type AdminRewards = z.infer<typeof rewardsSchema>;
 export type AdminGrantRequest = AdminRevokeRequest & { kind: "item" | "achievement"; rewardId: GameItemId | GameAchievementId };
@@ -143,3 +143,13 @@ const tapActivitySchema = z.object({ publicId, displayName: z.string(), watchlis
 export type AdminTapActivity = z.infer<typeof tapActivitySchema>;
 export const getAdminTapActivity = (target: string, signal?: AbortSignal) =>
   adminRequest(`users/${encodeURIComponent(target)}/tap-activity`, tapActivitySchema, signal);
+
+const tapHistorySchema = z.object({ publicId, serverTime: instant, from: instant,
+  minutes: z.array(z.object({ at: instant, receivedTaps: count, rejectedTaps: count, eventTaps: count,
+    delayedTaps: count, legacyTaps: count, intervalCount: count,
+    intervalSumMs: z.number().finite().nonnegative(), intervalSquaredSumMs: z.number().finite().nonnegative(),
+    reviewSignal: z.boolean(), watchlisted: z.boolean(), complete: z.boolean() })).max(43201),
+});
+export type AdminTapHistory = z.infer<typeof tapHistorySchema>;
+export const getAdminTapHistory = (target: string, signal?: AbortSignal) =>
+  adminRequest(`users/${encodeURIComponent(target)}/tap-history`, tapHistorySchema, signal);

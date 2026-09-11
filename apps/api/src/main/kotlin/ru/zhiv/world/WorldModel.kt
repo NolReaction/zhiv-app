@@ -3,12 +3,13 @@ package ru.zhiv.world
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.game.GameRewards
 import java.time.Instant
 import java.util.UUID
 
 internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 @Serializable data class WorldResources(val sparks: Long = 0, val wood: Long = 0, val stone: Long = 0)
-@Serializable data class WorldEquipment(val palette: String = "moss", val head: String? = null, val neck: String? = null)
+@Serializable data class WorldEquipment(val palette: String = "moss", val head: String? = null, val neck: String? = null, val rod: String? = null)
 @Serializable data class WorldJourney(val id: String, val routeId: String, val startedAt: String, val finishesAt: String,
     val rewards: WorldResources, val finds: List<String>, val introductory: Boolean, val catalogVersion: Int)
 @Serializable data class WorldState(
@@ -23,11 +24,12 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
     val journeys: List<WorldJourney> = emptyList(),
     val firstJourneyCompleted: Boolean = false,
     val completedJourneys: Long = 0,
+    val hiddenGifts: List<String> = emptyList(),
 )
 @Serializable data class WorldSnapshot(
     val ownerPublicId: String, val revision: Long, val serverTime: String,
     val state: WorldState, val gifts: List<String> = emptyList(), val dailySparksEarned: Int = 0,
-    val catalogVersion: Int = 2,
+    val catalogVersion: Int = 3,
 )
 @Serializable data class WorldCommand(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,
@@ -36,7 +38,7 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
 @Serializable data class WorldResult(val snapshot: WorldSnapshot, val message: String, val replayed: Boolean = false)
 @Serializable data class WorldCost(val sparks: Long, val wood: Long = 0, val stone: Long = 0, val level: Int = 0)
 @Serializable data class WorldItem(val id: String, val name: String, val slot: String, val color: String, val sparks: Long, val starter: Boolean)
-@Serializable data class WorldFind(val id: String, val name: String, val description: String, val symbol: String)
+@Serializable data class WorldFind(val id: String, val name: String, val description: String, val symbol: String, val group: String = "forest")
 @Serializable data class WorldRoute(val id: String, val name: String, val description: String, val seconds: Long, val houseLevel: Int,
     val once: Boolean, val sparks: Long, val wood: Long, val stone: Long, val finds: List<String>)
 @Serializable data class WorldCatalog(val version: Int, val dailySparkLimit: Int, val tapsPerSpark: Int,
@@ -51,9 +53,17 @@ object WorldRules {
         if (r.sparks < cost.sparks || r.wood < cost.wood || r.stone < cost.stone) fail("WORLD_RESOURCES", "Пока не хватает материалов. Их можно принести из путешествия.")
         return state.copy(resources = WorldResources(r.sparks-cost.sparks, r.wood-cost.wood, r.stone-cost.stone))
     }
-    fun apply(state: WorldState, command: WorldCommand, now: Instant): Pair<WorldState, String> = when(command.action) {
+    fun apply(state: WorldState, command: WorldCommand, now: Instant, gifts: List<String> = emptyList()): Pair<WorldState, String> = when(command.action) {
+        "set_decoration" -> {
+            val show = command.target.startsWith("show_")
+            val item = command.target.removePrefix(if (show) "show_" else "hide_")
+            if ((!show && !command.target.startsWith("hide_")) || item !in GameRewards.items) fail("WORLD_ITEM", "Украшение не найдено")
+            if (item !in gifts) fail("WORLD_ITEM_NOT_OWNED", "Сначала получите этот подарок за отметки")
+            state.copy(hiddenGifts = if (show) state.hiddenGifts.filterNot { it == item }
+                else (state.hiddenGifts + item).distinct().sorted()) to if (show) "Украшение включено" else "Украшение убрано"
+        }
         "upgrade_house" -> {
-            val cost = catalog.houseUpgrades.find { it.level == state.houseLevel+1 } ?: fail("WORLD_MAX_LEVEL", "Домик уже полностью улучшен")
+            val cost = catalog.houseUpgrades.find { it.level == state.houseLevel+1 } ?: fail("WORLD_MAX_LEVEL", "Игра в разработке. Новые улучшения появятся позже")
             spend(state, cost).copy(houseLevel=cost.level) to "Домик стал уютнее. Открыты новые возможности!"
         }
         "build_workshop" -> {
@@ -74,6 +84,7 @@ object WorldRules {
         }
         "equip" -> {
             if (command.target == "remove_head") state.copy(equipment=state.equipment.copy(head=null)) to "Головной убор снят"
+            else if (command.target == "remove_rod") state.copy(equipment=state.equipment.copy(rod=null)) to "Удочка убрана"
             else if (command.target == "remove_neck") state.copy(equipment=state.equipment.copy(neck=null)) to "Шарф снят"
             else {
                 val item = catalog.items.find { it.id == command.target } ?: fail("WORLD_ITEM", "Предмет не найден")
@@ -82,6 +93,7 @@ object WorldRules {
                     "palette" -> state.equipment.copy(palette=item.id)
                     "head" -> state.equipment.copy(head=item.id)
                     "neck" -> state.equipment.copy(neck=item.id)
+                    "rod" -> state.equipment.copy(rod=item.id)
                     else -> error("Unknown equipment slot")
                 }
                 state.copy(equipment=equipment) to "Мохлик примерил: ${item.name.lowercase()}"
@@ -104,22 +116,27 @@ object WorldRules {
             if (now.isBefore(Instant.parse(journey.finishesAt))) fail("WORLD_JOURNEY_NOT_READY", "Мохлик ещё в пути")
             val found = journey.finds.firstOrNull { it !in state.collection }
             val collection = (state.collection + listOfNotNull(found)).distinct().sorted()
-            val complete = catalog.finds.all { it.id in collection }
+            val rewards = collectionRewards(collection)
+            val newRod = "willow_rod" in rewards && "willow_rod" !in state.inventory
+            val newCap = "explorer_cap" in rewards && "explorer_cap" !in state.inventory
             val resources = state.resources
             state.copy(resources=WorldResources(resources.sparks+journey.rewards.sparks,resources.wood+journey.rewards.wood,resources.stone+journey.rewards.stone),
                 collection=collection, journeys=state.journeys.filterNot { it.id == journey.id },
                 firstJourneyCompleted=state.firstJourneyCompleted || journey.introductory, completedJourneys=state.completedJourneys+1,
-                inventory=(state.inventory+if(complete) listOf("explorer_cap") else emptyList()).distinct().sorted()) to
-                (if (complete && "explorer_cap" !in state.inventory) "Альбом собран! Мохлик получил шляпу следопыта." else found?.let { "Новая находка: ${(catalog.finds.find { f -> f.id == it }?.name ?: "Лесной сувенир").lowercase()}" } ?: "Мохлик принёс материалы для строительства")
+                inventory=(state.inventory+rewards).distinct().sorted()) to
+                (if (newRod) "Коллекция рыбалки собрана! Ивовая удочка ждёт в гардеробе." else if (newCap) "Альбом собран! Мохлик получил шляпу следопыта." else found?.let { "Новая находка: ${(catalog.finds.find { f -> f.id == it }?.name ?: "Лесной сувенир").lowercase()}" } ?: "Мохлик принёс материалы для строительства")
         }
         else -> throw AuthFailure("INVALID_WORLD_COMMAND", "Неизвестное действие", 400)
     }
+    fun collectionRewards(collection: List<String>): List<String> = listOf("forest" to "explorer_cap", "fishing" to "willow_rod")
+        .filter { (group, _) -> catalog.finds.filter { it.group == group }.all { it.id in collection } }.map { it.second }
+
     fun merge(target: WorldState, source: WorldState): WorldState {
         val journeys = (target.journeys+source.journeys).distinctBy { it.id }
         if(journeys.size>32) fail("WORLD_MERGE_JOURNEYS", "Сначала получите награды за завершённые путешествия")
         val a=target.resources; val b=source.resources
         val collection=(target.collection+source.collection).distinct().sorted()
-        val collectionReward=if(catalog.finds.all { it.id in collection }) listOf("explorer_cap") else emptyList()
+        val collectionReward=collectionRewards(collection)
         return target.copy(resources=WorldResources(Math.addExact(a.sparks,b.sparks),Math.addExact(a.wood,b.wood),Math.addExact(a.stone,b.stone)),
             houseLevel=maxOf(target.houseLevel,source.houseLevel),workshop=target.workshop||source.workshop,
             workshopLevel=maxOf(if(target.workshop) maxOf(1,target.workshopLevel) else 0,if(source.workshop) maxOf(1,source.workshopLevel) else 0),

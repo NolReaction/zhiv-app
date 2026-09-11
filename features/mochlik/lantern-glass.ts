@@ -41,18 +41,16 @@ export function prepareLanternGlass(source: CanvasImageSource, crop: { x: number
         const at = { x: bounds.x + (column + dx) / scale, y: bounds.y + (row + dy) / scale };
         if (panes.some(pane => pointInPolygon(at, pane))) coverage += 1 / 16;
       }
-      // Dark texture and low-saturation reflections retain their original pixels.
-      const warm = clamp((r - b - 25) / 55) * clamp((g - b - 12) / 45);
-      const luminous = clamp((g - 83) / 55);
-      const reflection = clamp((b - 165) / 75) * .7;
-      const amount = coverage * warm * luminous * (1 - reflection);
+      // Recolour the whole inset pane. Masking only the bright flame made a
+      // grey circular spot while the surrounding glass stayed lit yellow.
+      const amount = coverage;
       if (amount <= .002) { data[offset + 3] = 0; continue; }
       const luminance = .2126 * r + .7152 * g + .0722 * b;
       // Compress emitted yellow into clear amber glass while retaining local
       // light/dark variation and warmer/cooler details instead of filling a flat color.
-      data[offset] = Math.round(28 + luminance * .42 + (r - luminance) * .16);
-      data[offset + 1] = Math.round(25 + luminance * .38 + (g - luminance) * .14);
-      data[offset + 2] = Math.round(23 + luminance * .31 + (b - luminance) * .10);
+      data[offset] = Math.round(30 + luminance * .27 + (r - luminance) * .09);
+      data[offset + 1] = Math.round(29 + luminance * .25 + (g - luminance) * .07);
+      data[offset + 2] = Math.round(22 + luminance * .19 + (b - luminance) * .06);
       data[offset + 3] = Math.round(alpha * amount);
     }
     ctx.putImageData(pixels, 0, 0);

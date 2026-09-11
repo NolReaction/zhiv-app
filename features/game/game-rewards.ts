@@ -1,8 +1,8 @@
 /** Stable server reward IDs; ownership never changes competitive counters. */
 export const GAME_ITEMS = [
-  { id: "flower", title: "Цветок у дома", days: 3 },
-  { id: "leaf_bed", title: "Подстилка из листьев", days: 7 },
-  { id: "keepsakes", title: "Лесные сокровища", days: 14 },
+  { id: "flower", title: "Цветы в глиняном горшке", days: 3 },
+  { id: "leaf_bed", title: "Плетёный коврик", days: 7 },
+  { id: "keepsakes", title: "Ящик лесных находок", days: 14 },
   { id: "leaf_garland", title: "Гирлянда из листьев", days: 30 },
 ] as const;
 export type GameItemId = (typeof GAME_ITEMS)[number]["id"];
@@ -48,6 +48,11 @@ export const GAME_ACHIEVEMENTS = [
     target: 1,
     description: "Сохраните резервный код восстановления.",
     hint: "В разделе «Вход и безопасность» сохраните код, подтвердите это и активируйте его.",
+  },
+  {
+    id: "full_collection", title: "Хранитель находок", target: 12,
+    description: "Соберите все 12 находок леса и рыбалки.",
+    hint: "Завершайте прогулки и рыбалку. Каждый выход сначала приносит одну недостающую находку своего маршрута.",
   },
 ] as const;
 export function naturalItems(bestStreakDays: number): GameItemId[] {

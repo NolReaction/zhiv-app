@@ -33,3 +33,12 @@ object PlayerManagement {
         }
     }
 }
+
+@Serializable data class AdminTapHistoryMinute(
+    val at: String, val receivedTaps: Long, val rejectedTaps: Long, val eventTaps: Long,
+    val delayedTaps: Long, val legacyTaps: Long, val intervalCount: Long,
+    val intervalSumMs: Double, val intervalSquaredSumMs: Double,
+    val reviewSignal: Boolean, val watchlisted: Boolean, val complete: Boolean,
+)
+@Serializable data class AdminTapHistory(val publicId: String, val serverTime: String, val from: String,
+    val minutes: List<AdminTapHistoryMinute>)

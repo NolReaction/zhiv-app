@@ -1,0 +1,11 @@
+.dialog { width: min(480px, calc(100vw - 28px)); max-width: min(480px, calc(100vw - 28px)); }
+.description { color: #bac5ae; font-size: 14px; line-height: 1.55; }
+.levels { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.levels li { display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid rgba(207,232,186,.12); border-radius: 16px; background: rgba(10,16,8,.18); color: #adb9a4; }
+.levels li[data-earned] { color: #e5eddc; }
+.levels li[data-current] { border-color: #b6d79b; background: rgba(176,214,148,.13); }
+.levels li > svg { flex-shrink: 0; }
+.levels li > svg:last-child { margin-left: auto; }
+.levels li > div { display: grid; gap: 4px; min-width: 0; }
+.levels strong { font-size: 15px; overflow-wrap: anywhere; }
+.levels span { font-size: 14px; color: #aebda0; font-variant-numeric: tabular-nums; }
