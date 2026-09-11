@@ -424,7 +424,7 @@ class JdbcAccountLifecycleIntegrationTest {
         execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=20 WHERE user_id=?",
             worldJson.encodeToString(WorldState(resources=WorldResources(20,8,4),collection=finds.take(3),equipment=WorldEquipment(neck="amber_scarf"))),a.id)
         execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=50 WHERE user_id=?",
-            worldJson.encodeToString(WorldState(resources=WorldResources(50,20,10),houseLevel=2,workshop=true,collection=finds.drop(3))),b.id)
+            worldJson.encodeToString(WorldState(resources=WorldResources(50,20,10),workshop=true,collection=finds.drop(3))),b.id)
         val sharedKey=UUID.randomUUID().toString()
         suspend fun upgrade(account: Account) {
             val snapshot=world.snapshot(account.session)
@@ -434,12 +434,15 @@ class JdbcAccountLifecycleIntegrationTest {
             val snapshot=world.snapshot(account.session)
             return world.command(account.session,WorldCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"start_journey","first_path")).snapshot.state.journeys.single()
         }
-        upgrade(a);upgrade(b);val tripA=travel(a)
+        upgrade(a);upgrade(b)
+        // Existing level-three homes survive the new beta cap; do not buy a disabled upgrade.
+        execute("UPDATE world_profiles SET state=jsonb_set(state,'{houseLevel}','3'::jsonb) WHERE user_id=?",b.id)
+        val tripA=travel(a)
         val stale=readyMerge(a,b,browser);val tripB=travel(b)
         assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,stale) }.code)
         val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
         val merged=JdbcWorldRepository(source).snapshot(a.session)
-        assertEquals(WorldResources(25,4,4),merged.state.resources);assertEquals(3,merged.state.houseLevel);assertTrue(merged.state.workshop)
+        assertEquals(WorldResources(50,16,10),merged.state.resources);assertEquals(3,merged.state.houseLevel);assertTrue(merged.state.workshop)
         assertEquals("amber_scarf",merged.state.equipment.neck);assertEquals(finds.toSet(),merged.state.collection.toSet())
         assertTrue("explorer_cap" in merged.state.inventory)
         assertEquals(setOf(tripA.id,tripB.id),merged.state.journeys.map { it.id }.toSet());assertEquals(60,merged.dailySparksEarned)

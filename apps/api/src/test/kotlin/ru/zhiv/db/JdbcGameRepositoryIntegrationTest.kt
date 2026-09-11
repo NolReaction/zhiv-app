@@ -127,12 +127,20 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(60, first.acceptedTaps)
         execute("UPDATE game_profiles SET writer_until=clock_timestamp()-interval '1 second',bucket_tokens=0,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?", p.id)
         val b = session(p, otherHash)
-        assertEquals(0, JdbcGameRepository(source).submitBatch(otherHash, UUID.fromString(b.sessionId), 1, 60, UUID.randomUUID()).acceptedTaps)
+        val run = UUID.randomUUID()
+        assertEquals("GAME_PACING", assertFailsWith<AuthFailure> {
+            JdbcGameRepository(source).submitBatch(otherHash, UUID.fromString(b.sessionId), 1, 60, run)
+        }.code)
         assertEquals("GAME_ACTIVE_ELSEWHERE", assertFailsWith<AuthFailure> { games.submitBatch(p.hash, UUID.fromString(a.sessionId), 2, 1, UUID.randomUUID()) }.code)
         assertEquals(60L, games.progress(p.hash).lifetimeTaps)
         assertEquals("GAME_SESSION_CONFLICT", assertFailsWith<AuthFailure> {
             games.submitBatch(otherHash, UUID.fromString(a.sessionId), 2, 1, UUID.randomUUID())
         }.code)
+        execute("UPDATE game_profiles SET bucket_updated_at=clock_timestamp()-interval '3 seconds' WHERE user_id=?", p.id)
+        val retried = JdbcGameRepository(source).submitBatch(otherHash, UUID.fromString(b.sessionId), 1, 60, run)
+        assertEquals(60, retried.acceptedTaps, "pacing must not consume the sequence or reject queued taps")
+        assertEquals(120L, retried.progress.lifetimeTaps)
+        assertTrue(JdbcGameRepository(source).submitBatch(otherHash, UUID.fromString(b.sessionId), 1, 60, run).replayed)
     }
 
     @Test fun `a paced 719 tap run is persisted completely and returned in retry receipts`() = runBlocking<Unit> {

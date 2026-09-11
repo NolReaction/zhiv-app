@@ -33,7 +33,9 @@ class JdbcTapHistoryMigrationIntegrationTest {
                 write("INSERT INTO app_users(id,public_id,display_name) VALUES (?,'0000-0000-0001','Admin'),(?,'0000-0000-0002','Player')", admin, target)
                 write("INSERT INTO app_sessions(user_id,token_hash,expires_at) VALUES (?,?,clock_timestamp()+interval '1 day')", admin, key)
                 write("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'hundred_series',?)", target, oldAwardAt)
-                write("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)", target, """{"houseLevel":3,"collection":["acorn"]}""")
+                // A real V27 aggregate includes the version and all resource balances.
+                write("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)", target,
+                    """{"schemaVersion":1,"resources":{"sparks":0,"wood":0,"stone":0},"houseLevel":3,"collection":["acorn"]}""")
                 write("""INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,
                     action,reason,affected_sessions,reward_id,granted)
                     VALUES (?,?,?,'0000-0000-0001','0000-0000-0002','grant_achievement','Existing valid legacy award',0,'hundred_series',true)""", oldAudit, admin, target)
