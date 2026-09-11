@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { AppNotifications } from "@/components/app-notifications";
+import runtimeArt from "@/features/world/runtime-art.json";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -43,6 +44,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
+      <head><link rel="preload" as="image" href={runtimeArt.homePreview} fetchPriority="high" /></head>
       <body>
         {children}
         <AppNotifications />

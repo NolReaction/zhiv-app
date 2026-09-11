@@ -1,8 +1,8 @@
 /** Stable server reward IDs; ownership never changes competitive counters. */
 export const GAME_ITEMS = [
-  { id: "flower", title: "Цветок у дома", days: 3 },
-  { id: "leaf_bed", title: "Подстилка из листьев", days: 7 },
-  { id: "keepsakes", title: "Лесные сокровища", days: 14 },
+  { id: "flower", title: "Цветы в глиняном горшке", days: 3 },
+  { id: "leaf_bed", title: "Плетёный коврик", days: 7 },
+  { id: "keepsakes", title: "Ящик лесных находок", days: 14 },
   { id: "leaf_garland", title: "Гирлянда из листьев", days: 30 },
 ] as const;
 export type GameItemId = (typeof GAME_ITEMS)[number]["id"];

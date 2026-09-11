@@ -3,6 +3,7 @@ package ru.zhiv.world
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.game.GameRewards
 import java.time.Instant
 import java.util.UUID
 
@@ -23,6 +24,7 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
     val journeys: List<WorldJourney> = emptyList(),
     val firstJourneyCompleted: Boolean = false,
     val completedJourneys: Long = 0,
+    val hiddenGifts: List<String> = emptyList(),
 )
 @Serializable data class WorldSnapshot(
     val ownerPublicId: String, val revision: Long, val serverTime: String,
@@ -51,7 +53,15 @@ object WorldRules {
         if (r.sparks < cost.sparks || r.wood < cost.wood || r.stone < cost.stone) fail("WORLD_RESOURCES", "Пока не хватает материалов. Их можно принести из путешествия.")
         return state.copy(resources = WorldResources(r.sparks-cost.sparks, r.wood-cost.wood, r.stone-cost.stone))
     }
-    fun apply(state: WorldState, command: WorldCommand, now: Instant): Pair<WorldState, String> = when(command.action) {
+    fun apply(state: WorldState, command: WorldCommand, now: Instant, gifts: List<String> = emptyList()): Pair<WorldState, String> = when(command.action) {
+        "set_decoration" -> {
+            val show = command.target.startsWith("show_")
+            val item = command.target.removePrefix(if (show) "show_" else "hide_")
+            if ((!show && !command.target.startsWith("hide_")) || item !in GameRewards.items) fail("WORLD_ITEM", "Украшение не найдено")
+            if (item !in gifts) fail("WORLD_ITEM_NOT_OWNED", "Сначала получите этот подарок за отметки")
+            state.copy(hiddenGifts = if (show) state.hiddenGifts.filterNot { it == item }
+                else (state.hiddenGifts + item).distinct().sorted()) to if (show) "Украшение включено" else "Украшение убрано"
+        }
         "upgrade_house" -> {
             val cost = catalog.houseUpgrades.find { it.level == state.houseLevel+1 } ?: fail("WORLD_MAX_LEVEL", "Игра в разработке. Новые улучшения появятся позже")
             spend(state, cost).copy(houseLevel=cost.level) to "Домик стал уютнее. Открыты новые возможности!"

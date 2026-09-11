@@ -360,6 +360,16 @@ export function CheckInApp() {
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
   const [worldMounted, setWorldMounted] = useState(false);
+  useEffect(() => {
+    if (screen !== "home" || !mochlikVisible) return;
+    // Warm lazy modules after the initial screen. The service worker retains
+    // their hashed responses, so entering the world also works after reconnects.
+    const timer = setTimeout(() => {
+      void import("@/features/world/world-portal").catch(() => undefined);
+      void import("@/features/world/map-engine").catch(() => undefined);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [screen, mochlikVisible]);
   const closeWorld = worldPortal.close;
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
@@ -1190,6 +1200,7 @@ export function CheckInApp() {
     : game.errorCode === "QUEUE_FULL" ? "Очередь на устройстве заполнена. Дождитесь отправки сохранённых нажатий, прежде чем продолжать."
     : game.errorCode === "GAME_ACTIVE_ELSEWHERE" ? "Игра активна в другом окне или на другом устройстве. Очередь сохранена; отправка продолжится после освобождения игры."
     : game.errorCode === "STORAGE_FAILED" ? "Браузер не смог сохранить очередь. Новые игровые нажатия приостановлены. Освободите место и проверьте доступ к хранилищу."
+    : game.errorCode === "GAME_TAP_RATE" ? "Слишком высокая скорость нажатий. Сервер применил ограничение частоты; можно продолжать играть в обычном темпе."
     : game.errorCode === "GAME_SESSION_EXPIRED" && !isOnline ? "Разрешение на игру без связи истекло. Уже сделанные нажатия остаются в очереди; подключитесь, чтобы продолжить."
     : game.errorCode === "GAME_PERMIT_CLOSED" ? "Игра была передана другому устройству или разрешение закончилось. Допустимые нажатия сохранены; поздние не входят в рейтинг."
     : game.status === "error" ? "Не удалось получить подтверждение. Очередь остаётся на этом устройстве; повторим отправку автоматически."
@@ -1197,7 +1208,7 @@ export function CheckInApp() {
     : game.status === "loading" ? "Загружаем игровой прогресс…"
     : game.pendingTaps ? `Ожидают подтверждения: ${game.pendingTaps.toLocaleString("ru-RU")} тапов. Можно продолжать играть.`
     : game.archivedTaps ? `Не удалось проверить ${game.archivedTaps.toLocaleString("ru-RU")} прежних нажатий. Запись сохранена на этом устройстве для разбора; можно продолжать играть. Подтверждённый прогресс остаётся в аккаунте.`
-    : game.rejectedTaps ? `Сохранённый прогресс обновлён. Не вошли в рейтинг: ${game.rejectedTaps.toLocaleString("ru-RU")} нажатий.`
+    : game.rejectedTaps ? `Прогресс сохранён. Сервер не засчитал ${game.rejectedTaps.toLocaleString("ru-RU")} нажатий по правилам игры.`
     : "Прогресс сохранён в аккаунте и доступен на других устройствах.";
   const activeTapCount = clickerRun.activeSeries?.tapCount ?? 0;
   const earlyTapClass =

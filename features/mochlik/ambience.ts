@@ -28,43 +28,55 @@ function prop(ctx: CanvasRenderingContext2D, kind: PropKind, x: number, y: numbe
 }
 
 /** Shared retained gift artwork for the check-in habitat and personal world. */
-export function drawOwnedDecor(ctx: CanvasRenderingContext2D, items: readonly string[], t = 0) {
+export function drawOwnedDecor(ctx: CanvasRenderingContext2D, items: readonly string[], t = 0, lighting = true) {
   if (items.includes("flower")) {
     const { x, y } = HOME_DECOR.flower;
-    const bend = Math.round(Math.sin(t * 1.3));
-    rect(ctx, "#465d32", x - 3, y, 7, 2);
-    rect(ctx, "#647e3c", x, y - 9, 1, 10); rect(ctx, "#a6af57", x - 3, y - 5, 3, 2);
-    rect(ctx, "#8f9a45", x + 1, y - 7, 3, 2);
-    rect(ctx, "#cba961", x - 2 + bend, y - 11, 5, 3);
-    rect(ctx, "#eee0a6", x - 1 + bend, y - 12, 3, 5);
-    rect(ctx, "#fff0bc", x + bend, y - 12, 1, 5);
-    rect(ctx, "#b97e3b", x + bend, y - 11, 2, 2);
+    rect(ctx, "#23382488", x - 8, y, 17, 3);
+    rect(ctx, "#60412c", x - 6, y - 9, 13, 8);
+    rect(ctx, "#ad7049", x - 5, y - 8, 11, 7);
+    rect(ctx, "#d19765", x - 4, y - 7, 3, 5);
+    rect(ctx, "#774c34", x + 3, y - 7, 3, 6);
+    rect(ctx, "#533c29", x - 7, y - 11, 15, 3);
+    rect(ctx, "#c49160", x - 7, y - 10, 15, 2);
+    for (let i = 0; i < 3; i++) {
+      const fx = x - 5 + i * 5, fy = y - 19 - (i === 1 ? 4 : 0);
+      rect(ctx, "#405f32", fx, fy + 2, 1, y - 10 - fy);
+      rect(ctx, "#8da956", fx - 3, fy + 6, 3, 2);
+      rect(ctx, "#668a43", fx + 1, fy + 4, 3, 2);
+      rect(ctx, "#e8d6a6", fx - 3, fy - 1, 7, 3);
+      rect(ctx, "#f8ecc4", fx - 1, fy - 3, 3, 7);
+      rect(ctx, "#b6853d", fx - 1, fy - 1, 3, 3);
+      rect(ctx, "#e5b85d", fx, fy - 1, 2, 2);
+    }
   }
   if (items.includes("leaf_bed")) {
-    const bed = HOME_DECOR.bed;
-    ctx.save(); ctx.beginPath();
-    HOUSE_ANCHORS.doorway.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
-    ctx.closePath(); ctx.clip();
-    // Flat overlapping leaves follow the threshold's perspective, beneath the sleeper.
-    for (let i = 0; i < 5; i++) {
-      const x = bed.x - 9 + i * 4, y = bed.y + Math.floor(i / 2);
-      rect(ctx, "#4d5530", x - 3, y - 1, 7, 3);
-      rect(ctx, i % 2 ? "#8b9545" : "#ac9a4e", x - 3, y - 1, 7, 2);
-      rect(ctx, i % 2 ? "#8b9545" : "#ac9a4e", x - 2, y - 2, 5, 4);
-      rect(ctx, "#c1b268", x - 1, y - 2, 3, 1);
-      rect(ctx, "#616d34", x - 1, y, 4, 1);
+    const { x, y } = HOME_DECOR.bed;
+    // A visible woven mat lies on the ground outside the doorway.
+    for (let row = 0; row < 8; row++) {
+      const left = x - 10 - Math.floor(row / 3), width = 21 + Math.floor(row / 3) * 2;
+      rect(ctx, row === 0 || row === 7 ? "#645330" : "#bba56c", left, y - 5 + row, width, 1);
+      if (row > 0 && row < 7) for (let col = 2; col < width - 2; col += 3) {
+        rect(ctx, row % 2 ? "#8a824a" : "#d6c087", left + col + row % 2, y - 5 + row, 1, 1);
+      }
     }
-    ctx.restore();
+    for (let i = -10; i <= 10; i += 3) rect(ctx, "#caba7c", x + i, y + 3, 1, 2);
   }
   if (items.includes("keepsakes")) {
     const { x, y } = HOME_DECOR.keepsakes;
-    // A small root-side collection, below and away from the lantern and doorway.
-    rect(ctx, "#455338", x - 6, y - 1, 13, 2);
-    rect(ctx, "#4e3d2b", x - 4, y - 8, 3, 1); rect(ctx, "#6f5337", x - 5, y - 7, 5, 6);
-    rect(ctx, "#9c7849", x - 4, y - 6, 3, 4); rect(ctx, "#c09b60", x - 4, y - 6, 2, 1);
-    rect(ctx, "#59462f", x - 3, y - 5, 2, 1); rect(ctx, "#c09b60", x - 4, y - 3, 2, 1);
-    rect(ctx, "#45565a", x + 1, y - 3, 5, 3); rect(ctx, "#728e90", x + 2, y - 4, 4, 3);
-    rect(ctx, "#b4d1c3", x + 2, y - 4, 2, 1); rect(ctx, "#a8bbb0", x + 6, y - 2, 2, 2);
+    rect(ctx, "#24332677", x - 11, y, 24, 3);
+    rect(ctx, "#4b3827", x - 11, y - 12, 23, 13);
+    rect(ctx, "#7c5839", x - 10, y - 11, 21, 10);
+    rect(ctx, "#3b3827", x - 8, y - 10, 17, 5);
+    rect(ctx, "#a6804e", x - 7, y - 15, 5, 8);
+    rect(ctx, "#d0b174", x - 6, y - 14, 2, 2);
+    rect(ctx, "#638c86", x + 1, y - 14, 6, 7);
+    rect(ctx, "#b0d1b5", x + 2, y - 15, 3, 3);
+    rect(ctx, "#d7cb9a", x - 1, y - 11, 4, 4);
+    for (let row = 0; row < 3; row++) {
+      rect(ctx, row % 2 ? "#a07a4d" : "#b58a56", x - 10, y - 7 + row * 3, 21, 2);
+      rect(ctx, "#755230", x - 3 + row * 2, y - 6 + row * 3, 7, 1);
+    }
+    for (const side of [-9, 8]) { rect(ctx, "#694d32", x + side, y - 10, 2, 11); rect(ctx, "#d1bb7e", x + side, y - 6, 1, 1); }
   }
   if (items.includes("leaf_garland")) {
     const { left, right, sag } = HOME_DECOR.garland;
@@ -76,13 +88,32 @@ export function drawOwnedDecor(ctx: CanvasRenderingContext2D, items: readonly st
       rect(ctx, i % 2 ? "#8f9e4a" : "#637e41", x + 1, y + 3, 2, 1);
       rect(ctx, "#d9d68b", x + 1, y + 2, 1, 1);
     }
+    if (lighting) drawGarlandLights(ctx, t);
   }
 }
 
-export function drawDecor(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean) {
+/** Light is composited after the night shade; only tiny bulbs illuminate the leaves. */
+export function drawGarlandLights(ctx: CanvasRenderingContext2D, t = 0, dusk = 0) {
+  const { left, right, sag } = HOME_DECOR.garland;
+  for (let i = 0; i < 8; i++) {
+    const p = i / 7, x = left.x + (right.x - left.x) * p + 1.5;
+    const y = left.y + (right.y - left.y) * p + Math.sin(p * Math.PI) * sag + 3;
+    const pulse = .78 + Math.sin(t * .9 + i * .8) * .12;
+    const color = ["#fff0b0", "#c6e9b0", "#f0bca1"][i % 3];
+    ctx.save();
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, 4.5);
+    glow.addColorStop(0, `${color}a0`); glow.addColorStop(.35, `${color}44`); glow.addColorStop(1, `${color}00`);
+    ctx.globalAlpha *= pulse * (.55 + dusk * .4); ctx.fillStyle = glow; ctx.fillRect(x - 5, y - 5, 10, 10);
+    ctx.globalAlpha = pulse; ctx.fillStyle = color; ctx.fillRect(Math.round(x - .5), Math.round(y), 1.4, 1.4);
+    ctx.fillStyle = "#fff9db"; ctx.fillRect(Math.round(x), Math.round(y), .65, .65);
+    ctx.restore();
+  }
+}
+
+export function drawDecor(ctx: CanvasRenderingContext2D, state: HabitatState, reducedMotion: boolean, hidden: readonly string[] = []) {
   const t = reducedMotion ? 0 : state.elapsed;
   ctx.save(); ctx.globalAlpha = reducedMotion ? 1 : .35 + state.decorReveal * .65;
-  drawOwnedDecor(ctx, state.decorItems, t);
+  drawOwnedDecor(ctx, state.decorItems.filter(item => !hidden.includes(item)), t, false);
   ctx.restore();
   if (state.leafDelivered) { const at = depositedPosition("leaf"); prop(ctx, "leaf", at.x * 256, at.y * 256); }
   if (state.keepsake) { const at = depositedPosition(state.keepsake); prop(ctx, state.keepsake, at.x * 256, at.y * 256); }

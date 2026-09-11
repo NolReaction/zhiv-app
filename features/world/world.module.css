@@ -63,6 +63,23 @@
 .panelHeading p, .card p { color: #b5c2a8; font-size: 1rem; line-height: 1.6; margin: 8px 0 14px; }
 .hint { color: #aebb9e; font-size: .875rem; line-height: 1.6; margin: 10px 0; }
 .card { border: 1px solid #c6d5a32c; padding: 16px; border-radius: 17px; background: #adbc9110; margin: 12px 0; }
+.buildTabs, .houseActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.buildTabs { margin-bottom: 18px; padding: 4px; background: #09170d80; border: 1px solid #c6d5a32c; border-radius: 16px; }
+.buildTabs button { padding: 9px 6px; font-size: .82rem; border-color: transparent; background: transparent; }
+.buildTabs button[aria-pressed="true"] { background: #c3d8a520; border-color: #c9dda250; color: #edf5d3; }
+.houseActions { margin-top: 14px; }
+.houseActions button { padding: 10px 6px; font-size: .8rem; }
+.decoration { display: grid; grid-template-columns: 64px minmax(0, 1fr) 48px; gap: 12px; align-items: center; border: 1px solid #c6d5a32c; border-radius: 17px; padding: 13px 10px; background: #a7c1870a; }
+.decoration[data-owned="false"] { opacity: .6; }
+.decoration h3 { margin: 0 0 5px; font-size: .9rem; line-height: 1.35; }
+.decoration p { margin: 0; color: #b7c5a7; font-size: .75rem; line-height: 1.4; }
+.decorationPreview { width: 64px; height: 64px; border-radius: 12px; border: 1px solid #cee0af24; background: #203223; image-rendering: pixelated; }
+.sheet .decorationSwitch { width: 48px; min-height: 44px; padding: 0; border: 0; background: none; position: relative; }
+.decorationSwitch::before { content: ''; width: 44px; height: 26px; border: 1px solid #ccd9b247; border-radius: 20px; background: #0e1a11; transition: background .2s; }
+.decorationSwitch span { position: absolute; left: 6px; width: 18px; height: 18px; border-radius: 50%; background: #83917a; transition: transform .2s, background .2s; }
+.decorationSwitch[aria-checked="true"]::before { background: #b4cc8a; border-color: #deedbe; }
+.decorationSwitch[aria-checked="true"] span { transform: translateX(18px); background: #263c24; }
+@media (prefers-reduced-motion: reduce) { .decorationSwitch span, .decorationSwitch::before { transition: none; } }
 .card h3 { margin: 9px 0 6px; font-size: 1.125rem; font-weight: 650; }
 .card > button { width: 100%; margin-top: 14px; }
 .cardTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

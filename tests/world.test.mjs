@@ -17,6 +17,25 @@ function command(p, action, target = "", time = now) {
   return { requestId: crypto.randomUUID(), ownerPublicId: s.ownerPublicId, expectedRevision: s.revision, action, target };
 }
 const issue = (p, action, target = "", time = now) => world.commandDevWorld(p.token, command(p, action, target, time), time);
+test("decorations keep ownership, persist disabled state and reject unearned or stale changes", context => {
+  context.mock.timers.enable({ apis: ["Date"], now });
+  const p = player();
+  assert.throws(() => issue(p, "set_decoration", "hide_flower"), { code: "WORLD_ITEM_NOT_OWNED" });
+  for (let day = 0; day < 3; day++) {
+    context.mock.timers.setTime(now + day * 86400000);
+    assert.equal(identities.createDevCheckIn(p.token, crypto.randomUUID()).kind, "accepted");
+  }
+  const time = Date.now(), before = world.getDevWorld(p.token, time);
+  const hide = command(p, "set_decoration", "hide_flower", time);
+  const after = world.commandDevWorld(p.token, hide, time);
+  assert.deepEqual(after.snapshot.state.hiddenGifts, ["flower"]);
+  assert.deepEqual(after.snapshot.gifts, before.gifts);
+  assert.deepEqual(after.snapshot.state.resources, before.state.resources);
+  assert.equal(world.commandDevWorld(p.token, hide, time).replayed, true);
+  assert.throws(() => world.commandDevWorld(p.token, { ...hide, requestId: crypto.randomUUID(), target: "show_flower" }, time), { code: "WORLD_REVISION_CONFLICT" });
+  assert.deepEqual(issue(p, "set_decoration", "show_flower", time).snapshot.state.hiddenGifts, []);
+  assert.throws(() => issue(p, "set_decoration", "hide_unknown", time), { code: "WORLD_ITEM" });
+});
 test("first journey funds a house upgrade, persists a find, and cannot pay twice", () => {
   const p = player(); assert.deepEqual(world.getDevWorld(p.token, now).state.resources, { sparks: 0, wood: 0, stone: 0 });
   assert.throws(() => issue(p, "upgrade_house"), { code: "WORLD_RESOURCES" });

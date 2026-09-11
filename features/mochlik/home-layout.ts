@@ -16,9 +16,9 @@ export const BUSH_FOLIAGE = FOREST_MAP.bush.foliage.map(homePixel);
 
 /** Retained streak gifts follow the detailed house instead of the old scene's offsets. */
 export const HOME_DECOR = {
-  flower: homePixel({ x: 643, y: 623 }),
-  bed: homePixel({ x: 667, y: 612 }),
-  keepsakes: homePixel({ x: 690, y: 634 }),
+  flower: homePixel({ x: 638, y: 623 }),
+  bed: homePixel({ x: 665, y: 619 }),
+  keepsakes: homePixel({ x: 695, y: 650 }),
   garland: { left: homePixel({ x: 651, y: 580 }), right: homePixel({ x: 682, y: 582 }), sag: 1.5 },
 } as const;
 

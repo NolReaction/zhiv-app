@@ -11,7 +11,7 @@ let prepared: Promise<HTMLCanvasElement> | null = null;
  * map, so the border cannot introduce a rectangular seam in the open world. */
 export function loadHomeDetail(map: HTMLImageElement): Promise<HTMLCanvasElement> {
   if (prepared) return prepared;
-  prepared = loadHabitatImage(WORLD_ART.homeDetail).then(detail => {
+  prepared = loadHabitatImage(WORLD_ART.homeDetail, "low").then(detail => {
     if (detail.naturalWidth < HOME_TEXTURE_SIZE || detail.naturalHeight !== detail.naturalWidth)
       throw new Error("Home detail must be a high-resolution square");
     const tile = document.createElement("canvas");

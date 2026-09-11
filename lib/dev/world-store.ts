@@ -27,12 +27,21 @@ export function getDevWorld(token: string | undefined, now = Date.now()): WorldS
     state: structuredClone(value.state), gifts: naturalItems(getDevItemStreak(owner, now)), catalogVersion: catalog.version as WorldSnapshot["catalogVersion"],
     dailySparksEarned: value.day === new Date(now).toISOString().slice(0, 10) ? value.earned : 0 };
 }
-function apply(state: WorldState, command: WorldCommand, now: number): string {
+function apply(state: WorldState, command: WorldCommand, now: number, gifts: readonly string[]): string {
   const spend = (cost: WorldResources) => {
     if (!canAfford(state.resources, cost)) fail("WORLD_RESOURCES", "Пока не хватает материалов. Их можно принести из путешествия.");
     for (const key of ["sparks", "wood", "stone"] as const) state.resources[key] -= cost[key];
   };
   switch (command.action) {
+    case "set_decoration": {
+      const match = /^(show|hide)_(flower|leaf_bed|keepsakes|leaf_garland)$/.exec(command.target);
+      if (!match) return fail("WORLD_ITEM", "Украшение не найдено");
+      const item = match[2] as NonNullable<WorldState["hiddenGifts"]>[number];
+      if (!gifts.includes(item)) return fail("WORLD_ITEM_NOT_OWNED", "Сначала получите этот подарок за отметки");
+      state.hiddenGifts = match[1] === "show" ? (state.hiddenGifts ?? []).filter(id => id !== item)
+        : [...new Set([...(state.hiddenGifts ?? []), item])].sort();
+      return match[1] === "show" ? "Украшение включено" : "Украшение убрано";
+    }
     case "dev_grant_resources":
       for (const key of ["sparks", "wood", "stone"] as const) state.resources[key] += 50;
       return "+50 искр, дерева и камня";
@@ -109,7 +118,7 @@ export function commandDevWorld(token: string | undefined, command: WorldCommand
   }
   if (command.expectedRevision !== value.revision) return fail("WORLD_REVISION_CONFLICT", "Мир изменился на другом устройстве. Обновите его и повторите действие.");
   const next = structuredClone(value.state);
-  const message = apply(next, command, now);
+  const message = apply(next, command, now, naturalItems(getDevItemStreak(owner, now)));
   value.state = next; value.revision++;
   value.receipts.set(command.requestId, { signature, message });
   return { snapshot: getDevWorld(token, now), message, replayed: false };

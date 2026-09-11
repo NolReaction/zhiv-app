@@ -5,6 +5,7 @@ import type { WorldState } from "@/features/world/model";
 export function homeAppearance(state?: WorldState, gifts: readonly string[] = [], items: readonly GameItemId[] = []) {
   return {
     houseLevel: state?.houseLevel ?? 1,
+    hiddenGifts: state?.hiddenGifts ?? [],
     workshop: state?.workshop ?? false,
     equipment: state?.equipment ?? { palette: "moss", head: null, neck: null },
     away: Boolean(state?.journeys.length),

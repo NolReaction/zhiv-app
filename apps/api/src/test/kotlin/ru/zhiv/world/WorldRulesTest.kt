@@ -14,6 +14,19 @@ class WorldRulesTest {
     private val now = Instant.parse("2026-09-08T12:00:00Z")
     private fun command(action: String) = WorldCommand(UUID.randomUUID().toString(), "OWNER", 0, action)
 
+    @Test fun `decoration preferences keep resources and primary account choices`() {
+        val before = WorldState(resources = WorldResources(10, 20, 30))
+        val command = command("set_decoration").copy(target = "hide_leaf_garland")
+        assertEquals("WORLD_ITEM_NOT_OWNED", assertFailsWith<AuthFailure> { WorldRules.apply(before, command, now) }.code)
+        val hidden = WorldRules.apply(before, command, now, listOf("leaf_garland")).first
+        assertEquals(listOf("leaf_garland"), hidden.hiddenGifts)
+        assertEquals(before.resources, hidden.resources)
+        assertEquals(hidden, worldJson.decodeFromString<WorldState>(worldJson.encodeToString(WorldState.serializer(), hidden)))
+        assertEquals(hidden.hiddenGifts, WorldRules.merge(hidden, before).hiddenGifts)
+        assertEquals(emptyList(), WorldRules.apply(hidden, command.copy(target = "show_leaf_garland"), now, listOf("leaf_garland")).first.hiddenGifts)
+        assertEquals("WORLD_ITEM", assertFailsWith<AuthFailure> { WorldRules.apply(before, command.copy(target = "hide_unknown"), now, listOf("unknown")) }.code)
+    }
+
     @Test
     fun `new houses stop at two without charging again and preserve legacy higher levels`() {
         val initial = WorldState(resources = WorldResources(300, 200, 100))

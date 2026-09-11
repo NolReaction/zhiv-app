@@ -1,12 +1,13 @@
 /** Geometry authored against the wide forest region PNG, in source pixels.
  * Change the revision and recalibrate this manifest when changing the artwork. */
+import runtimeArt from "./runtime-art.json";
 export type MapPoint = { x: number; y: number };
 export const FOREST_MAP = {
   id: "forest-region-v3",
-  image: "/world/maps/forest-region-v3.png",
+  image: runtimeArt.map,
   size: 1254,
   homeCrop: { x: 486, y: 514, size: 256 },
-  homeDetail: { image: "/world/maps/home-detail-v1.png", originalRim: 2, feather: 12 },
+  homeDetail: { image: runtimeArt.homeDetail, originalRim: 2, feather: 12 },
   house: {
     id: "home",
     inside: { x: 667, y: 612 },

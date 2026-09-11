@@ -13,6 +13,7 @@ export const worldStateSchema = z.object({
   workshop: z.boolean(), workshopLevel: z.number().int().min(0).max(3).optional(), inventory: z.array(z.string()).max(100),
   equipment: z.object({ palette: z.string(), head: z.string().nullable(), neck: z.string().nullable(), rod: z.string().nullable().optional() }),
   collection: z.array(z.string()).max(100), journeys: z.array(journeySchema).max(32),
+  hiddenGifts: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4).optional(),
   firstJourneyCompleted: z.boolean(), completedJourneys: count,
 });
 export const worldSnapshotSchema = z.object({
@@ -21,7 +22,7 @@ export const worldSnapshotSchema = z.object({
 });
 export const worldCommandSchema = z.object({
   requestId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), ownerPublicId: z.string().min(1).max(40), expectedRevision: count,
-  action: z.enum(["upgrade_house", "build_workshop", "upgrade_workshop", "craft", "equip", "start_journey", "recall_journey", "claim_journey", "dev_grant_resources"]),
+  action: z.enum(["upgrade_house", "build_workshop", "upgrade_workshop", "craft", "equip", "set_decoration", "start_journey", "recall_journey", "claim_journey", "dev_grant_resources"]),
   target: z.string().max(80).default(""),
 }).strict();
 export const worldResultSchema = z.object({ snapshot: worldSnapshotSchema, message: z.string(), replayed: z.boolean() });
@@ -32,7 +33,7 @@ export type WorldResources = z.infer<typeof resourcesSchema>;
 export const newWorldState = (): WorldState => ({
   schemaVersion: 1, resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshop: false, workshopLevel: 0,
   inventory: ["moss", "amber_scarf"], equipment: { palette: "moss", head: null, neck: null },
-  collection: [], journeys: [], firstJourneyCompleted: false, completedJourneys: 0,
+  collection: [], journeys: [], hiddenGifts: [], firstJourneyCompleted: false, completedJourneys: 0,
 });
 export function canAfford(resources: WorldResources, cost: WorldResources) {
   return resources.sparks >= cost.sparks && resources.wood >= cost.wood && resources.stone >= cost.stone;

@@ -1,7 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, X, Feather, Gem, Hammer, House, Leaf, LockKeyhole, Shirt, Sparkles, Sprout, Wind, Mountain, Fish, Shell, FishingHook } from "lucide-react";
-import { GAME_ITEMS } from "@/features/game/game-rewards";
+import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
+import { DecorationPreview } from "./decoration-preview";
+import { formatDayCount } from "@/lib/daily-streak";
 import type { WorldPortalProps } from "./world-portal";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Dialog as DialogPrimitive } from "radix-ui";
@@ -14,7 +16,7 @@ import { Materials, WorldJourneys } from "./world-journeys";
 import { WorldFeedback } from "./world-feedback";
 import { WorldBalances } from "./world-balances";
 
-type Panel = "journeys" | "build" | "wardrobe" | "collection" | "stats" | "cave" | "fishing";
+type Panel = "journeys" | "build" | "customize" | "wardrobe" | "collection" | "stats" | "cave" | "fishing";
 const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind, shell: Shell, float: FishingHook };
 export default function WorldView({ world, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items }: WorldPortalProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -49,6 +51,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
   const shopCost = catalog.workshopUpgrades.find(c => c.level === shopLevel + 1);
   const locked = busy || uncertain;
   const houseCost = catalog.houseUpgrades.find(c => c.level === state.houseLevel + 1);
+  const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
   const goal = !state.firstJourneyCompleted ? "Отправьте Мохлика на первую прогулку. Через минуту он принесёт материалы для домика."
     : state.houseLevel === 1 ? "Улучшите домик, чтобы открыть рыбалку у берега."
       : !state.workshop ? "Постройте мастерскую, чтобы делать одежду и пробовать новые цвета мха."
@@ -82,11 +85,27 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.sheet}
         onCloseAutoFocus={event => { event.preventDefault(); if (panelReturn.current?.isConnected) panelReturn.current.focus(); else document.getElementById("world-exit")?.focus(); }}>
         <div className={styles.sheetHeader}>
-          <DialogTitle>{panel === "cave" ? "Пещера" : panel === "fishing" ? "Рыбалка" : panel === "build" ? "Постройки" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : panel === "stats" ? "Мой Мохлик" : "Путешествия"}</DialogTitle>
+          <DialogTitle>{panel === "cave" ? "Пещера" : panel === "fishing" ? "Рыбалка" : panel === "build" || panel === "customize" ? "Постройки" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : panel === "stats" ? "Мой Мохлик" : "Путешествия"}</DialogTitle>
           <button onClick={() => setPanel(null)} aria-label="Закрыть панель"><X size={21} /></button>
         </div>
         <DialogDescription className={styles.sr}>Управление домом и путешествиями Мохлика</DialogDescription>
         <div className={styles.sheetBody}>
+          {(panel === "build" || panel === "customize") && <nav className={styles.buildTabs} aria-label="Обустройство дома">
+            <button aria-pressed={panel === "build"} onClick={() => openPanel("build")}><Hammer size={17} />Улучшения</button>
+            <button aria-pressed={panel === "customize"} onClick={() => openPanel("customize")}><Sprout size={17} />Кастомизация</button>
+          </nav>}
+          {panel === "customize" && <div className={styles.panel}>
+            <div className={styles.panelHeading}><span className={styles.eyebrow}>ДОМИК ПО ТВОЕМУ ВКУСУ</span><h2>Украшения</h2><p>Выбирай, что оставить у дома. Подарки сохраняются, даже когда выключены.</p></div>
+            {GAME_ITEMS.map(item => {
+              const owned = ownedGifts.has(item.id), enabled = owned && !(state.hiddenGifts ?? []).includes(item.id);
+              return <article className={styles.decoration} key={item.id} data-owned={owned}>
+                <DecorationPreview item={item.id} />
+                <div><h3>{item.title}</h3><p>{owned ? item.id === "leaf_garland" ? "Мягкие огоньки среди листьев" : enabled ? "Украшает домик" : "Хранится в коллекции" : `${formatDayCount(item.days)} отметок подряд`}</p></div>
+                <button className={styles.decorationSwitch} role="switch" aria-checked={enabled} aria-label={item.title} disabled={!owned || locked}
+                  onClick={() => act("set_decoration", `${enabled ? "hide" : "show"}_${item.id}`)}><span /></button>
+              </article>;
+            })}
+          </div>}
           {panel === "cave" && <div className={styles.destination}>
             <Mountain size={48} aria-hidden="true" />
             <h2>В разработке</h2>
@@ -97,10 +116,11 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
           {panel === "journeys" && <WorldJourneys key={destination} world={world} destination={destination} onClaim={confirming} />}
           {panel === "fishing" && <WorldJourneys world={world} destination="river" onClaim={confirming} />}
         {panel === "build" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>СВОЁ МЕСТО В ЛЕСУ</span><h2>Больше уюта</h2><p>Улучшения открывают новые возможности.</p></div>
-          {snapshot.gifts.length > 0 && <article className={styles.card}><h3>Подарки за отметки</h3><p>Уже украшают домик: {GAME_ITEMS.filter(item => snapshot.gifts.includes(item.id)).map(item => item.title.toLowerCase()).join(", ")}. Полученные подарки остаются и в этом мире.</p></article>}
           <article className={styles.card}><House className={styles.cardIcon} /><h3>Домик Мохлика <span className={styles.kicker}>ур. {state.houseLevel}{state.houseLevel <= 2 ? "/2" : " · ранее получен"}</span></h3>
             <p>{state.houseLevel === 1 ? "Второй уровень открывает рыбалку у берега." : "Игра в разработке. Новые улучшения появятся позже."} Новый внешний вид уровней пока в разработке.</p>
-            {houseCost ? <><Materials cost={houseCost} /><button className={styles.primary} disabled={locked || !canAfford(state.resources, houseCost)} onClick={() => act("upgrade_house")}>{canAfford(state.resources, houseCost) ? `Улучшить до ${houseCost.level} уровня` : "Нужны материалы из путешествий"}</button></> : <span className={styles.kicker}><Sprout size={16} />Игра в разработке</span>}</article>
+            {houseCost && <Materials cost={houseCost} />}
+            <div className={styles.houseActions}><button className={styles.primary} disabled={!houseCost || locked || !canAfford(state.resources, houseCost)} onClick={() => act("upgrade_house")}>{houseCost ? "Улучшить" : "Улучшено"}</button>
+              <button onClick={() => openPanel("customize")}><Sprout size={16} />Кастомизация</button></div></article>
           <article className={styles.card}><Hammer className={styles.cardIcon} /><h3>Лесная мастерская <span className={styles.kicker}>{state.workshop ? `ур. ${shopLevel}/3` : "Ещё не построена"}</span></h3><p>Шарфы, головные уборы и новые оттенки мха. Всё сделанное остаётся в гардеробе.</p>
             {state.workshop ? <>
               <p>{shopCost ? "Мастерскую можно улучшить до следующего уровня." : "Достигнут максимальный уровень мастерской."}</p>
@@ -142,7 +162,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
           <p className={styles.hint}>Завершено путешествий: {state.completedJourneys}. Находки остаются навсегда.</p>
           <details className={styles.details}><summary>Подарки Мохлику · {snapshot.gifts.length}/{GAME_ITEMS.length}</summary>
             <div className={styles.collection}>{GAME_ITEMS.map(item => <article className={styles.find} data-owned={snapshot.gifts.includes(item.id)} key={item.id}>
-              <h3>{item.title}</h3><span className={styles.kicker}>{snapshot.gifts.includes(item.id) ? "Украшает домик" : `За ${item.days} дней отметок подряд`}</span>
+              <h3>{item.title}</h3><span className={styles.kicker}>{snapshot.gifts.includes(item.id) ? (state.hiddenGifts ?? []).includes(item.id) ? "Хранится в коллекции" : "Украшает домик" : `За ${item.days} дней отметок подряд`}</span>
             </article>)}</div>
           </details>
         </div>}

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import sharp from "sharp";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
@@ -14,11 +15,26 @@ const { houseVariantFor } = await vite.ssrLoadModule("/features/mochlik/house-va
 const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 
 test("wide region source resolution is preserved, home is an integer crop", async () => {
-  const bytes = await readFile(`${root}/public${FOREST_MAP.image}`);
-  assert.equal(createHash("sha256").update(bytes).digest("hex"), "6bc7d8274bc1f1e660de570f0ac4d9eb1f7651ad1a38a84abba9e5b01c45be59");
-  assert.equal(bytes.readUInt32BE(16), MAP_SIZE); assert.equal(bytes.readUInt32BE(20), MAP_SIZE);
+  const master = await readFile(`${root}/public/world/maps/forest-region-v3.png`);
+  assert.equal(createHash("sha256").update(master).digest("hex"), "6bc7d8274bc1f1e660de570f0ac4d9eb1f7651ad1a38a84abba9e5b01c45be59");
+  const bytes = await readFile(`${root}/public${FOREST_MAP.image}`), metadata = await sharp(bytes).metadata();
+  assert.equal(metadata.width, MAP_SIZE); assert.equal(metadata.height, MAP_SIZE);
+  assert.ok(bytes.length < 900000, "full map preserves detail without restoring a multi-megabyte download");
   assert.ok(HOME_AREA.x >= 0 && HOME_AREA.y >= 0 && HOME_AREA.x + HOME_AREA.size <= MAP_SIZE && HOME_AREA.y + HOME_AREA.size <= MAP_SIZE);
   assert.equal(HOME_AREA.size % 256, 0, "integer effect scaling, without downsampling the background");
+});
+
+test("first frames fit the slow-network budget and every cached artwork URL follows its content", async () => {
+  const assets = JSON.parse(await readFile(`${root}/features/world/runtime-art.json`, "utf8"));
+  for (const [name, url] of Object.entries(assets)) {
+    const bytes = await readFile(`${root}/public${url}`);
+    assert.ok(url.includes(createHash("sha256").update(bytes).digest("hex").slice(0, 12)), `${name} changes its cache key when its artwork changes`);
+    if (name === "homePreview" || name === "mapPreview") {
+      const metadata = await sharp(bytes).metadata(), size = name === "homePreview" ? 256 : 384;
+      assert.equal(metadata.width, size); assert.equal(metadata.height, size);
+      assert.ok(bytes.length < (name === "homePreview" ? 32_000 : 55_000), `${name} must not block the first frame with full-size artwork`);
+    }
+  }
 });
 
 test("all visible water is a destination, with land excluded and boundary taps included", () => {

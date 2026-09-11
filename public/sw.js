@@ -1,4 +1,8 @@
 const CACHE_PREFIX = "zhiv-shell-";
+// Content-hashed public files survive shell updates, including lazy game chunks.
+const ASSET_CACHE_NAME = "zhiv-assets-v1";
+const ASSET_CACHE_LIMIT = 96;
+const assetRequests = new Map();
 const META_CACHE_NAME = "zhiv-meta-v1";
 const ACTIVE_CACHE_KEY = new URL(
   "/__zhiv_active_shell__",
@@ -20,7 +24,33 @@ const DOCUMENT_REVISION_HEADERS = [
 ];
 
 function isVersionedAsset(pathname) {
-  return pathname.startsWith("/_next/static/") || pathname.startsWith("/assets/");
+  return pathname.startsWith("/_next/static/") || pathname.startsWith("/assets/")
+    || /^\/world\/runtime\/[a-zA-Z]+-[a-f0-9]{12}\.webp$/.test(pathname);
+}
+
+async function cachedAsset(request) {
+  // Storage eviction, private browsing and full disks must not block the network.
+  const cache = await caches.open(ASSET_CACHE_NAME).catch(() => null);
+  const cached = await cache?.match(request).catch(() => null);
+  if (cached) return cached;
+  const key = request.url;
+  if (!assetRequests.has(key)) {
+    const operation = (async () => {
+      const response = await fetch(request);
+      if (response.ok && !/no-store|private/i.test(response.headers.get("cache-control") ?? "")
+        && !response.headers.get("content-type")?.includes("text/html")) {
+        try {
+          await cache?.put(request, response.clone());
+          const keys = await cache?.keys() ?? [];
+          await Promise.all(keys.slice(0, Math.max(0, keys.length - ASSET_CACHE_LIMIT)).map(key => cache.delete(key)));
+        } catch { /* A successful image/module remains usable without persistent storage. */ }
+      }
+      return response;
+    })();
+    assetRequests.set(key, operation);
+    void operation.finally(() => assetRequests.delete(key)).catch(() => undefined);
+  }
+  return (await assetRequests.get(key)).clone();
 }
 
 function extractAssetUrls(html) {
@@ -205,9 +235,9 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     (async () => {
-      const cache = await openActiveCache();
-      const cached = await cache?.match(request);
-      return cached ?? fetch(request);
+      const cache = await openActiveCache().catch(() => null);
+      const cached = await cache?.match(request).catch(() => null);
+      return cached ?? (isVersionedAsset(url.pathname) ? cachedAsset(request) : fetch(request));
     })(),
   );
 });

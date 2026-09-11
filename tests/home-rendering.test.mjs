@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import sharp from "sharp";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
@@ -14,10 +15,12 @@ const { drawLanternGlass } = await vite.ssrLoadModule("/features/mochlik/lantern
 const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
 
 test("detail has enough real pixels for retina circles and a bounded detached world canvas", async () => {
-  const bytes = await readFile(`${root}/public${FOREST_MAP.homeDetail.image}`);
-  assert.equal(createHash("sha256").update(bytes).digest("hex"), "f14fba0d71b976ed63530726e3b4a86241ab72a409e8e837a7a5b36fae5ef8bd", "approved home texture stays unchanged");
-  assert.ok(bytes.readUInt32BE(16) >= HOME_TEXTURE_SIZE);
-  assert.equal(bytes.readUInt32BE(16), bytes.readUInt32BE(20));
+  const master = await readFile(`${root}/public/world/maps/home-detail-v1.png`);
+  assert.equal(createHash("sha256").update(master).digest("hex"), "f14fba0d71b976ed63530726e3b4a86241ab72a409e8e837a7a5b36fae5ef8bd", "approved editable home master stays unchanged");
+  const bytes = await readFile(`${root}/public${FOREST_MAP.homeDetail.image}`), metadata = await sharp(bytes).metadata();
+  assert.ok(metadata.width >= HOME_TEXTURE_SIZE);
+  assert.equal(metadata.width, 1254); assert.equal(metadata.width, metadata.height);
+  assert.ok(bytes.length < 650000, "retina detail must keep its download budget");
   assert.equal(homeBackingSize(320, 2), 640);
   assert.equal(homeBackingSize(280, 3), 840);
   assert.equal(homeBackingSize(900, 3), HOME_TEXTURE_SIZE);

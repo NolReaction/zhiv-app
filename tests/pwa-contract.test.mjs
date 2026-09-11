@@ -32,6 +32,8 @@ class MemoryCache {
     if (this.storage.failPutForUrl === key) throw new Error(`Failed to cache ${key}`);
     this.entries.set(key, response.clone());
   }
+  async keys() { return [...this.entries.keys()].map(url => ({ url })); }
+  async delete(request) { return this.entries.delete(absoluteUrl(request)); }
 }
 
 class MemoryCacheStorage {
@@ -95,13 +97,13 @@ async function createServiceWorkerHarness() {
     await Promise.all(pending);
   }
 
-  async function dispatchFetch(pathname) {
+  async function dispatchFetch(pathname, mode = "navigate") {
     const pending = [];
     let responsePromise;
     listeners.get("fetch")({
       request: {
         method: "GET",
-        mode: "navigate",
+        mode,
         url: new URL(pathname, origin).href,
       },
       respondWith(promise) {
@@ -179,6 +181,41 @@ test("keeps identity and check-ins out of the offline cache", async () => {
   assert.match(serviceWorker, /cache\?\.match\(request\)/);
   assert.doesNotMatch(serviceWorker, /caches\.match\(request\)/);
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
+});
+
+test("downloaded world artwork and lazy modules survive offline navigation and shell updates", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "world-a"); await harness.dispatchExtendable("install");
+  const assets = ["/world/runtime/map-0123456789ab.webp", "/_next/static/chunks/world-123.js"];
+  for (const asset of assets) {
+    harness.responses.set(origin + asset, new Response("asset-bytes", { headers: { "content-type": asset.endsWith("webp") ? "image/webp" : "application/javascript" } }));
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "asset-bytes");
+    harness.responses.set(origin + asset, new Error("Offline"));
+  }
+  setShellResponses(harness, "world-b"); await harness.dispatchFetch("/");
+  for (const asset of assets) assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "asset-bytes");
+  assert.equal(await harness.dispatchFetch("/api/v1/world", "cors"), null);
+  const newer = "/world/runtime/map-abcdef012345.webp";
+  harness.responses.set(origin + newer, new Response("new-artwork", { headers: { "content-type": "image/webp" } }));
+  assert.equal(await (await harness.dispatchFetch(newer, "cors")).text(), "new-artwork");
+});
+
+test("asset cache eviction and full storage never hide a successful network response", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "limited"); await harness.dispatchExtendable("install");
+  for (let i = 0; i < 100; i++) {
+    const asset = `/world/runtime/map-${i.toString(16).padStart(12, "0")}.webp`;
+    harness.responses.set(origin + asset, new Response("image", { headers: { "content-type": "image/webp" } }));
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "image");
+  }
+  const cache = await harness.caches.open("zhiv-assets-v1"); assert.equal((await cache.keys()).length, 96);
+  const unavailable = "/world/runtime/map-ffffffffffff.webp";
+  harness.caches.failPutForUrl = origin + unavailable;
+  harness.responses.set(origin + unavailable, new Response("uncached-image"));
+  assert.equal(await (await harness.dispatchFetch(unavailable, "cors")).text(), "uncached-image");
+  assert.equal(await cache.match(unavailable), undefined);
+  harness.caches.open = async () => { throw new Error("Storage unavailable"); };
+  assert.equal(await (await harness.dispatchFetch(unavailable, "cors")).text(), "uncached-image", "even an unreadable shell cache falls back to the network");
 });
 
 test("admin navigation and data always bypass offline cache and root-shell fallback", async () => {

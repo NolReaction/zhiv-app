@@ -100,7 +100,9 @@ class JdbcWorldRepository(private val source: DataSource): WorldRepository {
         }
         val before=checkNotNull(c.worldRow(actor.id))
         if(before.revision!=command.expectedRevision) throw AuthFailure("WORLD_REVISION_CONFLICT","Мир уже изменился. Обновите его и повторите действие.",409)
-        val (state,message)=WorldRules.apply(before.state,command,now.toInstant())
+        val gifts = if (command.action == "set_decoration")
+            c.worldRows("SELECT item_id FROM game_items WHERE user_id=?", actor.id) { it.getString(1) } else emptyList()
+        val (state,message)=WorldRules.apply(before.state,command,now.toInstant(),gifts)
         c.worldSave(actor.id,state)
         if(command.action=="claim_journey") recordCollectionAchievement(c,actor.id,now)
         val a=state.resources; val b=before.state.resources

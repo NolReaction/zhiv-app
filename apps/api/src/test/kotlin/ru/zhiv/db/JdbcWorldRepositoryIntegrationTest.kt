@@ -41,6 +41,22 @@ class JdbcWorldRepositoryIntegrationTest {
         identities=JdbcZhivRepository(source); games=JdbcGameRepository(source); world=JdbcWorldRepository(source)
     }
     @AfterAll fun close() { source.close() }
+    @Test fun `gift switches persist across devices and retries without removing ownership`() = runBlocking<Unit> {
+        val p = player(); val initial = world.snapshot(p.hash)
+        val hide = WorldCommand(UUID.randomUUID().toString(), p.publicId, initial.revision, "set_decoration", "hide_flower")
+        assertEquals("WORLD_ITEM_NOT_OWNED", assertFailsWith<AuthFailure> { world.command(p.hash, hide) }.code)
+        execute("INSERT INTO game_items(user_id,item_id) VALUES (?,?)", p.id, "flower")
+        val hidden = world.command(p.hash, hide)
+        assertEquals(listOf("flower"), hidden.snapshot.state.hiddenGifts)
+        assertTrue("flower" in hidden.snapshot.gifts)
+        assertEquals(initial.state.resources, hidden.snapshot.state.resources)
+        val other = secondDevice(p)
+        assertEquals(hidden.snapshot.state, JdbcWorldRepository(source).snapshot(other).state)
+        assertTrue(world.command(other, hide).replayed)
+        val show = hide.copy(requestId = UUID.randomUUID().toString(), target = "show_flower")
+        assertEquals("WORLD_REVISION_CONFLICT", assertFailsWith<AuthFailure> { world.command(other, show) }.code)
+        assertEquals(emptyList(), world.command(other, show.copy(expectedRevision = hidden.snapshot.revision)).snapshot.state.hiddenGifts)
+    }
     private fun execute(sql: String,vararg values: Any?) = source.connection.use { c ->
         c.prepareStatement(sql).use { s -> values.forEachIndexed { i,v -> s.setObject(i+1,v) }; s.executeUpdate() }.also { c.commit() }
     }
