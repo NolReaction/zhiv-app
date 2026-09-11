@@ -19,7 +19,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
  const translations=[];
  const ctx=new Proxy({translate:(x,y)=>translations.push({x,y}),getImageData:(_x,_y,w,h)=>pixels(w,h),createImageData:pixels,createRadialGradient:()=>({addColorStop(){}}),createLinearGradient:()=>({addColorStop(){}})}, {get:(object,key)=>key in object?object[key]:()=>{}});
  const canvas=()=>({width:256,height:256,clientWidth:393,clientHeight:740,getContext:()=>ctx,addEventListener(){},removeEventListener(){},hasPointerCapture(){return false}});
- install('Image',class {naturalWidth=1254;naturalHeight=1254;set src(path){if(!path)return;this.naturalWidth=this.naturalHeight=path===WORLD_ART.homePreview?256:path===WORLD_ART.mapPreview?384:1254;pending.push({path,image:this})}});
+ install('Image',class {naturalWidth=2048;naturalHeight=2048;set src(path){if(!path)return;this.naturalWidth=this.naturalHeight=path===WORLD_ART.homePreview?256:path===WORLD_ART.mapPreview?384:2048;pending.push({path,image:this})}});
  install('document',{hidden:false,createElement:canvas,addEventListener(){},removeEventListener(){}});install('window',{});
  install('setTimeout',(fn,ms)=>{timers.set(++id,{fn,ms});return id});install('clearTimeout',key=>timers.delete(key));
  install('requestAnimationFrame',fn=>{frames.set(++id,fn);return id});install('cancelAnimationFrame',key=>frames.delete(key));
@@ -40,6 +40,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const surface=canvas();
   const engine=await createMapEngine(surface,options,()=>{},[bush,house]);assert.equal(observed,3);
   assert.ok(pending.some(item=>item.path===WORLD_ART.map),'the complete scene is already interactive while full artwork is downloading');
+  assert.ok(pending.some(item=>item.path===WORLD_ART.homeDetail),'home detail downloads independently of the full world image');
   finish(WORLD_ART.map);await flush();
   finish(WORLD_ART.boatWreck);await flush();
   // An already-running flight keeps its actual source-map position in either renderer.

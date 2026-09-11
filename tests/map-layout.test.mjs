@@ -14,14 +14,34 @@ const { worldToScreen, screenToWorld, viewportPoint } = await vite.ssrLoadModule
 const { houseVariantFor } = await vite.ssrLoadModule("/features/mochlik/house-variants.ts");
 const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 
-test("wide region source resolution is preserved, home is an integer crop", async () => {
+test("enhanced region preserves 2048 source pixels without changing the logical home crop", async () => {
   const master = await readFile(`${root}/public/world/maps/forest-region-v3.png`);
   assert.equal(createHash("sha256").update(master).digest("hex"), "6bc7d8274bc1f1e660de570f0ac4d9eb1f7651ad1a38a84abba9e5b01c45be59");
   const bytes = await readFile(`${root}/public${FOREST_MAP.image}`), metadata = await sharp(bytes).metadata();
-  assert.equal(metadata.width, MAP_SIZE); assert.equal(metadata.height, MAP_SIZE);
-  assert.ok(bytes.length < 900000, "full map preserves detail without restoring a multi-megabyte download");
+  assert.equal(metadata.width, 2048); assert.equal(metadata.height, 2048);
+  assert.equal(MAP_SIZE, 1254, "higher artwork resolution does not move world coordinates");
   assert.ok(HOME_AREA.x >= 0 && HOME_AREA.y >= 0 && HOME_AREA.x + HOME_AREA.size <= MAP_SIZE && HOME_AREA.y + HOME_AREA.size <= MAP_SIZE);
   assert.equal(HOME_AREA.size % 256, 0, "integer effect scaling, without downsampling the background");
+});
+
+test("full-resolution artwork keeps every RGBA pixel from the supplied enhanced PNGs", async () => {
+  const sources = JSON.parse(await readFile(`${root}/public/world/art-sources.json`, "utf8"));
+  const assets = JSON.parse(await readFile(`${root}/features/world/runtime-art.json`, "utf8"));
+  const suppliedPixels = {
+    map: "1066db9895fee688be031680cfda29a77e2c16fc0f749dd46e01fbb686428105",
+    homeDetail: "7eee9708b5a1c9f43ea58a1cf9700e1a91fcf9832a090f050e8278fcd2a7ae7e",
+  };
+  for (const [name, expectedPixels] of Object.entries(suppliedPixels)) {
+    const source = sources.artworks[name];
+    assert.equal(assets[name], source.runtimePath, "full artwork has a single canonical copy");
+    const bytes = await readFile(`${root}/public${assets[name]}`);
+    const metadata = await sharp(bytes).metadata();
+    assert.equal(metadata.width, 2048); assert.equal(metadata.height, 2048);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), source.sha256);
+    const pixels = await sharp(bytes).ensureAlpha().raw().toBuffer();
+    assert.equal(createHash("sha256").update(pixels).digest("hex"), expectedPixels, `${name} must not lose detail during asset preparation`);
+    assert.equal(source.rgbaSha256, expectedPixels);
+  }
 });
 
 test("first frames fit the slow-network budget and every cached artwork URL follows its content", async () => {

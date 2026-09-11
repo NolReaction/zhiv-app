@@ -1,6 +1,6 @@
 import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
 import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
-import { loadHabitatImage } from "@/features/mochlik/assets";
+import { createAssetUpgrade, loadHabitatImage } from "@/features/mochlik/assets";
 import { WORLD_ART } from "./art";
 import { mapPlaceAt, worldToHome } from "./map-layout";
 import { drawWaterAmbience } from "./water-ambience";
@@ -39,6 +39,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   try { await habitatReady; signal?.throwIfAborted(); }
   catch (error) { habitat.dispose(); throw error; }
   finally { signal?.removeEventListener("abort", abort); }
+  habitat.setGround(ground);
   let fullGround = false, upgradingGround = false;
   async function upgradeGround() {
     if (disposed || fullGround || upgradingGround) return;
@@ -46,15 +47,13 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     try {
       const image = await loadHabitatImage(WORLD_ART.map, "low");
       if (disposed) return;
-      if (image.naturalWidth !== MAP_SIZE || image.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
-      ground = image; fullGround = true;
+      if (image.naturalWidth < MAP_SIZE || image.naturalHeight !== image.naturalWidth) throw new Error("Map dimensions do not match its manifest");
+      ground = image; fullGround = true; habitat.setGround(image);
       if (!document.hidden && !options.backgrounded && inView && !options.paused) draw();
-    } catch { /* Reconnect retries; the complete overview remains usable. */ }
-    finally { upgradingGround = false; }
+    } finally { upgradingGround = false; }
   }
-  const retryGround = () => { if (!document.hidden && !options.backgrounded) void upgradeGround(); };
-  window.addEventListener?.("online", retryGround); window.addEventListener?.("focus", retryGround);
-  void upgradeGround();
+  const groundUpgrade = createAssetUpgrade(upgradeGround, () => !disposed && !document.hidden && !options.backgrounded && inView);
+  groundUpgrade.retry();
   void loadHabitatImage(WORLD_ART.boatWreck).then(image => {
     if (disposed) return;
     boatArt = prepareBoatWreck(image);
@@ -67,8 +66,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
     ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-    // Both views share the detailed tile and fixed world anchors. Its outer rim
-    // contains the original map pixels; animation coordinates remain unchanged.
+    // Artwork resolution is independent of the fixed logical world coordinates.
     ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
     const weather = habitat.ambience();
     drawWaterAmbience(ctx, weather.elapsed, options.reducedMotion, weather.rain);
@@ -107,12 +105,13 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     cancelAnimationFrame(raf); raf = 0;
     const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
     habitat.configure({ ...options, view: "world", backgrounded });
+    if (!backgrounded) groundUpgrade.retry();
     if (!disposed && !backgrounded) { draw(); if (!options.reducedMotion && !options.paused) raf = requestAnimationFrame(tick); }
   }
   function resize() {
     // CSS entrance scaling changes the visual rect, not the map's layout viewport.
     view = { width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight) };
-    const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
+    const scale = Math.min(window.devicePixelRatio || 1, 3, 4096 / Math.max(view.width, view.height), Math.sqrt(8_000_000 / (view.width * view.height)));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
     camera = framing === "world" ? worldCamera(view) : framing === "home" ? homeCamera(view) : framing === "overview" ? overviewCamera(view) : clampCamera(camera, view); draw();
   }
@@ -185,7 +184,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
       disposed = true; cancelAnimationFrame(raf); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
-      window.removeEventListener?.("online", retryGround); window.removeEventListener?.("focus", retryGround);
+      groundUpgrade.dispose();
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(name, end);
       canvas.removeEventListener("wheel", wheel); canvas.removeEventListener("keydown", key); document.removeEventListener("visibilitychange", visibility);

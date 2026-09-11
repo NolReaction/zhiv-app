@@ -1,5 +1,5 @@
-/** Geometry authored against the wide forest region PNG, in source pixels.
- * Change the revision and recalibrate this manifest when changing the artwork. */
+/** Logical geometry stays in the original 1254-unit world when artwork is upscaled.
+ * Recalibrate these anchors only if the actual terrain changes. */
 import runtimeArt from "./runtime-art.json";
 export type MapPoint = { x: number; y: number };
 export const FOREST_MAP = {

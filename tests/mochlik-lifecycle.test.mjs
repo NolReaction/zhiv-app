@@ -21,7 +21,7 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = () => ({ width: 16, height: 16, clientWidth: 320, getContext: () => context });
   install("document", { createElement: () => canvas() }); install("window", { devicePixelRatio: 2 });
-  install("Image", class { naturalWidth = 1254; naturalHeight = 1254; set src(path) { if (!path) return; this.naturalWidth = this.naturalHeight = path.includes("homePreview-") ? 256 : 1254; queueMicrotask(() => this.onload?.()); } });
+  install("Image", class { naturalWidth = 2048; naturalHeight = 2048; set src(path) { if (!path) return; this.naturalWidth = this.naturalHeight = path.includes("homePreview-") ? 256 : 2048; queueMicrotask(() => this.onload?.()); } });
   install("ResizeObserver", class { observe() {} disconnect() { disconnected++; } });
   install("requestAnimationFrame", callback => { const id = nextId++; scheduled.set(id, callback); return id; });
   install("cancelAnimationFrame", id => scheduled.delete(id));

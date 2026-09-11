@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "worldCoordinateSize": 1254,
+  "artworks": {
+    "map": {
+      "inputFilename": "Оптимайз_сжатый.png",
+      "inputSha256": "a76a2b17162e8091a948e4d67565a6a18825a4f4d5a9c85272712b5097afd56f",
+      "inputBytes": 10128364,
+      "width": 2048,
+      "height": 2048,
+      "decodedChannels": 4,
+      "rgbaSha256": "1066db9895fee688be031680cfda29a77e2c16fc0f749dd46e01fbb686428105",
+      "encoding": "WebP lossless",
+      "runtimePath": "/world/runtime/map-5f58d9adafe6.webp",
+      "sha256": "5f58d9adafe6d0ccbb1e09c7075667c3998bd9dc684b4df22ad0c4ea94b537d7",
+      "bytes": 6273282
+    },
+    "homeDetail": {
+      "inputFilename": "мини_оптимайз_сжато.png",
+      "inputSha256": "ab174efddff87e865cafc751fbdd8a66bace9248432ea4ac99500287bfb0f4bc",
+      "inputBytes": 8426984,
+      "width": 2048,
+      "height": 2048,
+      "decodedChannels": 4,
+      "rgbaSha256": "7eee9708b5a1c9f43ea58a1cf9700e1a91fcf9832a090f050e8278fcd2a7ae7e",
+      "encoding": "WebP lossless",
+      "runtimePath": "/world/runtime/homeDetail-c6df652a3ff4.webp",
+      "sha256": "c6df652a3ff4c21c5257724a46ede90c05e2499c1c0d476d9dfbdf7a842faa9b",
+      "bytes": 5095430
+    }
+  }
+}
