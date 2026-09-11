@@ -1187,12 +1187,13 @@ export function CheckInApp() {
   const clickerLevelProgress = getClickerLevelProgress(game.progress?.lifetimeTaps ?? 0);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
   const gameNotice = game.errorCode === "GAME_STARTING" ? "Получаем разрешение на игру. Первые нажатия в очереди; продолжить можно после подключения."
+    : game.errorCode === "QUEUE_FULL" ? "Очередь на устройстве заполнена. Дождитесь отправки сохранённых нажатий, прежде чем продолжать."
     : game.errorCode === "GAME_ACTIVE_ELSEWHERE" ? "Игра активна в другом окне или на другом устройстве. Очередь сохранена; отправка продолжится после освобождения игры."
     : game.errorCode === "STORAGE_FAILED" ? "Браузер не смог сохранить очередь. Новые игровые нажатия приостановлены. Освободите место и проверьте доступ к хранилищу."
     : game.errorCode === "GAME_SESSION_EXPIRED" && !isOnline ? "Разрешение на игру без связи истекло. Уже сделанные нажатия остаются в очереди; подключитесь, чтобы продолжить."
     : game.errorCode === "GAME_PERMIT_CLOSED" ? "Игра была передана другому устройству или разрешение закончилось. Допустимые нажатия сохранены; поздние не входят в рейтинг."
     : game.status === "error" ? "Не удалось получить подтверждение. Очередь остаётся на этом устройстве; повторим отправку автоматически."
-    : !isOnline ? "Офлайн. Нажатия сохраняются на этом устройстве в пределах разрешения на игру. После подключения отправим очередь."
+    : !isOnline ? "Офлайн. Нажатия сохраняются на этом устройстве. После подключения отправим очередь; при заполнении хранилища покажем предупреждение."
     : game.status === "loading" ? "Загружаем игровой прогресс…"
     : game.pendingTaps ? `Ожидают подтверждения: ${game.pendingTaps.toLocaleString("ru-RU")} тапов. Можно продолжать играть.`
     : game.archivedTaps ? `Не удалось проверить ${game.archivedTaps.toLocaleString("ru-RU")} прежних нажатий. Запись сохранена на этом устройстве для разбора; можно продолжать играть. Подтверждённый прогресс остаётся в аккаунте.`
@@ -1222,9 +1223,10 @@ export function CheckInApp() {
   ].includes(effectType);
   const displayedRunId = clickerRun.activeSeries?.eventId ?? seriesSummary?.eventId;
   const displayedRun = game.run?.runId === displayedRunId ? game.run : null;
-  const visualTapCount = (displayedRun?.acceptedTaps ?? 0) + (displayedRun?.pendingTaps ?? 0);
+  const creditedRunTaps = displayedRun?.creditedTaps ?? displayedRun?.acceptedTaps ?? 0;
+  const visualTapCount = creditedRunTaps + (displayedRun?.pendingTaps ?? 0);
   const isConfirmedRecord = Boolean(seriesSummary && !clickerRun.activeSeries && displayedRun
-    && displayedRun.pendingTaps === 0 && recordAtRunStart.current.bestSeries !== null
+    && displayedRun.pendingTaps === 0 && !displayedRun.interrupted && recordAtRunStart.current.bestSeries !== null
     && displayedRun.acceptedTaps > recordAtRunStart.current.bestSeries
     && displayedRun.acceptedTaps === game.progress?.bestSeries);
   const buttonStyle = useMemo(
@@ -1437,7 +1439,7 @@ export function CheckInApp() {
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
-                Текущая серия: {visualTapCount.toLocaleString("ru-RU")}. Сохранено: {displayedRun?.acceptedTaps ?? 0}.
+                Текущая серия: {visualTapCount.toLocaleString("ru-RU")}. Сохранено: {creditedRunTaps}.
                 {displayedRun?.pendingTaps ? `Ожидают сохранения: ${displayedRun.pendingTaps}.` : ""}
               </span>
             ) : null}

@@ -12,6 +12,7 @@ export type GameSyncStatus = "loading" | "ready" | "syncing" | "offline" | "erro
 export type GameRunSync = {
   runId: string;
   acceptedTaps: number;
+  creditedTaps?: number;
   pendingTaps: number;
   rejectedTaps: number;
   interrupted: boolean;
@@ -28,6 +29,7 @@ export type GameSyncSnapshot = {
   archivedTaps?: number;
 };
 type QueuedTaps = { runId: string; count: number; times?: number[]; deferred?: boolean };
+export type GameTapInput = { id: string; runId: string; count: number; capturedAt: number };
 type GameTransport = {
   progress(signal: AbortSignal): Promise<GameProgress>;
   session(body: GameSessionRequest, signal: AbortSignal): Promise<GameSession>;
@@ -59,6 +61,8 @@ export class GameSyncClient {
   private archivedQueues: GameJournal["archivedQueues"] = [];
   private session: GameSession | null = null;
   private run: Omit<GameRunSync, "pendingTaps"> | null = null;
+  private runs = new Map<string, Omit<GameRunSync, "pendingTaps">>();
+  private inputReceipts = new Set<string>();
   private rejectedTaps = 0;
   private sessionUntil = 0;
   private pacingTokens = MAX_BATCH_TAPS;
@@ -110,6 +114,10 @@ export class GameSyncClient {
       if (saved) {
         this.progress = saved.progress; this.queue = saved.queue; this.session = saved.session;
         this.pendingBatch = saved.pendingBatch; this.startRequest = saved.startRequest; this.run = saved.run;
+        this.runs = new Map((saved.runs ?? []).map(run => [run.runId, run]));
+        if (this.run) { this.runs.set(this.run.runId, this.run); }
+        this.inputReceipts = new Set(saved.inputReceipts ?? []);
+        this.errorCode = saved.errorCode ?? null; this.requestId = saved.requestId;
         this.archivedQueues = saved.archivedQueues ?? [];
         this.deferredQueue = saved.deferredQueue ?? []; this.catchUpMode = saved.catchUpMode ?? false;
         this.rejectedTaps = saved.rejectedTaps; this.serverOffset = saved.serverOffset;
@@ -129,6 +137,7 @@ export class GameSyncClient {
     try {
       this.journal.write({ version: 1, ownerPublicId: this.ownerPublicId, savedAt: this.wallNow(), progress: this.progress,
         queue: this.queue, session: this.session, pendingBatch: this.pendingBatch, startRequest: this.startRequest, run: this.run,
+        runs: [...this.runs.values()], inputReceipts: [...this.inputReceipts], errorCode: this.errorCode, requestId: this.requestId,
         archivedQueues: this.archivedQueues, deferredQueue: this.deferredQueue, catchUpMode: this.catchUpMode,
         rejectedTaps: this.rejectedTaps, serverOffset: this.eventNow() - this.wallNow(),
         recordingStopped: this.recordingStopped, lastEventAt: this.lastEventAt,
@@ -143,7 +152,8 @@ export class GameSyncClient {
     }
   }
 
-  snapshot(): GameSyncSnapshot {
+  snapshot(runId?: string): GameSyncSnapshot {
+    const run = runId ? this.runs.get(runId) : this.run;
     const pendingTaps = [...this.queue, ...this.deferredQueue].reduce((sum, item) => sum + item.count, 0) + (this.pendingBatch?.tapCount ?? 0);
     return {
       progress: this.progress,
@@ -152,9 +162,9 @@ export class GameSyncClient {
       archivedTaps: this.archivedQueues.reduce((total, item) => total + (item.pendingBatch?.tapCount ?? 0)
         + item.queue.reduce((sum, batch) => sum + batch.count, 0), 0),
       rejectedTaps: this.rejectedTaps,
-      run: this.run ? { ...this.run, pendingTaps:
-        [...this.queue, ...this.deferredQueue].reduce((sum, item) => sum + (item.runId === this.run?.runId ? item.count : 0), 0)
-        + (this.pendingBatch?.runId === this.run.runId ? this.pendingBatch.tapCount : 0),
+      run: run ? { ...run, pendingTaps:
+        [...this.queue, ...this.deferredQueue].reduce((sum, item) => sum + (item.runId === run.runId ? item.count : 0), 0)
+        + (this.pendingBatch?.runId === run.runId ? this.pendingBatch.tapCount : 0),
       } : null,
       status: this.errorCode === "GAME_ACTIVE_ELSEWHERE" ? "blocked" : this.storageFailed ? "error" : !this.online ? "offline" : this.failed ? "error"
         : pendingTaps > 0 || this.writing ? "syncing"
@@ -212,9 +222,21 @@ export class GameSyncClient {
     this.onSessionLost();
   }
 
-  recordTap(steps: number, runId: string): number {
+  recordTap(steps: number, runId: string, capturedAt?: number): number {
     if (this.disposed || this.storageFailed || !Number.isSafeInteger(steps) || steps < 1 || !RUN_ID.test(runId)) return 0;
-    if (this.run?.runId !== runId) this.run = { runId, acceptedTaps: 0, rejectedTaps: 0, interrupted: false };
+    if (this.run?.runId !== runId) {
+      this.run = this.runs.get(runId) ?? { runId, acceptedTaps: 0, creditedTaps: 0, rejectedTaps: 0, interrupted: false };
+      this.runs.set(runId, this.run);
+      // Keep recent tabs' results without allowing completed runs to grow forever.
+      if (this.runs.size > 128) {
+        const pendingRuns = new Set([...this.queue, ...this.deferredQueue].map(item => item.runId));
+        if (this.pendingBatch) pendingRuns.add(this.pendingBatch.runId);
+        for (const key of this.runs.keys()) {
+          if (this.runs.size <= 128) break;
+          if (key !== runId && !pendingRuns.has(key)) this.runs.delete(key);
+        }
+      }
+    }
     const pending = this.snapshot().pendingTaps;
     const count = Math.min(steps, Math.max(0, MAX_PENDING_TAPS - pending));
     let remaining = count;
@@ -224,8 +246,11 @@ export class GameSyncClient {
       const initialRoom = !this.session && this.online && !this.recordingStopped
         && this.errorCode !== "GAME_ACTIVE_ELSEWHERE" && !this.catchUpMode && !this.deferredQueue.length
         ? Math.max(0, MAX_BATCH_TAPS - this.queue.reduce((sum, item) => sum + item.count, 0)) : 0;
+      const eventAt = capturedAt === undefined ? this.eventNow() : capturedAt + this.serverOffset;
+      const staleInput = capturedAt !== undefined && (this.wallNow() - capturedAt > 5000
+        || !!this.session?.startedAt && eventAt < Date.parse(this.session.startedAt));
       const live = this.session && !this.recordingStopped && (!this.session.startedAt || this.permitLive());
-      const deferred = this.catchUpMode || this.deferredQueue.length > 0 || !live && initialRoom === 0;
+      const deferred = staleInput || this.catchUpMode || this.deferredQueue.length > 0 || !live && initialRoom === 0;
       const target = deferred ? this.deferredQueue : this.queue;
       const last = target.at(-1);
       const item: QueuedTaps = last?.runId === runId && last.count < MAX_BATCH_TAPS
@@ -233,7 +258,7 @@ export class GameSyncClient {
       if (item !== last) target.push(item);
       const chunk = Math.min(remaining, MAX_BATCH_TAPS - item.count, !live && !deferred ? initialRoom : MAX_BATCH_TAPS);
       item.count += chunk; item.times ??= [];
-      this.lastEventAt = Math.floor(Math.max(this.lastEventAt, this.eventNow()));
+      this.lastEventAt = Math.floor(Math.max(this.lastEventAt, Math.min(this.eventNow(), eventAt)));
       item.times.push(...Array.from({ length: chunk }, () => this.lastEventAt));
       remaining -= chunk;
     }
@@ -244,9 +269,27 @@ export class GameSyncClient {
     return this.storageFailed ? 0 : count;
   }
 
+  /** Import an immutable cross-tab intent and its deduplication receipt in one journal write. */
+  importInput(input: GameTapInput): boolean {
+    if (this.disposed) return false;
+    if (this.inputReceipts.has(input.id)) return this.persist();
+    if (this.storageFailed || !RUN_ID.test(input.id) || !RUN_ID.test(input.runId)
+      || !Number.isSafeInteger(input.count) || input.count < 1 || input.count > MAX_BATCH_TAPS
+      || !Number.isSafeInteger(input.capturedAt) || input.capturedAt < 0
+      || this.snapshot().pendingTaps + input.count > MAX_PENDING_TAPS) return false;
+    this.inputReceipts.add(input.id);
+    return this.recordTap(input.count, input.runId, input.capturedAt) === input.count;
+  }
+
+  /** Call only after the immutable input key has been removed successfully. */
+  forgetInput(id: string): void {
+    if (this.inputReceipts.delete(id)) this.emit();
+  }
+
   private rejectTaps(runId: string, count: number): void {
     this.rejectedTaps += count;
-    if (this.run?.runId === runId) this.run.rejectedTaps += count;
+    const run = this.runs.get(runId);
+    if (run) run.rejectedTaps += count;
   }
 
   async refresh(): Promise<void> {
@@ -371,9 +414,14 @@ export class GameSyncClient {
           this.pacingUpdatedAt = this.now();
           this.nextDispatchAt = this.now() + 2000;
           if (result.rejectedTaps > 0) this.pacingTokens = 0;
-          if (this.run?.runId === batch.runId) {
-            if (result.runTaps < this.run.acceptedTaps + result.acceptedTaps) this.run.interrupted = true;
-            this.run.acceptedTaps = result.runTaps;
+          const run = this.runs.get(batch.runId);
+          if (run) {
+            run.creditedTaps = (run.creditedTaps ?? run.acceptedTaps) + result.acceptedTaps;
+            if (result.runTaps < run.acceptedTaps + result.acceptedTaps) run.interrupted = true;
+            // Keep the server's bounded series count, including interruptions.
+            // Lifetime totals include all tabs, but their separate runs cannot
+            // be combined into a fabricated leaderboard record.
+            run.acceptedTaps = result.runTaps;
           }
           this.rejectTaps(batch.runId, result.rejectedTaps);
           this.pendingBatch = null;
@@ -443,13 +491,14 @@ export class GameSyncClient {
 
   private archiveUnconfirmed(error: ApiError): void {
     const previous = { queue: this.queue, session: this.session, pendingBatch: this.pendingBatch, startRequest: this.startRequest,
-      run: this.run, archivedQueues: this.archivedQueues, recordingStopped: this.recordingStopped, needsPermit: this.needsPermit };
+      run: this.run, runs: new Map(this.runs), archivedQueues: this.archivedQueues, recordingStopped: this.recordingStopped, needsPermit: this.needsPermit };
     const pendingTaps = this.snapshot().pendingTaps;
     this.archivedQueues = [...this.archivedQueues, { archivedAt: this.wallNow(),
       code: error.body!.code as GameJournal["archivedQueues"][number]["code"], requestId: error.requestId,
       queue: this.queue, pendingBatch: this.pendingBatch, session: this.session, startRequest: this.startRequest }];
     this.queue = []; this.pendingBatch = null; this.session = null; this.startRequest = null;
     this.run = this.run ? { ...this.run, interrupted: true } : null;
+    if (this.run) this.runs.set(this.run.runId, this.run);
     this.recordingStopped = false; this.needsPermit = this.deferredQueue.length > 0;
     // Archive and active outbox change in one storage write. Never clear evidence
     // or authorize a fresh run if that write fails. An unknown ACK is not a rejection.

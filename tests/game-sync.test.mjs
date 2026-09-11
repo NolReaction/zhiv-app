@@ -201,7 +201,7 @@ test("uses server-confirmed accepted counts when the shared tap budget rejects p
   f.client.recordTap(10, runId);
   await settle();
   assert.equal(f.client.snapshot().progress.lifetimeTaps, 2);
-  assert.deepEqual(f.client.snapshot().run, { runId, acceptedTaps: 2, pendingTaps: 0, rejectedTaps: 8, interrupted: false });
+  assert.deepEqual(f.client.snapshot().run, { runId, acceptedTaps: 2, creditedTaps: 2, pendingTaps: 0, rejectedTaps: 8, interrupted: false });
   assert.equal(f.client.snapshot().pendingTaps, 0);
   await f.client.flush();
   assert.equal(f.client.snapshot().progress.lifetimeTaps, 2);
@@ -274,6 +274,7 @@ test("server run count replaces local accumulation when a network gap splits the
   f.client.recordTap(20, runId);
   await f.client.flush();
   assert.equal(f.client.snapshot().run.acceptedTaps, 20);
+  assert.equal(f.client.snapshot().run.creditedTaps, 40, "a split record must not erase actually credited taps from the button");
   assert.equal(f.client.snapshot().run.interrupted, true);
   assert.equal(f.client.snapshot().progress.bestSeries, 20);
   f.client.dispose();
@@ -305,7 +306,7 @@ test("pending accounting follows the latest run while older replies are drained"
   await settle();
   f.client.recordTap(9, requestId);
   assert.equal(f.client.snapshot().pendingTaps, 13);
-  assert.deepEqual(f.client.snapshot().run, { runId: requestId, acceptedTaps: 0, pendingTaps: 9, rejectedTaps: 0, interrupted: false });
+  assert.deepEqual(f.client.snapshot().run, { runId: requestId, acceptedTaps: 0, creditedTaps: 0, pendingTaps: 9, rejectedTaps: 0, interrupted: false });
   resolveBatch();
   await settle();
   assert.equal(f.client.snapshot().run.acceptedTaps, 0);
@@ -410,7 +411,7 @@ test("719 observed taps at 20 per second become exactly the saved run, record an
   assert.equal(saved.progress.lifetimeTaps, 719);
   assert.equal(saved.progress.monthlyTaps, 719);
   assert.equal(saved.progress.bestSeries, 719);
-  assert.deepEqual(saved.run, { runId, acceptedTaps: 719, pendingTaps: 0, rejectedTaps: 0, interrupted: false });
+  assert.deepEqual(saved.run, { runId, acceptedTaps: 719, creditedTaps: 719, pendingTaps: 0, rejectedTaps: 0, interrupted: false });
   assert.ok(f.batches.every(item => item.tapCount <= 60));
   f.client.dispose();
 });

@@ -212,7 +212,8 @@ assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie }))
 const playerPath = `/api/v1/admin/users/${target.publicId}/player`;
 const managePath = `/api/v1/admin/users/${target.publicId}/manage`;
 const clicksPath = `/api/v1/admin/users/${target.publicId}/tap-activity`;
-for (const privatePath of [playerPath, clicksPath]) {
+const historyPath = `/api/v1/admin/users/${target.publicId}/tap-history`;
+for (const privatePath of [playerPath, clicksPath, historyPath]) {
   await api("GET", privatePath, { expected: 401 });
   await api("GET", privatePath, { cookie: ordinary.cookie, expected: 403 });
 }
@@ -235,6 +236,14 @@ assert.equal(clicks.headers["cache-control"], "no-store");
 assert.deepEqual(clicks.data.windows.map(window => window.seconds), [10, 30, 60, 1800]);
 assert.equal(clicks.data.analysis.status, "insufficient_data");
 assert.equal(sql(`SELECT sum(received_taps) FROM game_tap_activity_seconds WHERE user_id=(SELECT id FROM app_users WHERE public_id='${target.publicId}');`), "9");
+const history = await api("GET", historyPath, { cookie: admin.cookie });
+assert.equal(history.headers["cache-control"], "no-store");
+assert.equal(history.data.publicId, target.publicId);
+assert.equal(history.data.minutes.reduce((sum, minute) => sum + minute.receivedTaps, 0), 9);
+assert.ok(history.data.minutes.every(minute => Number.isSafeInteger(minute.receivedTaps)
+  && typeof minute.complete === "boolean" && typeof minute.watchlisted === "boolean"));
+assert.deepEqual((await api("GET", historyPath, { cookie: admin.cookie })).data.minutes.map(row => [row.at, row.receivedTaps]),
+  history.data.minutes.map(row => [row.at, row.receivedTaps]));
 const ban = management("ban");
 const banned = await api("POST", managePath, { cookie: admin.cookie, body: ban });
 assert.equal(banned.data.changed, true);
@@ -248,6 +257,10 @@ const unbannedCookie = addSession(target.publicId);
 assert.deepEqual((await api("GET", "/api/v1/me", { cookie: unbannedCookie })).data.user.tag, tag);
 assert.equal((await api("GET", "/api/v1/game/progress", { cookie: unbannedCookie })).data.lifetimeTaps, 9);
 assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 7);
+await api("POST", managePath, { cookie: admin.cookie, body: management("watch") });
+assert.equal((await api("GET", playerPath, { cookie: admin.cookie })).data.watchlisted, true);
+await api("POST", managePath, { cookie: admin.cookie, body: management("unwatch") });
+assert.equal((await api("GET", playerPath, { cookie: admin.cookie })).data.watchlisted, false);
 
 // Two 15-second scrapes are required for rate(). The API cache lasts 10 seconds.
 // Keep a hard wall-clock deadline and print only the readiness result, not raw metrics.
