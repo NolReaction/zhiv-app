@@ -35,10 +35,3 @@ export const deleteAccountProfile = (idempotencyKey: string) =>
 export function currentAccountProved(state: LifecycleState, action: AccountAction): boolean {
   return action === "email" ? state.currentEmail : action === "merge" ? state.currentMerge : state.currentDelete;
 }
-
-export function resumeAccountAction(state: LifecycleState): AccountAction | null {
-  if (state.currentMerge || state.other) return "merge";
-  if (state.currentEmail || state.newEmail) return "email";
-  if (state.currentDelete) return "delete";
-  return null;
-}

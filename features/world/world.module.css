@@ -54,7 +54,6 @@
 .sheetHeader h2 { font-size: 1.125rem; line-height: 1.4; }
 .sheetHeader button { width: 44px; padding: 8px; }
 .sheetBody { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 8px 16px 20px; scrollbar-width: thin; scrollbar-color: #60704e transparent; }
-.bagTabs { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0 18px; }
 .panel, .panelHeading, .card, .item, .find { min-width: 0; overflow-wrap: anywhere; }
 .eyebrow { font-size: .75rem; color: #b3c593; letter-spacing: .1em; }
 .panelHeading { margin: 12px 0 18px; }
@@ -83,7 +82,7 @@
 .card h3 { margin: 9px 0 6px; font-size: 1.125rem; font-weight: 650; }
 .card > button { width: 100%; margin-top: 14px; }
 .cardTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.routeNumber, .kicker { color: #c4d1ae; font-size: .875rem; }
+.kicker { color: #c4d1ae; font-size: .875rem; }
 .kicker { display: inline-flex; align-items: center; gap: 5px; }
 .materials { display: inline-flex; flex-wrap: wrap; gap: 13px; font-size: .875rem; color: #dce6c5; }
 .materials > span { display: inline-flex; align-items: center; gap: 5px; }
@@ -118,7 +117,6 @@
 .details summary { cursor: pointer; font-size: .875rem; color: #c0ceab; min-height: 44px; }
 .details summary svg { vertical-align: middle; margin-right: 6px; }
 .details p { font-size: .875rem; line-height: 1.6; color: #b1c19f; }
-.sheetFeedback { font-size: .875rem; line-height: 1.6; color: #cfdfa9; }
 .error { color: #f0c898; }
 .loading { display: grid; justify-items: center; align-content: center; gap: 14px; height: 100%; padding: 70px 24px; text-align: center; color: #d5e5bd; background: #142218; }
 .loading > button:first-child { position: absolute; left: 16px; top: calc(16px + env(safe-area-inset-top)); }

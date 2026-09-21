@@ -66,14 +66,6 @@
   line-height: 1.55;
 }
 
-.recoveryHint {
-  max-width: 430px;
-  margin: 13px 0 0;
-  color: #7f867a;
-  font-size: 11px;
-  line-height: 1.55;
-}
-
 .form {
   display: grid;
   gap: 12px;
@@ -120,13 +112,6 @@
 
 .retryButton {
   margin-top: 34px;
-}
-
-.newProfileButton {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.045);
-  color: #a9afa3;
-  font-size: 14px;
 }
 
 .continueButton:active:not(:disabled),
@@ -746,15 +731,6 @@
   min-height: 76px;
 }
 
-.storyLabel {
-  margin: 0 0 7px;
-  color: #b7d8a2;
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .status {
   display: -webkit-box;
   max-width: min(88vw, 430px);
@@ -768,64 +744,6 @@
   letter-spacing: -0.02em;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-.storyProgress {
-  --story-progress: 0%;
-  display: grid;
-  width: min(260px, 70vw);
-  gap: 7px;
-  margin: 10px auto 0;
-}
-
-.storyProgress span {
-  color: #8e9488;
-  font-size: 10px;
-}
-
-.storyProgress > i {
-  position: relative;
-  display: block;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.storyProgress > i::after {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--story-progress);
-  border-radius: inherit;
-  background: linear-gradient(90deg, #79a962, #dff1d4);
-  content: "";
-  transition: width 140ms ease-out;
-}
-
-.storyReward {
-  display: grid;
-  width: min(300px, 78vw);
-  gap: 3px;
-  margin: 10px auto 0;
-  border: 1px solid rgba(245, 232, 91, 0.12);
-  border-radius: 12px;
-  background: rgba(245, 232, 91, 0.045);
-  padding: 7px 11px;
-}
-
-.storyReward strong {
-  color: #efe59b;
-  font-size: 10px;
-}
-
-.storyReward span,
-.rewardHint {
-  color: #7f857a;
-  font-size: 9px;
-}
-
-.rewardHint {
-  margin: 9px 0 0;
 }
 
 .offline {
@@ -852,13 +770,6 @@
   display: grid;
   justify-items: center;
   gap: 12px;
-}
-
-.colorHint {
-  color: #8a8f83;
-  font-size: 12px;
-  line-height: 1.4;
-  text-align: center;
 }
 
 .bottomNav {
@@ -1232,10 +1143,6 @@
     pointer-events: none;
   }
 
-  .colorHint {
-    display: none;
-  }
-
   .bottomNav {
     position: relative;
     width: 100%;
@@ -1394,14 +1301,12 @@
   }
 
   .checkInButton,
-  .seriesBreaking,
-  .storyProgress > i::after {
+  .seriesBreaking {
     animation: none !important;
   }
 
   .buttonStage,
-  .tapCounterProgress::after,
-  .storyProgress > i::after {
+  .tapCounterProgress::after {
     transition: none;
   }
 
@@ -1463,8 +1368,6 @@
 
 
 /* Only the alternate button appearance differs from the master interface. */
-.appearanceToggle { flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
-.appearanceToggle[aria-pressed='true'] { border-color: #d0e3bd80; background: #acc89226; }
 .habitatSurface { position: absolute; inset: 0; border-radius: 50%; border: 1px solid #c0cba055; box-shadow: 0 15px 65px color-mix(in srgb, var(--check-in-glow), transparent 60%); }
 .habitatStage { transform: none; }
 .mochlikButton { border: 1px solid color-mix(in srgb, var(--check-in-color), #c2c9a9 60%); background: transparent; box-shadow: none; animation: none; }
