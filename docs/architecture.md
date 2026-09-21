@@ -1,6 +1,6 @@
 # Текущая архитектура
 
-Документ описывает `feature/mochlik-world`. [Исходная архитектура ранних версий](history/architecture.md) сохранена отдельно.
+Документ описывает `feature/mochlik-world`. [Исходная архитектура ранних версий](https://github.com/NolReaction/zhiv-app/blob/5a117b2c233874a0362cdad11fef6a0308e622ff/docs/history/architecture.md) сохранена в истории Git.
 
 ## Два контура запуска
 

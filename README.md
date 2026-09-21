@@ -10,6 +10,8 @@ PWA для отметок близким и небольшого лесного 
 
 ## Быстрый старт
 
+Продолжаете разработку после перерыва или обрыва чата? Сначала прочитайте [WORK_STATE.md](WORK_STATE.md) и [AGENTS.md](AGENTS.md), затем проверьте текущую ветку и незакоммиченные изменения.
+
 Нужен **Node.js 24**. Из корня репозитория:
 
 ```bash
@@ -118,4 +120,4 @@ V27 добавляет модерацию и секундные агрегаты
 - [Админка и доступ](docs/operations/admin-panel.md), [модерация и анализ кликов](docs/operations/player-moderation.md).
 - [Синхронизация тапов](docs/game/game-sync-reliability.md) и [разбор сбоев](docs/operations/incident-response.md).
 - [Изображения мира](public/world/README.md), [освещение](docs/game/world-lighting.md) и [достижения](public/achievements/README.md).
-- [Все документы](docs/README.md), [история релизов](docs/releases/) и [архив прежних решений](docs/history/).
+- [Актуальные документы](docs/README.md); [старые релизы и прежние решения в истории Git](https://github.com/NolReaction/zhiv-app/tree/5a117b2c233874a0362cdad11fef6a0308e622ff/docs).

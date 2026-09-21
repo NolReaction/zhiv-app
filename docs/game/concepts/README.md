@@ -55,4 +55,4 @@ npm run dev:local
 
 ![Лесная карта](map-concept.webp)
 
-Полный список изменений и порядок обновления: [релиз 0.6.0](../../releases/release-0.6.0.md).
+Исторический список изменений: [релиз 0.6.0](https://github.com/NolReaction/zhiv-app/blob/5a117b2c233874a0362cdad11fef6a0308e622ff/docs/releases/release-0.6.0.md). Текущий порядок обновления — в [эксплуатационных инструкциях](../../operations/operations.md).

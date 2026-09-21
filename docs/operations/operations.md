@@ -17,6 +17,10 @@ Production-контур запускается из `deploy/compose.yml`. Postgr
 3. Из чистого checkout проверенного коммита выполнить `bash scripts/deploy-update.sh`: скрипт повторно сохраняет и проверяет backup, применяет миграции, обновляет сервисы и пересоздаёт Caddy.
 4. Проверить главную страницу, `/healthz` и `/readyz`, затем просмотреть логи API.
 
+Для получения кода и сборки используйте `umask 022`. Закрытые права `umask 077`
+ограничивайте отдельной подоболочкой резервного копирования, как в примере ниже,
+чтобы они не меняли права последующих checkout и сборок.
+
 Compose сначала запускает `provision` для подготовки ролей, затем отдельный сервис
 `migrate` с Flyway. API стартует после успешных миграций и сам схему не меняет.
 Миграции добавляются новыми файлами; автоматического отката схемы нет.
@@ -32,6 +36,7 @@ manager; без него копии восстановить невозможн�
 путь к production env-файлу. Пример одного запуска из корня репозитория:
 
 ```bash
+(
 set -euo pipefail
 umask 077
 backup_dump="$(mktemp /var/tmp/zhiv-backup.XXXXXX.dump)"
@@ -45,6 +50,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yml \
   exec -T db pg_restore --list <"${backup_dump}" >/dev/null
 restic backup --stdin --stdin-filename zhiv.dump --tag zhiv-db <"${backup_dump}"
 restic snapshots --tag zhiv-db --latest 1
+)
 ```
 
 Временный dump содержит пользовательские данные и создаётся с доступом только
