@@ -1,34 +1,40 @@
 # Fixed-site home art edits
 
-## Source and production method
+## Current editable files
 
-- Original, unchanged level 1: `public/world/maps/home-detail-v1.png`.
+Edit `art/world/prototype/home-level-1.png`, `home-level-2.png`, or `home-level-3.png`. Each is a ready 568 × 536 home patch. Export the entire image to the same-named WebP in `public/world/prototype/`, then run `npm run world:export` and `npm run world:check`. These commands update/check scene metadata and image URLs without modifying image bytes. Proportional resolution changes are supported; preserve the doorway, ground anchor, and patch border. See the [artwork guide](../../art/README.md).
+
+The PNG patches were prepared from the previous recipe’s pixels before WebP encoding, with their final borders already applied. They are not the full source plates documented below. The existing runtime WebPs were renamed without re-encoding. ZIP extraction and automatic cropping are no longer part of the editing workflow.
+
+## Historical source and production method
+
+- Original level 1: [home-detail-v1.png at `ffd97ca`](https://github.com/NolReaction/zhiv-app/blob/ffd97ca868365e257b6eabe0fed52334a2f86a0a/public/world/maps/home-detail-v1.png), now preserved unchanged as `art/world/main/home-clearing.png`.
 - Source image: 1254 × 1254 RGB PNG; SHA-256 `f14fba0d71b976ed63530726e3b4a86241ab72a409e8e837a7a5b36fae5ef8bd`.
 - Production: built-in `image_gen.imagegen`, precise-object-edit workflow. No CLI/API fallback and no model-name inference.
 - Every variant independently referenced the original level 1 image through `referenced_image_paths`. The local original was inspected with `view_image` before edits.
 - Each requested variant was accepted after one generation and visual inspection; no regeneration was needed.
-- Files are unchanged full-size generated PNG source plates, delivered separately in `zhiv-tiled-world-art-originals.zip` at the project owner’s request. Extract into the repository root before regenerating runtime assets; see [source-art instructions](../../world/tiled/art/README.md). Original source assets were not overwritten.
+- The full-size generated PNG source plates were originally delivered in `zhiv-tiled-world-art-originals.zip`, then included in commit `ffd97ca`. They were removed from the working tree during cleanup and remain in [Git history](https://github.com/NolReaction/zhiv-app/blob/ffd97ca868365e257b6eabe0fed52334a2f86a0a/world/tiled/art/README.md). The dimensions and hashes below identify those original plates, not the current cropped PNGs.
 - These are opaque regional state plates, not transparent object sprites.
 
-## Outputs and tool provenance
+## Historical outputs and tool provenance
 
 | Source plate | Dimensions / mode | Built-in generated filename | SHA-256 |
 | --- | --- | --- | --- |
-| `world/tiled/art/clean-home.png` | 1254 × 1254 RGB | `exec-f10c84bf-c12a-4ce9-bceb-b00da9f0d44d.png` | `e825819676ed2afd57b3538bf8b859ed8d6a6c81ced17289f9509fdde78fc4e4` |
-| `world/tiled/art/home-level-2.png` | 1254 × 1254 RGB | `exec-6be798a6-0158-4e86-a4ac-00c77d520b28.png` | `0d48c29d773fdc21aad1dedad4d84b631336d1b86c3b9e7cdbf5ed2a3311a625` |
-| `world/tiled/art/home-level-3.png` | 1254 × 1254 RGB | `exec-228891a4-503f-42d8-b82c-57e2a5cf765b.png` | `7798d5c5c665bd9c8a6ffb2b590d616a4610336832e7e788f3e5238dc51fe899` |
+| [clean-home.png at `ffd97ca`](https://github.com/NolReaction/zhiv-app/blob/ffd97ca868365e257b6eabe0fed52334a2f86a0a/world/tiled/art/clean-home.png) | 1254 × 1254 RGB | `exec-f10c84bf-c12a-4ce9-bceb-b00da9f0d44d.png` | `e825819676ed2afd57b3538bf8b859ed8d6a6c81ced17289f9509fdde78fc4e4` |
+| [home-level-2.png at `ffd97ca`](https://github.com/NolReaction/zhiv-app/blob/ffd97ca868365e257b6eabe0fed52334a2f86a0a/world/tiled/art/home-level-2.png) | 1254 × 1254 RGB | `exec-6be798a6-0158-4e86-a4ac-00c77d520b28.png` | `0d48c29d773fdc21aad1dedad4d84b631336d1b86c3b9e7cdbf5ed2a3311a625` |
+| [home-level-3.png at `ffd97ca`](https://github.com/NolReaction/zhiv-app/blob/ffd97ca868365e257b6eabe0fed52334a2f86a0a/world/tiled/art/home-level-3.png) | 1254 × 1254 RGB | `exec-228891a4-503f-42d8-b82c-57e2a5cf765b.png` | `7798d5c5c665bd9c8a6ffb2b590d616a4610336832e7e788f3e5238dc51fe899` |
 
 The tool returned `image_url` and `output_hint`; its output hint reported the generated files in `/workspace/scratch/68e22ea9b07e/generated_images/`. It did not expose a model version, seed, or masking controls.
 
-## Runtime framing contract and limitations
+## Historical framing contract and limitations
 
-The full home image maps to world rectangle `x=486,y=514,width=256,height=256`. Runtime should consume only the designated home patch `x=600,y=526,width=142,height=134`, corresponding to source coordinates approximately `x=558.422,y=58.781,width=695.578,height=656.391`. Keep crop conversion deterministic in the asset pipeline.
+The historical full home image mapped to world rectangle `x=486,y=514,width=256,height=256`. The previous recipe selected the home patch `x=600,y=526,width=142,height=134`, corresponding to source coordinates approximately `x=558.422,y=58.781,width=695.578,height=656.391`. That framing is already baked into the current 568 × 536 editable PNGs; do not crop them again.
 
 Visual inspection found the same camera and scene composition, aligned entrance and three doorstep stones, and house changes within the designated patch. The clean plate removes the stump, roots, lantern, attached mushrooms, sprout, and house shadow and continues the grass/forest texture. Level 2 has doorway reinforcement, a wooden awning, and one warm round window. Level 3 adds a shallow porch structure, two windows, shingles, and a small leaf motif while keeping the stump silhouette and footprint.
 
-Generative editing preserves composition but does not guarantee identical pixels outside the requested edit. The outputs show slight image-wide texture differences, especially in the grass. **Do not replace the full home scene with these plates.** Use only the bounded regional crop; visually check its borders when composited with the original map. The source plates preserve the original approximate entrance anchor `(877,494)` and route reference `(877,642)`; these are visual anchors rather than machine-measured guarantees.
+Generative editing preserves composition but does not guarantee identical pixels outside the requested edit. The outputs show slight image-wide texture differences, especially in the grass. The old plates were unsuitable as full-scene replacements; the previous recipe used a bounded crop and adjusted its borders. Current PNGs already contain that prepared patch. When editing them, visually check their borders against `forest-ground.png`. The source plates preserve the original approximate entrance anchor `(877,494)` and route reference `(877,642)`; these are visual anchors rather than machine-measured guarantees.
 
-## Exact prompts
+## Exact historical prompts
 
 ### Clean ground
 

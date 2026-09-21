@@ -12,11 +12,3 @@ export const WORLD_ART = {
     trail: "/world/routes/trail.webp",
   },
 } as const;
-
-/** Isolated Tiled prototype registry. Actual versioned URLs are compiled from
- * world/tiled/forest.tmj; production WORLD_ART does not load these assets. */
-export const TILED_PROTOTYPE_ART = {
-  terrain: "/world/tiled/terrain.webp",
-  home: ["/world/tiled/home-1.webp", "/world/tiled/home-2.webp", "/world/tiled/home-3.webp"],
-  workshop: ["/world/tiled/workshop-0.webp", "/world/tiled/workshop-1.webp", "/world/tiled/workshop-2.webp"],
-} as const;

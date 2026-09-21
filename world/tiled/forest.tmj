@@ -547,7 +547,7 @@
       "tiles": [
         {
           "id": 0,
-          "image": "../../public/world/tiled/terrain.webp",
+          "image": "../../public/world/prototype/forest-ground.webp",
           "imagewidth": 1254,
           "imageheight": 1254,
           "properties": [
@@ -560,7 +560,7 @@
         },
         {
           "id": 1,
-          "image": "../../public/world/tiled/home-1.webp",
+          "image": "../../public/world/prototype/home-level-1.webp",
           "imagewidth": 568,
           "imageheight": 536,
           "properties": [
@@ -588,7 +588,7 @@
         },
         {
           "id": 2,
-          "image": "../../public/world/tiled/home-2.webp",
+          "image": "../../public/world/prototype/home-level-2.webp",
           "imagewidth": 568,
           "imageheight": 536,
           "properties": [
@@ -616,7 +616,7 @@
         },
         {
           "id": 3,
-          "image": "../../public/world/tiled/home-3.webp",
+          "image": "../../public/world/prototype/home-level-3.webp",
           "imagewidth": 568,
           "imageheight": 536,
           "properties": [
@@ -644,7 +644,7 @@
         },
         {
           "id": 4,
-          "image": "../../public/world/tiled/workshop-0.webp",
+          "image": "../../public/world/prototype/workshop-empty.webp",
           "imagewidth": 664,
           "imageheight": 600,
           "properties": [
@@ -672,7 +672,7 @@
         },
         {
           "id": 5,
-          "image": "../../public/world/tiled/workshop-1.webp",
+          "image": "../../public/world/prototype/workshop-level-1.webp",
           "imagewidth": 664,
           "imageheight": 600,
           "properties": [
@@ -700,7 +700,7 @@
         },
         {
           "id": 6,
-          "image": "../../public/world/tiled/workshop-2.webp",
+          "image": "../../public/world/prototype/workshop-level-2.webp",
           "imagewidth": 664,
           "imageheight": 600,
           "properties": [

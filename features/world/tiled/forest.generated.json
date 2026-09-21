@@ -6,7 +6,7 @@
   "terrain": [
     {
       "id": "forest-ground",
-      "image": "/world/tiled/terrain.webp?v=0fb02209a1d8",
+      "image": "/world/prototype/forest-ground.webp?v=0fb02209a1d8",
       "bounds": {
         "x": 0,
         "y": 0,
@@ -92,17 +92,17 @@
         {
           "level": 1,
           "label": "Уютный дом",
-          "image": "/world/tiled/home-1.webp?v=a5ae5991b26c"
+          "image": "/world/prototype/home-level-1.webp?v=a5ae5991b26c"
         },
         {
           "level": 2,
           "label": "Дом с навесом",
-          "image": "/world/tiled/home-2.webp?v=4a4ee3cffa11"
+          "image": "/world/prototype/home-level-2.webp?v=4a4ee3cffa11"
         },
         {
           "level": 3,
           "label": "Дом с черепичной крышей",
-          "image": "/world/tiled/home-3.webp?v=80e212aa8df3"
+          "image": "/world/prototype/home-level-3.webp?v=80e212aa8df3"
         }
       ]
     },
@@ -176,17 +176,17 @@
         {
           "level": 0,
           "label": "Место для мастерской",
-          "image": "/world/tiled/workshop-0.webp?v=54c883884886"
+          "image": "/world/prototype/workshop-empty.webp?v=54c883884886"
         },
         {
           "level": 1,
           "label": "Мастерская",
-          "image": "/world/tiled/workshop-1.webp?v=25a0a46e95a4"
+          "image": "/world/prototype/workshop-level-1.webp?v=25a0a46e95a4"
         },
         {
           "level": 2,
           "label": "Большая мастерская",
-          "image": "/world/tiled/workshop-2.webp?v=ff387edd0cbe"
+          "image": "/world/prototype/workshop-level-2.webp?v=ff387edd0cbe"
         }
       ]
     }

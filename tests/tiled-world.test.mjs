@@ -16,8 +16,8 @@ const props = values => Object.entries(values).map(([name, value]) => ({ name, t
 const clone = value => structuredClone(value);
 const setProp = (object, name, value) => { object.properties.find(property => property.name === name).value = value; };
 
-async function fixture(t) {
-  const directory = await mkdtemp(path.join(tmpdir(), "tiled-world-"));
+async function fixture(t, { directoryRoot = tmpdir() } = {}) {
+  const directory = await mkdtemp(path.join(directoryRoot, "tiled-world-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const publicDir = path.join(directory, "public");
   const mapPath = path.join(directory, "world", "fixture.tmj");
@@ -104,7 +104,7 @@ test("global IDs resolve across embedded image collections, including sparse til
   const states = original.tiles.splice(1);
   original.tilecount = 1;
   states[0].id = 2; states[1].id = 8;
-  map.tilesets.push({ ...original, firstgid: 10, name: "States", tilecount: 2, tiles: states });
+  map.tilesets.push({ ...original, firstgid: 10, name: "States", tilecount: 2, tilewidth: 80, tileheight: 120, tiles: states });
   map.layers[0].objects[1].gid = 12;
   const scene = await compile();
   assert.deepEqual(scene.sites[0].states.map(state => state.level), [0, 1]);
@@ -172,6 +172,9 @@ test("image resolution confines both paths and symlinks, and verifies real pixel
   const wrongSize = clone(map);
   wrongSize.tilesets[0].tiles[0].imagewidth = 100;
   await assert.rejects(compile(wrongSize), /imagewidth: expected 200, received 100/);
+  const wrongMaximum = clone(map);
+  wrongMaximum.tilesets[0].tileheight = 100;
+  await assert.rejects(compile(wrongMaximum), /tileheight: expected 200, received 100/);
   const png = await sharp({ create: { width: 200, height: 200, channels: 4, background: "#254070" } }).png().toBuffer();
   const truncated = png.subarray(0, Math.floor(png.length * 0.7));
   assert.equal((await sharp(truncated).metadata()).width, 200, "a damaged image can still have a valid header");
@@ -185,6 +188,7 @@ test("committed authoring exports identically and --check refuses stale output w
   const directory = await mkdtemp(path.join(tmpdir(), "tiled-check-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const input = path.join(root, "world/tiled/forest.tmj");
+  const originalMap = await readFile(input);
   const output = path.join(directory, "forest.generated.json");
   const expected = serializeTiledWorld(await readTiledWorld(input, path.join(root, "public")));
   assert.equal(await readFile(path.join(root, "features/world/tiled/forest.generated.json"), "utf8"), expected);
@@ -195,4 +199,67 @@ test("committed authoring exports identically and --check refuses stale output w
   await writeFile(output, "stale\n");
   await assert.rejects(run(process.execPath, [...command, "--check"], { cwd: directory }), error => error.code === 1 && /Generated world is stale/.test(error.stderr));
   assert.equal(await readFile(output, "utf8"), "stale\n");
+  assert.deepEqual(await readFile(input), originalMap);
+});
+
+test("CLI export refreshes proportional image sizes without moving geometry or rewriting images", async t => {
+  // The CLI confines referenced files to the repository's public directory.
+  const { map, options, directory, writeImage } = await fixture(t, { directoryRoot: path.join(root, "public") });
+  const output = path.join(directory, "scene.generated.json");
+  const command = [path.join(root, "scripts/tiled-world.mjs"), options.mapPath, output];
+  await writeFile(options.mapPath, `${JSON.stringify(map)}\n`);
+  await run(process.execPath, command);
+  const originalMap = await readFile(options.mapPath);
+  const originalOutput = await readFile(output);
+  const before = JSON.parse(originalOutput);
+
+  await writeImage("ground.webp", 100, 100, "#284533");
+  await writeImage("kiln-1.webp", 160, 240, "#a8693b");
+  const names = ["ground.webp", "kiln-0.webp", "kiln-1.webp"];
+  const images = await Promise.all(names.map(name => readFile(path.join(options.publicDir, name))));
+  await assert.rejects(run(process.execPath, [...command, "--check"]), error => error.code === 1 && /imagewidth: expected 100, received 200/.test(error.stderr));
+  assert.deepEqual(await readFile(options.mapPath), originalMap, "check must not repair source metadata");
+  assert.deepEqual(await readFile(output), originalOutput, "check must not regenerate output");
+
+  await run(process.execPath, command);
+  const updatedMap = JSON.parse(await readFile(options.mapPath, "utf8"));
+  const expectedMap = clone(map);
+  Object.assign(expectedMap.tilesets[0].tiles[0], { imagewidth: 100, imageheight: 100 });
+  Object.assign(expectedMap.tilesets[0].tiles[2], { imagewidth: 160, imageheight: 240 });
+  Object.assign(expectedMap.tilesets[0], { tilewidth: 160, tileheight: 240 });
+  assert.deepEqual(updatedMap, expectedMap, "only image metadata may change in the authoring map");
+  const after = JSON.parse(await readFile(output, "utf8"));
+  assert.deepEqual(after.terrain[0].bounds, before.terrain[0].bounds);
+  assert.deepEqual(after.sites.map(site => ({ ...site, states: undefined })), before.sites.map(site => ({ ...site, states: undefined })));
+  assert.deepEqual(after.focus, before.focus);
+  assert.deepEqual(after.paths, before.paths);
+  assert.notEqual(after.terrain[0].image, before.terrain[0].image);
+  assert.notEqual(after.sites[0].states[1].image, before.sites[0].states[1].image);
+  assert.equal(after.sites[0].states[0].image, before.sites[0].states[0].image);
+  await run(process.execPath, [...command, "--check"]);
+  for (const [index, name] of names.entries()) {
+    assert.deepEqual(await readFile(path.join(options.publicDir, name)), images[index], `${name} must retain the manually exported bytes`);
+  }
+});
+
+test("CLI export validates the complete refreshed scene before writing either file", async t => {
+  const { map, options, directory, writeImage } = await fixture(t, { directoryRoot: path.join(root, "public") });
+  const output = path.join(directory, "scene.generated.json");
+  const command = [path.join(root, "scripts/tiled-world.mjs"), options.mapPath, output];
+  await writeFile(options.mapPath, `${JSON.stringify(map)}\n`);
+  await run(process.execPath, command);
+  const originalMap = await readFile(options.mapPath);
+  const originalOutput = await readFile(output);
+  // The first image needs a valid metadata refresh; a later state is distorted.
+  await writeImage("ground.webp", 100, 100, "#284533");
+  await writeImage("kiln-1.webp", 80, 100, "#a8693b");
+  await assert.rejects(run(process.execPath, command), error => error.code === 1 && /object aspect ratio/.test(error.stderr));
+  assert.deepEqual(await readFile(options.mapPath), originalMap);
+  assert.deepEqual(await readFile(output), originalOutput);
+
+  const unsupported = await sharp({ create: { width: 80, height: 120, channels: 4, background: "#a8693b" } }).gif().toBuffer();
+  await writeFile(path.join(options.publicDir, "kiln-1.webp"), unsupported);
+  await assert.rejects(run(process.execPath, command), error => error.code === 1 && /only PNG, WebP and JPEG/.test(error.stderr));
+  assert.deepEqual(await readFile(options.mapPath), originalMap);
+  assert.deepEqual(await readFile(output), originalOutput);
 });

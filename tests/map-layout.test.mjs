@@ -15,8 +15,9 @@ const { houseVariantFor } = await vite.ssrLoadModule("/features/mochlik/house-va
 const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 
 test("wide region source resolution is preserved, home is an integer crop", async () => {
-  const master = await readFile(`${root}/public/world/maps/forest-region-v3.png`);
-  assert.equal(createHash("sha256").update(master).digest("hex"), "6bc7d8274bc1f1e660de570f0ac4d9eb1f7651ad1a38a84abba9e5b01c45be59");
+  const master = await readFile(`${root}/art/world/main/forest-map.png`);
+  const source = await sharp(master).metadata();
+  assert.equal(source.width, MAP_SIZE); assert.equal(source.height, MAP_SIZE);
   const bytes = await readFile(`${root}/public${FOREST_MAP.image}`), metadata = await sharp(bytes).metadata();
   assert.equal(metadata.width, MAP_SIZE); assert.equal(metadata.height, MAP_SIZE);
   assert.ok(bytes.length < 900000, "full map preserves detail without restoring a multi-megabyte download");

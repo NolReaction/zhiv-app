@@ -25,7 +25,7 @@ npm run dev:local
 
 ### Прототип мира из Tiled
 
-В ветке `feature/mochlik-tiled-world` откройте `/prototype/tiled-world`: независимые улучшения дома и мастерской, одна сцена для карты и кружка, разметка, день/ночь и локальная прогулка. Страница работает без аккаунта; выбранные уровни не сохраняются в игровой прогресс. Проект редактора — `world/tiled/forest.tiled-project`. Большие исходные PNG передаются отдельно в `zhiv-tiled-world-art-originals.zip`; [куда распаковать](world/tiled/art/README.md). Для запуска примера и открытия Tiled архив не требуется.
+В ветке `feature/mochlik-tiled-world` откройте `/prototype/tiled-world`: независимые улучшения дома и мастерской, одна сцена для карты и кружка, разметка, день/ночь и локальная прогулка. Страница работает без аккаунта; выбранные уровни не сохраняются в игровой прогресс. Проект редактора — `world/tiled/forest.tiled-project`. Редактируемые PNG — `art/world/prototype/`, одноимённые WebP — `public/world/prototype/`. [Каталог всех изображений и ручной экспорт](art/README.md). После замены WebP: `npm run world:export`, затем `npm run world:check`; эти команды не выполняют компрессию.
 
 [Решение и порядок проверки](docs/game/tiled-world-decision.md) · [Инструкция Tiled](docs/game/tiled-editor.md) · [Результаты тестов и снимки](docs/game/tiled-world-validation.md).
 

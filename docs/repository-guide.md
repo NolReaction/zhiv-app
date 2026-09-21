@@ -15,7 +15,7 @@
 | Окно достижений | [features/game/game-achievements.tsx](../features/game/game-achievements.tsx) и соседний CSS |
 | Уровни персонажа и их иконки | [clicker-story.ts](../features/game/clicker-story.ts), [game-level-icon.tsx](../features/game/game-level-icon.tsx) |
 | Учёт и отправку игровых тапов | [features/game/use-game-progress.ts](../features/game/use-game-progress.ts), `game-sync.ts`, `game-sync-journal.ts` |
-| Карту или детали здания | [public/world/](../public/world/README.md) |
+| Карту или детали здания | [art/README.md](../art/README.md): PNG для редактирования и соответствующие WebP |
 | Какие изображения загружает игра | [features/world/art.ts](../features/world/art.ts) |
 | Положение меток и области нажатия | [features/world/map-layout.ts](../features/world/map-layout.ts) |
 | Вход в дом и положение фонаря | [features/mochlik/home-layout.ts](../features/mochlik/home-layout.ts) |
@@ -42,6 +42,7 @@
 ## Как устроены папки
 
 - **`features/`** — прикладные разделы. Здесь компонент, его стиль, состояние и относящиеся к разделу функции. `mochlik/` управляет героем, `world/` — картой и игровыми панелями, `game/` — тапами и прогрессом.
+- **`art/`** — редактируемые PNG: `world/main` для обычной игры, `world/prototype` для нового мира. Браузер эти исходники не получает.
 - **`public/`** — файлы, которые браузер получает как есть. `public/achievements/linked_email.svg` доступен по URL `/achievements/linked_email.svg`.
 - **`lib/`** — общие контракты, сеть, дата/время, приватность и функции, нужные разным разделам. `lib/dev/` имитирует API только для разработки.
 - **`components/`** — общие уведомления, индикаторы свежести, переключатели и общие стили. `components/ui/` — установленная библиотека элементов интерфейса.
@@ -53,7 +54,7 @@
 
 ## Как сейчас рисуется лес
 
-Карта — `public/world/maps/forest-region-v3.png` (1254 × 1254). Кнопка показывает домашний квадрат `(486,514,256,256)` той же карты. Его детальная текстура `home-detail-v1.png` используется обоими видами с сохранением исходных пикселей по краю. Геометрию задаёт `features/world/map-manifest.ts`.
+Карта — `art/world/main/forest-map.png` (1254 × 1254). Кнопка показывает домашний квадрат `(486,514,256,256)` той же карты. Его детальная текстура `art/world/main/home-clearing.png` используется обоими видами с сохранением исходных пикселей по краю. Геометрию задаёт `features/world/map-manifest.ts`.
 
 Дом первого уровня нарисован в фоне. Слоты `house-variants.ts` пока пусты: сохранённые улучшения работают в игровой модели, совместимую графику для них ещё нужно подготовить. Старые атласы не используются. Мохлик, реакция кустика, рыбки, рябь, насекомые, дождь и свет рисуются кодом поверх неизменных текстур.
 

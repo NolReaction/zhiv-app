@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import sharp from "sharp";
@@ -15,8 +14,9 @@ const { drawLanternGlass } = await vite.ssrLoadModule("/features/mochlik/lantern
 const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
 
 test("detail has enough real pixels for retina circles and a bounded detached world canvas", async () => {
-  const master = await readFile(`${root}/public/world/maps/home-detail-v1.png`);
-  assert.equal(createHash("sha256").update(master).digest("hex"), "f14fba0d71b976ed63530726e3b4a86241ab72a409e8e837a7a5b36fae5ef8bd", "approved editable home master stays unchanged");
+  const master = await readFile(`${root}/art/world/main/home-clearing.png`);
+  const source = await sharp(master).metadata();
+  assert.equal(source.width, 1254); assert.equal(source.height, 1254);
   const bytes = await readFile(`${root}/public${FOREST_MAP.homeDetail.image}`), metadata = await sharp(bytes).metadata();
   assert.ok(metadata.width >= HOME_TEXTURE_SIZE);
   assert.equal(metadata.width, 1254); assert.equal(metadata.width, metadata.height);

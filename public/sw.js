@@ -25,7 +25,7 @@ const DOCUMENT_REVISION_HEADERS = [
 
 function isVersionedAsset(pathname) {
   return pathname.startsWith("/_next/static/") || pathname.startsWith("/assets/")
-    || /^\/world\/runtime\/[a-zA-Z]+-[a-f0-9]{12}\.webp$/.test(pathname);
+    || /^\/world\/runtime\/[a-zA-Z]+(?:-[a-zA-Z]+)*-[a-f0-9]{12}\.webp$/.test(pathname);
 }
 
 async function cachedAsset(request) {

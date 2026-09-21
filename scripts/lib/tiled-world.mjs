@@ -82,11 +82,19 @@ async function imageReference(tile, at, context) {
   catch { fail(`${at}.image`, `cannot decode image: ${reference}`); }
   requireThat(["png", "webp", "jpeg"].includes(metadata.format), `${at}.image`, "only PNG, WebP and JPEG images are supported");
   requireThat((metadata.pages ?? 1) === 1 && (metadata.orientation ?? 1) === 1, `${at}.image`, "animated or EXIF-rotated images are not supported");
-  exact(integer(tile.imagewidth, `${at}.imagewidth`, 1), metadata.width, `${at}.imagewidth`);
-  exact(integer(tile.imageheight, `${at}.imageheight`, 1), metadata.height, `${at}.imageheight`);
+  const width = integer(metadata.width, `${at}.imagewidth`, 1);
+  const height = integer(metadata.height, `${at}.imageheight`, 1);
+  if (!context.refreshImageMetadata) {
+    exact(integer(tile.imagewidth, `${at}.imagewidth`, 1), width, `${at}.imagewidth`);
+    exact(integer(tile.imageheight, `${at}.imageheight`, 1), height, `${at}.imageheight`);
+  }
   // Header metadata can survive a truncated image; make sure browsers get usable pixels.
   try { await sharp(bytes).raw().toBuffer(); }
   catch { fail(`${at}.image`, `cannot decode image pixels: ${reference}`); }
+  if (context.refreshImageMetadata) {
+    tile.imagewidth = width;
+    tile.imageheight = height;
+  }
   const webPath = path.relative(context.publicDir, imagePath).split(path.sep).map(encodeURIComponent).join("/");
   const version = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
   return { image: `/${webPath}?v=${version}`, width: metadata.width, height: metadata.height };
@@ -157,8 +165,7 @@ function aspect(image, rect, at) {
   requireThat(Math.abs(image.width / image.height - rect.width / rect.height) < 0.000001, at, "object aspect ratio must match its image (resize width and height together)");
 }
 
-/** Compile the supported Tiled subset, validating every referenced asset on disk. */
-export async function compileTiledWorld(map, { mapPath, publicDir }) {
+async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetadata = false }) {
   record(map, "map");
   exact(map.type, "map", "map.type");
   exact(map.orientation, "orthogonal", "map.orientation");
@@ -179,7 +186,7 @@ export async function compileTiledWorld(map, { mapPath, publicDir }) {
     sites: [],
     paths: [],
   };
-  const context = { mapPath: path.resolve(mapPath), publicDir: path.resolve(publicDir) };
+  const context = { mapPath: path.resolve(mapPath), publicDir: path.resolve(publicDir), refreshImageMetadata };
   context.realPublicDir = await realpath(context.publicDir);
   const tiles = new Map(), catalogs = new Map();
   const tilesets = array(map.tilesets, "map.tilesets");
@@ -204,6 +211,8 @@ export async function compileTiledWorld(map, { mapPath, publicDir }) {
     lastFirstGid = firstgid;
     const definitions = array(tileset.tiles, `${at}.tiles`);
     exact(tileset.tilecount, definitions.length, `${at}.tilecount`);
+    requireThat(definitions.length > 0, `${at}.tiles`, "requires at least one image");
+    let maxWidth = 0, maxHeight = 0;
     for (const [tileIndex, tile] of definitions.entries()) {
       const where = `${at}.tiles[${tileIndex}]`;
       record(tile, where);
@@ -216,6 +225,8 @@ export async function compileTiledWorld(map, { mapPath, publicDir }) {
       const props = properties(tile, where, { role: "string", siteId: "string", level: "int", label: "string" });
       requireThat(["terrain", "siteState"].includes(props.role), `${where}.properties.role`, "expected terrain or siteState");
       const image = await imageReference(tile, where, context);
+      maxWidth = Math.max(maxWidth, image.width);
+      maxHeight = Math.max(maxHeight, image.height);
       tiles.set(gid, { ...image, ...props });
       if (props.role === "siteState") {
         const id = identifier(props.siteId, `${where}.properties.siteId`);
@@ -226,6 +237,13 @@ export async function compileTiledWorld(map, { mapPath, publicDir }) {
         catalog.push({ level, label, image: image.image, width: image.width, height: image.height });
         catalogs.set(id, catalog);
       } else requireThat(!own(props, "siteId") && !own(props, "level") && !own(props, "label"), where, "terrain tiles only accept the role property");
+    }
+    if (refreshImageMetadata) {
+      tileset.tilewidth = maxWidth;
+      tileset.tileheight = maxHeight;
+    } else {
+      exact(integer(tileset.tilewidth, `${at}.tilewidth`, 1), maxWidth, `${at}.tilewidth`);
+      exact(integer(tileset.tileheight, `${at}.tileheight`, 1), maxHeight, `${at}.tileheight`);
     }
   }
 
@@ -332,11 +350,29 @@ export async function compileTiledWorld(map, { mapPath, publicDir }) {
   return world;
 }
 
-export async function readTiledWorld(mapPath, publicDir) {
+/** Compile without modifying authoring data, validating image metadata and pixels. */
+export async function compileTiledWorld(map, { mapPath, publicDir }) {
+  return compileTiledWorldMap(map, { mapPath, publicDir });
+}
+
+async function readTiledMap(mapPath) {
   let map;
   try { map = JSON.parse(await readFile(mapPath, "utf8")); }
   catch (error) { throw new Error(`Cannot read Tiled map: ${error.message}`); }
-  return compileTiledWorld(map, { mapPath, publicDir });
+  return map;
+}
+
+export async function readTiledWorld(mapPath, publicDir) {
+  return compileTiledWorld(await readTiledMap(mapPath), { mapPath, publicDir });
+}
+
+/** Refresh only physical image metadata on a clone, then validate the full scene
+ * before the caller writes anything. Logical object geometry is never resized. */
+export async function prepareTiledWorldExport(mapPath, publicDir) {
+  const original = await readTiledMap(mapPath);
+  const map = structuredClone(original);
+  const world = await compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetadata: true });
+  return { map, world, changed: JSON.stringify(map) !== JSON.stringify(original) };
 }
 
 export const serializeTiledWorld = world => `${JSON.stringify(world, null, 2)}\n`;
