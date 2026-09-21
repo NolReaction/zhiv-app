@@ -1,0 +1,54 @@
+{
+  "recipeVersion": 1,
+  "assets": [
+    {
+      "file": "terrain.webp",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 707306,
+      "sha256": "0fb02209a1d8e53bc86a2c76126e80fc996bcc34af70fb8acac64f3ef9991950"
+    },
+    {
+      "file": "home-1.webp",
+      "width": 568,
+      "height": 536,
+      "bytes": 98588,
+      "sha256": "a5ae5991b26cfbfbf7d02c0bf5b8206f856b91f15cea4a61944fcdddd8a36b69"
+    },
+    {
+      "file": "home-2.webp",
+      "width": 568,
+      "height": 536,
+      "bytes": 81712,
+      "sha256": "4a4ee3cffa118d5083ae68a00d8fb53a6d47275a6e573f907e6647c6ff13fdb8"
+    },
+    {
+      "file": "home-3.webp",
+      "width": 568,
+      "height": 536,
+      "bytes": 88206,
+      "sha256": "80e212aa8df37f56acb6e67f581442b9d2be7c42dfb2ae216ed915499c908977"
+    },
+    {
+      "file": "workshop-0.webp",
+      "width": 664,
+      "height": 600,
+      "bytes": 52212,
+      "sha256": "54c883884886a6be86f08fe34d565af92c0a091dc4a18ca86aa675c5ae44c20d"
+    },
+    {
+      "file": "workshop-1.webp",
+      "width": 664,
+      "height": 600,
+      "bytes": 80404,
+      "sha256": "25a0a46e95a4b49f5cf3f5239f1dc81800f8c9e25750d95a0f7014f2e71a6a4c"
+    },
+    {
+      "file": "workshop-2.webp",
+      "width": 664,
+      "height": 600,
+      "bytes": 85622,
+      "sha256": "ff387edd0cbe652a4db88269163d11f67702485cd19a160c7ef23a3dc6ce2cf9"
+    }
+  ]
+}

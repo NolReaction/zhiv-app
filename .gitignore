@@ -49,3 +49,6 @@ next-env.d.ts
 
 # Deployment credentials stay outside git
 deploy/.secrets/
+
+# Tiled editor session (local view state)
+*.tiled-session

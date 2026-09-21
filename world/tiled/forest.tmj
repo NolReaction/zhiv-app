@@ -1,0 +1,736 @@
+{
+  "compressionlevel": -1,
+  "height": 1254,
+  "infinite": false,
+  "layers": [
+    {
+      "id": 1,
+      "name": "Terrain",
+      "type": "objectgroup",
+      "draworder": "index",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 1,
+          "name": "forest-ground",
+          "type": "",
+          "x": 0,
+          "y": 0,
+          "width": 1254,
+          "height": 1254,
+          "rotation": 0,
+          "visible": true,
+          "gid": 1,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "terrain"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Fixed sites — one preview per site",
+      "type": "objectgroup",
+      "draworder": "index",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 2,
+          "name": "home-preview",
+          "type": "",
+          "x": 600,
+          "y": 526,
+          "width": 142,
+          "height": 134,
+          "rotation": 0,
+          "visible": true,
+          "gid": 2,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "site"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Дом Мохлика"
+            },
+            {
+              "name": "initialLevel",
+              "type": "int",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "workshop-preview",
+          "type": "",
+          "x": 126,
+          "y": 428,
+          "width": 166,
+          "height": 150,
+          "rotation": 0,
+          "visible": true,
+          "gid": 5,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "site"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Мастерская"
+            },
+            {
+              "name": "initialLevel",
+              "type": "int",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Site markers and home focus",
+      "type": "objectgroup",
+      "draworder": "index",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 4,
+          "name": "home-anchor",
+          "type": "",
+          "x": 665,
+          "y": 615,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "anchor"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "home-entry",
+          "type": "",
+          "x": 665,
+          "y": 645,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "entry"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "name": "home-light",
+          "type": "",
+          "x": 687,
+          "y": 607,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "light"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "name": "home-hitArea",
+          "type": "",
+          "x": 608,
+          "y": 573,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polygon": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 26,
+              "y": -34
+            },
+            {
+              "x": 79,
+              "y": -38
+            },
+            {
+              "x": 125,
+              "y": 6
+            },
+            {
+              "x": 123,
+              "y": 72
+            },
+            {
+              "x": 2,
+              "y": 72
+            }
+          ],
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "hitArea"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "home-collision",
+          "type": "",
+          "x": 617,
+          "y": 583,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polygon": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 108,
+              "y": 0
+            },
+            {
+              "x": 108,
+              "y": 47
+            },
+            {
+              "x": 0,
+              "y": 47
+            }
+          ],
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "collision"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "name": "workshop-anchor",
+          "type": "",
+          "x": 201,
+          "y": 532,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "anchor"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "name": "workshop-entry",
+          "type": "",
+          "x": 201,
+          "y": 545,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "entry"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "name": "workshop-light",
+          "type": "",
+          "x": 239,
+          "y": 521,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "light"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "name": "workshop-hitArea",
+          "type": "",
+          "x": 133,
+          "y": 478,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polygon": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 35,
+              "y": -37
+            },
+            {
+              "x": 102,
+              "y": -39
+            },
+            {
+              "x": 151,
+              "y": 12
+            },
+            {
+              "x": 149,
+              "y": 86
+            },
+            {
+              "x": 7,
+              "y": 86
+            }
+          ],
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "hitArea"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "name": "workshop-collision",
+          "type": "",
+          "x": 146,
+          "y": 497,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polygon": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 126,
+              "y": 0
+            },
+            {
+              "x": 126,
+              "y": 41
+            },
+            {
+              "x": 0,
+              "y": 41
+            }
+          ],
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "collision"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "name": "home-focus",
+          "type": "",
+          "x": 486,
+          "y": 514,
+          "width": 256,
+          "height": 256,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "focus"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Walk routes",
+      "type": "objectgroup",
+      "draworder": "index",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 15,
+          "name": "home-walk",
+          "type": "",
+          "x": 665,
+          "y": 645,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polyline": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -15,
+              "y": 21
+            },
+            {
+              "x": -43,
+              "y": 31
+            },
+            {
+              "x": -65,
+              "y": 38
+            }
+          ],
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "path"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "nextlayerid": 5,
+  "nextobjectid": 17,
+  "orientation": "orthogonal",
+  "properties": [
+    {
+      "name": "worldId",
+      "type": "string",
+      "value": "forest"
+    }
+  ],
+  "renderorder": "right-down",
+  "tiledversion": "1.12.2",
+  "tileheight": 1,
+  "tilesets": [
+    {
+      "columns": 0,
+      "firstgid": 1,
+      "grid": {
+        "height": 1,
+        "orientation": "orthogonal",
+        "width": 1
+      },
+      "name": "Forest image collection",
+      "objectalignment": "topleft",
+      "tilecount": 7,
+      "tileheight": 1254,
+      "tilewidth": 1254,
+      "tiles": [
+        {
+          "id": 0,
+          "image": "../../public/world/tiled/terrain.webp",
+          "imagewidth": 1254,
+          "imageheight": 1254,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "terrain"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "image": "../../public/world/tiled/home-1.webp",
+          "imagewidth": 568,
+          "imageheight": 536,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "siteState"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            },
+            {
+              "name": "level",
+              "type": "int",
+              "value": 1
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Уютный дом"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "image": "../../public/world/tiled/home-2.webp",
+          "imagewidth": 568,
+          "imageheight": 536,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "siteState"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            },
+            {
+              "name": "level",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Дом с навесом"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "image": "../../public/world/tiled/home-3.webp",
+          "imagewidth": 568,
+          "imageheight": 536,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "siteState"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "home"
+            },
+            {
+              "name": "level",
+              "type": "int",
+              "value": 3
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Дом с черепичной крышей"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "image": "../../public/world/tiled/workshop-0.webp",
+          "imagewidth": 664,
+          "imageheight": 600,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "siteState"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            },
+            {
+              "name": "level",
+              "type": "int",
+              "value": 0
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Место для мастерской"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "image": "../../public/world/tiled/workshop-1.webp",
+          "imagewidth": 664,
+          "imageheight": 600,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "siteState"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            },
+            {
+              "name": "level",
+              "type": "int",
+              "value": 1
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Мастерская"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "image": "../../public/world/tiled/workshop-2.webp",
+          "imagewidth": 664,
+          "imageheight": 600,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "siteState"
+            },
+            {
+              "name": "siteId",
+              "type": "string",
+              "value": "workshop"
+            },
+            {
+              "name": "level",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "value": "Большая мастерская"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tilewidth": 1,
+  "type": "map",
+  "version": "1.10",
+  "width": 1254
+}

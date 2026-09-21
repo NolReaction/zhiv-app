@@ -20,7 +20,10 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test:web": "node --test --test-concurrency=1 tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "world:assets": "node scripts/prepare-tiled-assets.mjs",
+    "world:export": "node scripts/tiled-world.mjs",
+    "world:check": "node scripts/tiled-world.mjs --check"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",

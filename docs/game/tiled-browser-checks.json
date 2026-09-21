@@ -1,0 +1,19 @@
+{
+  "checks": [
+    "Production route hydrates with initial home1/workshop0",
+    "Idle renderer does not keep requesting animation frames",
+    "Home upgrade updates the circle while workshop remains unchanged",
+    "Workshop upgrade leaves home camera pixels unchanged",
+    "Both cameras share night lighting",
+    "Desktop zoom and keyboard camera controls",
+    "One shared actor follows the safe local route and returns home",
+    "Failed upgrade preserves previous scene and retry recovers",
+    "Slow old upgrade cannot overwrite a later selection",
+    "390px portrait layout and reduced-motion instant movement",
+    "Touch pinch zoom changes camera scale",
+    "Landscape resize retains canvases, levels, and bounded layout",
+    "No uncaught browser errors or account-writing requests"
+  ],
+  "errors": [],
+  "requests": []
+}
