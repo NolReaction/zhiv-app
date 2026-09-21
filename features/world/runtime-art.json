@@ -1,7 +1,7 @@
 {
-  "map": "/world/runtime/forest-map-cc3c0dce4174.webp",
-  "mapPreview": "/world/runtime/forest-map-preview-15dde4ababe2.webp",
-  "homePreview": "/world/runtime/home-clearing-preview-519faf481628.webp",
-  "homeDetail": "/world/runtime/home-clearing-401455eeb438.webp",
-  "boatWreck": "/world/runtime/boat-wreck-2df2a418bfb4.webp"
+  "map": "/world/prototype/forest-ground.webp?v=7775b26bf43d",
+  "mapPreview": "/world/prototype/forest-ground.webp?v=7775b26bf43d",
+  "homePreview": "/world/prototype/forest-ground.webp?v=7775b26bf43d",
+  "homeDetail": "/world/prototype/forest-ground.webp?v=7775b26bf43d",
+  "boatWreck": "/world/runtime/boat-wreck-lowquality.webp?v=2df2a418bfb4"
 }

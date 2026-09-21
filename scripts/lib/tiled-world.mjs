@@ -338,7 +338,6 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   }
   requireThat(world.terrain.length > 0, "map", "requires at least one terrain object");
   requireThat(world.focus, "map", "requires one focus rectangle");
-  requireThat(sites.size > 0, "map", "requires at least one fixed site");
   for (const id of catalogs.keys()) requireThat(sites.has(id), "map", `state catalog ${id} has no placed site`);
   for (const id of markers.keys()) requireThat(sites.has(id), "map", `markers reference unknown site ${id}`);
   for (const owner of routeOwners) requireThat(sites.has(owner.id), owner.at, `path references unknown site ${owner.id}`);

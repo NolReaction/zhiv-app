@@ -9,32 +9,27 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
-const { MAP_SIZE, HOME_AREA, homeToWorld, worldToHome, mapPlaceAt, pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
+const { MAP_SIZE, homeToWorld, worldToHome, mapPlaceAt, pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
 const { worldToScreen, screenToWorld, viewportPoint } = await vite.ssrLoadModule("/features/world/camera.ts");
 const { houseVariantFor } = await vite.ssrLoadModule("/features/mochlik/house-variants.ts");
 const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 
-test("wide region source resolution is preserved, home is an integer crop", async () => {
-  const master = await readFile(`${root}/art/world/main/forest-map.png`);
+test("new source resolution is independent of logical map coordinates", async () => {
+  const { NEW_MAP_SIZE } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const master = await readFile(`${root}/art/world/prototype/forest-ground.png`);
   const source = await sharp(master).metadata();
-  assert.equal(source.width, MAP_SIZE); assert.equal(source.height, MAP_SIZE);
-  const bytes = await readFile(`${root}/public${FOREST_MAP.image}`), metadata = await sharp(bytes).metadata();
-  assert.equal(metadata.width, MAP_SIZE); assert.equal(metadata.height, MAP_SIZE);
-  assert.ok(bytes.length < 900000, "full map preserves detail without restoring a multi-megabyte download");
-  assert.ok(HOME_AREA.x >= 0 && HOME_AREA.y >= 0 && HOME_AREA.x + HOME_AREA.size <= MAP_SIZE && HOME_AREA.y + HOME_AREA.size <= MAP_SIZE);
-  assert.equal(HOME_AREA.size % 256, 0, "integer effect scaling, without downsampling the background");
+  const bytes = await readFile(`${root}/public${FOREST_MAP.image.split("?")[0]}`), runtime = await sharp(bytes).metadata();
+  assert.equal(source.width, 2560); assert.equal(source.height, 2560);
+  assert.equal(runtime.width, source.width); assert.equal(runtime.height, source.height);
+  assert.equal(MAP_SIZE, NEW_MAP_SIZE); assert.equal(MAP_SIZE, 1254);
 });
 
-test("first frames fit the slow-network budget and every cached artwork URL follows its content", async () => {
+test("map views share one download and asset revisions match their content", async () => {
   const assets = JSON.parse(await readFile(`${root}/features/world/runtime-art.json`, "utf8"));
-  for (const [name, url] of Object.entries(assets)) {
-    const bytes = await readFile(`${root}/public${url}`);
-    assert.ok(url.includes(createHash("sha256").update(bytes).digest("hex").slice(0, 12)), `${name} changes its cache key when its artwork changes`);
-    if (name === "homePreview" || name === "mapPreview") {
-      const metadata = await sharp(bytes).metadata(), size = name === "homePreview" ? 256 : 384;
-      assert.equal(metadata.width, size); assert.equal(metadata.height, size);
-      assert.ok(bytes.length < (name === "homePreview" ? 32_000 : 55_000), `${name} must not block the first frame with full-size artwork`);
-    }
+  for (const key of ["mapPreview", "homePreview", "homeDetail"]) assert.equal(assets[key], assets.map);
+  for (const url of new Set(Object.values(assets))) {
+    const bytes = await readFile(`${root}/public${url.split("?")[0]}`);
+    assert.ok(url.includes(createHash("sha256").update(bytes).digest("hex").slice(0, 12)));
   }
 });
 

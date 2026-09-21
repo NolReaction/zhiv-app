@@ -6,6 +6,7 @@ import { worldCatalog as catalog, type WorldResources } from "./model";
 import type { WorldController } from "./use-world";
 import { JourneyProgress } from "./journey-progress";
 import { WORLD_ART } from "./art";
+import { WORLD_PRESENTATION } from "./presentation";
 import { journeyPhaseLabel } from "./journey-timeline";
 import styles from "./world.module.css";
 
@@ -16,7 +17,7 @@ export function Materials({ cost }: { cost: WorldResources }) {
     {cost.stone > 0 && <span><Gem size={14} aria-hidden />{cost.stone}<span className={styles.sr}> камня</span></span>}
   </span>;
 }
-export function WorldJourneys({ world, destination, onClaim }: { world: WorldController; destination: "trail" | "river"; onClaim?: (id: string) => void }) {
+export function WorldJourneys({ world, destination, onClaim, allowStart = !WORLD_PRESENTATION.rebuilding }: { world: WorldController; destination: "trail" | "river"; onClaim?: (id: string) => void; allowStart?: boolean }) {
   const [selected, setSelected] = useState(destination);
   const [recalling, setRecalling] = useState<string | null>(null);
   const [fishingMinutes, setFishingMinutes] = useState(15);
@@ -26,13 +27,13 @@ export function WorldJourneys({ world, destination, onClaim }: { world: WorldCon
   const routes = catalog.routes.filter(route => (selected === "river" ? route.id === `fishing_${fishingMinutes}` : route.id === (forestMinutes === 5 ? "forest_path" : "forest_10")) && (!route.once || !state.firstJourneyCompleted));
   const switchRoute = () => setSelected(value => value === "river" ? "trail" : "river");
   return <div className={styles.panel}>
-    <div className={styles.routeChooser}>
+    {allowStart && <div className={styles.routeChooser}>
       {selected === "river" ? <div className={styles.fishingPreview} style={{ backgroundImage: `url(${WORLD_ART.map})` }} role="img" aria-label="Берег для рыбалки на карте Мохлика" />
         : <Image src={WORLD_ART.routes.trail} alt="" width={600} height={400} unoptimized />}
       <div><button onClick={switchRoute} aria-label={selected === "trail" ? "Выбрать рыбалку" : "Выбрать лесную тропу"}><ArrowLeft size={20} /></button>
         <span aria-live="polite"><strong>{selected === "trail" ? "Лесная тропа" : "Рыбалка у берега"}</strong><small>{selected === "trail" ? "1 / 2" : "2 / 2"}</small></span>
         <button onClick={switchRoute} aria-label={selected === "trail" ? "Выбрать рыбалку" : "Выбрать лесную тропу"}><ArrowRight size={20} /></button></div>
-    </div>
+    </div>}
     {state.journeys.map(journey => {
       const ready = world.now >= Date.parse(journey.finishesAt);
       return <article className={`${styles.card} ${styles.activeTrip}`} key={journey.id}>
@@ -43,18 +44,18 @@ export function WorldJourneys({ world, destination, onClaim }: { world: WorldCon
             : <button className={styles.textButton} disabled={locked} onClick={() => setRecalling(journey.id)}>Позвать домой</button>}
       </article>;
     })}
-    {selected === "trail" && !state.firstJourneyCompleted && <article className={styles.card}>
+    {allowStart && selected === "trail" && !state.firstJourneyCompleted && <article className={styles.card}>
       <div className={styles.cardTop}><h3>Первая прогулка</h3><span className={styles.kicker}><Clock3 size={14} />1 мин</span></div>
       <p>Короткое знакомство с лесом и первые материалы для домика.</p>
       <Materials cost={catalog.routes.find(route => route.id === "first_path")!} />
       <button className={styles.primary} disabled={locked || state.journeys.length > 0} onClick={() => world.act("start_journey", "first_path")}>Познакомиться с лесом<ChevronRight size={16} /></button>
     </article>}
-    <div className={styles.fishingModes} style={{ "--mode-count": selected === "river" ? 4 : 2 } as CSSProperties} role="group" aria-label="Длительность путешествия вместе с дорогой">
+    {allowStart && <div className={styles.fishingModes} style={{ "--mode-count": selected === "river" ? 4 : 2 } as CSSProperties} role="group" aria-label="Длительность путешествия вместе с дорогой">
       {(selected === "river" ? [5, 15, 30, 60] : [5, 10]).map(minutes => <button key={minutes}
         aria-pressed={minutes === (selected === "river" ? fishingMinutes : forestMinutes)}
         onClick={() => selected === "river" ? setFishingMinutes(minutes) : setForestMinutes(minutes)}>{minutes} мин</button>)}
-    </div>
-    {routes.map(route => {
+    </div>}
+    {allowStart && routes.map(route => {
       const gate = route.houseLevel > state.houseLevel;
       return <article className={styles.card} key={route.id}>
         <div className={styles.cardTop}><h3>{route.name}</h3><span className={styles.kicker}><Clock3 size={14} />{route.seconds / 60} мин</span></div>

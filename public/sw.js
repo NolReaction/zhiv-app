@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "zhiv-shell-";
-// Content-hashed public files survive shell updates, including lazy game chunks.
+// Content-versioned public files survive shell updates, including lazy game chunks.
 const ASSET_CACHE_NAME = "zhiv-assets-v1";
 const ASSET_CACHE_LIMIT = 96;
 const assetRequests = new Map();
@@ -23,9 +23,12 @@ const DOCUMENT_REVISION_HEADERS = [
   "x-frame-options",
 ];
 
-function isVersionedAsset(pathname) {
+function isVersionedAsset(url) {
+  const { pathname, search } = url;
   return pathname.startsWith("/_next/static/") || pathname.startsWith("/assets/")
-    || /^\/world\/runtime\/[a-zA-Z]+(?:-[a-zA-Z]+)*-[a-f0-9]{12}\.webp$/.test(pathname);
+    || /^\/world\/runtime\/[a-zA-Z]+(?:-[a-zA-Z]+)*-[a-f0-9]{12}\.webp$/.test(pathname)
+    || (/^\/world\/prototype\/[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*\.webp$/.test(pathname)
+      || pathname === "/world/runtime/boat-wreck-lowquality.webp") && /^\?v=[a-f0-9]{12}$/.test(search);
 }
 
 async function cachedAsset(request) {
@@ -59,7 +62,7 @@ function extractAssetUrls(html) {
   for (const match of html.matchAll(/(?:src|href)=["']([^"']+)["']/g)) {
     try {
       const url = new URL(match[1], self.location.origin);
-      if (url.origin === self.location.origin && isVersionedAsset(url.pathname)) {
+      if (url.origin === self.location.origin && isVersionedAsset(url)) {
         urls.push(url.href);
       }
     } catch {
@@ -230,14 +233,14 @@ self.addEventListener("fetch", (event) => {
   }
 
   const cacheableAsset =
-    isVersionedAsset(url.pathname) || STATIC_SHELL.includes(url.pathname);
+    isVersionedAsset(url) || STATIC_SHELL.includes(url.pathname);
   if (!cacheableAsset) return;
 
   event.respondWith(
     (async () => {
       const cache = await openActiveCache().catch(() => null);
       const cached = await cache?.match(request).catch(() => null);
-      return cached ?? (isVersionedAsset(url.pathname) ? cachedAsset(request) : fetch(request));
+      return cached ?? (isVersionedAsset(url) ? cachedAsset(request) : fetch(request));
     })(),
   );
 });

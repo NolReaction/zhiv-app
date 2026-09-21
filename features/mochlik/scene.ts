@@ -24,15 +24,18 @@ import { feedingFrame } from "./feeding";
 import { drawInsects } from "./insects";
 import { readPresence, writePresence } from "./presence";
 import { propBehindBody, drawDecor, drawGarlandLights, drawProp, drawWeather, drawMomentAccents } from "./ambience";
+import { WORLD_PRESENTATION } from "@/features/world/presentation";
+import { mountNewMapScene } from "@/features/world/new-map-scene";
 
 const WEATHER_BOUNDS = { x: -HOME_AREA.x * HOME_CANVAS_SIZE / HOME_AREA.size, y: -HOME_AREA.y * HOME_CANVAS_SIZE / HOME_AREA.size, width: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size, height: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size };
 
 export type SceneOptions = { serverNow?: number; lampOn: boolean; dusk: boolean; paused: boolean; reducedMotion: boolean; view?: "circle" | "world"; backgrounded?: boolean; presenceKey?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[] };
-export type HabitatScene = { position: () => { x: number; y: number }; setTime: (now: number) => void; paintJourney: (context: CanvasRenderingContext2D) => void; configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; ambience: () => WeatherVisitorState; paintVisitors: (context: CanvasRenderingContext2D, layer: "ground" | "air") => void; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; dispose: () => void };
-type Callbacks = { activity: (activity: Activity) => void; ready: () => void; failure: (error?: unknown) => void; rendered?: () => void };
+export type HabitatScene = { position: () => { x: number; y: number }; setTime: (now: number) => void; paintJourney: (context: CanvasRenderingContext2D) => void; configure: (options: SceneOptions) => void; notice: () => void; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; ambience: () => WeatherVisitorState; paintVisitors: (context: CanvasRenderingContext2D, layer: "ground" | "air") => void; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; paintWorld?: (context: CanvasRenderingContext2D) => void; dispose: () => void };
+export type SceneCallbacks = { activity: (activity: Activity) => void; ready: () => void; failure: (error?: unknown) => void; rendered?: () => void };
 function loadArt() { return loadHabitatImage(WORLD_ART.homePreview); }
 
-export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, callbacks: Callbacks): HabitatScene {
+export function mountHabitat(canvas: HTMLCanvasElement, initial: SceneOptions, callbacks: SceneCallbacks): HabitatScene {
+  if (WORLD_PRESENTATION.rebuilding) return mountNewMapScene(canvas, initial, callbacks);
   const context = canvas.getContext("2d", { alpha: true });
   if (!context) throw new Error("2D canvas unavailable");
   const ctx = context;

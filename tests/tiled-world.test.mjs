@@ -98,6 +98,19 @@ test("moving authoring geometry and replacing image bytes changes only the gener
   assert.deepEqual(updated.sites[0].bounds, moved.sites[0].bounds);
 });
 
+test("terrain and focus form a valid scene before any sites or routes are placed", async t => {
+  const { map, compile } = await fixture(t);
+  map.tilesets[0].tiles = map.tilesets[0].tiles.slice(0, 1);
+  map.tilesets[0].tilecount = 1;
+  map.layers[0].objects = map.layers[0].objects.filter(object => ["terrain", "focus"].includes(object.properties.find(property => property.name === "role").value));
+  const scene = await compile();
+  assert.deepEqual(scene.sites, []);
+  assert.deepEqual(scene.paths, []);
+  assert.equal(scene.terrain.length, 1);
+  assert.deepEqual(scene.focus, { x: 10, y: 20, width: 50, height: 50 });
+  assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 }, "physical image pixels do not resize logical coordinates");
+});
+
 test("global IDs resolve across embedded image collections, including sparse tile IDs", async t => {
   const { map, compile } = await fixture(t);
   const original = map.tilesets[0];
@@ -127,6 +140,7 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["hidden layer", value => { value.layers[0].visible = false; }, /layers\[0\]\.visible: expected true/],
     ["distorted sprite", value => { value.layers[0].objects[1].width = 19; }, /objects\[1\]: object aspect ratio/],
     ["missing entry", value => { value.layers[0].objects.splice(3, 1); }, /site kiln is missing entry/],
+    ["unplaced catalog", value => { value.layers[0].objects.splice(1, 1); }, /state catalog kiln has no placed site/],
     ["wrong marker shape", value => { value.layers[0].objects[2].point = false; }, /objects\[2\]\.point: expected true/],
     ["unknown site marker", value => { setProp(value.layers[0].objects[2], "siteId", "missing"); }, /markers reference unknown site missing/],
     ["unknown route owner", value => { value.layers[0].objects[8].properties.push(...props({ siteId: "missing" })); }, /path references unknown site missing/],
@@ -191,6 +205,13 @@ test("committed authoring exports identically and --check refuses stale output w
   const originalMap = await readFile(input);
   const output = path.join(directory, "forest.generated.json");
   const expected = serializeTiledWorld(await readTiledWorld(input, path.join(root, "public")));
+  const scene = JSON.parse(expected);
+  assert.equal(scene.width, 1254);
+  assert.equal(scene.height, 1254);
+  assert.equal(scene.terrain.length, 1);
+  assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 1254, height: 1254 });
+  assert.deepEqual(scene.sites, []);
+  assert.deepEqual(scene.paths, []);
   assert.equal(await readFile(path.join(root, "features/world/tiled/forest.generated.json"), "utf8"), expected);
   const command = [path.join(root, "scripts/tiled-world.mjs"), input, output];
   await run(process.execPath, command, { cwd: directory });

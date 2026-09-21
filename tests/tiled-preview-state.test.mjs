@@ -16,6 +16,15 @@ const site = (id, x, levels) => ({
 const scene = { schemaVersion: 1, id: "test", width: 100, height: 100, terrain: [], focus: { x: 0, y: 0, width: 50, height: 50 },
   sites: [site("home", 10, [1, 2]), site("workshop", 60, [0, 1, 2])], paths: [] };
 
+test("terrain-only preview has no selectable or upgradable site", () => {
+  const terrainOnly = { ...scene, sites: [] };
+  const levels = initialPreviewLevels(terrainOnly);
+  assert.deepEqual(levels, {});
+  assert.equal(previewSiteAt(terrainOnly, { x: 20, y: 20 }), null);
+  assert.equal(setPreviewLevel(terrainOnly, levels, "home", 1), levels);
+  assert.equal(upgradePreviewSite(terrainOnly, levels, "home"), levels);
+});
+
 test("upgrading each fixed site leaves the other site and all authored geometry unchanged", () => {
   const original = structuredClone(scene), start = initialPreviewLevels(scene);
   const house = upgradePreviewSite(scene, start, "home");
