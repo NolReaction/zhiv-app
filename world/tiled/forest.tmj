@@ -1,163 +1,597 @@
-{
-  "compressionlevel": -1,
-  "height": 1254,
-  "infinite": false,
-  "layers": [
-    {
-      "id": 1,
-      "name": "Terrain",
-      "type": "objectgroup",
-      "draworder": "index",
-      "opacity": 1,
-      "visible": true,
-      "x": 0,
-      "y": 0,
-      "objects": [
+{ "compressionlevel":-1,
+ "height":1254,
+ "infinite":false,
+ "layers":[
         {
-          "id": 1,
-          "name": "forest-ground",
-          "type": "",
-          "x": 0,
-          "y": 0,
-          "width": 1254,
-          "height": 1254,
-          "rotation": 0,
-          "visible": true,
-          "gid": 1,
-          "properties": [
-            {
-              "name": "role",
-              "type": "string",
-              "value": "terrain"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "name": "Clearing focus",
-      "type": "objectgroup",
-      "draworder": "index",
-      "opacity": 1,
-      "visible": true,
-      "x": 0,
-      "y": 0,
-      "objects": [
+         "draworder":"index",
+         "id":1,
+         "name":"Terrain",
+         "objects":[
+                {
+                 "gid":1,
+                 "height":1254,
+                 "id":1,
+                 "name":"forest-ground",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":1254,
+                 "x":0,
+                 "y":0
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
         {
-          "id": 2,
-          "name": "clearing-focus",
-          "type": "",
-          "x": 455,
-          "y": 480,
-          "width": 350,
-          "height": 350,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "role",
-              "type": "string",
-              "value": "focus"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "name": "Actors",
-      "type": "objectgroup",
-      "draworder": "index",
-      "opacity": 1,
-      "visible": true,
-      "x": 0,
-      "y": 0,
-      "objects": [
+         "draworder":"index",
+         "id":5,
+         "name":"Buildings",
+         "objects":[
+                {
+                 "gid":2,
+                 "height":157.411918468321,
+                 "id":9,
+                 "name":"",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"initialLevel",
+                         "type":"int",
+                         "value":1
+                        }, 
+                        {
+                         "name":"label",
+                         "type":"string",
+                         "value":"\u0414\u043e\u043c"
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":157.411918468321,
+                 "x":594.964307919773,
+                 "y":523.959380062844
+                }, 
+                {
+                 "height":0,
+                 "id":10,
+                 "name":"home-anchor",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"anchor"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":683.553295873371,
+                 "y":615.771175351247
+                }, 
+                {
+                 "height":0,
+                 "id":11,
+                 "name":"home-entry",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"entry"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":641.283970079556,
+                 "y":647.161329357174
+                }, 
+                {
+                 "height":0,
+                 "id":12,
+                 "name":"home-hit-area",
+                 "opacity":1,
+                 "polygon":[
+                        {
+                         "x":-6.45924983456381,
+                         "y":1.29184996691287
+                        }, 
+                        {
+                         "x":-20.4425362306241,
+                         "y":13.7091737481627
+                        }, 
+                        {
+                         "x":-20.8867231139721,
+                         "y":31.7652247358325
+                        }, 
+                        {
+                         "x":-30.8949446060838,
+                         "y":42.8612963901301
+                        }, 
+                        {
+                         "x":-37.6396156116371,
+                         "y":46.1248468766882
+                        }, 
+                        {
+                         "x":-36.551765449451,
+                         "y":50.4762475254324
+                        }, 
+                        {
+                         "x":-40.2504560008837,
+                         "y":52.2168077849301
+                        }, 
+                        {
+                         "x":-40.4680260333209,
+                         "y":57.4384885634232
+                        }, 
+                        {
+                         "x":-49.8235374281209,
+                         "y":61.7898892121673
+                        }, 
+                        {
+                         "x":-49.6059673956837,
+                         "y":65.9237198284743
+                        }, 
+                        {
+                         "x":-51.7816677200557,
+                         "y":70.9278305745302
+                        }, 
+                        {
+                         "x":-45.907276844251,
+                         "y":72.6683908340279
+                        }, 
+                        {
+                         "x":-40.9031660981953,
+                         "y":71.5805406718417
+                        }, 
+                        {
+                         "x":-35.0287752223907,
+                         "y":73.3211009313394
+                        }, 
+                        {
+                         "x":-29.1543843465861,
+                         "y":80.0657719368928
+                        }, 
+                        {
+                         "x":-22.844853405907,
+                         "y":78.9779217747069
+                        }, 
+                        {
+                         "x":-19.7988729517861,
+                         "y":79.6306318720185
+                        }, 
+                        {
+                         "x":-20.0164429842233,
+                         "y":84.4171725856371
+                        }, 
+                        {
+                         "x":-17.4056025949768,
+                         "y":87.463153039758
+                        }, 
+                        {
+                         "x":-12.1839218164837,
+                         "y":89.6388533641301
+                        }, 
+                        {
+                         "x":-5.65682084336749,
+                         "y":90.7267035263162
+                        }, 
+                        {
+                         "x":-1.30542019462321,
+                         "y":88.9861432668185
+                        }, 
+                        {
+                         "x":2.61084038924643,
+                         "y":85.0698826829487
+                        }, 
+                        {
+                         "x":3.48112051899535,
+                         "y":89.2037132992556
+                        }, 
+                        {
+                         "x":-5.22168077849304,
+                         "y":95.5132442399347
+                        }, 
+                        {
+                         "x":-14.1420521084185,
+                         "y":100.082214921116
+                        }, 
+                        {
+                         "x":-13.0542019462325,
+                         "y":104.216045537423
+                        }, 
+                        {
+                         "x":-7.61495113530231,
+                         "y":105.739035764483
+                        }, 
+                        {
+                         "x":-1.74056025949768,
+                         "y":107.479596023981
+                        }, 
+                        {
+                         "x":5.43472740169345,
+                         "y":106.167390715503
+                        }, 
+                        {
+                         "x":11.9663517840464,
+                         "y":107.697166056418
+                        }, 
+                        {
+                         "x":18.9285928220371,
+                         "y":102.257915245488
+                        }, 
+                        {
+                         "x":25.0205537302791,
+                         "y":100.517354985991
+                        }, 
+                        {
+                         "x":29.5895244114603,
+                         "y":99.8646448886788
+                        }, 
+                        {
+                         "x":45.4721367793768,
+                         "y":86.3753028775719
+                        }, 
+                        {
+                         "x":60.7020390499814,
+                         "y":85.7225927802603
+                        }, 
+                        {
+                         "x":73.7562409962139,
+                         "y":89.8564233965673
+                        }, 
+                        {
+                         "x":80.2833419693302,
+                         "y":86.5928729100091
+                        }, 
+                        {
+                         "x":77.6725015800835,
+                         "y":79.6306318720185
+                        }, 
+                        {
+                         "x":70.2751204772185,
+                         "y":70.2751204772185
+                        }, 
+                        {
+                         "x":64.1831595689766,
+                         "y":66.1412898609116
+                        }, 
+                        {
+                         "x":73.3211009313394,
+                         "y":64.1831595689766
+                        }, 
+                        {
+                         "x":75.2792312232743,
+                         "y":60.9196090824185
+                        }, 
+                        {
+                         "x":70.710260542093,
+                         "y":51.5640976876186
+                        }, 
+                        {
+                         "x":56.3506384012371,
+                         "y":38.7274657738232
+                        }, 
+                        {
+                         "x":52.2168077849301,
+                         "y":15.8826123679162
+                        }, 
+                        {
+                         "x":48.9532572983719,
+                         "y":8.26766123261392
+                        }, 
+                        {
+                         "x":51.9992377524931,
+                         "y":-1.08785016218607
+                        }, 
+                        {
+                         "x":49.3883973632464,
+                         "y":-21.5394332112838
+                        }, 
+                        {
+                         "x":40.4680260333209,
+                         "y":-18.2758827247256
+                        }, 
+                        {
+                         "x":36.3341954170139,
+                         "y":-21.1042931464093
+                        }, 
+                        {
+                         "x":23.4975635032185,
+                         "y":-11.9663517840466
+                        }, 
+                        {
+                         "x":31.1125146385209,
+                         "y":-2.17570032437214
+                        }, 
+                        {
+                         "x":12.4014918489209,
+                         "y":-4.78654071361857
+                        }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"hitArea"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":662.687141354903,
+                 "y":556.296395832975
+                }, 
+                {
+                 "height":0,
+                 "id":13,
+                 "name":"home-collision",
+                 "opacity":1,
+                 "polygon":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":-27.4122028192467,
+                         "y":-2.54997235527865
+                        }, 
+                        {
+                         "x":-67.1492720223408,
+                         "y":17.8498064869514
+                        }, 
+                        {
+                         "x":-93.286488663948,
+                         "y":15.0873364353993
+                        }, 
+                        {
+                         "x":-90.0990232198496,
+                         "y":1.4874838739126
+                        }, 
+                        {
+                         "x":-118.573714520462,
+                         "y":-16.3623226130387
+                        }, 
+                        {
+                         "x":-133.661050955862,
+                         "y":-17.2123133981316
+                        }, 
+                        {
+                         "x":-131.961069385676,
+                         "y":-29.1121843894324
+                        }, 
+                        {
+                         "x":-102.423889603697,
+                         "y":-48.4494747502965
+                        }, 
+                        {
+                         "x":-61.6762935888132,
+                         "y":-47.8331113603137
+                        }, 
+                        {
+                         "x":-18.4872995757711,
+                         "y":-46.9619908763838
+                        }, 
+                        {
+                         "x":-5.09994471055747,
+                         "y":-36.974599151542
+                        }, 
+                        {
+                         "x":-4.24995392546471,
+                         "y":-26.1372166416072
+                        }, 
+                        {
+                         "x":2.54997235527882,
+                         "y":-6.3749308881968
+                        }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"collision"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":740.890625775601,
+                 "y":646.939912458787
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
         {
-          "id": 3,
-          "name": "mochlik-spawn",
-          "type": "",
-          "x": 630,
-          "y": 660,
-          "width": 0,
-          "height": 0,
-          "rotation": 0,
-          "visible": true,
-          "point": true,
-          "properties": [
+         "draworder":"index",
+         "id":2,
+         "name":"Clearing focus",
+         "objects":[
+                {
+                 "height":300,
+                 "id":2,
+                 "name":"clearing-focus",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"focus"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":300,
+                 "x":465,
+                 "y":480
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"index",
+         "id":3,
+         "name":"Actors",
+         "objects":[
+                {
+                 "height":0,
+                 "id":3,
+                 "name":"mochlik-spawn",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"spawn"
+                        }, 
+                        {
+                         "name":"size",
+                         "type":"float",
+                         "value":56
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":598.491243496739,
+                 "y":690.043232944969
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"index",
+         "id":4,
+         "name":"Routes",
+         "objects":[],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }],
+ "nextlayerid":6,
+ "nextobjectid":14,
+ "orientation":"orthogonal",
+ "properties":[
+        {
+         "name":"worldId",
+         "type":"string",
+         "value":"forest"
+        }],
+ "renderorder":"right-down",
+ "tiledversion":"1.12.2",
+ "tileheight":1,
+ "tilesets":[
+        {
+         "columns":0,
+         "firstgid":1,
+         "grid":
             {
-              "name": "role",
-              "type": "string",
-              "value": "spawn"
+             "height":1,
+             "orientation":"orthogonal",
+             "width":1
             },
-            {
-              "name": "size",
-              "type": "float",
-              "value": 36
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "name": "Routes",
-      "type": "objectgroup",
-      "draworder": "index",
-      "opacity": 1,
-      "visible": true,
-      "x": 0,
-      "y": 0,
-      "objects": []
-    }
-  ],
-  "nextlayerid": 5,
-  "nextobjectid": 4,
-  "orientation": "orthogonal",
-  "properties": [
-    {
-      "name": "worldId",
-      "type": "string",
-      "value": "forest"
-    }
-  ],
-  "renderorder": "right-down",
-  "tiledversion": "1.12.2",
-  "tileheight": 1,
-  "tilesets": [
-    {
-      "columns": 0,
-      "firstgid": 1,
-      "grid": {
-        "height": 1,
-        "orientation": "orthogonal",
-        "width": 1
-      },
-      "name": "Forest image collection",
-      "objectalignment": "topleft",
-      "tilecount": 1,
-      "tileheight": 2560,
-      "tilewidth": 2560,
-      "tiles": [
-        {
-          "id": 0,
-          "image": "../../public/world/prototype/forest-ground.webp",
-          "imagewidth": 2560,
-          "imageheight": 2560,
-          "properties": [
-            {
-              "name": "role",
-              "type": "string",
-              "value": "terrain"
-            }
-          ]
-        }
-      ]
-    }
-  ],
-  "tilewidth": 1,
-  "type": "map",
-  "version": "1.10",
-  "width": 1254
+         "margin":0,
+         "name":"Forest image collection",
+         "objectalignment":"topleft",
+         "spacing":0,
+         "tilecount":2,
+         "tileheight":2560,
+         "tiles":[
+                {
+                 "id":0,
+                 "image":"..\/..\/public\/world\/prototype\/forest-ground.webp",
+                 "imageheight":2560,
+                 "imagewidth":2560,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }]
+                }, 
+                {
+                 "id":1,
+                 "image":"..\/..\/public\/world\/prototype\/home-level-1.png",
+                 "imageheight":1254,
+                 "imagewidth":1254,
+                 "properties":[
+                        {
+                         "name":"label",
+                         "type":"string",
+                         "value":"\u0414\u043e\u043c"
+                        }, 
+                        {
+                         "name":"level",
+                         "type":"int",
+                         "value":1
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"siteState"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }]
+                }],
+         "tilewidth":2560
+        }],
+ "tilewidth":1,
+ "type":"map",
+ "version":"1.10",
+ "width":1254
 }
