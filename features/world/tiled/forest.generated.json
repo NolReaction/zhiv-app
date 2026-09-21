@@ -22,5 +22,12 @@
     "height": 350
   },
   "sites": [],
-  "paths": []
+  "paths": [],
+  "actor": {
+    "spawn": {
+      "x": 630,
+      "y": 660
+    },
+    "size": 36
+  }
 }

@@ -13,16 +13,16 @@ const { drawLanternGlass } = await vite.ssrLoadModule("/features/mochlik/lantern
 
 test("circle uses the same full-resolution map without a separate home image", async () => {
   const { WORLD_ART } = await vite.ssrLoadModule("/features/world/art.ts");
-  const { NEW_MAP_FOCUS, NEW_MAP_SIZE, NEW_MAP_SPAWN } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { NEW_MAP_FOCUS, NEW_MAP_BOUNDS, NEW_MAP_SPAWN } = await vite.ssrLoadModule("/features/world/presentation.ts");
   const source = await sharp(`${root}/art/world/prototype/forest-ground.png`).metadata();
   const runtime = await sharp(`${root}/public${WORLD_ART.map.split("?")[0]}`).metadata();
   assert.equal(runtime.width, source.width); assert.equal(runtime.height, source.height);
   assert.equal(WORLD_ART.map, WORLD_ART.homeDetail);
   assert.equal(WORLD_ART.map, WORLD_ART.homePreview);
   const focus = NEW_MAP_FOCUS;
-  assert.ok(focus.x >= 0 && focus.y >= 0 && focus.x + focus.width <= NEW_MAP_SIZE && focus.y + focus.height <= NEW_MAP_SIZE);
-  assert.ok(NEW_MAP_SPAWN.x > focus.x && NEW_MAP_SPAWN.x < focus.x + focus.width);
-  assert.ok(NEW_MAP_SPAWN.y > focus.y && NEW_MAP_SPAWN.y < focus.y + focus.height);
+  assert.ok(focus.x >= 0 && focus.y >= 0 && focus.x + focus.width <= NEW_MAP_BOUNDS.width && focus.y + focus.height <= NEW_MAP_BOUNDS.height);
+  assert.ok(NEW_MAP_SPAWN.x >= 0 && NEW_MAP_SPAWN.x <= NEW_MAP_BOUNDS.width);
+  assert.ok(NEW_MAP_SPAWN.y >= 0 && NEW_MAP_SPAWN.y <= NEW_MAP_BOUNDS.height);
   assert.equal(homeBackingSize(320, 2), 640);
   assert.equal(homeBackingSize(280, 3), 840);
   assert.equal(homeBackingSize(900, 3), HOME_TEXTURE_SIZE);

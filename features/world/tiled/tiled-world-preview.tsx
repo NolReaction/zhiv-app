@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Compass, Grid2X2, LoaderCircle, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, Compass, Grid2X2, LoaderCircle, Play, RotateCcw, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import sceneData from "./forest.generated.json";
 import type { FixedWorldScene } from "./types";
 import type { FixedWorldRenderOptions } from "./renderer";
+import { createPreviewRoute, type PreviewRouteStatus } from "./preview-route";
 import styles from "./tiled-world-preview.module.css";
 
 const scene = sceneData as FixedWorldScene;
+const paths = createPreviewRoute(scene).choices;
 type Renderer = Awaited<ReturnType<typeof import("./renderer")["createFixedWorldRenderer"]>>;
 
 export function TiledWorldPreview() {
@@ -19,12 +21,21 @@ export function TiledWorldPreview() {
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
   const [retryKey, setRetryKey] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(true);
+  const [routeStatus, setRouteStatus] = useState<PreviewRouteStatus>({ pathId: null, moving: false, error: null });
   const latestOptions = useRef<FixedWorldRenderOptions>({ levels: {}, night: false, debug, selectedSiteId: null, reducedMotion: true });
 
   useEffect(() => {
-    latestOptions.current = { levels: {}, night: false, debug, selectedSiteId: null, reducedMotion: true };
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(preference.matches);
+    update(); preference.addEventListener("change", update);
+    return () => preference.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    latestOptions.current = { levels: {}, night: false, debug, selectedSiteId: null, reducedMotion };
     renderer.current?.update(latestOptions.current);
-  }, [debug]);
+  }, [debug, reducedMotion]);
 
   useEffect(() => {
     const world = worldCanvas.current, circle = circleCanvas.current;
@@ -37,6 +48,7 @@ export function TiledWorldPreview() {
       const handle = await createFixedWorldRenderer(world, circle, scene, latestOptions.current, {
         onSelect: () => {},
         onStatus: next => { if (!controller.signal.aborted) setStatus(next); },
+        onRouteChange: next => { if (!controller.signal.aborted) setRouteStatus(next); },
       }, controller.signal);
       if (controller.signal.aborted) { handle.dispose(); return; }
       renderer.current = handle;
@@ -62,10 +74,10 @@ export function TiledWorldPreview() {
       <header className={styles.header}>
         <Link className={styles.back} href="/" prefetch={false} aria-label="Вернуться в приложение"><ArrowLeft aria-hidden size={20} /></Link>
         <div className={styles.heading}>
-          <p className={styles.eyebrow}>Мир Мохлика · исследование</p>
-          <h1>Новая лесная карта</h1>
+          <p className={styles.eyebrow}>Мир Мохлика · Tiled</p>
+          <h1>Проверка лесной карты</h1>
         </div>
-        <span className={styles.previewLabel}>Тестовый мир</span>
+        <span className={styles.previewLabel}>Предпросмотр карты</span>
       </header>
 
       <div className={styles.layout}>
@@ -92,7 +104,7 @@ export function TiledWorldPreview() {
             {ready && status.loading && <div className={styles.loadingBadge} role="status"><LoaderCircle className={styles.spinner} aria-hidden size={16} /> Загружаем карту</div>}
           </div>
           <div className={styles.mapFooter}>
-            <span className={styles.mapHint}>Центральная поляна показана в кружке</span>
+            <span className={styles.mapHint}>В кружке — область focus из Tiled</span>
             <div className={styles.viewOptions}>
               <button type="button" aria-pressed={debug} onClick={() => setDebug(value => !value)}><Grid2X2 aria-hidden size={17} />Разметка</button>
             </div>
@@ -102,13 +114,32 @@ export function TiledWorldPreview() {
         <aside className={styles.sidebar} aria-label="Центральная поляна">
           <section className={styles.homePreview}>
             <div className={styles.circleFrame}><canvas ref={circleCanvas} className={styles.circleCanvas} aria-label="Центральная поляна крупно: участок той же лесной карты." /></div>
-            <div><h2>Один мир, два вида</h2><p>В кружке — центральная поляна той же карты. Оба вида используют одно изображение.</p></div>
+            <div><h2>Один мир, два вида</h2><p>Кружок показывает область focus. Положение и размер Мохлика заданы в Tiled и совпадают с основной картой.</p></div>
           </section>
 
           {ready && status.error && <div className={styles.error} role="alert"><span>{status.error}</span><button type="button" onClick={() => renderer.current?.retry()}>Повторить загрузку</button></div>}
 
+          <section className={styles.routePanel} aria-labelledby="route-preview-title">
+            <h2 id="route-preview-title">Проверка маршрута</h2>
+            {paths.length ? <>
+              <label htmlFor="preview-path">Линия из Tiled</label>
+              <select id="preview-path" disabled={!ready} value={routeStatus.pathId ?? ""} onChange={event => renderer.current?.selectPath(event.target.value || null)}>
+                <option value="">Мохлик на стартовой точке</option>
+                {paths.map(path => <option key={path.id} value={path.id}>{path.id}{path.error ? " · требует исправления" : ""}</option>)}
+              </select>
+              <p>Выбор переносит Мохлика в начало линии для проверки. Движение начинается по кнопке.</p>
+              <div className={styles.routeTools}>
+                <button type="button" disabled={!ready || !routeStatus.pathId || !!routeStatus.error || routeStatus.moving} onClick={() => renderer.current?.startPath()}><Play aria-hidden size={16} />Пройти</button>
+                <button type="button" disabled={!ready || !routeStatus.pathId || !!routeStatus.error} onClick={() => renderer.current?.reversePath()}><Undo2 aria-hidden size={16} />Развернуть</button>
+                <button type="button" disabled={!ready || !routeStatus.pathId} onClick={() => renderer.current?.resetPath()}><RotateCcw aria-hidden size={16} />На старт</button>
+              </div>
+              <p className={styles.routeStatus} role="status">{routeStatus.error ?? (routeStatus.moving ? "Мохлик идёт по выбранной линии." : routeStatus.pathId ? "Маршрут выбран. Можно проверить движение." : "Мохлик стоит в точке spawn из Tiled.")}</p>
+              {reducedMotion && <p>Включено уменьшение движения: кнопки сразу показывают конечную точку пути.</p>}
+            </> : <p>Маршрутов пока нет. В Tiled нарисуйте ломаную, задайте ей имя и строковое свойство role = path, сохраните карту при запущенном npm run world:watch.</p>}
+          </section>
+
           <div className={styles.previewNote}>
-            <p>Здесь можно рассмотреть новую карту и её центральную поляну. Просмотр не меняет игровой прогресс.</p>
+            <p>Это проверка разметки Tiled. Движение здесь не запускает игровые путешествия и не меняет прогресс.</p>
             <button type="button" onClick={reset}><RotateCcw aria-hidden size={16} />Сбросить вид</button>
           </div>
         </aside>
@@ -116,8 +147,8 @@ export function TiledWorldPreview() {
 
       <details className={styles.details}>
         <summary>Как устроен этот пример</summary>
-        <p>Карта Tiled задаёт общий рисунок леса и область центральной поляны. Обе камеры используют одну сцену.</p>
-        <p>Разметка показывает границы участка, который виден в кружке. Постройки и маршруты будут размечены на следующем этапе.</p>
+        <p>Карта Tiled задаёт фон, квадратную область focus, точку spawn и размер Мохлика. Запустите npm run world:watch и сохраняйте карту в Tiled, чтобы обновлять оба вида и основную карту.</p>
+        <p>«Разметка» показывает границы кружка, маршруты и коллизии построек. Каждый маршрут проверяется отдельно; Мохлик проходит только его точки.</p>
         <a href="https://github.com/NolReaction/zhiv-app/blob/feature/mochlik-tiled-world/docs/game/tiled-editor.md" target="_blank" rel="noreferrer">Как открыть карту в Tiled и изменить её</a>
       </details>
     </main>

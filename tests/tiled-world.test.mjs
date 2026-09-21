@@ -15,6 +15,10 @@ const run = promisify(execFile);
 const props = values => Object.entries(values).map(([name, value]) => ({ name, type: typeof value === "number" ? "int" : "string", value }));
 const clone = value => structuredClone(value);
 const setProp = (object, name, value) => { object.properties.find(property => property.name === name).value = value; };
+const spawn = () => ({
+  id: 10, name: "mochlik-spawn", x: 35, y: 55, width: 0, height: 0, point: true,
+  properties: [{ name: "role", type: "string", value: "spawn" }, { name: "size", type: "float", value: 12.5 }],
+});
 
 async function fixture(t, { directoryRoot = tmpdir() } = {}) {
   const directory = await mkdtemp(path.join(directoryRoot, "tiled-world-"));
@@ -58,6 +62,7 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   const scene = await compile();
   assert.equal(scene.schemaVersion, 1);
   assert.equal(scene.id, "test-forest");
+  assert.equal(Object.hasOwn(scene, "actor"), false, "legacy maps may omit a spawn point");
   assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 });
   assert.deepEqual(scene.sites[0], {
     id: "kiln", label: "Pottery kiln", bounds: { x: 20, y: 30, width: 20, height: 30 },
@@ -106,9 +111,63 @@ test("terrain and focus form a valid scene before any sites or routes are placed
   const scene = await compile();
   assert.deepEqual(scene.sites, []);
   assert.deepEqual(scene.paths, []);
+  assert.equal(scene.actor, undefined);
   assert.equal(scene.terrain.length, 1);
   assert.deepEqual(scene.focus, { x: 10, y: 20, width: 50, height: 50 });
   assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 }, "physical image pixels do not resize logical coordinates");
+});
+
+test("authored focus, spawn, size and path edits are exported in world coordinates", async t => {
+  const { map, compile } = await fixture(t);
+  const actor = spawn();
+  map.layers.push({ id: 2, name: "Actors", type: "objectgroup", draworder: "index", objects: [actor] });
+  const before = await compile();
+  assert.deepEqual(before.actor, { spawn: { x: 35, y: 55 }, size: 12.5 });
+  Object.assign(map.layers[0].objects[7], { x: 5, y: 15, width: 65, height: 65 });
+  Object.assign(actor, { x: 40, y: 60 });
+  setProp(actor, "size", 18.25);
+  map.layers[0].objects[8].polyline[1] = { x: 12, y: 15 };
+  const after = await compile();
+  assert.deepEqual(after.focus, { x: 5, y: 15, width: 65, height: 65 });
+  assert.deepEqual(after.actor, { spawn: { x: 40, y: 60 }, size: 18.25 });
+  assert.deepEqual(after.paths, [{ id: "clearing-walk", points: [{ x: 30, y: 60 }, { x: 42, y: 75 }, { x: 50, y: 70 }] }]);
+  assert.deepEqual(after.terrain, before.terrain);
+  assert.deepEqual(after.sites, before.sites);
+  actor.properties[1] = { name: "size", type: "int", value: 18 };
+  assert.deepEqual((await compile()).actor, { spawn: { x: 40, y: 60 }, size: 18 });
+});
+
+test("invalid focus and spawn authoring fails instead of ignoring editor changes", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push({ id: 2, name: "Actors", type: "objectgroup", draworder: "index", objects: [spawn()] });
+  const cases = [
+    ["nonsquare focus", value => { value.layers[0].objects[7].height = 40; }, /objects\[7\]: focus must be square/],
+    ["focus outside world", value => { value.layers[0].objects[7].x = 60; }, /rectangle is outside world bounds/],
+    ["duplicate focus", value => { value.layers[0].objects.push({ ...clone(value.layers[0].objects[7]), id: 11 }); }, /only one focus rectangle/],
+    ["duplicate spawn", value => { value.layers[1].objects.push({ ...spawn(), id: 11 }); }, /only one spawn point/],
+    ["spawn outside world", value => { value.layers[1].objects[0].x = 101; }, /point is outside world bounds/],
+    ["negative spawn", value => { value.layers[1].objects[0].y = -1; }, /objects\[0\]\.y: expected a finite number >= 0/],
+    ["spawn rectangle", value => { delete value.layers[1].objects[0].point; }, /shape: expected "point"/],
+    ["disabled point", value => { value.layers[1].objects[0].point = false; }, /point: expected true/],
+    ["missing size", value => { value.layers[1].objects[0].properties.pop(); }, /properties\.size: expected a finite number/],
+    ["zero size", value => { setProp(value.layers[1].objects[0], "size", 0); }, /spawn size must be positive/],
+    ["negative size", value => { setProp(value.layers[1].objects[0], "size", -1); }, /spawn size must be positive/],
+    ["oversized actor", value => { setProp(value.layers[1].objects[0], "size", 101); }, /no larger than the smaller world dimension/],
+    ["nonfinite size", value => { setProp(value.layers[1].objects[0], "size", Infinity); }, /expected a finite number/],
+    ["string size", value => { value.layers[1].objects[0].properties[1] = { name: "size", type: "string", value: "12" }; }, /type: expected float or int/],
+    ["fractional int size", value => { value.layers[1].objects[0].properties[1].type = "int"; }, /expected a safe integer/],
+    ["wrong spawn role", value => { setProp(value.layers[1].objects[0], "role", "spwan"); }, /unknown marker role "spwan"/],
+    ["extra spawn property", value => { value.layers[1].objects[0].properties.push(...props({ siteId: "kiln" })); }, /spawn only accepts role and size/],
+    ["size on site", value => { value.layers[0].objects[1].properties.push({ name: "size", type: "float", value: 12 }); }, /site objects only accept/],
+    ["size on path", value => { value.layers[0].objects[8].properties.push({ name: "size", type: "float", value: 12 }); }, /path only accepts role and optional siteId/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
 });
 
 test("global IDs resolve across embedded image collections, including sparse tile IDs", async t => {
@@ -125,6 +184,13 @@ test("global IDs resolve across embedded image collections, including sparse til
   assert.deepEqual(await compile(), scene, "swapping the editor preview does not rewrite runtime progression");
 });
 
+test("an explicit Tiled 1.12 normal layer blend mode keeps the same scene", async t => {
+  const { map, compile } = await fixture(t);
+  const before = await compile();
+  map.layers[0].mode = "normal";
+  assert.deepEqual(await compile(), before);
+});
+
 test("unsupported or ambiguous authoring fails with the exact map location", async t => {
   const { map, compile } = await fixture(t);
   const cases = [
@@ -136,6 +202,7 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["flip bits", value => { value.layers[0].objects[1].gid = 0x80000002; }, /objects\[1\]\.gid: tile flip\/rotation bits/],
     ["hex rotation bit", value => { value.layers[0].objects[1].gid = 0x10000002; }, /tile flip\/rotation bits/],
     ["layer offset", value => { value.layers[0].offsetx = 3; }, /layers\[0\]\.offsetx: expected 0/],
+    ["layer blend mode", value => { value.layers[0].mode = "multiply"; }, /layers\[0\]\.mode: expected "normal"/],
     ["group layer", value => { value.layers[0].type = "group"; }, /layers\[0\]\.type: expected "objectgroup"/],
     ["hidden layer", value => { value.layers[0].visible = false; }, /layers\[0\]\.visible: expected true/],
     ["distorted sprite", value => { value.layers[0].objects[1].width = 19; }, /objects\[1\]: object aspect ratio/],
@@ -206,12 +273,25 @@ test("committed authoring exports identically and --check refuses stale output w
   const output = path.join(directory, "forest.generated.json");
   const expected = serializeTiledWorld(await readTiledWorld(input, path.join(root, "public")));
   const scene = JSON.parse(expected);
-  assert.equal(scene.width, 1254);
-  assert.equal(scene.height, 1254);
-  assert.equal(scene.terrain.length, 1);
-  assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 1254, height: 1254 });
-  assert.deepEqual(scene.sites, []);
-  assert.deepEqual(scene.paths, []);
+  const source = JSON.parse(originalMap.toString("utf8"));
+  const property = (object, name) => object.properties?.find(property => property.name === name)?.value;
+  const objects = source.layers.flatMap(layer => layer.objects);
+  const withRole = role => objects.filter(object => property(object, "role") === role);
+  const rect = ({ x, y, width, height }) => ({ x, y, width, height });
+  assert.equal(scene.width, source.width);
+  assert.equal(scene.height, source.height);
+  assert.deepEqual(scene.terrain.map(({ id, bounds }) => ({ id, bounds })),
+    withRole("terrain").map(object => ({ id: object.name, bounds: rect(object) })));
+  assert.deepEqual(scene.sites.map(({ id, label, bounds, initialLevel }) => ({ id, label, bounds, initialLevel })),
+    withRole("site").map(object => ({ id: property(object, "siteId"), label: property(object, "label"),
+      bounds: rect(object), initialLevel: property(object, "initialLevel") })));
+  assert.deepEqual(scene.paths, withRole("path").map(object => ({ id: object.name,
+    points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })) })));
+  assert.equal(withRole("focus").length, 1);
+  assert.deepEqual(scene.focus, rect(withRole("focus")[0]));
+  assert.equal(withRole("spawn").length, 1, "the live forest needs one authored spawn point");
+  const actor = withRole("spawn")[0];
+  assert.deepEqual(scene.actor, { spawn: { x: actor.x, y: actor.y }, size: property(actor, "size") });
   assert.equal(await readFile(path.join(root, "features/world/tiled/forest.generated.json"), "utf8"), expected);
   const command = [path.join(root, "scripts/tiled-world.mjs"), input, output];
   await run(process.execPath, command, { cwd: directory });

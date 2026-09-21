@@ -16,8 +16,9 @@
 | Уровни персонажа и их иконки | [clicker-story.ts](../features/game/clicker-story.ts), [game-level-icon.tsx](../features/game/game-level-icon.tsx) |
 | Учёт и отправку игровых тапов | [features/game/use-game-progress.ts](../features/game/use-game-progress.ts), `game-sync.ts`, `game-sync-journal.ts` |
 | Карту или детали здания | [art/README.md](../art/README.md): PNG для редактирования и соответствующие WebP |
-| Какие изображения загружает игра | [features/world/art.ts](../features/world/art.ts) |
-| Положение меток и области нажатия | [features/world/map-layout.ts](../features/world/map-layout.ts) |
+| Фон, здания, круглая камера, положение и размер Мохлика | [world/tiled/forest.tmj](../world/tiled/forest.tmj), [инструкция Tiled](game/tiled-editor.md); экспорт — `features/world/tiled/forest.generated.json` |
+| Быстро проверить изменения Tiled | `npm run world:watch` и `/prototype/tiled-world`; линии проверяются в предпросмотре, игровые походы пока отключены |
+| Старые метки и области нажатия (сейчас отключены) | [features/world/map-layout.ts](../features/world/map-layout.ts) |
 | Вход в дом и положение фонаря | [features/mochlik/home-layout.ts](../features/mochlik/home-layout.ts) |
 | Камеру, перетаскивание и масштаб карты | [features/world/camera.ts](../features/world/camera.ts), `map-engine.ts` |
 | Эффект входа в лес | [features/world/world-portal.tsx](../features/world/world-portal.tsx), `use-world-portal.ts`, `world.module.css` |
@@ -54,7 +55,7 @@
 
 ## Как сейчас рисуется лес
 
-Карта — `art/world/prototype/forest-ground.png` (2560 × 2560). Её полный WebP без потерь используется большой картой и круглой камерой. Логический размер мира остаётся 1254 × 1254; разрешение изображения не меняет координаты. Разметка Tiled содержит фон и прямоугольник центральной поляны; `features/world/presentation.ts` задаёт текущий режим чистой карты для основной игры.
+Карта — `art/world/prototype/forest-ground.png` (2560 × 2560). Её полный WebP без потерь используется большой картой и круглой камерой. Сейчас логический мир 1254 × 1254; его границы, фон, квадрат камеры и точка Мохлика с размером берутся из Tiled. Разрешение изображения не меняет координаты. `features/world/presentation.ts` читает экспорт и задаёт текущий режим чистой карты; `new-map-scene.ts` рисует её общим с прототипом композитором. Добавленные здания показываются в начальном состоянии, без включения покупок и прогресса улучшений.
 
 На первом этапе прежние постройки, метки и эффекты не отображаются. Их модули и сохранённый игровой прогресс остаются в проекте для следующих этапов, но ещё не привязаны к новой карте. Источники и порядок экспорта описаны в [каталоге изображений](../art/README.md).
 

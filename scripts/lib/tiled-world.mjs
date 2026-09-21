@@ -48,8 +48,11 @@ function properties(object, at, allowed) {
     const name = string(value.name, `${where}.name`);
     requireThat(own(allowed, name), where, `unknown property ${JSON.stringify(name)}`);
     requireThat(!own(result, name), where, `duplicate property ${JSON.stringify(name)}`);
-    exact(value.type ?? "string", allowed[name], `${where}.type`);
-    if (allowed[name] === "int") integer(value.value, `${where}.value`);
+    const type = value.type ?? "string";
+    if (allowed[name] === "float") requireThat(["float", "int"].includes(type), `${where}.type`, "expected float or int");
+    else exact(type, allowed[name], `${where}.type`);
+    if (type === "int") integer(value.value, `${where}.value`);
+    else if (type === "float") number(value.value, `${where}.value`);
     else string(value.value, `${where}.value`);
     result[name] = value.value;
   }
@@ -60,7 +63,8 @@ function transforms(object, at) {
   for (const key of ["x", "y", "offsetx", "offsety", "parallaxoriginx", "parallaxoriginy"]) defaultValue(object, key, 0, at);
   for (const key of ["opacity", "parallaxx", "parallaxy"]) defaultValue(object, key, 1, at);
   defaultValue(object, "visible", true, at);
-  absent(object, ["tintcolor", "mode", "blendmode", "transparentcolor"], at);
+  defaultValue(object, "mode", "normal", at);
+  absent(object, ["tintcolor", "blendmode", "transparentcolor"], at);
 }
 
 function confined(root, candidate) {
@@ -271,7 +275,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const objectId = integer(object.id, `${at}.id`, 1);
       requireThat(!objects.has(objectId), `${at}.id`, "duplicate object ID");
       objects.add(objectId);
-      const props = properties(object, at, { role: "string", siteId: "string", label: "string", initialLevel: "int" });
+      const props = properties(object, at, { role: "string", siteId: "string", label: "string", initialLevel: "int", size: "float" });
       const role = string(props.role, `${at}.properties.role`);
       const shapes = ["gid", "point", "polygon", "polyline"].filter(key => own(object, key));
       requireThat(shapes.length <= 1, at, "object must have exactly one shape");
@@ -294,6 +298,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         } else {
           exact(role, "site", `${at}.properties.role`);
           exact(tile.role, "siteState", `${at}.gid role`);
+          requireThat(Object.keys(props).every(key => ["role", "siteId", "label", "initialLevel"].includes(key)), at, "site objects only accept role, siteId, label and initialLevel properties");
           const id = identifier(props.siteId, `${at}.properties.siteId`);
           exact(tile.siteId, id, `${at}.gid siteId`);
           requireThat(!sites.has(id), at, `site ${id} has more than one preview object`);
@@ -310,6 +315,15 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         requireThat(Object.keys(props).length === 1, at, "focus only accepts the role property");
         requireThat(!world.focus, at, "only one focus rectangle is allowed");
         world.focus = bounds(object, at, world);
+        requireThat(world.focus.width === world.focus.height, at, "focus must be square (equal width and height) so the circular camera does not stretch the world");
+      } else if (role === "spawn") {
+        exact(shape, "point", `${at} shape`);
+        exact(object.point, true, `${at}.point`);
+        requireThat(Object.keys(props).every(key => ["role", "size"].includes(key)), at, "spawn only accepts role and size properties");
+        requireThat(!world.actor, at, "only one spawn point is allowed");
+        const size = number(props.size, `${at}.properties.size`);
+        requireThat(size > 0 && size <= Math.min(world.width, world.height), `${at}.properties.size`, "spawn size must be positive and no larger than the smaller world dimension");
+        world.actor = { spawn: point(object, at, world), size };
       } else if (role === "path") {
         exact(shape, "polyline", `${at} shape`);
         const id = identifier(object.name, `${at}.name`);

@@ -23,6 +23,7 @@ export type FixedWorldScene = {
   height: number;
   terrain: WorldImage[];
   focus: WorldBounds;
+  actor?: { spawn: WorldPoint; size: number };
   sites: FixedSite[];
   paths: WorldPath[];
 };

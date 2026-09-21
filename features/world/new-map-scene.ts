@@ -1,18 +1,22 @@
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { pixelSprite } from "@/features/mochlik/pixel-sprite";
 import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/mochlik/scene";
-import { WORLD_ART } from "./art";
-import { NEW_MAP_FOCUS, NEW_MAP_SIZE, NEW_MAP_SPAWN } from "./presentation";
+import { NEW_MAP_FOCUS, NEW_MAP_PET_SIZE as PET_SIZE, NEW_MAP_SPAWN, TILED_WORLD } from "./presentation";
+import { paintFixedWorld } from "./tiled/renderer";
+import { initialPreviewLevels, previewSiteVisual } from "./tiled/preview-state";
 
-const PET_SIZE = 36;
 const REACTION_SECONDS = .9;
+const levels = initialPreviewLevels(TILED_WORLD);
+const visuals = Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, levels)]));
+const imageUrls = [...new Set([...TILED_WORLD.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image)])];
 
 /** Both views paint this scene in logical map coordinates, independently of source resolution. */
-export function paintNewMap(context: CanvasRenderingContext2D, image: HTMLImageElement,
+export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyMap<string, HTMLImageElement>,
   options: SceneOptions, elapsed: number, reacting: boolean) {
   context.save();
-  context.imageSmoothingEnabled = true; context.imageSmoothingQuality = "high";
-  context.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, NEW_MAP_SIZE, NEW_MAP_SIZE);
+  context.beginPath(); context.rect(0, 0, TILED_WORLD.width, TILED_WORLD.height); context.clip();
+  paintFixedWorld(context, TILED_WORLD, { images, visuals, actor: null,
+    options: { levels, night: false, debug: false, selectedSiteId: null, reducedMotion: options.reducedMotion } });
   const { x, y } = NEW_MAP_SPAWN;
   context.fillStyle = "rgba(18,38,26,.24)";
   context.beginPath(); context.ellipse(x, y - 2, PET_SIZE * .29, 3, 0, 0, Math.PI * 2); context.fill();
@@ -29,7 +33,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const context = canvas.getContext("2d", { alpha: true });
   if (!context) throw new Error("2D canvas unavailable");
   const ctx = context;
-  let options = { ...initial }, art: HTMLImageElement | null = null, disposed = false;
+  let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   let frame = 0, previous = 0, elapsed = 0, reaction = 0;
   let reactionTimer: ReturnType<typeof setTimeout> | null = null;
   let lastActivity: "idle" | "greet" | null = null;
@@ -81,10 +85,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (disposed) return;
     disposed = true; cancelAnimationFrame(frame); frame = 0; cancelReactionTimer(); observer.disconnect(); art = null;
   }
-  void loadHabitatImage(WORLD_ART.map).then(image => {
+  void Promise.all(imageUrls.map(async url => {
+    const image = await loadHabitatImage(url);
+    if (image.naturalWidth <= 0 || image.naturalHeight <= 0) throw new Error("Invalid world artwork dimensions");
+    return [url, image] as const;
+  })).then(images => {
     if (disposed) return;
-    if (image.naturalWidth <= 0 || image.naturalHeight !== image.naturalWidth) throw new Error("Map artwork must be square");
-    art = image; draw(); callbacks.ready(); resume();
+    art = new Map(images); draw(); callbacks.ready(); resume();
   }).catch(error => { if (!disposed) { dispose(); callbacks.failure(error); } });
   return {
     position: () => ({ x: NEW_MAP_SPAWN.x, y: NEW_MAP_SPAWN.y - PET_SIZE / 2 }),

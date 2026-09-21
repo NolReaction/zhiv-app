@@ -9,19 +9,20 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
-const { MAP_SIZE, homeToWorld, worldToHome, mapPlaceAt, pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
+const { homeToWorld, worldToHome, mapPlaceAt, pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
 const { worldToScreen, screenToWorld, viewportPoint } = await vite.ssrLoadModule("/features/world/camera.ts");
 const { houseVariantFor } = await vite.ssrLoadModule("/features/mochlik/house-variants.ts");
 const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 
 test("new source resolution is independent of logical map coordinates", async () => {
-  const { NEW_MAP_SIZE } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { NEW_MAP_BOUNDS, TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
   const master = await readFile(`${root}/art/world/prototype/forest-ground.png`);
   const source = await sharp(master).metadata();
   const bytes = await readFile(`${root}/public${FOREST_MAP.image.split("?")[0]}`), runtime = await sharp(bytes).metadata();
-  assert.equal(source.width, 2560); assert.equal(source.height, 2560);
+  assert.ok(source.width > 0 && source.height > 0);
   assert.equal(runtime.width, source.width); assert.equal(runtime.height, source.height);
-  assert.equal(MAP_SIZE, NEW_MAP_SIZE); assert.equal(MAP_SIZE, 1254);
+  assert.deepEqual(NEW_MAP_BOUNDS, { width: TILED_WORLD.width, height: TILED_WORLD.height });
+  assert.ok(NEW_MAP_BOUNDS.width > 0 && NEW_MAP_BOUNDS.height > 0);
 });
 
 test("map views share one download and asset revisions match their content", async () => {

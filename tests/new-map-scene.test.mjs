@@ -4,13 +4,21 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const fixture = {
+  schemaVersion: 1, id: "test-scene", width: 1254, height: 1254,
+  terrain: [{ id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1254, height: 1254 } }],
+  focus: { x: 455, y: 480, width: 350, height: 350 },
+  actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [],
+};
 const options = { paused: false, reducedMotion: true, lampOn: false, dusk: false };
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-async function modules() {
+async function modules(override) {
   const vite = await createServer({ appType: "custom", configFile: false, root,
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
   try {
+    const { default: scene } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
+    Object.assign(scene, structuredClone(fixture), override);
     return {
       ...await vite.ssrLoadModule("/features/mochlik/scene.ts"),
       ...await vite.ssrLoadModule("/features/world/map-engine.ts"),
@@ -84,7 +92,7 @@ function browser() {
 }
 
 test("new circle and world paint the same 2560px source in 1254 logical units and use the new focus", async () => {
-  const { mountHabitat, WORLD_ART, NEW_MAP_FOCUS, NEW_MAP_SPAWN, NEW_MAP_SIZE } = await modules();
+  const { mountHabitat, TILED_WORLD, NEW_MAP_FOCUS, NEW_MAP_SPAWN, NEW_MAP_SIZE } = await modules();
   const env = browser(); let scene;
   try {
     const circle = env.surface(), fullWorld = env.surface();
@@ -92,7 +100,7 @@ test("new circle and world paint the same 2560px source in 1254 logical units an
     scene = mountHabitat(circle, options, { activity() {}, ready: () => ready++, failure: assert.fail });
     const image = env.finish(); await flush();
     assert.equal(ready, 1);
-    assert.deepEqual(env.requests, [WORLD_ART.map], "no preview, home detail, boat or overlay assets load");
+    assert.deepEqual(env.requests, [TILED_WORLD.terrain[0].image], "no preview, home detail, boat or overlay assets load");
     assert.equal(circle.width, 640, "the circle keeps its DPR 2 backing resolution");
     scene.paintWorld(fullWorld.context);
     const groundCalls = target => target.calls.filter(call => call.method === "drawImage" && call.args[0] === image);
@@ -139,7 +147,7 @@ test("new scene pauses, resumes, reacts without reduced-motion RAF, and releases
 });
 
 test("failed new artwork reaches the failure callback and a fresh mount retries", async () => {
-  const { mountHabitat, WORLD_ART } = await modules();
+  const { mountHabitat, TILED_WORLD } = await modules();
   const env = browser(); let scene;
   try {
     let ready = 0; const failures = [];
@@ -149,7 +157,7 @@ test("failed new artwork reaches the failure callback and a fresh mount retries"
     assert.equal(ready, 0); assert.equal(failures.length, 1); assert.ok(failures[0] instanceof Error);
     assert.equal(env.observed(), 0); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0);
     scene = mountHabitat(env.surface(), options, callbacks);
-    assert.deepEqual(env.requests, [WORLD_ART.map, WORLD_ART.map]);
+    assert.deepEqual(env.requests, [TILED_WORLD.terrain[0].image, TILED_WORLD.terrain[0].image]);
     env.finish(); await flush();
     assert.equal(ready, 1); assert.equal(failures.length, 1);
   } finally { scene?.dispose(); env.restore(); }
@@ -172,13 +180,13 @@ test("disposing during new artwork loading prevents late callbacks and animation
 });
 
 test("new map ignores old place hit areas while camera controls and pet taps remain live", async () => {
-  const { createMapEngine, WORLD_ART, NEW_MAP_SIZE, NEW_MAP_SPAWN } = await modules();
+  const { createMapEngine, TILED_WORLD, NEW_MAP_SIZE, NEW_MAP_SPAWN, NEW_MAP_PET_SIZE } = await modules();
   const env = browser(); let engine;
   try {
     const canvas = env.surface(400), places = [], anchor = { dataset: { kind: "house", x: 672, y: 569 }, style: {} };
     const loading = createMapEngine(canvas, options, place => places.push(place), [anchor]);
     env.finish(); engine = await loading;
-    assert.deepEqual(env.requests, [WORLD_ART.map]); assert.equal(anchor.style.visibility, "hidden");
+    assert.deepEqual(env.requests, [TILED_WORLD.terrain[0].image]); assert.equal(anchor.style.visibility, "hidden");
     assert.equal(env.frames.size, 0);
     engine.control("overview");
     function tap(x, y) {
@@ -189,7 +197,7 @@ test("new map ignores old place hit areas while camera controls and pet taps rem
     // Interior points of the former house, cave and river must never open their old panels.
     for (const point of [[667, 612], [162, 197], [1016, 1015]]) tap(...point);
     assert.deepEqual(places, []);
-    tap(NEW_MAP_SPAWN.x, NEW_MAP_SPAWN.y - 18);
+    tap(NEW_MAP_SPAWN.x, NEW_MAP_SPAWN.y - NEW_MAP_PET_SIZE / 2);
     assert.equal(env.timers.size, 1, "tapping the stationary pet starts its finite greeting");
     const before = canvas.calls.length; let prevented = 0;
     canvas.events.get("wheel")({ clientX: 200, clientY: 200, deltaY: -150, preventDefault() { prevented++; } });
@@ -200,4 +208,48 @@ test("new map ignores old place hit areas while camera controls and pet taps rem
     engine.dispose(); assert.equal(canvas.events.size, 0);
     assert.equal(env.observed(), 0); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0);
   } finally { engine?.dispose(); env.restore(); }
+});
+
+test("exported Tiled edits drive both live views, active site art, pet hit area and expanded camera bounds", async () => {
+  const focus = { x: 600, y: 800, width: 240, height: 240 };
+  const actor = { spawn: { x: 710, y: 990 }, size: 60 };
+  const terrain = [
+    { id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1800, height: 1800 } },
+    { id: "shore", image: "/test-shore.webp", bounds: { x: 0, y: 1800, width: 600, height: 600 } },
+  ];
+  const site = { id: "home", label: "Дом", bounds: { x: 600, y: 820, width: 120, height: 120 },
+    anchor: { x: 660, y: 940 }, entry: { x: 660, y: 950 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [{ level: 1, label: "Дом", image: "/test-home.webp" }, { level: 2, label: "Будущее", image: "/unused-home.webp" }] };
+  const { mountHabitat, createMapEngine, NEW_MAP_FOCUS, NEW_MAP_SPAWN, NEW_MAP_PET_SIZE } = await modules({
+    width: 1800, height: 2400, focus, actor, terrain, sites: [site],
+  });
+  const env = browser(); let scene, engine;
+  try {
+    assert.deepEqual(NEW_MAP_FOCUS, focus); assert.deepEqual(NEW_MAP_SPAWN, actor.spawn); assert.equal(NEW_MAP_PET_SIZE, 60);
+    const circle = env.surface(); let ready = false;
+    scene = mountHabitat(circle, options, { activity() {}, ready() { ready = true; }, failure: assert.fail });
+    assert.deepEqual(env.requests, ["/test-ground.webp", "/test-shore.webp", "/test-home.webp"]);
+    const ground = env.finish(); await flush(); assert.equal(ready, false, "all authored initial art must finish first");
+    const shore = env.finish(), home = env.finish(); await flush(); assert.equal(ready, true);
+    assert.ok(circle.calls.some(call => call.method === "translate" && call.args[0] === -600 && call.args[1] === -800));
+    assert.ok(circle.calls.some(call => call.method === "setTransform" && call.args[0] === 640 / 240));
+    assert.deepEqual(scene.position(), { x: 710, y: 960 });
+    assert.equal(scene.hitPet((710 - 600) / 240, (960 - 800) / 240), true);
+    assert.equal(scene.hitPet((750 - 600) / 240, (960 - 800) / 240), false);
+    const world = env.surface(400);
+    engine = await createMapEngine(world, options, assert.fail, []);
+    for (const target of [circle, world]) {
+      const images = target.calls.filter(call => call.method === "drawImage");
+      assert.deepEqual(images.find(call => call.args[0] === ground).args.slice(1), [0, 0, 2560, 2560, 0, 0, 1800, 1800]);
+      assert.deepEqual(images.find(call => call.args[0] === shore).args.slice(1), [0, 0, 2560, 2560, 0, 1800, 600, 600]);
+      assert.deepEqual(images.find(call => call.args[0] === home).args.slice(1), [600, 820, 120, 120]);
+      assert.deepEqual(images.at(-1).args.slice(1), [680, 930, 60, 60]);
+    }
+    const scale = () => world.calls.filter(call => call.method === "scale").at(-1).args[0];
+    assert.equal(scale(), 400 / 2400, "initial world overview is independent of the circle crop");
+    engine.control("home"); assert.equal(scale(), 400 / 240);
+    engine.control("overview"); assert.equal(scale(), 400 / 2400);
+    assert.deepEqual(world.calls.filter(call => call.method === "translate").at(-1).args, [-900, -1200]);
+    assert.equal(env.requests.length, 3, "both views share asset cache; inactive upgrades are not loaded");
+  } finally { scene?.dispose(); engine?.dispose(); env.restore(); }
 });

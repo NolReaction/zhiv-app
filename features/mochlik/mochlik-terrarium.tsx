@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { HOME_BACKGROUND_STYLE } from "@/features/world/map-layout";
+import { WORLD_PRESENTATION } from "@/features/world/presentation";
 import type { WorldState } from "@/features/world/model";
 import { sceneJourney } from "@/features/world/journey-timeline";
 import { JourneyProgress } from "@/features/world/journey-progress";
@@ -84,7 +85,7 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
 
   const journey = sceneJourney(worldState, nowMs);
   return <div className={styles.scene} data-pet-interaction data-ready={ready} data-light={dusk ? "dusk" : "day"} aria-hidden="true">
-    <div className={styles.fallback} style={HOME_BACKGROUND_STYLE} />
+    <div className={styles.fallback} style={WORLD_PRESENTATION.rebuilding ? undefined : HOME_BACKGROUND_STYLE} />
     <canvas ref={canvas} className={styles.canvas} />
     <div className={styles.glass} />
     {!ready && <span className={styles.loadState}>{failed ? "Лес не загрузился. Нажми, чтобы повторить" : "Загружаем Мохлика…"}</span>}

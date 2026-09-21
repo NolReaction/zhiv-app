@@ -36,6 +36,14 @@
 .circleCanvas { display: block; width: 100%; height: 100%; border-radius: 50%; }
 .homePreview h2, .siteTitle h2 { font-size: 15px; font-weight: 600; margin: 0; }
 .homePreview p { margin: 7px 0 0; color: var(--forest-muted); font-size: 13px; line-height: 1.55; }
+.routePanel { padding: 16px; border: 1px solid var(--forest-line); border-radius: 17px; background: var(--forest-panel); }
+.routePanel h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+.routePanel label { display: block; margin: 0 0 7px; font-size: 12px; color: var(--forest-muted); }
+.routePanel select { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #637452; border-radius: 10px; color: var(--forest-ink); background: #203124; font: inherit; font-size: 14px; }
+.routePanel p { margin: 10px 0 0; color: var(--forest-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.routeTools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.routeTools button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 10px; border: 1px solid #637452; border-radius: 10px; color: var(--forest-ink); background: #263d29; font-size: 12px; }
+.routePanel .routeStatus { color: #d3e5b6; }
 .siteList { display: grid; gap: 12px; }
 .siteCard { min-width: 0; padding: 16px; border: 1px solid var(--forest-line); border-radius: 17px; background: var(--forest-panel); }
 .siteCard[data-selected="true"] { border-color: #718258; }
@@ -82,6 +90,7 @@
   .sidebar { gap: 14px; }
   .homePreview { grid-template-columns: 106px minmax(0, 1fr); align-items: center; justify-items: start; gap: 19px; text-align: left; padding: 10px 12px; }
   .circleFrame { width: 106px; height: 106px; }
+  .routePanel select { font-size: 16px; }
   .siteList { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px; }
   .siteCard { padding: 12px; }
   .siteTitle { gap: 6px; }

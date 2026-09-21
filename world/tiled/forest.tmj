@@ -63,10 +63,57 @@
           ]
         }
       ]
+    },
+    {
+      "id": 3,
+      "name": "Actors",
+      "type": "objectgroup",
+      "draworder": "index",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 3,
+          "name": "mochlik-spawn",
+          "type": "",
+          "x": 630,
+          "y": 660,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true,
+          "properties": [
+            {
+              "name": "role",
+              "type": "string",
+              "value": "spawn"
+            },
+            {
+              "name": "size",
+              "type": "float",
+              "value": 36
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Routes",
+      "type": "objectgroup",
+      "draworder": "index",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": []
     }
   ],
-  "nextlayerid": 3,
-  "nextobjectid": 3,
+  "nextlayerid": 5,
+  "nextobjectid": 4,
   "orientation": "orthogonal",
   "properties": [
     {

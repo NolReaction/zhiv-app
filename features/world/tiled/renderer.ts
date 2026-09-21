@@ -1,6 +1,7 @@
-import { pixelSprite, type PixelDirection } from "@/features/mochlik/pixel-sprite";
-import { previewPointInPolygon, previewSiteAt, previewSiteVisual } from "./preview-state";
+import { pixelSprite } from "@/features/mochlik/pixel-sprite";
+import { previewSiteAt, previewSiteVisual } from "./preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
+import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
 
 export type FixedWorldRenderOptions = {
   levels: PreviewLevels;
@@ -14,16 +15,16 @@ export type FixedWorldRenderStatus = { loading: boolean; error: string | null };
 export type FixedWorldRenderCallbacks = {
   onSelect?: (siteId: string) => void;
   onStatus?: (status: FixedWorldRenderStatus) => void;
+  onRouteChange?: (status: PreviewRouteStatus) => void;
 };
 
 type Viewport = { width: number; height: number };
 type Camera = WorldPoint & { zoom: number };
-type Actor = WorldPoint & { direction: PixelDirection; walking: boolean; frame: number };
-type PaintFrame = {
+export type PaintFrame = {
   images: ReadonlyMap<string, HTMLImageElement>;
   visuals: Record<string, SiteVisual>;
   options: FixedWorldRenderOptions;
-  actor: Actor | null;
+  actor: PreviewActor | null;
 };
 
 function polygon(ctx: CanvasRenderingContext2D, points: readonly WorldPoint[]) {
@@ -33,13 +34,13 @@ function polygon(ctx: CanvasRenderingContext2D, points: readonly WorldPoint[]) {
 }
 
 /** Both cameras call this exact compositor in world pixels, including its light pass. */
-function paintWorld(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame: PaintFrame) {
+export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame: PaintFrame) {
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
   for (const terrain of scene.terrain) {
     const image = frame.images.get(terrain.image), bounds = terrain.bounds;
-    if (image) ctx.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height);
+    if (image) ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
   for (const site of scene.sites) {
@@ -48,11 +49,12 @@ function paintWorld(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame
   }
   const actor = frame.actor;
   if (actor) {
-    ctx.fillStyle = "rgba(18,38,26,.28)";
-    ctx.beginPath(); ctx.ellipse(actor.x, actor.y - 1, 9, 3, 0, 0, Math.PI * 2); ctx.fill();
+    const size = scene.actor?.size ?? 30;
+    ctx.fillStyle = "rgba(18,38,26,.24)";
+    ctx.beginPath(); ctx.ellipse(actor.x, actor.y - 2, size * .29, 3, 0, 0, Math.PI * 2); ctx.fill();
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(pixelSprite(actor.walking ? "walk" : "idle", actor.direction, actor.frame,
-      { palette: "moss", head: null, neck: "amber_scarf" }), Math.round(actor.x) - 15, Math.round(actor.y) - 29, 30, 30);
+      { palette: "moss", head: null, neck: null }), actor.x - size / 2, actor.y - size, size, size);
   }
   if (frame.options.night) {
     ctx.fillStyle = "rgba(8,17,37,.56)"; ctx.fillRect(0, 0, scene.width, scene.height);
@@ -94,65 +96,6 @@ function paintWorld(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame
   ctx.restore();
 }
 
-/** The demo follows authored safe ground only. Opaque patches do not support walking behind buildings. */
-function actorRoute(scene: FixedWorldScene) {
-  const safe = (point: WorldPoint) => point.x >= 0 && point.y >= 0 && point.x <= scene.width && point.y <= scene.height
-    && scene.sites.every(site => ![[0, 0], [-8, 0], [8, 0], [0, -5], [0, 5]].some(([x, y]) =>
-      previewPointInPolygon({ x: point.x + x, y: point.y + y }, site.collision)));
-  const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
-  const path = scene.paths.find(path => path.id === "home-walk" && path.points.length >= 2 && path.points.slice(1).every((to, i) => {
-      const from = path.points[i], samples = Math.max(1, Math.ceil(distance(to, from) / 3));
-      return Array.from({ length: samples + 1 }, (_, step) => ({
-        x: from.x + (to.x - from.x) * step / samples, y: from.y + (to.y - from.y) * step / samples,
-      })).every(safe);
-    }));
-  const points = path?.points ?? scene.sites.map(site => site.entry).filter(safe).slice(0, 1);
-  const lengths = points.slice(1).map((point, i) => distance(point, points[i]));
-  const total = lengths.reduce((sum, value) => sum + value, 0);
-  const home = scene.sites.find(site => site.id === "home") ?? scene.sites[0];
-  const origin = points.length && home && distance(points[points.length - 1], home.entry) < distance(points[0], home.entry) ? total : 0;
-  let position = origin, destination = origin, direction: PixelDirection = "front";
-  return {
-    moving: () => Math.abs(destination - position) > .001,
-    advance(seconds: number) {
-      const step = Math.min(Math.abs(destination - position), Math.max(0, seconds) * 52);
-      position += Math.sign(destination - position) * step;
-    },
-    settle() { position = destination; },
-    reset() { position = origin; destination = origin; direction = "front"; },
-    walkTo(siteId: string, instant: boolean) {
-      if (siteId !== home?.id || !total) return false;
-      destination = origin;
-      if (instant) position = destination;
-      return true;
-    },
-    stroll(instant: boolean) {
-      if (!total) return false;
-      destination = origin === 0 ? total : 0;
-      if (instant) position = destination;
-      return true;
-    },
-    at(elapsed: number, animate: boolean): Actor | null {
-      if (!points.length) return null;
-      if (!total) return { ...points[0], direction, walking: false, frame: 0 };
-      let remaining = position;
-      const moving = Math.abs(destination - position) > .001;
-      for (let i = 0; i < lengths.length; i++) {
-        const length = lengths[i];
-        if (remaining > length && i < lengths.length - 1) { remaining -= length; continue; }
-        const from = points[i], to = points[i + 1], progress = length ? remaining / length : 0;
-        if (moving) {
-          const sign = Math.sign(destination - position), dx = (to.x - from.x) * sign, dy = (to.y - from.y) * sign;
-          direction = Math.abs(dx) > Math.abs(dy) ? dx < 0 ? "left" : "right" : dy < 0 ? "back" : "front";
-        }
-        return { x: from.x + (to.x - from.x) * progress, y: from.y + (to.y - from.y) * progress,
-          direction, walking: moving && animate, frame: moving && animate ? Math.floor(elapsed * 7) % 4 : 0 };
-      }
-      return null;
-    },
-  };
-}
-
 export async function createFixedWorldRenderer(
   worldCanvas: HTMLCanvasElement,
   circleCanvas: HTMLCanvasElement,
@@ -177,7 +120,8 @@ export async function createFixedWorldRenderer(
   const imagePromises = new Map<string, Promise<HTMLImageElement>>(), images = new Map<string, HTMLImageElement>();
   const cancelImages = new Set<() => void>();
   let visuals: Record<string, SiteVisual> = {}, requestVersion = 0, requestedKey: string | null = null;
-  const route = actorRoute(scene);
+  const route = createPreviewRoute(scene);
+  let routeStatusKey = "";
   const reportStatus = (status: FixedWorldRenderStatus) => {
     for (const canvas of [worldCanvas, circleCanvas]) {
       canvas.dataset.loading = String(status.loading); canvas.dataset.error = status.error ?? "";
@@ -269,7 +213,7 @@ export async function createFixedWorldRenderer(
     worldCtx.fillStyle = "#12231b"; worldCtx.fillRect(0, 0, worldView.width, worldView.height);
     worldCtx.save(); worldCtx.translate(worldView.width / 2, worldView.height / 2);
     worldCtx.scale(camera.zoom, camera.zoom); worldCtx.translate(-camera.x, -camera.y);
-    if (ready) paintWorld(worldCtx, scene, paintFrame); worldCtx.restore();
+    if (ready) paintFixedWorld(worldCtx, scene, paintFrame); worldCtx.restore();
     circleCtx.setTransform(circleCanvas.width / circleView.width, 0, 0, circleCanvas.height / circleView.height, 0, 0);
     circleCtx.clearRect(0, 0, circleView.width, circleView.height);
     circleCtx.save(); circleCtx.beginPath();
@@ -278,7 +222,7 @@ export async function createFixedWorldRenderer(
     const circleZoom = Math.min(circleView.width / scene.focus.width, circleView.height / scene.focus.height);
     circleCtx.translate(circleView.width / 2, circleView.height / 2); circleCtx.scale(circleZoom, circleZoom);
     circleCtx.translate(-scene.focus.x - scene.focus.width / 2, -scene.focus.y - scene.focus.height / 2);
-    if (ready) paintWorld(circleCtx, scene, paintFrame); circleCtx.restore();
+    if (ready) paintFixedWorld(circleCtx, scene, paintFrame); circleCtx.restore();
     const levels = JSON.stringify(Object.fromEntries(Object.entries(visuals).map(([id, visual]) => [id, visual.level])));
     frameNumber++;
     for (const canvas of [worldCanvas, circleCanvas]) {
@@ -286,7 +230,11 @@ export async function createFixedWorldRenderer(
       canvas.dataset.frame = String(frameNumber); canvas.dataset.actorX = String(actor?.x ?? ""); canvas.dataset.actorY = String(actor?.y ?? "");
       canvas.dataset.night = String(options.night); canvas.dataset.debug = String(options.debug);
       canvas.dataset.actorMoving = String(route.moving());
+      canvas.dataset.pathId = route.status().pathId ?? "";
+      canvas.dataset.actorSize = String(scene.actor?.size ?? 30);
     }
+    const routeStatus = route.status(), nextRouteStatusKey = JSON.stringify(routeStatus);
+    if (routeStatusKey !== nextRouteStatusKey) { routeStatusKey = nextRouteStatusKey; callbacks.onRouteChange?.(routeStatus); }
     worldCanvas.dataset.cameraX = String(camera.x); worldCanvas.dataset.cameraY = String(camera.y); worldCanvas.dataset.cameraZoom = String(camera.zoom);
   }
   function animate() {
@@ -423,6 +371,25 @@ export async function createFixedWorldRenderer(
       void prepareImages().catch(() => { /* The status callback exposes retry without losing the current artwork. */ });
     },
     focus, zoom,
+    selectPath(pathId: string | null) {
+      if (disposed) return false;
+      const accepted = route.select(pathId);
+      elapsed = 0; draw(); animate();
+      return accepted;
+    },
+    startPath() {
+      if (disposed) return false;
+      const accepted = route.start(options.reducedMotion);
+      if (accepted) { draw(); animate(); }
+      return accepted;
+    },
+    reversePath() {
+      if (disposed) return false;
+      const accepted = route.reverse(options.reducedMotion);
+      if (accepted) { draw(); animate(); }
+      return accepted;
+    },
+    resetPath() { if (!disposed) { elapsed = 0; route.reset(); draw(); animate(); } },
     walkTo(siteId: string) {
       if (disposed) return false;
       const accepted = route.walkTo(siteId, options.reducedMotion);
