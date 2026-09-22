@@ -41,7 +41,7 @@ export function heroSpriteContact(sprite: HTMLCanvasElement, pose: PixelPose, fr
 
 export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
   x: number; y: number; size: number; pose: PixelPose; direction: PixelDirection; frame: number;
-  appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number;
+  appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number; shadow?: boolean;
 }) {
   if (![actor.x, actor.y, actor.size].every(Number.isFinite) || actor.size <= 0) return;
   const sprite = pixelSprite(actor.pose, actor.direction, actor.frame, actor.appearance);
@@ -51,10 +51,12 @@ export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
   const breathe = Number.isFinite(actor.breathe) ? Math.max(-.008, Math.min(.008, actor.breathe!)) : 0;
   const height = actor.size * (1 + breathe);
   ctx.save();
-  ctx.fillStyle = "rgba(24,38,25,.045)";
-  ctx.beginPath(); ctx.ellipse(footX, actor.y + actor.size * .01, footWidth * .54, actor.size * .04, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "rgba(24,38,25,.16)";
-  ctx.beginPath(); ctx.ellipse(footX, actor.y, footWidth * .44, actor.size * .024, 0, 0, Math.PI * 2); ctx.fill();
+  if (actor.shadow !== false) {
+    ctx.fillStyle = "rgba(24,38,25,.045)";
+    ctx.beginPath(); ctx.ellipse(footX, actor.y + actor.size * .01, footWidth * .54, actor.size * .04, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(24,38,25,.16)";
+    ctx.beginPath(); ctx.ellipse(footX, actor.y, footWidth * .44, actor.size * .024, 0, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprite, actor.x - actor.size / 2, actor.y - contact.bottom / HERO_SOURCE_SIZE * height, actor.size, height);
   ctx.restore();

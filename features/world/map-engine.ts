@@ -7,6 +7,7 @@ import { drawWaterAmbience } from "./water-ambience";
 import { drawRouteProps } from "./route-props";
 import { drawBoatWreck, prepareBoatWreck } from "./boat-wreck";
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
+import { WORLD_DEV_ENABLED, worldDevStore } from "./dev/world-dev-store";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -25,6 +26,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
   let options = initial, disposed = false, raf = 0, last = 0;
+  let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
+  const motionReduced = () => dev?.reducedMotion === "on" || dev?.reducedMotion !== "off" && options.reducedMotion;
+  const paused = () => options.paused || Boolean(dev?.paused);
   let boatArt: HTMLCanvasElement | null = null;
   const focusCamera = (viewport: { width: number; height: number }, close: boolean) => rebuilding
     ? clampCamera({ x: NEW_MAP_FOCUS.x + NEW_MAP_FOCUS.width / 2, y: NEW_MAP_FOCUS.y + NEW_MAP_FOCUS.height / 2,
@@ -42,7 +46,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
-    rendered: () => { if (options.reducedMotion) draw(); },
+    rendered: () => { if (motionReduced() || dev?.paused) draw(); },
   });
   const abort = () => { disposed = true; habitat.dispose(); readyReject(signal?.reason ?? new DOMException("Aborted", "AbortError")); };
   signal?.addEventListener("abort", abort, { once: true });
@@ -106,11 +110,11 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function tick(time: number) {
     raf = 0;
-    if (disposed || document.hidden || !inView || options.paused || options.backgrounded) return;
+    if (disposed || document.hidden || !inView || paused() || options.backgrounded) return;
     if (time - last >= 1000 / 30) {
       draw(); last = time;
     }
-    if (!options.reducedMotion) raf = requestAnimationFrame(tick);
+    if (!motionReduced()) raf = requestAnimationFrame(tick);
   }
   function visibility() {
     if (document.hidden) {
@@ -121,7 +125,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     cancelAnimationFrame(raf); raf = 0;
     const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
     habitat.configure({ ...options, view: "world", backgrounded });
-    if (!disposed && !backgrounded) { draw(); if (!options.reducedMotion && !options.paused) raf = requestAnimationFrame(tick); }
+    if (!disposed && !backgrounded) { draw(); if (!motionReduced() && !paused()) raf = requestAnimationFrame(tick); }
   }
   function resize() {
     // CSS entrance scaling changes the visual rect, not the map's layout viewport.
@@ -191,7 +195,20 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
   for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.addEventListener(name, end);
   canvas.addEventListener("wheel", wheel, { passive: false }); canvas.addEventListener("keydown", key);
+  // Controls may have changed while the scene's selected artwork was loading.
+  if (WORLD_DEV_ENABLED) dev = worldDevStore.getSnapshot();
   document.addEventListener("visibilitychange", visibility); visibility();
+  const unsubscribeDev = WORLD_DEV_ENABLED ? worldDevStore.subscribe(() => {
+    if (disposed) return;
+    const previousCamera = dev?.cameraEvent?.id;
+    dev = worldDevStore.getSnapshot();
+    cancelAnimationFrame(raf); raf = 0;
+    if (!document.hidden && !options.backgrounded && inView) {
+      if (dev.cameraEvent && dev.cameraEvent.id !== previousCamera) control(dev.cameraEvent.action);
+      else draw();
+      if (!motionReduced() && !paused()) raf = requestAnimationFrame(tick);
+    }
+  }) : () => {};
   return {
     control,
     setTime(now: number) { habitat.setTime(now); },
@@ -202,7 +219,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     notice() { habitat.notice(); draw(); },
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
-      disposed = true; cancelAnimationFrame(raf); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      disposed = true; cancelAnimationFrame(raf); unsubscribeDev(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
       window.removeEventListener?.("online", retryGround); window.removeEventListener?.("focus", retryGround);
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(name, end);

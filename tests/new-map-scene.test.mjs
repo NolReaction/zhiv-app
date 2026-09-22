@@ -24,6 +24,8 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/map-engine.ts"),
       ...await vite.ssrLoadModule("/features/world/art.ts"),
       ...await vite.ssrLoadModule("/features/world/presentation.ts"),
+      ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
+      ...await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts"),
     };
   } finally { await vite.close(); }
 }
@@ -78,6 +80,13 @@ function browser() {
     observed: () => observers.reduce((sum, observer) => sum + observer.nodes.size, 0),
     finish(error = false) {
       const request = pending.shift(); assert.ok(request, "an image is awaiting completion");
+      if (error) request.image.onerror?.(); else request.image.onload?.();
+      return request.image;
+    },
+    finishPath(path, error = false) {
+      const index = pending.findIndex(request => request.path === path);
+      assert.notEqual(index, -1, `image ${path} is awaiting completion`);
+      const [request] = pending.splice(index, 1);
       if (error) request.image.onerror?.(); else request.image.onload?.();
       return request.image;
     },
@@ -354,4 +363,138 @@ test("exported Tiled edits drive both live views, active site art, pet hit area 
     assert.deepEqual(world.calls.filter(call => call.method === "translate").at(-1).args, [-900, -1200]);
     assert.equal(env.requests.length, 3, "both views share asset cache; inactive upgrades are not loaded");
   } finally { scene?.dispose(); engine?.dispose(); env.restore(); }
+});
+
+test("development overrides redraw immediately while paused without advancing time or escaping background", async () => {
+  const { mountHabitat, worldDevStore, WORLD_DEV_ENABLED, pixelSprite } = await modules();
+  assert.equal(WORLD_DEV_ENABLED, true);
+  const env = browser(); let scene;
+  try {
+    const canvas = env.surface(), initial = { ...options, reducedMotion: false, serverNow: 100_000 };
+    scene = mountHabitat(canvas, initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); env.tick(100); env.tick(140);
+    const before = canvas.calls.length, time = scene.ambience().elapsed;
+    worldDevStore.patch({ paused: true });
+    assert.equal(env.frames.size, 0); assert.ok(canvas.calls.length > before, "pausing refreshes both render consumers");
+    worldDevStore.patch({ weather: "downpour", timeOfDay: "dusk", pose: "fish", direction: "right", heroScale: 1.5 });
+    assert.equal(scene.ambience().rain, 1); assert.equal(scene.ambience().dusk, .55);
+    const hero = canvas.calls.filter(call => call.method === "drawImage").at(-1);
+    assert.equal(hero.args[0], pixelSprite("fish", "right", Math.floor(time * 3) % 4));
+    assert.equal(hero.args[3], 54);
+    env.tick(4000); assert.equal(scene.ambience().elapsed, time);
+    scene.configure({ ...initial, backgrounded: true });
+    const hidden = canvas.calls.length;
+    worldDevStore.patch({ paused: false, weather: "clear", reducedMotion: "off" });
+    worldDevStore.triggerPose("greet");
+    assert.equal(canvas.calls.length, hidden); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0);
+    scene.configure(initial); assert.equal(env.frames.size, 1);
+    worldDevStore.patch({ showHero: false });
+    assert.equal(scene.hitPet(.5, .5), false);
+    scene.dispose(); const disposed = canvas.calls.length;
+    worldDevStore.patch({ weather: "rain", paused: true }); worldDevStore.triggerPose("jump");
+    assert.equal(canvas.calls.length, disposed); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0);
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("manual pose events restart, finish, preserve loop choice and use finite reduced-motion stills", async () => {
+  const { mountHabitat, worldDevStore, pixelSprite } = await modules();
+  const env = browser(); let scene;
+  try {
+    const canvas = env.surface();
+    scene = mountHabitat(canvas, options, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    const hero = () => canvas.calls.filter(call => call.method === "drawImage").at(-1).args[0];
+    worldDevStore.patch({ pose: "sleep", direction: "left" });
+    assert.equal(hero(), pixelSprite("sleep", "left", 0));
+    worldDevStore.triggerPose("greet");
+    assert.equal(hero(), pixelSprite("greet", "left", 2)); assert.equal(env.frames.size, 0);
+    const firstTimer = [...env.timers.keys()][0]; assert.ok(firstTimer);
+    worldDevStore.triggerPose("greet");
+    assert.equal(env.timers.has(firstTimer), false); assert.equal(env.timers.size, 1);
+    env.fireTimer([...env.timers.keys()][0]);
+    assert.equal(hero(), pixelSprite("sleep", "left", 0)); assert.equal(env.timers.size, 0);
+    worldDevStore.triggerPose("greet"); worldDevStore.patch({ pose: "fish", animation: null });
+    assert.equal(hero(), pixelSprite("fish", "left", 0)); assert.equal(env.timers.size, 0, "choosing a loop cancels the manual event immediately");
+    worldDevStore.patch({ reducedMotion: "off", pose: "idle" });
+    worldDevStore.triggerPose("greet"); assert.equal(hero(), pixelSprite("greet", "left", 0));
+    env.tick(100);
+    for (let now = 150; now <= 500; now += 50) env.tick(now);
+    assert.equal(hero(), pixelSprite("greet", "left", 1));
+    worldDevStore.triggerPose("greet"); assert.equal(hero(), pixelSprite("greet", "left", 0), "a repeated click starts at the first frame");
+    env.tick(550);
+    for (let now = 600; now <= 1550; now += 50) env.tick(now);
+    assert.equal(hero(), pixelSprite("idle", "left", Math.floor(scene.ambience().elapsed * 3) % 4));
+    worldDevStore.patch({ paused: true }); worldDevStore.triggerPose("jump");
+    assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0); assert.equal(hero(), pixelSprite("jump", "left", 0));
+    worldDevStore.reset(); assert.equal(hero(), pixelSprite("idle", "front", 0), "reset clears manual events and loop overrides");
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("development building levels load only selected artwork and reject stale and failed replacements", async () => {
+  const site = { id: "home", label: "Дом", bounds: { x: 600, y: 820, width: 120, height: 120 },
+    anchor: { x: 660, y: 940 }, entry: { x: 660, y: 950 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [1, 2, 3, 4].map(level => ({ level, label: `Level ${level}`, image: `/home-${level}.webp` })) };
+  const { mountHabitat, worldDevStore } = await modules({ sites: [site] });
+  const env = browser(); let scene;
+  try {
+    const canvas = env.surface(); let ready = 0;
+    scene = mountHabitat(canvas, options, { activity() {}, ready: () => ready++, failure: assert.fail });
+    env.finish(); const first = env.finish(); await flush();
+    assert.equal(ready, 1); assert.deepEqual(env.requests, ["/test-ground.webp", "/home-1.webp"]);
+    worldDevStore.patch({ paused: true, levels: { home: 2 } });
+    worldDevStore.patch({ levels: { home: 3 } });
+    assert.deepEqual(env.requests, ["/test-ground.webp", "/home-1.webp", "/home-2.webp", "/home-3.webp"]);
+    const latest = env.finishPath("/home-3.webp"); await flush();
+    const paintedBuilding = () => canvas.calls.filter(call => call.method === "drawImage" && call.args.length === 5).at(-2).args[0];
+    assert.equal(paintedBuilding(), latest);
+    env.finishPath("/home-2.webp"); await flush();
+    worldDevStore.patch({ timeOfDay: "night" }); assert.equal(paintedBuilding(), latest, "old completion cannot replace the latest chosen art");
+    worldDevStore.patch({ levels: { home: 4 } }); env.finishPath("/home-4.webp", true); await flush();
+    assert.ok(worldDevStore.getSnapshot().artError); assert.equal(paintedBuilding(), latest, "a failed level retains complete previous art");
+    assert.equal(ready, 1, "building changes do not remount the scene");
+    worldDevStore.patch({ levels: { home: 999, unknown: 2 } });
+    assert.equal(env.requests.length, 5, "invalid or unauthored states never load artwork");
+    worldDevStore.reset(); await flush(); assert.equal(paintedBuilding(), first); assert.equal(worldDevStore.getSnapshot().artError, null);
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("full map responds to shared paused edits and camera commands and releases dev subscriptions", async () => {
+  const { createMapEngine, worldDevStore } = await modules();
+  const env = browser(); let engine;
+  try {
+    const canvas = env.surface(400), loading = createMapEngine(canvas, { ...options, reducedMotion: false }, assert.fail, []);
+    env.finish(); engine = await loading;
+    assert.equal(env.frames.size, 2, "map and shared scene initially run their clocks");
+    worldDevStore.patch({ paused: true }); assert.equal(env.frames.size, 0);
+    const frozen = canvas.calls.length;
+    worldDevStore.patch({ timeOfDay: "night", showHero: false });
+    assert.ok(canvas.calls.length > frozen, "world redraws store edits even with no RAF");
+    const scale = () => canvas.calls.filter(call => call.method === "scale").at(-1).args[0];
+    const beforeZoom = scale(); worldDevStore.triggerCamera("in"); assert.ok(scale() > beforeZoom);
+    worldDevStore.triggerCamera("overview"); assert.equal(scale(), 400 / 1254);
+    worldDevStore.patch({ paused: false, reducedMotion: "on" }); assert.equal(env.frames.size, 0);
+    worldDevStore.patch({ reducedMotion: "off" }); assert.equal(env.frames.size, 2);
+    engine.update({ ...options, reducedMotion: false, backgrounded: true }); assert.equal(env.frames.size, 0);
+    const hidden = canvas.calls.length; worldDevStore.patch({ paused: true, weather: "rain" });
+    assert.equal(canvas.calls.length, hidden, "development overrides do not wake a hidden world");
+    engine.dispose(); const disposed = canvas.calls.length; worldDevStore.triggerCamera("pet"); worldDevStore.reset();
+    assert.equal(canvas.calls.length, disposed); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0); assert.equal(env.observed(), 0);
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("map loading adopts the latest dev pause before starting its outer animation loop", async () => {
+  const site = { id: "home", label: "Дом", bounds: { x: 600, y: 820, width: 120, height: 120 },
+    anchor: { x: 660, y: 940 }, entry: { x: 660, y: 950 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [{ level: 1, label: "Дом", image: "/test-loading-home.webp" }] };
+  const { createMapEngine, worldDevStore } = await modules({ sites: [site] });
+  const env = browser(); let engine;
+  try {
+    const loading = createMapEngine(env.surface(400), { ...options, reducedMotion: false }, assert.fail, []);
+    env.finish(); await flush();
+    assert.deepEqual(env.requests, ["/test-ground.webp", "/test-loading-home.webp"]);
+    worldDevStore.patch({ paused: true });
+    env.finish(); engine = await loading;
+    assert.equal(env.frames.size, 0, "both scene and map retain the pause applied during the asynchronous load");
+    worldDevStore.patch({ paused: false }); assert.equal(env.frames.size, 2);
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });

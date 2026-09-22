@@ -19,6 +19,7 @@
 | Фон, здания, круглая камера, положение и размер Мохлика | [world/tiled/forest.tmj](../world/tiled/forest.tmj), [инструкция Tiled](game/tiled-editor.md); экспорт — `features/world/tiled/forest.generated.json` |
 | Быстро проверить изменения Tiled | `npm run world:watch` и `/prototype/tiled-world`; линии проверяются в предпросмотре, игровые походы пока отключены |
 | Бабочек, светлячков, птиц и погоду новой карты | [features/world/forest-atmosphere.ts](../features/world/forest-atmosphere.ts); часы и паузы — `new-map-scene.ts` |
+| Панель DEV и ручной запуск эффектов | [features/world/dev/world-dev-panel.tsx](../features/world/dev/world-dev-panel.tsx); временные настройки — `world-dev-store.ts`. Кнопка DEV в круге и большой карте при `npm run dev:local` / `dev:lan` |
 | Контактную тень Мохлика и основания зданий | [features/world/grounding.ts](../features/world/grounding.ts); геометрия и размеры по-прежнему задаются в Tiled |
 | Старые метки и области нажатия (сейчас отключены) | [features/world/map-layout.ts](../features/world/map-layout.ts) |
 | Вход в дом и положение фонаря | [features/mochlik/home-layout.ts](../features/mochlik/home-layout.ts) |

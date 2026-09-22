@@ -10,6 +10,11 @@ export type FixedWorldRenderOptions = {
   selectedSiteId: string | null;
   reducedMotion: boolean;
   paused?: boolean;
+  showBuildings?: boolean;
+  showHero?: boolean;
+  heroShadow?: boolean;
+  buildingShadow?: boolean;
+  heroScale?: number;
 };
 export type FixedWorldRenderStatus = { loading: boolean; error: string | null };
 export type FixedWorldRenderCallbacks = {
@@ -43,23 +48,24 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
     if (image) ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
-  for (const site of scene.sites) {
+  for (const site of frame.options.showBuildings === false ? [] : scene.sites) {
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {
-      drawSiteGrounding(ctx, site, image);
+      if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image);
       ctx.drawImage(image, site.bounds.x, site.bounds.y, site.bounds.width, site.bounds.height);
     }
   }
   const actor = frame.actor;
-  if (actor) {
-    const size = scene.actor?.size ?? 30;
+  if (actor && frame.options.showHero !== false) {
+    const scale = Number.isFinite(frame.options.heroScale) ? Math.max(.5, Math.min(2, frame.options.heroScale!)) : 1;
+    const size = (scene.actor?.size ?? 30) * scale;
     drawGroundedHero(ctx, { x: actor.x, y: actor.y, size, pose: actor.walking ? "walk" : "idle",
-      direction: actor.direction, frame: actor.frame, appearance: { palette: "moss", head: null, neck: null } });
+      direction: actor.direction, frame: actor.frame, shadow: frame.options.heroShadow, appearance: { palette: "moss", head: null, neck: null } });
   }
   if (frame.options.night) {
     ctx.fillStyle = "rgba(8,17,37,.56)"; ctx.fillRect(0, 0, scene.width, scene.height);
     ctx.globalCompositeOperation = "screen";
-    for (const site of scene.sites) {
+    for (const site of frame.options.showBuildings === false ? [] : scene.sites) {
       if (!site.light || (frame.visuals[site.id]?.level ?? 0) < 1) continue;
       const { x, y } = site.light, radius = 115;
       const light = ctx.createRadialGradient(x, y, 0, x, y, radius);

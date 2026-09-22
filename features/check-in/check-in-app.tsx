@@ -78,6 +78,7 @@ import { CheckInReceipt } from "./check-in-receipt";
 import { useSimpleView } from "@/features/check-in/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useWorld } from "@/features/world/use-world";
+import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
 import styles from "./check-in-app.module.css";
 import glass from "@/components/glass-action.module.css";
@@ -88,6 +89,8 @@ import { copyText } from "@/lib/identity-sharing";
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
 const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
+const WorldDevPanel = process.env.NODE_ENV === "development"
+  ? dynamic(() => import("@/features/world/dev/world-dev-panel"), { ssr: false }) : null;
 
 type PendingBootstrap = {
   version: 1;
@@ -577,6 +580,13 @@ export function CheckInApp() {
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
+  const worldEntryButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!WORLD_DEV_ENABLED) return;
+    worldDevStore.reset();
+    return () => worldDevStore.reset();
+  }, [worldDevOwner]);
   const worldRefresh = world.refresh;
   useEffect(() => { if (screen === "home" && me) void worldRefresh(); }, [game.progress?.lifetimeTaps, me, screen, worldRefresh]);
 
@@ -1564,7 +1574,7 @@ export function CheckInApp() {
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
               gameStatus={game.status} gameNotice={gameNotice} gamePending={game.pendingTaps} gameArchived={game.archivedTaps} gameRequestId={game.requestId} onRetryGame={() => void game.refresh()}>
-              <button type="button" className={`${glass.button} ${styles.mapEntry}`}
+              <button ref={worldEntryButton} type="button" className={`${glass.button} ${styles.mapEntry}`}
                 aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
                 onPointerDown={event => event.stopPropagation()} onClick={event => {
                   setWorldMounted(true); worldPortal.enter(event.currentTarget, buttonOrbit.current); void world.refresh();
@@ -1637,6 +1647,11 @@ export function CheckInApp() {
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
+      {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world}
+        active={activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}
+        onOpenWorld={() => worldEntryButton.current?.click()}
+        onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}
+        onOpenGame={() => setGameOpen(true)} />}
       {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
         origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}

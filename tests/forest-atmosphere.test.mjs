@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { FOREST_ATMOSPHERE_LIMITS, forestAtmosphereState, forestAtmosphereFrame, drawForestAtmosphere }
+const { FOREST_ATMOSPHERE_LIMITS, FOREST_BIRD_FLIGHT_DURATION, forestAtmosphereState, forestAtmosphereFrame, drawForestAtmosphere }
   = await vite.ssrLoadModule("/features/world/forest-atmosphere.ts");
 
 const scene = { schemaVersion: 1, id: "test-forest", width: 960, height: 720,
@@ -144,7 +144,118 @@ test("day and night swap insect populations and birds visit briefly in small flo
   }
   assert.deepEqual([...counts].sort(), [0, 1, 2]);
   assert.ok(birdSeconds < 1200 / 4, "birds are occasional visitors rather than a constant flock");
-  assert.equal(forestAtmosphereFrame(scene, { ...options, timestamp: rainTimestamp }).raindrops.length, FOREST_ATMOSPHERE_LIMITS.raindrops);
+  assert.equal(forestAtmosphereFrame(scene, { ...options, timestamp: rainTimestamp }).raindrops.length, 36,
+    "the automatic drizzle retains its original particle budget");
+});
+
+test("weather presets override the clock while auto restores the original weather schedule", () => {
+  for (const weather of ["clear", "cloudy", "drizzle", "rain", "downpour"]) {
+    const first = forestAtmosphereState(scene, { ...options, weather, timestamp: clearTimestamp });
+    const later = forestAtmosphereState(scene, { ...options, weather, timestamp: rainTimestamp });
+    assert.equal(first.weather, weather);
+    assert.deepEqual(first, later, "a manual preset does not change with the automatic clock");
+    assert.ok(first.rain >= 0 && first.rain <= 1);
+    assert.ok(first.cloudiness >= 0 && first.cloudiness <= 1);
+    if (weather === "clear" || weather === "cloudy") {
+      assert.equal(first.rain, 0);
+      assert.deepEqual(forestAtmosphereFrame(scene, { ...options, weather }).raindrops, []);
+    }
+  }
+  assert.deepEqual(forestAtmosphereState(scene, { ...options, weather: "auto" }), forestAtmosphereState(scene, options));
+  assert.equal(forestAtmosphereState(scene, { ...options, dusk: 0, weather: "downpour" }).dusk, 0);
+  assert.equal(forestAtmosphereState(scene, { ...options, dusk: true, weather: "clear" }).dusk, 1);
+});
+
+test("drizzle, rain and downpour differ visibly in density, stroke length and opacity within a mobile budget", () => {
+  let previous;
+  const average = (particles, key) => particles.reduce((sum, particle) => sum + particle[key], 0) / particles.length;
+  for (const weather of ["drizzle", "rain", "downpour"]) {
+    const input = { ...options, weather, butterflies: "off", fireflies: "off", birds: "off" };
+    const frame = forestAtmosphereFrame(scene, input);
+    assert.ok(frame.raindrops.length > 0 && frame.raindrops.length <= FOREST_ATMOSPHERE_LIMITS.raindrops);
+    assert.ok(FOREST_ATMOSPHERE_LIMITS.raindrops <= 180);
+    assert.ok(frame.raindrops.some(drop => inside(drop, scene.focus) && drop.opacity > .2), "rain is visible in the clearing");
+    assert.notDeepEqual(frame.raindrops, forestAtmosphereFrame(scene, { ...input, elapsed: options.elapsed + 1 }).raindrops);
+    for (const drop of frame.raindrops) {
+      assert.ok(inside(drop, { x: 0, y: 0, width: scene.width, height: scene.height }));
+      assert.ok(drop.opacity >= 0 && drop.opacity <= 1 && drop.length > 0);
+    }
+    if (previous) {
+      assert.ok(frame.raindrops.length > previous.raindrops.length);
+      assert.ok(average(frame.raindrops, "length") > average(previous.raindrops, "length") * 1.3);
+      assert.ok(average(frame.raindrops, "opacity") > average(previous.raindrops, "opacity") * 1.1);
+    }
+    const circle = drawing(320, 320), map = drawing(1440, 900);
+    drawForestAtmosphere(circle.ctx, scene, input);
+    drawForestAtmosphere(map.ctx, scene, input);
+    assert.deepEqual(circle.calls, map.calls, "rain intensity and coordinates agree in both cameras");
+    assert.equal(circle.calls.filter(call => call[0] === "stroke").length, frame.raindrops.length);
+    const line = circle.calls.find(call => call[0] === "lineTo");
+    assert.equal(line[2], frame.raindrops[0].y + frame.raindrops[0].length, "the painter uses the preset stroke length");
+    previous = frame;
+  }
+});
+
+test("wildlife overrides are independent of daylight and rain, and explicit off always wins", () => {
+  for (const dusk of [0, 1]) {
+    for (const enabled of ["on", true]) {
+      const frame = forestAtmosphereFrame(scene, { ...options, dusk, weather: "downpour", elapsed: 0,
+        butterflies: enabled, fireflies: enabled, birds: enabled });
+      for (const group of ["butterflies", "fireflies", "birds"]) {
+        assert.equal(frame[group].length, FOREST_ATMOSPHERE_LIMITS[group]);
+        assert.ok(frame[group].every(particle => particle.opacity > .2), `${group} are visible when forced on`);
+        assert.ok(frame[group].some(particle => inside(particle, scene.focus)));
+      }
+    }
+    for (const disabled of ["off", false]) {
+      const frame = forestAtmosphereFrame(scene, { ...options, dusk, weather: "clear", birdElapsed: 0,
+        butterflies: disabled, fireflies: disabled, birds: disabled });
+      for (const group of ["butterflies", "fireflies", "birds"]) assert.deepEqual(frame[group], []);
+    }
+  }
+  const automatic = forestAtmosphereFrame(scene, options);
+  assert.deepEqual(forestAtmosphereFrame(scene, { ...options, weather: "auto", butterflies: "auto", fireflies: "auto", birds: "auto" }), automatic);
+  for (const [group, dusk] of [["butterflies", 0], ["fireflies", 1]]) {
+    const natural = forestAtmosphereFrame(scene, { ...options, dusk, weather: "clear" });
+    const forced = forestAtmosphereFrame(scene, { ...options, dusk, weather: "clear", [group]: "on" });
+    assert.deepEqual(forced[group], natural[group], "manual visibility previews the same wildlife appearance as automatic mode");
+  }
+});
+
+test("triggered birds appear promptly near focus, replay deterministically and stop after one flight", () => {
+  const input = { ...options, dusk: true, weather: "downpour", birdElapsed: 0 };
+  const first = forestAtmosphereFrame(scene, input);
+  assert.equal(first.birds.length, FOREST_ATMOSPHERE_LIMITS.birds);
+  assert.ok(first.birds.every(bird => bird.opacity > .5 && inside(bird, scene.focus)));
+  const middle = forestAtmosphereFrame(scene, { ...input, birdElapsed: FOREST_BIRD_FLIGHT_DURATION / 2 });
+  assert.notDeepEqual(middle.birds, first.birds);
+  assert.deepEqual(forestAtmosphereFrame(scene, { ...input, elapsed: options.elapsed + 400, timestamp: clearTimestamp }).birds, first.birds,
+    "a repeat click replays the same flock without depending on the scene clock");
+  for (const birdElapsed of [-1, FOREST_BIRD_FLIGHT_DURATION, FOREST_BIRD_FLIGHT_DURATION + 100, Number.NaN, Infinity]) {
+    assert.deepEqual(forestAtmosphereFrame(scene, { ...input, birdElapsed }).birds, [], "the trigger does not silently resume automatic visits");
+  }
+  const moved = { ...scene, focus: { ...scene.focus, x: scene.focus.x + 300, y: scene.focus.y - 150 } };
+  const movedBirds = forestAtmosphereFrame(moved, input).birds;
+  first.birds.forEach((bird, index) => {
+    assert.equal(movedBirds[index].x - bird.x, 300);
+    assert.equal(movedBirds[index].y - bird.y, -150);
+  });
+});
+
+test("manual downpour and wildlife respect reduced motion while preserving the selected atmosphere", () => {
+  const input = { ...options, weather: "downpour", butterflies: "on", fireflies: "on", birds: "on", birdElapsed: 0, reducedMotion: true };
+  const first = forestAtmosphereFrame(scene, input);
+  const later = forestAtmosphereFrame(scene, { ...input, elapsed: 800, timestamp: rainTimestamp, birdElapsed: 9 });
+  assert.deepEqual(later, first);
+  assert.equal(first.weather, "downpour");
+  assert.equal(first.rain, 1);
+  assert.deepEqual(first.birds, []);
+  assert.deepEqual(first.raindrops, []);
+  assert.equal(first.butterflies.length, FOREST_ATMOSPHERE_LIMITS.butterflies);
+  assert.equal(first.fireflies.length, FOREST_ATMOSPHERE_LIMITS.fireflies);
+  const rendered = drawing();
+  drawForestAtmosphere(rendered.ctx, scene, input);
+  assert.equal(rendered.calls.some(call => call[0] === "stroke"), false);
 });
 
 test("reduced motion freezes both clocks and omits all bird and rain strokes", () => {

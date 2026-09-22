@@ -3,9 +3,25 @@ import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 const TAU = Math.PI * 2;
 const WEATHER_PERIOD = 24 * 60;
 const BIRD_PERIOD = 112;
-const BIRD_DURATION = 18;
+export const FOREST_BIRD_FLIGHT_DURATION = 18;
 
-export const FOREST_ATMOSPHERE_LIMITS = { butterflies: 6, fireflies: 12, birds: 2, raindrops: 36 } as const;
+export const FOREST_ATMOSPHERE_LIMITS = { butterflies: 6, fireflies: 12, birds: 2, raindrops: 180 } as const;
+export type ForestWeatherMode = "auto" | "clear" | "cloudy" | "drizzle" | "rain" | "downpour";
+export type ForestWildlifeMode = "auto" | "on" | "off";
+
+const WEATHER_PRESETS = {
+  clear: { rain: 0, cloudiness: 0 },
+  cloudy: { rain: 0, cloudiness: .8 },
+  drizzle: { rain: .35, cloudiness: .65 },
+  rain: { rain: .68, cloudiness: .85 },
+  downpour: { rain: 1, cloudiness: 1 },
+} as const;
+
+const RAIN_PROFILES = {
+  drizzle: { count: 54, length: 4.5, speed: 80, opacity: .38 },
+  rain: { count: 108, length: 8, speed: 120, opacity: .52 },
+  downpour: { count: 180, length: 12, speed: 175, opacity: .66 },
+} as const;
 
 export type ForestAtmosphereOptions = {
   /** Shared scene clock, in seconds; the renderer owns advancing and pausing it. */
@@ -14,6 +30,12 @@ export type ForestAtmosphereOptions = {
   timestamp: number;
   dusk: boolean | number;
   reducedMotion: boolean;
+  weather?: ForestWeatherMode;
+  butterflies?: ForestWildlifeMode | boolean;
+  fireflies?: ForestWildlifeMode | boolean;
+  birds?: ForestWildlifeMode | boolean;
+  /** Seconds since a manual flight trigger; overrides the schedule until removed. */
+  birdElapsed?: number;
 };
 
 export type ForestAtmosphereState = {
@@ -21,22 +43,26 @@ export type ForestAtmosphereState = {
   dusk: number;
   rain: number;
   cloudiness: number;
-  weather: "clear" | "cloudy" | "drizzle";
+  weather: Exclude<ForestWeatherMode, "auto">;
 };
 
 type AirParticle = WorldPoint & { size: number; opacity: number; phase: number };
 type Bird = AirParticle & { angle: number };
+type Raindrop = AirParticle & { length: number };
 export type ForestAtmosphereFrame = ForestAtmosphereState & {
   butterflies: AirParticle[];
   fireflies: AirParticle[];
   birds: Bird[];
-  raindrops: AirParticle[];
+  raindrops: Raindrop[];
 };
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const finite = (value: number) => Number.isFinite(value) ? value : 0;
 const modulo = (value: number, period: number) => ((value % period) + period) % period;
 const smooth = (value: number) => { const t = clamp(value); return t * t * (3 - 2 * t); };
+const forcedOn = (mode: ForestWildlifeMode | boolean | undefined) => mode === "on" || mode === true;
+const wildlifeVisibility = (mode: ForestWildlifeMode | boolean | undefined, automatic: number) =>
+  mode === "off" || mode === false ? 0 : forcedOn(mode) ? 1 : clamp(automatic);
 
 function sceneSeed(id: string) {
   let seed = 2166136261;
@@ -58,11 +84,12 @@ export function forestAtmosphereState(scene: FixedWorldScene, options: ForestAtm
   const phase = modulo(timestamp + noise(sceneSeed(scene.id), 0) * WEATHER_PERIOD, WEATHER_PERIOD);
   const cloudiness = smooth((phase - 420) / 150) * (1 - smooth((phase - 990) / 180));
   const rain = .42 * smooth((phase - 630) / 100) * (1 - smooth((phase - 870) / 120));
+  const weather = options.weather && options.weather !== "auto" ? options.weather : undefined;
   return {
     elapsed: options.reducedMotion ? 0 : Math.max(0, finite(options.elapsed)),
     dusk: typeof options.dusk === "boolean" ? Number(options.dusk) : clamp(finite(options.dusk)),
-    rain, cloudiness,
-    weather: rain > .04 ? "drizzle" : cloudiness > .12 ? "cloudy" : "clear",
+    ...(weather ? WEATHER_PRESETS[weather] : { rain, cloudiness }),
+    weather: weather ?? (rain > .04 ? "drizzle" : cloudiness > .12 ? "cloudy" : "clear"),
   };
 }
 
@@ -90,49 +117,77 @@ export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtm
   const state = forestAtmosphereState(scene, options), { world, focus, scale } = geometry(scene);
   const seed = sceneSeed(scene.id), seconds = state.elapsed;
   const frame: ForestAtmosphereFrame = { ...state, butterflies: [], fireflies: [], birds: [], raindrops: [] };
-  const daylight = (1 - state.dusk) * (1 - state.rain * 1.8);
+  const daylight = clamp((1 - state.dusk) * (1 - state.rain * 1.8));
+  const butterflies = wildlifeVisibility(options.butterflies, daylight);
+  const fireflies = wildlifeVisibility(options.fireflies, state.dusk * (1 - state.rain));
 
-  if (daylight > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.butterflies; i++) {
+  if (butterflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.butterflies; i++) {
     const particle = insect(i < 3 ? focus : world, seed, i + 1, seconds, scale);
-    particle.opacity = .7 * daylight;
+    particle.size *= 1.35;
+    particle.opacity = .85 * butterflies;
     frame.butterflies.push(particle);
   }
-  if (state.dusk > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.fireflies; i++) {
+  if (fireflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.fireflies; i++) {
     const particle = insect(i < 5 ? focus : world, seed, i + 20, seconds * .62, scale);
     const pulse = .5 + Math.sin(seconds * .65 + particle.phase) * .5;
-    particle.opacity = state.dusk * (1 - state.rain) * (.25 + pulse * pulse * .5);
+    particle.size *= 1.5;
+    particle.opacity = fireflies * (.4 + pulse * pulse * .5);
     frame.fireflies.push(particle);
   }
 
-  if (!options.reducedMotion && daylight > .05) {
+  const manualBirds = options.birdElapsed !== undefined || forcedOn(options.birds);
+  const birdVisibility = wildlifeVisibility(options.birds, manualBirds ? 1 : daylight);
+  if (!options.reducedMotion && birdVisibility > .05 && manualBirds) {
+    const flight = options.birdElapsed ?? modulo(seconds, FOREST_BIRD_FLIGHT_DURATION + 3);
+    if (Number.isFinite(flight) && flight >= 0 && flight < FOREST_BIRD_FLIGHT_DURATION) {
+      const direction = noise(seed, 211) > .5 ? 1 : -1;
+      const progress = flight / FOREST_BIRD_FLIGHT_DURATION;
+      // A triggered flock starts inside the authored focus, immediately visible in both cameras.
+      for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.birds; i++) {
+        const across = direction === 1 ? progress : 1 - progress;
+        const x = focus.x + focus.width * (.14 + across * .72) - direction * i * scale * 9;
+        const y = focus.y + focus.height * (.32 + Math.sin(progress * Math.PI) * .13) + i * scale * 7;
+        frame.birds.push({ x: clamp(x, 0, world.width), y: clamp(y, 0, world.height), size: scale * 1.4,
+          angle: Math.atan2(focus.height * .13 * Math.cos(progress * Math.PI) * Math.PI, direction * focus.width * .72),
+          opacity: smooth((1 - progress) / .2) * birdVisibility * .85,
+          phase: flight * 7 + i * 1.7,
+        });
+      }
+    }
+  } else if (!options.reducedMotion && birdVisibility > .05) {
     const clock = seconds + noise(seed, 210) * BIRD_PERIOD;
     const phase = modulo(clock, BIRD_PERIOD), cycle = Math.floor(clock / BIRD_PERIOD);
     const direction = noise(seed, cycle + 211) > .5 ? 1 : -1;
     const count = noise(seed, cycle + 310) > .65 ? 2 : 1;
     for (let i = 0; i < count; i++) {
-      const progress = (phase - i * .65) / BIRD_DURATION;
+      const progress = (phase - i * .65) / FOREST_BIRD_FLIGHT_DURATION;
       if (progress < 0 || progress > 1) continue;
       const across = direction === 1 ? progress : 1 - progress;
       const rise = Math.sin(progress * Math.PI), bend = Math.cos(progress * Math.PI) * Math.PI;
       const y = focus.y + focus.height * (.26 + noise(seed, cycle + 410) * .25 + rise * .13) + i * scale * 7;
-      frame.birds.push({ x: world.width * across, y: clamp(y, 0, world.height), size: scale,
+      frame.birds.push({ x: world.width * across, y: clamp(y, 0, world.height), size: scale * 1.4,
         angle: Math.atan2(focus.height * .13 * bend, direction * world.width),
-        opacity: smooth(progress / .12) * smooth((1 - progress) / .12) * daylight * .55,
+        opacity: smooth(progress / .12) * smooth((1 - progress) / .12) * birdVisibility * .85,
         phase: seconds * 7 + i * 1.7,
       });
     }
   }
 
-  if (!options.reducedMotion && state.rain > .001) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.raindrops; i++) {
-    const field = i < 12 ? focus : world;
-    const phase = modulo(noise(seed, i + 510) + seconds * scale * 75 / field.height, 1);
+  const profile = RAIN_PROFILES[state.weather === "rain" || state.weather === "downpour" ? state.weather : "drizzle"];
+  const automaticWeather = !options.weather || options.weather === "auto";
+  const dropCount = automaticWeather ? 36 : profile.count;
+  const rainVisibility = automaticWeather ? clamp(state.rain / .42) : 1;
+  if (!options.reducedMotion && state.rain > .001) for (let i = 0; i < Math.min(dropCount, FOREST_ATMOSPHERE_LIMITS.raindrops); i++) {
+    const field = i < dropCount / 3 ? focus : world;
+    const phase = modulo(noise(seed, i + 510) + seconds * scale * profile.speed / field.height, 1);
     const fade = smooth(phase / .1) * smooth((1 - phase) / .1);
     frame.raindrops.push({
       x: field.x + field.width * (.05 + noise(seed, i + 610) * .9)
         - Math.sin(phase * Math.PI) * Math.min(scale * 3, field.width * .035),
       y: field.y + field.height * phase,
       size: scale * (.75 + noise(seed, i + 710) * .5),
-      opacity: state.rain * fade * .38, phase,
+      length: scale * profile.length * (.85 + noise(seed, i + 710) * .3),
+      opacity: rainVisibility * fade * profile.opacity, phase,
     });
   }
   return frame;
@@ -173,10 +228,10 @@ export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: Fixed
     ctx.fillStyle = "#34453c"; ctx.fillRect(-s * 1.8, -s * .55, s * 3.8, s * 1.1);
     ctx.restore();
   }
-  ctx.strokeStyle = "#bed0cb"; ctx.lineWidth = .65;
+  ctx.strokeStyle = "#d0e4e8"; ctx.lineWidth = frame.weather === "downpour" ? .9 : .7;
   for (const drop of frame.raindrops) {
     ctx.globalAlpha = drop.opacity;
-    ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x - drop.size, drop.y + drop.size * 4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x - drop.length * .16, drop.y + drop.length); ctx.stroke();
   }
   ctx.restore();
 }

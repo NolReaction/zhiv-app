@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, X, Feather, Gem, Hammer, House, Leaf, LockKeyhole, Shirt, Sparkles, Sprout, Wind, Mountain, Fish, Shell, FishingHook } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
@@ -18,6 +19,8 @@ import { WorldBalances } from "./world-balances";
 import { WORLD_PRESENTATION } from "./presentation";
 
 type Panel = "journeys" | "build" | "customize" | "wardrobe" | "collection" | "stats" | "cave" | "fishing";
+const WorldDevPanel = process.env.NODE_ENV === "development"
+  ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
 const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind, shell: Shell, float: FishingHook };
 export default function WorldView({ world, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items }: WorldPortalProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -64,6 +67,8 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
   return <section className={styles.world} aria-label="Лес Мохлика">
     <WorldScene state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={world.now} timeZone={timeZone}
       onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} />
+    {WorldDevPanel && <WorldDevPanel world={world} worldView active={panel === null}
+      onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header className={styles.hud}>
       <div className={styles.playerBar}>
         <button id="world-exit" onClick={onClose} aria-label="Вернуться к отметке Я живой"><ArrowLeft size={22} /></button>
