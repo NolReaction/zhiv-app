@@ -6,7 +6,7 @@
   "terrain": [
     {
       "id": "forest-ground",
-      "image": "/world/prototype/forest-ground.webp?v=b0e1abae408e",
+      "image": "/world/prototype/forest-ground.webp?v=fedcfbd622df",
       "bounds": {
         "x": 0,
         "y": 0,
