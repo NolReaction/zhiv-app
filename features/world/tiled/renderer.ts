@@ -1,4 +1,4 @@
-import { pixelSprite } from "@/features/mochlik/pixel-sprite";
+import { drawGroundedHero, drawSiteGrounding } from "../grounding";
 import { previewSiteAt, previewSiteVisual } from "./preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
@@ -45,16 +45,16 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
   for (const site of scene.sites) {
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
-    if (image) ctx.drawImage(image, site.bounds.x, site.bounds.y, site.bounds.width, site.bounds.height);
+    if (image) {
+      drawSiteGrounding(ctx, site, image);
+      ctx.drawImage(image, site.bounds.x, site.bounds.y, site.bounds.width, site.bounds.height);
+    }
   }
   const actor = frame.actor;
   if (actor) {
     const size = scene.actor?.size ?? 30;
-    ctx.fillStyle = "rgba(18,38,26,.24)";
-    ctx.beginPath(); ctx.ellipse(actor.x, actor.y - 2, size * .29, 3, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(pixelSprite(actor.walking ? "walk" : "idle", actor.direction, actor.frame,
-      { palette: "moss", head: null, neck: null }), actor.x - size / 2, actor.y - size, size, size);
+    drawGroundedHero(ctx, { x: actor.x, y: actor.y, size, pose: actor.walking ? "walk" : "idle",
+      direction: actor.direction, frame: actor.frame, appearance: { palette: "moss", head: null, neck: null } });
   }
   if (frame.options.night) {
     ctx.fillStyle = "rgba(8,17,37,.56)"; ctx.fillRect(0, 0, scene.width, scene.height);

@@ -1,45 +1,52 @@
 import { loadHabitatImage } from "@/features/mochlik/assets";
-import { pixelSprite } from "@/features/mochlik/pixel-sprite";
+import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/mochlik/scene";
 import { NEW_MAP_FOCUS, NEW_MAP_PET_SIZE as PET_SIZE, NEW_MAP_SPAWN, TILED_WORLD } from "./presentation";
 import { paintFixedWorld } from "./tiled/renderer";
 import { initialPreviewLevels, previewSiteVisual } from "./tiled/preview-state";
+import { drawGroundedHero } from "./grounding";
+import { drawForestAtmosphere, forestAtmosphereState } from "./forest-atmosphere";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
 const visuals = Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, levels)]));
 const imageUrls = [...new Set([...TILED_WORLD.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image)])];
 
+function actorFrame(elapsed: number, reacting: boolean, reducedMotion: boolean) {
+  const cycle = elapsed % 48;
+  const pose: PixelPose = reacting ? "greet" : reducedMotion ? "idle"
+    : cycle >= 19 && cycle < 21 ? "sniff" : cycle >= 37 && cycle < 39 ? "groom"
+      : elapsed % 6 > 5.8 ? "blink" : "idle";
+  return { pose, frame: reducedMotion ? 0 : Math.floor(elapsed * (reacting ? 7 : 3)) % 4 };
+}
+
 /** Both views paint this scene in logical map coordinates, independently of source resolution. */
 export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyMap<string, HTMLImageElement>,
-  options: SceneOptions, elapsed: number, reacting: boolean) {
+  options: SceneOptions, elapsed: number, reacting: boolean, timestamp = options.serverNow ?? 0, dusk = Number(options.dusk)) {
   context.save();
   context.beginPath(); context.rect(0, 0, TILED_WORLD.width, TILED_WORLD.height); context.clip();
   paintFixedWorld(context, TILED_WORLD, { images, visuals, actor: null,
     options: { levels, night: false, debug: false, selectedSiteId: null, reducedMotion: options.reducedMotion } });
-  const { x, y } = NEW_MAP_SPAWN;
-  context.fillStyle = "rgba(18,38,26,.24)";
-  context.beginPath(); context.ellipse(x, y - 2, PET_SIZE * .29, 3, 0, 0, Math.PI * 2); context.fill();
-  const blink = !options.reducedMotion && elapsed % 6 > 5.8;
-  const pose = reacting ? "greet" : blink ? "blink" : "idle";
-  const frame = options.reducedMotion ? 0 : Math.floor(elapsed * (reacting ? 7 : 2)) % 4;
-  context.imageSmoothingEnabled = false;
-  context.drawImage(pixelSprite(pose, "front", frame, options.worldState?.equipment), x - PET_SIZE / 2, y - PET_SIZE, PET_SIZE, PET_SIZE);
+  drawGroundedHero(context, { ...NEW_MAP_SPAWN, size: PET_SIZE, direction: "front",
+    ...actorFrame(elapsed, reacting, options.reducedMotion), appearance: options.worldState?.equipment });
+  drawForestAtmosphere(context, TILED_WORLD, { elapsed: timestamp / 1000, timestamp, dusk, reducedMotion: options.reducedMotion });
   context.restore();
 }
 
-/** Temporary stationary presentation; legacy home movement and effects are left dormant. */
+/** Shared Tiled scene; ambient motion is independent of routes and building levels. */
 export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOptions, callbacks: SceneCallbacks): HabitatScene {
   const context = canvas.getContext("2d", { alpha: true });
   if (!context) throw new Error("2D canvas unavailable");
   const ctx = context;
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   let frame = 0, previous = 0, elapsed = 0, reaction = 0;
+  let configuredTimestamp = Number.isFinite(initial.serverNow) ? initial.serverNow! : null;
+  let timestamp = configuredTimestamp ?? Date.now(), pendingTimestamp: number | null = null, dusk = Number(initial.dusk);
   let reactionTimer: ReturnType<typeof setTimeout> | null = null;
   let lastActivity: "idle" | "greet" | null = null;
 
   function paintWorld(target: CanvasRenderingContext2D) {
-    if (!disposed && art) paintNewMap(target, art, options, elapsed, reaction > 0);
+    if (!disposed && art) paintNewMap(target, art, options, elapsed, reaction > 0, timestamp, dusk);
   }
   function draw() {
     if (disposed || !art) return;
@@ -63,17 +70,23 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (!previous) previous = now;
     if (now - previous >= 1000 / 30) {
       const step = Math.min((now - previous) / 1000, .05);
-      elapsed += step; reaction = Math.max(0, reaction - step); previous = now; draw();
+      elapsed += step; timestamp += step * 1000;
+      dusk += (Number(options.dusk) - dusk) * Math.min(1, step * .7);
+      reaction = Math.max(0, reaction - step); previous = now; draw();
     }
     frame = requestAnimationFrame(tick);
   }
   function resume() {
     if (!active()) return;
+    applyPendingTime();
     if (options.reducedMotion) {
       if (reaction > 0 && reactionTimer === null) {
         reactionTimer = setTimeout(() => { reactionTimer = null; reaction = 0; if (active()) draw(); }, reaction * 1000);
       }
     } else if (!frame) { previous = 0; frame = requestAnimationFrame(tick); }
+  }
+  function applyPendingTime() {
+    if (pendingTimestamp !== null) { timestamp = pendingTimestamp; pendingTimestamp = null; }
   }
   function resize() {
     const next = options.view === "world" ? 1 : Math.min(1024, Math.max(256,
@@ -98,6 +111,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     configure(next) {
       if (disposed) return;
       options = { ...next }; cancelAnimationFrame(frame); frame = 0; previous = 0; cancelReactionTimer();
+      if (options.reducedMotion) dusk = Number(options.dusk);
+      // Visibility reuses old options; keep any newer setTime sample until resume.
+      if (Number.isFinite(next.serverNow) && next.serverNow !== configuredTimestamp) {
+        configuredTimestamp = next.serverNow!; pendingTimestamp = configuredTimestamp;
+      }
+      if (active()) applyPendingTime();
       resize(); if (active()) draw(); resume();
     },
     notice() {
@@ -109,8 +128,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       return !disposed && Math.abs(point.x - NEW_MAP_SPAWN.x) < PET_SIZE / 2
         && point.y > NEW_MAP_SPAWN.y - PET_SIZE && point.y < NEW_MAP_SPAWN.y;
     },
-    setTime() {}, invite() {}, moveTo() {},
-    ambience: () => ({ elapsed, ecologyTime: 0, rain: 0, dusk: 0 }),
+    setTime(now) {
+      if (disposed || !Number.isFinite(now)) return;
+      pendingTimestamp = now; if (active()) applyPendingTime();
+    },
+    invite() {}, moveTo() {},
+    ambience: () => {
+      const state = forestAtmosphereState(TILED_WORLD, { elapsed: timestamp / 1000, timestamp, dusk, reducedMotion: options.reducedMotion });
+      return { elapsed, ecologyTime: options.reducedMotion ? 0 : timestamp / 1000, rain: state.rain, dusk: state.dusk };
+    },
     paintJourney() {}, paintVisitors() {}, paintLighting() {}, paintWeather() {},
     paintWorld, dispose,
   };
