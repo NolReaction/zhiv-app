@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, X, Feather, Gem, Hammer, House, Leaf, LockKeyhole, Shirt, Sparkles, Sprout, Wind, Mountain, Fish, Shell, FishingHook } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, X, Feather, Gem, Hammer, House, Info, Leaf, LockKeyhole, Shirt, Sparkles, Sprout, Wind, Mountain, Fish, Shell, FishingHook } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -17,8 +17,9 @@ import { Materials, WorldJourneys } from "./world-journeys";
 import { WorldFeedback } from "./world-feedback";
 import { WorldBalances } from "./world-balances";
 import { WORLD_PRESENTATION } from "./presentation";
+import { WorldHelp } from "./world-help";
 
-type Panel = "journeys" | "build" | "customize" | "wardrobe" | "collection" | "stats" | "cave" | "fishing";
+type Panel = "journeys" | "build" | "customize" | "wardrobe" | "collection" | "stats" | "cave" | "fishing" | "help";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
 const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind, shell: Shell, float: FishingHook };
@@ -76,6 +77,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
           <GameLevelIcon level={level} size={23} /><span><strong>{displayName}</strong><small>Уровень {level}</small></span>
         </button>
         <button className={styles.checkIn} onClick={() => openPanel("collection")} aria-label="Открыть коллекции"><BookOpen size={21} /><span>Коллекции</span></button>
+        <button className={styles.helpButton} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={22} aria-hidden="true" /></button>
       </div>
       <WorldBalances key={ownerPublicId} value={state.resources} />
     </header>
@@ -94,11 +96,12 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.sheet}
         onCloseAutoFocus={event => { event.preventDefault(); if (panelReturn.current?.isConnected) panelReturn.current.focus(); else document.getElementById("world-exit")?.focus(); }}>
         <div className={styles.sheetHeader}>
-          <DialogTitle>{panel === "cave" ? "Пещера" : panel === "fishing" ? "Рыбалка" : panel === "build" || panel === "customize" ? "Постройки" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : panel === "stats" ? "Мой Мохлик" : "Путешествия"}</DialogTitle>
+          <DialogTitle>{panel === "help" ? "Справка по игре" : panel === "cave" ? "Пещера" : panel === "fishing" ? "Рыбалка" : panel === "build" || panel === "customize" ? "Постройки" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : panel === "stats" ? "Мой Мохлик" : "Путешествия"}</DialogTitle>
           <button onClick={() => setPanel(null)} aria-label="Закрыть панель"><X size={21} /></button>
         </div>
-        <DialogDescription className={styles.sr}>Управление домом и путешествиями Мохлика</DialogDescription>
+        <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите тему через поиск или раскройте нужный раздел." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
         <div className={styles.sheetBody}>
+          {panel === "help" && <WorldHelp />}
           {(panel === "build" || panel === "customize") && <nav className={styles.buildTabs} aria-label="Обустройство дома">
             <button aria-pressed={panel === "build"} onClick={() => openPanel("build")}><Hammer size={17} />Улучшения</button>
             {WORLD_PRESENTATION.streakDecor && <button aria-pressed={panel === "customize"} onClick={() => openPanel("customize")}><Sprout size={17} />Кастомизация</button>}
