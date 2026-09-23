@@ -58,7 +58,7 @@ npm run build:vps
 | Sites, Vite/Vinext/Workers | `dev` / `build` | Совместимый отдельный контур |
 | VPS: Caddy → Next.js + Ktor | `deploy/compose.yml` | PostgreSQL 18, авторизация, админка |
 
-В production DEV-панели и стенд карты отключены, локальный API-имитатор закрыт. Административные операции доступны только через Ktor после проверки сессии и `ADMIN_PUBLIC_IDS`. Рабочая ветка `feature/mochlik-tiled-world` сохранена для продолжения локальной разработки.
+В production DEV-панели и стенд карты отключены, локальный API-имитатор закрыт. Административные операции доступны только через Ktor после проверки сессии и `ADMIN_PUBLIC_IDS`. Локальная разработка следующей версии идёт в `work/0.6.6`, созданной от `master` после релиза 0.6.5 и исправления деплоя. `feature/mochlik-tiled-world` сохранена как история предыдущего этапа. Для DEV-панели запускайте `npm run dev:local`.
 
 Схема основной БД — [миграции Ktor](apps/api/src/main/resources/db/migration/), а не `db/schema.ts`. Поддержка Sites остаётся частью проекта.
 
