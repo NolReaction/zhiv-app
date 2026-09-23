@@ -176,7 +176,7 @@ test("weather presets override the clock while auto restores the original weathe
   assert.equal(forestAtmosphereState(scene, { ...options, dusk: true, weather: "clear" }).dusk, 1);
 });
 
-test("drizzle, rain and downpour differ visibly in density, stroke length and opacity within a mobile budget", () => {
+test("rain intensities increase density while keeping droplets short and translucent within a mobile budget", () => {
   let previous;
   const average = (particles, key) => particles.reduce((sum, particle) => sum + particle[key], 0) / particles.length;
   for (const weather of ["drizzle", "rain", "downpour"]) {
@@ -192,16 +192,15 @@ test("drizzle, rain and downpour differ visibly in density, stroke length and op
     }
     if (previous) {
       assert.ok(frame.raindrops.length > previous.raindrops.length);
-      assert.ok(average(frame.raindrops, "length") > average(previous.raindrops, "length") * 1.3);
-      assert.ok(average(frame.raindrops, "opacity") > average(previous.raindrops, "opacity") * 1.1);
+      assert.ok(average(frame.raindrops, "length") >= average(previous.raindrops, "length"));
     }
     const circle = drawing(320, 320), map = drawing(1440, 900);
     drawForestAtmosphere(circle.ctx, scene, input);
     drawForestAtmosphere(map.ctx, scene, input);
     assert.deepEqual(circle.calls, map.calls, "rain intensity and coordinates agree in both cameras");
-    assert.equal(circle.calls.filter(call => call[0] === "stroke").length, frame.raindrops.length);
-    const line = circle.calls.find(call => call[0] === "lineTo");
-    assert.equal(line[2], frame.raindrops[0].y + frame.raindrops[0].length, "the painter uses the preset stroke length");
+    assert.equal(circle.calls.filter(call => call[0] === "fill").length, frame.raindrops.filter(drop => drop.opacity >= .008).length);
+    assert.ok(average(frame.raindrops, "length") < 7, "short droplets replace oversized rain bars");
+    assert.ok(average(frame.raindrops, "opacity") < .4, "rain does not wash out the artwork");
     previous = frame;
   }
 });
@@ -400,7 +399,7 @@ test("drawing clips to scene bounds and restores the caller's canvas state inclu
   assert.deepEqual(drawingState.calls.slice(0, 4), [["save"], ["beginPath"], ["rect", 0, 0, scene.width, scene.height], ["clip"]]);
   assert.ok(drawingState.calls.some(call => call[0] === "translate"));
   assert.ok(drawingState.calls.some(call => call[0] === "ellipse"));
-  assert.ok(drawingState.calls.some(call => call[0] === "stroke"));
+  assert.ok(drawingState.calls.some(call => call[0] === "fill"));
   assert.equal(drawingState.stack.length, 0);
   assert.deepEqual(drawingState.snapshot(), drawingState.initial, "the next scene pass keeps its alpha, styles, clipping and transform");
 });

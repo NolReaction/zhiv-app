@@ -135,7 +135,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
   function play(action: ManualAction) {
     if (unavailable(action)) return;
     if (action.kind === "birds") {
-      worldDevStore.triggerBirds(); setFeedback("Пролёт птиц запущен");
+      worldDevStore.triggerBirds(); setFeedback("Птицы: пролёт, посадка на дерево и взлёт");
     } else if (action.kind === "life") {
       worldDevStore.triggerLife(action.action);
       setFeedback(action.action === "idle" ? "Сценка отменена. Автоматические сценки выключены."
@@ -181,8 +181,9 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           </div>
           <Select label="Птицы" value={state.birds} values={MODES} onChange={birds => change({ birds })} />
           <Toggle label="Лужи после дождя" checked={state.puddles} onChange={puddles => change({ puddles })} />
-          <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Запустить пролёт птиц</button>
+          <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Пролёт и посадка птиц</button>
           {birdsUnavailable && <p className={styles.hint}>{birdsUnavailable}</p>}
+          <p className={styles.hint}>Птицы садятся на деревья, осматриваются и снова взлетают. Полная сценка длится около полуминуты. Дождевые круги на реке видны на большой карте.</p>
         </Section>
 
         <Section title="Лесные сценки" initiallyOpen>
@@ -271,7 +272,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
             <a href="/prototype/tiled-world">Карта и маршруты ↗</a>
           </div>
         </Section>
-        <p className={styles.pending}>Вода, фонари и игровые улучшения новой карты появятся после адаптации.</p>
+        <p className={styles.pending}>Фонари и игровые улучшения новой карты появятся после адаптации.</p>
       </div>
       <footer className={styles.footer}>
         <p role="status" aria-live="polite">{repeatUnavailable ?? (feedback || (overrides ? `Изменений вида: ${overrides}` : "Обычный вид леса"))}</p>

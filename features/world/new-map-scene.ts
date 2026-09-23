@@ -7,6 +7,7 @@ import { initialPreviewLevels, previewSiteVisual } from "./tiled/preview-state";
 import type { PreviewLevels, SiteVisual } from "./tiled/types";
 import { drawGroundedHero } from "./grounding";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "./forest-atmosphere";
+import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
 import { advanceForestLife, cancelForestLife, forestLifeFrame, triggerForestLife, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
@@ -57,7 +58,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
   const actor = { ...NEW_MAP_SPAWN, size: PET_SIZE * (dev?.heroScale ?? 1) };
-  const atmosphere = atmosphereOptions(options, timestamp, dusk, preview);
+  const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const life = preview?.life;
   const routine = life?.routine && !still && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, actor, elapsed) : null;
@@ -65,6 +66,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   context.beginPath(); context.rect(0, 0, TILED_WORLD.width, TILED_WORLD.height); context.clip();
   paintFixedWorld(context, TILED_WORLD, { images, visuals: preview?.visuals ?? initialVisuals, actor: null,
     paintGround: ground => {
+      drawForestWater(ground, TILED_WORLD, { ...forestAtmosphereState(TILED_WORLD, atmosphere), reducedMotion: still });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, TILED_WORLD, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions: life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 })) });
       if (life) drawForestMushrooms(ground, life, PET_SIZE);

@@ -1,10 +1,12 @@
-import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
+import type { FixedWorldScene, WorldBounds } from "./tiled/types";
 import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestAirParticle, type ForestBird } from "./forest-wildlife";
+
+import { forestBirdFrame } from "./forest-birds";
+import { sampleForestRain, drawForestRain, type ForestRaindrop } from "./forest-rain";
 
 const TAU = Math.PI * 2;
 const WEATHER_PERIOD = 24 * 60;
-const BIRD_PERIOD = 112;
-export const FOREST_BIRD_FLIGHT_DURATION = 18;
+export { FOREST_BIRD_FLIGHT_DURATION } from "./forest-birds";
 
 export const FOREST_ATMOSPHERE_LIMITS = { butterflies: 6, fireflies: 12, birds: 2, raindrops: 180 } as const;
 export type ForestWeatherMode = "auto" | "clear" | "cloudy" | "drizzle" | "rain" | "downpour";
@@ -16,12 +18,6 @@ const WEATHER_PRESETS = {
   drizzle: { rain: .35, cloudiness: .65 },
   rain: { rain: .68, cloudiness: .85 },
   downpour: { rain: 1, cloudiness: 1 },
-} as const;
-
-const RAIN_PROFILES = {
-  drizzle: { count: 66, length: 7, speed: 90, opacity: .5 },
-  rain: { count: 120, length: 12, speed: 145, opacity: .66 },
-  downpour: { count: 180, length: 19, speed: 210, opacity: .82 },
 } as const;
 
 export type ForestAtmosphereOptions = {
@@ -49,7 +45,7 @@ export type ForestAtmosphereState = {
 
 type AirParticle = ForestAirParticle;
 type Bird = ForestBird;
-type Raindrop = AirParticle & { length: number };
+type Raindrop = ForestRaindrop;
 export type ForestAtmosphereFrame = ForestAtmosphereState & {
   butterflies: AirParticle[];
   fireflies: AirParticle[];
@@ -113,19 +109,6 @@ function insect(field: WorldBounds, seed: number, index: number, seconds: number
   };
 }
 
-function birdFlight(from: WorldPoint, to: WorldPoint, progress: number, bend: number) {
-  const dx = to.x - from.x, dy = to.y - from.y, length = Math.max(1, Math.hypot(dx, dy));
-  const arc = Math.sin(progress * Math.PI) * bend;
-  const tangent = Math.cos(progress * Math.PI) * Math.PI * bend;
-  return { x: from.x + dx * progress - dy / length * arc,
-    y: from.y + dy * progress + dx / length * arc,
-    angle: Math.atan2(dy + dx / length * tangent, dx - dy / length * tangent) };
-}
-
-function withinWorld(point: WorldPoint, world: WorldBounds) {
-  return point.x >= 0 && point.y >= 0 && point.x <= world.width && point.y <= world.height;
-}
-
 /** Pure world-coordinate samples; no camera size, asset, DOM, or mutable particle state. */
 export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtmosphereOptions): ForestAtmosphereFrame {
   const state = forestAtmosphereState(scene, options), { world, focus, scale } = geometry(scene);
@@ -149,68 +132,9 @@ export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtm
     frame.fireflies.push(particle);
   }
 
-  const manualBirds = options.birdElapsed !== undefined || forcedOn(options.birds);
-  const birdVisibility = wildlifeVisibility(options.birds, manualBirds ? 1 : daylight);
-  if (!options.reducedMotion && birdVisibility > .05 && manualBirds) {
-    const flight = options.birdElapsed ?? modulo(seconds, FOREST_BIRD_FLIGHT_DURATION + 3);
-    if (Number.isFinite(flight) && flight >= 0 && flight < FOREST_BIRD_FLIGHT_DURATION) {
-      const progress = flight / FOREST_BIRD_FLIGHT_DURATION;
-      const from = { x: focus.x + focus.width * .5, y: focus.y + focus.height * .38 };
-      // Start in the clearing, then continue all the way through the wider world to its far edge.
-      const to = { x: from.x < world.width / 2 ? world.width + scale * 14 : -scale * 14,
-        y: clamp(from.y + (noise(seed, 212) - .5) * world.height * .6, world.height * .08, world.height * .92) };
-      for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.birds; i++) {
-        const pose = birdFlight({ x: from.x - i * scale * 10, y: from.y + i * scale * 8 },
-          { x: to.x - i * scale * 10, y: to.y + i * scale * 8 }, progress, world.height * .045);
-        if (withinWorld(pose, world)) frame.birds.push({ ...pose, size: scale * 1.4,
-          opacity: birdVisibility * .92, phase: flight * 9 + i * 1.7 });
-      }
-    }
-  } else if (!options.reducedMotion && birdVisibility > .05) {
-    const clock = seconds + noise(seed, 210) * BIRD_PERIOD;
-    const phase = modulo(clock, BIRD_PERIOD), cycle = Math.floor(clock / BIRD_PERIOD);
-    const reverse = noise(seed, cycle + 211) > .5;
-    const count = noise(seed, cycle + 310) > .65 ? 2 : 1;
-    const corridor = modulo(cycle, 3), lane = .14 + noise(seed, cycle + 410) * .72;
-    const margin = scale * 14;
-    let from: WorldPoint, to: WorldPoint;
-    if (corridor === 0) {
-      from = { x: -margin, y: world.height * lane };
-      to = { x: world.width + margin, y: world.height * clamp(lane + .16, .12, .88) };
-    } else if (corridor === 1) {
-      from = { x: world.width * lane, y: -margin };
-      to = { x: world.width * clamp(lane - .16, .12, .88), y: world.height + margin };
-    } else {
-      from = { x: -margin, y: world.height * .12 };
-      to = { x: world.width + margin, y: world.height * .88 };
-    }
-    if (reverse) [from, to] = [to, from];
-    for (let i = 0; i < count; i++) {
-      const progress = (phase - i * .65) / FOREST_BIRD_FLIGHT_DURATION;
-      if (progress < 0 || progress > 1) continue;
-      const pose = birdFlight(from, to, progress, Math.min(world.width, world.height) * .06);
-      if (withinWorld(pose, world)) frame.birds.push({ ...pose, size: scale * 1.4,
-        opacity: birdVisibility * .92, phase: seconds * 9 + i * 1.7 });
-    }
-  }
-
-  const profile = RAIN_PROFILES[state.weather === "rain" || state.weather === "downpour" ? state.weather : "drizzle"];
-  const automaticWeather = !options.weather || options.weather === "auto";
-  const rainVisibility = automaticWeather ? clamp(state.rain / .42) : 1;
-  const dropCount = automaticWeather ? Math.ceil(54 * rainVisibility) : profile.count;
-  if (!options.reducedMotion && state.rain > .001) for (let i = 0; i < Math.min(dropCount, FOREST_ATMOSPHERE_LIMITS.raindrops); i++) {
-    const field = i < dropCount / 3 ? focus : world;
-    const phase = modulo(noise(seed, i + 510) + seconds * scale * profile.speed / field.height, 1);
-    const fade = smooth(phase / .1) * smooth((1 - phase) / .1);
-    frame.raindrops.push({
-      x: field.x + field.width * (.05 + noise(seed, i + 610) * .9)
-        - Math.sin(phase * Math.PI) * Math.min(scale * 3, field.width * .035),
-      y: field.y + field.height * phase,
-      size: scale * (.75 + noise(seed, i + 710) * .5),
-      length: scale * profile.length * (.85 + noise(seed, i + 710) * .3),
-      opacity: rainVisibility * fade * profile.opacity, phase,
-    });
-  }
+  frame.birds = forestBirdFrame(scene, { ...options, elapsed: state.elapsed, dusk: state.dusk, rain: state.rain });
+  frame.raindrops = sampleForestRain(scene, { elapsed: state.elapsed, rain: state.rain,
+    reducedMotion: options.reducedMotion, automatic: !options.weather || options.weather === "auto" });
   return frame;
 }
 
@@ -220,7 +144,7 @@ export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: Fixed
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
   // One restrained flat tint leaves the baked grass and bushes crisp at every zoom.
-  const shade = frame.dusk * .18 + frame.cloudiness * .035;
+  const shade = frame.dusk * .18 + frame.cloudiness * .045 + frame.rain * .04;
   if (shade > 0) {
     ctx.globalAlpha = shade; ctx.fillStyle = frame.dusk > .1 ? "#18324b" : "#526b72";
     ctx.fillRect(0, 0, scene.width, scene.height);
@@ -229,11 +153,6 @@ export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: Fixed
   for (const particle of frame.butterflies) drawForestButterfly(ctx, particle, frame.elapsed);
   for (const particle of frame.fireflies) drawForestFirefly(ctx, particle, frame.elapsed);
   for (const bird of frame.birds) drawForestBird(ctx, bird);
-  ctx.strokeStyle = "#dfedf0";
-  ctx.lineWidth = geometry(scene).scale * (frame.weather === "downpour" ? 1.1 : frame.weather === "rain" ? .9 : .75);
-  for (const drop of frame.raindrops) {
-    ctx.globalAlpha = drop.opacity;
-    ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x - drop.length * .16, drop.y + drop.length); ctx.stroke();
-  }
+  drawForestRain(ctx, scene, frame.raindrops);
   ctx.restore();
 }

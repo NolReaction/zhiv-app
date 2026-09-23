@@ -1,4 +1,5 @@
 import { forestAtmosphereState, type ForestAtmosphereOptions, type ForestAtmosphereState } from "./forest-atmosphere";
+import { drawForestWaterImpact, type ForestWaterImpact } from "./forest-rain";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 
 const TAU = Math.PI * 2;
@@ -14,10 +15,12 @@ export type ForestGroundWeatherOptions = ForestAtmosphereOptions & {
 };
 
 type GroundEllipse = WorldPoint & { radiusX: number; radiusY: number; opacity: number };
+type GroundPuddle = GroundEllipse & { shape: number };
 export type ForestGroundWeatherFrame = ForestAtmosphereState & {
   wetness: number;
-  puddles: GroundEllipse[];
-  rings: GroundEllipse[];
+  puddles: GroundPuddle[];
+  rings: Array<ForestWaterImpact & { puddleIndex: number }>;
+  impacts: ForestWaterImpact[];
 };
 
 /** Rain gathers in seconds and dries much more slowly; dt is active scene time only. */
@@ -100,69 +103,118 @@ function noise(seed: number, index: number) {
 /** Stable puddle locations, changing only in size/opacity as retained moisture changes. */
 export function forestGroundWeatherFrame(scene: FixedWorldScene, options: ForestGroundWeatherOptions): ForestGroundWeatherFrame {
   const state = forestAtmosphereState(scene, options), wetness = clamp(finite(options.wetness ?? 0));
-  const frame: ForestGroundWeatherFrame = { ...state, wetness, puddles: [], rings: [] };
+  const frame: ForestGroundWeatherFrame = { ...state, wetness, puddles: [], rings: [], impacts: [] };
   const area = clearing(scene);
-  if (!area || wetness <= .015) return frame;
+  if (!area) return frame;
   const seed = sceneSeed(scene.id), scale = clamp(scene.focus.width / 256, .35, 2);
   const accepted: Array<WorldPoint & { radius: number }> = [];
-  for (let index = 0; index < 48 && frame.puddles.length < PUDDLE_LIMIT; index++) {
+  const excluded = (point: WorldPoint, radius: number) => options.groundExclusions?.some(other =>
+    Number.isFinite(other.x) && Number.isFinite(other.y)
+    && Math.hypot(point.x - other.x, point.y - other.y) <= radius + Math.max(0, finite(other.radius)));
+  for (let index = 0; wetness > .015 && index < 48 && frame.puddles.length < PUDDLE_LIMIT; index++) {
     const angle = noise(seed, index * 4 + 901) * TAU;
     const distance = .43 + noise(seed, index * 4 + 902) * .36;
     const point = { x: area.x + Math.cos(angle) * area.radiusX * distance,
       y: area.y + Math.sin(angle) * area.radiusY * distance };
-    const radius = Math.min(scale * (4.5 + noise(seed, index * 4 + 903) * 2.7), area.radiusY * .22);
+    const radius = Math.min(scale * (5.5 + noise(seed, index * 4 + 903) * 3.4), area.radiusY * .26);
     if (!isForestGroundClear(scene, point, radius)) continue;
     if (accepted.some(other => Math.hypot(point.x - other.x, point.y - other.y) < radius + other.radius + scale * 2)) continue;
-    if (options.groundExclusions?.some(other => Number.isFinite(other.x) && Number.isFinite(other.y)
-      && Math.hypot(point.x - other.x, point.y - other.y) <= radius + Math.max(0, finite(other.radius)))) continue;
+    if (excluded(point, radius)) continue;
     accepted.push({ ...point, radius });
     const growth = Math.sqrt(wetness);
     const puddle = { ...point, radiusX: radius * growth,
       radiusY: radius * growth * (.54 + noise(seed, index * 4 + 904) * .13),
-      opacity: (.12 + wetness * .23) * (1 - state.dusk * .2) };
+      opacity: (.17 + wetness * .35) * (1 - state.dusk * .15), shape: noise(seed, index + 2001) * TAU };
+    const puddleIndex = frame.puddles.length;
     frame.puddles.push(puddle);
-    if (state.rain <= .01) continue;
+    if (state.rain <= .01 || options.reducedMotion) continue;
     const count = state.rain > .55 ? 2 : 1;
     for (let ring = 0; ring < count; ring++) {
-      const phase = (state.elapsed * (.65 + state.rain * .35) + noise(seed, index + ring * 53 + 1301)) % 1;
-      frame.rings.push({ x: point.x + (ring ? .18 : -.14) * puddle.radiusX, y: point.y,
-        radiusX: puddle.radiusX * (.12 + phase * .48),
-        radiusY: puddle.radiusY * (.12 + phase * .48),
-        opacity: state.rain * growth * Math.sin(phase * Math.PI) * .26 });
+      const clock = state.elapsed * (.52 + state.rain * .57) + noise(seed, index + ring * 53 + 1301);
+      const cycle = Math.floor(clock), phase = clock % 1;
+      const offset = noise(seed, cycle * 19 + index * 7 + ring + 1501);
+      frame.rings.push({ x: point.x + (offset - .5) * puddle.radiusX * .66,
+        y: point.y + (noise(seed, cycle * 11 + index + ring * 43 + 1551) - .5) * puddle.radiusY * .45,
+        radiusX: puddle.radiusX * .45, radiusY: puddle.radiusY * .45,
+        phase, opacity: (.35 + state.rain * .5) * growth, dusk: state.dusk, puddleIndex });
     }
+  }
+  // Small irregular impacts appear as soon as rain begins, before standing water gathers.
+  // Every transient footprint uses the same conservative ground/exclusion checks as puddles.
+  if (!options.reducedMotion && state.rain > .01) for (let slot = 0; slot < 12; slot++) {
+    const clock = state.elapsed * (.34 + state.rain * .68) + noise(seed, slot + 2501) * 8;
+    const cycle = Math.floor(clock), phase = (clock % 1) / .48;
+    if (phase >= 1 || slot >= Math.ceil(12 * state.rain)) continue;
+    const angle = noise(seed, cycle * 43 + slot * 11 + 2601) * TAU;
+    const distance = Math.sqrt(noise(seed, cycle * 41 + slot * 13 + 2701)) * .78;
+    const point = { x: area.x + Math.cos(angle) * area.radiusX * distance,
+      y: area.y + Math.sin(angle) * area.radiusY * distance };
+    const radius = scale * (1.25 + noise(seed, slot + 2801) * .75);
+    if (!isForestGroundClear(scene, point, radius) || excluded(point, radius)
+      || accepted.some(other => Math.hypot(point.x - other.x, point.y - other.y) < radius + other.radius)) continue;
+    frame.impacts.push({ ...point, radiusX: radius, radiusY: radius * .5, phase,
+      opacity: (.18 + state.rain * .3) * (1 - state.dusk * .2), dusk: state.dusk });
   }
   return frame;
 }
 
-function puddleShape(ctx: CanvasRenderingContext2D, puddle: GroundEllipse, inset = 1) {
-  const x = puddle.x, y = puddle.y, rx = puddle.radiusX * inset, ry = puddle.radiusY * inset;
-  ctx.beginPath(); ctx.moveTo(x - rx * .94, y + ry * .05);
-  ctx.bezierCurveTo(x - rx, y - ry * .54, x - rx * .25, y - ry, x + rx * .18, y - ry * .76);
-  ctx.bezierCurveTo(x + rx * .48, y - ry * .92, x + rx, y - ry * .4, x + rx * .91, y + ry * .12);
-  ctx.bezierCurveTo(x + rx * .8, y + ry * .8, x + rx * .2, y + ry, x - rx * .11, y + ry * .79);
-  ctx.bezierCurveTo(x - rx * .58, y + ry * .98, x - rx, y + ry * .5, x - rx * .94, y + ry * .05);
-  ctx.closePath(); ctx.fill();
+function puddleShape(ctx: CanvasRenderingContext2D, puddle: GroundPuddle, inset = 1) {
+  const points: WorldPoint[] = [];
+  for (let i = 0; i < 12; i++) {
+    const angle = i / 12 * TAU;
+    const radius = .82 + Math.sin(angle * 3 + puddle.shape) * .085
+      + Math.cos(angle * 5 - puddle.shape * 2) * .055;
+    points.push({ x: puddle.x + Math.cos(angle) * radius * puddle.radiusX * inset,
+      y: puddle.y + Math.sin(angle) * radius * puddle.radiusY * inset });
+  }
+  ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 0; i < points.length; i++) {
+    const a = points[(i + 11) % 12], b = points[i], c = points[(i + 1) % 12], d = points[(i + 2) % 12];
+    ctx.bezierCurveTo(b.x + (c.x - a.x) / 6, b.y + (c.y - a.y) / 6,
+      c.x - (d.x - b.x) / 6, c.y - (d.y - b.y) / 6, c.x, c.y);
+  }
+  ctx.closePath();
 }
 
 /** Paint after terrain and before sites/actors, so weather cannot cover their artwork. */
 export function drawForestGroundWeather(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, options: ForestGroundWeatherOptions) {
   const frame = forestGroundWeatherFrame(scene, options);
-  if (!frame.puddles.length) return;
+  if (!frame.puddles.length && !frame.impacts.length) return;
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
-  for (const puddle of frame.puddles) {
-    ctx.fillStyle = "#736c4c"; ctx.globalAlpha = puddle.opacity * .85;
-    puddleShape(ctx, puddle);
-    ctx.fillStyle = "#709794"; ctx.globalAlpha = puddle.opacity;
-    puddleShape(ctx, puddle, .88);
-    ctx.fillStyle = "#c7d8ce"; ctx.globalAlpha = puddle.opacity * .55;
-    ctx.beginPath(); ctx.ellipse(puddle.x - puddle.radiusX * .08, puddle.y - puddle.radiusY * .18,
-      puddle.radiusX * .64, puddle.radiusY * .28, 0, 0, TAU); ctx.fill();
+  for (let index = 0; index < frame.puddles.length; index++) {
+    const puddle = frame.puddles[index], rx = puddle.radiusX, ry = puddle.radiusY;
+    // The broad damp edge stays inside the collision-checked footprint.
+    ctx.fillStyle = "#3d4930"; ctx.globalAlpha = puddle.opacity * .4;
+    puddleShape(ctx, puddle); ctx.fill();
+    ctx.fillStyle = "#4a5e47"; ctx.globalAlpha = puddle.opacity * .63;
+    puddleShape(ctx, puddle, .93); ctx.fill();
+    const reflection = ctx.createRadialGradient(puddle.x - rx * .25, puddle.y - ry * .48, 0,
+      puddle.x, puddle.y, rx);
+    reflection.addColorStop(0, frame.dusk > .5 ? "#709898" : "#adc8be");
+    reflection.addColorStop(.5, "#709b94"); reflection.addColorStop(1, "#385f55");
+    ctx.fillStyle = reflection; ctx.globalAlpha = puddle.opacity;
+    puddleShape(ctx, puddle, .84); ctx.fill();
+    ctx.save(); puddleShape(ctx, puddle, .83); ctx.clip();
+    // Broken reflections of nearby canopy retain the hand-painted terrain underneath.
+    ctx.globalAlpha = puddle.opacity * .33; ctx.fillStyle = "#264c38";
+    ctx.beginPath(); ctx.moveTo(puddle.x - rx, puddle.y + ry * .35);
+    ctx.bezierCurveTo(puddle.x - rx * .6, puddle.y - ry * .52,
+      puddle.x - rx * .48, puddle.y + ry * .38, puddle.x - rx * .15, puddle.y + ry * .05);
+    ctx.bezierCurveTo(puddle.x + rx * .13, puddle.y - ry * .42,
+      puddle.x + rx * .32, puddle.y + ry * .35, puddle.x + rx, puddle.y - ry * .18);
+    ctx.lineTo(puddle.x + rx, puddle.y + ry); ctx.lineTo(puddle.x - rx, puddle.y + ry); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#d4dfc6"; ctx.lineWidth = clamp(rx * .055, .18, .5);
+    ctx.globalAlpha = puddle.opacity * .62;
+    ctx.beginPath(); ctx.moveTo(puddle.x - rx * .45, puddle.y - ry * .42);
+    ctx.bezierCurveTo(puddle.x - rx * .22, puddle.y - ry * .59,
+      puddle.x + rx * .01, puddle.y - ry * .5, puddle.x + rx * .19, puddle.y - ry * .52); ctx.stroke();
+    ctx.globalAlpha *= .6;
+    ctx.beginPath(); ctx.moveTo(puddle.x + rx * .22, puddle.y + ry * .43);
+    ctx.lineTo(puddle.x + rx * .49, puddle.y + ry * .36); ctx.stroke();
+    for (const ring of frame.rings) if (ring.puddleIndex === index) drawForestWaterImpact(ctx, ring);
+    ctx.restore();
   }
-  ctx.strokeStyle = "#d3e0d5"; ctx.lineWidth = clamp(scene.focus.width / 256, .35, 2) * .55;
-  for (const ring of frame.rings) {
-    ctx.globalAlpha = ring.opacity;
-    ctx.beginPath(); ctx.ellipse(ring.x, ring.y, ring.radiusX, ring.radiusY, 0, 0, TAU); ctx.stroke();
-  }
+  for (const impact of frame.impacts) drawForestWaterImpact(ctx, impact);
   ctx.restore();
 }
