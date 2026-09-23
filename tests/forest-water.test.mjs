@@ -64,7 +64,7 @@ test("Tiled can place water anywhere in the world and saving new geometry replac
   const next = { ...first, water: { surfaces: [rectangle("pond", 400, 200, 240, 200)], exclusions: [] } };
   for (const edited of [first, next]) {
     const frame = forestWaterFrame(edited, options);
-    assert.equal(frame.impacts.length, Math.ceil(options.rain * FOREST_WATER_LIMITS.impacts));
+    assert.ok(frame.impacts.length > 10 && frame.impacts.length <= FOREST_WATER_LIMITS.impacts);
     for (const point of [...frame.impacts, ...frame.currents]) assert.ok(isForestWater(edited, point));
   }
   assert.ok(isForestWater(first, { x: 120, y: 100 }));
@@ -98,4 +98,45 @@ test("maps with no authored water or empty surfaces do not inherit the forest ma
     assert.equal(isForestWater(edited, { x: 1200, y: 900 }), false);
     assert.deepEqual(forestWaterFrame(edited, options), { currents: [], impacts: [] });
   }
+});
+
+test("the narrow upper tributary has local coverage and new positions after each ripple", () => {
+  const positions = new Set(), events = new Map();
+  const inArm = point => point.x >= 525 && point.x <= 665 && point.y >= 860 && point.y <= 1040;
+  let minCount = Infinity, maxCount = 0;
+  for (let elapsed = 0; elapsed < 30; elapsed += .25) {
+    const hits = forestWaterFrame(scene, { ...options, elapsed, rain: 1 }).impacts.filter(inArm);
+    minCount = Math.min(minCount, hits.length); maxCount = Math.max(maxCount, hits.length);
+    for (const hit of hits) {
+      const position = `${hit.x},${hit.y}`;
+      positions.add(position);
+      if (events.has(hit.eventId)) assert.equal(position, events.get(hit.eventId), "an expanding ripple stays anchored");
+      events.set(hit.eventId, position);
+    }
+  }
+  assert.ok(minCount >= 3, `the upper arm remains active (${minCount} minimum)`);
+  assert.ok(maxCount > minCount, "births are staggered rather than one synchronized loop");
+  assert.ok(positions.size > 45, `${positions.size} distinct locations instead of permanent global seeds`);
+});
+
+test("complete ripple footprints avoid the shore and tiny holes inside their perimeter", () => {
+  const pond = { ...scene, water: { surfaces: [rectangle("pond", 0, 0, 200, 200)], exclusions: [] } };
+  const base = forestWaterFrame(pond, { ...options, rain: 1 }).impacts[0];
+  const edited = { ...pond, water: { ...pond.water,
+    exclusions: [rectangle("tiny-leaf", base.x + 2, base.y - .05, .1, .1)] } };
+  let count = 0;
+  for (let elapsed = 0; elapsed < 8; elapsed += .2) {
+    for (const hit of forestWaterFrame(edited, { ...options, elapsed, rain: 1 }).impacts) {
+      count++;
+      const scale = hit.radiusX / 9;
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
+        assert.ok(isForestWater(edited, { x: hit.x + Math.cos(angle) * hit.radiusX,
+          y: hit.y + Math.sin(angle) * hit.radiusY }), "maximum expanding ring stays inside water");
+      }
+      const holeX = base.x + 2.05, holeY = base.y;
+      assert.ok(((holeX - hit.x) / (11 * scale)) ** 2 + ((holeY - hit.y) / (6 * scale)) ** 2 > 1,
+        "even a tiny leaf wholly within a ripple footprint removes that candidate");
+    }
+  }
+  assert.ok(count > 100, "geometry checks exercise an active pond");
 });

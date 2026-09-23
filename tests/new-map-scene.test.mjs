@@ -547,6 +547,11 @@ test("shared DEV transitions apply once and pause, reduced motion and account ch
     const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
     env.finish(); await flush();
     const probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {}); probes.push(probe);
+    worldDevStore.triggerBirds();
+    assert.equal(probe.state.birdSeed, 0, "both cameras consume the first bird visit only once");
+    assert.equal(probe.state.birdStarted, probe.state.elapsed);
+    worldDevStore.triggerBirds();
+    assert.equal(probe.state.birdSeed, 1, "another DEV invocation chooses the next shared scenario");
     worldDevStore.triggerPose("greet"); worldDevStore.triggerLife("butterfly");
     assert.equal(probe.state.life.routine.kind, "butterfly", "second subscriber cannot cancel the first subscriber's new routine");
     assert.equal(probe.state.animation, null);

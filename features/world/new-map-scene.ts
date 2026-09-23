@@ -9,6 +9,7 @@ import { drawGroundedHero } from "./grounding";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "./forest-atmosphere";
 import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
+import { drawForestGroundImpacts } from "./forest-ground-impacts";
 import { advanceForestLife, cancelForestLife, forestLifeFrame, triggerForestLife, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
 import { connectForestSession } from "./forest-session";
@@ -28,6 +29,7 @@ export type NewMapPaintPreview = {
   visuals?: Record<string, SiteVisual>;
   animation?: ManualAnimation | null;
   birdElapsed?: number;
+  birdSeed?: number;
   life?: ForestLifeState;
   wetness?: number;
 };
@@ -40,7 +42,7 @@ function atmosphereOptions(options: SceneOptions, timestamp: number, dusk: numbe
   return { elapsed: timestamp / 1000, timestamp, reducedMotion: reducedMotion(options, dev),
     dusk: dev?.timeOfDay === "day" ? 0 : dev?.timeOfDay === "dusk" ? .55 : dev?.timeOfDay === "night" ? 1 : dusk,
     weather: dev?.weather, butterflies: dev?.butterflies, fireflies: dev?.fireflies, birds: dev?.birds,
-    birdElapsed: preview?.birdElapsed };
+    birdElapsed: preview?.birdElapsed, birdSeed: preview?.birdSeed };
 }
 function actorFrame(elapsed: number, reacting: boolean, still: boolean, preview?: NewMapPaintPreview) {
   const cycle = elapsed % 48, animation = preview?.animation, chosen = preview?.state?.pose;
@@ -66,9 +68,12 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   context.beginPath(); context.rect(0, 0, TILED_WORLD.width, TILED_WORLD.height); context.clip();
   paintFixedWorld(context, TILED_WORLD, { images, visuals: preview?.visuals ?? initialVisuals, actor: null,
     paintGround: ground => {
-      drawForestWater(ground, TILED_WORLD, { ...forestAtmosphereState(TILED_WORLD, atmosphere), reducedMotion: still });
+      const weather = { ...forestAtmosphereState(TILED_WORLD, atmosphere), reducedMotion: still };
+      const groundExclusions = life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 }));
+      drawForestWater(ground, TILED_WORLD, weather);
+      drawForestGroundImpacts(ground, TILED_WORLD, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, TILED_WORLD, { ...atmosphere, wetness: preview?.wetness ?? 0,
-        groundExclusions: life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 })) });
+        groundExclusions });
       if (life) drawForestMushrooms(ground, life, PET_SIZE);
     },
     options: { levels: dev?.levels ?? levels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
@@ -111,7 +116,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function preview(): NewMapPaintPreview {
     return { state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
-      birdElapsed: state.birdStarted === null ? undefined : state.elapsed - state.birdStarted };
+      birdElapsed: state.birdStarted === null ? undefined : state.elapsed - state.birdStarted,
+      birdSeed: state.birdStarted === null ? undefined : state.birdSeed };
   }
   function paintWorld(target: CanvasRenderingContext2D) {
     if (!disposed && art) paintNewMap(target, art, options, state.elapsed, state.reaction > 0, state.timestamp, state.dusk, preview());
@@ -224,7 +230,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       }
       if (dev.birdEvent !== before.birdEvent) {
         if (!dev.birdEvent) state.birdStarted = null;
-        else if (session.consumeEvent("birds", dev.birdEvent)) state.birdStarted = state.elapsed;
+        else if (session.consumeEvent("birds", dev.birdEvent)) { state.birdStarted = state.elapsed; state.birdSeed += 1; }
       }
       if (dev.pose !== before.pose || dev.autoLife === false && before.autoLife || dev.showHero === false
         || state.life.routine?.kind === "butterfly" && dev.butterflies === "off"

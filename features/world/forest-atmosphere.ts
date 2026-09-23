@@ -1,14 +1,14 @@
 import type { FixedWorldScene, WorldBounds } from "./tiled/types";
 import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestAirParticle, type ForestBird } from "./forest-wildlife";
 
-import { forestBirdFrame } from "./forest-birds";
+import { forestBirdFrame, FOREST_BIRD_LIMIT } from "./forest-birds";
 import { sampleForestRain, drawForestRain, type ForestRaindrop } from "./forest-rain";
 
 const TAU = Math.PI * 2;
 const WEATHER_PERIOD = 24 * 60;
 export { FOREST_BIRD_FLIGHT_DURATION } from "./forest-birds";
 
-export const FOREST_ATMOSPHERE_LIMITS = { butterflies: 6, fireflies: 12, birds: 2, raindrops: 180 } as const;
+export const FOREST_ATMOSPHERE_LIMITS = { butterflies: 6, fireflies: 12, birds: FOREST_BIRD_LIMIT, raindrops: 180 } as const;
 export type ForestWeatherMode = "auto" | "clear" | "cloudy" | "drizzle" | "rain" | "downpour";
 export type ForestWildlifeMode = "auto" | "on" | "off";
 
@@ -33,6 +33,7 @@ export type ForestAtmosphereOptions = {
   birds?: ForestWildlifeMode | boolean;
   /** Seconds since a manual flight trigger; overrides the schedule until removed. */
   birdElapsed?: number;
+  birdSeed?: number;
 };
 
 export type ForestAtmosphereState = {

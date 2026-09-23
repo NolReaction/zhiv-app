@@ -2,9 +2,13 @@ import type { WorldPoint } from "./tiled/types";
 
 const TAU = Math.PI * 2;
 export type ForestAirParticle = WorldPoint & { size: number; opacity: number; phase: number };
+export type ForestBirdSpecies = "robin" | "blue-tit" | "swallow" | "finch";
 export type ForestBirdState = "flap" | "glide" | "landing" | "perched" | "preen" | "hop" | "takeoff";
 export type ForestBird = ForestAirParticle & {
   angle: number;
+  id?: string;
+  species?: ForestBirdSpecies;
+  scenario?: string;
   state?: ForestBirdState;
   wingFold?: number;
   wingLift?: number;
@@ -65,9 +69,18 @@ export function drawForestFirefly(ctx: CanvasRenderingContext2D, particle: Fores
   ctx.restore();
 }
 
-/** Small woodland birds fold their wings, brace their feet and turn/preen while perched. */
+const BIRD_COLORS = {
+  robin: { back: "#655849", head: "#655143", breast: "#dc8951", cheek: "#e9a062", tail: "#493f38", farWing: "#544638", wing: "#766044", feather: "#b6a17c", beak: "#80522f", eye: "#211d19" },
+  "blue-tit": { back: "#668765", head: "#3e7c9a", breast: "#dbca6e", cheek: "#e6e5c9", tail: "#376778", farWing: "#355e75", wing: "#538da4", feather: "#c9dcca", beak: "#526164", eye: "#1a2b37" },
+  swallow: { back: "#344c62", head: "#314354", breast: "#e0d4b3", cheek: "#b57155", tail: "#263b50", farWing: "#263c52", wing: "#3a556e", feather: "#8b9fad", beak: "#675043", eye: "#15202a" },
+  finch: { back: "#627857", head: "#4f6146", breast: "#cebc7d", cheek: "#d8c99a", tail: "#364940", farWing: "#41554a", wing: "#57705a", feather: "#c4ce9b", beak: "#aa8248", eye: "#172b22" },
+} as const;
+
+/** Species keep distinct plumage, wing profiles and tails at the clearing's small scale. */
 export function drawForestBird(ctx: CanvasRenderingContext2D, bird: ForestBird) {
   const s = bird.size, folded = bird.wingFold ?? 0;
+  const species = bird.species ?? "finch", palette = BIRD_COLORS[species];
+  const swallow = species === "swallow", tit = species === "blue-tit";
   const facing = bird.facing ?? (Math.cos(bird.angle) < 0 ? -1 : 1);
   const bank = bird.bank ?? Math.atan2(Math.sin(bird.angle), Math.abs(Math.cos(bird.angle)));
   const lift = bird.wingLift ?? .45 + Math.sin(bird.phase) * .5;
@@ -91,47 +104,59 @@ export function drawForestBird(ctx: CanvasRenderingContext2D, bird: ForestBird) 
     }
   }
   const tailY = folded * 2 + (bird.tailFlick ?? 0) * .8;
-  ctx.fillStyle = "#364940";
-  ctx.beginPath(); ctx.moveTo(px(-.9), py(.3)); ctx.lineTo(px(-4.1 + folded), py(tailY - .5));
-  ctx.lineTo(px(-3.5 + folded), py(tailY + .1)); ctx.lineTo(px(-4 + folded), py(tailY + .6));
+  ctx.fillStyle = palette.tail;
+  ctx.beginPath(); ctx.moveTo(px(-.9), py(.3));
+  ctx.lineTo(px((swallow ? -6 : tit ? -3.6 : -4.1) + folded), py(tailY - (swallow ? 1 : .5)));
+  ctx.lineTo(px((swallow ? -3.2 : -3.5) + folded), py(tailY + .1));
+  ctx.lineTo(px((swallow ? -6 : tit ? -3.6 : -4) + folded), py(tailY + (swallow ? 1.1 : .6)));
   ctx.lineTo(px(-1), py(1)); ctx.closePath(); ctx.fill();
   // Near and far wings have different foreshortening during each downstroke.
-  const spread = (1 - folded) * (2.4 + lift * 3.1);
+  const spread = (1 - folded) * (2.4 + lift * 3.1) * (swallow ? 1.3 : tit ? .92 : 1);
   for (const side of [-1, 1]) {
-    ctx.fillStyle = side < 0 ? "#41554a" : "#4f6657";
+    ctx.fillStyle = side < 0 ? palette.farWing : palette.wing;
     if (spread > .03) {
       ctx.beginPath(); ctx.moveTo(px(.8), py(side * .4));
-      ctx.bezierCurveTo(px(.5), py(side * spread), px(-1.5), py(side * (spread + .9)), px(-2.8), py(side * spread));
-      ctx.lineTo(px(-3.5), py(side * (spread - .25)));
-      ctx.lineTo(px(-2.6), py(side * (spread - .65)));
-      ctx.lineTo(px(-3), py(side * (spread - 1)));
+      if (swallow) {
+        ctx.bezierCurveTo(px(-.1), py(side * spread * .7), px(-2.7), py(side * spread), px(-4.8), py(side * (spread + .8)));
+        ctx.lineTo(px(-2.6), py(side * spread * .38));
+      } else {
+        ctx.bezierCurveTo(px(.5), py(side * spread), px(-1.5), py(side * (spread + .9)), px(-2.8), py(side * spread));
+        ctx.lineTo(px(-3.5), py(side * (spread - .25)));
+        ctx.lineTo(px(-2.6), py(side * (spread - .65)));
+        ctx.lineTo(px(-3), py(side * (spread - 1)));
+      }
       ctx.lineTo(px(-1.5), py(side * .35)); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#acb99b";
+      ctx.fillStyle = palette.feather;
       ellipse(-.9, side * spread * .53, .45, Math.max(.08, spread * .27), side * .4);
     }
   }
-  ctx.fillStyle = "#526b55";
-  ellipse(0, 0, 2.3 - folded * .8, .95 + folded * .8, -.2 * folded);
-  ctx.fillStyle = "#d2bd80";
+  ctx.fillStyle = palette.back;
+  ellipse(0, 0, (swallow ? 2.55 : 2.3) - folded * .8, (swallow ? .76 : .95) + folded * .8, -.2 * folded);
+  ctx.fillStyle = palette.breast;
   ellipse(.55, .28 + folded * .3, 1.45 - folded * .6, .52 + folded * .68, -.2 * folded);
   if (folded > .01) {
-    ctx.globalAlpha = bird.opacity * folded; ctx.fillStyle = "#354d43";
+    ctx.globalAlpha = bird.opacity * folded; ctx.fillStyle = palette.farWing;
     ellipse(-.48, .12, 1.12, 1.35, -.48);
-    ctx.fillStyle = "#8f9e75"; ellipse(-.53, -.15, .65, .85, -.48);
-    ctx.fillStyle = "#c6c6a1"; ellipse(-.56, -.03, .18, .82, -.56);
+    ctx.fillStyle = palette.wing; ellipse(-.53, -.15, .65, .85, -.48);
+    ctx.fillStyle = palette.feather; ellipse(-.56, -.03, .18, .82, -.56);
     ctx.globalAlpha = bird.opacity;
   }
   const headX = 2 - folded * .85 - preen * 1.3;
   const headY = -.18 - folded * 1.55 + preen * 1.3;
-  ctx.fillStyle = "#3d5345"; ellipse(headX, headY, .92, .81);
-  ctx.fillStyle = "#d8c99a"; ellipse(headX + .15, headY + .24, .6, .4);
+  ctx.fillStyle = palette.head; ellipse(headX, headY, .92, .81);
+  ctx.fillStyle = palette.cheek; ellipse(headX + .15, headY + .24, .6, .4);
+  if (tit) {
+    ctx.fillStyle = "#edf0d7"; ellipse(headX + .05, headY + .02, .77, .52);
+    ctx.fillStyle = palette.head; ellipse(headX - .02, headY - .51, .7, .27);
+    ctx.fillStyle = "#263c44"; ellipse(headX + .14, headY - .07, .63, .14);
+  }
   // Looking back shortens the beak and shifts the visible eye; preening reaches the wing.
   const beakDirection = headTurn < -.65 ? -1 : 1;
-  ctx.fillStyle = "#aa8248";
+  ctx.fillStyle = palette.beak;
   ctx.beginPath(); ctx.moveTo(px(headX + beakDirection * .6), py(headY - .05));
   ctx.lineTo(px(headX + beakDirection * (1.48 - Math.abs(headTurn) * .2)), py(headY + .18 + preen * .35));
   ctx.lineTo(px(headX + beakDirection * .6), py(headY + .32)); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = "#172b22"; ellipse(headX + beakDirection * .31, headY - .17, .19, .19);
+  ctx.fillStyle = palette.eye; ellipse(headX + beakDirection * .31, headY - .17, .19, .19);
   ctx.fillStyle = "#f7eed0"; ellipse(headX + beakDirection * .34, headY - .23, .055, .055);
   ctx.restore();
 }

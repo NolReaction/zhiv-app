@@ -120,7 +120,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
   }
   const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
   const repeatLabel = lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
-    : lastAction?.kind === "life" ? LIFE_ACTIONS.find(([kind]) => kind === lastAction.action)![1] : "Пролёт птиц";
+    : lastAction?.kind === "life" ? LIFE_ACTIONS.find(([kind]) => kind === lastAction.action)![1] : "Сценарий с птицами";
   const locked = world.busy || world.uncertain;
   const canGrant = process.env.NODE_ENV === "development" && world.snapshot?.devTools === true;
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
@@ -181,7 +181,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           </div>
           <Select label="Птицы" value={state.birds} values={MODES} onChange={birds => change({ birds })} />
           <Toggle label="Лужи после дождя" checked={state.puddles} onChange={puddles => change({ puddles })} />
-          <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Пролёт и посадка птиц</button>
+          <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Сценарий с птицами</button>
           {birdsUnavailable && <p className={styles.hint}>{birdsUnavailable}</p>}
           <p className={styles.hint}>Птицы садятся на деревья, осматриваются и снова взлетают. Полная сценка длится около полуминуты. Дождевые круги на реке видны на большой карте.</p>
         </Section>

@@ -179,7 +179,7 @@ function puddleShape(ctx: CanvasRenderingContext2D, puddle: GroundPuddle, inset 
 /** Paint after terrain and before sites/actors, so weather cannot cover their artwork. */
 export function drawForestGroundWeather(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, options: ForestGroundWeatherOptions) {
   const frame = forestGroundWeatherFrame(scene, options);
-  if (!frame.puddles.length && !frame.impacts.length) return;
+  if (!frame.puddles.length) return;
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
   for (let index = 0; index < frame.puddles.length; index++) {
@@ -215,6 +215,7 @@ export function drawForestGroundWeather(ctx: CanvasRenderingContext2D, scene: Fi
     for (const ring of frame.rings) if (ring.puddleIndex === index) drawForestWaterImpact(ctx, ring);
     ctx.restore();
   }
-  for (const impact of frame.impacts) drawForestWaterImpact(ctx, impact);
+  // Open-ground splashes are painted independently by drawForestGroundImpacts,
+  // including when puddles are disabled in DEV. Water rings belong to puddles only.
   ctx.restore();
 }

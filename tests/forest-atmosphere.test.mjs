@@ -106,7 +106,9 @@ test("particles stay in authored world and focus bounds after changing map dimen
     for (let elapsed = 0; elapsed < 300; elapsed += 3) {
       const frame = forestAtmosphereFrame(edited, { ...options, elapsed, timestamp: rainTimestamp, dusk: .5 });
       for (const group of groups) for (const particle of frame[group]) {
-        assert.ok(inside(particle, world), `${group} must follow the resized world instead of legacy map coordinates`);
+        const extent = group === "birds" ? particle.size * 9 : 0;
+        assert.ok(inside(particle, { x: -extent, y: -extent, width: world.width + extent * 2, height: world.height + extent * 2 }),
+          `${group} follow resized world bounds, retaining bird wings crossing the edge`);
         assert.ok(Number.isFinite(particle.size) && particle.size > 0);
         assert.ok(particle.opacity >= 0 && particle.opacity <= 1);
       }
@@ -147,12 +149,12 @@ test("day and night swap insect populations and birds visit briefly in small flo
     assert.equal(night.butterflies.length, 0);
     assert.equal(night.fireflies.length, FOREST_ATMOSPHERE_LIMITS.fireflies);
     assert.equal(night.birds.length, 0);
-    assert.ok(day.birds.length <= 2 && day.birds.length <= FOREST_ATMOSPHERE_LIMITS.birds);
+    assert.ok(day.birds.length <= FOREST_ATMOSPHERE_LIMITS.birds);
     counts.add(day.birds.length);
     if (day.birds.length) birdSeconds++;
     assert.equal(day.raindrops.length, 0);
   }
-  assert.deepEqual([...counts].sort(), [0, 1, 2]);
+  assert.deepEqual([...counts].sort(), [0, 1, 2, 3, 4, 5]);
   assert.ok(birdSeconds < 1200 / 4, "birds are occasional visitors rather than a constant flock");
   assert.ok(forestAtmosphereFrame(scene, { ...options, timestamp: rainTimestamp }).raindrops.length <= 54,
     "automatic drizzle remains bounded and lighter than forced rain");
@@ -209,11 +211,11 @@ test("wildlife overrides are independent of daylight and rain, and explicit off 
   for (const dusk of [0, 1]) {
     for (const enabled of ["on", true]) {
       const frame = forestAtmosphereFrame(scene, { ...options, dusk, weather: "downpour", elapsed: 0,
-        butterflies: enabled, fireflies: enabled, birds: enabled });
+        butterflies: enabled, fireflies: enabled, birds: enabled, birdElapsed: 10 });
       for (const group of ["butterflies", "fireflies", "birds"]) {
-        assert.equal(frame[group].length, FOREST_ATMOSPHERE_LIMITS[group]);
+        assert.equal(frame[group].length, group === "birds" ? 2 : FOREST_ATMOSPHERE_LIMITS[group]);
         assert.ok(frame[group].every(particle => particle.opacity > .2), `${group} are visible when forced on`);
-        assert.ok(frame[group].some(particle => inside(particle, scene.focus)));
+        if (group !== "birds") assert.ok(frame[group].some(particle => inside(particle, scene.focus)));
       }
     }
     for (const disabled of ["off", false]) {
@@ -231,28 +233,25 @@ test("wildlife overrides are independent of daylight and rain, and explicit off 
   }
 });
 
-test("triggered birds appear promptly near focus, replay deterministically and stop after one flight", () => {
-  const input = { ...options, dusk: true, weather: "downpour", birdElapsed: 0 };
-  const first = forestAtmosphereFrame(scene, input);
-  assert.equal(first.birds.length, FOREST_ATMOSPHERE_LIMITS.birds);
-  assert.ok(first.birds.every(bird => bird.opacity > .5 && inside(bird, scene.focus)));
-  const middle = forestAtmosphereFrame(scene, { ...input, birdElapsed: FOREST_BIRD_FLIGHT_DURATION / 2 });
-  assert.notDeepEqual(middle.birds, first.birds);
-  const crossing = forestAtmosphereFrame(scene, { ...input, birdElapsed: FOREST_BIRD_FLIGHT_DURATION * .9 });
-  assert.ok(crossing.birds.length > 0, "the flock keeps flying after leaving the clearing");
-  assert.ok(crossing.birds.every(bird => !inside(bird, scene.focus) && bird.opacity > .8), "birds leave through a world edge without fading above the clearing");
-  assert.ok(Math.abs(crossing.birds[0].x - first.birds[0].x) > scene.width * .5);
-  assert.deepEqual(forestAtmosphereFrame(scene, { ...input, elapsed: options.elapsed + 400, timestamp: clearTimestamp }).birds, first.birds,
-    "a repeat click replays the same flock without depending on the scene clock");
-  for (const birdElapsed of [-1, FOREST_BIRD_FLIGHT_DURATION, FOREST_BIRD_FLIGHT_DURATION + 100, Number.NaN, Infinity]) {
-    assert.deepEqual(forestAtmosphereFrame(scene, { ...input, birdElapsed }).birds, [], "the trigger does not silently resume automatic visits");
+test("triggered birds enter from outside, follow shared replay seeds and finish beyond the map", () => {
+  const input = { ...options, dusk: true, weather: "downpour", birdElapsed: 0, birdSeed: 0 };
+  assert.deepEqual(forestAtmosphereFrame(scene, input).birds, []);
+  const visits = [];
+  for (let time = .1; time < FOREST_BIRD_FLIGHT_DURATION; time += .1) {
+    const frame = forestAtmosphereFrame(scene, { ...input, birdElapsed: time });
+    visits.push(...frame.birds);
   }
-  const moved = { ...scene, focus: { ...scene.focus, x: scene.focus.x + 300, y: scene.focus.y - 150 } };
-  const movedBirds = forestAtmosphereFrame(moved, input).birds;
-  first.birds.forEach((bird, index) => {
-    assert.equal(movedBirds[index].x - bird.x, 300);
-    assert.equal(movedBirds[index].y - bird.y, -150);
-  });
+  assert.ok(visits.some(bird => inside(bird, scene.focus)), "the route crosses the authored focus");
+  assert.ok(visits.every(bird => bird.opacity > .8), "birds cross edges without fading in the clearing");
+  assert.ok(visits[0].x < 0 || visits[0].x > scene.width, "full wing/tail enters before the center");
+  const middle = forestAtmosphereFrame(scene, { ...input, birdElapsed: 12 });
+  assert.deepEqual(forestAtmosphereFrame(scene, { ...input, elapsed: options.elapsed + 400,
+    timestamp: clearTimestamp, birdElapsed: 12 }).birds, middle.birds,
+    "shared seed and visit time are independent of absolute scene clock and weather");
+  assert.notDeepEqual(forestAtmosphereFrame(scene, { ...input, birdElapsed: 12, birdSeed: 1 }).birds, middle.birds,
+    "the next replay chooses a different group and scenario");
+  for (const birdElapsed of [-1, FOREST_BIRD_FLIGHT_DURATION, FOREST_BIRD_FLIGHT_DURATION + 100, Number.NaN, Infinity])
+    assert.deepEqual(forestAtmosphereFrame(scene, { ...input, birdElapsed }).birds, []);
 });
 
 test("automatic birds cross broad horizontal, vertical and diagonal world corridors", () => {

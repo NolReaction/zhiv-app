@@ -7,7 +7,7 @@ type Member = { view: View; active: boolean; changed: (ownerChanged: boolean) =>
 export type ForestSessionState = {
   elapsed: number; timestamp: number; dusk: number; wetness: number;
   life: ReturnType<typeof createForestLife>;
-  reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null;
+  reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object };
 const sessions = new Map<string, Session>();
@@ -19,7 +19,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   let shared = identity === undefined ? undefined : sessions.get(identity);
   if (!shared) {
     shared = { state: { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene),
-      reaction: 0, animation: null, birdStarted: null }, members: new Set(), owner: null, events: new Map() };
+      reaction: 0, animation: null, birdStarted: null, birdSeed: -1 }, members: new Set(), owner: null, events: new Map() };
     if (identity !== undefined) sessions.set(identity, shared);
   }
   const session = shared, member: Member = { view, active: false, changed };

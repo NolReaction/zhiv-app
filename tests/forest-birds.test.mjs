@@ -13,7 +13,7 @@ const { forestBirdFrame, forestBirdPerches, FOREST_BIRD_FLIGHT_DURATION, FOREST_
 const { drawForestBird } = await vite.ssrLoadModule("/features/world/forest-wildlife.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
 const options = { elapsed: 0, dusk: 0, rain: 0, reducedMotion: false };
-const sample = (time, changed = scene) => forestBirdFrame(changed, { ...options, birdElapsed: time });
+const sample = (time, changed = scene, birdSeed = 0) => forestBirdFrame(changed, { ...options, birdElapsed: time, birdSeed });
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function assertFiniteBird(bird) {
@@ -24,21 +24,20 @@ function assertFiniteBird(bird) {
   assert.ok(bird.legReach >= 0 && bird.legReach <= 1);
 }
 
-test("DEV visit begins in the focus, reaches real trees and contains a complete living cycle", () => {
-  const first = sample(0);
-  assert.equal(first.length, FOREST_BIRD_LIMIT);
-  assert.ok(first.every(b => b.x >= scene.focus.x && b.x < scene.focus.x + scene.focus.width
-    && b.y >= scene.focus.y && b.y < scene.focus.y + scene.focus.height));
+test("DEV birds arrive from outside the map, reach real trees and contain a complete living cycle", () => {
+  assert.deepEqual(sample(0), []);
+  assert.ok(sample(5).some(b => b.x >= scene.focus.x && b.x < scene.focus.x + scene.focus.width
+    && b.y >= scene.focus.y && b.y < scene.focus.y + scene.focus.height), "exterior approach reaches the clearing promptly");
   const states = new Set();
   for (let time = 0; time < FOREST_BIRD_FLIGHT_DURATION; time += .1) {
     const birds = sample(time);
-    assert.ok(birds.length <= 2);
+    assert.ok(birds.length <= FOREST_BIRD_LIMIT);
     birds.forEach(bird => { assertFiniteBird(bird); states.add(bird.state); });
   }
   for (const state of ["flap", "glide", "landing", "perched", "preen", "hop", "takeoff"])
     assert.ok(states.has(state), `${state} is visible in the manual visit`);
   assert.deepEqual(sample(FOREST_BIRD_FLIGHT_DURATION), []);
-  assert.ok(sample(FOREST_BIRD_FLIGHT_DURATION * .9).some(b => b.x > scene.focus.x + scene.focus.width),
+  assert.ok(sample(28).some(b => b.x < scene.focus.x || b.x > scene.focus.x + scene.focus.width),
     "birds fly on through the wider world after leaving their tree");
 });
 
@@ -100,7 +99,7 @@ test("automatic birds alternate broad corridors and several tree visits within a
   let visibleSeconds = 0, run = [];
   for (let elapsed = 0; elapsed < 3800; elapsed += .5) {
     const birds = forestBirdFrame(scene, { ...options, elapsed });
-    assert.ok(birds.length <= 2);
+    assert.ok(birds.length <= FOREST_BIRD_LIMIT);
     if (birds.length) {
       visibleSeconds += .5;
       for (const bird of birds) { assertFiniteBird(bird); if (bird.state === "perched") perches.add(bird.perchId); }
@@ -135,7 +134,7 @@ test("shared clocks, camera order and replay cannot drift or consume bird state"
 });
 
 test("the painter supports folded wings, extended feet and preening without leaking canvas state", () => {
-  for (const time of [0, 6.8, 10, 12, 15.65, 20, 27]) {
+  for (const time of [2, 6.8, 10, 12, 15.65, 20, 27]) {
     let depth = 0;
     const calls = [], stack = [];
     const ctx = { globalAlpha: .4, fillStyle: "blue", strokeStyle: "red", lineWidth: 5 };
@@ -151,4 +150,71 @@ test("the painter supports folded wings, extended feet and preening without leak
     assert.ok(calls.filter(c => c[0] === "ellipse").length >= 6, "body, folded feathering and head remain shaped");
     if (time === 10) assert.ok(calls.some(c => c[0] === "stroke"), "perched feet are drawn on the canopy");
   }
+});
+
+
+test("all six DEV scenarios enter and leave at map edges with whole-sprite culling and staggered groups", () => {
+  const groupSizes = new Set(), species = new Set(), scenarios = new Set();
+  const nearEdge = b => b.x <= b.size * 10 || b.y <= b.size * 10
+    || b.x >= scene.width - b.size * 10 || b.y >= scene.height - b.size * 10;
+  for (let seed = 0; seed < 6; seed++) {
+    assert.deepEqual(sample(0, scene, seed), []);
+    const firstSeen = new Map(), lastSeen = new Map();
+    let previous = new Map(), maxGroup = 0;
+    for (let time = 0; time <= FOREST_BIRD_FLIGHT_DURATION; time += .02) {
+      const frame = sample(time, scene, seed);
+      maxGroup = Math.max(maxGroup, frame.length);
+      assert.ok(frame.length <= FOREST_BIRD_LIMIT);
+      for (const bird of frame) {
+        assertFiniteBird(bird); species.add(bird.species); scenarios.add(bird.scenario);
+        if (!firstSeen.has(bird.id)) {
+          assert.ok(nearEdge(bird), `${bird.scenario} first appears only at the world edge`);
+          firstSeen.set(bird.id, time);
+        }
+        const before = previous.get(bird.id);
+        if (before) assert.ok(distance(before, bird) < 12, "visible birds never teleport between stages");
+        lastSeen.set(bird.id, bird);
+      }
+      previous = new Map(frame.map(b => [b.id, b]));
+    }
+    assert.ok(firstSeen.size > 0);
+    for (const bird of lastSeen.values()) assert.ok(nearEdge(bird), `${bird.scenario} exits before the replay timer ends`);
+    if (firstSeen.size > 1) assert.ok(new Set(firstSeen.values()).size > 1, "a group arrives progressively");
+    groupSizes.add(maxGroup);
+  }
+  assert.deepEqual([...groupSizes].sort(), [1, 2, 3, 5]);
+  assert.deepEqual([...species].sort(), ["blue-tit", "finch", "robin", "swallow"]);
+  assert.equal(scenarios.size, 6);
+});
+
+test("DEV replay seed changes the visit while a paused shared clock stays identical", () => {
+  const first = sample(10, scene, 0), next = sample(10, scene, 1);
+  assert.notDeepEqual(first, next);
+  assert.deepEqual(sample(10, scene, 0), first);
+  assert.deepEqual(forestBirdFrame(scene, { ...options, elapsed: 999999, birdElapsed: 10, birdSeed: 1 }), next);
+  assert.notDeepEqual(sample(11, scene, 1), next, "motion resumes only when the shared clock advances");
+  const transfers = new Map();
+  for (const time of [10, 15]) transfers.set(time, sample(time, scene, 5));
+  for (const bird of transfers.get(10)) {
+    const later = transfers.get(15).find(nextBird => nextBird.id === bird.id);
+    assert.notEqual(later.perchId, bird.perchId, "branch-transfer visits a second verified crown");
+  }
+});
+
+test("species painters have different plumage and wing/tail silhouettes", () => {
+  const draws = new Map();
+  for (const species of ["robin", "blue-tit", "swallow", "finch"]) {
+    const colors = new Set(), shapes = [];
+    const ctx = { fillStyle: "", globalAlpha: 1 };
+    for (const name of ["save", "restore", "beginPath", "closePath", "moveTo", "lineTo", "ellipse", "bezierCurveTo", "stroke", "translate", "rotate"])
+      ctx[name] = (...args) => shapes.push([name, ...args]);
+    ctx.fill = () => colors.add(ctx.fillStyle);
+    drawForestBird(ctx, { x: 0, y: 0, size: 2, opacity: 1, phase: 0, angle: 0, species });
+    draws.set(species, { colors: [...colors], shapes });
+  }
+  for (const [species, drawing] of draws) {
+    if (species !== "finch") assert.notDeepEqual(drawing.colors, draws.get("finch").colors);
+  }
+  assert.notDeepEqual(draws.get("swallow").shapes, draws.get("robin").shapes,
+    "swallows have pointed wings and a longer forked tail, beyond palette variation");
 });
