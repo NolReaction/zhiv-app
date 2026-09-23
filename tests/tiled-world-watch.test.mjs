@@ -164,6 +164,40 @@ test("watch updates nested water masks and retains the last valid mask while a p
   await stopped;
 });
 
+test("watch moves and tunes Tiled light markers while preserving the last valid lighting on malformed edits", { timeout: 10000 }, async t => {
+  const { input, output, map } = await fixture(t);
+  const light = { id: 3, name: "bridge-torch", point: true, x: 45.5, y: 62.25, properties: [
+    { name: "kind", type: "string", value: "torch" },
+    { name: "radius", type: "float", value: 80 },
+  ] };
+  map.layers.push({ id: 2, name: "Lights", type: "group", layers: [
+    { id: 3, name: "Bridge", type: "objectgroup", draworder: "topdown", objects: [light] },
+  ] });
+  await writeFile(input, JSON.stringify(map));
+  const watcher = startWatcher(t, input, output);
+  await waitFor(() => watcher.stdout().includes("Exported "), watcher.logs);
+  const scene = async () => JSON.parse(await readFile(output, "utf8"));
+  assert.deepEqual((await scene()).lights[0].position, { x: 45.5, y: 62.25 });
+  light.x = 50.75;
+  light.properties[1].value = 112.5;
+  await atomicSave(input, JSON.stringify(map));
+  await waitFor(async () => (await scene()).lights[0].radius === 112.5, watcher.logs);
+  assert.deepEqual((await scene()).lights[0].position, { x: 50.75, y: 62.25 });
+  const valid = await readFile(output, "utf8");
+  light.properties[1].value = 0;
+  await atomicSave(input, JSON.stringify(map));
+  await waitFor(() => watcher.stderr().includes("expected a radius > 0"), watcher.logs);
+  assert.equal(await readFile(output, "utf8"), valid);
+  map.layers[1].layers[0].objects = [];
+  const saved = JSON.stringify(map);
+  await atomicSave(input, saved);
+  await waitFor(async () => (await scene()).lights.length === 0, watcher.logs);
+  assert.equal(await readFile(input, "utf8"), saved);
+  const stopped = once(watcher.child, "exit");
+  watcher.child.kill("SIGTERM");
+  await stopped;
+});
+
 test("export avoids unchanged writes; check rejects stale, invalid and incompatible watch mode without writing", async t => {
   const { input, output, map } = await fixture(t);
   const command = [script, input, output];

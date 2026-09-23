@@ -44,18 +44,18 @@ test("snapshots are immutable and only real changes notify subscribed listeners"
   assert.equal(notifications, 0);
   const before = store.getSnapshot();
   const equipment = { palette: "fern", head: "leaf_hat", neck: null };
-  store.patch({ weather: "cloudy", equipment });
+  store.patch({ weather: "drizzle", equipment });
   const after = store.getSnapshot();
   assert.equal(store.getSnapshot(), after);
   assert.equal(notifications, 1);
   assert.equal(before.weather, "auto");
-  assert.equal(after.weather, "cloudy");
+  assert.equal(after.weather, "drizzle");
   equipment.palette = "autumn";
   assert.equal(after.equipment.palette, "fern");
   assert.throws(() => { after.equipment.palette = "autumn"; }, TypeError);
   assert.throws(() => { after.levels.unknown = 3; }, TypeError);
   assert.throws(() => { after.heroScale = 10; }, TypeError);
-  store.patch({ weather: "cloudy", equipment: { ...after.equipment }, levels: { ...after.levels } });
+  store.patch({ weather: "drizzle", equipment: { ...after.equipment }, levels: { ...after.levels } });
   assert.equal(store.getSnapshot(), after);
   assert.equal(notifications, 1);
   unsubscribe(); store.patch({ weather: "clear" });
@@ -64,7 +64,7 @@ test("snapshots are immutable and only real changes notify subscribed listeners"
 
 test("visual controls accept valid options and ignore malformed values", () => {
   const store = createWorldDevStore(true);
-  const controls = { weather: "downpour", timeOfDay: "dusk", butterflies: "off", fireflies: "on", birds: "off",
+  const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off",
     paused: true, autoLife: false, puddles: false, reducedMotion: "on", pose: "fishing-walk", direction: "back", showHero: false, showBuildings: false,
     heroShadow: false, buildingShadow: false, debug: true };
   store.patch(controls);
@@ -76,6 +76,21 @@ test("visual controls accept valid options and ignore malformed values", () => {
   store.patch(null); store.patch([]); store.patch(undefined);
   assert.equal(store.getSnapshot(), before);
   assert.equal("unknown" in store.getSnapshot(), false);
+});
+
+test("visual controls offer only day and night, with dry weather or rain intensity", () => {
+  const store = createWorldDevStore(true);
+  for (const timeOfDay of ["day", "night", "auto"]) {
+    store.patch({ timeOfDay });
+    assert.equal(store.getSnapshot().timeOfDay, timeOfDay);
+  }
+  for (const weather of ["clear", "drizzle", "rain", "downpour", "auto"]) {
+    store.patch({ weather });
+    assert.equal(store.getSnapshot().weather, weather);
+  }
+  const before = store.getSnapshot();
+  store.patch({ weather: "cloudy", timeOfDay: "dusk" });
+  assert.equal(store.getSnapshot(), before, "removed cloud and dusk presets cannot be restored by an old control");
 });
 
 test("hero scale clamps finite values without accepting non-numeric input", () => {

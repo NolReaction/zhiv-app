@@ -8,7 +8,7 @@ const fixture = {
   schemaVersion: 1, id: "test-scene", width: 1254, height: 1254,
   terrain: [{ id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1254, height: 1254 } }],
   focus: { x: 455, y: 480, width: 350, height: 350 },
-  actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [],
+  actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [],
 };
 const options = { paused: false, reducedMotion: true, lampOn: false, dusk: false };
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -42,11 +42,19 @@ function browser() {
     const calls = [], events = new Map(), captured = new Set();
     const context = new Proxy({
       createRadialGradient: () => ({ addColorStop() {} }),
+      getTransform: () => undefined,
       drawImage: (...args) => calls.push({ method: "drawImage", args }),
       setTransform: (...args) => calls.push({ method: "setTransform", args }),
       translate: (...args) => calls.push({ method: "translate", args }),
       scale: (...args) => calls.push({ method: "scale", args }),
-    }, { get: (target, key) => key in target ? target[key] : (...args) => calls.push({ method: key, args }) });
+    }, {
+      get: (target, key) => key in target ? target[key] : (...args) => calls.push({ method: key, args }),
+      set: (target, key, value) => {
+        target[key] = value;
+        if (key === "globalCompositeOperation") calls.push({ method: "globalCompositeOperation", args: [value] });
+        return true;
+      },
+    });
     return {
       width: 1, height: 1, clientWidth: width, clientHeight: height, calls, context, events,
       getContext: () => context,
@@ -159,7 +167,7 @@ test("new scene pauses, resumes, reacts without reduced-motion RAF, and releases
   } finally { scene?.dispose(); env.restore(); }
 });
 
-test("circle and world share atmospheric time and smoothly transition from day to dusk", async () => {
+test("circle and world share atmospheric time and smoothly transition from day to night", async () => {
   const { mountHabitat } = await modules();
   const env = browser(), scenes = [];
   try {
@@ -180,7 +188,7 @@ test("circle and world share atmospheric time and smoothly transition from day t
     assert.notDeepEqual(samplePaint(scenes[0]), initialPaint, "the atmosphere moves with the shared clock");
     assert.deepEqual(samplePaint(scenes[0]), samplePaint(scenes[1]));
     scenes.forEach((scene, index) => scene.configure({ ...animated, dusk: true, view: index ? "world" : "circle" }));
-    assert.equal(scenes[0].ambience().dusk, 0, "changing the target does not flash immediately to dusk");
+    assert.equal(scenes[0].ambience().dusk, 0, "changing the target does not flash immediately to night");
     env.tick(200); env.tick(250);
     assert.ok(scenes[0].ambience().dusk > 0 && scenes[0].ambience().dusk < 1);
     assert.deepEqual(scenes[0].ambience(), scenes[1].ambience());
@@ -331,7 +339,7 @@ test("exported Tiled edits drive both live views, active site art, pet hit area 
   const site = { id: "home", label: "Дом", bounds: { x: 600, y: 820, width: 120, height: 120 },
     anchor: { x: 660, y: 940 }, entry: { x: 660, y: 950 }, hitArea: [], collision: [], initialLevel: 1,
     states: [{ level: 1, label: "Дом", image: "/test-home.webp" }, { level: 2, label: "Будущее", image: "/unused-home.webp" }] };
-  const { mountHabitat, createMapEngine, NEW_MAP_FOCUS, NEW_MAP_SPAWN, NEW_MAP_PET_SIZE } = await modules({
+  const { mountHabitat, createMapEngine, NEW_MAP_FOCUS, NEW_MAP_SPAWN, NEW_MAP_PET_SIZE, pixelSprite } = await modules({
     width: 1800, height: 2400, focus, actor, terrain, sites: [site],
   });
   const env = browser(); let scene, engine;
@@ -354,8 +362,9 @@ test("exported Tiled edits drive both live views, active site art, pet hit area 
       assert.deepEqual(images.find(call => call.args[0] === ground).args.slice(1), [0, 0, 2560, 2560, 0, 0, 1800, 1800]);
       assert.deepEqual(images.find(call => call.args[0] === shore).args.slice(1), [0, 0, 2560, 2560, 0, 1800, 600, 600]);
       assert.deepEqual(images.find(call => call.args[0] === home).args.slice(1), [600, 820, 120, 120]);
-      assert.deepEqual(images.at(-1).args.slice(1), [680, 933.75, 60, 60]);
-      assert.equal(images.at(-1).args[2] + images.at(-1).args[4] * 45 / 48, actor.spawn.y,
+      const hero = images.findLast(call => call.args[0] === pixelSprite("idle", "front", 0));
+      assert.deepEqual(hero.args.slice(1), [680, 933.75, 60, 60]);
+      assert.equal(hero.args[2] + hero.args[4] * 45 / 48, actor.spawn.y,
         "the visible sole rests on the Tiled spawn instead of the transparent sprite edge");
     }
     const scale = () => world.calls.filter(call => call.method === "scale").at(-1).args[0];
@@ -379,10 +388,11 @@ test("development overrides redraw immediately while paused without advancing ti
     const before = canvas.calls.length, time = scene.ambience().elapsed;
     worldDevStore.patch({ paused: true });
     assert.equal(env.frames.size, 0); assert.ok(canvas.calls.length > before, "pausing refreshes both render consumers");
-    worldDevStore.patch({ weather: "downpour", timeOfDay: "dusk", pose: "fish", direction: "right", heroScale: 1.5 });
-    assert.equal(scene.ambience().rain, 1); assert.equal(scene.ambience().dusk, .55);
-    const hero = canvas.calls.filter(call => call.method === "drawImage").at(-1);
-    assert.equal(hero.args[0], pixelSprite("fish", "right", Math.floor(time * 3) % 4));
+    worldDevStore.patch({ weather: "downpour", timeOfDay: "night", pose: "fish", direction: "right", heroScale: 1.5 });
+    assert.equal(scene.ambience().rain, 1); assert.equal(scene.ambience().dusk, 1);
+    const expectedSprite = pixelSprite("fish", "right", Math.floor(time * 3) % 4);
+    const hero = canvas.calls.findLast(call => call.method === "drawImage" && call.args[0] === expectedSprite);
+    assert.ok(hero, "the hero remains present before the night-lighting texture");
     assert.equal(hero.args[3], 54);
     env.tick(4000); assert.equal(scene.ambience().elapsed, time);
     scene.configure({ ...initial, backgrounded: true });
@@ -399,6 +409,45 @@ test("development overrides redraw immediately while paused without advancing ti
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("DEV day and night shade the complete scene and hide lights belonging to hidden buildings", async () => {
+  const site = { id: "home", label: "Дом", bounds: { x: 600, y: 600, width: 120, height: 120 },
+    anchor: { x: 660, y: 720 }, entry: { x: 660, y: 730 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [{ level: 1, label: "Дом", image: "/test-lit-home.webp" }] };
+  const lights = [
+    { id: "home-lantern", position: { x: 675, y: 630 }, kind: "lantern", radius: 70, intensity: 1, color: "#ffd28a", flicker: 0 },
+    { id: "path-lantern", position: { x: 850, y: 860 }, kind: "lantern", radius: 60, intensity: .8, color: "#ffd28a", flicker: 0 },
+  ];
+  const { mountHabitat, worldDevStore, pixelSprite } = await modules({ sites: [site], lights });
+  const env = browser(); let scene;
+  try {
+    worldDevStore.patch({ timeOfDay: "day", weather: "clear", butterflies: "off", fireflies: "off", birds: "off" });
+    scene = mountHabitat(env.surface(), options, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); const home = env.finish(); await flush();
+    const sample = () => { const target = env.surface(); scene.paintWorld(target.context); return target.calls; };
+    const multiply = call => call.method === "globalCompositeOperation" && call.args[0] === "multiply";
+    const core = (calls, light) => calls.some(call => call.method === "ellipse"
+      && call.args[0] === light.position.x && call.args[1] === light.position.y);
+    const day = sample();
+    assert.equal(day.some(multiply), false, "daylight preserves the original artwork without a night texture");
+    assert.equal(core(day, lights[0]), false);
+    worldDevStore.patch({ timeOfDay: "night" });
+    const night = sample(), shadeIndex = night.findIndex(multiply);
+    const heroIndex = night.findIndex(call => call.method === "drawImage" && call.args[0] === pixelSprite("idle", "front", 0));
+    assert.ok(heroIndex >= 0 && shadeIndex > heroIndex, "one night pass includes the hero as well as terrain and buildings");
+    assert.ok(core(night, lights[0]) && core(night, lights[1]), "both authored light sources glow at night");
+    const nightTexture = night.slice(shadeIndex).find(call => call.method === "drawImage").args[0];
+    const repeated = sample();
+    assert.equal(repeated.slice(repeated.findIndex(multiply)).find(call => call.method === "drawImage").args[0], nightTexture,
+      "another camera paint reuses the shared illumination texture");
+    worldDevStore.patch({ showBuildings: false });
+    const hidden = sample();
+    assert.ok(hidden.some(multiply), "hiding buildings does not disable the night");
+    assert.equal(hidden.some(call => call.method === "drawImage" && call.args[0] === home), false);
+    assert.equal(core(hidden, lights[0]), false, "a hidden building cannot leave its lantern floating in the forest");
+    assert.equal(core(hidden, lights[1]), true, "independent path lights remain visible");
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 test("manual pose events restart, finish, preserve loop choice and use finite reduced-motion stills", async () => {
   const { mountHabitat, worldDevStore, pixelSprite } = await modules();
   const env = browser(); let scene;
@@ -406,30 +455,34 @@ test("manual pose events restart, finish, preserve loop choice and use finite re
     const canvas = env.surface();
     scene = mountHabitat(canvas, options, { activity() {}, ready() {}, failure: assert.fail });
     env.finish(); await flush();
-    const hero = () => canvas.calls.filter(call => call.method === "drawImage").at(-1).args[0];
+    const assertHero = (pose, frame, message) => {
+      const sprite = pixelSprite(pose, worldDevStore.getSnapshot().direction, frame);
+      const currentFrame = canvas.calls.slice(canvas.calls.findLastIndex(call => call.method === "clearRect"));
+      assert.ok(currentFrame.some(call => call.method === "drawImage" && call.args[0] === sprite), message ?? `painted ${pose} frame ${frame}`);
+    };
     worldDevStore.patch({ pose: "sleep", direction: "left" });
-    assert.equal(hero(), pixelSprite("sleep", "left", 0));
+    assertHero("sleep", 0);
     worldDevStore.triggerPose("greet");
-    assert.equal(hero(), pixelSprite("greet", "left", 2)); assert.equal(env.frames.size, 0);
+    assertHero("greet", 2); assert.equal(env.frames.size, 0);
     const firstTimer = [...env.timers.keys()][0]; assert.ok(firstTimer);
     worldDevStore.triggerPose("greet");
     assert.equal(env.timers.has(firstTimer), false); assert.equal(env.timers.size, 1);
     env.fireTimer([...env.timers.keys()][0]);
-    assert.equal(hero(), pixelSprite("sleep", "left", 0)); assert.equal(env.timers.size, 0);
+    assertHero("sleep", 0); assert.equal(env.timers.size, 0);
     worldDevStore.triggerPose("greet"); worldDevStore.patch({ pose: "fish", animation: null });
-    assert.equal(hero(), pixelSprite("fish", "left", 0)); assert.equal(env.timers.size, 0, "choosing a loop cancels the manual event immediately");
+    assertHero("fish", 0); assert.equal(env.timers.size, 0, "choosing a loop cancels the manual event immediately");
     worldDevStore.patch({ reducedMotion: "off", pose: "idle" });
-    worldDevStore.triggerPose("greet"); assert.equal(hero(), pixelSprite("greet", "left", 0));
+    worldDevStore.triggerPose("greet"); assertHero("greet", 0);
     env.tick(100);
     for (let now = 150; now <= 500; now += 50) env.tick(now);
-    assert.equal(hero(), pixelSprite("greet", "left", 1));
-    worldDevStore.triggerPose("greet"); assert.equal(hero(), pixelSprite("greet", "left", 0), "a repeated click starts at the first frame");
+    assertHero("greet", 1);
+    worldDevStore.triggerPose("greet"); assertHero("greet", 0, "a repeated click starts at the first frame");
     env.tick(550);
     for (let now = 600; now <= 1550; now += 50) env.tick(now);
-    assert.equal(hero(), pixelSprite("idle", "left", Math.floor(scene.ambience().elapsed * 3) % 4));
+    assertHero("idle", Math.floor(scene.ambience().elapsed * 3) % 4);
     worldDevStore.patch({ paused: true }); worldDevStore.triggerPose("jump");
-    assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0); assert.equal(hero(), pixelSprite("jump", "left", 0));
-    worldDevStore.reset(); assert.equal(hero(), pixelSprite("idle", "front", 0), "reset clears manual events and loop overrides");
+    assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0); assertHero("jump", 0);
+    worldDevStore.reset(); assertHero("idle", 0, "reset clears manual events and loop overrides");
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
@@ -448,7 +501,8 @@ test("development building levels load only selected artwork and reject stale an
     worldDevStore.patch({ levels: { home: 3 } });
     assert.deepEqual(env.requests, ["/test-ground.webp", "/home-1.webp", "/home-2.webp", "/home-3.webp"]);
     const latest = env.finishPath("/home-3.webp"); await flush();
-    const paintedBuilding = () => canvas.calls.filter(call => call.method === "drawImage" && call.args.length === 5).at(-2).args[0];
+    const paintedBuilding = () => canvas.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
+      && call.args[0] instanceof Image).args[0];
     assert.equal(paintedBuilding(), latest);
     env.finishPath("/home-2.webp"); await flush();
     worldDevStore.patch({ timeOfDay: "night" }); assert.equal(paintedBuilding(), latest, "old completion cannot replace the latest chosen art");

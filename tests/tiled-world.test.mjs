@@ -70,6 +70,7 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   assert.equal(scene.id, "test-forest");
   assert.equal(Object.hasOwn(scene, "actor"), false, "legacy maps may omit a spawn point");
   assert.equal(Object.hasOwn(scene, "water"), false, "legacy maps do not invent water geometry");
+  assert.equal(Object.hasOwn(scene, "lights"), false, "legacy maps keep their site light markers without inventing new lights");
   assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 });
   assert.deepEqual(scene.sites[0], {
     id: "kiln", label: "Pottery kiln", bounds: { x: 20, y: 30, width: 20, height: 30 },
@@ -334,6 +335,95 @@ test("invalid water geometry and unsupported nested transforms fail with the obj
     ["duplicate exclusion name", value => { value.layers[2].layers.push(waterLayer(5, "More leaves", [waterPolygon(22, "leaf-1")])); }, /duplicate water exclusions ID leaf-1/],
     ["unexpected object properties", value => { value.layers[1].objects[0].properties = props({ role: "path" }); }, /unknown property "role"/],
     ["non-water topdown", value => { value.layers[0].draworder = "topdown"; }, /layers\[0\]\.draworder: expected "index"/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
+test("Lights compiles named points and nested groups without changing water or legacy site lighting", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(waterLayer(2, "Water", [waterPolygon(20, "river-main")]));
+  const before = await compile();
+  const lantern = { id: 21, name: "home-lantern", x: 35.125, y: 48.625, point: true };
+  const torch = { id: 22, name: "Факел у моста", x: 70, y: 90, width: 0, height: 0, point: true, properties: [
+    { name: "kind", type: "string", value: "torch" },
+    { name: "radius", type: "float", value: 92.5 },
+    { name: "color", type: "color", value: "#FFFFA95C" },
+    { name: "intensity", type: "float", value: 1.3 },
+  ] };
+  const glow = { id: 23, name: "glow-mushroom", x: 15, y: 18, point: true, properties: props({ kind: "glow" }) };
+  map.layers.push(waterLayer(3, "Lights", [lantern]), { id: 4, name: "Lights", type: "group", layers: [
+    { id: 5, name: "Path", type: "group", layers: [{ ...waterLayer(6, "Torches", [torch]), draworder: "index" }] },
+    waterLayer(7, "Mushrooms", [glow]),
+  ] });
+  const original = clone(map);
+  const scene = await compile();
+  assert.deepEqual(scene.lights, [
+    { id: "home-lantern", position: { x: 35.125, y: 48.625 }, kind: "lantern", radius: 70, intensity: 1, color: "#ffd28a", flicker: 0.04 },
+    { id: "Факел у моста", position: { x: 70, y: 90 }, kind: "torch", radius: 92.5, intensity: 1.3, color: "#ffa95c", flicker: 0.12 },
+    { id: "glow-mushroom", position: { x: 15, y: 18 }, kind: "glow", radius: 70, intensity: 1, color: "#8adbd0", flicker: 0 },
+  ]);
+  const { lights, ...unchanged } = scene;
+  assert.equal(lights.length, 3);
+  assert.deepEqual(unchanged, before);
+  assert.deepEqual(map, original, "light authoring is not mutated by compilation");
+  assert.equal(serializeTiledWorld(scene), serializeTiledWorld(await compile()));
+  torch.properties = [
+    ...props({ kind: "torch", color: "#abcdef", radius: 500, intensity: 2, flicker: 1 }),
+  ];
+  lantern.properties = props({ intensity: 0, flicker: 0 });
+  const customized = await compile();
+  assert.equal(customized.lights[0].intensity, 0);
+  assert.deepEqual(customized.lights[1], { ...scene.lights[1], radius: 500, intensity: 2, color: "#abcdef", flicker: 1 });
+  map.layers[2].objects = [];
+  map.layers[3].layers = [];
+  assert.deepEqual((await compile()).lights, [], "clearing the Lights group also removes runtime lights");
+});
+
+test("malformed Lights authoring fails at the exact marker rather than silently changing illumination", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push({ id: 2, name: "Lights", type: "group", layers: [waterLayer(3, "Path lights", [
+    { id: 20, name: "path-torch", x: 25, y: 35, width: 0, height: 0, point: true, properties: [
+      { name: "kind", type: "string", value: "torch" },
+      { name: "radius", type: "float", value: 72.5 },
+      { name: "intensity", type: "float", value: 1.2 },
+      { name: "color", type: "color", value: "#ffbb66" },
+      { name: "flicker", type: "float", value: 0.2 },
+    ] },
+  ])] });
+  const light = value => value.layers[1].layers[0].objects[0];
+  const cases = [
+    ["missing name", value => { delete light(value).name; }, /objects\[0\]\.name: expected a non-empty string/],
+    ["blank name", value => { light(value).name = " "; }, /name: expected a non-empty string/],
+    ["duplicate name in another light layer", value => { value.layers.push(waterLayer(4, "Lights", [{ ...clone(light(value)), id: 21 }])); }, /duplicate light ID path-torch/],
+    ["rectangle", value => { delete light(value).point; }, /shape: expected "point"/],
+    ["disabled point", value => { light(value).point = false; }, /point: expected true/],
+    ["point with rectangle extent", value => { light(value).width = 2; }, /width: expected 0/],
+    ["out of bounds", value => { light(value).x = 101; }, /point is outside world bounds/],
+    ["invalid kind", value => { setProp(light(value), "kind", "lamp"); }, /kind: expected lantern, torch or glow/],
+    ["zero radius", value => { setProp(light(value), "radius", 0); }, /radius: expected a radius > 0 and <= 500/],
+    ["oversized radius", value => { setProp(light(value), "radius", 501); }, /radius: expected a radius > 0 and <= 500/],
+    ["negative intensity", value => { setProp(light(value), "intensity", -0.1); }, /intensity: expected intensity between 0 and 2/],
+    ["excessive intensity", value => { setProp(light(value), "intensity", 2.1); }, /intensity: expected intensity between 0 and 2/],
+    ["negative flicker", value => { setProp(light(value), "flicker", -0.1); }, /flicker: expected flicker between 0 and 1/],
+    ["excessive flicker", value => { setProp(light(value), "flicker", 1.1); }, /flicker: expected flicker between 0 and 1/],
+    ["nonfinite radius", value => { setProp(light(value), "radius", Infinity); }, /expected a finite number/],
+    ["string radius", value => { light(value).properties[1].type = "string"; }, /type: expected float or int/],
+    ["numeric color", value => { light(value).properties[3].type = "int"; }, /type: expected color or string/],
+    ["short CSS color", value => { setProp(light(value), "color", "#fc0"); }, /color: expected #RRGGBB/],
+    ["nonhex color", value => { setProp(light(value), "color", "orange"); }, /color: expected #RRGGBB/],
+    ["translucent ARGB color", value => { setProp(light(value), "color", "#80ffbb66"); }, /light color must be opaque; use intensity/],
+    ["accidental role property", value => { light(value).properties.push(...props({ role: "light" })); }, /unknown property "role"/],
+    ["duplicate property", value => { light(value).properties.push(...props({ intensity: 1 })); }, /duplicate property "intensity"/],
+    ["light group offset", value => { value.layers[1].offsetx = 1; }, /offsetx: expected 0/],
+    ["hidden nested group", value => { value.layers[1].layers[0].visible = false; }, /visible: expected true/],
+    ["Water nested in Lights", value => { value.layers[1].layers[0].name = "Water"; }, /must not be nested inside each other/],
+    ["Lights nested in WaterExclusions", value => { value.layers[1].name = "WaterExclusions"; value.layers[1].layers[0].name = "Lights"; }, /must not be nested inside each other/],
   ];
   for (const [name, mutate, pattern] of cases) {
     await t.test(name, async () => {

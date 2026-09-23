@@ -1,4 +1,5 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
+import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
 import { previewSiteAt, previewSiteVisual } from "./preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
@@ -30,6 +31,7 @@ export type PaintFrame = {
   visuals: Record<string, SiteVisual>;
   options: FixedWorldRenderOptions;
   actor: PreviewActor | null;
+  elapsed?: number;
   /** Ground effects belong above terrain and below all buildings and actors. */
   paintGround?: (context: CanvasRenderingContext2D) => void;
 };
@@ -58,6 +60,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       ctx.drawImage(image, site.bounds.x, site.bounds.y, site.bounds.width, site.bounds.height);
     }
   }
+  drawForestLightFixtures(ctx, scene, frame.options.showBuildings);
   const actor = frame.actor;
   if (actor && frame.options.showHero !== false) {
     const scale = Number.isFinite(frame.options.heroScale) ? Math.max(.5, Math.min(2, frame.options.heroScale!)) : 1;
@@ -66,18 +69,9 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       direction: actor.direction, frame: actor.frame, shadow: frame.options.heroShadow, appearance: { palette: "moss", head: null, neck: null } });
   }
   if (frame.options.night) {
-    ctx.fillStyle = "rgba(8,17,37,.56)"; ctx.fillRect(0, 0, scene.width, scene.height);
-    ctx.globalCompositeOperation = "screen";
-    for (const site of frame.options.showBuildings === false ? [] : scene.sites) {
-      if (!site.light || (frame.visuals[site.id]?.level ?? 0) < 1) continue;
-      const { x, y } = site.light, radius = 115;
-      const light = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      light.addColorStop(0, "rgba(255,205,110,.53)");
-      light.addColorStop(.23, "rgba(243,174,75,.27)");
-      light.addColorStop(1, "rgba(219,154,65,0)");
-      ctx.fillStyle = light; ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-    }
-    ctx.globalCompositeOperation = "source-over";
+    const lighting = { night: 1, elapsed: frame.elapsed ?? 0, reducedMotion: frame.options.reducedMotion,
+      showBuildings: frame.options.showBuildings, levels: frame.options.levels };
+    drawForestLighting(ctx, scene, lighting); drawForestLightEmitters(ctx, scene, lighting);
   }
   const selected = scene.sites.find(site => site.id === frame.options.selectedSiteId);
   if (selected) {
@@ -217,7 +211,7 @@ export async function createFixedWorldRenderer(
   function draw() {
     if (disposed || !canPaint()) return;
     const actor = route.at(elapsed, !options.paused && !options.reducedMotion);
-    const paintFrame: PaintFrame = { images, visuals, options, actor };
+    const paintFrame: PaintFrame = { images, visuals, options, actor, elapsed };
     worldCtx.setTransform(worldCanvas.width / worldView.width, 0, 0, worldCanvas.height / worldView.height, 0, 0);
     worldCtx.fillStyle = "#12231b"; worldCtx.fillRect(0, 0, worldView.width, worldView.height);
     worldCtx.save(); worldCtx.translate(worldView.width / 2, worldView.height / 2);
@@ -246,17 +240,18 @@ export async function createFixedWorldRenderer(
     if (routeStatusKey !== nextRouteStatusKey) { routeStatusKey = nextRouteStatusKey; callbacks.onRouteChange?.(routeStatus); }
     worldCanvas.dataset.cameraX = String(camera.x); worldCanvas.dataset.cameraY = String(camera.y); worldCanvas.dataset.cameraZoom = String(camera.zoom);
   }
+  const moving = () => route.moving() || options.night && forestLightSources(scene, options).some(light => light.intensity > 0 && light.flicker > 0);
   function animate() {
     cancelAnimationFrame(raf); raf = 0; previous = 0; lastPaint = 0;
-    if (!disposed && ready && !options.paused && !options.reducedMotion && route.moving() && canPaint()) raf = requestAnimationFrame(tick);
+    if (!disposed && ready && !options.paused && !options.reducedMotion && moving() && canPaint()) raf = requestAnimationFrame(tick);
   }
   function tick(now: number) {
     raf = 0;
-    if (disposed || !canPaint() || options.paused || options.reducedMotion || !route.moving()) return;
+    if (disposed || !canPaint() || options.paused || options.reducedMotion || !moving()) return;
     if (previous) { const dt = Math.min((now - previous) / 1000, .08); elapsed += dt; route.advance(dt); }
     previous = now;
-    if (now - lastPaint >= 1000 / 30 || !route.moving()) { draw(); lastPaint = now; }
-    if (route.moving()) raf = requestAnimationFrame(tick);
+    if (now - lastPaint >= 1000 / 30 || !moving()) { draw(); lastPaint = now; }
+    if (moving()) raf = requestAnimationFrame(tick);
   }
   function resize() {
     const resizeCanvas = (canvas: HTMLCanvasElement): Viewport => {

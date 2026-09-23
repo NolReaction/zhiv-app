@@ -127,9 +127,12 @@ test("legacy home-walk calls still travel between the home endpoint and the othe
 
 function canvasEnvironment(t) {
   const frames = new Map(); let nextFrame = 0;
-  const context = () => new Proxy({ drawImage() {}, createRadialGradient: () => ({ addColorStop() {} }) }, {
-    get: (target, key) => key in target ? target[key] : () => {},
-  });
+  const context = () => {
+    const calls = [];
+    return new Proxy({ calls, drawImage() {}, createRadialGradient: () => ({ addColorStop() {} }),
+      bezierCurveTo: (...args) => calls.push({ method: "bezierCurveTo", args }),
+    }, { get: (target, key) => key in target ? target[key] : () => {} });
+  };
   class Canvas extends EventTarget {
     width = 100; height = 100; clientWidth = 100; clientHeight = 100;
     dataset = {}; style = {}; context = context();
@@ -201,4 +204,40 @@ test("aborting an active preview cancels RAF and its remaining controls", async 
   assert.equal(env.frames.size, 0);
   assert.equal(renderer.selectPath("forest-edge"), false);
   assert.equal(renderer.reversePath(), false);
+});
+
+test("night torches animate while the actor stands still and stop on pause, reduced motion, day or disposal", async t => {
+  const env = canvasEnvironment(t);
+  const litScene = { ...scene, lights: [{ id: "path-torch", kind: "torch", position: { x: 270, y: 260 },
+    radius: 70, intensity: 1, color: "#ffcc88", flicker: .1 }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, litScene, options);
+  t.after(() => renderer.dispose());
+  assert.equal(env.frames.size, 0, "daytime fixtures alone do not keep an animation loop running");
+  const night = { ...options, night: true };
+  renderer.update(night);
+  assert.equal(env.frames.size, 1, "a flickering light starts the night clock without a selected route");
+  const flame = canvas => canvas.context.calls.slice(-2).map(call => call.args);
+  const initialFlame = flame(env.world), initialFrame = env.world.dataset.frame;
+  env.tick(100); env.tick(180);
+  assert.notEqual(env.world.dataset.frame, initialFrame);
+  assert.notDeepEqual(flame(env.world), initialFlame, "elapsed time changes the flame geometry rather than repainting a frozen torch");
+  assert.deepEqual(flame(env.circle), flame(env.world), "both views use the same light animation time");
+  assert.equal(env.world.dataset.actorMoving, "false");
+  assert.equal(env.world.dataset.actorX, "250");
+  assert.equal(env.world.dataset.actorY, "300");
+  for (const stopped of [{ ...night, paused: true }, { ...night, reducedMotion: true }, options]) {
+    renderer.update(stopped);
+    const frame = env.world.dataset.frame, stillFlame = flame(env.world);
+    assert.equal(env.frames.size, 0);
+    env.tick(500);
+    assert.equal(env.world.dataset.frame, frame);
+    assert.deepEqual(flame(env.world), stillFlame);
+    renderer.update(night);
+    assert.equal(env.frames.size, 1, "returning to animated night resumes exactly one clock");
+  }
+  const lateCallback = [...env.frames.values()][0], finalFrame = env.world.dataset.frame;
+  renderer.dispose();
+  assert.equal(env.frames.size, 0);
+  lateCallback(1000);
+  assert.equal(env.world.dataset.frame, finalFrame, "a queued light tick cannot repaint a disposed preview");
 });

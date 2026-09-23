@@ -50,6 +50,7 @@ function properties(object, at, allowed) {
     requireThat(!own(result, name), where, `duplicate property ${JSON.stringify(name)}`);
     const type = value.type ?? "string";
     if (allowed[name] === "float") requireThat(["float", "int"].includes(type), `${where}.type`, "expected float or int");
+    else if (allowed[name] === "color") requireThat(["color", "string"].includes(type), `${where}.type`, "expected color or string");
     else exact(type, allowed[name], `${where}.type`);
     if (type === "int") integer(value.value, `${where}.value`);
     else if (type === "float") number(value.value, `${where}.value`);
@@ -169,6 +170,30 @@ function aspect(image, rect, at) {
   requireThat(Math.abs(image.width / image.height - rect.width / rect.height) < 0.000001, at, "object aspect ratio must match its image (resize width and height together)");
 }
 
+function compileLight(object, shape, at, world) {
+  exact(shape, "point", `${at} shape`);
+  exact(object.point, true, `${at}.point`);
+  defaultValue(object, "width", 0, at);
+  defaultValue(object, "height", 0, at);
+  const props = properties(object, at, { kind: "string", radius: "float", intensity: "float", color: "color", flicker: "float" });
+  const kind = props.kind ?? "lantern";
+  requireThat(["lantern", "torch", "glow"].includes(kind), `${at}.properties.kind`, "expected lantern, torch or glow");
+  const defaults = {
+    lantern: { color: "#ffd28a", flicker: 0.04 },
+    torch: { color: "#ffb45d", flicker: 0.12 },
+    glow: { color: "#8adbd0", flicker: 0 },
+  }[kind];
+  const radius = props.radius ?? 70, intensity = props.intensity ?? 1, flicker = props.flicker ?? defaults.flicker;
+  requireThat(radius > 0 && radius <= 500, `${at}.properties.radius`, "expected a radius > 0 and <= 500 world units");
+  requireThat(intensity >= 0 && intensity <= 2, `${at}.properties.intensity`, "expected intensity between 0 and 2");
+  requireThat(flicker >= 0 && flicker <= 1, `${at}.properties.flicker`, "expected flicker between 0 and 1");
+  const authoredColor = props.color ?? defaults.color;
+  requireThat(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(authoredColor), `${at}.properties.color`, "expected #RRGGBB or opaque #FFRRGGBB");
+  requireThat(authoredColor.length === 7 || authoredColor.slice(1, 3).toLowerCase() === "ff", `${at}.properties.color`, "light color must be opaque; use intensity to change brightness");
+  const color = `#${authoredColor.slice(-6).toLowerCase()}`;
+  return { id: string(object.name, `${at}.name`), position: point(object, at, world), kind, radius, intensity, color, flicker };
+}
+
 async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetadata = false }) {
   record(map, "map");
   exact(map.type, "map", "map.type");
@@ -252,38 +277,40 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   }
 
   const objects = new Set(), layers = new Set(), sites = new Map(), markers = new Map(), terrainIds = new Set(), pathIds = new Set();
-  const waterIds = { surfaces: new Set(), exclusions: new Set() };
-  // Water groups are metadata: their descendants contribute geometry regardless
+  const waterIds = { surfaces: new Set(), exclusions: new Set() }, lightIds = new Set();
+  // Named metadata groups include every descendant object layer regardless
   // of their organizational names or object draw order. Other layers retain the
   // fixed-world subset's strict placement/order rules.
-  function* objectLayers(entries, at, inheritedWaterKind) {
+  function* objectLayers(entries, at, inheritedKind) {
     for (const [layerIndex, layer] of array(entries, at).entries()) {
       const layerAt = `${at}[${layerIndex}]`;
       record(layer, layerAt);
-      const namedWaterKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : undefined;
-      requireThat(!namedWaterKind || !inheritedWaterKind || namedWaterKind === inheritedWaterKind, layerAt, "Water and WaterExclusions must not be nested inside each other");
-      const waterKind = namedWaterKind ?? inheritedWaterKind;
-      const isWaterGroup = waterKind && layer.type === "group";
-      if (!isWaterGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
+      const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights" : undefined;
+      requireThat(!namedKind || !inheritedKind || namedKind === inheritedKind, layerAt, "Water, WaterExclusions and Lights must not be nested inside each other");
+      const metadataKind = namedKind ?? inheritedKind;
+      const waterKind = metadataKind === "lights" ? undefined : metadataKind;
+      const isMetadataGroup = metadataKind && layer.type === "group";
+      if (!isMetadataGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
       transforms(layer, layerAt);
-      absent(layer, ["data", "chunks", "image", ...(isWaterGroup ? ["objects", "draworder"] : ["layers"])], layerAt);
+      absent(layer, ["data", "chunks", "image", ...(isMetadataGroup ? ["objects", "draworder"] : ["layers"])], layerAt);
       properties(layer, layerAt, {});
       const layerId = integer(layer.id, `${layerAt}.id`, 1);
       requireThat(!layers.has(layerId), `${layerAt}.id`, "duplicate layer ID");
       layers.add(layerId);
       if (waterKind) world.water ??= { surfaces: [], exclusions: [] };
-      if (isWaterGroup) {
-        yield* objectLayers(layer.layers, `${layerAt}.layers`, waterKind);
+      if (metadataKind === "lights") world.lights ??= [];
+      if (isMetadataGroup) {
+        yield* objectLayers(layer.layers, `${layerAt}.layers`, metadataKind);
       } else {
-        if (waterKind) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for water metadata");
+        if (metadataKind) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
-        yield { layer, layerAt, waterKind };
+        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights" };
       }
     }
   }
   const routeOwners = [];
   let hasSite = false;
-  for (const { layer, layerAt, waterKind } of objectLayers(map.layers, "map.layers")) {
+  for (const { layer, layerAt, waterKind, isLightLayer } of objectLayers(map.layers, "map.layers")) {
     for (const [objectIndex, object] of array(layer.objects, `${layerAt}.objects`).entries()) {
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(object, at);
@@ -297,6 +324,13 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const shapes = ["gid", "point", "polygon", "polyline"].filter(key => own(object, key));
       requireThat(shapes.length <= 1, at, "object must have exactly one shape");
       const shape = shapes[0] ?? "rectangle";
+      if (isLightLayer) {
+        const light = compileLight(object, shape, at, world);
+        requireThat(!lightIds.has(light.id), at, `duplicate light ID ${light.id}`);
+        lightIds.add(light.id);
+        world.lights.push(light);
+        continue;
+      }
       if (waterKind) {
         const waterAt = `${at} (${object.name || `object ${objectId}`})`;
         properties(object, waterAt, {});

@@ -21,6 +21,17 @@ export type WorldWater = {
   surfaces: WorldWaterPolygon[];
   exclusions: WorldWaterPolygon[];
 };
+export type WorldLight = {
+  id: string;
+  /** Position of the flame or bulb, in logical world coordinates. */
+  position: WorldPoint;
+  kind: "lantern" | "torch" | "glow";
+  radius: number;
+  intensity: number;
+  /** Opaque #rrggbb; brightness is controlled by intensity. */
+  color: string;
+  flicker: number;
+};
 export type FixedWorldScene = {
   schemaVersion: 1;
   id: string;
@@ -32,5 +43,6 @@ export type FixedWorldScene = {
   sites: FixedSite[];
   paths: WorldPath[];
   water?: WorldWater;
+  lights?: WorldLight[];
 };
 export type PreviewLevels = Record<string, number>;

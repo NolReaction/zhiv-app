@@ -13,8 +13,8 @@ export const WORLD_DEV_POSES = Object.freeze([
 ] as const satisfies readonly PixelPose[]);
 
 export type WorldDevState = Readonly<{
-  weather: "auto" | "clear" | "cloudy" | "drizzle" | "rain" | "downpour";
-  timeOfDay: "auto" | "day" | "dusk" | "night";
+  weather: "auto" | "clear" | "drizzle" | "rain" | "downpour";
+  timeOfDay: "auto" | "day" | "night";
   butterflies: "auto" | "on" | "off";
   fireflies: "auto" | "on" | "off";
   birds: "auto" | "on" | "off";
@@ -49,8 +49,8 @@ export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
 });
 
 const enumValues = {
-  weather: ["auto", "clear", "cloudy", "drizzle", "rain", "downpour"],
-  timeOfDay: ["auto", "day", "dusk", "night"],
+  weather: ["auto", "clear", "drizzle", "rain", "downpour"],
+  timeOfDay: ["auto", "day", "night"],
   butterflies: ["auto", "on", "off"], fireflies: ["auto", "on", "off"], birds: ["auto", "on", "off"],
   reducedMotion: ["auto", "on", "off"], pose: ["auto", ...WORLD_DEV_POSES],
   direction: ["front", "back", "left", "right"],

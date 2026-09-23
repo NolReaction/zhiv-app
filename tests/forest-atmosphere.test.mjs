@@ -29,7 +29,7 @@ function weatherTimestamp(predicate) {
   assert.fail("the weather schedule must include the requested conditions");
 }
 
-const clearTimestamp = weatherTimestamp(state => state.cloudiness === 0);
+const clearTimestamp = weatherTimestamp(state => state.rain === 0);
 const rainTimestamp = weatherTimestamp(state => state.rain > .4);
 
 function drawing(width = 360, height = 360) {
@@ -78,17 +78,16 @@ test("weather changes continuously with bounded drizzle and long clear intervals
     const state = forestAtmosphereState(scene, { ...options, timestamp: options.timestamp + seconds * 1000 });
     seen.add(state.weather);
     assert.ok(state.rain >= 0 && state.rain <= .45, "rain stays gentle");
-    assert.ok(state.cloudiness >= 0 && state.cloudiness <= 1);
+    assert.equal("cloudiness" in state, false, "weather no longer adds a separate cloud state or screen tint");
     if (previous) {
       assert.ok(Math.abs(state.rain - previous.rain) < .01, "rain never jumps at a phase or cycle boundary");
-      assert.ok(Math.abs(state.cloudiness - previous.cloudiness) < .015, "clouds gather and clear gradually");
     }
-    clearRun = state.cloudiness === 0 ? clearRun + 1 : 0;
+    clearRun = state.rain === 0 ? clearRun + 1 : 0;
     longestClearRun = Math.max(longestClearRun, clearRun);
     if (state.rain > .04) rainySeconds++;
     previous = state;
   }
-  assert.deepEqual([...seen].sort(), ["clear", "cloudy", "drizzle"]);
+  assert.deepEqual([...seen].sort(), ["clear", "drizzle"]);
   assert.ok(longestClearRun >= 8 * 60, "clear skies last several minutes");
   assert.ok(rainySeconds < 3600 / 3, "drizzle leaves most of the hour dry");
   assert.deepEqual(forestAtmosphereState(scene, { ...options, elapsed: 999 }).rain,
@@ -161,14 +160,13 @@ test("day and night swap insect populations and birds visit briefly in small flo
 });
 
 test("weather presets override the clock while auto restores the original weather schedule", () => {
-  for (const weather of ["clear", "cloudy", "drizzle", "rain", "downpour"]) {
+  for (const weather of ["clear", "drizzle", "rain", "downpour"]) {
     const first = forestAtmosphereState(scene, { ...options, weather, timestamp: clearTimestamp });
     const later = forestAtmosphereState(scene, { ...options, weather, timestamp: rainTimestamp });
     assert.equal(first.weather, weather);
     assert.deepEqual(first, later, "a manual preset does not change with the automatic clock");
     assert.ok(first.rain >= 0 && first.rain <= 1);
-    assert.ok(first.cloudiness >= 0 && first.cloudiness <= 1);
-    if (weather === "clear" || weather === "cloudy") {
+    if (weather === "clear") {
       assert.equal(first.rain, 0);
       assert.deepEqual(forestAtmosphereFrame(scene, { ...options, weather }).raindrops, []);
     }
@@ -176,6 +174,16 @@ test("weather presets override the clock while auto restores the original weathe
   assert.deepEqual(forestAtmosphereState(scene, { ...options, weather: "auto" }), forestAtmosphereState(scene, options));
   assert.equal(forestAtmosphereState(scene, { ...options, dusk: 0, weather: "downpour" }).dusk, 0);
   assert.equal(forestAtmosphereState(scene, { ...options, dusk: true, weather: "clear" }).dusk, 1);
+});
+
+test("day, night and rain never paint a flat atmosphere veil over the lighting pass", () => {
+  for (const dusk of [0, .5, 1]) for (const weather of ["clear", "drizzle", "rain", "downpour"]) {
+    const state = drawing();
+    drawForestAtmosphere(state.ctx, scene, { ...options, dusk, weather, butterflies: "off", fireflies: "off", birds: "off" });
+    assert.equal(state.calls.some(call => call[0] === "fillRect"), false);
+    if (weather === "clear") assert.equal(state.calls.some(call => call[0] === "fill" || call[0] === "stroke"), false);
+    assert.deepEqual(state.snapshot(), state.initial);
+  }
 });
 
 test("rain intensities increase density while keeping droplets short and translucent within a mobile budget", () => {
@@ -384,7 +392,7 @@ test("reduced motion freezes both clocks and omits all bird and rain strokes", (
     const before = drawing(), after = drawing();
     drawForestAtmosphere(before.ctx, scene, first);
     drawForestAtmosphere(after.ctx, scene, later);
-    assert.deepEqual(after.calls, before.calls, "static wings, glows, tint and weather do not advance with either clock");
+    assert.deepEqual(after.calls, before.calls, "static wings, glows and weather do not advance with either clock");
     assert.equal(before.calls.some(call => call[0] === "stroke"), false);
   }
 });

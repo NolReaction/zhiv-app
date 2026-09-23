@@ -7628,9 +7628,177 @@
          "visible":true,
          "x":0,
          "y":0
+        },
+        {
+            "id": 16,
+            "name": "Lights",
+            "type": "objectgroup",
+            "draworder": "topdown",
+            "opacity": 1,
+            "visible": true,
+            "x": 0,
+            "y": 0,
+            "objects": [
+                {
+                    "id": 94,
+                    "name": "home-lantern",
+                    "point": true,
+                    "x": 678.19,
+                    "y": 624.76,
+                    "width": 0,
+                    "height": 0,
+                    "rotation": 0,
+                    "visible": true,
+                    "type": "",
+                    "properties": [
+                        {
+                            "name": "kind",
+                            "type": "string",
+                            "value": "lantern"
+                        },
+                        {
+                            "name": "radius",
+                            "type": "float",
+                            "value": 135
+                        },
+                        {
+                            "name": "intensity",
+                            "type": "float",
+                            "value": 1.15
+                        },
+                        {
+                            "name": "color",
+                            "type": "color",
+                            "value": "#ffffcf87"
+                        },
+                        {
+                            "name": "flicker",
+                            "type": "float",
+                            "value": 0.045
+                        }
+                    ]
+                },
+                {
+                    "id": 95,
+                    "name": "clearing-torch",
+                    "point": true,
+                    "x": 489,
+                    "y": 618,
+                    "width": 0,
+                    "height": 0,
+                    "rotation": 0,
+                    "visible": true,
+                    "type": "",
+                    "properties": [
+                        {
+                            "name": "kind",
+                            "type": "string",
+                            "value": "torch"
+                        },
+                        {
+                            "name": "radius",
+                            "type": "float",
+                            "value": 72
+                        },
+                        {
+                            "name": "intensity",
+                            "type": "float",
+                            "value": 1
+                        },
+                        {
+                            "name": "color",
+                            "type": "color",
+                            "value": "#ffffb45d"
+                        },
+                        {
+                            "name": "flicker",
+                            "type": "float",
+                            "value": 0.12
+                        }
+                    ]
+                },
+                {
+                    "id": 96,
+                    "name": "river-path-torch",
+                    "point": true,
+                    "x": 922,
+                    "y": 807,
+                    "width": 0,
+                    "height": 0,
+                    "rotation": 0,
+                    "visible": true,
+                    "type": "",
+                    "properties": [
+                        {
+                            "name": "kind",
+                            "type": "string",
+                            "value": "torch"
+                        },
+                        {
+                            "name": "radius",
+                            "type": "float",
+                            "value": 85
+                        },
+                        {
+                            "name": "intensity",
+                            "type": "float",
+                            "value": 1
+                        },
+                        {
+                            "name": "color",
+                            "type": "color",
+                            "value": "#ffffb45d"
+                        },
+                        {
+                            "name": "flicker",
+                            "type": "float",
+                            "value": 0.1
+                        }
+                    ]
+                },
+                {
+                    "id": 97,
+                    "name": "north-fork-torch",
+                    "point": true,
+                    "x": 937,
+                    "y": 249,
+                    "width": 0,
+                    "height": 0,
+                    "rotation": 0,
+                    "visible": true,
+                    "type": "",
+                    "properties": [
+                        {
+                            "name": "kind",
+                            "type": "string",
+                            "value": "torch"
+                        },
+                        {
+                            "name": "radius",
+                            "type": "float",
+                            "value": 78
+                        },
+                        {
+                            "name": "intensity",
+                            "type": "float",
+                            "value": 1
+                        },
+                        {
+                            "name": "color",
+                            "type": "color",
+                            "value": "#ffffbc72"
+                        },
+                        {
+                            "name": "flicker",
+                            "type": "float",
+                            "value": 0.13
+                        }
+                    ]
+                }
+            ]
         }],
- "nextlayerid":16,
- "nextobjectid":94,
+ "nextlayerid":17,
+ "nextobjectid":98,
  "orientation":"orthogonal",
  "properties":[
         {

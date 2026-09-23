@@ -10,6 +10,7 @@ import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATIO
 import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
 import { drawForestGroundImpacts } from "./forest-ground-impacts";
+import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
 import { advanceForestLife, cancelForestLife, forestLifeFrame, triggerForestLife, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
 import { connectForestSession } from "./forest-session";
@@ -40,7 +41,7 @@ function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
 function atmosphereOptions(options: SceneOptions, timestamp: number, dusk: number, preview?: NewMapPaintPreview): ForestAtmosphereOptions {
   const dev = preview?.state;
   return { elapsed: timestamp / 1000, timestamp, reducedMotion: reducedMotion(options, dev),
-    dusk: dev?.timeOfDay === "day" ? 0 : dev?.timeOfDay === "dusk" ? .55 : dev?.timeOfDay === "night" ? 1 : dusk,
+    dusk: dev?.timeOfDay === "day" ? 0 : dev?.timeOfDay === "night" ? 1 : dusk,
     weather: dev?.weather, butterflies: dev?.butterflies, fireflies: dev?.fireflies, birds: dev?.birds,
     birdElapsed: preview?.birdElapsed, birdSeed: preview?.birdSeed };
 }
@@ -84,7 +85,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
       appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow });
     if (routine) drawForestLifePartner(context, routine, elapsed);
   }
-  drawForestAtmosphere(context, TILED_WORLD, atmosphere);
+  const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
+    showBuildings: dev?.showBuildings, levels: dev?.levels ?? levels };
+  drawForestAtmosphere(context, TILED_WORLD, atmosphere, () => drawForestLighting(context, TILED_WORLD, lighting));
+  drawForestLightEmitters(context, TILED_WORLD, lighting);
   context.restore();
 }
 

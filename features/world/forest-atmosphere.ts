@@ -9,15 +9,14 @@ const WEATHER_PERIOD = 24 * 60;
 export { FOREST_BIRD_FLIGHT_DURATION } from "./forest-birds";
 
 export const FOREST_ATMOSPHERE_LIMITS = { butterflies: 6, fireflies: 12, birds: FOREST_BIRD_LIMIT, raindrops: 180 } as const;
-export type ForestWeatherMode = "auto" | "clear" | "cloudy" | "drizzle" | "rain" | "downpour";
+export type ForestWeatherMode = "auto" | "clear" | "drizzle" | "rain" | "downpour";
 export type ForestWildlifeMode = "auto" | "on" | "off";
 
 const WEATHER_PRESETS = {
-  clear: { rain: 0, cloudiness: 0 },
-  cloudy: { rain: 0, cloudiness: .8 },
-  drizzle: { rain: .35, cloudiness: .65 },
-  rain: { rain: .68, cloudiness: .85 },
-  downpour: { rain: 1, cloudiness: 1 },
+  clear: { rain: 0 },
+  drizzle: { rain: .35 },
+  rain: { rain: .68 },
+  downpour: { rain: 1 },
 } as const;
 
 export type ForestAtmosphereOptions = {
@@ -40,7 +39,6 @@ export type ForestAtmosphereState = {
   elapsed: number;
   dusk: number;
   rain: number;
-  cloudiness: number;
   weather: Exclude<ForestWeatherMode, "auto">;
 };
 
@@ -76,18 +74,17 @@ function noise(seed: number, index: number) {
   return ((value ^ value >>> 15) >>> 0) / 4294967296;
 }
 
-/** Clear intervals, slowly gathering cloud, gentle drizzle, then clearing again. */
+/** Long dry intervals with a gradual arrival and departure of gentle drizzle. */
 export function forestAtmosphereState(scene: FixedWorldScene, options: ForestAtmosphereOptions): ForestAtmosphereState {
   const timestamp = options.reducedMotion ? 0 : finite(options.timestamp) / 1000;
   const phase = modulo(timestamp + noise(sceneSeed(scene.id), 0) * WEATHER_PERIOD, WEATHER_PERIOD);
-  const cloudiness = smooth((phase - 420) / 150) * (1 - smooth((phase - 990) / 180));
   const rain = .42 * smooth((phase - 630) / 100) * (1 - smooth((phase - 870) / 120));
   const weather = options.weather && options.weather !== "auto" ? options.weather : undefined;
   return {
     elapsed: options.reducedMotion ? 0 : Math.max(0, finite(options.elapsed)),
     dusk: typeof options.dusk === "boolean" ? Number(options.dusk) : clamp(finite(options.dusk)),
-    ...(weather ? WEATHER_PRESETS[weather] : { rain, cloudiness }),
-    weather: weather ?? (rain > .04 ? "drizzle" : cloudiness > .12 ? "cloudy" : "clear"),
+    ...(weather ? WEATHER_PRESETS[weather] : { rain }),
+    weather: weather ?? (rain > .04 ? "drizzle" : "clear"),
   };
 }
 
@@ -139,21 +136,17 @@ export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtm
   return frame;
 }
 
-/** Paint once after terrain, buildings and actor; both views use the same clock and scene. */
-export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, options: ForestAtmosphereOptions) {
+/** Shared wildlife and rain pass; scene illumination belongs to the lighting compositor. */
+export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: FixedWorldScene,
+  options: ForestAtmosphereOptions, paintLighting?: () => void) {
   const frame = forestAtmosphereFrame(scene, options);
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
-  // One restrained flat tint leaves the baked grass and bushes crisp at every zoom.
-  const shade = frame.dusk * .18 + frame.cloudiness * .045 + frame.rain * .04;
-  if (shade > 0) {
-    ctx.globalAlpha = shade; ctx.fillStyle = frame.dusk > .1 ? "#18324b" : "#526b72";
-    ctx.fillRect(0, 0, scene.width, scene.height);
-  }
-
   for (const particle of frame.butterflies) drawForestButterfly(ctx, particle, frame.elapsed);
-  for (const particle of frame.fireflies) drawForestFirefly(ctx, particle, frame.elapsed);
   for (const bird of frame.birds) drawForestBird(ctx, bird);
+  // Bodies receive the same light as the scene; luminous insects remain above it.
+  paintLighting?.();
+  for (const particle of frame.fireflies) drawForestFirefly(ctx, particle, frame.elapsed);
   drawForestRain(ctx, scene, frame.raindrops);
   ctx.restore();
 }

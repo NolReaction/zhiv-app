@@ -29,8 +29,8 @@ const POSE_LABELS: Record<PixelPose, string> = {
   scratch: "Почесаться", yawn: "Зевнуть", shake: "Отряхнуться", sneeze: "Чихнуть", wonder: "Удивиться",
   carry: "Нести", toss: "Подбросить", present: "Показать находку", fish: "Рыбачить", "fishing-walk": "Идти с удочкой",
 };
-const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], ["cloudy", "Облачно"], ["drizzle", "Морось"], ["rain", "Дождь"], ["downpour", "Ливень"]] as const;
-const TIME = [["auto", "По времени профиля"], ["day", "День"], ["dusk", "Сумерки"], ["night", "Ночь"]] as const;
+const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], ["drizzle", "Морось"], ["rain", "Дождь"], ["downpour", "Ливень"]] as const;
+const TIME = [["auto", "По времени профиля"], ["day", "День"], ["night", "Ночь"]] as const;
 const MODES = [["auto", "Авто"], ["on", "Включить"], ["off", "Выключить"]] as const;
 const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", "Влево"], ["right", "Вправо"]] as const;
 const LIFE_ACTIONS = [

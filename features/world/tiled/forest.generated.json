@@ -6948,5 +6948,55 @@
       "y": 690.043232944969
     },
     "size": 56
-  }
+  },
+  "lights": [
+    {
+      "id": "home-lantern",
+      "position": {
+        "x": 678.19,
+        "y": 624.76
+      },
+      "kind": "lantern",
+      "radius": 135,
+      "intensity": 1.15,
+      "color": "#ffcf87",
+      "flicker": 0.045
+    },
+    {
+      "id": "clearing-torch",
+      "position": {
+        "x": 489,
+        "y": 618
+      },
+      "kind": "torch",
+      "radius": 72,
+      "intensity": 1,
+      "color": "#ffb45d",
+      "flicker": 0.12
+    },
+    {
+      "id": "river-path-torch",
+      "position": {
+        "x": 922,
+        "y": 807
+      },
+      "kind": "torch",
+      "radius": 85,
+      "intensity": 1,
+      "color": "#ffb45d",
+      "flicker": 0.1
+    },
+    {
+      "id": "north-fork-torch",
+      "position": {
+        "x": 937,
+        "y": 249
+      },
+      "kind": "torch",
+      "radius": 78,
+      "intensity": 1,
+      "color": "#ffbc72",
+      "flicker": 0.13
+    }
+  ]
 }
