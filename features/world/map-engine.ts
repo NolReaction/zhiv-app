@@ -1,5 +1,5 @@
 import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
-import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point } from "./camera";
+import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point, type VerticalCameraInsets } from "./camera";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { WORLD_ART } from "./art";
 import { mapPlaceAt, worldToHome } from "./map-layout";
@@ -13,7 +13,8 @@ export class MapLoadError extends Error {
 }
 export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
 export type MapAction = "home" | "pet" | "overview" | "in" | "out";
-export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
+export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
+export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}) {
   let ground: HTMLImageElement;
   const rebuilding = WORLD_PRESENTATION.rebuilding;
   const bounds = rebuilding ? NEW_MAP_BOUNDS : { width: MAP_SIZE, height: MAP_SIZE };
@@ -30,10 +31,11 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const motionReduced = () => dev?.reducedMotion === "on" || dev?.reducedMotion !== "off" && options.reducedMotion;
   const paused = () => options.paused || Boolean(dev?.paused);
   let boatArt: HTMLCanvasElement | null = null;
+  let cameraInsets: VerticalCameraInsets = { top: 0, bottom: 0 };
   const focusCamera = (viewport: { width: number; height: number }, close: boolean) => rebuilding
     ? clampCamera({ x: NEW_MAP_FOCUS.x + NEW_MAP_FOCUS.width / 2, y: NEW_MAP_FOCUS.y + NEW_MAP_FOCUS.height / 2,
       zoom: close ? Math.min(viewport.width / NEW_MAP_FOCUS.width, viewport.height / NEW_MAP_FOCUS.height)
-        : Math.min(viewport.width / bounds.width, viewport.height / bounds.height) }, viewport, bounds)
+        : Math.min(viewport.width / bounds.width, viewport.height / bounds.height) }, viewport, bounds, cameraInsets)
     : close ? homeCamera(viewport) : worldCamera(viewport);
   let view = { width: 1, height: 1 }, camera = focusCamera(view, false);
   let framing: "world" | "home" | "overview" | "manual" = "world";
@@ -128,13 +130,20 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (!disposed && !backgrounded) { draw(); if (!motionReduced() && !paused()) raf = requestAnimationFrame(tick); }
   }
   function resize() {
+    if (disposed) return;
     // CSS entrance scaling changes the visual rect, not the map's layout viewport.
     view = { width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight) };
+    // Both HUDs are anchored to the viewport edges. Layout height includes their
+    // safe-area padding and avoids entrance transforms changing the pan limits.
+    cameraInsets = { top: cameraHud.top?.offsetHeight ?? 0, bottom: cameraHud.bottom?.offsetHeight ?? 0 };
     const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
-    camera = framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds); draw();
+    camera = framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds, cameraInsets); draw();
   }
-  const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas); resize();
+  const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas);
+  if (cameraHud.top) resizeObserver.observe(cameraHud.top, { box: "border-box" });
+  if (cameraHud.bottom) resizeObserver.observe(cameraHud.bottom, { box: "border-box" });
+  resize();
   const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; visibility(); }); observer.observe(canvas);
   const point = (event: PointerEvent): Point => viewportPoint({ x: event.clientX, y: event.clientY }, canvas.getBoundingClientRect(), view);
   const separation = () => { const pair = [...pointers.values()].slice(0, 2); return pair.length === 2 ? Math.hypot(pair[0].position.x - pair[1].position.x, pair[0].position.y - pair[1].position.y) : 0; };
@@ -153,9 +162,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     travelled = Math.max(travelled, Math.hypot(p.x - touch.initial.x, p.y - touch.initial.y));
     touch.position = p;
     if (oldCenter && oldDistance > 2) {
-      camera = zoomAt(camera, view, oldCenter, separation() / oldDistance, bounds);
-      const center = midpoint(); camera = clampCamera({ ...camera, x: camera.x - (center.x - oldCenter.x) / camera.zoom, y: camera.y - (center.y - oldCenter.y) / camera.zoom }, view, bounds);
-    } else camera = clampCamera({ ...camera, x: camera.x - (p.x - before.x) / camera.zoom, y: camera.y - (p.y - before.y) / camera.zoom }, view, bounds);
+      camera = zoomAt(camera, view, oldCenter, separation() / oldDistance, bounds, cameraInsets);
+      const center = midpoint(); camera = clampCamera({ ...camera, x: camera.x - (center.x - oldCenter.x) / camera.zoom, y: camera.y - (center.y - oldCenter.y) / camera.zoom }, view, bounds, cameraInsets);
+    } else camera = clampCamera({ ...camera, x: camera.x - (p.x - before.x) / camera.zoom, y: camera.y - (p.y - before.y) / camera.zoom }, view, bounds, cameraInsets);
     draw();
   }
   function end(event: PointerEvent) {
@@ -181,15 +190,15 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     draw();
   }
-  function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event as unknown as PointerEvent), Math.exp(-event.deltaY * .0015), bounds); draw(); }
+  function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event as unknown as PointerEvent), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); draw(); }
   function control(action: MapAction) {
     framing = action === "home" || action === "overview" ? action : "manual";
-    camera = action === "pet" ? clampCamera({ ...habitat.position(), zoom: Math.max(camera.zoom, focusCamera(view, true).zoom) }, view, bounds)
-      : action === "home" ? focusCamera(view, true) : action === "overview" ? overviewCamera(view, bounds) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8, bounds); draw();
+    camera = action === "pet" ? clampCamera({ ...habitat.position(), zoom: Math.max(camera.zoom, focusCamera(view, true).zoom) }, view, bounds, cameraInsets)
+      : action === "home" ? focusCamera(view, true) : action === "overview" ? overviewCamera(view, bounds) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8, bounds, cameraInsets); draw();
   }
   function key(event: KeyboardEvent) {
     const delta = { ArrowUp: [0, -40], ArrowDown: [0, 40], ArrowLeft: [-40, 0], ArrowRight: [40, 0] }[event.key];
-    if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds); draw(); }
+    if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds, cameraInsets); draw(); }
     else if (["+", "=", "-", "Home"].includes(event.key)) { event.preventDefault(); control(event.key === "Home" ? "pet" : event.key === "-" ? "out" : "in"); }
   }
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);

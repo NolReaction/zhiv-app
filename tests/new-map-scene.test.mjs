@@ -58,7 +58,7 @@ function browser() {
     return {
       width: 1, height: 1, clientWidth: width, clientHeight: height, calls, context, events,
       getContext: () => context,
-      getBoundingClientRect: () => ({ left: 0, top: 0, width, height }),
+      getBoundingClientRect() { return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight }; },
       addEventListener: (name, callback) => events.set(name, callback),
       removeEventListener: name => events.delete(name),
       setPointerCapture: pointer => captured.add(pointer),
@@ -80,7 +80,7 @@ function browser() {
   for (const kind of ["ResizeObserver", "IntersectionObserver"]) {
     install(kind, class {
       nodes = new Set();
-      constructor() { observers.push(this); }
+      constructor(callback) { this.callback = callback; this.kind = kind; observers.push(this); }
       observe(node) { this.nodes.add(node); }
       disconnect() { this.nodes.clear(); }
     });
@@ -88,6 +88,11 @@ function browser() {
   return {
     surface, pending, requests, timers, frames,
     observed: () => observers.reduce((sum, observer) => sum + observer.nodes.size, 0),
+    resize(node) {
+      for (const observer of observers) {
+        if (observer.kind === "ResizeObserver" && observer.nodes.has(node)) observer.callback([{ target: node }]);
+      }
+    },
     finish(error = false) {
       const request = pending.shift(); assert.ok(request, "an image is awaiting completion");
       if (error) request.image.onerror?.(); else request.image.onload?.();
@@ -326,6 +331,106 @@ test("new map ignores old place hit areas while camera controls and pet taps rem
     assert.deepEqual(places, []);
     engine.dispose(); assert.equal(canvas.events.size, 0);
     assert.equal(env.observed(), 0); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0);
+  } finally { engine?.dispose(); env.restore(); }
+});
+
+function mapProjection(canvas, width = fixture.width, height = fixture.height) {
+  const frame = canvas.calls.slice(canvas.calls.findLastIndex(call => call.method === "setTransform"));
+  const translates = frame.filter(call => call.method === "translate");
+  const zoom = frame.find(call => call.method === "scale").args[0];
+  const [centerX, centerY] = translates[0].args, [offsetX, offsetY] = translates[1].args;
+  return { zoom, left: centerX + offsetX * zoom, top: centerY + offsetY * zoom,
+    right: centerX + (offsetX + width) * zoom, bottom: centerY + (offsetY + height) * zoom };
+}
+
+function dragMap(canvas, x, y) {
+  const event = { pointerId: 1, pointerType: "touch", button: 0, clientX: canvas.clientWidth / 2, clientY: canvas.clientHeight / 2 };
+  canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+  canvas.events.get("pointermove")({ ...event, type: "pointermove", clientX: event.clientX + x, clientY: event.clientY + y });
+  canvas.events.get("pointerup")({ ...event, type: "pointerup", clientX: event.clientX + x, clientY: event.clientY + y });
+}
+
+const approximately = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-8, `${message}: ${actual} ≈ ${expected}`);
+
+test("full map clears the vertical HUD when zoomed in without adding horizontal travel", async () => {
+  const { createMapEngine } = await modules();
+  const env = browser(); let engine;
+  try {
+    const canvas = env.surface(393, 852), top = { offsetHeight: 170 }, bottom = { offsetHeight: 110 };
+    const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top, bottom });
+    env.finish(); engine = await loading;
+    engine.control("home");
+    dragMap(canvas, 10_000, 10_000);
+    let projection = mapProjection(canvas);
+    approximately(projection.top, top.offsetHeight, "the upper edge moves below the full top HUD");
+    approximately(projection.left, 0, "the left edge retains its existing hard boundary");
+    dragMap(canvas, -10_000, -10_000);
+    projection = mapProjection(canvas);
+    approximately(projection.bottom, canvas.clientHeight - bottom.offsetHeight, "the lower edge moves above the dock");
+    approximately(projection.right, canvas.clientWidth, "the right edge retains its existing hard boundary");
+
+    // Wheel zoom must remove the extra travel as soon as the whole map fits vertically.
+    const heightFit = canvas.clientHeight / fixture.height;
+    canvas.events.get("wheel")({ clientX: 196.5, clientY: 426,
+      deltaY: Math.log(projection.zoom / heightFit) / .0015, preventDefault() {} });
+    dragMap(canvas, 0, 10_000);
+    projection = mapProjection(canvas);
+    approximately(projection.top, 0, "no upper gap at vertical fit");
+    approximately(projection.bottom, canvas.clientHeight, "no lower gap at vertical fit");
+    canvas.events.get("keydown")({ key: "ArrowDown", preventDefault() {} });
+    approximately(mapProjection(canvas).top, 0, "keyboard panning uses the same zoom-dependent limits");
+
+    engine.control("overview");
+    projection = mapProjection(canvas);
+    approximately(projection.left, 0, "overview continues to show the complete width");
+    approximately(projection.right, canvas.clientWidth, "overview never crops either side");
+    approximately(projection.top, (canvas.clientHeight - canvas.clientWidth) / 2, "existing portrait overview stays centered");
+    const overview = { ...projection };
+    dragMap(canvas, 0, -10_000);
+    assert.deepEqual(mapProjection(canvas), overview, "overview cannot be dragged farther into its letterbox");
+
+    engine.control("home");
+    const first = { pointerId: 1, pointerType: "touch", button: 0, clientX: 120, clientY: 400 };
+    const second = { ...first, pointerId: 2, clientX: 280 };
+    canvas.events.get("pointerdown")({ ...first, type: "pointerdown" });
+    canvas.events.get("pointerdown")({ ...second, type: "pointerdown" });
+    canvas.events.get("pointermove")({ ...second, type: "pointermove", clientX: 121 });
+    canvas.events.get("pointercancel")({ ...first, type: "pointercancel" });
+    canvas.events.get("pointercancel")({ ...second, type: "pointercancel", clientX: 121 });
+    assert.deepEqual(mapProjection(canvas), overview, "pinch zoom closes the extra travel just like the overview control");
+  } finally { engine?.dispose(); env.restore(); }
+});
+
+test("HUD layout and viewport changes reclamp vertical travel and observers are released", async () => {
+  const { createMapEngine } = await modules();
+  const env = browser(); let engine;
+  try {
+    const canvas = env.surface(393, 852), top = { offsetHeight: 170 }, bottom = { offsetHeight: 110 };
+    const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top, bottom });
+    env.finish(); engine = await loading;
+    engine.control("home"); dragMap(canvas, 0, 10_000);
+    top.offsetHeight = 90; env.resize(top);
+    approximately(mapProjection(canvas).top, 90, "a shorter top HUD removes the now-unnecessary gap immediately");
+    dragMap(canvas, 0, -10_000);
+    bottom.offsetHeight = 60; env.resize(bottom);
+    approximately(mapProjection(canvas).bottom, canvas.clientHeight - 60, "a shorter bottom HUD also reclamps immediately");
+
+    canvas.clientWidth = 852; canvas.clientHeight = 393; env.resize(canvas);
+    dragMap(canvas, 10_000, 10_000);
+    let projection = mapProjection(canvas);
+    approximately(projection.top, 90, "landscape continues to use the measured top HUD height");
+    approximately(projection.left, 0, "rotation does not loosen horizontal bounds");
+    dragMap(canvas, -10_000, -10_000);
+    projection = mapProjection(canvas);
+    approximately(projection.bottom, canvas.clientHeight - 60, "landscape bottom edge clears the dock");
+    approximately(projection.right, canvas.clientWidth, "landscape right edge remains bounded");
+
+    engine.dispose();
+    assert.equal(env.observed(), 0, "both HUD targets and canvas observers are disconnected");
+    assert.equal(canvas.events.size, 0);
+    const paints = canvas.calls.length;
+    env.resize(top); env.resize(bottom); env.resize(canvas);
+    assert.equal(canvas.calls.length, paints, "resizing detached HUD nodes cannot repaint a disposed engine");
   } finally { engine?.dispose(); env.restore(); }
 });
 
