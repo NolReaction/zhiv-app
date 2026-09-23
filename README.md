@@ -29,6 +29,8 @@ npm run dev:local
 | Уровни, награды, коллекции, цены и сохранение | [Игровые правила и данные](docs/development/backend-and-data.md) |
 | Текст справки или кнопку ⓘ рядом с коллекциями | [Файлы интерфейса мира](docs/repository-guide.md#интерфейс-и-правила-игры) |
 | Новости версий, счётчик beta-test и просмотр уровней | [Новости и уровни](docs/development/updates-and-levels.md) |
+| Форму обращений, суточный лимит и входящие в админке | [Обратная связь](docs/development/feedback.md) |
+| Техработы и автоматический переход игроков на новую сборку | [Обновление клиента](docs/operations/client-updates.md) |
 | Сервер, резервную копию или сбой | [Эксплуатация](docs/operations/operations.md) · [диагностика](docs/operations/incident-response.md) |
 
 **[Все инструкции](docs/README.md)** · **[Карта исходников по задачам](docs/repository-guide.md)** · [Архитектура](docs/architecture.md)

@@ -393,6 +393,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_tap_activity_minutes WHERE user_id IN (?,?)",id,s.other)
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id IN (?,?)",id,s.other)
         c.update("UPDATE app_users SET tap_signal_at=GREATEST(tap_signal_at,(SELECT tap_signal_at FROM app_users WHERE id=?)) WHERE id=?",s.other,id)
+        c.update("UPDATE player_feedback SET user_id=? WHERE user_id=?",id,s.other)
         mergeWorldProfiles(c,id,s.other)
         mergeGameProgress(c,id,s.other)
         c.update("""
@@ -416,6 +417,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         if (receipt(c,"delete",requestHash,sessionHash,browserHash)) return@tx
         val id=lockAccountGraph(c,sessionHash)
         proof(c,id,sessionHash,browserHash,"delete","current") ?: proofRequired()
+        c.update("DELETE FROM player_feedback WHERE user_id=?",id)
         clearCapabilities(c,id);closeSocial(c,id,true);tombstone(c,id)
         saveReceipt(c,"delete",requestHash,id,sessionHash,browserHash)
         Unit

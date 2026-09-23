@@ -21,7 +21,7 @@ function plainText(value: unknown, maxLength: number): value is string {
 /** Reject the whole malformed feed, so a bad deployment never erases good notes. */
 export function parseReleaseFeed(value: unknown): ReleaseNote[] | null {
   if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.releases)
-    || value.releases.length === 0 || value.releases.length > 200) return null;
+    || value.releases.length > 200) return null;
   const ids = new Set<string>();
   const releases: ReleaseNote[] = [];
   for (const item of value.releases) {

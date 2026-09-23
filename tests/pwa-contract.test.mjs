@@ -200,6 +200,15 @@ test("release feed bypasses old shell and asset caches after a deployment", asyn
   assert.equal(await nextShell.match("/updates.json"), undefined, "the news feed is not precached with the shell");
 });
 
+test("maintenance status is always network-only even if a previous worker cached it", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "maintenance-a"); await harness.dispatchExtendable("install");
+  const shell = await harness.caches.open(await harness.currentCacheName());
+  await shell.put("/app-status.json", new Response('{"schemaVersion":1,"buildId":"stale","maintenance":false}'));
+  assert.equal(await harness.dispatchFetch("/app-status.json", "cors"), null);
+  assert.equal(await harness.dispatchFetch("/app-status.json"), null, "direct navigation must not fall back to the offline app shell");
+});
+
 test("downloaded world artwork and lazy modules survive offline navigation and shell updates", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "world-a"); await harness.dispatchExtendable("install");

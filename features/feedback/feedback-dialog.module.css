@@ -1,0 +1,24 @@
+.trigger, .submit, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; border: 1px solid #58684a; border-radius: 12px; color: #e9f3df; background: #36492c; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.trigger { margin-top: 12px; border-color: rgb(231 189 111 / 32%); background: rgb(231 189 111 / 9%); color: #e8d3aa; }
+.trigger:hover, .submit:hover { filter: brightness(1.1); }
+.dialog { width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 24px; border: 1px solid #58674a; border-radius: 24px; background: #1e2819; color: #eff3e8; }
+.dialog :global([data-slot="dialog-description"]) { color: #b7c5aa; line-height: 1.5; }
+.form { display: grid; gap: 10px; min-width: 0; }
+.form label { font-size: 14px; font-weight: 650; }
+.form select, .form textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid #506145; border-radius: 12px; background: #141d10; color: #eff3e8; font: inherit; font-size: 16px; line-height: 1.5; }
+.form textarea { resize: vertical; min-height: 140px; max-height: 40dvh; }
+.form textarea::placeholder { color: #8f9e83; }
+.form textarea:disabled { opacity: .8; }
+.form select:disabled { opacity: .65; }
+.trigger:focus-visible, .form button:focus-visible, .form select:focus-visible, .form textarea:focus-visible { outline: 2px solid var(--focus, #ddea94); outline-offset: 3px; }
+.hints { display: flex; justify-content: space-between; align-items: start; gap: 14px; font-size: 12px; line-height: 1.5; color: #a6b59a; }
+.hints > :last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.notice, .error, .success { margin: 0; border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.notice { background: #313721; color: #d9d5ae; }
+.error { background: #402820; color: #ffc2b0; }
+.success { display: flex; align-items: center; gap: 8px; background: #2c4223; color: #d4e9c1; }
+.success svg { flex-shrink: 0; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.secondary { background: transparent; }
+.form button:disabled { cursor: default; opacity: .5; }
+@media (max-width: 380px) { .dialog { padding: 18px; } .hints { flex-direction: column; gap: 3px; } }

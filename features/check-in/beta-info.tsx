@@ -5,6 +5,7 @@ import { ChevronDown, FlaskConical, Pin, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import type { ReleaseNote } from "@/features/updates/release-notes";
 import { useReleaseNotes } from "@/features/updates/use-release-notes";
+import { FeedbackDialog } from "@/features/feedback/feedback-dialog";
 import styles from "./beta-info.module.css";
 
 export function unreadReleaseLabel(count: number): string {
@@ -90,8 +91,9 @@ function BetaInfoDialog({ ownerPublicId }: { ownerPublicId: string }) {
       <section className={styles.cooperation} aria-label="Сотрудничество и обратная связь">
         <h2><Pin size={14} aria-hidden="true" />Делаем приложение вместе</h2>
         <p>
-          Приложение в beta-тесте и идёт активная разработка. Если вы обнаружите баги или захотите предложить идеи, свяжитесь со мной: <a href="mailto:66SH66SH@mail.ru">66SH66SH@mail.ru</a>
+          Приложение в beta-тесте и активно развивается. Расскажите об ошибке или предложите идею — ваше сообщение попадёт прямо разработчику.
         </p>
+        <FeedbackDialog ownerPublicId={ownerPublicId} />
       </section>
       <section className={styles.updates} aria-label="Обновления приложения">
         <div className={styles.updatesHeader}>

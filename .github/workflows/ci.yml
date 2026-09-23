@@ -81,7 +81,7 @@ jobs:
             echo "Authentication integration tests must run with PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest; do
+          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest JdbcFeedbackRepositoryIntegrationTest; do
             lifecycle_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${lifecycle_report}"
             if grep --quiet '<skipped' "${lifecycle_report}"; then
@@ -134,6 +134,27 @@ jobs:
 
       - name: Exercise the isolated production API
         run: node scripts/smoke-production.mjs
+
+      - name: Verify deployment status and maintenance gate
+        shell: bash
+        run: |
+          status_file="$(mktemp)"
+          curl --fail --silent --show-error --insecure https://localhost/app-status.json > "$status_file"
+          node --input-type=module - "$status_file" <<'NODE'
+          import fs from 'node:fs';
+          const status = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (status.schemaVersion !== 1 || status.maintenance !== false || !status.buildId) throw new Error('Invalid built app status');
+          fs.writeFileSync('deploy/runtime/app-status.json', JSON.stringify({...status, maintenance: true}));
+          NODE
+          trap 'rm -f deploy/runtime/maintenance deploy/runtime/app-status.json "$status_file"' EXIT
+          touch deploy/runtime/maintenance
+          test "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' https://localhost/)" = 503
+          test "$(curl --silent --insecure --request POST --output /dev/null --write-out '%{http_code}' https://localhost/api/v1/check-ins)" = 503
+          curl --fail --silent --show-error --insecure https://localhost/app-status.json > "$status_file"
+          node --input-type=module - "$status_file" <<'NODE'
+          import fs from 'node:fs';
+          if (JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).maintenance !== true) throw new Error('Maintenance status was intercepted by the gate');
+          NODE
 
       - name: Exercise private administration and real monitoring
         run: node scripts/smoke-admin.mjs

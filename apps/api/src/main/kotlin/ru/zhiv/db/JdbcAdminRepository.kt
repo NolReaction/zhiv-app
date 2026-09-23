@@ -380,8 +380,9 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         AdminTapHistory(targetPublicId,instant.toString(),from.toString(),rows)
     }
 
-    override suspend fun tapActivity(sessionHash: ByteArray, targetPublicId: String): AdminTapActivity = tx { c ->
+    override suspend fun tapActivity(sessionHash: ByteArray, targetPublicId: String, rangeMinutes: Int): AdminTapActivity = tx { c ->
         actor(c,sessionHash)
+        if(rangeMinutes !in TapActivityRanges.allowed) invalid()
         val target=c.one("SELECT id,display_name,tap_watchlisted FROM app_users WHERE public_id=? AND deleted_at IS NULL",targetPublicId) {
             Triple(it.getObject(1,UUID::class.java),it.getString(2),it.getBoolean(3))
         } ?: fail("ADMIN_USER_NOT_FOUND","Профиль не найден",404)
@@ -391,6 +392,23 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
             TapActivitySample(r.getObject("bucket_at",OffsetDateTime::class.java).toEpochSecond(),r.getLong("received_taps"),r.getLong("rejected_taps"),
                 r.getLong("event_taps"),r.getLong("delayed_taps"),r.getLong("legacy_taps"),r.getLong("interval_count"),r.getDouble("interval_sum_ms"),r.getDouble("interval_squared_sum_ms"))
         }
+        val bucketSeconds = TapActivityRanges.bucketMinutes(rangeMinutes) * 60L
+        val from = TapActivityRanges.from(instant, rangeMinutes)
+        val history = c.rows("""SELECT (extract(epoch FROM bucket_at)::bigint / ?) * ? AS bucket_second,
+            sum(received_taps) AS received, sum(event_taps) AS events, sum(rejected_taps) AS rejected,
+            sum(delayed_taps) AS delayed, sum(legacy_taps) AS legacy
+            FROM game_tap_activity_minutes WHERE user_id=? AND bucket_at>=? AND bucket_at<=?
+            GROUP BY 1 ORDER BY 1""", bucketSeconds, bucketSeconds, target.first,
+            from.atOffset(ZoneOffset.UTC), instant.atOffset(ZoneOffset.UTC)) { r ->
+            TapHistoryAggregate(r.getLong("bucket_second"), r.getLong("received"), r.getLong("events"),
+                r.getLong("rejected"), r.getLong("delayed"), r.getLong("legacy"))
+        }
+        // Earlier second buckets were already being purged before V28. Their backfill
+        // is useful evidence, but cannot prove that an absent old bucket means zero.
+        val collectionStarted = c.one("SELECT started_at FROM game_tap_collection_metadata WHERE singleton") {
+            it.getObject(1, OffsetDateTime::class.java).toInstant()
+        } ?: instant
         TapActivityAnalyzer.analyze(targetPublicId,target.second,target.third,instant,samples)
+            .copy(history=TapActivityRanges.summarize(instant,rangeMinutes,collectionStarted,history))
     }
 }

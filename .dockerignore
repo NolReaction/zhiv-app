@@ -11,4 +11,7 @@ deploy/.env
 npm-debug.log
 
 deploy/.secrets/
+deploy/runtime/
+public/app-status.json
+public/app-status.json.*.tmp
 public/__layout-check.html

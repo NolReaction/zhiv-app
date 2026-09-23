@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isTrustedDevRequest } from "@/lib/dev/api-origin";
 
-export function guardDevApi(request: Request, requireJson = false): NextResponse | null {
+export function guardDevApi(request: Request, requireJson = false, maxBodyBytes = 2_048): NextResponse | null {
   if (process.env.NODE_ENV === "production" && process.env.ENABLE_DEV_API !== "true") {
     return NextResponse.json(
       { code: "DEV_API_DISABLED", message: "Подключите production API" },
@@ -17,7 +17,7 @@ export function guardDevApi(request: Request, requireJson = false): NextResponse
   }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 2_048) {
+  if (contentLength > maxBodyBytes) {
     return NextResponse.json(
       { code: "BODY_TOO_LARGE", message: "Запрос слишком большой" },
       { status: 413, headers: { "Cache-Control": "no-store" } },

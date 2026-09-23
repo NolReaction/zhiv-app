@@ -132,6 +132,8 @@ export const manageAdminPlayer = (target: string, body: AdminPlayerCommand, sign
   adminRequest(`users/${encodeURIComponent(target)}/manage`, z.object({ requestId: z.string().uuid(), action: z.string(),
     changed: z.boolean(), affectedSessions: count, createdAt: instant }), signal, body);
 
+export type AdminTapRange = 30 | 1440 | 10080;
+const tapRangeSchema = z.union([z.literal(30), z.literal(1440), z.literal(10080)]);
 const tapActivitySchema = z.object({ publicId, displayName: z.string(), watchlisted: z.boolean(), serverTime: instant,
   windows: z.array(z.object({ seconds: z.number().int().positive(), receivedTaps: count, eventTaps: count, tapsPerSecond: z.number().finite().nonnegative() })).length(4),
   minutes: z.array(z.object({ at: instant, receivedTaps: count, eventTaps: count, complete: z.boolean() })).max(31),
@@ -139,10 +141,16 @@ const tapActivitySchema = z.object({ publicId, displayName: z.string(), watchlis
   analysis: z.object({ status: z.enum(["insufficient_data", "no_signal", "review"]), stableMinutes: count, activeMinutes: count,
     meanTapsPerMinute: z.number().finite().nullable(), minuteVariation: z.number().finite().nullable(),
     intervalVariation: z.number().finite().nullable(), intervalSamples: count, reasons: z.array(z.string()).max(10) }),
+  history: z.object({ rangeMinutes: tapRangeSchema, bucketMinutes: z.union([z.literal(1), z.literal(30), z.literal(120)]),
+    from: instant, to: instant, coverageFrom: instant, coverageComplete: z.boolean(),
+    receivedTaps: count, eventTaps: count, rejectedTaps: count, delayedTaps: count, legacyTaps: count,
+    buckets: z.array(z.object({ at: instant, until: instant, receivedTaps: count.nullable(), eventTaps: count.nullable(),
+      complete: z.boolean(), coverageComplete: z.boolean() })).max(85) }),
 });
 export type AdminTapActivity = z.infer<typeof tapActivitySchema>;
-export const getAdminTapActivity = (target: string, signal?: AbortSignal) =>
-  adminRequest(`users/${encodeURIComponent(target)}/tap-activity`, tapActivitySchema, signal);
+export const getAdminTapActivity = (target: string, signal?: AbortSignal, rangeMinutes: AdminTapRange = 30) =>
+  adminRequest(`users/${encodeURIComponent(target)}/tap-activity?rangeMinutes=${rangeMinutes}`,
+    tapActivitySchema.refine(value => value.publicId === target && value.history.rangeMinutes === rangeMinutes), signal);
 
 const tapHistorySchema = z.object({ publicId, serverTime: instant, from: instant,
   minutes: z.array(z.object({ at: instant, receivedTaps: count, rejectedTaps: count, eventTaps: count,

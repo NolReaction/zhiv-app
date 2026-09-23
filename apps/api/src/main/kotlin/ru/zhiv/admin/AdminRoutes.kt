@@ -72,7 +72,8 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
             get("/users/{publicId}/tap-activity") {
                 val hash = call.adminSessionHash(config, codec)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
-                call.respond(repository.tapActivity(hash, target))
+                val range = call.parameter("rangeMinutes", "30").toIntOrNull()?.takeIf { it in TapActivityRanges.allowed } ?: badQuery()
+                call.respond(repository.tapActivity(hash, target, range))
             }
             get("/audit") {
                 val hash = call.adminSessionHash(config, codec)

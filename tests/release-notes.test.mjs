@@ -140,7 +140,7 @@ test("published feed remains valid as entries grow; fixtures sort by publication
 });
 
 test("malformed, duplicate, unsupported and HTML release feeds cannot replace current data", () => {
-  for (const invalid of [null, "<html>error</html>", [], { schemaVersion: 2, releases: [original] }, feed(), feed(original, original),
+  for (const invalid of [null, "<html>error</html>", [], { schemaVersion: 2, releases: [original] }, feed(original, original),
     feed({ ...original, date: "2026-02-30" }), feed({ ...original, changes: ["<script>bad</script>"] }),
     feed({ ...original, id: "../../path" }), feed({ ...original, title: " " }), feed({ ...original, changes: [] })]) {
     assert.equal(parseReleaseFeed(invalid), null);
@@ -152,6 +152,26 @@ test("read state accepts only stable ids and counts each unseen release, includi
   assert.deepEqual([...parseReadReleaseIds(JSON.stringify({ schemaVersion: 1, ids: [original.id, original.id, 42, "../../bad"] }))], [original.id]);
   assert.deepEqual(unreadReleaseIds([later, original], new Set([original.id])), [later.id]);
   assert.notEqual(releaseReadStorageKey("player-a"), releaseReadStorageKey("player-b"));
+});
+
+test("an intentionally empty feed removes old announcements and accepts future releases", async () => {
+  assert.deepEqual(parseReleaseFeed(feed()), []);
+  const h = harness();
+  const stop = h.store.subscribe(() => {});
+  h.requests[0].resolve(response(feed(original)));
+  await flush();
+  assert.equal(h.store.getSnapshot().unreadCount, 1);
+  h.store.refresh();
+  h.requests[1].resolve(response(feed()));
+  await flush();
+  assert.deepEqual(h.store.getSnapshot().releases, []);
+  assert.equal(h.store.getSnapshot().unreadCount, 0);
+  assert.equal(h.store.getSnapshot().refreshError, false);
+  h.store.refresh();
+  h.requests[2].resolve(response(feed(later)));
+  await flush();
+  assert.deepEqual(h.store.getSnapshot().unreadIds, [later.id]);
+  stop();
 });
 
 test("server hydration snapshot is stable; account read state loads only on subscription", () => {

@@ -54,6 +54,8 @@
 |---|---|---|
 | Главный экран, отправка отметки, статус | [`features/check-in/`](../features/check-in/), [`check-in-api.ts`](../lib/check-in-api.ts) | [Разделы приложения](development/app-features.md) |
 | Новости версий, сотрудничество и счётчик beta-test | [`updates.json`](../public/updates.json), [`beta-info.tsx`](../features/check-in/beta-info.tsx), [`features/updates/`](../features/updates/) | [Публикация обновления](development/updates-and-levels.md) |
+| Обращения игроков и суточный лимит | [`features/feedback/`](../features/feedback/), [`feedback/`](../apps/api/src/main/kotlin/ru/zhiv/feedback/), [`JdbcFeedbackRepository.kt`](../apps/api/src/main/kotlin/ru/zhiv/db/JdbcFeedbackRepository.kt) | [Обратная связь](development/feedback.md) |
+| Техработы, версия открытого клиента и принудительное обновление | [`features/updates/`](../features/updates/), [`deploy-update.sh`](../scripts/deploy-update.sh), [`app-build.mjs`](../scripts/app-build.mjs) | [Обновление клиента](operations/client-updates.md) |
 | Календарь, серия отметок, часовой пояс | [`check-in-calendar.tsx`](../features/check-in/check-in-calendar.tsx), [`daily-streak.ts`](../lib/daily-streak.ts), [`time-zone.ts`](../lib/time-zone.ts) | [Разделы приложения](development/app-features.md) |
 | Люди, группы, приглашения, прозвища и приватность | [`features/people/`](../features/people/), [`check-in-contract.ts`](../lib/check-in-contract.ts) | [Разделы приложения](development/app-features.md) |
 | Вход, профиль, сеансы, резервный код | [`features/account/`](../features/account/), [`auth-api.ts`](../lib/auth-api.ts), [`auth/`](../apps/api/src/main/kotlin/ru/zhiv/auth/) | [Разделы приложения](development/app-features.md) |

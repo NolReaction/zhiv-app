@@ -16,16 +16,46 @@
     }
     encode zstd gzip
 
-    # Scrape endpoints are reachable only inside the container network.
-    @internal path /internal /internal/* /metrics
-    respond @internal 404
     @admin path /admin /admin/* /api/v1/admin/*
     header @admin >Cache-Control "no-store"
     header @admin >X-Robots-Tag "noindex, nofollow"
 
-    @api path /api/* /healthz /readyz
-    reverse_proxy @api api:8080
-    reverse_proxy web:3000
+    # Explicit order: lifecycle status remains reachable while every write is gated.
+    route {
+        handle /app-status.json {
+            header Cache-Control "no-store"
+            @deployedStatus file {
+                root /srv/deploy
+                try_files /app-status.json
+            }
+            handle @deployedStatus {
+                root * /srv/deploy
+                file_server
+            }
+            # Fresh installations have no deployment state until their first update.
+            handle {
+                reverse_proxy web:3000
+            }
+        }
+        @internal path /internal /internal/* /metrics
+        respond @internal 404
+        @maintenance file {
+            root /srv/deploy
+            try_files /maintenance
+        }
+        handle @maintenance {
+            header Cache-Control "no-store"
+            header Retry-After "15"
+            respond "Приложение обновляется. Пожалуйста, подождите немного и обновите страницу." 503
+        }
+        @api path /api/* /healthz /readyz
+        handle @api {
+            reverse_proxy api:8080
+        }
+        handle {
+            reverse_proxy web:3000
+        }
+    }
 
     header {
         -Server

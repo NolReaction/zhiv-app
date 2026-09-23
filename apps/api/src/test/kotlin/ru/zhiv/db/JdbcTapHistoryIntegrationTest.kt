@@ -1,5 +1,6 @@
 package ru.zhiv.db
 
+import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
@@ -23,6 +24,7 @@ import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.world.WorldRules
 import java.time.OffsetDateTime
+import java.sql.SQLException
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.test.*
@@ -146,6 +148,91 @@ class JdbcTapHistoryIntegrationTest {
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertEquals(target.publicId, body.getValue("publicId").jsonPrimitive.content)
         assertTrue(body.getValue("minutes").jsonArray.isEmpty())
+    }
+
+    @Test fun `activity day and week use durable minutes and preserve receipt versus event totals`() = runBlocking<Unit> {
+        val admin = user(); val target = user(); val other = user(); val repo = repository(admin)
+        execute("""INSERT INTO game_tap_activity_minutes(user_id,bucket_at,received_taps,event_taps) VALUES
+            (?,date_trunc('minute',clock_timestamp())-interval '8 days',1000,1000),
+            (?,date_trunc('minute',clock_timestamp())-interval '6 days',7,11),
+            (?,date_trunc('minute',clock_timestamp())-interval '20 hours',13,17),
+            (?,date_trunc('minute',clock_timestamp())-interval '3 hours',19,23),
+            (?,date_trunc('minute',clock_timestamp())-interval '5 minutes',29,31),
+            (?,date_trunc('minute',clock_timestamp()),37,41),
+            (?,date_trunc('minute',clock_timestamp())+interval '1 day',1000,1000),
+            (?,date_trunc('minute',clock_timestamp()),10000,10000)""",
+            target.id,target.id,target.id,target.id,target.id,target.id,target.id,other.id)
+        execute("""INSERT INTO game_tap_activity_seconds(user_id,bucket_at,received_taps,event_taps)
+            VALUES (?,date_trunc('second',clock_timestamp())-interval '10 seconds',5,6)""", target.id)
+        val day = repo.tapActivity(admin.hash,target.publicId,1440)
+        val week = repo.tapActivity(admin.hash,target.publicId,10080)
+        val short = repo.tapActivity(admin.hash,target.publicId)
+        assertEquals(98L,day.history!!.receivedTaps)
+        assertEquals(112L,day.history!!.eventTaps)
+        assertEquals(105L,week.history!!.receivedTaps)
+        assertEquals(123L,week.history!!.eventTaps)
+        assertEquals(66L,short.history!!.receivedTaps)
+        assertEquals(72L,short.history!!.eventTaps)
+        assertEquals(49,day.history!!.buckets.size)
+        assertEquals(85,week.history!!.buckets.size)
+        assertEquals(week.history!!.eventTaps,week.history!!.buckets.sumOf { it.eventTaps ?: 0L })
+        assertEquals(short.analysis,week.analysis)
+        assertEquals(5L,week.windows.last().receivedTaps)
+        assertEquals(6L,week.windows.last().eventTaps)
+        assertFalse(week.history!!.coverageComplete)
+        assertTrue(week.history!!.buckets.any { it.receivedTaps == null })
+        assertEquals(400,assertFailsWith<AuthFailure> { repo.tapActivity(admin.hash,target.publicId,60) }.status)
+        assertEquals(403,assertFailsWith<AuthFailure> { repo.tapActivity(other.hash,target.publicId,10080) }.status)
+    }
+
+    @Test fun `restricted runtime reads coverage metadata without permission to read Flyway history`() = runBlocking<Unit> {
+        val admin = user(); val target = user()
+        execute("CREATE ROLE tap_history_runtime NOLOGIN")
+        execute("GRANT USAGE ON SCHEMA public TO tap_history_runtime")
+        execute("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO tap_history_runtime")
+        execute("REVOKE ALL ON TABLE flyway_schema_history FROM tap_history_runtime")
+        execute("REVOKE INSERT,UPDATE,DELETE ON game_tap_collection_metadata FROM tap_history_runtime")
+        assertEquals("yes",scalar("SELECT CASE WHEN started_at=(SELECT installed_on::timestamptz FROM flyway_schema_history WHERE version='28' AND success) THEN 'yes' ELSE 'no' END FROM game_tap_collection_metadata"))
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl=postgres.jdbcUrl; username=postgres.username; password=postgres.password
+            maximumPoolSize=1; minimumIdle=0; isAutoCommit=false
+            connectionInitSql="SET ROLE tap_history_runtime"
+        }).use { runtime ->
+            val repo=JdbcAdminRepository(runtime,AdminConfig(setOf(admin.publicId)))
+            for(range in listOf(30,1440,10080)) {
+                assertEquals(range,repo.tapActivity(admin.hash,target.publicId,range).history!!.rangeMinutes)
+            }
+            runtime.connection.use { c ->
+                val denied=assertFailsWith<SQLException> {
+                    c.createStatement().use { it.executeQuery("SELECT * FROM flyway_schema_history") }
+                }
+                assertEquals("42501",denied.sqlState)
+                c.rollback()
+                val immutable=assertFailsWith<SQLException> {
+                    c.createStatement().use { it.executeUpdate("UPDATE game_tap_collection_metadata SET started_at=clock_timestamp()") }
+                }
+                assertEquals("42501",immutable.sqlState)
+                c.rollback()
+            }
+        }
+    }
+
+    @Test fun `activity HTTP validates ranges and rejects duplicated parameters without losing privacy`() = testApplication {
+        val admin = user(); val target = user(); val visitor = user()
+        application { installZhivApi(identities, identities, config, admin=repository(admin)) }
+        val path = "/api/v1/admin/users/${target.publicId}/tap-activity"
+        assertEquals(HttpStatusCode.Unauthorized,client.get("$path?rangeMinutes=10080").status)
+        assertEquals(HttpStatusCode.Forbidden,client.get("$path?rangeMinutes=1440") { cookie(config.cookieName,visitor.raw) }.status)
+        for(query in listOf("", "?rangeMinutes=30", "?rangeMinutes=1440", "?rangeMinutes=10080")) {
+            val response = client.get(path+query) { cookie(config.cookieName,admin.raw) }
+            assertEquals(HttpStatusCode.OK,response.status)
+            assertEquals("no-store",response.headers[HttpHeaders.CacheControl])
+            val body=Json.parseToJsonElement(response.bodyAsText()).jsonObject.getValue("history").jsonObject
+            assertEquals(if(query.isEmpty()) 30 else query.substringAfter('=').toInt(),body.getValue("rangeMinutes").jsonPrimitive.int)
+        }
+        for(query in listOf("?rangeMinutes=60", "?rangeMinutes=-1", "?rangeMinutes=", "?rangeMinutes=abc", "?rangeMinutes=30&rangeMinutes=1440")) {
+            assertEquals(HttpStatusCode.BadRequest,client.get(path+query) { cookie(config.cookieName,admin.raw) }.status)
+        }
     }
 
     @Test fun `granting all catalog finds awards each collection item and medal exactly once`() = runBlocking<Unit> {

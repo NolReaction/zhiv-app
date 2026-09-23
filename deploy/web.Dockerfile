@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+ARG APP_BUILD_ID
+ENV APP_BUILD_ID=${APP_BUILD_ID}
 RUN npm run build:vps
 
 FROM node:24-bookworm-slim
