@@ -117,6 +117,20 @@ SQL
 "${compose[@]}" exec -T api curl -fsS --max-time 10 http://127.0.0.1:8080/readyz
 echo
 "${compose[@]}" up -d --no-deps --no-build --force-recreate --wait --wait-timeout 180 web
+# A previous normal deployment can leave its ready build ID at the edge. Let
+# Caddy fall back to this newly built web's status, but preserve intentional or
+# failed-deployment maintenance (including an unrecognised status file).
+runtime_status="$project_dir/deploy/runtime/app-status.json"
+if [[ ! -e "$project_dir/deploy/runtime/maintenance" && -f "$runtime_status" ]]; then
+  if "${compose[@]}" exec -T web node -e '
+    try {
+      const status = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+      process.exit(status.schemaVersion === 1 && status.maintenance === false ? 0 : 2);
+    } catch { process.exit(2); }
+  ' < "$runtime_status"; then
+    if [[ ! -e "$project_dir/deploy/runtime/maintenance" ]]; then rm -f "$runtime_status"; fi
+  fi
+fi
 "${compose[@]}" up -d --no-deps --no-build --wait --wait-timeout 120 caddy
 services_stopped=false
 echo 'Complete: fresh database and application processes. Everyone must sign in and create a new profile.'

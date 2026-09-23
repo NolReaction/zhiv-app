@@ -129,13 +129,25 @@ def main():
         WHERE installed_rank = (SELECT max(installed_rank) FROM flyway_schema_history);
     """)
     original_metadata = sql("SELECT row_to_json(m)::text FROM game_tap_collection_metadata m")
+    runtime_status = ROOT / "deploy/runtime/app-status.json"
+    stale_status = {"schemaVersion": 1, "buildId": "ci-stale-before-reset", "maintenance": False}
+    runtime_status.write_text(json.dumps(stale_status), encoding="utf8")
 
     assert interactive_reset("WRONG CONFIRMATION") == 2
     assert sql("SELECT value FROM ci_reset_obsolete.marker") == "original-data"
     assert sql("SELECT count(*) FROM app_users") == "1"
+    assert json.loads(runtime_status.read_text(encoding="utf8")) == stale_status
     backup_dir = ROOT.parent / "zhiv-backups"
     previous_backups = set(backup_dir.glob("before-database-reset-*.dump"))
     assert interactive_reset("RESET zhiv") == 0
+    assert not runtime_status.exists(), "A ready status from the previous web build must not shadow the new build"
+    built_status = json.loads(run(COMPOSE + ["exec", "-T", "web", "node", "-e",
+        'fetch("http://127.0.0.1:3000/app-status.json").then(async r=>{if(!r.ok)throw Error("Missing build status");console.log(await r.text())}).catch(()=>process.exit(1))'],
+        text=True, capture_output=True).stdout)
+    public_status = json.loads(run(["curl", "--fail", "--silent", "--show-error", "--insecure",
+                                    "https://localhost/app-status.json"], text=True, capture_output=True).stdout)
+    assert public_status == built_status, "HTTPS lifecycle status must identify the web build that is actually running"
+    assert built_status["maintenance"] is False and built_status["buildId"] != stale_status["buildId"]
 
     latest_migration = max(int(path.name.split("__", 1)[0][1:])
                            for path in (ROOT / "apps/api/src/main/resources/db/migration").glob("V*__*.sql"))
