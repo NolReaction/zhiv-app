@@ -63,6 +63,8 @@ async function atomicSave(input, contents) {
   await rename(temporary, input);
 }
 
+const completedExports = watcher => (watcher.stdout().match(/(?:Exported [^\n]+\.|output unchanged\.)\n/g) ?? []).length;
+
 test("watch keeps the last valid export, recovers after atomic Tiled saves, and never rewrites unchanged output", { timeout: 15000 }, async t => {
   const { input, output, map, directory } = await fixture(t);
   const originalSource = await readFile(input, "utf8");
@@ -93,15 +95,24 @@ test("watch keeps the last valid export, recovers after atomic Tiled saves, and 
   await waitFor(() => watcher.stderr().includes("outside world bounds"), watcher.logs);
   assert.equal(await readFile(output, "utf8"), valid, "semantically invalid geometry also preserves the last valid output");
   map.layers[0].objects[1].x = 18;
+  const beforeRecovery = completedExports(watcher);
   await atomicSave(input, JSON.stringify(map));
-  await waitFor(async () => JSON.parse(await readFile(output, "utf8")).focus.x === 18, watcher.logs);
+  await waitFor(async () => completedExports(watcher) > beforeRecovery && JSON.parse(await readFile(output, "utf8")).focus.x === 18, watcher.logs);
 
   // Rapid editor saves settle on the newest snapshot rather than concurrent exports.
+  const beforeRapidSaves = completedExports(watcher);
   for (const x of [19, 20, 21]) {
     map.layers[0].objects[1].x = x;
     await atomicSave(input, JSON.stringify(map));
   }
-  await waitFor(async () => JSON.parse(await readFile(output, "utf8")).focus.x === 21, watcher.logs);
+  // The atomic output rename precedes async temporary-file cleanup and stdout.
+  // Seeing x=21 alone does not mean its completion message has reached the parent.
+  await waitFor(async () => completedExports(watcher) > beforeRapidSaves && JSON.parse(await readFile(output, "utf8")).focus.x === 21, watcher.logs);
+  // A no-op save acknowledges the newest snapshot on the serialized watch queue.
+  // Its stdout line follows the earlier export lines, unlike observing the file.
+  const unchangedBefore = watcher.stdout().split("output unchanged").length;
+  await atomicSave(input, JSON.stringify(map));
+  await waitFor(() => watcher.stdout().split("output unchanged").length > unchangedBefore, watcher.logs);
   const settled = await stat(output, { bigint: true });
   const settledLogs = watcher.logs();
   await writeFile(path.join(directory, "fixture.tiled-session"), "editor state");
