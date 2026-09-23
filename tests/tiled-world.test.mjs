@@ -19,6 +19,12 @@ const spawn = () => ({
   id: 10, name: "mochlik-spawn", x: 35, y: 55, width: 0, height: 0, point: true,
   properties: [{ name: "role", type: "string", value: "spawn" }, { name: "size", type: "float", value: 12.5 }],
 });
+const waterPolygon = (id, name = "", x = 30.125, y = 50.375) => ({
+  id, name, x, y, width: 0, height: 0,
+  polygon: [{ x: -10.0625, y: -20.125 }, { x: 15.25, y: -20.125 }, { x: 15.25, y: 5.5 }, { x: -10.0625, y: 5.5 }],
+});
+const waterLayer = (id, name, objects) => ({ id, name, type: "objectgroup", draworder: "topdown", objects });
+const layerObjects = layers => layers.flatMap(layer => layer.layers ? layerObjects(layer.layers) : layer.objects);
 
 async function fixture(t, { directoryRoot = tmpdir() } = {}) {
   const directory = await mkdtemp(path.join(directoryRoot, "tiled-world-"));
@@ -63,6 +69,7 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   assert.equal(scene.schemaVersion, 1);
   assert.equal(scene.id, "test-forest");
   assert.equal(Object.hasOwn(scene, "actor"), false, "legacy maps may omit a spawn point");
+  assert.equal(Object.hasOwn(scene, "water"), false, "legacy maps do not invent water geometry");
   assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 });
   assert.deepEqual(scene.sites[0], {
     id: "kiln", label: "Pottery kiln", bounds: { x: 20, y: 30, width: 20, height: 30 },
@@ -265,6 +272,78 @@ test("image resolution confines both paths and symlinks, and verifies real pixel
   await assert.rejects(compile(), /cannot decode image/);
 });
 
+test("water surfaces and nested exclusions preserve every authored vertex without role properties", async t => {
+  const { map, compile } = await fixture(t);
+  const before = await compile();
+  const river = waterPolygon(20, "river-main");
+  const tributary = waterPolygon(21, "tributary", 35.625, 55.875);
+  const leaf = waterPolygon(22, "leaf-1");
+  const rock = waterPolygon(23, "", 32.875, 52.125);
+  map.layers.splice(1, 0, waterLayer(2, "Water", [river, tributary]));
+  map.layers.push({ id: 3, name: "WaterExclusions", type: "group", layers: [
+    waterLayer(4, "Leaves", [leaf]),
+    { id: 5, name: "Rocks", type: "group", layers: [waterLayer(6, "Small rocks", [rock])] },
+  ] });
+  const original = clone(map);
+  const scene = await compile();
+  const absolute = object => object.polygon.map(p => ({ x: object.x + p.x, y: object.y + p.y }));
+  assert.deepEqual(scene.water, {
+    surfaces: [{ id: "river-main", points: absolute(river) }, { id: "tributary", points: absolute(tributary) }],
+    exclusions: [{ id: "leaf-1", points: absolute(leaf) }, { id: "exclusion-23", points: absolute(rock) }],
+  }, "distinct polygons may overlap; exclusions may touch or cross a water boundary");
+  const unchanged = { ...scene };
+  delete unchanged.water;
+  assert.deepEqual(unchanged, before, "water metadata does not affect other scene fields or rendering order");
+  assert.deepEqual(map, original, "compilation never edits detailed authoring data");
+  assert.equal(serializeTiledWorld(scene), serializeTiledWorld(await compile()));
+});
+
+test("Water also supports nested groups and WaterExclusions supports a plain object layer", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push({ id: 2, name: "Water", type: "group", layers: [
+    { id: 3, name: "Rivers", type: "group", layers: [waterLayer(4, "Main", [waterPolygon(20)])] },
+  ] }, waterLayer(5, "WaterExclusions", [waterPolygon(21, "rock-1")]));
+  const scene = await compile();
+  assert.equal(scene.water.surfaces[0].id, "water-20");
+  assert.equal(scene.water.exclusions[0].id, "rock-1");
+  map.layers[1].layers = [];
+  map.layers[2].objects = [];
+  assert.deepEqual((await compile()).water, { surfaces: [], exclusions: [] }, "an emptied authoring mask stays empty");
+});
+
+test("invalid water geometry and unsupported nested transforms fail with the object location", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(waterLayer(2, "Water", [waterPolygon(20, "river-main")]));
+  map.layers.push({ id: 3, name: "WaterExclusions", type: "group", layers: [waterLayer(4, "Leaves", [waterPolygon(21, "leaf-1")])] });
+  const cases = [
+    ["open boundary", value => { const o = value.layers[1].objects[0]; o.polyline = o.polygon; delete o.polygon; }, /\(river-main\) shape: expected "polygon"/],
+    ["too few vertices", value => { value.layers[1].objects[0].polygon.length = 2; }, /requires at least 3 points/],
+    ["outside world", value => { value.layers[1].objects[0].polygon[0].x = -100; }, /expected a finite number >= 0/],
+    ["explicit repeated closure", value => { const p = value.layers[1].objects[0].polygon; p.push(clone(p[0])); }, /polygon vertices must be unique/],
+    ["zero area", value => { value.layers[1].objects[0].polygon = [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }]; }, /polygon must enclose a nonzero area/],
+    ["self intersection", value => { value.layers[1].objects[0].polygon = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 15, y: 5 }]; }, /\(river-main\): polygon must not self-intersect/],
+    ["exclusion rotation", value => { value.layers[2].layers[0].objects[0].rotation = 30; }, /layers\[2\]\.layers\[0\]\.objects\[0\]\.rotation: expected 0/],
+    ["group offset", value => { value.layers[2].offsetx = 5; }, /layers\[2\]\.offsetx: expected 0/],
+    ["nested layer offset", value => { value.layers[2].layers[0].y = 3; }, /layers\[2\]\.layers\[0\]\.y: expected 0/],
+    ["nested layer parallax", value => { value.layers[2].layers[0].parallaxx = 0.5; }, /parallaxx: expected 1/],
+    ["hidden group", value => { value.layers[2].visible = false; }, /visible: expected true/],
+    ["conflicting group roles", value => { value.layers[2].layers[0].name = "Water"; }, /must not be nested inside each other/],
+    ["duplicate nested layer ID", value => { value.layers[2].layers[0].id = 1; }, /duplicate layer ID/],
+    ["duplicate nested object ID", value => { value.layers[2].layers[0].objects[0].id = 20; }, /duplicate object ID/],
+    ["duplicate surface name", value => { value.layers[1].objects.push({ ...waterPolygon(22), name: "river-main" }); }, /duplicate water surfaces ID river-main/],
+    ["duplicate exclusion name", value => { value.layers[2].layers.push(waterLayer(5, "More leaves", [waterPolygon(22, "leaf-1")])); }, /duplicate water exclusions ID leaf-1/],
+    ["unexpected object properties", value => { value.layers[1].objects[0].properties = props({ role: "path" }); }, /unknown property "role"/],
+    ["non-water topdown", value => { value.layers[0].draworder = "topdown"; }, /layers\[0\]\.draworder: expected "index"/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
 test("committed authoring exports identically and --check refuses stale output without rewriting it", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "tiled-check-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -275,7 +354,7 @@ test("committed authoring exports identically and --check refuses stale output w
   const scene = JSON.parse(expected);
   const source = JSON.parse(originalMap.toString("utf8"));
   const property = (object, name) => object.properties?.find(property => property.name === name)?.value;
-  const objects = source.layers.flatMap(layer => layer.objects);
+  const objects = layerObjects(source.layers);
   const withRole = role => objects.filter(object => property(object, "role") === role);
   const rect = ({ x, y, width, height }) => ({ x, y, width, height });
   assert.equal(scene.width, source.width);
@@ -292,6 +371,11 @@ test("committed authoring exports identically and --check refuses stale output w
   assert.equal(withRole("spawn").length, 1, "the live forest needs one authored spawn point");
   const actor = withRole("spawn")[0];
   assert.deepEqual(scene.actor, { spawn: { x: actor.x, y: actor.y }, size: property(actor, "size") });
+  const authoredWater = source.layers.find(layer => layer.name === "Water");
+  const authoredExclusions = source.layers.find(layer => layer.name === "WaterExclusions");
+  const waterGeometry = layers => layerObjects(layers).map(object => ({ id: object.name,
+    points: object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y })) }));
+  assert.deepEqual(scene.water, { surfaces: waterGeometry([authoredWater]), exclusions: waterGeometry([authoredExclusions]) });
   assert.equal(await readFile(path.join(root, "features/world/tiled/forest.generated.json"), "utf8"), expected);
   const command = [path.join(root, "scripts/tiled-world.mjs"), input, output];
   await run(process.execPath, command, { cwd: directory });

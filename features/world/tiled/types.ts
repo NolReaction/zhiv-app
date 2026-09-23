@@ -16,6 +16,11 @@ export type FixedSite = {
   states: SiteVisual[];
 };
 export type WorldPath = { id: string; points: WorldPoint[] };
+export type WorldWaterPolygon = { id: string; points: WorldPoint[] };
+export type WorldWater = {
+  surfaces: WorldWaterPolygon[];
+  exclusions: WorldWaterPolygon[];
+};
 export type FixedWorldScene = {
   schemaVersion: 1;
   id: string;
@@ -26,5 +31,6 @@ export type FixedWorldScene = {
   actor?: { spawn: WorldPoint; size: number };
   sites: FixedSite[];
   paths: WorldPath[];
+  water?: WorldWater;
 };
 export type PreviewLevels = Record<string, number>;

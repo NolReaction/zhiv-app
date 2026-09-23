@@ -122,6 +122,48 @@ test("watch starts with invalid input and exports after its first valid save", {
   assert.equal(JSON.parse(await readFile(output, "utf8")).id, "watch-forest");
 });
 
+test("watch updates nested water masks and retains the last valid mask while a polygon is malformed", { timeout: 10000 }, async t => {
+  const { input, output, map } = await fixture(t);
+  const polygon = (id, name, x, y, size) => ({ id, name, x, y, polygon: [
+    { x: 0, y: 0 }, { x: size, y: 0 }, { x: size, y: size }, { x: 0, y: size },
+  ] });
+  const river = polygon(3, "river-main", 5, 50, 40);
+  const leaf = polygon(4, "leaf-1", 12, 65, 3);
+  map.layers.push({ id: 2, name: "Water", type: "objectgroup", draworder: "topdown", objects: [river] },
+    { id: 3, name: "WaterExclusions", type: "group", layers: [
+      { id: 4, name: "Leaves", type: "objectgroup", draworder: "topdown", objects: [leaf] },
+    ] });
+  await writeFile(input, JSON.stringify(map));
+  const watcher = startWatcher(t, input, output);
+  await waitFor(() => watcher.stdout().includes("Exported "), watcher.logs);
+  const scene = async () => JSON.parse(await readFile(output, "utf8"));
+  assert.deepEqual((await scene()).water.surfaces[0].points[0], { x: 5, y: 50 });
+  assert.deepEqual((await scene()).water.exclusions[0].points[0], { x: 12, y: 65 });
+  river.polygon[1].x = 43.125;
+  leaf.x = 15.75;
+  await atomicSave(input, JSON.stringify(map));
+  await waitFor(async () => (await scene()).water.exclusions[0].points[0].x === 15.75, watcher.logs);
+  assert.deepEqual((await scene()).water.surfaces[0].points[1], { x: 48.125, y: 50 });
+  const valid = await readFile(output, "utf8");
+  leaf.polyline = leaf.polygon;
+  delete leaf.polygon;
+  await atomicSave(input, JSON.stringify(map));
+  await waitFor(() => watcher.stderr().includes('(leaf-1) shape: expected "polygon"'), watcher.logs);
+  assert.equal(await readFile(output, "utf8"), valid);
+  leaf.polygon = leaf.polyline;
+  delete leaf.polyline;
+  leaf.x = 18.25;
+  const saved = JSON.stringify(map);
+  await atomicSave(input, saved);
+  await waitFor(async () => (await scene()).water.exclusions[0].points[0].x === 18.25, watcher.logs);
+  assert.equal(await readFile(input, "utf8"), saved, "watch never rewrites hand-authored vertices");
+  // Stop before fixture cleanup so its pending filesystem events cannot recreate
+  // the generated output while the fixture directory is being removed.
+  const stopped = once(watcher.child, "exit");
+  watcher.child.kill("SIGTERM");
+  await stopped;
+});
+
 test("export avoids unchanged writes; check rejects stale, invalid and incompatible watch mode without writing", async t => {
   const { input, output, map } = await fixture(t);
   const command = [script, input, output];

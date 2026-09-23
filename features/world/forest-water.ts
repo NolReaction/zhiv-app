@@ -1,47 +1,84 @@
-import layout from "./forest-water-layout.json";
 import { drawForestWaterImpact } from "./forest-rain";
-import type { FixedWorldScene, WorldPoint } from "./tiled/types";
+import { previewPointInPolygon } from "./tiled/preview-state";
+import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 
 const TAU = Math.PI * 2;
 export const FOREST_WATER_LIMITS = { currents: 38, impacts: 144 } as const;
 type WaterOptions = { elapsed: number; rain: number; dusk: number; reducedMotion: boolean };
-type WaterGeometry = { polygons: WorldPoint[][]; seeds: WorldPoint[]; scale: number };
+type WaterPolygon = { points: WorldPoint[]; bounds: WorldBounds };
+type WaterGeometry = {
+  surfaces: WaterPolygon[];
+  exclusions: WaterPolygon[];
+  exclusionBatches: WaterPolygon[][];
+  seeds: WorldPoint[];
+  scale: number;
+};
 const cache = new WeakMap<FixedWorldScene, WaterGeometry | null>();
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 const noise = (index: number) => { const n = Math.sin(index * 127.1 + 311.7) * 43758.5453; return n - Math.floor(n); };
 const phase = (value: number) => value - Math.floor(value);
 
-function inside(point: WorldPoint, polygons: WorldPoint[][]) {
-  let result = false;
-  for (const polygon of polygons) for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[i], b = polygon[j];
-    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) result = !result;
-  }
-  return result;
+function polygonBounds(points: WorldPoint[]): WorldBounds {
+  const x = Math.min(...points.map(p => p.x)), y = Math.min(...points.map(p => p.y));
+  return { x, y, width: Math.max(...points.map(p => p.x)) - x, height: Math.max(...points.map(p => p.y)) - y };
 }
 
-/** The inspected shoreline includes holes for stones, reeds, lilies and the jetty.
- * A changed background revision requires a new mask; unknown maps never inherit these coordinates. */
+function contains(polygon: WaterPolygon, point: WorldPoint) {
+  const { x, y, width, height } = polygon.bounds;
+  return point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height
+    && previewPointInPolygon(point, polygon.points);
+}
+
+function inside(point: WorldPoint, water: Pick<WaterGeometry, "surfaces" | "exclusions">) {
+  return water.surfaces.some(polygon => contains(polygon, point))
+    && !water.exclusions.some(polygon => contains(polygon, point));
+}
+
+/** Uniform winding makes overlapping surfaces a union under the nonzero fill rule. */
+function preparePolygon(points: WorldPoint[]): WaterPolygon {
+  const area = points.reduce((sum, p, i) => {
+    const q = points[(i + 1) % points.length]; return sum + p.x * q.y - q.x * p.y;
+  }, 0);
+  return { points: area < 0 ? [...points].reverse() : points, bounds: polygonBounds(points) };
+}
+
+/** Disjoint exclusions can share a clip. Overlapping exclusions go in separate clips
+ * so their intersection stays dry, unlike a single even-odd path. */
+function exclusionBatches(polygons: WaterPolygon[]): WaterPolygon[][] {
+  const batches: WaterPolygon[][] = [];
+  for (const polygon of polygons) {
+    const a = polygon.bounds;
+    const batch = batches.find(items => items.every(({ bounds: b }) =>
+      a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y));
+    if (batch) batch.push(polygon); else batches.push([polygon]);
+  }
+  return batches;
+}
+
+/** Tiled coordinates are authoritative, including nested WaterExclusions layers.
+ * Scenes without authored water never inherit coordinates from another map. */
 function geometry(scene: FixedWorldScene): WaterGeometry | null {
   if (cache.has(scene)) return cache.get(scene)!;
-  const terrain = scene.terrain.find(item => item.image === layout.image);
-  if (!terrain || terrain.bounds.width <= 0 || terrain.bounds.height <= 0) { cache.set(scene, null); return null; }
-  const { x, y, width, height } = terrain.bounds;
-  const polygons = layout.polygons.map(polygon => polygon.map(([u, v]) => ({ x: x + u * width, y: y + v * height })));
-  const scale = Math.min(width, height) / 1254;
+  if (!scene.water?.surfaces.length) { cache.set(scene, null); return null; }
+  const surfaces = scene.water.surfaces.map(polygon => preparePolygon(polygon.points));
+  const exclusions = scene.water.exclusions.map(polygon => preparePolygon(polygon.points));
+  const { x, y, width, height } = polygonBounds(surfaces.flatMap(polygon => polygon.points));
+  const scale = Math.min(scene.width, scene.height) / 1254;
   const seeds: WorldPoint[] = [];
+  const water = { surfaces, exclusions };
   for (let i = 0; i < 6000 && seeds.length < FOREST_WATER_LIMITS.impacts; i++) {
-    const point = { x: x + width * (.41 + noise(i * 2 + 1) * .59), y: y + height * (.565 + noise(i * 2 + 2) * .435) };
-    if (!inside(point, polygons)) continue;
+    const point = { x: x + width * noise(i * 2 + 1), y: y + height * noise(i * 2 + 2) };
+    if (!inside(point, water)) continue;
     if (!Array.from({ length: 12 }, (_, n) => ({ x: point.x + Math.cos(n * TAU / 12) * 11 * scale,
-      y: point.y + Math.sin(n * TAU / 12) * 6 * scale })).every(p => inside(p, polygons))) continue;
+      y: point.y + Math.sin(n * TAU / 12) * 6 * scale })).every(p => inside(p, water))) continue;
     seeds.push(point);
   }
-  const result = { polygons, seeds, scale }; cache.set(scene, result); return result;
+  const result = { ...water, exclusionBatches: exclusionBatches(exclusions), seeds, scale };
+  cache.set(scene, result); return result;
 }
 
 export function isForestWater(scene: FixedWorldScene, point: WorldPoint) {
-  const water = geometry(scene); return Boolean(water && inside(point, water.polygons));
+  const water = geometry(scene); return Boolean(water && inside(point, water));
 }
 
 /** Camera-independent particles use the same paused clock as the rest of the forest. */
@@ -76,11 +113,16 @@ export function drawForestWater(ctx: CanvasRenderingContext2D, scene: FixedWorld
   // A circular clearing view has no visible river: avoid sampling and painting all its ripples.
   if (!water.seeds.some(point => visible(point, 12 * water.scale))) return;
   const frame = forestWaterFrame(scene, options);
+  const trace = (polygon: WaterPolygon) => {
+    polygon.points.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath();
+  };
   ctx.save(); ctx.beginPath();
-  for (const polygon of water.polygons) {
-    polygon.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath();
+  water.surfaces.forEach(trace);
+  ctx.clip();
+  for (const batch of water.exclusionBatches) {
+    ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height);
+    batch.forEach(trace); ctx.clip("evenodd");
   }
-  ctx.clip("evenodd");
   ctx.lineWidth = .48 * water.scale; ctx.strokeStyle = "#b0e1dc"; ctx.lineCap = "round";
   for (const current of frame.currents) {
     if (!visible(current, 12 * water.scale)) continue;

@@ -252,19 +252,38 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   }
 
   const objects = new Set(), layers = new Set(), sites = new Map(), markers = new Map(), terrainIds = new Set(), pathIds = new Set();
+  const waterIds = { surfaces: new Set(), exclusions: new Set() };
+  // Water groups are metadata: their descendants contribute geometry regardless
+  // of their organizational names or object draw order. Other layers retain the
+  // fixed-world subset's strict placement/order rules.
+  function* objectLayers(entries, at, inheritedWaterKind) {
+    for (const [layerIndex, layer] of array(entries, at).entries()) {
+      const layerAt = `${at}[${layerIndex}]`;
+      record(layer, layerAt);
+      const namedWaterKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : undefined;
+      requireThat(!namedWaterKind || !inheritedWaterKind || namedWaterKind === inheritedWaterKind, layerAt, "Water and WaterExclusions must not be nested inside each other");
+      const waterKind = namedWaterKind ?? inheritedWaterKind;
+      const isWaterGroup = waterKind && layer.type === "group";
+      if (!isWaterGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
+      transforms(layer, layerAt);
+      absent(layer, ["data", "chunks", "image", ...(isWaterGroup ? ["objects", "draworder"] : ["layers"])], layerAt);
+      properties(layer, layerAt, {});
+      const layerId = integer(layer.id, `${layerAt}.id`, 1);
+      requireThat(!layers.has(layerId), `${layerAt}.id`, "duplicate layer ID");
+      layers.add(layerId);
+      if (waterKind) world.water ??= { surfaces: [], exclusions: [] };
+      if (isWaterGroup) {
+        yield* objectLayers(layer.layers, `${layerAt}.layers`, waterKind);
+      } else {
+        if (waterKind) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for water metadata");
+        else exact(layer.draworder, "index", `${layerAt}.draworder`);
+        yield { layer, layerAt, waterKind };
+      }
+    }
+  }
   const routeOwners = [];
   let hasSite = false;
-  for (const [layerIndex, layer] of array(map.layers, "map.layers").entries()) {
-    const layerAt = `map.layers[${layerIndex}]`;
-    record(layer, layerAt);
-    exact(layer.type, "objectgroup", `${layerAt}.type`);
-    exact(layer.draworder, "index", `${layerAt}.draworder`);
-    transforms(layer, layerAt);
-    absent(layer, ["layers", "data", "chunks", "image"], layerAt);
-    properties(layer, layerAt, {});
-    const layerId = integer(layer.id, `${layerAt}.id`, 1);
-    requireThat(!layers.has(layerId), `${layerAt}.id`, "duplicate layer ID");
-    layers.add(layerId);
+  for (const { layer, layerAt, waterKind } of objectLayers(map.layers, "map.layers")) {
     for (const [objectIndex, object] of array(layer.objects, `${layerAt}.objects`).entries()) {
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(object, at);
@@ -275,11 +294,21 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const objectId = integer(object.id, `${at}.id`, 1);
       requireThat(!objects.has(objectId), `${at}.id`, "duplicate object ID");
       objects.add(objectId);
-      const props = properties(object, at, { role: "string", siteId: "string", label: "string", initialLevel: "int", size: "float" });
-      const role = string(props.role, `${at}.properties.role`);
       const shapes = ["gid", "point", "polygon", "polyline"].filter(key => own(object, key));
       requireThat(shapes.length <= 1, at, "object must have exactly one shape");
       const shape = shapes[0] ?? "rectangle";
+      if (waterKind) {
+        const waterAt = `${at} (${object.name || `object ${objectId}`})`;
+        properties(object, waterAt, {});
+        exact(shape, "polygon", `${waterAt} shape`);
+        const id = object.name ? identifier(object.name, `${waterAt}.name`) : `${waterKind === "surfaces" ? "water" : "exclusion"}-${objectId}`;
+        requireThat(!waterIds[waterKind].has(id), waterAt, `duplicate water ${waterKind} ID ${id}`);
+        waterIds[waterKind].add(id);
+        world.water[waterKind].push({ id, points: vertices(object, "polygon", waterAt, world) });
+        continue;
+      }
+      const props = properties(object, at, { role: "string", siteId: "string", label: "string", initialLevel: "int", size: "float" });
+      const role = string(props.role, `${at}.properties.role`);
       if (own(object, "gid")) {
         const gid = integer(object.gid, `${at}.gid`, 1);
         requireThat(gid <= 0x0fffffff, `${at}.gid`, "tile flip/rotation bits are not supported");

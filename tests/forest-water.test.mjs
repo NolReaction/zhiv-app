@@ -41,11 +41,61 @@ test("river particles share a deterministic clock, stop in reduced motion, and s
   assert.deepEqual(reduced, forestWaterFrame(scene, { ...options, reducedMotion: true, elapsed: 91 }));
 });
 
-test("unrecognized artwork has no stale water coordinates and terrain placement transforms the mask", () => {
+test("water belongs to Tiled coordinates rather than the artwork revision or terrain placement", () => {
   const changed = { ...scene, terrain: scene.terrain.map(t => ({ ...t, image: t.image + "-edited" })) };
-  assert.deepEqual(forestWaterFrame(changed, options), { currents: [], impacts: [] });
+  assert.deepEqual(forestWaterFrame(changed, options), forestWaterFrame(scene, options));
+  const movedTerrain = { ...scene,
+    terrain: scene.terrain.map(t => ({ ...t, bounds: { ...t.bounds, x: 70, y: 130 } })) };
+  assert.deepEqual(forestWaterFrame(movedTerrain, options), forestWaterFrame(scene, options));
+  const transform = polygons => polygons.map(polygon => ({ ...polygon,
+    points: polygon.points.map(p => ({ x: p.x * 2 + 70, y: p.y * 2 + 130 })) }));
   const moved = { ...scene, width: 3000, height: 3000,
-    terrain: scene.terrain.map(t => ({ ...t, bounds: { x: 70, y: 130, width: t.bounds.width * 2, height: t.bounds.height * 2 } })) };
+    water: { surfaces: transform(scene.water.surfaces), exclusions: transform(scene.water.exclusions) } };
   assert.ok(isForestWater(moved, { x: 1200 * 2 + 70, y: 900 * 2 + 130 }));
   assert.equal(isForestWater(moved, { x: 812 * 2 + 70, y: 1120 * 2 + 130 }), false);
+});
+
+const rectangle = (id, x, y, width, height) => ({ id, points: [
+  { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height },
+] });
+
+test("Tiled can place water anywhere in the world and saving new geometry replaces the previous mask", () => {
+  const first = { ...scene, water: { surfaces: [rectangle("pond", 20, 20, 240, 200)], exclusions: [] } };
+  const next = { ...first, water: { surfaces: [rectangle("pond", 400, 200, 240, 200)], exclusions: [] } };
+  for (const edited of [first, next]) {
+    const frame = forestWaterFrame(edited, options);
+    assert.equal(frame.impacts.length, Math.ceil(options.rain * FOREST_WATER_LIMITS.impacts));
+    for (const point of [...frame.impacts, ...frame.currents]) assert.ok(isForestWater(edited, point));
+  }
+  assert.ok(isForestWater(first, { x: 120, y: 100 }));
+  assert.equal(isForestWater(next, { x: 120, y: 100 }), false);
+  assert.ok(isForestWater(next, { x: 500, y: 300 }));
+  assert.equal(isForestWater(first, { x: 1200, y: 900 }), false, "no old river fallback");
+});
+
+test("surfaces form a union and exclusions subtract even when reversed, overlapping or crossing shore", () => {
+  const second = rectangle("river-b", 200, 100, 300, 300);
+  second.points.reverse();
+  const edited = { ...scene, water: {
+    surfaces: [rectangle("river-a", 100, 100, 300, 300), second],
+    exclusions: [rectangle("rock-a", 150, 180, 140, 80), rectangle("rock-b", 240, 200, 100, 80),
+      rectangle("reeds", 450, 300, 100, 100)],
+  } };
+  for (const point of [{ x: 120, y: 120 }, { x: 250, y: 120 }, { x: 450, y: 120 }]) {
+    assert.ok(isForestWater(edited, point), "overlapping surfaces stay wet");
+  }
+  for (const point of [{ x: 180, y: 220 }, { x: 260, y: 220 }, { x: 320, y: 220 },
+    { x: 480, y: 340 }, { x: 525, y: 340 }, { x: 150, y: 180 }]) {
+    assert.equal(isForestWater(edited, point), false, "exclusion union and its boundaries stay dry");
+  }
+  for (const point of forestWaterFrame(edited, options).impacts) assert.ok(isForestWater(edited, point));
+});
+
+test("maps with no authored water or empty surfaces do not inherit the forest mask", () => {
+  const { water: omitted, ...withoutWater } = scene;
+  assert.ok(omitted);
+  for (const edited of [withoutWater, { ...scene, water: { surfaces: [], exclusions: scene.water.exclusions } }]) {
+    assert.equal(isForestWater(edited, { x: 1200, y: 900 }), false);
+    assert.deepEqual(forestWaterFrame(edited, options), { currents: [], impacts: [] });
+  }
 });
