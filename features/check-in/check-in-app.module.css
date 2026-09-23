@@ -1384,8 +1384,7 @@
 
 .identityText > .nameRow { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 5px 8px; font-family: inherit; max-width: 100%; color: inherit; }
 .nameRow strong { min-width: 0; }
-.betaBadge { display: inline-flex; white-space: nowrap; padding: 3px 6px; border: 1px solid rgba(231,189,111,.28); border-radius: 8px; background: rgba(231,189,111,.08); color: #ebce99; font: 500 12px/1.2 var(--font-body, sans-serif); }
-.levelBadge { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; padding: 3px 6px; border: 1px solid rgba(192,218,166,.18); border-radius: 8px; background: rgba(192,218,166,.07); color: #d2e5bd; font: 600 11px/1.2 var(--font-body, sans-serif); }
+.levelBadge { display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; padding: 5px 8px; border: 1px solid rgba(192,218,166,.18); border-radius: 10px; background: rgba(192,218,166,.07); color: #d2e5bd; font: inherit; font-weight: 600; line-height: 1.2; }
 
 .mapEntry { display: inline-flex; gap: 8px; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; font-size: 14px; }
 .mapEntry svg { flex-shrink: 0; }
@@ -1393,7 +1392,5 @@
 .identityBadges { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
 .copyIdentity { display: grid; place-items: center; flex-shrink: 0; width: 36px; min-height: 44px; border: 0; border-radius: 12px; color: #a7b39b; background: transparent; cursor: pointer; }
 .copyIdentity:disabled { opacity: .5; }
-.copyIdentity:focus-visible, .betaBadge:focus-visible, .levelBadge:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
-.betaBadge, .levelBadge { min-height: 30px; cursor: pointer; font-size: 12px; }
-.betaDescription { font-size: 16px; line-height: 1.65; color: #ccd6c2; }
-.betaDescription a { color: #d9e9b3; text-decoration: underline; overflow-wrap: anywhere; }
+.copyIdentity:focus-visible, .levelBadge:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.levelBadge { min-height: 44px; min-width: 44px; cursor: pointer; font-size: 12px; }

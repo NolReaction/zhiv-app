@@ -40,6 +40,7 @@
 | Цены, ресурсы, одежда, коллекции и длительности | [`catalog.json`](../apps/api/src/main/resources/world/catalog.json), [`model.ts`](../features/world/model.ts), [`WorldModel.kt`](../apps/api/src/main/kotlin/ru/zhiv/world/WorldModel.kt) | [Правила и данные](development/backend-and-data.md) |
 | Игровые команды, повторы запросов и сохранение | [`session.ts`](../features/world/session.ts), [`api.ts`](../features/world/api.ts), [`use-world.ts`](../features/world/use-world.ts) | [Правила и данные](development/backend-and-data.md) |
 | Уровни, достижения, рейтинг и искры от тапов | [`features/game/`](../features/game/), [`GameRewards.kt`](../apps/api/src/main/kotlin/ru/zhiv/game/GameRewards.kt) | [Правила и данные](development/backend-and-data.md) |
+| Группы уровней, полоса прогресса и заблокированные значки | [`game-levels-button.tsx`](../features/game/game-levels-button.tsx), [`game-levels.module.css`](../features/game/game-levels.module.css) | [Меню уровней](development/updates-and-levels.md#как-устроено-меню-уровней) |
 | Потерянные тапы, несколько вкладок, смена аккаунта | [`use-game-progress.ts`](../features/game/use-game-progress.ts), [`game-sync.ts`](../features/game/game-sync.ts), [`game-sync-journal.ts`](../features/game/game-sync-journal.ts) | [Синхронизация](game/game-sync-reliability.md) |
 | Картинка достижения | [`public/achievements/`](../public/achievements/) | [Каталог медалей](../public/achievements/README.md) |
 
@@ -52,6 +53,7 @@
 | Задача | Главные файлы | Инструкция |
 |---|---|---|
 | Главный экран, отправка отметки, статус | [`features/check-in/`](../features/check-in/), [`check-in-api.ts`](../lib/check-in-api.ts) | [Разделы приложения](development/app-features.md) |
+| Новости версий, сотрудничество и счётчик beta-test | [`updates.json`](../public/updates.json), [`beta-info.tsx`](../features/check-in/beta-info.tsx), [`features/updates/`](../features/updates/) | [Публикация обновления](development/updates-and-levels.md) |
 | Календарь, серия отметок, часовой пояс | [`check-in-calendar.tsx`](../features/check-in/check-in-calendar.tsx), [`daily-streak.ts`](../lib/daily-streak.ts), [`time-zone.ts`](../lib/time-zone.ts) | [Разделы приложения](development/app-features.md) |
 | Люди, группы, приглашения, прозвища и приватность | [`features/people/`](../features/people/), [`check-in-contract.ts`](../lib/check-in-contract.ts) | [Разделы приложения](development/app-features.md) |
 | Вход, профиль, сеансы, резервный код | [`features/account/`](../features/account/), [`auth-api.ts`](../lib/auth-api.ts), [`auth/`](../apps/api/src/main/kotlin/ru/zhiv/auth/) | [Разделы приложения](development/app-features.md) |

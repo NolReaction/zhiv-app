@@ -28,6 +28,7 @@ npm run dev:local
 | Главный экран, отметки, людей, аккаунт и PWA | [Разделы приложения](docs/development/app-features.md) |
 | Уровни, награды, коллекции, цены и сохранение | [Игровые правила и данные](docs/development/backend-and-data.md) |
 | Текст справки или кнопку ⓘ рядом с коллекциями | [Файлы интерфейса мира](docs/repository-guide.md#интерфейс-и-правила-игры) |
+| Новости версий, счётчик beta-test и просмотр уровней | [Новости и уровни](docs/development/updates-and-levels.md) |
 | Сервер, резервную копию или сбой | [Эксплуатация](docs/operations/operations.md) · [диагностика](docs/operations/incident-response.md) |
 
 **[Все инструкции](docs/README.md)** · **[Карта исходников по задачам](docs/repository-guide.md)** · [Архитектура](docs/architecture.md)

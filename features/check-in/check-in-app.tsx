@@ -1379,7 +1379,7 @@ export function CheckInApp() {
             <div className={styles.identityText}>
               <div className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong></div>
               <div className={styles.identityBadges}>
-                <BetaInfo />
+                {me && <BetaInfo key={me.user.publicId} ownerPublicId={me.user.publicId} />}
                 {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
               </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>

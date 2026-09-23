@@ -183,6 +183,23 @@ test("keeps identity and check-ins out of the offline cache", async () => {
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
 });
 
+test("release feed bypasses old shell and asset caches after a deployment", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "updates-a");
+  await harness.dispatchExtendable("install");
+  const shell = await harness.caches.open(await harness.currentCacheName());
+  await shell.put("/updates.json", new Response('{"releases":[]}'));
+  const assets = await harness.caches.open("zhiv-assets-v1");
+  await assets.put("/updates.json", new Response('{"releases":[]}'));
+  assert.equal(await harness.dispatchFetch("/updates.json", "cors"), null,
+    "the browser fetch must reach the server even if an older cache contains the feed");
+  setShellResponses(harness, "updates-b");
+  await harness.dispatchFetch("/");
+  assert.equal(await harness.dispatchFetch("/updates.json", "cors"), null);
+  const nextShell = await harness.caches.open(await harness.currentCacheName());
+  assert.equal(await nextShell.match("/updates.json"), undefined, "the news feed is not precached with the shell");
+});
+
 test("downloaded world artwork and lazy modules survive offline navigation and shell updates", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "world-a"); await harness.dispatchExtendable("install");
