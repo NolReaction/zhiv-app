@@ -37,15 +37,34 @@ async function simulateDeploy(failCommand = "") {
   await mkdir(join(directory, "bin"));
   await copyFile(join(repository, "scripts/deploy-update.sh"), join(project, "scripts/deploy-update.sh"));
   await writeFile(join(directory, "bin/git"), '#!/bin/sh\nif [ "$1" = rev-parse ]; then echo abcdef123456; fi\n', { mode: 0o755 });
-  await writeFile(join(directory, "bin/docker"), '#!/bin/sh\nexec node -- "$0.js" "$@"\n', { mode: 0o755 });
+  // Model sudo's environment reset even when this test runner itself is root.
+  await writeFile(join(directory, "bin/docker"), '#!/bin/sh\nunset APP_BUILD_ID\nexec node -- "$0.js" "$@"\n', { mode: 0o755 });
   await writeFile(join(directory, "bin/docker.js"), `
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const command = args.slice(5).join(" ");
 const root = process.cwd() + "/deploy/runtime/";
 const status = fs.existsSync(root+"app-status.json") ? JSON.parse(fs.readFileSync(root+"app-status.json","utf8")) : null;
-fs.appendFileSync(process.env.DEPLOY_TEST_LOG, JSON.stringify({command,status,gated:fs.existsSync(root+"maintenance")})+"\\n");
+fs.appendFileSync(process.env.DEPLOY_TEST_LOG, JSON.stringify({command,status,gated:fs.existsSync(root+"maintenance"),environmentBuildId:process.env.APP_BUILD_ID ?? null})+"\\n");
 if (process.env.DEPLOY_TEST_FAIL && command.includes(process.env.DEPLOY_TEST_FAIL)) process.exit(42);
+if (args[5] === "build") {
+  const buildArguments = args.filter((argument, index) => args[index - 1] === "--build-arg");
+  const explicitId = buildArguments.find(argument => argument.startsWith("APP_BUILD_ID="))?.slice("APP_BUILD_ID=".length);
+  // app-build.mjs generates a fresh ID when Docker receives no release ID.
+  fs.writeFileSync(root+"built-status.json", JSON.stringify({schemaVersion:1,buildId:explicitId || require("node:crypto").randomUUID(),maintenance:false}));
+}
+if (args[5] === "exec" && args.some(argument => argument.startsWith("EXPECTED_BUILD_ID="))) {
+  const expected = args.find(argument => argument.startsWith("EXPECTED_BUILD_ID=")).slice("EXPECTED_BUILD_ID=".length);
+  const status = JSON.parse(fs.readFileSync(root+"built-status.json", "utf8"));
+  const script = args[args.indexOf("node") + 2];
+  // Execute the deployment's real comparison, substituting only the HTTP reply.
+  const response = "global.fetch = async () => ({ok:true,json:async () => (" + JSON.stringify(status) + ")});\\n";
+  const result = require("node:child_process").spawnSync(process.execPath, ["-e", response + script], {
+    env: {...process.env, EXPECTED_BUILD_ID:expected}, encoding:"utf8", timeout:5_000,
+  });
+  process.stderr.write(result.stderr || "");
+  process.exit(result.status ?? 1);
+}
 if (command.includes("pg_dump")) process.stdout.write("verified-backup");
 if (command.includes("pg_restore")) fs.readFileSync(0);
 `);
@@ -77,6 +96,11 @@ test("deployment builds and backs up live, gates before stopping API, then reope
     assert.ok(gated.length > 4);
     assert.ok(gated.every(event => event.status.maintenance === true));
     const expected = run.events.find(event => event.command.includes("EXPECTED_BUILD_ID="));
+    const build = run.events.find(event => event.command.startsWith("build"));
+    assert.equal(build.environmentBuildId, null, "sudo must not preserve the caller's release environment in this regression");
+    assert.ok(build.command.includes(`--build-arg APP_BUILD_ID=${expected.status.buildId}`), "the image must receive the same ID through an explicit Docker argument");
+    const built = JSON.parse(await readFile(join(run.project, "deploy/runtime/built-status.json"), "utf8"));
+    assert.equal(built.buildId, expected.status.buildId);
     assert.ok(expected.command.includes(`EXPECTED_BUILD_ID=${expected.status.buildId}`));
     assert.ok(expected.command.includes("status.buildId !== process.env.EXPECTED_BUILD_ID"));
     const ready = JSON.parse(await readFile(join(run.project, "deploy/runtime/app-status.json"), "utf8"));

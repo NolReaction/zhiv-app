@@ -44,7 +44,9 @@ docker_command=(docker)
 if (( EUID != 0 )); then docker_command=(sudo docker); fi
 dc() { "${docker_command[@]}" compose --env-file deploy/.env -f deploy/compose.yml "$@"; }
 dc config --quiet
-dc build
+# sudo normally strips APP_BUILD_ID from the environment. Pass it as an explicit
+# build argument so the image and the deployment status always use the same ID.
+dc build --build-arg "APP_BUILD_ID=$APP_BUILD_ID"
 # Validate the edge configuration before stopping any healthy application service.
 dc run --rm --no-deps --entrypoint caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
