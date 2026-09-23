@@ -119,9 +119,16 @@ def main():
         INSERT INTO account_registration_tickets (token_hash, browser_hash, provider, subject)
         VALUES (decode(repeat('13', 32), 'hex'), decode(repeat('14', 32), 'hex'),
                 'email', 'ci-register@example.invalid');
+        INSERT INTO player_feedback (id, user_id, client_request_id, category, message)
+        VALUES ('00000000-0000-4000-8000-000000000061', '00000000-0000-4000-8000-000000000051',
+                '00000000-0000-4000-8000-000000000062', 'bug', 'Original feedback before full reset');
+        INSERT INTO player_feedback_actions (request_id, feedback_id, actor_user_id, status)
+        VALUES ('00000000-0000-4000-8000-000000000063', '00000000-0000-4000-8000-000000000061',
+                '00000000-0000-4000-8000-000000000051', 'reviewed');
         UPDATE flyway_schema_history SET description = 'ci-reset-history-marker'
         WHERE installed_rank = (SELECT max(installed_rank) FROM flyway_schema_history);
     """)
+    original_metadata = sql("SELECT row_to_json(m)::text FROM game_tap_collection_metadata m")
 
     assert interactive_reset("WRONG CONFIRMATION") == 2
     assert sql("SELECT value FROM ci_reset_obsolete.marker") == "original-data"
@@ -135,8 +142,12 @@ def main():
     assert sql("SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1") == str(latest_migration)
     assert sql("SELECT count(*) FROM flyway_schema_history WHERE NOT success OR description = 'ci-reset-history-marker'") == "0"
     assert sql("SELECT to_regnamespace('ci_reset_obsolete') IS NULL AND to_regclass('public.ci_reset_old_table') IS NULL") == "t"
-    for table in ("app_users", "app_sessions", "account_login_identities", "account_login_flows", "account_registration_tickets"):
+    for table in ("app_users", "app_sessions", "account_login_identities", "account_login_flows", "account_registration_tickets",
+                  "player_feedback", "player_feedback_actions"):
         assert sql(f"SELECT count(*) FROM {table}") == "0", table
+    assert sql("""SELECT count(*) = 1 AND bool_and(m.singleton AND m.started_at = h.installed_on::timestamptz)
+                  FROM game_tap_collection_metadata m
+                  JOIN flyway_schema_history h ON h.version = '28' AND h.success""") == "t"
     assert original_volumes == {name: volume_mounts(name, project) for name in ("db", "caddy")}
     assert original_secrets == secret_fingerprints()
 
@@ -154,9 +165,12 @@ def main():
         assert sql("SELECT count(*) FROM app_users", verify_db) == "1"
         assert sql("SELECT count(*) FROM account_login_identities", verify_db) == "1"
         assert sql("SELECT count(*) FROM app_sessions", verify_db) == "1"
+        assert sql("SELECT count(*) FROM player_feedback", verify_db) == "1"
+        assert sql("SELECT count(*) FROM player_feedback_actions", verify_db) == "1"
+        assert sql("SELECT row_to_json(m)::text FROM game_tap_collection_metadata m", verify_db) == original_metadata
     finally:
         run(COMPOSE + ["exec", "-T", "db", "dropdb", "-U", "zhiv", verify_db])
-    print("Full database reset verified: fresh schema, empty data, retained original backup, unchanged volumes and secrets.")
+    print("Full database reset verified: fresh schema and metadata, empty user/feedback data, retained original backup, unchanged volumes and secrets.")
 
 
 if __name__ == "__main__":

@@ -90,17 +90,25 @@ BEGIN
         OR to_regclass('public.app_users') IS NULL THEN
         RAISE EXCEPTION 'Fresh application migrations did not complete.';
     END IF;
+    IF (SELECT count(*) FROM public.game_tap_collection_metadata) <> 1
+        OR NOT EXISTS (
+            SELECT 1 FROM public.game_tap_collection_metadata m
+            JOIN public.flyway_schema_history h ON h.version = '28' AND h.success
+            WHERE m.singleton AND m.started_at = h.installed_on::timestamptz
+        ) THEN
+        RAISE EXCEPTION 'Fresh collection metadata is missing or does not match its migration. Site remains stopped.';
+    END IF;
     FOR item IN SELECT schemaname, tablename FROM pg_tables
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
           AND schemaname !~ '^pg_toast'
-          AND NOT (schemaname = 'public' AND tablename = 'flyway_schema_history')
+          AND NOT (schemaname = 'public' AND tablename IN ('flyway_schema_history', 'game_tap_collection_metadata'))
     LOOP
         EXECUTE format('SELECT count(*) FROM %I.%I', item.schemaname, item.tablename) INTO remaining;
         IF remaining <> 0 THEN
             RAISE EXCEPTION 'Table %.% is not empty; site remains stopped.', item.schemaname, item.tablename;
         END IF;
     END LOOP;
-    RAISE NOTICE 'Fresh migrations verified; every application table is empty.';
+    RAISE NOTICE 'Fresh migrations and collection metadata verified; every user-data table is empty.';
 END $$;
 SQL
 

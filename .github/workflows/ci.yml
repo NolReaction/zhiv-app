@@ -175,10 +175,48 @@ jobs:
           VALUES (decode(repeat('01', 32), 'hex'), decode(repeat('02', 32), 'hex'), 'vk', 'login');
           INSERT INTO account_registration_tickets (token_hash, browser_hash, provider, subject)
           VALUES (decode(repeat('03', 32), 'hex'), decode(repeat('04', 32), 'hex'), 'email', 'reset@example.com');
+          INSERT INTO player_feedback (id, user_id, client_request_id, category, message)
+          SELECT '00000000-0000-4000-8000-000000000071', id, '00000000-0000-4000-8000-000000000072',
+                 'bug', 'CI feedback before user reset' FROM app_users ORDER BY id LIMIT 1;
+          INSERT INTO player_feedback_actions (request_id, feedback_id, actor_user_id, status)
+          SELECT '00000000-0000-4000-8000-000000000073', id, user_id, 'reviewed'
+          FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071';
+          CREATE TABLE public.ci_reset_unreviewed_guard (value text);
           SQL
+          if docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 < scripts/reset-user-data.sql; then
+            echo "Reset must refuse an unexpected table before clearing any data."
+            exit 1
+          fi
+          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF (SELECT count(*) FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071') <> 1
+                OR (SELECT count(*) FROM player_feedback_actions WHERE request_id = '00000000-0000-4000-8000-000000000073') <> 1 THEN
+              RAISE EXCEPTION 'Refused reset changed the seeded feedback.';
+            END IF;
+          END $$;
+          DROP TABLE public.ci_reset_unreviewed_guard;
+          SQL
+          preserved_snapshot() {
+            docker compose -f deploy/compose.yml exec -T db psql -X -A -t -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT jsonb_build_object(
+            'migrations', (SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) FROM flyway_schema_history h),
+            'coverage', (SELECT jsonb_agg(to_jsonb(m) ORDER BY singleton) FROM game_tap_collection_metadata m)
+          )::text;
+          SQL
+          }
+          preserved_before="$(preserved_snapshot)"
           export VK_CLIENT_ID=123
           docker compose -f deploy/compose.yml up -d --no-deps --no-build --wait api
           bash scripts/reset-user-data.sh --confirm-delete-all-users
+          test "$(preserved_snapshot)" = "$preserved_before"
+          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM app_users) OR EXISTS (SELECT 1 FROM player_feedback)
+                OR EXISTS (SELECT 1 FROM player_feedback_actions) THEN
+              RAISE EXCEPTION 'User or feedback data survived the confirmed reset.';
+            END IF;
+          END $$;
+          SQL
           curl --fail --silent --show-error --insecure https://localhost/readyz
           status="$(curl --silent --show-error --insecure -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' https://localhost/api/v1/bootstrap)"
           test "$status" = 410
