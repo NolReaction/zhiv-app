@@ -65,6 +65,9 @@
 .root button[aria-pressed='true'] { border-color: #d1e197; background: #425a35; color: #f7ffe7; }
 .poseGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
 .root .poseGrid button { padding: 7px 5px; font-size: 12px; }
+.lifeActions { display: grid; gap: 8px; }
+.lifeActions > div { display: grid; gap: 4px; }
+.lifeActions button { width: 100%; }
 .resources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
 .resources > div { min-width: 0; padding: 8px; border: 1px solid var(--dev-line); border-radius: 9px; }
 .resources dt { font-size: 11px; color: var(--dev-muted); }

@@ -6,7 +6,7 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { worldCatalog } from "../model";
 import { TILED_WORLD } from "../presentation";
 import type { WorldController } from "../use-world";
-import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevState } from "./world-dev-store";
+import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevLifeAction, type WorldDevState } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
 
 export type WorldDevPanelProps = {
@@ -20,7 +20,7 @@ export type WorldDevPanelProps = {
   onOpenWardrobe?: () => void;
   onOpenCollection?: () => void;
 };
-type ManualAction = { kind: "pose"; pose: PixelPose } | { kind: "birds" };
+type ManualAction = { kind: "pose"; pose: PixelPose } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
 
 const POSE_LABELS: Record<PixelPose, string> = {
   idle: "Покой", walk: "Шаги", blink: "Моргнуть", sleep: "Сон", drowsy: "Дремота",
@@ -33,6 +33,10 @@ const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], [
 const TIME = [["auto", "По времени профиля"], ["day", "День"], ["dusk", "Сумерки"], ["night", "Ночь"]] as const;
 const MODES = [["auto", "Авто"], ["on", "Включить"], ["off", "Выключить"]] as const;
 const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", "Влево"], ["right", "Вправо"]] as const;
+const LIFE_ACTIONS = [
+  ["butterfly", "Поиграть с бабочкой"], ["firefly", "Поиграть со светлячком"],
+  ["mushroom", "Съесть гриб"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
+] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
 
 function subscribeMotion(listener: () => void) {
   const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -73,7 +77,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(false);
-  const [collapseOnPlay, setCollapseOnPlay] = useState(true);
+  const [collapseOnPlay, setCollapseOnPlay] = useState(false);
   const [lastAction, setLastAction] = useState<ManualAction | null>(null);
   const [feedback, setFeedback] = useState("");
   const trigger = useRef<HTMLButtonElement>(null);
@@ -97,13 +101,26 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
   if (!active) return null;
 
   const overrides = (Object.keys(WORLD_DEV_DEFAULTS) as (keyof WorldDevState)[])
-    .filter(key => !["animation", "birdEvent", "cameraEvent", "artError"].includes(key)
+    .filter(key => !["animation", "lifeEvent", "birdEvent", "cameraEvent", "artError"].includes(key)
       && JSON.stringify(state[key]) !== JSON.stringify(WORLD_DEV_DEFAULTS[key])).length;
   const reduced = state.reducedMotion === "on" || state.reducedMotion === "auto" && prefersReducedMotion;
-  const birdsUnavailable = state.birds === "off" ? "Птицы выключены. Выберите «Авто» или «Включить»."
-    : reduced ? "Для пролёта птиц выключите «Меньше движения»." : null;
-  const repeatUnavailable = lastAction?.kind === "birds" ? birdsUnavailable : null;
-  const repeatLabel = lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose] : "Пролёт птиц";
+  const motionUnavailable = state.paused ? "Сцена на паузе. Снимите паузу для проигрывания событий."
+    : reduced ? "Для анимаций выберите «Выключить» в настройке «Меньше движения»." : null;
+  const heroUnavailable = motionUnavailable ?? (!state.showHero ? "Мохлик скрыт. Включите «Показывать Мохлика»." : null);
+  const birdsUnavailable = motionUnavailable ?? (state.birds === "off" ? "Птицы выключены. Выберите «Авто» или «Включить»." : null);
+  function unavailable(action: ManualAction) {
+    if (action.kind === "birds") return birdsUnavailable;
+    if (action.kind === "pose") return heroUnavailable;
+    if (action.action === "idle") return null;
+    if (action.action === "grow-mushrooms") return motionUnavailable;
+    if (heroUnavailable) return heroUnavailable;
+    if (action.action === "butterfly" && state.butterflies === "off") return "Бабочки выключены. Выберите «Авто» или «Включить».";
+    if (action.action === "firefly" && state.fireflies === "off") return "Светлячки выключены. Выберите «Авто» или «Включить».";
+    return null;
+  }
+  const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
+  const repeatLabel = lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
+    : lastAction?.kind === "life" ? LIFE_ACTIONS.find(([kind]) => kind === lastAction.action)![1] : "Пролёт птиц";
   const locked = world.busy || world.uncertain;
   const canGrant = process.env.NODE_ENV === "development" && world.snapshot?.devTools === true;
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
@@ -116,9 +133,13 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
     change({ equipment: { palette: appearance.palette, head: appearance.head, neck: appearance.neck, [slot]: value || null } }, "Примерка включена. Инвентарь сохранён");
   }
   function play(action: ManualAction) {
+    if (unavailable(action)) return;
     if (action.kind === "birds") {
-      if (birdsUnavailable) return;
       worldDevStore.triggerBirds(); setFeedback("Пролёт птиц запущен");
+    } else if (action.kind === "life") {
+      worldDevStore.triggerLife(action.action);
+      setFeedback(action.action === "idle" ? "Сценка отменена. Автоматические сценки выключены."
+        : `Лесная сценка: ${LIFE_ACTIONS.find(([kind]) => kind === action.action)![1].toLowerCase()}`);
     } else {
       worldDevStore.triggerPose(action.pose); setFeedback(`Анимация: ${POSE_LABELS[action.pose].toLowerCase()}`);
     }
@@ -128,7 +149,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
 
   return <aside className={styles.root} aria-label="Инструменты разработчика">
     <div className={styles.toolbar}>
-      {!open && lastAction && <button type="button" className={styles.repeat} disabled={Boolean(repeatUnavailable)}
+      {lastAction && <button type="button" className={styles.repeat} disabled={Boolean(repeatUnavailable)}
         aria-label={`Повторить: ${repeatLabel}`} title={repeatUnavailable ?? repeatLabel} onClick={() => play(lastAction)}><RotateCcw size={15} aria-hidden />Повторить</button>}
       <button ref={trigger} type="button" className={styles.trigger} aria-expanded={open} aria-controls={drawerId}
         aria-label={`Панель разработчика${overrides ? `, изменений: ${overrides}` : ""}`} onClick={() => setOpen(value => !value)}>
@@ -159,8 +180,26 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
             <Select label="Светлячки" value={state.fireflies} values={MODES} onChange={fireflies => change({ fireflies })} />
           </div>
           <Select label="Птицы" value={state.birds} values={MODES} onChange={birds => change({ birds })} />
+          <Toggle label="Лужи после дождя" checked={state.puddles} onChange={puddles => change({ puddles })} />
           <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Запустить пролёт птиц</button>
           {birdsUnavailable && <p className={styles.hint}>{birdsUnavailable}</p>}
+        </Section>
+
+        <Section title="Лесные сценки" initiallyOpen>
+          <Toggle label="Автоматические сценки" checked={state.autoLife} onChange={autoLife => change({ autoLife })} />
+          <div className={styles.lifeActions}>
+            {LIFE_ACTIONS.map(([action, label]) => {
+              const reason = unavailable({ kind: "life", action });
+              const reasonId = `${id}-life-${action}-reason`;
+              return <div key={action}>
+                <button type="button" disabled={Boolean(reason)} aria-describedby={reason ? reasonId : undefined}
+                  onClick={() => play({ kind: "life", action })}>{label}</button>
+                {reason && <p id={reasonId} className={styles.hint}>{reason}</p>}
+              </div>;
+            })}
+          </div>
+          <p className={styles.hint}>«Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» подготавливает один гриб для сценки. Наград и изменений инвентаря нет.</p>
+          <p className={styles.hint}>В режиме «Авто» бабочка или светлячок появятся для ручной сценки в любое время. «Отменить сценку» возвращает покой и выключает автоматические сценки.</p>
         </Section>
 
         <Section title="Мохлик и анимации">
@@ -176,8 +215,10 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           <Field label={`Размер · ${Math.round(state.heroScale * 100)}%`}><input type="range" min="0.5" max="2" step="0.05" value={state.heroScale}
             onChange={event => change({ heroScale: Number(event.target.value) })} /></Field>
           <fieldset className={styles.fieldset}><legend>Проиграть один раз</legend><div className={styles.poseGrid}>
-            {WORLD_DEV_POSES.map(pose => <button type="button" key={pose} onClick={() => play({ kind: "pose", pose })}>{POSE_LABELS[pose]}</button>)}
+            {WORLD_DEV_POSES.map(pose => <button type="button" key={pose} disabled={Boolean(heroUnavailable)}
+              aria-describedby={heroUnavailable ? `${id}-pose-reason` : undefined} onClick={() => play({ kind: "pose", pose })}>{POSE_LABELS[pose]}</button>)}
           </div></fieldset>
+          {heroUnavailable && <p id={`${id}-pose-reason`} className={styles.hint}>{heroUnavailable}</p>}
           <p className={styles.hint}>Проверка кадров на месте. Походы по маршрутам — в редакторе карты.</p>
           <fieldset className={styles.fieldset}><legend>Примерка · без выдачи предметов</legend>
             {([['palette', 'Цвет мха'], ['head', 'Головной убор'], ['neck', 'Шарф']] as const).map(([slot, label]) =>
@@ -233,7 +274,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
         <p className={styles.pending}>Вода, фонари и игровые улучшения новой карты появятся после адаптации.</p>
       </div>
       <footer className={styles.footer}>
-        <p role="status" aria-live="polite">{feedback || (overrides ? `Изменений вида: ${overrides}` : "Обычный вид леса")}</p>
+        <p role="status" aria-live="polite">{repeatUnavailable ?? (feedback || (overrides ? `Изменений вида: ${overrides}` : "Обычный вид леса"))}</p>
         <button type="button" onClick={() => { worldDevStore.reset(); setLastAction(null); setFeedback("Все настройки вида сброшены"); }}><RotateCcw size={16} aria-hidden />Сбросить вид</button>
       </footer>
     </section>}

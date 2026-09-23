@@ -1,4 +1,5 @@
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
+import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestAirParticle, type ForestBird } from "./forest-wildlife";
 
 const TAU = Math.PI * 2;
 const WEATHER_PERIOD = 24 * 60;
@@ -18,9 +19,9 @@ const WEATHER_PRESETS = {
 } as const;
 
 const RAIN_PROFILES = {
-  drizzle: { count: 54, length: 4.5, speed: 80, opacity: .38 },
-  rain: { count: 108, length: 8, speed: 120, opacity: .52 },
-  downpour: { count: 180, length: 12, speed: 175, opacity: .66 },
+  drizzle: { count: 66, length: 7, speed: 90, opacity: .5 },
+  rain: { count: 120, length: 12, speed: 145, opacity: .66 },
+  downpour: { count: 180, length: 19, speed: 210, opacity: .82 },
 } as const;
 
 export type ForestAtmosphereOptions = {
@@ -46,8 +47,8 @@ export type ForestAtmosphereState = {
   weather: Exclude<ForestWeatherMode, "auto">;
 };
 
-type AirParticle = WorldPoint & { size: number; opacity: number; phase: number };
-type Bird = AirParticle & { angle: number };
+type AirParticle = ForestAirParticle;
+type Bird = ForestBird;
 type Raindrop = AirParticle & { length: number };
 export type ForestAtmosphereFrame = ForestAtmosphereState & {
   butterflies: AirParticle[];
@@ -112,6 +113,19 @@ function insect(field: WorldBounds, seed: number, index: number, seconds: number
   };
 }
 
+function birdFlight(from: WorldPoint, to: WorldPoint, progress: number, bend: number) {
+  const dx = to.x - from.x, dy = to.y - from.y, length = Math.max(1, Math.hypot(dx, dy));
+  const arc = Math.sin(progress * Math.PI) * bend;
+  const tangent = Math.cos(progress * Math.PI) * Math.PI * bend;
+  return { x: from.x + dx * progress - dy / length * arc,
+    y: from.y + dy * progress + dx / length * arc,
+    angle: Math.atan2(dy + dx / length * tangent, dx - dy / length * tangent) };
+}
+
+function withinWorld(point: WorldPoint, world: WorldBounds) {
+  return point.x >= 0 && point.y >= 0 && point.x <= world.width && point.y <= world.height;
+}
+
 /** Pure world-coordinate samples; no camera size, asset, DOM, or mutable particle state. */
 export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtmosphereOptions): ForestAtmosphereFrame {
   const state = forestAtmosphereState(scene, options), { world, focus, scale } = geometry(scene);
@@ -140,43 +154,50 @@ export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtm
   if (!options.reducedMotion && birdVisibility > .05 && manualBirds) {
     const flight = options.birdElapsed ?? modulo(seconds, FOREST_BIRD_FLIGHT_DURATION + 3);
     if (Number.isFinite(flight) && flight >= 0 && flight < FOREST_BIRD_FLIGHT_DURATION) {
-      const direction = noise(seed, 211) > .5 ? 1 : -1;
       const progress = flight / FOREST_BIRD_FLIGHT_DURATION;
-      // A triggered flock starts inside the authored focus, immediately visible in both cameras.
+      const from = { x: focus.x + focus.width * .5, y: focus.y + focus.height * .38 };
+      // Start in the clearing, then continue all the way through the wider world to its far edge.
+      const to = { x: from.x < world.width / 2 ? world.width + scale * 14 : -scale * 14,
+        y: clamp(from.y + (noise(seed, 212) - .5) * world.height * .6, world.height * .08, world.height * .92) };
       for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.birds; i++) {
-        const across = direction === 1 ? progress : 1 - progress;
-        const x = focus.x + focus.width * (.14 + across * .72) - direction * i * scale * 9;
-        const y = focus.y + focus.height * (.32 + Math.sin(progress * Math.PI) * .13) + i * scale * 7;
-        frame.birds.push({ x: clamp(x, 0, world.width), y: clamp(y, 0, world.height), size: scale * 1.4,
-          angle: Math.atan2(focus.height * .13 * Math.cos(progress * Math.PI) * Math.PI, direction * focus.width * .72),
-          opacity: smooth((1 - progress) / .2) * birdVisibility * .85,
-          phase: flight * 7 + i * 1.7,
-        });
+        const pose = birdFlight({ x: from.x - i * scale * 10, y: from.y + i * scale * 8 },
+          { x: to.x - i * scale * 10, y: to.y + i * scale * 8 }, progress, world.height * .045);
+        if (withinWorld(pose, world)) frame.birds.push({ ...pose, size: scale * 1.4,
+          opacity: birdVisibility * .92, phase: flight * 9 + i * 1.7 });
       }
     }
   } else if (!options.reducedMotion && birdVisibility > .05) {
     const clock = seconds + noise(seed, 210) * BIRD_PERIOD;
     const phase = modulo(clock, BIRD_PERIOD), cycle = Math.floor(clock / BIRD_PERIOD);
-    const direction = noise(seed, cycle + 211) > .5 ? 1 : -1;
+    const reverse = noise(seed, cycle + 211) > .5;
     const count = noise(seed, cycle + 310) > .65 ? 2 : 1;
+    const corridor = modulo(cycle, 3), lane = .14 + noise(seed, cycle + 410) * .72;
+    const margin = scale * 14;
+    let from: WorldPoint, to: WorldPoint;
+    if (corridor === 0) {
+      from = { x: -margin, y: world.height * lane };
+      to = { x: world.width + margin, y: world.height * clamp(lane + .16, .12, .88) };
+    } else if (corridor === 1) {
+      from = { x: world.width * lane, y: -margin };
+      to = { x: world.width * clamp(lane - .16, .12, .88), y: world.height + margin };
+    } else {
+      from = { x: -margin, y: world.height * .12 };
+      to = { x: world.width + margin, y: world.height * .88 };
+    }
+    if (reverse) [from, to] = [to, from];
     for (let i = 0; i < count; i++) {
       const progress = (phase - i * .65) / FOREST_BIRD_FLIGHT_DURATION;
       if (progress < 0 || progress > 1) continue;
-      const across = direction === 1 ? progress : 1 - progress;
-      const rise = Math.sin(progress * Math.PI), bend = Math.cos(progress * Math.PI) * Math.PI;
-      const y = focus.y + focus.height * (.26 + noise(seed, cycle + 410) * .25 + rise * .13) + i * scale * 7;
-      frame.birds.push({ x: world.width * across, y: clamp(y, 0, world.height), size: scale * 1.4,
-        angle: Math.atan2(focus.height * .13 * bend, direction * world.width),
-        opacity: smooth(progress / .12) * smooth((1 - progress) / .12) * birdVisibility * .85,
-        phase: seconds * 7 + i * 1.7,
-      });
+      const pose = birdFlight(from, to, progress, Math.min(world.width, world.height) * .06);
+      if (withinWorld(pose, world)) frame.birds.push({ ...pose, size: scale * 1.4,
+        opacity: birdVisibility * .92, phase: seconds * 9 + i * 1.7 });
     }
   }
 
   const profile = RAIN_PROFILES[state.weather === "rain" || state.weather === "downpour" ? state.weather : "drizzle"];
   const automaticWeather = !options.weather || options.weather === "auto";
-  const dropCount = automaticWeather ? 36 : profile.count;
   const rainVisibility = automaticWeather ? clamp(state.rain / .42) : 1;
+  const dropCount = automaticWeather ? Math.ceil(54 * rainVisibility) : profile.count;
   if (!options.reducedMotion && state.rain > .001) for (let i = 0; i < Math.min(dropCount, FOREST_ATMOSPHERE_LIMITS.raindrops); i++) {
     const field = i < dropCount / 3 ? focus : world;
     const phase = modulo(noise(seed, i + 510) + seconds * scale * profile.speed / field.height, 1);
@@ -205,30 +226,11 @@ export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: Fixed
     ctx.fillRect(0, 0, scene.width, scene.height);
   }
 
-  for (let i = 0; i < frame.butterflies.length; i++) {
-    const particle = frame.butterflies[i], s = particle.size;
-    const spread = s * (1.1 + Math.abs(Math.sin(frame.elapsed * 7 + particle.phase)) * 1.4);
-    ctx.globalAlpha = particle.opacity; ctx.fillStyle = i % 2 ? "#e0c995" : "#d6dbc0";
-    ctx.fillRect(particle.x - spread, particle.y - s, spread - s * .3, s * 2);
-    ctx.fillRect(particle.x + s * .3, particle.y - s, spread - s * .3, s * 2);
-    ctx.fillStyle = "#69775c"; ctx.fillRect(particle.x - s * .3, particle.y - s, s * .6, s * 2.3);
-  }
-  for (const particle of frame.fireflies) {
-    const s = particle.size;
-    ctx.fillStyle = "#d5e8a0"; ctx.globalAlpha = particle.opacity * .12;
-    ctx.beginPath(); ctx.ellipse(particle.x, particle.y, s * 3.1, s * 3.1, 0, 0, TAU); ctx.fill();
-    ctx.globalAlpha = particle.opacity; ctx.fillStyle = "#e5edb6";
-    ctx.fillRect(particle.x - s * .55, particle.y - s * .55, s * 1.1, s * 1.1);
-  }
-  for (const bird of frame.birds) {
-    const s = bird.size, spread = 2.5 + Math.abs(Math.sin(bird.phase)) * 2;
-    ctx.save(); ctx.translate(bird.x, bird.y); ctx.rotate(bird.angle);
-    ctx.globalAlpha = bird.opacity; ctx.strokeStyle = "#34453c"; ctx.lineWidth = s * .85;
-    ctx.beginPath(); ctx.moveTo(-s * 2, -spread * s); ctx.lineTo(0, 0); ctx.lineTo(-s * 2, spread * s); ctx.stroke();
-    ctx.fillStyle = "#34453c"; ctx.fillRect(-s * 1.8, -s * .55, s * 3.8, s * 1.1);
-    ctx.restore();
-  }
-  ctx.strokeStyle = "#d0e4e8"; ctx.lineWidth = frame.weather === "downpour" ? .9 : .7;
+  for (const particle of frame.butterflies) drawForestButterfly(ctx, particle, frame.elapsed);
+  for (const particle of frame.fireflies) drawForestFirefly(ctx, particle, frame.elapsed);
+  for (const bird of frame.birds) drawForestBird(ctx, bird);
+  ctx.strokeStyle = "#dfedf0";
+  ctx.lineWidth = geometry(scene).scale * (frame.weather === "downpour" ? 1.1 : frame.weather === "rain" ? .9 : .75);
   for (const drop of frame.raindrops) {
     ctx.globalAlpha = drop.opacity;
     ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x - drop.length * .16, drop.y + drop.length); ctx.stroke();

@@ -15,6 +15,9 @@ test("development store starts from authored scene defaults with stable server s
   assert.equal(WORLD_DEV_ENABLED, process.env.NODE_ENV === "development");
   assert.equal(worldDevStore.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
+  assert.equal(store.getSnapshot().autoLife, true);
+  assert.equal(store.getSnapshot().puddles, true);
+  assert.equal(store.getSnapshot().lifeEvent, null);
   assert.deepEqual(store.getSnapshot().levels, initialPreviewLevels(TILED_WORLD));
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
   store.patch({ weather: "rain", timeOfDay: "night", paused: true });
@@ -25,8 +28,9 @@ test("development store starts from authored scene defaults with stable server s
 test("disabled store ignores every mutation and does not register subscribers", () => {
   const store = createWorldDevStore(false);
   const unsubscribe = store.subscribe(() => assert.fail("disabled store notified a listener"));
-  store.patch({ weather: "downpour", heroScale: 2, levels: { unknown: 1 } });
-  store.triggerPose("greet"); store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
+  store.patch({ weather: "downpour", heroScale: 2, levels: { unknown: 1 }, autoLife: false, puddles: false });
+  store.triggerPose("greet"); store.triggerLife("butterfly"); store.triggerLife("idle");
+  store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
   unsubscribe(); unsubscribe();
@@ -61,13 +65,13 @@ test("snapshots are immutable and only real changes notify subscribed listeners"
 test("visual controls accept valid options and ignore malformed values", () => {
   const store = createWorldDevStore(true);
   const controls = { weather: "downpour", timeOfDay: "dusk", butterflies: "off", fireflies: "on", birds: "off",
-    paused: true, reducedMotion: "on", pose: "fishing-walk", direction: "back", showHero: false, showBuildings: false,
+    paused: true, autoLife: false, puddles: false, reducedMotion: "on", pose: "fishing-walk", direction: "back", showHero: false, showBuildings: false,
     heroShadow: false, buildingShadow: false, debug: true };
   store.patch(controls);
   for (const [key, value] of Object.entries(controls)) assert.equal(store.getSnapshot()[key], value);
   const before = store.getSnapshot();
   store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, paused: "yes",
-    reducedMotion: false, pose: "dance", direction: "north", showHero: 0, showBuildings: null, heroShadow: "off",
+    reducedMotion: false, autoLife: "yes", puddles: 1, pose: "dance", direction: "north", showHero: 0, showBuildings: null, heroShadow: "off",
     buildingShadow: 1, debug: undefined, equipment: { palette: "fern", head: 0, neck: null }, unknown: true });
   store.patch(null); store.patch([]); store.patch(undefined);
   assert.equal(store.getSnapshot(), before);
@@ -141,6 +145,76 @@ test("every supported pixel pose can be held and triggered", () => {
     assert.equal(store.getSnapshot().animation.pose, pose);
   }
   store.patch({ pose: "auto" }); assert.equal(store.getSnapshot().pose, "auto");
+});
+
+test("life events are immutable, validated and repeat with new IDs across resets", () => {
+  const store = createWorldDevStore(true);
+  let previousId = 0;
+  for (const kind of ["butterfly", "firefly", "mushroom", "grow-mushrooms", "idle", "idle"]) {
+    const before = store.getSnapshot();
+    store.triggerLife(kind);
+    const after = store.getSnapshot();
+    assert.notEqual(after, before);
+    assert.equal(after.lifeEvent.kind, kind);
+    assert.ok(after.lifeEvent.id > previousId);
+    previousId = after.lifeEvent.id;
+    assert.throws(() => { after.lifeEvent.kind = "firefly"; }, TypeError);
+    assert.throws(() => { after.lifeEvent.id = 999; }, TypeError);
+  }
+  const beforeInvalid = store.getSnapshot();
+  for (const kind of ["dance", "auto", "", null, undefined, {}, 1]) store.triggerLife(kind);
+  for (const lifeEvent of [{ id: 999, kind: "butterfly" }, {}, "idle", 1]) store.patch({ lifeEvent });
+  assert.equal(store.getSnapshot(), beforeInvalid);
+  store.patch({ lifeEvent: null });
+  assert.equal(store.getSnapshot().lifeEvent, null);
+  assert.equal(beforeInvalid.lifeEvent.kind, "idle", "cancelling preserves the earlier immutable snapshot");
+  store.reset();
+  assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
+  store.triggerLife("butterfly");
+  assert.ok(store.getSnapshot().lifeEvent.id > previousId);
+});
+
+test("life actions atomically replace held poses and gestures, and idle disables automatic life", () => {
+  const store = createWorldDevStore(true);
+  store.patch({ pose: "sleep" });
+  store.triggerPose("greet");
+  const poseSnapshot = store.getSnapshot();
+  const events = [];
+  store.subscribe(() => events.push(store.getSnapshot()));
+  store.triggerLife("mushroom");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].pose, "auto");
+  assert.equal(events[0].animation, null);
+  assert.equal(events[0].lifeEvent.kind, "mushroom");
+  assert.equal(events[0].autoLife, true);
+  assert.equal(poseSnapshot.pose, "sleep");
+  assert.equal(poseSnapshot.animation.pose, "greet");
+  store.triggerLife("idle");
+  assert.equal(events.length, 2);
+  assert.equal(events[1].lifeEvent.kind, "idle");
+  assert.equal(events[1].autoLife, false);
+  store.triggerLife("firefly");
+  assert.equal(store.getSnapshot().autoLife, false, "manual actions do not silently restart automatic life");
+});
+
+test("one-shot and held poses cancel life events without accepting forged replacements", () => {
+  const store = createWorldDevStore(true);
+  store.triggerLife("butterfly");
+  const first = store.getSnapshot().lifeEvent;
+  store.triggerPose("jump");
+  assert.equal(store.getSnapshot().lifeEvent, null);
+  assert.equal(store.getSnapshot().animation.pose, "jump");
+  store.triggerLife("firefly");
+  const second = store.getSnapshot().lifeEvent;
+  assert.ok(second.id > first.id);
+  store.patch({ pose: "sleep", lifeEvent: { id: 999, kind: "mushroom" } });
+  assert.equal(store.getSnapshot().lifeEvent, null);
+  assert.equal(store.getSnapshot().pose, "sleep");
+  store.triggerLife("butterfly");
+  const beforeInvalid = store.getSnapshot();
+  store.patch({ pose: "dance" });
+  store.triggerPose("dance");
+  assert.equal(store.getSnapshot(), beforeInvalid, "invalid poses cannot cancel a life event");
 });
 
 test("selecting a held pose cancels a manual gesture without reusing its event ID", () => {

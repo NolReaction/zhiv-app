@@ -263,3 +263,18 @@ test("the shared compositor paints each current state over its own mask and grou
   const [sprite, , y, , height] = ctx.draws[2].args;
   assert.ok(Math.abs(y + heroSpriteContact(sprite, "walk", 1).bottom / 48 * height - 400) < 1e-10);
 });
+
+test("ground effects paint over terrain, below buildings, without leaking canvas state", () => {
+  const { site, image } = fixture(), ctx = recordingContext();
+  const terrain = { naturalWidth: 500, naturalHeight: 500 }, effect = {};
+  const scene = { width: 500, height: 500, terrain: [{ image: "terrain", bounds: { x: 0, y: 0, width: 500, height: 500 } }], sites: [site], paths: [] };
+  paintFixedWorld(ctx, scene, {
+    images: new Map([["terrain", terrain], ["building", image]]), visuals: { [site.id]: { image: "building", level: 1 } }, actor: null,
+    options: { night: false, selectedSiteId: null, debug: false, buildingShadow: false },
+    paintGround(ground) { ground.filter = "blur(5px)"; ground.drawImage(effect, 1, 2, 3, 4); },
+  });
+  assert.deepEqual(ctx.draws.map(draw => draw.args[0]), [terrain, effect, image]);
+  assert.equal(ctx.draws[1].filter, "blur(5px)");
+  assert.equal(ctx.draws[2].filter, "none");
+  assert.equal(ctx.filter, "none");
+});

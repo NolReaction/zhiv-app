@@ -26,6 +26,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/presentation.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
       ...await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts"),
+      ...await vite.ssrLoadModule("/features/world/forest-session.ts"),
     };
   } finally { await vite.close(); }
 }
@@ -40,6 +41,7 @@ function browser() {
   function surface(width = 320, height = width) {
     const calls = [], events = new Map(), captured = new Set();
     const context = new Proxy({
+      createRadialGradient: () => ({ addColorStop() {} }),
       drawImage: (...args) => calls.push({ method: "drawImage", args }),
       setTransform: (...args) => calls.push({ method: "setTransform", args }),
       translate: (...args) => calls.push({ method: "translate", args }),
@@ -360,7 +362,8 @@ test("exported Tiled edits drive both live views, active site art, pet hit area 
     assert.equal(scale(), 400 / 2400, "initial world overview is independent of the circle crop");
     engine.control("home"); assert.equal(scale(), 400 / 240);
     engine.control("overview"); assert.equal(scale(), 400 / 2400);
-    assert.deepEqual(world.calls.filter(call => call.method === "translate").at(-1).args, [-900, -1200]);
+    const lastCameraScale = world.calls.findLastIndex(call => call.method === "scale");
+    assert.deepEqual(world.calls.slice(lastCameraScale).find(call => call.method === "translate").args, [-900, -1200]);
     assert.equal(env.requests.length, 3, "both views share asset cache; inactive upgrades are not loaded");
   } finally { scene?.dispose(); engine?.dispose(); env.restore(); }
 });
@@ -497,4 +500,70 @@ test("map loading adopts the latest dev pause before starting its outer animatio
     assert.equal(env.frames.size, 0, "both scene and map retain the pause applied during the asynchronous load");
     worldDevStore.patch({ paused: false }); assert.equal(env.frames.size, 2);
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("same-account art-ready world owns one clock and preserves life, moisture and time on return", async () => {
+  const site = { id: "home", label: "Дом", bounds: { x: 900, y: 820, width: 100, height: 100 },
+    anchor: { x: 950, y: 920 }, entry: { x: 950, y: 930 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [1, 2].map(level => ({ level, label: `Level ${level}`, image: `/shared-home-${level}.webp` })) };
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD } = await modules({ sites: [site] });
+  const env = browser(), scenes = []; let probe;
+  try {
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "owner-account" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    env.finish(); env.finish(); await flush(); env.tick(100); env.tick(150);
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    worldDevStore.patch({ weather: "rain", levels: { home: 2 } });
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    const before = circle.ambience().elapsed; env.tick(200); env.tick(250);
+    assert.ok(circle.ambience().elapsed > before, "loading world has not taken the ready circle's clock");
+    env.finishPath("/shared-home-2.webp"); await flush();
+    assert.equal(env.frames.size, 1, "only one shared scene clock runs after world art is ready");
+    circle.configure({ ...initial, backgrounded: true });
+    worldDevStore.triggerLife("mushroom");
+    env.tick(300); for (let now = 350; now <= 2850; now += 50) env.tick(now);
+    assert.equal(probe.state.life.routine.kind, "mushroom"); assert.equal(probe.state.life.routine.picked, true);
+    assert.ok(probe.state.wetness > 0);
+    assert.deepEqual(circle.ambience(), world.ambience());
+    const snapshot = structuredClone(probe.state);
+    circle.setTime(80_000);
+    world.dispose(); circle.configure(initial); await flush();
+    assert.equal(env.frames.size, 1); assert.deepEqual(probe.state, snapshot, "handoff does not reset life or rewind to an old circle time sample");
+    env.tick(2900); env.tick(2950);
+    assert.ok(probe.state.life.routine.elapsed > snapshot.life.routine.elapsed);
+    assert.ok(probe.state.wetness > snapshot.wetness);
+    assert.deepEqual(circle.position(), { x: 630, y: 642 }, "routines never move the authored hero");
+  } finally { probe?.release(); scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
+});
+
+test("shared DEV transitions apply once and pause, reduced motion and account changes isolate life", async () => {
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD } = await modules();
+  const env = browser(), scenes = [], probes = [];
+  try {
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "life-account" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    env.finish(); await flush();
+    const probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {}); probes.push(probe);
+    worldDevStore.triggerPose("greet"); worldDevStore.triggerLife("butterfly");
+    assert.equal(probe.state.life.routine.kind, "butterfly", "second subscriber cannot cancel the first subscriber's new routine");
+    assert.equal(probe.state.animation, null);
+    worldDevStore.patch({ pose: "sleep" }); worldDevStore.triggerLife("firefly");
+    assert.equal(probe.state.life.routine.kind, "firefly", "changing a held pose to auto is also a single shared transition");
+    worldDevStore.patch({ paused: true });
+    const paused = structuredClone(probe.state); env.tick(10_000);
+    assert.deepEqual(probe.state, paused); assert.equal(env.frames.size, 0);
+    worldDevStore.patch({ paused: false, reducedMotion: "on" });
+    const still = structuredClone(probe.state); env.tick(20_000);
+    assert.deepEqual(probe.state, still); assert.equal(env.frames.size, 0);
+    worldDevStore.patch({ reducedMotion: "off" }); worldDevStore.triggerPose("jump");
+    assert.equal(probe.state.life.routine, null, "manual sprite poses cancel interaction props immediately");
+    world.configure({ ...initial, presenceKey: "other-account", view: "world" });
+    const other = connectForestSession("other-account", TILED_WORLD, "circle", 0, 0, () => {}); probes.push(other);
+    assert.notEqual(other.state, probe.state); assert.equal(other.state.life.elapsed, 0);
+    assert.equal(other.state.animation, null); assert.equal(other.state.wetness, 0);
+    await flush(); assert.equal(env.frames.size, 2, "different accounts and anonymous scenes remain independent");
+  } finally { probes.forEach(probe => probe.release()); scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
 });

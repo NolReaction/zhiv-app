@@ -9,6 +9,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { FOREST_ATMOSPHERE_LIMITS, FOREST_BIRD_FLIGHT_DURATION, forestAtmosphereState, forestAtmosphereFrame, drawForestAtmosphere }
   = await vite.ssrLoadModule("/features/world/forest-atmosphere.ts");
+const { drawForestBird, drawForestButterfly, drawForestFirefly }
+  = await vite.ssrLoadModule("/features/world/forest-wildlife.ts");
+const { updateForestWetness, isForestGroundClear, forestGroundWeatherFrame, drawForestGroundWeather }
+  = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
 
 const scene = { schemaVersion: 1, id: "test-forest", width: 960, height: 720,
   focus: { x: 170, y: 210, width: 240, height: 240 }, terrain: [], sites: [], paths: [] };
@@ -36,8 +40,14 @@ function drawing(width = 360, height = 360) {
     strokeStyle: ctx.strokeStyle, lineWidth: ctx.lineWidth, clipped: ctx.clipped,
     transform: [...ctx.transform] });
   const initial = snapshot();
-  for (const name of ["beginPath", "rect", "moveTo", "lineTo", "ellipse"])
+  for (const name of ["beginPath", "closePath", "rect", "moveTo", "lineTo", "ellipse", "bezierCurveTo"])
     ctx[name] = (...args) => calls.push([name, ...args]);
+  ctx.createRadialGradient = (...args) => {
+    const gradient = { type: "radial", args, stops: [] };
+    Object.defineProperty(gradient, "addColorStop", { value: (offset, color) => gradient.stops.push([offset, color]) });
+    calls.push(["createRadialGradient", gradient]);
+    return gradient;
+  };
   for (const name of ["fillRect", "fill", "stroke"])
     ctx[name] = (...args) => { assert.ok(ctx.clipped, "every paint is clipped to the world"); calls.push([name, ...args, snapshot()]); };
   ctx.save = () => { stack.push(snapshot()); calls.push(["save"]); };
@@ -144,8 +154,8 @@ test("day and night swap insect populations and birds visit briefly in small flo
   }
   assert.deepEqual([...counts].sort(), [0, 1, 2]);
   assert.ok(birdSeconds < 1200 / 4, "birds are occasional visitors rather than a constant flock");
-  assert.equal(forestAtmosphereFrame(scene, { ...options, timestamp: rainTimestamp }).raindrops.length, 36,
-    "the automatic drizzle retains its original particle budget");
+  assert.ok(forestAtmosphereFrame(scene, { ...options, timestamp: rainTimestamp }).raindrops.length <= 54,
+    "automatic drizzle remains bounded and lighter than forced rain");
 });
 
 test("weather presets override the clock while auto restores the original weather schedule", () => {
@@ -229,6 +239,10 @@ test("triggered birds appear promptly near focus, replay deterministically and s
   assert.ok(first.birds.every(bird => bird.opacity > .5 && inside(bird, scene.focus)));
   const middle = forestAtmosphereFrame(scene, { ...input, birdElapsed: FOREST_BIRD_FLIGHT_DURATION / 2 });
   assert.notDeepEqual(middle.birds, first.birds);
+  const crossing = forestAtmosphereFrame(scene, { ...input, birdElapsed: FOREST_BIRD_FLIGHT_DURATION * .9 });
+  assert.ok(crossing.birds.length > 0, "the flock keeps flying after leaving the clearing");
+  assert.ok(crossing.birds.every(bird => !inside(bird, scene.focus) && bird.opacity > .8), "birds leave through a world edge without fading above the clearing");
+  assert.ok(Math.abs(crossing.birds[0].x - first.birds[0].x) > scene.width * .5);
   assert.deepEqual(forestAtmosphereFrame(scene, { ...input, elapsed: options.elapsed + 400, timestamp: clearTimestamp }).birds, first.birds,
     "a repeat click replays the same flock without depending on the scene clock");
   for (const birdElapsed of [-1, FOREST_BIRD_FLIGHT_DURATION, FOREST_BIRD_FLIGHT_DURATION + 100, Number.NaN, Infinity]) {
@@ -240,6 +254,109 @@ test("triggered birds appear promptly near focus, replay deterministically and s
     assert.equal(movedBirds[index].x - bird.x, 300);
     assert.equal(movedBirds[index].y - bird.y, -150);
   });
+});
+
+test("automatic birds cross broad horizontal, vertical and diagonal world corridors", () => {
+  const flights = [];
+  let current = [];
+  for (let elapsed = 0; elapsed < 1200; elapsed += .5) {
+    const frame = forestAtmosphereFrame(scene, { ...options, elapsed, weather: "clear" });
+    if (frame.birds.length) current.push(frame.birds[0]);
+    else if (current.length) { flights.push(current); current = []; }
+  }
+  const corridors = new Set();
+  for (const flight of flights) {
+    const first = flight[0], last = flight.at(-1);
+    const x = Math.abs(last.x - first.x) / scene.width, y = Math.abs(last.y - first.y) / scene.height;
+    if (x > .8 && y < .25) corridors.add("horizontal");
+    if (y > .8 && x < .25) corridors.add("vertical");
+    if (x > .8 && y > .6) corridors.add("diagonal");
+  }
+  assert.deepEqual([...corridors].sort(), ["diagonal", "horizontal", "vertical"]);
+});
+
+test("wildlife painters use shaped colored wings, a feathered body and soft round light", () => {
+  const particle = { x: 40, y: 40, size: 2, opacity: .8, phase: .8 };
+  for (const painter of [drawForestButterfly, drawForestFirefly, drawForestBird]) {
+    const painted = drawing(); painted.ctx.clipped = true;
+    painter(painted.ctx, { ...particle, angle: .4 }, 3);
+    assert.equal(painted.calls.some(call => call[0] === "fillRect"), false, "wildlife has no square body or wing blocks");
+    assert.ok(painted.calls.filter(call => call[0] === "ellipse").length >= 2);
+    assert.equal(painted.stack.length, 0);
+    if (painter === drawForestFirefly) {
+      const gradient = painted.calls.find(call => call[0] === "createRadialGradient")?.[1];
+      assert.ok(gradient, "fireflies have a radial glow");
+      assert.match(gradient.stops.at(-1)[1], /,0\)$/u, "the outside of the glow fades to transparent");
+    } else {
+      assert.ok(painted.calls.some(call => call[0] === "bezierCurveTo"), "wings have filled tapered outlines");
+      const colors = new Set(painted.calls.filter(call => call[0] === "fill").map(call => call.at(-1).fillStyle));
+      assert.ok(colors.size >= 3, "wing color, feather/body outline and highlights stay distinct");
+    }
+  }
+});
+
+const groundScene = { ...scene, actor: { spawn: { x: 290, y: 330 }, size: 48 } };
+
+test("wet ground builds gradually, retains rain after clearing and dries slowly with active scene time", () => {
+  const afterSecond = updateForestWetness(0, 1, 1), afterRain = updateForestWetness(0, 1, 18);
+  assert.ok(afterSecond > 0 && afterSecond < .08);
+  assert.ok(afterRain > .6 && afterRain < .7);
+  assert.ok(updateForestWetness(afterRain, 0, 1) > afterRain * .98, "clear weather cannot erase puddles immediately");
+  assert.ok(updateForestWetness(afterRain, 0, 75) > .2);
+  assert.ok(updateForestWetness(afterRain, 0, 600) < .001);
+  let subdivided = 0;
+  for (let i = 0; i < 180; i++) subdivided = updateForestWetness(subdivided, 1, .1);
+  assert.ok(Math.abs(subdivided - afterRain) < 1e-10, "frame rate does not change wetting speed");
+  for (const dt of [0, -1, Number.NaN, Infinity]) assert.equal(updateForestWetness(.4, 1, dt), .4);
+  assert.equal(updateForestWetness(-1, 1, 0), 0);
+  assert.equal(updateForestWetness(2, 1, 0), 1);
+});
+
+test("puddles grow at stable safe ground locations and survive clear skies", () => {
+  const input = { ...options, weather: "rain", wetness: .8 };
+  const wet = forestGroundWeatherFrame(groundScene, input);
+  const early = forestGroundWeatherFrame(groundScene, { ...input, wetness: .15 });
+  assert.ok(wet.puddles.length > 0 && wet.puddles.length <= 4);
+  assert.ok(wet.rings.length > 0 && wet.rings.length <= 8);
+  assert.deepEqual(forestGroundWeatherFrame(groundScene, input), wet);
+  wet.puddles.forEach((puddle, index) => {
+    assert.deepEqual([puddle.x, puddle.y], [early.puddles[index].x, early.puddles[index].y]);
+    assert.ok(puddle.radiusX > early.puddles[index].radiusX && puddle.opacity > early.puddles[index].opacity);
+    assert.ok(isForestGroundClear(groundScene, puddle, puddle.radiusX));
+  });
+  const clearing = forestGroundWeatherFrame(groundScene, { ...input, weather: "clear" });
+  assert.equal(clearing.puddles.length, wet.puddles.length);
+  assert.equal(clearing.rings.length, 0);
+  assert.deepEqual(forestGroundWeatherFrame(groundScene, { ...input, wetness: 0 }).puddles, []);
+  assert.deepEqual(forestGroundWeatherFrame(groundScene, { ...input, wetness: undefined }).puddles, []);
+  assert.deepEqual(forestGroundWeatherFrame(scene, input).puddles, [], "map metadata without a spawn cannot prove ground safety");
+  const exclusion = { ...groundScene.actor.spawn, radius: 100 };
+  assert.deepEqual(forestGroundWeatherFrame(groundScene, { ...input, groundExclusions: [exclusion] }).puddles, []);
+});
+
+test("ground effects exclude building art, collision polygons, paths and world boundaries", () => {
+  const spawn = groundScene.actor.spawn;
+  assert.equal(isForestGroundClear(groundScene, spawn, 2), true);
+  assert.equal(isForestGroundClear(groundScene, { x: 500, y: 500 }, 1), false, "uncatalogued woods and water cannot receive effects");
+  assert.equal(isForestGroundClear(groundScene, { x: spawn.x + 34, y: spawn.y }, 4), false, "the full footprint must fit in the conservative ellipse");
+  assert.equal(isForestGroundClear({ ...groundScene, actor: { spawn: { x: 1, y: 1 }, size: 48 } }, { x: 1, y: 1 }, 2), false);
+  const site = { id: "building", bounds: { x: spawn.x - 10, y: spawn.y - 10, width: 20, height: 20 }, collision: [] };
+  assert.equal(isForestGroundClear({ ...groundScene, sites: [site] }, spawn, 1), false, "exclude full image bounds, including roof beyond collision");
+  const collision = [{ x: spawn.x - 3, y: spawn.y - 3 }, { x: spawn.x + 3, y: spawn.y - 3 }, { x: spawn.x, y: spawn.y + 4 }];
+  assert.equal(isForestGroundClear({ ...groundScene, sites: [{ ...site, bounds: { x: 0, y: 0, width: 10, height: 10 }, collision }] }, spawn, 1), false);
+  assert.equal(isForestGroundClear({ ...groundScene, paths: [{ id: "route", points: [{ x: spawn.x - 20, y: spawn.y }, { x: spawn.x + 20, y: spawn.y }] }] }, spawn, 1), false);
+});
+
+test("ground weather is static in reduced motion and preserves the caller canvas state", () => {
+  const input = { ...options, weather: "downpour", wetness: .8, reducedMotion: true };
+  const later = { ...input, elapsed: 500, timestamp: rainTimestamp };
+  assert.deepEqual(forestGroundWeatherFrame(groundScene, later), forestGroundWeatherFrame(groundScene, input));
+  const first = drawing(), second = drawing(1400, 900);
+  drawForestGroundWeather(first.ctx, groundScene, input);
+  drawForestGroundWeather(second.ctx, groundScene, later);
+  assert.deepEqual(first.calls, second.calls);
+  assert.equal(first.stack.length, 0);
+  assert.deepEqual(first.snapshot(), first.initial);
 });
 
 test("manual downpour and wildlife respect reduced motion while preserving the selected atmosphere", () => {

@@ -30,6 +30,8 @@ export type PaintFrame = {
   visuals: Record<string, SiteVisual>;
   options: FixedWorldRenderOptions;
   actor: PreviewActor | null;
+  /** Ground effects belong above terrain and below all buildings and actors. */
+  paintGround?: (context: CanvasRenderingContext2D) => void;
 };
 
 function polygon(ctx: CanvasRenderingContext2D, points: readonly WorldPoint[]) {
@@ -48,6 +50,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
     if (image) ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
+  if (frame.paintGround) { ctx.save(); frame.paintGround(ctx); ctx.restore(); }
   for (const site of frame.options.showBuildings === false ? [] : scene.sites) {
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {

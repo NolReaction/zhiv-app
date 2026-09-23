@@ -4,6 +4,7 @@ import { initialPreviewLevels } from "../tiled/preview-state";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
 export type WorldDevCameraAction = "in" | "out" | "overview" | "pet";
+export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "grow-mushrooms" | "idle";
 
 export const WORLD_DEV_POSES = Object.freeze([
   "idle", "walk", "blink", "sleep", "drowsy", "stretch", "crouch", "jump", "groom", "greet",
@@ -17,6 +18,8 @@ export type WorldDevState = Readonly<{
   butterflies: "auto" | "on" | "off";
   fireflies: "auto" | "on" | "off";
   birds: "auto" | "on" | "off";
+  autoLife: boolean;
+  puddles: boolean;
   paused: boolean;
   reducedMotion: "auto" | "on" | "off";
   pose: "auto" | PixelPose;
@@ -30,6 +33,7 @@ export type WorldDevState = Readonly<{
   levels: Readonly<Record<string, number>>;
   equipment: Readonly<{ palette: string; head: string | null; neck: string | null }> | null;
   animation: Readonly<{ id: number; pose: PixelPose }> | null;
+  lifeEvent: Readonly<{ id: number; kind: WorldDevLifeAction }> | null;
   birdEvent: number;
   cameraEvent: Readonly<{ id: number; action: WorldDevCameraAction }> | null;
   artError: string | null;
@@ -37,10 +41,11 @@ export type WorldDevState = Readonly<{
 
 export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   weather: "auto", timeOfDay: "auto", butterflies: "auto", fireflies: "auto", birds: "auto",
+  autoLife: true, puddles: true,
   paused: false, reducedMotion: "auto", pose: "auto", direction: "front", heroScale: 1,
   showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true, debug: false,
   levels: Object.freeze(initialPreviewLevels(TILED_WORLD)), equipment: null,
-  animation: null, birdEvent: 0, cameraEvent: null, artError: null,
+  animation: null, lifeEvent: null, birdEvent: 0, cameraEvent: null, artError: null,
 });
 
 const enumValues = {
@@ -50,14 +55,15 @@ const enumValues = {
   reducedMotion: ["auto", "on", "off"], pose: ["auto", ...WORLD_DEV_POSES],
   direction: ["front", "back", "left", "right"],
 } as const;
-const booleanKeys = ["paused", "showHero", "showBuildings", "heroShadow", "buildingShadow", "debug"] as const;
+const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "debug"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
+const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "grow-mushrooms", "idle"].some(kind => kind === value);
 
 /** Ephemeral visual overrides only; this store never touches player progress or storage. */
 export function createWorldDevStore(enabled: boolean) {
   let state = WORLD_DEV_DEFAULTS;
-  let animationId = 0, birdEventId = 0, cameraEventId = 0;
+  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0;
   const listeners = new Set<() => void>();
   const publish = (next: WorldDevState) => {
     if (!enabled || next === state) return;
@@ -84,8 +90,9 @@ export function createWorldDevStore(enabled: boolean) {
       if (typeof patch.heroScale === "number" && Number.isFinite(patch.heroScale)) {
         next.heroScale = Math.max(.5, Math.min(2, patch.heroScale));
       }
-      // Selecting a held pose may cancel a gesture; event creation remains exclusive to triggerPose.
+      // Events may be cancelled here, but only the trigger methods can create them.
       if (patch.animation === null) next.animation = null;
+      if (patch.lifeEvent === null || isPose(patch.pose)) next.lifeEvent = null;
       if (isRecord(patch.levels)) {
         const levels = Object.fromEntries(TILED_WORLD.sites.map(site => {
           const level = patch.levels![site.id];
@@ -107,7 +114,12 @@ export function createWorldDevStore(enabled: boolean) {
     },
     reset() { publish(WORLD_DEV_DEFAULTS); },
     triggerPose(pose: PixelPose) {
-      if (enabled && isPose(pose)) publish({ ...state, animation: Object.freeze({ id: ++animationId, pose }) });
+      if (enabled && isPose(pose)) publish({ ...state, lifeEvent: null, animation: Object.freeze({ id: ++animationId, pose }) });
+    },
+    triggerLife(kind: WorldDevLifeAction) {
+      if (enabled && isLifeAction(kind)) publish({ ...state, animation: null, pose: "auto",
+        autoLife: kind === "idle" ? false : state.autoLife,
+        lifeEvent: Object.freeze({ id: ++lifeEventId, kind }) });
     },
     triggerBirds() {
       if (enabled) publish({ ...state, birdEvent: ++birdEventId });
