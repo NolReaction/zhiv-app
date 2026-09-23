@@ -36,7 +36,12 @@ export function browserReleaseNotesEnvironment(): ReleaseNotesEnvironment {
     storage: () => window.localStorage,
     visible: () => document.visibilityState !== "hidden",
     now: Date.now,
-    setInterval, clearInterval, setTimeout, clearTimeout,
+    // Wrappers prevent native timers from receiving this environment as `this`.
+    // Resolve globals lazily so creating the adapter also works during SSR.
+    setInterval: (callback, delay) => globalThis.setInterval(callback, delay),
+    clearInterval: timer => globalThis.clearInterval(timer),
+    setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
+    clearTimeout: timer => globalThis.clearTimeout(timer),
     listen: listener => {
       const refresh = () => listener({ type: "refresh" });
       const storage = (event: StorageEvent) => listener({ type: "storage", key: event.key, newValue: event.newValue });

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
+import ts from "typescript";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -15,6 +17,80 @@ const later = { ...original, id: "next-release", date: "2026-09-24", title: "Ð¡Ð
 const feed = (...releases) => ({ schemaVersion: 1, releases });
 const response = payload => ({ ok: true, headers: new Headers({ "Content-Type": "application/json; charset=utf-8" }), json: async () => payload });
 const flush = async () => { for (let index = 0; index < 8; index++) await Promise.resolve(); };
+
+// Isolate browser globals from Vite/Node while executing the actual production adapter.
+const storeSource = await readFile(new URL("../features/updates/release-notes-store.ts", import.meta.url), "utf8");
+const storeTree = ts.createSourceFile("release-notes-store.ts", storeSource, ts.ScriptTarget.Latest, true);
+const environmentFactory = storeTree.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "browserReleaseNotesEnvironment");
+assert.ok(environmentFactory);
+const environmentCode = ts.transpileModule(environmentFactory.getText(storeTree), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+
+function browserAdapterFixture({ server = false } = {}) {
+  const timers = new Map();
+  const events = new Map();
+  const requests = [];
+  const calls = [];
+  let nextTimer = 0;
+  let browserGlobal;
+  const hostTimers = {};
+  for (const name of ["setInterval", "clearInterval", "setTimeout", "clearTimeout"]) {
+    hostTimers[name] = function (...args) {
+      if (this !== browserGlobal) throw new TypeError(`Illegal invocation: ${name}`);
+      calls.push(name);
+      if (name.startsWith("clear")) { timers.delete(args[0]); return; }
+      const id = ++nextTimer;
+      timers.set(id, { name, callback: args[0], delay: args[1] });
+      return id;
+    };
+  }
+  const context = vm.createContext({ exports: {}, ...hostTimers });
+  browserGlobal = vm.runInContext("globalThis", context);
+  if (!server) {
+    const target = prefix => ({
+      addEventListener: (name, listener) => events.set(`${prefix}:${name}`, listener),
+      removeEventListener: name => events.delete(`${prefix}:${name}`),
+    });
+    Object.assign(context, {
+      ...target("window"),
+      localStorage: { getItem: () => null, setItem: () => {} },
+      document: { visibilityState: "visible", ...target("document") },
+      fetch: (url, init) => new Promise((resolve, reject) => requests.push({ url, init, resolve, reject })),
+    });
+    vm.runInContext("globalThis.window = globalThis", context);
+  }
+  vm.runInContext(environmentCode, context);
+  return { environment: context.exports.browserReleaseNotesEnvironment(), timers, events, requests, calls, hostTimers };
+}
+
+test("production browser adapter preserves timer receivers through scheduling and cleanup", async () => {
+  const h = browserAdapterFixture();
+  // Control: the former copied-native implementation must fail in this browser model.
+  const detached = { ...h.environment, ...h.hostTimers };
+  assert.throws(() => detached.setInterval(() => {}, 1), /Illegal invocation/);
+  const store = createReleaseNotesStore("browser-adapter", h.environment, new Map());
+  const stop = store.subscribe(() => {});
+  assert.deepEqual([...h.timers.values()].map(timer => timer.delay), [RELEASE_REFRESH_INTERVAL, RELEASE_REQUEST_TIMEOUT]);
+  assert.equal(h.events.size, 4);
+  assert.equal(h.requests.length, 1);
+  h.requests[0].resolve(response(feed(original)));
+  await flush();
+  assert.equal(store.getSnapshot().checking, false);
+  assert.equal(h.timers.size, 1, "successful refresh clears its timeout through the host receiver");
+  store.refresh();
+  assert.equal(h.timers.size, 2);
+  stop();
+  assert.equal(h.requests[1].init.signal.aborted, true);
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.events.size, 0);
+  assert.ok(["setInterval", "clearInterval", "setTimeout", "clearTimeout"].every(name => h.calls.includes(name)));
+});
+
+test("production browser adapter can be created for SSR without window or document", () => {
+  const h = browserAdapterFixture({ server: true });
+  const store = createReleaseNotesStore("server-adapter", h.environment, new Map());
+  assert.equal(store.getServerSnapshot().unreadCount, BUNDLED_RELEASE_NOTES.length);
+  assert.deepEqual(h.calls, [], "constructing the adapter must not start browser work");
+});
 
 function harness({ owner = "player-a", memory = new Map(), saved = new Map(), brokenStorage = false } = {}) {
   let clock = 0;
