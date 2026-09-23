@@ -1,0 +1,4 @@
+/updates.json
+  Cache-Control: no-store
+/app-status.json
+  Cache-Control: no-store

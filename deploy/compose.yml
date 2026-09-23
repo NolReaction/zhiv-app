@@ -107,6 +107,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/web.Dockerfile
+      args:
+        APP_BUILD_ID: ${APP_BUILD_ID:-}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -140,6 +142,7 @@ services:
       - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./runtime:/srv/deploy:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

@@ -1,27 +1,35 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-// PNGs remain the editable masters. Runtime filenames change with their bytes.
+// One full-resolution export serves both the map and its circular focus view.
+// The PNG remains the authoritative editable master; no crops or previews exist.
 const root = fileURLToPath(new URL("..", import.meta.url));
-const output = path.join(root, "public/world/runtime");
+const output = path.join(root, "public/world/prototype");
 await mkdir(output, { recursive: true });
-const map = path.join(root, "public/world/maps/forest-region-v3.png");
-const jobs = {
-  map: sharp(map).webp({ quality: 94, effort: 6 }),
-  mapPreview: sharp(map).resize(384, 384).webp({ quality: 72, effort: 6 }),
-  homePreview: sharp(map).extract({ left: 486, top: 514, width: 256, height: 256 }).webp({ quality: 88, effort: 6 }),
-  homeDetail: sharp(path.join(root, "public/world/maps/home-detail-v1.png")).webp({ quality: 94, effort: 6 }),
-  boatWreck: sharp(path.join(root, "public/world/objects/boat-wreck-v1.png")).resize({ width: 512 }).webp({ quality: 92, effort: 6 }),
+const source = await readFile(path.join(root, "art/world/prototype/forest-ground.png"));
+const bytes = await sharp(source).webp({ lossless: true, effort: 6 }).toBuffer();
+const [sourcePixels, exportedPixels] = await Promise.all([
+  sharp(source).ensureAlpha().raw().toBuffer(),
+  sharp(bytes).ensureAlpha().raw().toBuffer(),
+]);
+if (!sourcePixels.equals(exportedPixels)) throw new Error("Terrain export must preserve every source pixel.");
+const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+const terrain = `/world/prototype/forest-ground.webp?v=${hash}`;
+const boatPath = "/world/runtime/boat-wreck-lowquality.webp";
+const boatBytes = await readFile(path.join(root, "public", boatPath));
+const boatHash = createHash("sha256").update(boatBytes).digest("hex").slice(0, 12);
+const assets = {
+  map: terrain,
+  mapPreview: terrain,
+  homePreview: terrain,
+  homeDetail: terrain,
+  // Retained artwork; the clean terrain scene does not render the boat.
+  boatWreck: `${boatPath}?v=${boatHash}`,
 };
-const assets = {};
-for (const [name, pipeline] of Object.entries(jobs)) {
-  const bytes = await pipeline.toBuffer();
-  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
-  assets[name] = `/world/runtime/${name}-${hash}.webp`;
-  await writeFile(path.join(root, "public", assets[name]), bytes);
-  console.log(`${name}: ${(bytes.length / 1024).toFixed(1)} KiB`);
-}
+await writeFile(path.join(output, "forest-ground.webp"), bytes);
 await writeFile(path.join(root, "features/world/runtime-art.json"), JSON.stringify(assets, null, 2) + "\n");
+console.log(`forest-ground: ${(bytes.length / 1024).toFixed(1)} KiB, lossless, version ${hash}`);
+console.log("Run npm run world:export to refresh Tiled image metadata and scene URLs.");

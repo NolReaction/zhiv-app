@@ -9,7 +9,6 @@
 }
 
 .headingRow,
-.sectionTitleRow,
 .personTop,
 .personBottom,
 .requestCard,
@@ -86,12 +85,10 @@
   text-wrap: balance;
 }
 
-.addButton,
 .secondaryButton,
 .acceptButton,
 .iconButton,
 .textButton,
-.removeButton,
 .sendButton,
 .searchRow button {
   border: 0;
@@ -99,7 +96,6 @@
   cursor: pointer;
 }
 
-.addButton,
 .secondaryButton {
   display: inline-flex;
   min-height: 44px;
@@ -130,22 +126,6 @@
   font-size: 14px;
   font-weight: 800;
   letter-spacing: -0.01em;
-}
-
-.sectionTitleRow {
-  justify-content: space-between;
-}
-
-.sectionTitleRow > span {
-  display: grid;
-  min-width: 24px;
-  height: 24px;
-  place-items: center;
-  border-radius: 999px;
-  background: rgba(183, 216, 162, 0.12);
-  color: #b7d8a2;
-  font-size: 11px;
-  font-weight: 900;
 }
 
 .list {
@@ -209,8 +189,6 @@
   white-space: nowrap;
 }
 
-.userStatus { margin: 3px 0; font-size: 14px; line-height: 1.45; color: #c9ddbd; overflow-wrap: anywhere; }
-
 .requestActions {
   display: flex;
   gap: 7px;
@@ -235,8 +213,7 @@
   color: #c3c8bd;
 }
 
-.textButton,
-.removeButton {
+.textButton {
   background: transparent;
   color: #a3a99e;
   font-size: 12px;
@@ -301,13 +278,6 @@
 .sharingLabel small {
   color: #7f8579;
   font-size: 10px;
-}
-
-.removeButton {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
 }
 
 .inviteLoading {
@@ -656,13 +626,11 @@ button:disabled {
   opacity: 0.5;
 }
 
-.addButton:focus-visible,
 .sectionTabs button:focus-visible,
 .secondaryButton:focus-visible,
 .acceptButton:focus-visible,
 .iconButton:focus-visible,
 .textButton:focus-visible,
-.removeButton:focus-visible,
 .shareButton:focus-visible,
 .regenerateButton:focus-visible,
 .sendButton:focus-visible,

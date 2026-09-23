@@ -12,6 +12,9 @@ Production-контур: Caddy → Next.js / Ktor → PostgreSQL 18.
 
 Первый запуск и команды: [настройка сервера](server-setup.md).
 
+После установки PWA не меняйте `DOMAIN` без плана переноса сессий: браузерное
+хранилище и сеансы привязаны к прежнему адресу сайта.
+
 ## Пароли и вход
 
 Роли PostgreSQL используют отдельные файлы `db_admin`, `db_migration` и `db_app` в `deploy/.secrets/`. Генератор `node scripts/create-deploy-secrets.mjs` сохраняет существующие файлы.

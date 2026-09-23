@@ -475,7 +475,7 @@
 }
 
 .columns { display: grid; gap: 16px; margin-top: 26px; align-items: start; }
-.overviewColumn, .settingsColumn { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.overviewColumn { display: grid; gap: 16px; min-width: 0; align-content: start; }
 .localProgressNote { margin: 0 4px; color: #a5aa9f; font-size: 12px; line-height: 1.5; }
 .futureCard { margin-top: 24px; }
 @media (min-width: 960px) and (hover: hover) and (pointer: fine) {

@@ -1,70 +1,74 @@
-# Путеводитель по репозиторию
+# Где менять код
 
-Это один проект с браузерным приложением и отдельным сервером. Папки названы по их назначению; большинство изменений игры начинается в `features/` или `public/`.
+Ищите задачу в таблице и открывайте указанный файл. Подробности изменения и проверки — в последнем столбце. Пути ниже относятся к текущей Tiled-карте; прежний рендер отделён в конце.
 
-## Хочу изменить…
+## Карта, свет и анимации
 
-| Задача | Открыть |
-|---|---|
-| Основной экран и круглую кнопку | [features/check-in/check-in-app.tsx](../features/check-in/check-in-app.tsx) и соседний CSS |
-| Календарь и подарки в нём | [features/check-in/check-in-calendar.tsx](../features/check-in/check-in-calendar.tsx) |
-| Профиль, вход, резервный код | [features/account/](../features/account/) |
-| Людей и группы | [features/people/](../features/people/) |
-| Изображение медали | [public/achievements/](../public/achievements/), файл с ID достижения |
-| Название, цель и подсказку достижения | [features/game/game-rewards.ts](../features/game/game-rewards.ts) |
-| Окно достижений | [features/game/game-achievements.tsx](../features/game/game-achievements.tsx) и соседний CSS |
-| Уровни персонажа и их иконки | [clicker-story.ts](../features/game/clicker-story.ts), [game-level-icon.tsx](../features/game/game-level-icon.tsx) |
-| Учёт и отправку игровых тапов | [features/game/use-game-progress.ts](../features/game/use-game-progress.ts), `game-sync.ts`, `game-sync-journal.ts` |
-| Карту или детали здания | [public/world/](../public/world/README.md) |
-| Какие изображения загружает игра | [features/world/art.ts](../features/world/art.ts) |
-| Положение меток и области нажатия | [features/world/map-layout.ts](../features/world/map-layout.ts) |
-| Вход в дом и положение фонаря | [features/mochlik/home-layout.ts](../features/mochlik/home-layout.ts) |
-| Камеру, перетаскивание и масштаб карты | [features/world/camera.ts](../features/world/camera.ts), `map-engine.ts` |
-| Эффект входа в лес | [features/world/world-portal.tsx](../features/world/world-portal.tsx), `use-world-portal.ts`, `world.module.css` |
-| Кнопки поверх карты, постройки и гардероб | [features/world/world-view.tsx](../features/world/world-view.tsx), `world-scene.tsx` |
-| Меню путешествий и анимацию маршрута | [world-journeys.tsx](../features/world/world-journeys.tsx), [journey-progress.tsx](../features/world/journey-progress.tsx) |
-| Внешность Мохлика | [features/mochlik/pixel-sprite.ts](../features/mochlik/pixel-sprite.ts) |
-| Поведение, сон, грибы, игры | [features/mochlik/habitat.ts](../features/mochlik/habitat.ts), `pixel-frame.ts`, `ambience.ts` |
-| Реакции кустика и листьев | [features/mochlik/bush-reaction.ts](../features/mochlik/bush-reaction.ts) |
-| Факелы и камни на тропинках | [features/world/route-props.ts](../features/world/route-props.ts) |
-| Рыбки, всплески и дождевые кольца реки | [features/world/water-ambience.ts](../features/world/water-ambience.ts) |
-| Птицы и разбитая лодка | `features/world/bird-ambience.ts`, `features/world/boat-wreck.ts` |
-| Редкие животные по погоде | `features/world/weather-visitors.ts` |
-| Ночь, лунный свет и фонарь | [features/mochlik/lighting.ts](../features/mochlik/lighting.ts), `lantern-light.ts`, `lantern-glass.ts`, `scene.ts` |
-| Цены зданий, длительность походов, коллекции | [Единый каталог мира](../apps/api/src/main/resources/world/catalog.json) |
-| Админку, сообщения о сбоях и награды | [features/admin/](../features/admin/), [серверные обработчики](../apps/api/src/main/kotlin/ru/zhiv/admin/) |
-| Локальный API для тестирования | [lib/dev/](../lib/dev/) |
-| Реальный сервер и сохранение данных | [apps/api/src/main/kotlin/ru/zhiv/](../apps/api/src/main/kotlin/ru/zhiv/) |
-| Таблицы и миграции БД | [apps/api/src/main/resources/db/migration/](../apps/api/src/main/resources/db/migration/) |
+| Задача | Главные файлы | Как менять и проверять |
+|---|---|---|
+| Расставить фонари и факелы | [`forest.tmj`](../world/tiled/forest.tmj), слой `Lights` | [Освещение](game/world-lighting.md) |
+| Изменить ночной цвет, световое пятно, пламя, мерцание | [`forest-lighting.ts`](../features/world/forest-lighting.ts) | [Освещение](game/world-lighting.md) |
+| Изменить расписание дня/ночи | [`lighting.ts`](../features/mochlik/lighting.ts), переход в [`new-map-scene.ts`](../features/world/new-map-scene.ts) | [Освещение](game/world-lighting.md) |
+| Изменить погоду и общие параметры окружения | [`forest-atmosphere.ts`](../features/world/forest-atmosphere.ts) | [Атмосфера](game/world-atmosphere.md) |
+| Доработать падающие капли и попадания в реку | [`forest-rain.ts`](../features/world/forest-rain.ts), [`forest-water.ts`](../features/world/forest-water.ts) | [Дождь и вода](game/world-atmosphere.md) |
+| Изменить границы реки и исключить листья, камни, причал | [`forest.tmj`](../world/tiled/forest.tmj): `Water`, `WaterExclusions` | [Разметка Tiled](game/tiled-editor.md) |
+| Изменить попадания на землю и существующие лужи | [`forest-ground-impacts.ts`](../features/world/forest-ground-impacts.ts), [`forest-ground-layout.json`](../features/world/forest-ground-layout.json), [`forest-ground-weather.ts`](../features/world/forest-ground-weather.ts) | [Атмосфера](game/world-atmosphere.md) |
+| Добавить вид птиц, стаю, маршрут или посадку | [`forest-birds.ts`](../features/world/forest-birds.ts) | [Птицы и привязка к фону](game/world-atmosphere.md) |
+| Изменить бабочек и светлячков | [`forest-wildlife.ts`](../features/world/forest-wildlife.ts) | [Атмосфера](game/world-atmosphere.md) |
+| Изменить занятия героя, рост грибов и общие часы | [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-session.ts`](../features/world/forest-session.ts) | [Устройство мира](game/world-foundation.md) |
+| Изменить порядок слоёв и работу двух камер | [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`map-engine.ts`](../features/world/map-engine.ts), [`world-scene.tsx`](../features/world/world-scene.tsx) | [Устройство мира](game/world-foundation.md) |
+| Исправить масштаб, перетаскивание и границы камеры | [`camera.ts`](../features/world/camera.ts), [`map-engine.ts`](../features/world/map-engine.ts) | [Устройство мира](game/world-foundation.md) |
+| Перенести героя, дом или круглую камеру | [`forest.tmj`](../world/tiled/forest.tmj): `Actors`, `Buildings`, `Clearing focus` | [Разметка Tiled](game/tiled-editor.md) |
+| Заменить рисунок мира или дома | [`art/world/prototype/`](../art/world/prototype/), [`public/world/prototype/`](../public/world/prototype/) | [Исходники и экспорт](../art/README.md) |
+| Изменить программный спрайт Мохлика и его контактную тень | [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts), [`grounding.ts`](../features/world/grounding.ts) | [Устройство мира](game/world-foundation.md) |
+| Изменить экспорт Tiled и валидацию свойств | [`scripts/lib/tiled-world.mjs`](../scripts/lib/tiled-world.mjs), [`types.ts`](../features/world/tiled/types.ts), [`scripts/tiled-world.mjs`](../scripts/tiled-world.mjs) | [Разметка Tiled](game/tiled-editor.md) |
+| Доработать страницу проверки без аккаунта | [`tiled-world-preview.tsx`](../features/world/tiled/tiled-world-preview.tsx), [`renderer.ts`](../features/world/tiled/renderer.ts) | [Разметка Tiled](game/tiled-editor.md) |
+| Добавить управление эффектом в DEV | [`world-dev-panel.tsx`](../features/world/dev/world-dev-panel.tsx), [`world-dev-store.ts`](../features/world/dev/world-dev-store.ts) | [Атмосфера](game/world-atmosphere.md) |
 
-Изменение текста достижения на клиенте не меняет правила его выдачи сервером. Они находятся в `apps/api/src/main/kotlin/ru/zhiv/game/GameRewards.kt` и `db/GameAchievementWrites.kt`; локальный аналог — `lib/dev/api-store.ts` и `lib/dev/game-store.ts`. Проверяйте обе стороны, если меняете условие, а не оформление.
+`features/world/tiled/forest.generated.json` — результат `npm run world:export`, его не редактируют вручную. Проверка соответствия: `npm run world:check`.
 
-## Как устроены папки
+## Интерфейс и правила игры
 
-- **`features/`** — прикладные разделы. Здесь компонент, его стиль, состояние и относящиеся к разделу функции. `mochlik/` управляет героем, `world/` — картой и игровыми панелями, `game/` — тапами и прогрессом.
-- **`public/`** — файлы, которые браузер получает как есть. `public/achievements/linked_email.svg` доступен по URL `/achievements/linked_email.svg`.
-- **`lib/`** — общие контракты, сеть, дата/время, приватность и функции, нужные разным разделам. `lib/dev/` имитирует API только для разработки.
-- **`components/`** — общие уведомления, индикаторы свежести, переключатели и общие стили. `components/ui/` — установленная библиотека элементов интерфейса.
-- **`app/`** — входные страницы и API-маршруты фреймворка. Их размещение диктует Next.js.
-- **`apps/api/`** — настоящий Ktor-сервер, доступ к PostgreSQL и серверные тесты.
-- **`tests/`** — веб-тесты. Префиксы `world-`, `mochlik-`, `game-` помогают найти нужные проверки.
-- **`deploy/`, `scripts/`** — рабочее окружение и обслуживание. Скрипты остаются на прежних путях, которые используются в CI и инструкциях обновления.
-- **`db/`, `drizzle/`, `worker/`, `build/`** — поддержка дополнительного Sites-контура. В production игровые данные находятся в PostgreSQL; пустой `db/schema.ts` не является схемой основной БД.
+| Задача | Главные файлы | Инструкция |
+|---|---|---|
+| Кнопки над картой, коллекции, гардероб, игровые панели | [`world-view.tsx`](../features/world/world-view.tsx), [`world.module.css`](../features/world/world.module.css) | [Устройство мира](game/world-foundation.md) |
+| Тексты игровой справки | [`world-help-content.ts`](../features/world/world-help-content.ts) | Правило редактирования ниже |
+| Поиск, раскрываемые темы и оформление справки | [`world-help.tsx`](../features/world/world-help.tsx), [`world-help.module.css`](../features/world/world-help.module.css) | Проверка ниже |
+| Включить перенесённые возможности новой карты | [`presentation.ts`](../features/world/presentation.ts) | [Текущие ограничения мира](game/world-foundation.md); смена флага не переносит старую геометрию |
+| Переход между главным экраном и миром | [`world-portal.tsx`](../features/world/world-portal.tsx), [`use-world-portal.ts`](../features/world/use-world-portal.ts) | [Устройство мира](game/world-foundation.md) |
+| Меню поездок, подтверждение наград, отображение пути | [`world-journeys.tsx`](../features/world/world-journeys.tsx), [`journey-progress.tsx`](../features/world/journey-progress.tsx) | [Правила и данные](development/backend-and-data.md), [рыбалка](game/fishing.md) |
+| Цены, ресурсы, одежда, коллекции и длительности | [`catalog.json`](../apps/api/src/main/resources/world/catalog.json), [`model.ts`](../features/world/model.ts), [`WorldModel.kt`](../apps/api/src/main/kotlin/ru/zhiv/world/WorldModel.kt) | [Правила и данные](development/backend-and-data.md) |
+| Игровые команды, повторы запросов и сохранение | [`session.ts`](../features/world/session.ts), [`api.ts`](../features/world/api.ts), [`use-world.ts`](../features/world/use-world.ts) | [Правила и данные](development/backend-and-data.md) |
+| Уровни, достижения, рейтинг и искры от тапов | [`features/game/`](../features/game/), [`GameRewards.kt`](../apps/api/src/main/kotlin/ru/zhiv/game/GameRewards.kt) | [Правила и данные](development/backend-and-data.md) |
+| Группы уровней, полоса прогресса и заблокированные значки | [`game-levels-button.tsx`](../features/game/game-levels-button.tsx), [`game-levels.module.css`](../features/game/game-levels.module.css) | [Меню уровней](development/updates-and-levels.md#как-устроено-меню-уровней) |
+| Потерянные тапы, несколько вкладок, смена аккаунта | [`use-game-progress.ts`](../features/game/use-game-progress.ts), [`game-sync.ts`](../features/game/game-sync.ts), [`game-sync-journal.ts`](../features/game/game-sync-journal.ts) | [Синхронизация](game/game-sync-reliability.md) |
+| Картинка достижения | [`public/achievements/`](../public/achievements/) | [Каталог медалей](../public/achievements/README.md) |
 
-## Как сейчас рисуется лес
+**Как поддерживать справку.** Добавляйте короткий ответ в `world-help-content.ts`, а не в JSX панели. Числа берите из каталога/правил, доступность — из `WORLD_PRESENTATION`. Отличайте существующую механику от доступной сейчас кнопки. Пользователю нужны действия и последствия; пути исходников и команды запуска остаются в `docs/`.
 
-Карта — `public/world/maps/forest-region-v3.png` (1254 × 1254). Кнопка показывает домашний квадрат `(486,514,256,256)` той же карты. Его детальная текстура `home-detail-v1.png` используется обоими видами с сохранением исходных пикселей по краю. Геометрию задаёт `features/world/map-manifest.ts`.
+Проверьте: ⓘ рядом с коллекциями → открытие темы → поиск по тексту → отсутствие результатов → очистка поиска → закрытие и возврат фокуса на ⓘ. Убедитесь, что панель прокручивается на телефоне шириной 320 px и работает клавиатурой. Тесты справки: [`tests/world-help.test.mjs`](../tests/world-help.test.mjs).
 
-Дом первого уровня нарисован в фоне. Слоты `house-variants.ts` пока пусты: сохранённые улучшения работают в игровой модели, совместимую графику для них ещё нужно подготовить. Старые атласы не используются. Мохлик, реакция кустика, рыбки, рябь, насекомые, дождь и свет рисуются кодом поверх неизменных текстур.
+## Приложение и сервер
 
-## Что убрано при уборке
+| Задача | Главные файлы | Инструкция |
+|---|---|---|
+| Главный экран, отправка отметки, статус | [`features/check-in/`](../features/check-in/), [`check-in-api.ts`](../lib/check-in-api.ts) | [Разделы приложения](development/app-features.md) |
+| Новости версий, сотрудничество и счётчик beta-test | [`updates.json`](../public/updates.json), [`beta-info.tsx`](../features/check-in/beta-info.tsx), [`features/updates/`](../features/updates/) | [Публикация обновления](development/updates-and-levels.md) |
+| Обращения игроков и суточный лимит | [`features/feedback/`](../features/feedback/), [`feedback/`](../apps/api/src/main/kotlin/ru/zhiv/feedback/), [`JdbcFeedbackRepository.kt`](../apps/api/src/main/kotlin/ru/zhiv/db/JdbcFeedbackRepository.kt) | [Обратная связь](development/feedback.md) |
+| Техработы, версия открытого клиента и принудительное обновление | [`features/updates/`](../features/updates/), [`deploy-update.sh`](../scripts/deploy-update.sh), [`app-build.mjs`](../scripts/app-build.mjs) | [Обновление клиента](operations/client-updates.md) |
+| Календарь, серия отметок, часовой пояс | [`check-in-calendar.tsx`](../features/check-in/check-in-calendar.tsx), [`daily-streak.ts`](../lib/daily-streak.ts), [`time-zone.ts`](../lib/time-zone.ts) | [Разделы приложения](development/app-features.md) |
+| Люди, группы, приглашения, прозвища и приватность | [`features/people/`](../features/people/), [`check-in-contract.ts`](../lib/check-in-contract.ts) | [Разделы приложения](development/app-features.md) |
+| Вход, профиль, сеансы, резервный код | [`features/account/`](../features/account/), [`auth-api.ts`](../lib/auth-api.ts), [`auth/`](../apps/api/src/main/kotlin/ru/zhiv/auth/) | [Разделы приложения](development/app-features.md) |
+| Страницы, глобальные стили, установка PWA | [`app/`](../app/), [`components/`](../components/) | [Разделы приложения](development/app-features.md) |
+| Контракты, эндпоинт, транзакция или миграция | [`apps/api/src/main/kotlin/ru/zhiv/`](../apps/api/src/main/kotlin/ru/zhiv/), [`migration/`](../apps/api/src/main/resources/db/migration/) | [Backend и данные](development/backend-and-data.md) |
+| Поведение API при локальной разработке | [`lib/dev/`](../lib/dev/), [`app/api/`](../app/api/) | [Локальный запуск](development/local-development.md) |
+| Админские действия, выдачи, аудит и доступ | [`features/admin/`](../features/admin/), [`admin/`](../apps/api/src/main/kotlin/ru/zhiv/admin/) | [Админка](operations/admin-panel.md), [модерация](operations/player-moderation.md) |
+| Сборки, CI, контейнеры, бэкапы и диагностика | [`package.json`](../package.json), [`scripts/`](../scripts/), [`deploy/`](../deploy/) | [Проверки](development/local-development.md), [эксплуатация](operations/operations.md) |
 
-Удалены две ZIP-копии старых версий, неиспользуемая промежуточная карта `forest-world.webp`, стартовая иконка `favicon.svg`, демонстрация заметок D1 и дублирующие скрипты. Их прежнее содержимое осталось в истории Git; историю коммитов не переписывали. Все текущие растровые картинки перенесены без изменения содержимого.
+Правила, меняющие данные, проверяются сервером. Изменение цены или условия только в интерфейсе недостаточно: сверяйте каталог, Ktor и локальный API. Постоянная схема находится в миграциях Ktor; `db/`, `drizzle/`, `worker/` и `build/` обслуживают Sites.
 
-Старые проектные заметки сохранены в `docs/history/`, а исходные художественные концепты — в `docs/game/concepts/`. Они не загружаются игрой.
+## Прежний рендер
 
-### Уборка ветки мира, сентябрь 2026
+`features/mochlik/home-layout.ts`, `lantern-light.ts` и `features/world/route-props.ts`, `water-ambience.ts`, `bird-ambience.ts`, `weather-visitors.ts`, `map-layout.ts` относятся к прежней карте. Они сохранены для совместимости и последующего переноса. **Новый свет — в `forest-lighting.ts`, новый дождь — в `forest-rain.ts`.** Общие модули Мохлика продолжают использоваться: `pixel-sprite.ts` рисует героя, `lighting.ts` задаёт расписание ночи, а `scene.ts` выбирает текущий рендер.
 
-Удалены 47 неиспользуемых UI-компонентов и их `use-mobile`, не подключённый `app/chatgpt-auth.ts`, старые обработчики атласов дома/мастерской и пять прежних изображений. Из package.json и lockfile убраны восемь прямых зависимостей, нужных только удалённому шаблону. Рабочие компоненты диалогов, календаря, уведомлений, админских графиков и их зависимости сохранены. Документы концептов остаются историческими.
-
-Ktor-репозитории активно подключены: пользователь, отметки, отношения/группы, восстановление, игровой прогресс, мир и админка. Миграции, объединение аккаунтов, идемпотентность команд и два контура запуска сохранены. Подробности и дальнейшие задачи: [аудит и развитие мира](game/world-animation-audit.md).
+История решений и отчёты — в [индексе документации](README.md#история-и-материалы); актуальный этап — в [WORK_STATE.md](../WORK_STATE.md).

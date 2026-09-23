@@ -6,6 +6,8 @@ import { mapPlaceAt, worldToHome } from "./map-layout";
 import { drawWaterAmbience } from "./water-ambience";
 import { drawRouteProps } from "./route-props";
 import { drawBoatWreck, prepareBoatWreck } from "./boat-wreck";
+import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
+import { WORLD_DEV_ENABLED, worldDevStore } from "./dev/world-dev-store";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -13,15 +15,27 @@ export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river
 export type MapAction = "home" | "pet" | "overview" | "in" | "out";
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal) {
   let ground: HTMLImageElement;
-  const homePreview = loadHabitatImage(WORLD_ART.homePreview);
-  try { [ground] = await Promise.all([loadHabitatImage(WORLD_ART.mapPreview), homePreview]); }
+  const rebuilding = WORLD_PRESENTATION.rebuilding;
+  const bounds = rebuilding ? NEW_MAP_BOUNDS : { width: MAP_SIZE, height: MAP_SIZE };
+  try {
+    if (rebuilding) ground = await loadHabitatImage(TILED_WORLD.terrain[0].image);
+    else [ground] = await Promise.all([loadHabitatImage(WORLD_ART.mapPreview), loadHabitatImage(WORLD_ART.homePreview)]);
+  }
   catch (error) { throw new MapLoadError("map", error); }
   signal?.throwIfAborted();
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
   let options = initial, disposed = false, raf = 0, last = 0;
+  let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
+  const motionReduced = () => dev?.reducedMotion === "on" || dev?.reducedMotion !== "off" && options.reducedMotion;
+  const paused = () => options.paused || Boolean(dev?.paused);
   let boatArt: HTMLCanvasElement | null = null;
-  let view = { width: 1, height: 1 }, camera = worldCamera(view);
+  const focusCamera = (viewport: { width: number; height: number }, close: boolean) => rebuilding
+    ? clampCamera({ x: NEW_MAP_FOCUS.x + NEW_MAP_FOCUS.width / 2, y: NEW_MAP_FOCUS.y + NEW_MAP_FOCUS.height / 2,
+      zoom: close ? Math.min(viewport.width / NEW_MAP_FOCUS.width, viewport.height / NEW_MAP_FOCUS.height)
+        : Math.min(viewport.width / bounds.width, viewport.height / bounds.height) }, viewport, bounds)
+    : close ? homeCamera(viewport) : worldCamera(viewport);
+  let view = { width: 1, height: 1 }, camera = focusCamera(view, false);
   let framing: "world" | "home" | "overview" | "manual" = "world";
   let inView = true;
   const home = document.createElement("canvas");
@@ -32,14 +46,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
-    rendered: () => { if (options.reducedMotion) draw(); },
+    rendered: () => { if (motionReduced() || dev?.paused) draw(); },
   });
   const abort = () => { disposed = true; habitat.dispose(); readyReject(signal?.reason ?? new DOMException("Aborted", "AbortError")); };
   signal?.addEventListener("abort", abort, { once: true });
   try { await habitatReady; signal?.throwIfAborted(); }
   catch (error) { habitat.dispose(); throw error; }
   finally { signal?.removeEventListener("abort", abort); }
-  let fullGround = false, upgradingGround = false;
+  let fullGround = rebuilding, upgradingGround = false;
   async function upgradeGround() {
     if (disposed || fullGround || upgradingGround) return;
     upgradingGround = true;
@@ -55,7 +69,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const retryGround = () => { if (!document.hidden && !options.backgrounded) void upgradeGround(); };
   window.addEventListener?.("online", retryGround); window.addEventListener?.("focus", retryGround);
   void upgradeGround();
-  void loadHabitatImage(WORLD_ART.boatWreck).then(image => {
+  if (!rebuilding) void loadHabitatImage(WORLD_ART.boatWreck).then(image => {
     if (disposed) return;
     boatArt = prepareBoatWreck(image);
     if (!document.hidden && !options.backgrounded && inView && !options.paused) draw();
@@ -67,22 +81,26 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
     ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-    // Both views share the detailed tile and fixed world anchors. Its outer rim
-    // contains the original map pixels; animation coordinates remain unchanged.
-    ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
-    const weather = habitat.ambience();
-    drawWaterAmbience(ctx, weather.elapsed, options.reducedMotion, weather.rain);
-    if (boatArt) drawBoatWreck(ctx, boatArt);
-    drawRouteProps(ctx);
-    habitat.paintVisitors(ctx, "ground");
-    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, MAP_SIZE, MAP_SIZE);
-    ctx.rect(HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size); ctx.clip("evenodd");
-    habitat.paintJourney(ctx); ctx.restore();
-    habitat.paintLighting(ctx);
-    ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
-    habitat.paintVisitors(ctx, "air");
-    habitat.paintWeather(ctx);
+    if (rebuilding) habitat.paintWorld?.(ctx);
+    else {
+      // Both views share the detailed tile and fixed world anchors. Its outer rim
+      // contains the original map pixels; animation coordinates remain unchanged.
+      ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
+      const weather = habitat.ambience();
+      drawWaterAmbience(ctx, weather.elapsed, options.reducedMotion, weather.rain);
+      if (boatArt) drawBoatWreck(ctx, boatArt);
+      drawRouteProps(ctx);
+      habitat.paintVisitors(ctx, "ground");
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, MAP_SIZE, MAP_SIZE);
+      ctx.rect(HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size); ctx.clip("evenodd");
+      habitat.paintJourney(ctx); ctx.restore();
+      habitat.paintLighting(ctx);
+      ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
+      habitat.paintVisitors(ctx, "air");
+      habitat.paintWeather(ctx);
+    }
     for (const node of anchors) {
+      if (rebuilding) { node.style.visibility = "hidden"; continue; }
       const point = worldToScreen({ x: Number(node.dataset.x), y: Number(node.dataset.y) }, camera, view);
       node.style.transform = `translate(${Math.round(point.x)}px, ${Math.round(point.y)}px) translate(-50%, -50%)`;
       // At region scale, the small bush target would overlap the house button.
@@ -92,11 +110,11 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function tick(time: number) {
     raf = 0;
-    if (disposed || document.hidden || !inView || options.paused || options.backgrounded) return;
+    if (disposed || document.hidden || !inView || paused() || options.backgrounded) return;
     if (time - last >= 1000 / 30) {
       draw(); last = time;
     }
-    if (!options.reducedMotion) raf = requestAnimationFrame(tick);
+    if (!motionReduced()) raf = requestAnimationFrame(tick);
   }
   function visibility() {
     if (document.hidden) {
@@ -107,14 +125,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     cancelAnimationFrame(raf); raf = 0;
     const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
     habitat.configure({ ...options, view: "world", backgrounded });
-    if (!disposed && !backgrounded) { draw(); if (!options.reducedMotion && !options.paused) raf = requestAnimationFrame(tick); }
+    if (!disposed && !backgrounded) { draw(); if (!motionReduced() && !paused()) raf = requestAnimationFrame(tick); }
   }
   function resize() {
     // CSS entrance scaling changes the visual rect, not the map's layout viewport.
     view = { width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight) };
     const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
-    camera = framing === "world" ? worldCamera(view) : framing === "home" ? homeCamera(view) : framing === "overview" ? overviewCamera(view) : clampCamera(camera, view); draw();
+    camera = framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds); draw();
   }
   const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas); resize();
   const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; visibility(); }); observer.observe(canvas);
@@ -135,9 +153,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     travelled = Math.max(travelled, Math.hypot(p.x - touch.initial.x, p.y - touch.initial.y));
     touch.position = p;
     if (oldCenter && oldDistance > 2) {
-      camera = zoomAt(camera, view, oldCenter, separation() / oldDistance);
-      const center = midpoint(); camera = clampCamera({ ...camera, x: camera.x - (center.x - oldCenter.x) / camera.zoom, y: camera.y - (center.y - oldCenter.y) / camera.zoom }, view);
-    } else camera = clampCamera({ ...camera, x: camera.x - (p.x - before.x) / camera.zoom, y: camera.y - (p.y - before.y) / camera.zoom }, view);
+      camera = zoomAt(camera, view, oldCenter, separation() / oldDistance, bounds);
+      const center = midpoint(); camera = clampCamera({ ...camera, x: camera.x - (center.x - oldCenter.x) / camera.zoom, y: camera.y - (center.y - oldCenter.y) / camera.zoom }, view, bounds);
+    } else camera = clampCamera({ ...camera, x: camera.x - (p.x - before.x) / camera.zoom, y: camera.y - (p.y - before.y) / camera.zoom }, view, bounds);
     draw();
   }
   function end(event: PointerEvent) {
@@ -148,32 +166,49 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     pointers.delete(event.pointerId);
     if (!pointers.size && isMapTap(travelled, multiTouch, cancelled)) {
       const world = screenToWorld(p, camera, view);
-      const { x, y } = worldToHome(world);
-      const place = mapPlaceAt(world);
-      if (place === "cave" || place === "fishing") onPlace(place);
-      else if (habitat.hitPet(x, y)) onPlace("wardrobe");
-      else if (place === "house") onPlace("house");
-      else if (place === "bush") habitat.invite("bush");
-      else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
+      if (rebuilding) {
+        if (habitat.hitPet((world.x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width, (world.y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) habitat.notice();
+      } else {
+        const { x, y } = worldToHome(world);
+        const place = mapPlaceAt(world);
+        if (place === "cave" || place === "fishing") onPlace(place);
+        else if (habitat.hitPet(x, y)) onPlace("wardrobe");
+        else if (place === "house") onPlace("house");
+        else if (place === "bush") habitat.invite("bush");
+        else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
+      }
     }
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     draw();
   }
-  function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event as unknown as PointerEvent), Math.exp(-event.deltaY * .0015)); draw(); }
+  function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event as unknown as PointerEvent), Math.exp(-event.deltaY * .0015), bounds); draw(); }
   function control(action: MapAction) {
     framing = action === "home" || action === "overview" ? action : "manual";
-    camera = action === "pet" ? clampCamera({ ...habitat.position(), zoom: Math.max(camera.zoom, homeCamera(view).zoom) }, view)
-      : action === "home" ? homeCamera(view) : action === "overview" ? overviewCamera(view) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8); draw();
+    camera = action === "pet" ? clampCamera({ ...habitat.position(), zoom: Math.max(camera.zoom, focusCamera(view, true).zoom) }, view, bounds)
+      : action === "home" ? focusCamera(view, true) : action === "overview" ? overviewCamera(view, bounds) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8, bounds); draw();
   }
   function key(event: KeyboardEvent) {
     const delta = { ArrowUp: [0, -40], ArrowDown: [0, 40], ArrowLeft: [-40, 0], ArrowRight: [40, 0] }[event.key];
-    if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view); draw(); }
+    if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds); draw(); }
     else if (["+", "=", "-", "Home"].includes(event.key)) { event.preventDefault(); control(event.key === "Home" ? "pet" : event.key === "-" ? "out" : "in"); }
   }
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
   for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.addEventListener(name, end);
   canvas.addEventListener("wheel", wheel, { passive: false }); canvas.addEventListener("keydown", key);
+  // Controls may have changed while the scene's selected artwork was loading.
+  if (WORLD_DEV_ENABLED) dev = worldDevStore.getSnapshot();
   document.addEventListener("visibilitychange", visibility); visibility();
+  const unsubscribeDev = WORLD_DEV_ENABLED ? worldDevStore.subscribe(() => {
+    if (disposed) return;
+    const previousCamera = dev?.cameraEvent?.id;
+    dev = worldDevStore.getSnapshot();
+    cancelAnimationFrame(raf); raf = 0;
+    if (!document.hidden && !options.backgrounded && inView) {
+      if (dev.cameraEvent && dev.cameraEvent.id !== previousCamera) control(dev.cameraEvent.action);
+      else draw();
+      if (!motionReduced() && !paused()) raf = requestAnimationFrame(tick);
+    }
+  }) : () => {};
   return {
     control,
     setTime(now: number) { habitat.setTime(now); },
@@ -184,7 +219,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     notice() { habitat.notice(); draw(); },
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
-      disposed = true; cancelAnimationFrame(raf); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      disposed = true; cancelAnimationFrame(raf); unsubscribeDev(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
       window.removeEventListener?.("online", retryGround); window.removeEventListener?.("focus", retryGround);
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(name, end);

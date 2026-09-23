@@ -5,8 +5,6 @@ export const HOME_AREA = FOREST_MAP.homeCrop;
 export const MAP_PLACES = { house: FOREST_MAP.house, bush: FOREST_MAP.bush, cave: FOREST_MAP.cave, fishing: FOREST_MAP.water } as const;
 export const worldToHome = (point: MapPoint): MapPoint => ({ x: (point.x - HOME_AREA.x) / HOME_AREA.size, y: (point.y - HOME_AREA.y) / HOME_AREA.size });
 export const homeToWorld = (point: MapPoint): MapPoint => ({ x: HOME_AREA.x + point.x * HOME_AREA.size, y: HOME_AREA.y + point.y * HOME_AREA.size });
-export const containsPoint = (point: MapPoint, bounds: { left: number; right: number; top: number; bottom: number }) =>
-  point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom;
 
 /** Boundary-inclusive polygon test: shoreline pixels and canvas edges remain clickable. */
 export function pointInPolygon(point: MapPoint, polygon: readonly MapPoint[]) {

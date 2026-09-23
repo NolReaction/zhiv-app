@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { GAME_ITEMS, type GameItemId } from "@/features/game/game-rewards";
+import { WORLD_PRESENTATION } from "@/features/world/presentation";
 import { CalendarDays, Check, ChevronDown, Flame, Gift, RefreshCw } from "lucide-react";
 import { ru } from "react-day-picker/locale";
 import { Calendar } from "@/components/ui/calendar";
@@ -35,7 +36,7 @@ export function CheckInCalendar({ open, onOpenChange, streak, lastCheckInAt, tim
     const timeout = window.setTimeout(() => controller.abort(), 8_000);
     void getCheckInCalendar(month, controller.signal).then(result => {
       if (!active) return;
-      const rewards = calendarRewardForecast(result, ownedKey.split(",") as GameItemId[], streak.longestDays);
+      const rewards = WORLD_PRESENTATION.streakDecor ? calendarRewardForecast(result, ownedKey.split(",") as GameItemId[], streak.longestDays) : [];
       const lastMonth = [result.lastMonth, ...rewards.map(item => item.date.slice(0, 7))].sort().at(-1)!;
       if (result.month < result.firstMonth || result.month > lastMonth) {
         setMonth(result.month < result.firstMonth ? result.firstMonth : lastMonth);
@@ -77,7 +78,7 @@ export function CheckInCalendar({ open, onOpenChange, streak, lastCheckInAt, tim
   const counts = new Map(visible?.days.map(day => [day.date, day.count]) ?? []);
   const selectedCount = selected ? counts.get(selected) ?? 0 : 0;
   const pending = loading || !visible || loadedCheckInAt !== lastCheckInAt || data?.timeZone !== timeZone;
-  const rewards = data ? calendarRewardForecast(data, items, streak.longestDays) : [];
+  const rewards = WORLD_PRESENTATION.streakDecor && data ? calendarRewardForecast(data, items, streak.longestDays) : [];
   const rewardDates = new Set(rewards.map(item => item.date));
   const lastMonth = data ? [data.lastMonth, ...rewards.map(item => item.date.slice(0, 7))].sort().at(-1)! : null;
   const selectedRewards = rewards.filter(item => item.date === selected);
@@ -93,7 +94,7 @@ export function CheckInCalendar({ open, onOpenChange, streak, lastCheckInAt, tim
       <div className={styles.streak}><Flame size={20} aria-hidden="true" /><strong>{formatDayCount(streak.currentDays)} подряд</strong><span>Лучшая серия · {formatDayCount(streak.longestDays)}</span>
         {streak.isActive && streak.renewBy && <p className={styles.renewal}>Продлите до {new Intl.DateTimeFormat("ru-RU", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(Date.parse(streak.renewBy))}</p>}
       </div>
-      <Collapsible className={styles.rewards}>
+      {WORLD_PRESENTATION.streakDecor && <Collapsible className={styles.rewards}>
         <CollapsibleTrigger className={styles.rewardsTrigger}><Gift size={17} aria-hidden="true" /> Подарки Мохлику <ChevronDown size={17} aria-hidden="true" /></CollapsibleTrigger>
         <CollapsibleContent className={styles.rewardsContent}>
         <p>За 3, 7, 14 и 30 дней подряд. Полученные предметы остаются навсегда.</p>
@@ -108,7 +109,7 @@ export function CheckInCalendar({ open, onOpenChange, streak, lastCheckInAt, tim
         })}</ol>
         <p>{data?.streakStartedAt ? "Даты рассчитаны при сохранении серии." : "Даты рассчитаны, если начать серию сегодня."} Для получения подарка нужна отметка.</p>
         </CollapsibleContent>
-      </Collapsible>
+      </Collapsible>}
       {!data ? error ? <div className={styles.message} role="status"><p>{error}</p><button type="button" onClick={() => { setLoading(true); setError(""); setReload(value => value + 1); }}><RefreshCw size={18} aria-hidden="true" /> Повторить</button></div>
         : <div className={styles.loading} role="status"><CalendarDays size={28} aria-hidden="true" /><span>Загружаем календарь…</span></div>
         : <div className={styles.monthContent}>
@@ -122,7 +123,7 @@ export function CheckInCalendar({ open, onOpenChange, streak, lastCheckInAt, tim
             disabled={date => calendarDateKey(date) > data.today && (pending || error !== "" || (!counts.has(calendarDateKey(date)) && !rewardDates.has(calendarDateKey(date))))}
             modifiers={{ marked: !pending && !error && visible ? visible.days.map(day => calendarDate(day.date)) : [], reward: !pending && !error ? [...rewardDates].map(calendarDate) : [] }}
             modifiersClassNames={{ marked: styles.marked, reward: styles.rewardDate }}
-            labels={{ labelDayButton: (date, modifiers) => `${date.toLocaleDateString("ru-RU", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })}${modifiers.today ? ", сегодня" : ""}, ${error ? "отметки не загружены" : pending ? "загружаем отметки" : calendarCountLabel(counts.get(calendarDateKey(date)) ?? 0)}${!pending && !error && modifiers.reward ? `, ожидаемый подарок: ${rewards.filter(item => item.date === calendarDateKey(date)).map(item => item.title).join(", ")}` : ""}` }}
+            labels={{ labelDayButton: (date, modifiers) => `${date.toLocaleDateString("ru-RU", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })}${modifiers.today ? ", сегодня" : ""}, ${error ? "отметки не загружены" : pending ? "загружаем отметки" : calendarCountLabel(counts.get(calendarDateKey(date)) ?? 0)}${WORLD_PRESENTATION.streakDecor && !pending && !error && modifiers.reward ? `, ожидаемый подарок: ${rewards.filter(item => item.date === calendarDateKey(date)).map(item => item.title).join(", ")}` : ""}` }}
           />
           {!pending && !error && rewards.length > 0 && <p className={styles.rewardLegend}><span aria-hidden="true" />Обведены дни подарков {data.streakStartedAt ? "при сохранении серии" : "при начале серии сегодня"}.</p>}
           <div className={styles.monthSummary} key={displayedMonth}>

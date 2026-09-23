@@ -13,6 +13,7 @@ fun main() {
                 it.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zhiv_app")
                 it.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO zhiv_app")
                 it.execute("REVOKE ALL ON TABLE public.flyway_schema_history FROM zhiv_app")
+                it.execute("REVOKE INSERT, UPDATE, DELETE ON TABLE game_tap_collection_metadata FROM zhiv_app")
                 it.execute("REVOKE ALL ON TABLE account_recovery_contacts, account_recovery_contact_removals, account_recovery_attempts FROM zhiv_app")
                 it.execute("GRANT SELECT, UPDATE (revoked_at) ON account_recovery_contacts TO zhiv_app")
                 it.execute("GRANT SELECT, UPDATE (status, terminal_at) ON account_recovery_attempts TO zhiv_app")

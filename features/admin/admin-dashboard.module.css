@@ -35,7 +35,7 @@
 .backLink:hover { color: var(--admin-text); }
 .tabs { gap: 0; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding-block: 16px; border-block: 1px solid var(--admin-border); }
-.tabList { height: auto !important; min-height: 46px; padding: 4px; background: #242c22; border: 1px solid #344030; border-radius: 13px; max-width: 100%; }
+.tabList { height: auto !important; min-height: 46px; padding: 4px; background: #242c22; border: 1px solid #344030; border-radius: 13px; max-width: 100%; flex-wrap: wrap; gap: 3px; }
 .tab { min-height: 40px; padding: 8px 15px; border-radius: 9px; color: var(--admin-muted); font-size: 15px; font-weight: 600; }
 .tab[data-state="active"] { color: #172012; background: var(--admin-green); box-shadow: 0 1px 3px #0003; }
 .tab:hover { color: var(--admin-text); }
@@ -198,7 +198,7 @@
   .header p { font-size: 14px; }
   .toolbar { align-items: stretch; gap: 12px; }
   .tabList { width: 100%; justify-content: stretch; }
-  .tab { flex: 1; min-width: 0; gap: 5px; padding: 8px; font-size: 14px; }
+  .tab { flex: 1 0 auto; min-width: 0; gap: 5px; padding: 8px; font-size: 14px; }
   .refreshGroup { justify-content: space-between; width: 100%; }
   .viewHeading { gap: 16px; padding-block: 23px 20px; }
   .viewHeading h1 { font-size: 25px; }

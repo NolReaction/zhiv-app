@@ -90,17 +90,25 @@ BEGIN
         OR to_regclass('public.app_users') IS NULL THEN
         RAISE EXCEPTION 'Fresh application migrations did not complete.';
     END IF;
+    IF (SELECT count(*) FROM public.game_tap_collection_metadata) <> 1
+        OR NOT EXISTS (
+            SELECT 1 FROM public.game_tap_collection_metadata m
+            JOIN public.flyway_schema_history h ON h.version = '28' AND h.success
+            WHERE m.singleton AND m.started_at = h.installed_on::timestamptz
+        ) THEN
+        RAISE EXCEPTION 'Fresh collection metadata is missing or does not match its migration. Site remains stopped.';
+    END IF;
     FOR item IN SELECT schemaname, tablename FROM pg_tables
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
           AND schemaname !~ '^pg_toast'
-          AND NOT (schemaname = 'public' AND tablename = 'flyway_schema_history')
+          AND NOT (schemaname = 'public' AND tablename IN ('flyway_schema_history', 'game_tap_collection_metadata'))
     LOOP
         EXECUTE format('SELECT count(*) FROM %I.%I', item.schemaname, item.tablename) INTO remaining;
         IF remaining <> 0 THEN
             RAISE EXCEPTION 'Table %.% is not empty; site remains stopped.', item.schemaname, item.tablename;
         END IF;
     END LOOP;
-    RAISE NOTICE 'Fresh migrations verified; every application table is empty.';
+    RAISE NOTICE 'Fresh migrations and collection metadata verified; every user-data table is empty.';
 END $$;
 SQL
 
@@ -109,6 +117,20 @@ SQL
 "${compose[@]}" exec -T api curl -fsS --max-time 10 http://127.0.0.1:8080/readyz
 echo
 "${compose[@]}" up -d --no-deps --no-build --force-recreate --wait --wait-timeout 180 web
+# A previous normal deployment can leave its ready build ID at the edge. Let
+# Caddy fall back to this newly built web's status, but preserve intentional or
+# failed-deployment maintenance (including an unrecognised status file).
+runtime_status="$project_dir/deploy/runtime/app-status.json"
+if [[ ! -e "$project_dir/deploy/runtime/maintenance" && -f "$runtime_status" ]]; then
+  if "${compose[@]}" exec -T web node -e '
+    try {
+      const status = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+      process.exit(status.schemaVersion === 1 && status.maintenance === false ? 0 : 2);
+    } catch { process.exit(2); }
+  ' < "$runtime_status"; then
+    if [[ ! -e "$project_dir/deploy/runtime/maintenance" ]]; then rm -f "$runtime_status"; fi
+  fi
+fi
 "${compose[@]}" up -d --no-deps --no-build --wait --wait-timeout 120 caddy
 services_stopped=false
 echo 'Complete: fresh database and application processes. Everyone must sign in and create a new profile.'

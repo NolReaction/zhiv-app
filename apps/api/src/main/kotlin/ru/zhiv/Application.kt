@@ -69,6 +69,9 @@ import ru.zhiv.admin.AdminConfig
 import ru.zhiv.admin.AdminRepository
 import ru.zhiv.admin.adminRoutes
 import ru.zhiv.db.JdbcAdminRepository
+import ru.zhiv.db.JdbcFeedbackRepository
+import ru.zhiv.feedback.FeedbackRepository
+import ru.zhiv.feedback.feedbackRoutes
 import ru.zhiv.observability.RuntimeMetrics
 import ru.zhiv.observability.RequestMetrics
 import ru.zhiv.observability.requestId
@@ -117,6 +120,7 @@ fun Application.module() {
         worlds = JdbcWorldRepository(dataSource),
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
         incidents = UserIncidentRepository(dataSource),
+        feedback = JdbcFeedbackRepository(dataSource, AdminConfig(config.adminPublicIds)),
     )
 }
 
@@ -140,6 +144,7 @@ fun Application.installZhivApi(
     worlds: WorldRepository? = null,
     admin: AdminRepository? = null,
     incidents: UserIncidentRepository? = null,
+    feedback: FeedbackRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -172,6 +177,8 @@ fun Application.installZhivApi(
             "game-session" to 120,
             "game-write" to 90,
             "client-incidents" to 120,
+            "feedback-read" to 120,
+            "feedback-write" to 30,
             "admin-read" to 3_600,
             "admin-write" to 30,
             "account-recovery-write" to 30,
@@ -286,6 +293,7 @@ fun Application.installZhivApi(
         games?.let { gameRoutes(it, tokenCodec, config) }
         incidents?.let { userIncidentRoutes(it, admin, config, tokenCodec) }
         worlds?.let { worldRoutes(it, tokenCodec, config) }
+        feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
             rateLimit(RateLimitName("admin-read")) {

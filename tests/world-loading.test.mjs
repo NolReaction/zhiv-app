@@ -8,11 +8,15 @@ test('map readiness waits for the character, aborted loading releases its scene,
  const vite=await createServer({appType:'custom',configFile:false,root,resolve:{alias:{'@':root}},server:{middlewareMode:true,hmr:false}});
  const {createMapEngine}=await vite.ssrLoadModule('/features/world/map-engine.ts');
  const {WORLD_ART}=await vite.ssrLoadModule('/features/world/art.ts');
+ const {WORLD_PRESENTATION}=await vite.ssrLoadModule('/features/world/presentation.ts');
  const {MAP_PLACES}=await vite.ssrLoadModule('/features/world/map-layout.ts');
  const {connectHabitat}=await vite.ssrLoadModule('/features/mochlik/session.ts');
  const {mountHabitat}=await vite.ssrLoadModule('/features/mochlik/scene.ts');
  const {BIRD_FLIGHTS,birdFlightPose}=await vite.ssrLoadModule('/features/world/bird-ambience.ts');
  const {loadHabitatImage,HabitatAssetError}=await vite.ssrLoadModule('/features/mochlik/assets.ts');await vite.close();
+ // Exercise the retained legacy loading protocol with distinct mocked art, independently of the active map.
+ const rebuilding=WORLD_PRESENTATION.rebuilding,originalArt={...WORLD_ART};WORLD_PRESENTATION.rebuilding=false;
+ Object.assign(WORLD_ART,{map:'/qa-legacy/map.webp',mapPreview:'/qa-legacy/map-preview.webp',homePreview:'/qa-legacy/home-preview.webp',homeDetail:'/qa-legacy/home-detail.webp',boatWreck:'/qa-legacy/boat.webp'});
  const original=new Map(),pending=[],timers=new Map(),frames=new Map();let id=0,observed=0;
  const install=(name,value)=>{original.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{value,writable:true,configurable:true})};
  const pixels=(w,h)=>{const data=new Uint8ClampedArray(w*h*4).fill(255);data[0]=data[1]=data[2]=0;return {data}};
@@ -79,5 +83,5 @@ test('map readiness waits for the character, aborted loading releases its scene,
   const timer=[...timers.values()].find(value=>value.ms===15000);assert.ok(timer);timer.fn();await failed;
   const old=pending.shift().image;assert.equal(old.onload,null);
   const retry=loadHabitatImage('/qa-timeout.webp');finish('/qa-timeout.webp');await retry;assert.equal(timers.size,0);
- } finally {for(const [name,descriptor]of original){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name]}}
+ } finally {WORLD_PRESENTATION.rebuilding=rebuilding;Object.assign(WORLD_ART,originalArt);for(const [name,descriptor]of original){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name]}}
 });

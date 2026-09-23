@@ -4,6 +4,7 @@ import { PlayerName } from "@/components/player-name";
 import { AdminPlayerDialog } from "./admin-player-dialog";
 import { AdminTapActivityPanel } from "./admin-tap-activity-panel";
 import { worldCatalog } from "@/features/world/model";
+import { AdminFeedbackPanel } from "./admin-feedback-panel";
 import { AdminIncidentsPanel } from "./admin-incidents-panel";
 import Link from "next/link";
 import { AdminRewardsDialog } from "./admin-rewards-dialog";
@@ -13,7 +14,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   Activity, RefreshCw, ArrowLeft, ArrowUpRight, Check, ChevronLeft, ChevronRight, CircleAlert,
   Clock3, Cpu, Database, Gift, HeartPulse, LayoutDashboard, LoaderCircle,
-  LogOut, Search, Server, ShieldCheck, ShieldX, Terminal, Trophy, Users,
+  LogOut, Search, Server, ShieldCheck, ShieldX, Terminal, Trophy, Users, MessageSquare,
 } from "lucide-react";
 import {
   CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -34,7 +35,7 @@ import {
 } from "@/features/admin/admin-api";
 import styles from "./admin-dashboard.module.css";
 
-type AdminTab = "overview" | "users" | "monitoring" | "audit" | "incidents" | "clicks";
+type AdminTab = "overview" | "users" | "monitoring" | "audit" | "incidents" | "clicks" | "feedback";
 type UserSort = "created" | "activity" | "taps" | "review";
 type AccessStatus = "loading" | "allowed" | "signed-out" | "forbidden" | "error";
 type Snapshot<T> = { key: string; value: T };
@@ -480,11 +481,12 @@ export function AdminDashboard() {
               <TabsTrigger className={styles.tab} value="clicks"><Activity size={18} />Клики</TabsTrigger>
               <TabsTrigger className={styles.tab} value="monitoring"><Server size={18} />Сервер</TabsTrigger>
               <TabsTrigger className={styles.tab} value="incidents"><CircleAlert size={18} />Сбои у пользователей</TabsTrigger>
+              <TabsTrigger className={styles.tab} value="feedback"><MessageSquare size={18} />Обратная связь</TabsTrigger>
               <TabsTrigger className={styles.tab} value="audit"><Terminal size={18} />Журнал</TabsTrigger>
             </TabsList>
-            <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>
+            <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && tab !== "feedback" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>
           </div>
-          <div className={styles.viewHeading}><div><h1>{tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, ресурсы, теги и модерация" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
+          <div className={styles.viewHeading}><div><h1>{tab === "feedback" ? "Обратная связь" : tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "feedback" ? "Обращения игроков: ошибки, идеи и вопросы" : tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, ресурсы, теги и модерация" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
             {tab === "monitoring" && <label className={styles.selectLabel}><span>История</span><select className={styles.select} value={rangeMinutes} onChange={event => setRangeMinutes(Number(event.target.value))}><option value={60}>1 час</option><option value={360}>6 часов</option><option value={1440}>24 часа</option><option value={10080}>7 дней</option></select></label>}
             {tab === "overview" && <label className={styles.selectLabel}><span>Период</span><select value={days} onChange={event => setDays(Number(event.target.value) as 7 | 30 | 90)} className={styles.select}><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option></select></label>}
           </div>
@@ -498,6 +500,7 @@ export function AdminDashboard() {
           <TabsContent value="clicks" className={styles.tabContent}>{tab === "clicks" && <AdminTapActivityPanel key={access.publicId} initialTarget={clickTarget} refreshVersion={refreshVersion} onManage={setPlayerTarget} onAccessError={closeAccess} />}</TabsContent>
           <TabsContent value="monitoring" className={styles.tabContent}>{monitoring?.key === String(rangeMinutes) ? <Monitoring data={monitoring.value} /> : <Empty>{loading ? "Получаем метрики сервера…" : "Метрики пока не загружены."}</Empty>}</TabsContent>
           <TabsContent value="incidents" className={styles.tabContent}>{tab === "incidents" && <AdminIncidentsPanel onAccessError={closeAccess} />}</TabsContent>
+          <TabsContent value="feedback" className={styles.tabContent}>{tab === "feedback" && <AdminFeedbackPanel key={access.publicId} onAccessError={closeAccess} refreshVersion={refreshVersion} />}</TabsContent>
           <TabsContent value="audit" className={styles.tabContent}>{auditData ? <Audit data={auditData} busy={loading} onPage={setAuditOffset} /> : <Empty>{loading ? "Загружаем журнал…" : "Журнал пока не загружен."}</Empty>}</TabsContent>
           <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление: клики — 10 с, остальные разделы — 30 с, пока вкладка видна</span><span>Время и периоды — UTC</span></footer>
         </Tabs>

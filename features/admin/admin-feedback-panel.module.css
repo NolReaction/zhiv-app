@@ -1,0 +1,28 @@
+.panel { display: grid; gap: 20px; padding: 22px; border: 1px solid #3e4a34; border-radius: 18px; background: #20291b; }
+.toolbar, .pagination, .meta, .author, .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.toolbar label { display: grid; gap: 7px; color: #b5c3a7; font-size: 13px; }
+.toolbar button { align-self: end; }
+.panel select, .panel button { border: 1px solid #4b5d3d; border-radius: 10px; background: #1a2414; color: #dce8d1; font: inherit; font-size: 14px; min-height: 44px; padding: 9px 13px; }
+.panel button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; }
+.panel button:disabled { opacity: .5; cursor: default; }
+.panel button:focus-visible, .panel select:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.panel button:hover:not(:disabled) { background: #34462a; }
+.description { margin: 0; font-size: 13px; color: #afbc9f; line-height: 1.6; }
+.list { display: grid; gap: 14px; min-width: 0; }
+.item { padding: 20px; border: 1px solid #405234; border-radius: 15px; background: #162011; min-width: 0; }
+.meta { font-size: 12px; color: #a9b99b; }
+.category { color: #e4d3a7; font-weight: 650; }
+.badge { border-radius: 6px; padding: 3px 7px; background: #314228; color: #c9d8be; }
+.badge[data-status="new"] { color: #edd494; background: #4b4120; }
+.badge[data-status="resolved"] { color: #beefa9; }
+.author { margin: 14px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.author code { font-size: 12px; color: #aab89f; }
+.message { margin: 14px 0 20px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.6; color: #e2ead9; }
+.actions { gap: 8px; }
+.actions button { font-size: 12px; }
+.actions button[aria-pressed="true"] { border-color: #b0cf91; color: #d2e8bf; opacity: 1; }
+.actions span { font-size: 12px; color: #afbc9f; }
+.pagination { justify-content: space-between; font-size: 13px; color: #b7c3aa; }
+.error { margin: 0; color: #ffc2b0; background: #42271f; border-radius: 10px; padding: 12px; }
+.empty { margin: 15px 0; color: #afbc9f; }
+@media (max-width: 600px) { .panel { padding: 14px; } .item { padding: 14px; } .toolbar > label { flex: 1; min-width: 120px; } }

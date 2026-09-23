@@ -95,6 +95,13 @@ await api("GET", "/api/v1/world", { expected: 401 });
 const worldBefore = await api("GET", "/api/v1/world", { cookie: owner.cookie });
 assert.equal(worldBefore.headers["cache-control"], "no-store");
 assert.deepEqual(worldBefore.data.state.resources, { sparks: 0, wood: 0, stone: 0 });
+const deniedDevGrant = await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, expected: 400,
+  body: { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldBefore.data.revision,
+    action: "dev_grant_resources", target: "" } });
+assert.equal(deniedDevGrant.data.code, "INVALID_WORLD_COMMAND");
+const afterDeniedGrant = await api("GET", "/api/v1/world", { cookie: owner.cookie });
+assert.equal(afterDeniedGrant.data.revision, worldBefore.data.revision);
+assert.deepEqual(afterDeniedGrant.data.state, worldBefore.data.state);
 const outfit = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldBefore.data.revision, action: "equip", target: "amber_scarf" };
 const equipped = await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: outfit });
 assert.equal(equipped.data.snapshot.state.equipment.neck, "amber_scarf");

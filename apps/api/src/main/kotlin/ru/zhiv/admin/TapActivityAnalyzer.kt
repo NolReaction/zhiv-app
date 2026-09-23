@@ -13,7 +13,8 @@ data class TapActivitySample(val second: Long, val received: Long, val rejected:
     val intervalSamples: Long, val reasons: List<String>)
 @Serializable data class AdminTapActivity(val publicId: String, val displayName: String, val watchlisted: Boolean,
     val serverTime: String, val windows: List<TapWindow>, val minutes: List<TapMinute>,
-    val rejectedTaps: Long, val delayedTaps: Long, val legacyTaps: Long, val analysis: TapAnalysis)
+    val rejectedTaps: Long, val delayedTaps: Long, val legacyTaps: Long, val analysis: TapAnalysis,
+    val history: TapActivityRange? = null)
 
 /** Evidence for a human reviewer only. This module cannot mutate an account.
  * Client timestamps are untrusted, even though the server accepted their taps. */

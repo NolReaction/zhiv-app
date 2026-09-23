@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { AppNotifications } from "@/components/app-notifications";
+import { AppLifecycle } from "@/features/updates/app-lifecycle-view";
 import runtimeArt from "@/features/world/runtime-art.json";
 import "./globals.css";
 
@@ -49,6 +50,7 @@ export default function RootLayout({
         {children}
         <AppNotifications />
         <ServiceWorkerRegistration />
+        <AppLifecycle />
       </body>
     </html>
   );

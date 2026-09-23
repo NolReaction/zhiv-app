@@ -1,6 +1,6 @@
 {
   "name": "zhiv-app",
-  "version": "0.6.3",
+  "version": "0.6.5",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -12,20 +12,22 @@
     "dev:mochlik": "npm run dev:local --",
     "dev:lan": "next dev --hostname 0.0.0.0",
     "dev:vps": "next dev --hostname 0.0.0.0",
-    "build": "bash scripts/build-verified.sh",
-    "build:vps": "next build",
+    "build": "node scripts/app-build.mjs -- bash scripts/build-verified.sh",
+    "build:vps": "node scripts/app-build.mjs -- next build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "start:vps": "next start --hostname 0.0.0.0",
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "test:web": "node --test --test-concurrency=1 tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "world:export": "node scripts/tiled-world.mjs",
+    "world:watch": "node scripts/tiled-world.mjs --watch",
+    "world:check": "node scripts/tiled-world.mjs --check"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "date-fns": "^4.4.0",
     "drizzle-orm": "0.45.2",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",

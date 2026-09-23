@@ -2,7 +2,6 @@ import type { PersonCheckInState } from "./check-in-contract";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-export const CHECK_IN_COOLDOWN_MS = 30_000;
 export const DISPLAY_NAME_MAX_CODE_POINTS = 50;
 export const PUBLIC_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/;
 

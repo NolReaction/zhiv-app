@@ -183,10 +183,36 @@ test("keeps identity and check-ins out of the offline cache", async () => {
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
 });
 
+test("release feed bypasses old shell and asset caches after a deployment", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "updates-a");
+  await harness.dispatchExtendable("install");
+  const shell = await harness.caches.open(await harness.currentCacheName());
+  await shell.put("/updates.json", new Response('{"releases":[]}'));
+  const assets = await harness.caches.open("zhiv-assets-v1");
+  await assets.put("/updates.json", new Response('{"releases":[]}'));
+  assert.equal(await harness.dispatchFetch("/updates.json", "cors"), null,
+    "the browser fetch must reach the server even if an older cache contains the feed");
+  setShellResponses(harness, "updates-b");
+  await harness.dispatchFetch("/");
+  assert.equal(await harness.dispatchFetch("/updates.json", "cors"), null);
+  const nextShell = await harness.caches.open(await harness.currentCacheName());
+  assert.equal(await nextShell.match("/updates.json"), undefined, "the news feed is not precached with the shell");
+});
+
+test("maintenance status is always network-only even if a previous worker cached it", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "maintenance-a"); await harness.dispatchExtendable("install");
+  const shell = await harness.caches.open(await harness.currentCacheName());
+  await shell.put("/app-status.json", new Response('{"schemaVersion":1,"buildId":"stale","maintenance":false}'));
+  assert.equal(await harness.dispatchFetch("/app-status.json", "cors"), null);
+  assert.equal(await harness.dispatchFetch("/app-status.json"), null, "direct navigation must not fall back to the offline app shell");
+});
+
 test("downloaded world artwork and lazy modules survive offline navigation and shell updates", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "world-a"); await harness.dispatchExtendable("install");
-  const assets = ["/world/runtime/map-0123456789ab.webp", "/_next/static/chunks/world-123.js"];
+  const assets = ["/world/runtime/map-0123456789ab.webp", "/world/runtime/homePreview-0123456789ab.webp", "/_next/static/chunks/world-123.js"];
   for (const asset of assets) {
     harness.responses.set(origin + asset, new Response("asset-bytes", { headers: { "content-type": asset.endsWith("webp") ? "image/webp" : "application/javascript" } }));
     assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "asset-bytes");
@@ -198,6 +224,48 @@ test("downloaded world artwork and lazy modules survive offline navigation and s
   const newer = "/world/runtime/map-abcdef012345.webp";
   harness.responses.set(origin + newer, new Response("new-artwork", { headers: { "content-type": "image/webp" } }));
   assert.equal(await (await harness.dispatchFetch(newer, "cors")).text(), "new-artwork");
+});
+
+test("named world assets remain available offline across shell updates and isolate content revisions", async () => {
+  const harness = await createServiceWorkerHarness();
+  const artwork = JSON.parse(await readFile(new URL("../features/world/runtime-art.json", import.meta.url), "utf8"));
+  const assets = [...new Set(Object.values(artwork))];
+  setShellResponses(harness, "named-world-a");
+  await harness.dispatchExtendable("install");
+  for (const asset of assets) {
+    harness.responses.set(origin + asset, new Response(`original:${asset}`, { headers: { "content-type": "image/webp" } }));
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), `original:${asset}`);
+    harness.responses.set(origin + asset, new Error("Offline"));
+  }
+
+  setShellResponses(harness, "named-world-b");
+  await harness.dispatchFetch("/");
+  for (const asset of Object.values(artwork)) {
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), `original:${asset}`, "aliases retain the same cached pixels");
+  }
+
+  const revised = artwork.map.replace(/([?&]v=)[a-f0-9]{12}(?=&|$)/, (_, prefix) => `${prefix}000000000000`);
+  assert.notEqual(revised, artwork.map);
+  harness.responses.set(origin + revised, new Response("revised-map", { headers: { "content-type": "image/webp" } }));
+  assert.equal(await (await harness.dispatchFetch(revised, "cors")).text(), "revised-map");
+  harness.responses.set(origin + revised, new Error("Offline"));
+  assert.equal(await (await harness.dispatchFetch(revised, "cors")).text(), "revised-map");
+  assert.equal(await (await harness.dispatchFetch(artwork.map, "cors")).text(), `original:${artwork.map}`);
+
+  for (const asset of assets) {
+    const unversioned = new URL(asset, origin).pathname;
+    assert.equal(await harness.dispatchFetch(unversioned, "cors"), null, "unversioned artwork bypasses the service worker");
+  }
+  for (const asset of [
+    "/world/prototype/forest-ground.webp?v=latest",
+    "/world/prototype/forest-ground.webp?v=0123456789a",
+    "/world/prototype/forest-ground.webp?v=0123456789ab&v=abcdef012345",
+    "/world/prototype/forest-ground.webp?v=0123456789ab&preview=true",
+    "/world/prototype/forest-ground.png?v=0123456789ab",
+    "/world/runtime/unversioned.webp?v=0123456789ab",
+  ]) {
+    assert.equal(await harness.dispatchFetch(asset, "cors"), null, `${asset} is outside the versioned artwork contract`);
+  }
 });
 
 test("asset cache eviction and full storage never hide a successful network response", async () => {

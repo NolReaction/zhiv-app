@@ -7,7 +7,13 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   const root = fileURLToPath(new URL("..", import.meta.url));
   const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
   const { mountHabitat } = await vite.ssrLoadModule("/features/mochlik/scene.ts");
+  const { WORLD_ART } = await vite.ssrLoadModule("/features/world/art.ts");
+  const { WORLD_PRESENTATION } = await vite.ssrLoadModule("/features/world/presentation.ts");
   await vite.close(); // Close Vite timers before installing the scene clock.
+  // Retain coverage of the dormant habitat. Active replacement-map behavior has its own suite.
+  const rebuilding = WORLD_PRESENTATION.rebuilding, originalArt = { ...WORLD_ART };
+  WORLD_PRESENTATION.rebuilding = false;
+  Object.assign(WORLD_ART, { map: "/qa-legacy/map.webp", homePreview: "/qa-legacy/home-preview.webp", homeDetail: "/qa-legacy/home-detail.webp" });
   const scheduled = new Map(), saved = new Map(); let nextId = 1, disconnected = 0, drawCount = 0, now = 1;
   function install(key, value) { saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); }
   const realNow = Date.now; Date.now = () => now;
@@ -21,7 +27,7 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = () => ({ width: 16, height: 16, clientWidth: 320, getContext: () => context });
   install("document", { createElement: () => canvas() }); install("window", { devicePixelRatio: 2 });
-  install("Image", class { naturalWidth = 1254; naturalHeight = 1254; set src(path) { if (!path) return; this.naturalWidth = this.naturalHeight = path.includes("homePreview-") ? 256 : 1254; queueMicrotask(() => this.onload?.()); } });
+  install("Image", class { naturalWidth = 1254; naturalHeight = 1254; set src(path) { if (!path) return; this.naturalWidth = this.naturalHeight = path === WORLD_ART.homePreview ? 256 : 1254; queueMicrotask(() => this.onload?.()); } });
   install("ResizeObserver", class { observe() {} disconnect() { disconnected++; } });
   install("requestAnimationFrame", callback => { const id = nextId++; scheduled.set(id, callback); return id; });
   install("cancelAnimationFrame", id => scheduled.delete(id));
@@ -127,6 +133,7 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
     scene.dispose(); assert.equal(scheduled.size, 0); assert.equal(timers.size, 0); assert.equal(failures, 0);
   } finally {
     scene?.dispose(); Date.now = realNow;
+    WORLD_PRESENTATION.rebuilding = rebuilding; Object.assign(WORLD_ART, originalArt);
     for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
   }
 });

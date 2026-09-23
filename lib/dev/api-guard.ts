@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { isTrustedDevRequest } from "@/lib/dev/api-origin";
 
-export function guardDevApi(request: Request, requireJson = false): NextResponse | null {
-  if (process.env.NODE_ENV === "production" && process.env.ENABLE_DEV_API !== "true") {
+export function guardDevApi(request: Request, requireJson = false, maxBodyBytes = 2_048): NextResponse | null {
+  // Local memory is not a production backend. No environment override may open
+  // it on the deployed web server; production /api traffic belongs to Ktor.
+  if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test") {
     return NextResponse.json(
       { code: "DEV_API_DISABLED", message: "Подключите production API" },
       { status: 503, headers: { "Cache-Control": "no-store" } },
@@ -17,7 +19,7 @@ export function guardDevApi(request: Request, requireJson = false): NextResponse
   }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 2_048) {
+  if (contentLength > maxBodyBytes) {
     return NextResponse.json(
       { code: "BODY_TOO_LARGE", message: "Запрос слишком большой" },
       { status: 413, headers: { "Cache-Control": "no-store" } },

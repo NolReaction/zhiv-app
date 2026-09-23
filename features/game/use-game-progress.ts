@@ -140,6 +140,9 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
     };
     const pageError = () => reportIncident(ownerPublicId, "page", "PAGE_ERROR");
     const rejection = () => reportIncident(ownerPublicId, "page", "UNHANDLED_REJECTION");
+    const beforeAppReload = (event: Event) => {
+      if (current?.snapshot().durable === false) event.preventDefault();
+    };
     const interval = window.setInterval(heartbeat, 2000);
     heartbeat();
     window.addEventListener("online", resume);
@@ -150,6 +153,7 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
     window.addEventListener("storage", storage);
     window.addEventListener("error", pageError);
     window.addEventListener("unhandledrejection", rejection);
+    window.addEventListener("zhiv:before-app-reload", beforeAppReload);
     document.addEventListener("visibilitychange", visibility);
     return () => {
       stopped = true; inputWriter.current = () => 0; release();
@@ -162,6 +166,7 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
       window.removeEventListener("storage", storage);
       window.removeEventListener("error", pageError);
       window.removeEventListener("unhandledrejection", rejection);
+      window.removeEventListener("zhiv:before-app-reload", beforeAppReload);
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [ownerPublicId]);

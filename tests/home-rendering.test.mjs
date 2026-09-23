@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import sharp from "sharp";
@@ -12,21 +10,24 @@ after(() => vite.close());
 const { homeBackingSize, HOME_TEXTURE_SIZE } = await vite.ssrLoadModule("/features/mochlik/home-art.ts");
 const { drawLanternLight, drawSceneShade, NIGHT_SHADE } = await vite.ssrLoadModule("/features/mochlik/lantern-light.ts");
 const { drawLanternGlass } = await vite.ssrLoadModule("/features/mochlik/lantern-glass.ts");
-const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
 
-test("detail has enough real pixels for retina circles and a bounded detached world canvas", async () => {
-  const master = await readFile(`${root}/public/world/maps/home-detail-v1.png`);
-  assert.equal(createHash("sha256").update(master).digest("hex"), "f14fba0d71b976ed63530726e3b4a86241ab72a409e8e837a7a5b36fae5ef8bd", "approved editable home master stays unchanged");
-  const bytes = await readFile(`${root}/public${FOREST_MAP.homeDetail.image}`), metadata = await sharp(bytes).metadata();
-  assert.ok(metadata.width >= HOME_TEXTURE_SIZE);
-  assert.equal(metadata.width, 1254); assert.equal(metadata.width, metadata.height);
-  assert.ok(bytes.length < 650000, "retina detail must keep its download budget");
+test("circle uses the same full-resolution map without a separate home image", async () => {
+  const { WORLD_ART } = await vite.ssrLoadModule("/features/world/art.ts");
+  const { NEW_MAP_FOCUS, NEW_MAP_BOUNDS, NEW_MAP_SPAWN } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const source = await sharp(`${root}/art/world/prototype/forest-ground.png`).metadata();
+  const runtime = await sharp(`${root}/public${WORLD_ART.map.split("?")[0]}`).metadata();
+  assert.equal(runtime.width, source.width); assert.equal(runtime.height, source.height);
+  assert.equal(WORLD_ART.map, WORLD_ART.homeDetail);
+  assert.equal(WORLD_ART.map, WORLD_ART.homePreview);
+  const focus = NEW_MAP_FOCUS;
+  assert.ok(focus.x >= 0 && focus.y >= 0 && focus.x + focus.width <= NEW_MAP_BOUNDS.width && focus.y + focus.height <= NEW_MAP_BOUNDS.height);
+  assert.ok(NEW_MAP_SPAWN.x >= 0 && NEW_MAP_SPAWN.x <= NEW_MAP_BOUNDS.width);
+  assert.ok(NEW_MAP_SPAWN.y >= 0 && NEW_MAP_SPAWN.y <= NEW_MAP_BOUNDS.height);
   assert.equal(homeBackingSize(320, 2), 640);
   assert.equal(homeBackingSize(280, 3), 840);
   assert.equal(homeBackingSize(900, 3), HOME_TEXTURE_SIZE);
   assert.equal(homeBackingSize(0, 2, true), HOME_TEXTURE_SIZE);
   assert.equal(homeBackingSize(NaN, NaN), 256);
-  assert.deepEqual(FOREST_MAP.homeCrop, { x: 486, y: 514, size: 256 }, "quality change preserves the accepted scale");
 });
 
 test("lantern emits only at night, with separate soft clearing and glass falloff", () => {

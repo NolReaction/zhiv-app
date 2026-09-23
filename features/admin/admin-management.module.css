@@ -44,3 +44,11 @@
 .history caption { padding: 8px; text-align: left; color: #b7c5a7; }
 .history button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .history label { display: grid; gap: 8px; }
+
+.rangeSelector { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rangeSelector button { min-height: 44px; background: #1d261b; }
+.rangeSelector button[aria-pressed="true"] { border-color: #b9d99c; background: #3c4b31; color: #f1f7eb; }
+.panel details > summary { min-height: 44px; padding: 10px 0; cursor: pointer; }
+.panel details > summary:focus-visible { outline: 2px solid #c5e1a4; outline-offset: 3px; }
+.panel .tableScroll table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
+.panel .tableScroll th, .panel .tableScroll td { padding: 9px; text-align: left; border-bottom: 1px solid #384530; }
