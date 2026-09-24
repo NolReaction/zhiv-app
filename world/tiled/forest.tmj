@@ -3916,31 +3916,30 @@
                  "width":0,
                  "x":740.890625775601,
                  "y":646.939912458787
-                },
+                }, 
                 {
-                    "height":0,
-                    "id":102,
-                    "name":"home-doorway",
-                    "opacity":1,
-                    "point":true,
-                    "properties":[
+                 "height":0,
+                 "id":102,
+                 "name":"home-doorway",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "name":"role",
-                            "type":"string",
-                            "value":"doorway"
-                        },
+                         "name":"role",
+                         "type":"string",
+                         "value":"doorway"
+                        }, 
                         {
-                            "name":"siteId",
-                            "type":"string",
-                            "value":"home"
-                        }
-                    ],
-                    "rotation":0,
-                    "type":"",
-                    "visible":true,
-                    "width":0,
-                    "x":661.5,
-                    "y":632.5
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":661.5,
+                 "y":632.5
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -4026,35 +4025,35 @@
                         {
                          "x":0,
                          "y":0
-                        },
+                        }, 
                         {
-                         "x":-6.491243496739003,
-                         "y":-17.043232944968963
-                        },
+                         "x":-6.491243496739,
+                         "y":-17.043232944969
+                        }, 
                         {
-                         "x":-20.491243496739003,
-                         "y":-46.04323294496896
+                         "x":-20.491243496739,
+                         "y":-46.043232944969
                         }],
                  "properties":[
-                        {
-                         "name":"role",
-                         "type":"string",
-                         "value":"path"
-                        },
-                        {
-                         "name":"behavior",
-                         "type":"string",
-                         "value":"clearing"
-                        },
                         {
                          "name":"activity",
                          "type":"string",
                          "value":"look"
-                        },
+                        }, 
+                        {
+                         "name":"behavior",
+                         "type":"string",
+                         "value":"clearing"
+                        }, 
                         {
                          "name":"pauseSeconds",
                          "type":"float",
                          "value":5
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"path"
                         }],
                  "rotation":0,
                  "type":"",
@@ -4062,7 +4061,7 @@
                  "width":0,
                  "x":598.491243496739,
                  "y":690.043232944969
-                },
+                }, 
                 {
                  "height":0,
                  "id":99,
@@ -4072,35 +4071,35 @@
                         {
                          "x":0,
                          "y":0
-                        },
+                        }, 
                         {
-                         "x":-21.491243496739003,
-                         "y":-6.043232944968963
-                        },
+                         "x":-21.491243496739,
+                         "y":-6.04323294496896
+                        }, 
                         {
                          "x":-40.491243496739,
-                         "y":-14.043232944968963
+                         "y":-14.043232944969
                         }],
                  "properties":[
-                        {
-                         "name":"role",
-                         "type":"string",
-                         "value":"path"
-                        },
-                        {
-                         "name":"behavior",
-                         "type":"string",
-                         "value":"clearing"
-                        },
                         {
                          "name":"activity",
                          "type":"string",
                          "value":"sniff"
-                        },
+                        }, 
+                        {
+                         "name":"behavior",
+                         "type":"string",
+                         "value":"clearing"
+                        }, 
                         {
                          "name":"pauseSeconds",
                          "type":"float",
                          "value":4
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"path"
                         }],
                  "rotation":0,
                  "type":"",
@@ -4108,7 +4107,7 @@
                  "width":0,
                  "x":598.491243496739,
                  "y":690.043232944969
-                },
+                }, 
                 {
                  "height":0,
                  "id":100,
@@ -4118,35 +4117,35 @@
                         {
                          "x":0,
                          "y":0
-                        },
+                        }, 
                         {
-                         "x":19.508756503260997,
-                         "y":6.956767055031037
-                        },
+                         "x":19.508756503261,
+                         "y":6.95676705503104
+                        }, 
                         {
                          "x":33.508756503261,
-                         "y":13.956767055031037
+                         "y":13.956767055031
                         }],
                  "properties":[
-                        {
-                         "name":"role",
-                         "type":"string",
-                         "value":"path"
-                        },
-                        {
-                         "name":"behavior",
-                         "type":"string",
-                         "value":"clearing"
-                        },
                         {
                          "name":"activity",
                          "type":"string",
                          "value":"rest"
-                        },
+                        }, 
+                        {
+                         "name":"behavior",
+                         "type":"string",
+                         "value":"clearing"
+                        }, 
                         {
                          "name":"pauseSeconds",
                          "type":"float",
                          "value":7
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"path"
                         }],
                  "rotation":0,
                  "type":"",
@@ -4154,110 +4153,107 @@
                  "width":0,
                  "x":598.491243496739,
                  "y":690.043232944969
-                },
+                }, 
                 {
-                    "height":0,
-                    "id":101,
-                    "name":"home-approach",
-                    "opacity":1,
-                    "polyline":[
+                 "height":0,
+                 "id":101,
+                 "name":"home-approach",
+                 "opacity":1,
+                 "polyline":[
                         {
-                            "x":0.0,
-                            "y":0.0
-                        },
+                         "x":0,
+                         "y":0
+                        }, 
                         {
-                            "x":15.508756503260997,
-                            "y":-12.043232944968963
-                        },
+                         "x":15.508756503261,
+                         "y":-12.043232944969
+                        }, 
                         {
-                            "x":31.508756503260997,
-                            "y":-26.043232944968963
-                        },
+                         "x":31.508756503261,
+                         "y":-26.043232944969
+                        }, 
                         {
-                            "x":42.792726582816954,
-                            "y":-42.88190358779491
-                        }
-                    ],
-                    "properties":[
+                         "x":42.792726582817,
+                         "y":-42.8819035877949
+                        }],
+                 "properties":[
                         {
-                            "name":"role",
-                            "type":"string",
-                            "value":"path"
-                        },
+                         "name":"behavior",
+                         "type":"string",
+                         "value":"home"
+                        }, 
                         {
-                            "name":"behavior",
-                            "type":"string",
-                            "value":"home"
-                        },
+                         "name":"role",
+                         "type":"string",
+                         "value":"path"
+                        }, 
                         {
-                            "name":"siteId",
-                            "type":"string",
-                            "value":"home"
-                        }
-                    ],
-                    "rotation":0,
-                    "type":"",
-                    "visible":true,
-                    "width":0,
-                    "x":598.491243496739,
-                    "y":690.043232944969
-                },
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":598.491243496739,
+                 "y":690.043232944969
+                }, 
                 {
-                    "id": 107,
-                    "name": "clearing-bush",
-                    "x": 598.491243496739,
-                    "y": 690.043232944969,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "polyline": [
+                 "height":0,
+                 "id":107,
+                 "name":"clearing-bush",
+                 "opacity":1,
+                 "polyline":[
                         {
-                            "x": 0.0,
-                            "y": 0.0
-                        },
+                         "x":0,
+                         "y":0
+                        }, 
                         {
-                            "x": -18.491243496739003,
-                            "y": -19.043232944968963
-                        },
+                         "x":-18.491243496739,
+                         "y":-19.043232944969
+                        }, 
                         {
-                            "x": -16.491243496739003,
-                            "y": -30.043232944968963
-                        },
+                         "x":-16.491243496739,
+                         "y":-30.043232944969
+                        }, 
                         {
-                            "x": -16.491243496739003,
-                            "y": -40.043232944968963
-                        }
-                    ],
-                    "properties": [
+                         "x":-16.491243496739,
+                         "y":-40.043232944969
+                        }],
+                 "properties":[
                         {
-                            "name": "role",
-                            "type": "string",
-                            "value": "path"
-                        },
+                         "name":"activity",
+                         "type":"string",
+                         "value":"bush"
+                        }, 
                         {
-                            "name": "behavior",
-                            "type": "string",
-                            "value": "clearing"
-                        },
+                         "name":"behavior",
+                         "type":"string",
+                         "value":"clearing"
+                        }, 
                         {
-                            "name": "activity",
-                            "type": "string",
-                            "value": "bush"
-                        },
+                         "name":"bushId",
+                         "type":"string",
+                         "value":"clearing-bush"
+                        }, 
                         {
-                            "name": "bushId",
-                            "type": "string",
-                            "value": "clearing-bush"
-                        },
+                         "name":"pauseSeconds",
+                         "type":"float",
+                         "value":5
+                        }, 
                         {
-                            "name": "pauseSeconds",
-                            "type": "float",
-                            "value": 5
-                        }
-                    ]
-                }
-            ],
+                         "name":"role",
+                         "type":"string",
+                         "value":"path"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":598.491243496739,
+                 "y":690.043232944969
+                }],
          "opacity":1,
          "type":"objectgroup",
          "visible":true,
@@ -7894,486 +7890,541 @@
          "visible":true,
          "x":0,
          "y":0
-        },
+        }, 
         {
-            "id": 16,
-            "name": "Lights",
-            "type": "objectgroup",
-            "draworder": "topdown",
-            "opacity": 1,
-            "visible": true,
-            "x": 0,
-            "y": 0,
-            "objects": [
+         "draworder":"topdown",
+         "id":16,
+         "name":"Lights",
+         "objects":[
                 {
-                    "id": 94,
-                    "name": "home-lantern",
-                    "point": true,
-                    "x": 678.19,
-                    "y": 624.76,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "type": "",
-                    "properties": [
+                 "height":0,
+                 "id":94,
+                 "name":"home-lantern",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "name": "kind",
-                            "type": "string",
-                            "value": "lantern"
-                        },
+                         "name":"color",
+                         "type":"color",
+                         "value":"#ffffcf87"
+                        }, 
                         {
-                            "name": "radius",
-                            "type": "float",
-                            "value": 135
-                        },
+                         "name":"flicker",
+                         "type":"float",
+                         "value":0.045
+                        }, 
                         {
-                            "name": "intensity",
-                            "type": "float",
-                            "value": 1.15
-                        },
+                         "name":"intensity",
+                         "type":"float",
+                         "value":1.15
+                        }, 
                         {
-                            "name": "color",
-                            "type": "color",
-                            "value": "#ffffcf87"
-                        },
+                         "name":"kind",
+                         "type":"string",
+                         "value":"lantern"
+                        }, 
                         {
-                            "name": "flicker",
-                            "type": "float",
-                            "value": 0.045
-                        }
-                    ]
-                },
+                         "name":"radius",
+                         "type":"float",
+                         "value":135
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":678.19,
+                 "y":624.76
+                }, 
                 {
-                    "id": 95,
-                    "name": "clearing-torch",
-                    "point": true,
-                    "x": 489,
-                    "y": 618,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "type": "",
-                    "properties": [
+                 "height":0,
+                 "id":95,
+                 "name":"clearing-torch",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "name": "kind",
-                            "type": "string",
-                            "value": "torch"
-                        },
+                         "name":"color",
+                         "type":"color",
+                         "value":"#ffffb45d"
+                        }, 
                         {
-                            "name": "radius",
-                            "type": "float",
-                            "value": 72
-                        },
+                         "name":"flicker",
+                         "type":"float",
+                         "value":0.12
+                        }, 
                         {
-                            "name": "intensity",
-                            "type": "float",
-                            "value": 1
-                        },
+                         "name":"intensity",
+                         "type":"float",
+                         "value":1
+                        }, 
                         {
-                            "name": "color",
-                            "type": "color",
-                            "value": "#ffffb45d"
-                        },
+                         "name":"kind",
+                         "type":"string",
+                         "value":"torch"
+                        }, 
                         {
-                            "name": "flicker",
-                            "type": "float",
-                            "value": 0.12
-                        }
-                    ]
-                },
+                         "name":"radius",
+                         "type":"float",
+                         "value":72
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":489,
+                 "y":618
+                }, 
                 {
-                    "id": 96,
-                    "name": "river-path-torch",
-                    "point": true,
-                    "x": 922,
-                    "y": 807,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "type": "",
-                    "properties": [
+                 "height":0,
+                 "id":96,
+                 "name":"river-path-torch",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "name": "kind",
-                            "type": "string",
-                            "value": "torch"
-                        },
+                         "name":"color",
+                         "type":"color",
+                         "value":"#ffffb45d"
+                        }, 
                         {
-                            "name": "radius",
-                            "type": "float",
-                            "value": 85
-                        },
+                         "name":"flicker",
+                         "type":"float",
+                         "value":0.1
+                        }, 
                         {
-                            "name": "intensity",
-                            "type": "float",
-                            "value": 1
-                        },
+                         "name":"intensity",
+                         "type":"float",
+                         "value":1
+                        }, 
                         {
-                            "name": "color",
-                            "type": "color",
-                            "value": "#ffffb45d"
-                        },
+                         "name":"kind",
+                         "type":"string",
+                         "value":"torch"
+                        }, 
                         {
-                            "name": "flicker",
-                            "type": "float",
-                            "value": 0.1
-                        }
-                    ]
-                },
+                         "name":"radius",
+                         "type":"float",
+                         "value":85
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":922,
+                 "y":807
+                }, 
                 {
-                    "id": 97,
-                    "name": "north-fork-torch",
-                    "point": true,
-                    "x": 937,
-                    "y": 249,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "type": "",
-                    "properties": [
+                 "height":0,
+                 "id":97,
+                 "name":"north-fork-torch",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "name": "kind",
-                            "type": "string",
-                            "value": "torch"
-                        },
+                         "name":"color",
+                         "type":"color",
+                         "value":"#ffffbc72"
+                        }, 
                         {
-                            "name": "radius",
-                            "type": "float",
-                            "value": 78
-                        },
+                         "name":"flicker",
+                         "type":"float",
+                         "value":0.13
+                        }, 
                         {
-                            "name": "intensity",
-                            "type": "float",
-                            "value": 1
-                        },
+                         "name":"intensity",
+                         "type":"float",
+                         "value":1
+                        }, 
                         {
-                            "name": "color",
-                            "type": "color",
-                            "value": "#ffffbc72"
-                        },
+                         "name":"kind",
+                         "type":"string",
+                         "value":"torch"
+                        }, 
                         {
-                            "name": "flicker",
-                            "type": "float",
-                            "value": 0.13
-                        }
-                    ]
-                }
-            ]
-        },
+                         "name":"radius",
+                         "type":"float",
+                         "value":78
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":937,
+                 "y":249
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
         {
-            "id": 17,
-            "name": "Mushrooms",
-            "type": "objectgroup",
-            "draworder": "index",
-            "visible": true,
-            "opacity": 1,
-            "x": 0,
-            "y": 0,
-            "objects": [
+         "draworder":"index",
+         "id":17,
+         "name":"Mushrooms",
+         "objects":[
                 {
-                    "id": 103,
-                    "name": "mushroom-1",
-                    "x": 591.771243496739,
-                    "y": 697.883232944969,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "point": true,
-                    "properties": [
+                 "height":0,
+                 "id":103,
+                 "name":"mushroom-1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "name": "role",
-                            "type": "string",
-                            "value": "mushroom"
-                        }
-                    ]
-                }
-            ]
-        },
+                         "name":"role",
+                         "type":"string",
+                         "value":"mushroom"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":591.771243496739,
+                 "y":697.883232944969
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
         {
-            "id": 18,
-            "name": "Bushes",
-            "type": "objectgroup",
-            "draworder": "index",
-            "visible": true,
-            "opacity": 1,
-            "x": 0,
-            "y": 0,
-            "objects": [
+         "draworder":"index",
+         "id":18,
+         "name":"Bushes",
+         "objects":[
                 {
-                    "id": 104,
-                    "name": "clearing-bush",
-                    "x": 0,
-                    "y": 0,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "polygon": [
+                 "height":0,
+                 "id":105,
+                 "name":"clearing-bush-entry",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "x": 535,
-                            "y": 565
-                        },
+                         "name":"bushId",
+                         "type":"string",
+                         "value":"clearing-bush"
+                        }, 
                         {
-                            "x": 539,
-                            "y": 568
-                        },
-                        {
-                            "x": 543,
-                            "y": 566
-                        },
-                        {
-                            "x": 545,
-                            "y": 572
-                        },
-                        {
-                            "x": 551,
-                            "y": 569
-                        },
-                        {
-                            "x": 553,
-                            "y": 571
-                        },
-                        {
-                            "x": 552,
-                            "y": 574
-                        },
-                        {
-                            "x": 558,
-                            "y": 573
-                        },
-                        {
-                            "x": 562,
-                            "y": 576
-                        },
-                        {
-                            "x": 560,
-                            "y": 580
-                        },
-                        {
-                            "x": 564,
-                            "y": 579
-                        },
-                        {
-                            "x": 567,
-                            "y": 582
-                        },
-                        {
-                            "x": 565,
-                            "y": 585
-                        },
-                        {
-                            "x": 570,
-                            "y": 587
-                        },
-                        {
-                            "x": 570,
-                            "y": 591
-                        },
-                        {
-                            "x": 568,
-                            "y": 592
-                        },
-                        {
-                            "x": 572,
-                            "y": 593
-                        },
-                        {
-                            "x": 575,
-                            "y": 597
-                        },
-                        {
-                            "x": 570,
-                            "y": 599
-                        },
-                        {
-                            "x": 572,
-                            "y": 603
-                        },
-                        {
-                            "x": 570,
-                            "y": 607
-                        },
-                        {
-                            "x": 570,
-                            "y": 611
-                        },
-                        {
-                            "x": 567,
-                            "y": 616
-                        },
-                        {
-                            "x": 562,
-                            "y": 619
-                        },
-                        {
-                            "x": 558,
-                            "y": 622
-                        },
-                        {
-                            "x": 553,
-                            "y": 626
-                        },
-                        {
-                            "x": 547,
-                            "y": 625
-                        },
-                        {
-                            "x": 543,
-                            "y": 628
-                        },
-                        {
-                            "x": 536,
-                            "y": 626
-                        },
-                        {
-                            "x": 534,
-                            "y": 628
-                        },
-                        {
-                            "x": 530,
-                            "y": 623
-                        },
-                        {
-                            "x": 522,
-                            "y": 623
-                        },
-                        {
-                            "x": 517,
-                            "y": 621
-                        },
-                        {
-                            "x": 512,
-                            "y": 620
-                        },
-                        {
-                            "x": 508,
-                            "y": 616
-                        },
-                        {
-                            "x": 510,
-                            "y": 610
-                        },
-                        {
-                            "x": 508,
-                            "y": 603
-                        },
-                        {
-                            "x": 510,
-                            "y": 598
-                        },
-                        {
-                            "x": 508,
-                            "y": 591
-                        },
-                        {
-                            "x": 511,
-                            "y": 587
-                        },
-                        {
-                            "x": 510,
-                            "y": 584
-                        },
-                        {
-                            "x": 515,
-                            "y": 580
-                        },
-                        {
-                            "x": 515,
-                            "y": 577
-                        },
-                        {
-                            "x": 521,
-                            "y": 577
-                        },
-                        {
-                            "x": 520,
-                            "y": 573
-                        },
-                        {
-                            "x": 521,
-                            "y": 571
-                        },
-                        {
-                            "x": 526,
-                            "y": 571
-                        },
-                        {
-                            "x": 527,
-                            "y": 568
-                        },
-                        {
-                            "x": 531,
-                            "y": 569
-                        }
-                    ],
-                    "properties": [
-                        {
-                            "name": "role",
-                            "type": "string",
-                            "value": "bush"
-                        },
-                        {
-                            "name": "bushId",
-                            "type": "string",
-                            "value": "clearing-bush"
-                        }
-                    ]
-                },
+                         "name":"role",
+                         "type":"string",
+                         "value":"bush-entry"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":582,
+                 "y":650
+                }, 
                 {
-                    "id": 105,
-                    "name": "clearing-bush-entry",
-                    "x": 582,
-                    "y": 650,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "point": true,
-                    "properties": [
+                 "height":0,
+                 "id":106,
+                 "name":"clearing-bush-hide",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
                         {
-                            "name": "role",
-                            "type": "string",
-                            "value": "bush-entry"
-                        },
+                         "name":"bushId",
+                         "type":"string",
+                         "value":"clearing-bush"
+                        }, 
                         {
-                            "name": "bushId",
-                            "type": "string",
-                            "value": "clearing-bush"
-                        }
-                    ]
-                },
+                         "name":"role",
+                         "type":"string",
+                         "value":"bush-hide"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":549.722833044637,
+                 "y":619.609788617671
+                }, 
                 {
-                    "id": 106,
-                    "name": "clearing-bush-hide",
-                    "x": 548,
-                    "y": 623,
-                    "width": 0,
-                    "height": 0,
-                    "rotation": 0,
-                    "visible": true,
-                    "point": true,
-                    "properties": [
+                 "height":0,
+                 "id":108,
+                 "name":"clearing-bush",
+                 "opacity":1,
+                 "polygon":[
                         {
-                            "name": "role",
-                            "type": "string",
-                            "value": "bush-hide"
-                        },
+                         "x":0,
+                         "y":0
+                        }, 
                         {
-                            "name": "bushId",
-                            "type": "string",
-                            "value": "clearing-bush"
-                        }
-                    ]
-                }
-            ]
-        }
-    ],
+                         "x":5.35063948771938,
+                         "y":-1.55341146417663
+                        }, 
+                        {
+                         "x":8.57252993193754,
+                         "y":-0.230135031729901
+                        }, 
+                        {
+                         "x":8.45746241607264,
+                         "y":2.53148534902857
+                        }, 
+                        {
+                         "x":12.945095534805,
+                         "y":2.76162038075836
+                        }, 
+                        {
+                         "x":14.4985069989816,
+                         "y":4.77530190839479
+                        }, 
+                        {
+                         "x":14.3259057251843,
+                         "y":8.68759744780243
+                        }, 
+                        {
+                         "x":18.5834038121868,
+                         "y":8.74513120573499
+                        }, 
+                        {
+                         "x":20.8272203715529,
+                         "y":11.1615490388986
+                        }, 
+                        {
+                         "x":20.7696866136205,
+                         "y":12.5998929872102
+                        }, 
+                        {
+                         "x":19.7340789708361,
+                         "y":14.4409732410492
+                        }, 
+                        {
+                         "x":23.3011719626491,
+                         "y":14.9012433045089
+                        }, 
+                        {
+                         "x":25.1997859744205,
+                         "y":16.7998573162803
+                        }, 
+                        {
+                         "x":25.0847184585555,
+                         "y":20.1368152763633
+                        }, 
+                        {
+                         "x":23.9915770578386,
+                         "y":20.712152855688
+                        }, 
+                        {
+                         "x":27.7888050813815,
+                         "y":23.0135031729867
+                        }, 
+                        {
+                         "x":29.457284061423,
+                         "y":25.4299210061504
+                        }, 
+                        {
+                         "x":29.3997503034906,
+                         "y":28.709345208301
+                        }, 
+                        {
+                         "x":26.5805961647997,
+                         "y":30.0326216407477
+                        }, 
+                        {
+                         "x":27.0983999861919,
+                         "y":31.4709655890593
+                        }, 
+                        {
+                         "x":27.2134675020568,
+                         "y":33.6572483904931
+                        }, 
+                        {
+                         "x":26.1778598592724,
+                         "y":35.1531260967372
+                        }, 
+                        {
+                         "x":24.3943133633659,
+                         "y":35.9585987077918
+                        }, 
+                        {
+                         "x":23.8765095419737,
+                         "y":38.8352866044152
+                        }, 
+                        {
+                         "x":22.3806318357296,
+                         "y":40.791434374119
+                        }, 
+                        {
+                         "x":22.1504968039997,
+                         "y":43.6681222707423
+                        }, 
+                        {
+                         "x":19.3313426653089,
+                         "y":47.5228840522176
+                        }, 
+                        {
+                         "x":15.7067159155634,
+                         "y":47.9256203577449
+                        }, 
+                        {
+                         "x":12.371986915713,
+                         "y":45.8836167207301
+                        }, 
+                        {
+                         "x":7.89048854991461,
+                         "y":49.4379085280874
+                        }, 
+                        {
+                         "x":5.72700658021881,
+                         "y":53.5330708278688
+                        }, 
+                        {
+                         "x":3.33172297091278,
+                         "y":53.6103380410722
+                        }, 
+                        {
+                         "x":-5.3222049078704,
+                         "y":46.0381511471369
+                        }, 
+                        {
+                         "x":-8.84374920063783,
+                         "y":42.3704199143042
+                        }, 
+                        {
+                         "x":-17.4509757215436,
+                         "y":51.5100521993897
+                        }, 
+                        {
+                         "x":-22.6862990693111,
+                         "y":48.7592890844611
+                        }, 
+                        {
+                         "x":-26.5906080066292,
+                         "y":43.4352314426637
+                        }, 
+                        {
+                         "x":-26.5906080066292,
+                         "y":41.1281397978848
+                        }, 
+                        {
+                         "x":-31.6484627663367,
+                         "y":40.5069997396752
+                        }, 
+                        {
+                         "x":-35.197834527535,
+                         "y":37.5787680366866
+                        }, 
+                        {
+                         "x":-34.2217572932055,
+                         "y":32.8758504530989
+                        }, 
+                        {
+                         "x":-36.8837861141042,
+                         "y":29.8588844560803
+                        }, 
+                        {
+                         "x":-38.1260662305236,
+                         "y":27.9067299874213
+                        }, 
+                        {
+                         "x":-35.109100233505,
+                         "y":25.1559668724926
+                        }, 
+                        {
+                         "x":-37.6823947603738,
+                         "y":22.405203757564
+                        }, 
+                        {
+                         "x":-37.3274575842539,
+                         "y":19.9206435247252
+                        }, 
+                        {
+                         "x":-34.0442887051456,
+                         "y":16.9924118217366
+                        }, 
+                        {
+                         "x":-35.9077088797746,
+                         "y":15.0402573530775
+                        }, 
+                        {
+                         "x":-35.3753031155949,
+                         "y":13.0881028844185
+                        }, 
+                        {
+                         "x":-31.027322708127,
+                         "y":9.44999682919035
+                        }, 
+                        {
+                         "x":-29.8737768857376,
+                         "y":7.23163947844137
+                        }, 
+                        {
+                         "x":-25.9694679484195,
+                         "y":6.69923371426171
+                        }, 
+                        {
+                         "x":-25.7032650663297,
+                         "y":1.37517607246423
+                        }, 
+                        {
+                         "x":-20.2017388364723,
+                         "y":0.576567426194629
+                        }, 
+                        {
+                         "x":-19.0481930140828,
+                         "y":-2.35166427679394
+                        }, 
+                        {
+                         "x":-17.1847728394538,
+                         "y":-2.70660145291379
+                        }, 
+                        {
+                         "x":-14.2565411364652,
+                         "y":-1.73052421858426
+                        }, 
+                        {
+                         "x":-12.3043866678062,
+                         "y":-5.01369309769268
+                        }, 
+                        {
+                         "x":-9.81982643496735,
+                         "y":-6.34470750814194
+                        }, 
+                        {
+                         "x":-8.66628061257791,
+                         "y":-6.25597321411203
+                        }, 
+                        {
+                         "x":-6.09298608570919,
+                         "y":-3.32774151112346
+                        }, 
+                        {
+                         "x":-3.16475438272062,
+                         "y":-5.63483315590236
+                        }, 
+                        {
+                         "x":-0.857662737941723,
+                         "y":-4.83622450963276
+                        }],
+                 "properties":[
+                        {
+                         "name":"bushId",
+                         "type":"string",
+                         "value":"clearing-bush"
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"bush"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":545.420025199786,
+                 "y":569.008865952097
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }],
  "nextlayerid":19,
- "nextobjectid":108,
+ "nextobjectid":109,
  "orientation":"orthogonal",
  "properties":[
         {
