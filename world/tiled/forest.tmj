@@ -58,7 +58,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -3535,7 +3535,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7166,7 +7166,7 @@
          "name":"WaterExclusions",
          "opacity":1,
          "type":"group",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7201,7 +7201,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7308,7 +7308,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7663,7 +7663,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7912,7 +7912,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -8078,7 +8078,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -8271,7 +8271,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -8380,7 +8380,7 @@
                  "width":0,
                  "x":525,
                  "y":590
-                }, 
+                },
                 {
                  "height":0,
                  "id":116,
@@ -8493,7 +8493,7 @@
                  "width":0,
                  "x":518,
                  "y":684
-                }, 
+                },
                 {
                  "height":0,
                  "id":126,
@@ -8647,10 +8647,165 @@
                  "width":0,
                  "x":80,
                  "y":65
-                }],
+                },
+                {
+                 "height":0,
+                 "id":136,
+                 "name":"forest-butterflies",
+                 "opacity":1,
+                 "polygon":[
+                        {
+                         "x":-33.5303,
+                         "y":-15.9668
+                        },
+                        {
+                         "x":868.951,
+                         "y":-25.7664
+                        },
+                        {
+                         "x":975.737,
+                         "y":76.1791
+                        },
+                        {
+                         "x":1101.24,
+                         "y":132.969
+                        },
+                        {
+                         "x":1130.43,
+                         "y":287.928
+                        },
+                        {
+                         "x":1084.57,
+                         "y":345.533
+                        },
+                        {
+                         "x":1088.88,
+                         "y":419.456
+                        },
+                        {
+                         "x":1048.6,
+                         "y":453.856
+                        },
+                        {
+                         "x":990.622,
+                         "y":416.933
+                        },
+                        {
+                         "x":922.379,
+                         "y":444.001
+                        },
+                        {
+                         "x":922.588,
+                         "y":483.079
+                        },
+                        {
+                         "x":1068.6,
+                         "y":646.049
+                        },
+                        {
+                         "x":1035.06,
+                         "y":737.099
+                        },
+                        {
+                         "x":971.676,
+                         "y":768.584
+                        },
+                        {
+                         "x":981.121,
+                         "y":858.536
+                        },
+                        {
+                         "x":911.11,
+                         "y":878.494
+                        },
+                        {
+                         "x":754.418,
+                         "y":857.739
+                        },
+                        {
+                         "x":686.983,
+                         "y":926.413
+                        },
+                        {
+                         "x":759.815,
+                         "y":982.196
+                        },
+                        {
+                         "x":815.97,
+                         "y":984.69
+                        },
+                        {
+                         "x":821.982,
+                         "y":1045.12
+                        },
+                        {
+                         "x":846.968,
+                         "y":1071.87
+                        },
+                        {
+                         "x":789.989,
+                         "y":1093.98
+                        },
+                        {
+                         "x":655.528,
+                         "y":1089.29
+                        },
+                        {
+                         "x":620.498,
+                         "y":971.553
+                        },
+                        {
+                         "x":504.06,
+                         "y":965.882
+                        },
+                        {
+                         "x":314.991,
+                         "y":1066.63
+                        },
+                        {
+                         "x":120.16,
+                         "y":1061.77
+                        },
+                        {
+                         "x":67.9708,
+                         "y":917.445
+                        },
+                        {
+                         "x":-41.418,
+                         "y":791.8
+                        }],
+                 "properties":[
+                        {
+                         "name":"capacity",
+                         "type":"int",
+                         "value":3
+                        },
+                        {
+                         "name":"excludeHabitatId",
+                         "type":"string",
+                         "value":"clearing-butterflies"
+                        },
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"wildlife-habitat"
+                        },
+                        {
+                         "name":"species",
+                         "type":"string",
+                         "value":"butterfly"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":80.5070229530661,
+                 "y":65.0907845152449
+                }
+                ],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -9183,7 +9338,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -9213,7 +9368,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -9380,7 +9535,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 

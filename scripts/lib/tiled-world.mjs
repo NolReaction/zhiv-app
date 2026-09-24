@@ -297,9 +297,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
   const navigation = () => world.navigation ??= { version: 1, cellSize, areas: [], obstacles: [], interests: [] };
   if (own(mapProperties, "navigationCellSize")) navigation();
-  // Named metadata groups include every descendant object layer regardless
-  // of their organizational names or object draw order. Other layers retain the
-  // fixed-world subset's strict placement/order rules.
+  // Groups organize layers without changing coordinates or authored draw order.
+  // Named metadata groups pass their meaning through every descendant group;
+  // ordinary groups leave object roles and site IDs in control.
   function* objectLayers(entries, at, inheritedKind) {
     for (const [layerIndex, layer] of array(entries, at).entries()) {
       const layerAt = `${at}[${layerIndex}]`;
@@ -310,10 +310,10 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const isLifeLayer = !metadataKind && ["Mushrooms", "Bushes"].includes(layer.name);
       const waterKind = ["surfaces", "exclusions"].includes(metadataKind) ? metadataKind : undefined;
       const livingKind = Object.values(livingKinds).includes(metadataKind) ? metadataKind : undefined;
-      const isMetadataGroup = metadataKind && layer.type === "group";
-      if (!isMetadataGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
+      const isGroup = layer.type === "group";
+      if (!isGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
       transforms(layer, layerAt);
-      absent(layer, ["data", "chunks", "image", ...(isMetadataGroup ? ["objects", "draworder"] : ["layers"])], layerAt);
+      absent(layer, ["data", "chunks", "image", ...(isGroup ? ["objects", "draworder"] : ["layers"])], layerAt);
       properties(layer, layerAt, {});
       const layerId = integer(layer.id, `${layerAt}.id`, 1);
       requireThat(!layers.has(layerId), `${layerAt}.id`, "duplicate layer ID");
@@ -324,7 +324,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (["wildlife-habitat", "wildlife-anchor"].includes(livingKind)) world.habitats ??= [];
       if (isLifeLayer && layer.name === "Mushrooms") world.mushrooms ??= [];
       if (isLifeLayer && layer.name === "Bushes") world.bushes ??= [];
-      if (isMetadataGroup) {
+      if (isGroup) {
         yield* objectLayers(layer.layers, `${layerAt}.layers`, metadataKind);
       } else {
         if (metadataKind || isLifeLayer) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata");

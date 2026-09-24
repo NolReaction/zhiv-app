@@ -24,6 +24,8 @@ const waterPolygon = (id, name = "", x = 30.125, y = 50.375) => ({
   polygon: [{ x: -10.0625, y: -20.125 }, { x: 15.25, y: -20.125 }, { x: 15.25, y: 5.5 }, { x: -10.0625, y: 5.5 }],
 });
 const waterLayer = (id, name, objects) => ({ id, name, type: "objectgroup", draworder: "topdown", objects });
+const groupLayer = (id, name, layers = []) => ({ id, name, type: "group", layers });
+const objectLayer = (id, name, objects) => ({ ...waterLayer(id, name, objects), draworder: "index" });
 const layerObjects = layers => layers.flatMap(layer => layer.layers ? layerObjects(layer.layers) : layer.objects);
 
 async function fixture(t, { directoryRoot = tmpdir() } = {}) {
@@ -367,6 +369,81 @@ test("an explicit Tiled 1.12 normal layer blend mode keeps the same scene", asyn
   assert.deepEqual(await compile(), before);
 });
 
+test("building folders split images, anchors and contours without changing the exported scene", async t => {
+  const { map, compile } = await fixture(t);
+  const before = await compile();
+  const [ground, image, anchor, entry, light, hitArea, collision, focus, route] = map.layers[0].objects;
+  map.layers = [
+    objectLayer(1, "Terrain", [ground]),
+    groupLayer(2, "Buildings", [
+      groupLayer(3, "Kiln-lvl-1", [
+        objectLayer(4, "Kiln-anchors", [anchor, entry, light]),
+        objectLayer(5, "Kiln-image", [image]),
+        objectLayer(6, "Kiln-tracing", [hitArea, collision]),
+      ]),
+      groupLayer(7, "Kiln-lvl-2"), groupLayer(8, "Kiln-lvl-3"),
+    ]),
+    objectLayer(9, "Camera and routes", [focus, route]),
+  ];
+  const authored = clone(map);
+  assert.deepEqual(await compile(), before, "folder names do not introduce levels or change siteId ownership");
+  assert.deepEqual(map, authored, "grouping never rewrites coordinates or source objects");
+  map.layers[1].layers[1].layers.push(objectLayer(10, "Another level image", [{ ...clone(image), id: 20 }]));
+  await assert.rejects(compile(), /site kiln has more than one preview object/, "levels remain a tile catalog, not simultaneous site copies");
+});
+
+test("nested folders retain authored depth-first draw order and the terrain-before-sites guard", async t => {
+  const { map, compile } = await fixture(t);
+  const [ground, ...rest] = map.layers[0].objects;
+  const topGround = { ...clone(ground), id: 20, name: "ground-overlay" };
+  map.layers[0].objects = [ground, topGround, ...rest];
+  const before = await compile();
+  map.layers = [
+    groupLayer(2, "Terrain", [
+      objectLayer(3, "Base", [ground]),
+      groupLayer(4, "Details", [objectLayer(5, "Overlay", [topGround])]),
+    ]),
+    groupLayer(6, "Buildings", [objectLayer(1, "World", rest)]),
+  ];
+  assert.deepEqual(await compile(), before);
+  assert.deepEqual((await compile()).terrain.map(item => item.id), ["ground", "ground-overlay"]);
+  map.layers[0].layers.reverse();
+  assert.deepEqual((await compile()).terrain.map(item => item.id), ["ground-overlay", "ground"], "sibling groups are not sorted by name or ID");
+  map.layers.reverse();
+  await assert.rejects(compile(), /terrain must precede site objects in layer order/, "group boundaries cannot hide later terrain");
+});
+
+test("ordinary folders retain strict transforms, unique IDs and leaf layer validation", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers = [groupLayer(2, "Buildings", [groupLayer(3, "Kiln", map.layers)])];
+  const nested = value => value.layers[0].layers[0];
+  const leaf = value => nested(value).layers[0];
+  const cases = [
+    ["hidden outer folder", value => { value.layers[0].visible = false; }, /map\.layers\[0\]\.visible: expected true/],
+    ["nested opacity", value => { nested(value).opacity = 0.5; }, /layers\[0\]\.layers\[0\]\.opacity: expected 1/],
+    ["nested offset", value => { nested(value).offsetx = 2; }, /offsetx: expected 0/],
+    ["nested position", value => { nested(value).y = 2; }, /\.y: expected 0/],
+    ["nested parallax", value => { nested(value).parallaxx = 0.5; }, /parallaxx: expected 1/],
+    ["nested blend mode", value => { nested(value).mode = "multiply"; }, /mode: expected "normal"/],
+    ["nested tint", value => { nested(value).tintcolor = "#ffffff"; }, /tintcolor: not supported/],
+    ["folder custom properties", value => { nested(value).properties = props({ siteId: "kiln" }); }, /unknown property "siteId"/],
+    ["missing children", value => { delete nested(value).layers; }, /\.layers: expected an array/],
+    ["objects on folder", value => { nested(value).objects = []; }, /\.objects: not supported/],
+    ["draw order on folder", value => { nested(value).draworder = "index"; }, /\.draworder: not supported/],
+    ["duplicate nested layer ID", value => { leaf(value).id = 2; }, /duplicate layer ID/],
+    ["duplicate object across folders", value => { value.layers.push(groupLayer(4, "More", [objectLayer(5, "Copy", [clone(leaf(value).objects[7])])])); }, /duplicate object ID/],
+    ["top-down scene layer", value => { leaf(value).draworder = "topdown"; }, /draworder: expected "index"/],
+    ["hidden nested image", value => { leaf(value).objects[1].visible = false; }, /objects\[1\]\.visible: expected true/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
 test("unsupported or ambiguous authoring fails with the exact map location", async t => {
   const { map, compile } = await fixture(t);
   const cases = [
@@ -379,7 +456,7 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["hex rotation bit", value => { value.layers[0].objects[1].gid = 0x10000002; }, /tile flip\/rotation bits/],
     ["layer offset", value => { value.layers[0].offsetx = 3; }, /layers\[0\]\.offsetx: expected 0/],
     ["layer blend mode", value => { value.layers[0].mode = "multiply"; }, /layers\[0\]\.mode: expected "normal"/],
-    ["group layer", value => { value.layers[0].type = "group"; }, /layers\[0\]\.type: expected "objectgroup"/],
+    ["tile layer", value => { value.layers[0].type = "tilelayer"; }, /layers\[0\]\.type: expected "objectgroup"/],
     ["hidden layer", value => { value.layers[0].visible = false; }, /layers\[0\]\.visible: expected true/],
     ["distorted sprite", value => { value.layers[0].objects[1].width = 19; }, /objects\[1\]: object aspect ratio/],
     ["missing entry", value => { value.layers[0].objects.splice(3, 1); }, /site kiln is missing entry/],
@@ -662,6 +739,29 @@ test("empty living metadata is deliberate and named groups preserve roles throug
   const empty = await compile();
   assert.deepEqual(empty.navigation, { version: 1, cellSize: 6, areas: [], obstacles: [], interests: [] });
   assert.deepEqual(empty.habitats, []);
+});
+
+test("ordinary wrappers preserve named metadata inheritance and reject mixed metadata nesting", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(...livingLayers(),
+    waterLayer(7, "Water", [waterPolygon(30, "river", 80, 30)]),
+    waterLayer(8, "WaterExclusions", [waterPolygon(31, "leaf", 80, 30)]),
+    waterLayer(9, "Lights", [{ id: 32, name: "lamp", x: 50, y: 50, point: true }]),
+  );
+  const before = await compile();
+  map.layers = [groupLayer(100, "World folders", map.layers.map(layer =>
+    layer.name === "World" ? layer : groupLayer(layer.id + 100, layer.name, [
+      groupLayer(layer.id + 200, "Local", [{ ...layer, name: "Geometry" }]),
+    ]),
+  ))];
+  assert.deepEqual(await compile(), before, "Water, Lights, navigation and habitat semantics survive arbitrary wrappers");
+  for (const [parentName, childName] of [["Water", "Lights"], ["Lights", "WaterExclusions"], ["Habitats", "WalkAreas"]]) {
+    await t.test(`${childName} nested inside ${parentName}`, async () => {
+      const value = clone(map);
+      value.layers.push(groupLayer(400, "Metadata", [groupLayer(401, parentName, [groupLayer(402, "Local", [groupLayer(403, childName)])])]));
+      await assert.rejects(compile(value), /different metadata layers must not be nested inside each other/);
+    });
+  }
 });
 
 test("habitat exclusions follow the referenced contour regardless of authoring order without rewriting polygons", async t => {
