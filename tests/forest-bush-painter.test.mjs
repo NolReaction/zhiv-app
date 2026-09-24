@@ -83,3 +83,30 @@ test('missing artwork is never cached and non-browser rendering still clips the 
   assert.equal(surface.calls.find(call => call.method === 'drawImage').args[0], images.get('/ground.webp'));
   assert.equal(surface.calls.filter(call => call.method === 'clip').length, 1);
 });
+
+test('paused encounters retain exact foliage deformation and falling berries despite a changed ambient clock', () => {
+  canvasDocument(() => {
+    const { scene, bush, images } = fixture(), playing = context(), paused = context();
+    const frame = { id: bush.id, rustle: .8, occlude: true, elapsed: .72,
+      bursts: [{ at: .2, strength: .9, seed: 183 }] };
+    drawForestBush(playing.ctx, scene, images, frame, 50);
+    drawForestBush(paused.ctx, scene, images, frame, 500, true);
+    assert.deepEqual(paused.calls, playing.calls, 'local encounter time keeps every particle and leaf band stationary');
+    assert.ok(playing.calls.some(call => call.method === 'ellipse'), 'berries and ground shadows are visible');
+    const foregroundEnd = playing.calls.findLastIndex(call => call.method === 'drawImage');
+    assert.ok(playing.calls.findIndex(call => call.method === 'ellipse') > foregroundEnd,
+      'berries fall in front of the leaves, after leaving the polygon clip');
+  });
+});
+
+test('berries settle after departure without masking the actor and disappear when their lifetime ends', () => {
+  const { scene, bush, images } = fixture(), residual = context(), expired = context();
+  const frame = { id: bush.id, rustle: 0, occlude: false, elapsed: 2.5,
+    bursts: [{ at: 0, strength: 1, seed: 184 }] };
+  drawForestBush(residual.ctx, scene, images, frame);
+  assert.ok(residual.calls.some(call => call.method === 'ellipse'));
+  assert.equal(residual.calls.filter(call => ['drawImage', 'clip'].includes(call.method)).length, 0,
+    'settling particles cannot paint a stale foreground above a different actor pose');
+  drawForestBush(expired.ctx, scene, images, { ...frame, elapsed: 3 });
+  assert.deepEqual(expired.calls, []);
+});

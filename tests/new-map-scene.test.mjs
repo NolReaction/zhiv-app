@@ -788,7 +788,7 @@ function sampleHero(scene, env, pixelSprite) {
   const target = env.surface();
   scene.paintWorld(target.context);
   const body = target.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
-    && call.args[3] === fixture.actor.size && call.args[4] === fixture.actor.size);
+    && call.args[0]?.width === 48 && call.args[0]?.height === 48);
   return {
     body, calls: target.calls,
     hasPose(...poses) {
@@ -796,6 +796,27 @@ function sampleHero(scene, env, pixelSprite) {
         [0, 1, 2, 3].some(frame => body.args[0] === pixelSprite(pose, direction, frame))));
     },
   };
+}
+
+function bushMaskAfterBody(sample, bush = clearingBush) {
+  if (!sample.body) return false;
+  const calls = sample.calls.slice(sample.calls.indexOf(sample.body) + 1);
+  const start = calls.findIndex(call => call.method === "moveTo"
+    && call.args[0] === bush.points[0].x && call.args[1] === bush.points[0].y);
+  if (start < 0) return false;
+  const contour = bush.points.map((point, index) => ({ method: index ? "lineTo" : "moveTo", args: [point.x, point.y] }));
+  assert.deepEqual(calls.slice(start, start + contour.length), contour, "occlusion follows every authored leaf vertex");
+  const tail = calls.slice(start + contour.length);
+  return tail[0]?.method === "closePath" && tail[1]?.method === "clip"
+    && tail.some(call => call.method === "drawImage" && call.args.length === 9 && call.args[0] instanceof Image);
+}
+
+function bushParticleDraws(sample) {
+  if (!sample.body) return [];
+  // In this quiet, unlit fixture the actor's contact shadow precedes its sprite;
+  // berry ellipses are painted afterward, outside the foliage clip.
+  return sample.calls.slice(sample.calls.indexOf(sample.body) + 1)
+    .filter(call => call.method === "ellipse" || call.method === "arc");
 }
 
 test("authored clearing routes move the rendered pet, its hit area and camera target together", async () => {
@@ -1190,21 +1211,27 @@ test("DEV bush interaction walks, jumps, hides and returns while automatic life 
     const spawn = scene.position(), clock = sceneClock(env), stages = new Set(), poses = new Set();
     worldDevStore.triggerLife("bush");
     assert.deepEqual(scene.position(), spawn, "requesting the scene cannot teleport to its target");
-    let hidden = false, lifted = false, returned = false, foreground = false;
+    let hidden = false, lifted = false, returned = false, foreground = false, particles = false;
     for (let index = 0; index < 500 && !returned; index++) {
       clock.step();
       const frame = clearingActivityFrame(probe.state.clearing), sample = sampleHero(scene, env, pixelSprite);
       stages.add(probe.state.clearing.stage);
       for (const pose of ["walk", "jump", "crouch", "shake", "blink"]) if (sample.hasPose(pose)) poses.add(pose);
       lifted ||= frame.lift > 0 && sample.hasPose("jump");
+      assert.ok(sample.body, `${probe.state.clearing.stage}: the bush never removes the rendered actor`);
+      assert.equal(frame.opacity, 1, "foliage, not an opacity switch, hides the actor");
+      if (probe.state.clearing.stage !== "home") {
+        assert.equal(frame.bush?.occlude, true, `${probe.state.clearing.stage}: route boundaries cannot toggle the foreground off`);
+      }
       if (probe.state.clearing.stage === "bush-hidden") {
         hidden = true;
-        assert.equal(sample.body, undefined, "the hidden actor is absent from the actual canvas composition");
+        assert.ok(bushMaskAfterBody(sample), "the hidden actor remains drawn behind the authored leaf contour");
       }
-      if (frame.bush && sample.body) {
-        foreground ||= sample.calls.slice(sample.calls.indexOf(sample.body) + 1)
-          .some(call => call.method === "drawImage" && !(call.args[0] instanceof Image));
+      if (frame.bush?.occlude) {
+        assert.ok(bushMaskAfterBody(sample), `${probe.state.clearing.stage}: foliage stays in front throughout approach and return`);
+        foreground = true;
       }
+      particles ||= bushParticleDraws(sample).length > 0;
       returned = hidden && probe.state.clearing.stage === "home";
     }
     assert.ok(returned && hidden && lifted && foreground, "the full rendered story includes lift, foliage occlusion, hiding and return");
@@ -1212,10 +1239,13 @@ test("DEV bush interaction walks, jumps, hides and returns while automatic life 
       assert.ok(stages.has(stage), `the scene must visit ${stage}`);
     }
     assert.ok(poses.has("walk") && poses.has("jump") && poses.has("shake"), "travel, jumping and shaking leaves off use distinct sprites");
+    assert.ok(particles, "rummaging shakes visible berries out of the foliage");
     assert.deepEqual(scene.position(), spawn);
     assert.equal(worldDevStore.getSnapshot().autoLife, false);
     clock.advance(10);
     assert.deepEqual(scene.position(), spawn, "completing an explicit DEV request does not enable new automatic outings");
+    assert.equal(clearingActivityFrame(probe.state.clearing).bush, undefined, "finite berry effects expire even when automatic life stays off");
+    assert.equal(bushParticleDraws(sampleHero(scene, env, pixelSprite)).length, 0, "no berries remain permanently in the air");
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
@@ -1233,8 +1263,11 @@ test("a map tap on an occupied bush starts a continuous exit and repeat taps can
     const spawn = scene.position(), clock = sceneClock(env), touch = circlePoint(clearingBush.hide);
     assert.equal(scene.hitPet(touch.x, touch.y), false, "an empty bush is not a ghost character touch target");
     worldDevStore.triggerLife("bush");
+    clock.until(() => probe.state.clearing.stage === "outbound", "the request begins its authored approach", 20);
+    assert.ok(bushMaskAfterBody(sampleHero(scene, env, pixelSprite)), "the foreground exists before the character reaches the bush");
+    assert.equal(scene.hitPet(touch.x, touch.y), false, "an approach mask does not make the still-empty bush an occupied touch target");
     clock.until(() => probe.state.clearing.stage === "bush-hidden", "the character enters the actual bush", 200);
-    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined);
+    assert.ok(bushMaskAfterBody(sampleHero(scene, env, pixelSprite)));
     assert.equal(scene.hitPet(touch.x, touch.y), true, "the authored foliage makes its hidden resident reachable");
     const map = env.surface(400);
     engine = await createMapEngine(map, initial, assert.fail, []);
@@ -1246,7 +1279,7 @@ test("a map tap on an occupied bush starts a continuous exit and repeat taps can
     assert.equal(probe.state.clearing.stage, "bush-exit", "the real map handler wakes the hidden resident");
     assert.ok(distanceBetween(scene.position(), spawn) > 10, "touch does not snap back to the clearing");
     engine.dispose(); engine = null;
-    clock.until(() => Boolean(sampleHero(scene, env, pixelSprite).body), "the pet becomes visible while exiting", 40);
+    clock.until(() => probe.state.clearing.stage === "bush-land", "the pet physically leaves the foliage", 80);
     for (let index = 0; index < 160; index++) { scene.notice(); clock.step(); }
     assert.deepEqual(scene.position(), spawn, "even repeated touches finish the exit and return");
     assert.equal(scene.hitPet(touch.x, touch.y), false, "departing removes the occupied-bush touch target");
@@ -1274,21 +1307,28 @@ test("a hidden bush resident survives camera handoff and pause without restartin
     await flush();
     assert.deepEqual(probe.state.clearing, snapshot, "opening the world preserves the exact scene phase");
     assert.equal(env.frames.size, 1);
-    assert.equal(sampleHero(circle, env, pixelSprite).body, undefined);
-    assert.equal(sampleHero(world, env, pixelSprite).body, undefined);
+    const circleSample = sampleHero(circle, env, pixelSprite), worldSample = sampleHero(world, env, pixelSprite);
+    assert.ok(bushMaskAfterBody(circleSample)); assert.ok(bushMaskAfterBody(worldSample));
+    const berries = bushParticleDraws(circleSample);
+    assert.ok(berries.length, "handoff occurs with airborne berries, not only an empty effect clock");
+    assert.deepEqual(bushParticleDraws(worldSample), berries, "both cameras share each berry's exact position");
     circle.configure({ ...initial, backgrounded: true });
     for (const mode of ["paused", "reducedMotion"]) {
       world.configure({ ...initial, view: "world", [mode]: true });
       const frozen = structuredClone(probe.state.clearing);
+      const frozenSample = sampleHero(world, env, pixelSprite);
       clock.step(60_000);
       assert.deepEqual(probe.state.clearing, frozen, `${mode} cannot advance the bush choreography`);
-      assert.equal(sampleHero(world, env, pixelSprite).body, undefined, `${mode} keeps the actor behind its foliage`);
+      const stillSample = sampleHero(world, env, pixelSprite);
+      assert.ok(bushMaskAfterBody(stillSample), `${mode} keeps the actor behind its foliage`);
+      assert.deepEqual(bushParticleDraws(stillSample), bushParticleDraws(frozenSample), `${mode} freezes the falling berries`);
+      assert.deepEqual(stillSample.body.args, frozenSample.body.args, `${mode} preserves the tucked pose and body position`);
       world.configure({ ...initial, view: "world" }); clock.step();
     }
     const beforeReturn = structuredClone(probe.state.clearing);
     world.dispose(); circle.configure(initial); await flush();
     assert.deepEqual(probe.state.clearing, beforeReturn);
-    assert.equal(sampleHero(circle, env, pixelSprite).body, undefined);
+    assert.ok(bushMaskAfterBody(sampleHero(circle, env, pixelSprite)));
     clock.until(() => probe.state.clearing.stage === "home", "returning to the circle finishes the existing outing", 240);
     assert.ok(sampleHero(circle, env, pixelSprite).body);
   } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }

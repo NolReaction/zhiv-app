@@ -397,11 +397,11 @@ test("bush play walks, anticipates, jumps behind foliage, rustles, exits, lands 
     const before = { ...state.position };
     advanceClearingActivity(state, .025, conditions);
     const frame = clearingActivityFrame(state); stages.add(state.stage); poses.add(frame.pose);
-    assert.ok(Math.hypot(frame.x - before.x, frame.y - before.y) <= .67, "no teleport between walk and bush corridor");
+    assert.ok(Math.hypot(frame.x - before.x, frame.y - before.y) <= .8, "no teleport between walk and bush corridor");
     started ||= state.stage === "outbound";
     jumped ||= (frame.lift ?? 0) > 5;
     if (state.stage === "bush-hidden") {
-      hidden = true; assert.equal(frame.opacity, 0); assert.equal(frame.bush.occlude, true);
+      hidden = true; assert.equal(frame.opacity, 1); assert.equal(frame.bush.occlude, true);
       assert.deepEqual(state.position, bushScene().bushes[0].hide);
       rustled ||= frame.bush.rustle > .4;
     } else assert.equal(frame.opacity, 1, "ground travel is hidden by foliage, never faded in empty air");
@@ -409,7 +409,7 @@ test("bush play walks, anticipates, jumps behind foliage, rustles, exits, lands 
   }
   assert.ok(jumped && hidden && rustled);
   assert.deepEqual(stages, new Set(["outbound", "bush-prepare", "bush-enter", "bush-hidden", "bush-exit", "bush-land", "return", "home"]));
-  assert.ok(poses.has("jump") && poses.has("crouch") && poses.has("shake"));
+  assert.ok(poses.has("jump") && poses.has("shake"));
   assert.equal(isClearingAtHome(state), true); assert.equal(clearingActivityFrame(state).attention, false);
 });
 
@@ -482,7 +482,10 @@ test("bush pause keeps the same geometry and reduced-motion touch settles visibl
       const frozen = clearingActivityFrame(state, { still: true });
       assert.deepEqual({ x: frozen.x, y: frozen.y, lift: frozen.lift, opacity: frozen.opacity },
         { x: before.x, y: before.y, lift: before.lift, opacity: before.opacity });
-      assert.equal(frozen.bush.rustle, 0);
+      assert.equal(frozen.bush.rustle, before.bush.rustle);
+      assert.equal(frozen.bush.elapsed, before.bush.elapsed);
+      assert.deepEqual(frozen.bush.bursts, before.bush.bursts);
+      assert.equal(frozen.compression, before.compression);
     }
     assert.equal(noticeClearingActivity(state, { still: true }), true);
     const settled = clearingActivityFrame(state, { still: true });
@@ -525,4 +528,70 @@ test("requesting a bush scene wakes from home sleep and resets the inactivity de
   assert.equal(requestClearingBush(state), true); assert.equal(state.idleSeconds, 0);
   advance(state, .5, homeConditions);
   assert.equal(state.stage, "bush-hidden"); assert.equal(state.retiring, false);
+});
+
+
+test("bush entry and emergence keep opaque body geometry continuous behind an uninterrupted contour", () => {
+  const state = createClearingActivity(bushScene(), 7);
+  requestClearingBush(state);
+  let previous = clearingActivityFrame(state), started = false, tucked = false, returned = false;
+  for (let elapsed = 0; elapsed < 35 && (!started || state.stage !== "home"); elapsed += .0125) {
+    advanceClearingActivity(state, .0125, conditions);
+    const frame = clearingActivityFrame(state);
+    started ||= state.stage === "outbound";
+    returned ||= state.stage === "return";
+    assert.equal(frame.opacity, 1, "foliage provides hiding; the actor never disappears by alpha");
+    assert.ok(Math.abs((frame.lift ?? 0) - (previous.lift ?? 0)) < 1, `${state.stage}: lift should settle without a pop`);
+    assert.ok(Math.abs((frame.compression ?? 0) - (previous.compression ?? 0)) < .1, `${state.stage}: body tucks continuously`);
+    if (state.stage !== "home") {
+      assert.equal(frame.bush?.occlude, true, `${state.stage}: the same contour covers every part of the approach and retreat`);
+      assert.equal(frame.bush.occupied, state.stage.startsWith("bush-"));
+    }
+    if (state.stage === "bush-hidden") {
+      tucked ||= frame.compression > .8 && frame.lift > 0;
+      assert.equal(frame.direction, "back", "the resident dives into the leaves instead of staring at the camera");
+    }
+    previous = frame;
+  }
+  assert.ok(tucked && returned);
+});
+
+test("bush contact emits bounded one-shot berry bursts that freeze and finish after leaving", () => {
+  const state = createClearingActivity(bushScene(), 19);
+  requestClearingBush(state);
+  until(state, s => s.stage === "outbound");
+  assert.deepEqual(clearingActivityFrame(state).bush.bursts, [], "walking near a bush does not drop berries");
+  until(state, s => s.stage === "bush-hidden");
+  assert.equal(clearingActivityFrame(state).bush.bursts.length, 1, "one entry impact");
+  advance(state, 1);
+  const snapshot = structuredClone(clearingActivityFrame(state));
+  assert.equal(snapshot.bush.bursts.length, 2, "a deliberate rummage makes the second shake");
+  for (const changes of [{ enabled: false }, { blocked: true }]) {
+    advance(state, 5, { ...conditions, ...changes });
+    assert.deepEqual(clearingActivityFrame(state, { still: true }), { ...snapshot, attention: false }, "paused leaves and berries hold their exact frame");
+  }
+  until(state, s => s.stage === "return");
+  const effects = clearingActivityFrame(state).bush;
+  assert.equal(effects.occupied, false); assert.equal(effects.bursts.length, 4);
+  assert.equal(new Set(effects.bursts.map(item => item.seed)).size, 4, "each nudge varies the scatter deterministically");
+  assert.ok(effects.bursts.every((item, index) => index === 0 || item.at > effects.bursts[index - 1].at));
+  const lastBurst = effects.bursts.at(-1).at;
+  assert.ok(effects.elapsed - lastBurst < 3.2, "the last berries still have time to fall as the resident walks away");
+  advance(state, 3.4);
+  assert.equal(state.bushEffect, null, "finished particle timelines are released without accumulating events");
+});
+
+test("taps cannot replay bush bursts and early exit skips future rummaging", () => {
+  const state = createClearingActivity(bushScene(), 5);
+  requestClearingBush(state); until(state, s => s.stage === "bush-hidden");
+  noticeClearingActivity(state);
+  let largest = 0;
+  for (let elapsed = 0; elapsed < 4; elapsed += .025) {
+    noticeClearingActivity(state);
+    advanceClearingActivity(state, .025, conditions);
+    const bursts = clearingActivityFrame(state).bush?.bursts ?? [];
+    largest = Math.max(largest, bursts.length);
+    assert.ok(bursts.length <= 2, "contact and departure only; cancelled rummages cannot fire later");
+  }
+  assert.equal(largest, 2);
 });

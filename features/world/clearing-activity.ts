@@ -3,6 +3,8 @@ import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
 type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint };
+type BushBurst = { at: number; strength: number; seed: number };
+type BushEffect = { id: string; elapsed: number; seed: number; emitted: number; bursts: BushBurst[] };
 type ActionStep = { pose: PixelPose; seconds: number; direction?: PixelDirection };
 type ClearingRoute = { id: string; points: WorldPoint[]; distances: number[]; length: number;
   activity: ClearingAction; pauseSeconds?: number; bush?: ClearingBush };
@@ -20,6 +22,8 @@ export type ClearingActivityState = {
   idleSeconds: number; awakeUntil: number; retiring: boolean; homeEnabled: boolean;
   attentionResume: ClearingStage | null; attentionQuietUntil: number; wakeOnExit: boolean;
   lastActivity: ClearingAction | null; lastVariant: number;
+  /** Local visual clock survives the walk away until the last berries settle. */
+  bushEffect: BushEffect | null;
   bushProgress: number; bushWake: boolean; bushLeaving: boolean; pendingBush: number | null; bushRequested: boolean;
 };
 export type ClearingActivityOptions = {
@@ -32,14 +36,18 @@ export type ClearingActivityFrame = WorldPoint & {
   direction: PixelDirection; pose: PixelPose; frame: number;
   opacity: number; homeSleeping: boolean; attention: boolean; residing: boolean;
   /** Feet remain on their ground path; only the sprite is raised during a jump. */
-  lift?: number; bush?: { id: string; rustle: number; occlude: boolean };
+  lift?: number; compression?: number;
+  bush?: { id: string; rustle: number; occlude: boolean; occupied: boolean; elapsed: number; bursts: BushBurst[] };
 };
 export const CLEARING_HOME_IDLE_SECONDS = 180;
 export const CLEARING_AWAKE_GRACE_SECONDS = 30;
 const DOOR_FADE_SECONDS = .8;
-const BUSH_PREPARE_SECONDS = 1.1, BUSH_ENTER_SECONDS = .8, BUSH_EXIT_SECONDS = .95, BUSH_LAND_SECONDS = .95;
+const BUSH_PREPARE_SECONDS = 1.15, BUSH_ENTER_SECONDS = 1.25, BUSH_EXIT_SECONDS = 1.35, BUSH_LAND_SECONDS = 1.05;
+const BUSH_PARTICLE_SECONDS = 3.2;
+const BUSH_TUCK_LIFT = .12;
 const bushStage = (stage: ClearingStage) => stage.startsWith("bush-");
 const clamp = (n: number, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, n));
+const smooth = (value: number) => { const t = clamp(value); return t * t * (3 - 2 * t); };
 const finitePoint = (point: WorldPoint | undefined): point is WorldPoint => Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -180,7 +188,7 @@ export function createClearingActivity(scene: FixedWorldScene, seed = Math.rando
     waking: false, routeKind: "clearing", idleSeconds: 0,
     awakeUntil: 0, retiring: false, homeEnabled: false, attentionResume: null, attentionQuietUntil: 0,
     wakeOnExit: false, lastActivity: null, lastVariant: -1,
-    bushProgress: 0, bushWake: false, bushLeaving: false, pendingBush: null, bushRequested: false };
+    bushEffect: null, bushProgress: 0, bushWake: false, bushLeaving: false, pendingBush: null, bushRequested: false };
 }
 function random(state: ClearingActivityState) {
   state.seed = (Math.imul(state.seed, 1664525) + 1013904223) >>> 0;
@@ -190,7 +198,8 @@ function startActivity(state: ClearingActivityState, options: ClearingActivityOp
   if (route?.activity === "bush" && route.bush) {
     state.stage = "bush-prepare"; state.stageElapsed = 0; state.speed = 0; state.steps = [];
     state.bushProgress = 0; state.bushWake = false; state.bushLeaving = false;
-    state.direction = route.bush.hide.x < route.bush.entry.x ? "left" : "right";
+    state.direction = bushDirection(route.bush.entry, route.bush.hide);
+    state.bushEffect = { id: route.bush.id, elapsed: 0, seed: Math.trunc(random(state) * 0x100000000), emitted: 0, bursts: [] };
     state.lastActivity = "bush";
     return;
   }
@@ -390,6 +399,11 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   if (!state.homeEnabled) state.retiring = false;
   if (state.frozen) return;
   state.elapsed += dt; state.stageElapsed += dt;
+  if (state.bushEffect) {
+    state.bushEffect.elapsed += dt;
+    const lastBurst = state.bushEffect.bursts.at(-1);
+    if (!bushStage(state.stage) && (!lastBurst || state.bushEffect.elapsed - lastBurst.at > BUSH_PARTICLE_SECONDS)) state.bushEffect = null;
+  }
   if (!state.homeEnabled && state.routeKind === "home" && state.stage !== "home-return" && state.stage !== "exiting") {
     state.retiring = false; retrace(state);
   }
@@ -397,7 +411,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     && state.stage !== "attention" && state.routeKind !== "home") {
     state.retiring = true; retrace(state);
   }
-  if (bushStage(state.stage)) { advanceBush(state, dt); return; }
+  if (bushStage(state.stage)) { advanceBush(state); return; }
   if (state.stage === "home-sleep") return;
   if (state.stage === "entering") {
     state.doorProgress = clamp(state.doorProgress + dt / state.doorSeconds); updateDoorPosition(state);
@@ -449,49 +463,96 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   advanceWalk(state, dt, options);
 }
 
-function advanceBush(state: ClearingActivityState, dt: number) {
+function bushDirection(from: WorldPoint, to: WorldPoint): PixelDirection {
+  // The resident faces into the leaves, rather than showing a sideways face while
+  // its front half is being covered. Horizontal hideouts still use a side view.
+  if (Math.abs(to.y - from.y) > Math.abs(to.x - from.x) * .45) return to.y < from.y ? "back" : "front";
+  return to.x < from.x ? "left" : "right";
+}
+function burst(state: ClearingActivityState, slot: number, strength: number) {
+  const effect = state.bushEffect;
+  if (!effect || effect.emitted & (1 << slot)) return;
+  effect.emitted |= 1 << slot;
+  effect.bursts.push({ at: effect.elapsed, strength, seed: (effect.seed ^ Math.imul(slot + 1, 0x9e3779b9)) >>> 0 });
+}
+function advanceBush(state: ClearingActivityState) {
   const route = state.routes[state.routeIndex], bush = route?.bush;
   if (!bush) { retrace(state); return; }
   if (state.stage === "bush-prepare") {
     if (state.stageElapsed >= BUSH_PREPARE_SECONDS) { state.stage = "bush-enter"; state.stageElapsed = 0; }
   } else if (state.stage === "bush-enter") {
-    state.bushProgress = clamp(state.bushProgress + dt / BUSH_ENTER_SECONDS); updateBushPosition(state);
-    if (state.bushProgress >= 1) { state.stage = state.bushLeaving ? "bush-exit" : "bush-hidden"; state.stageElapsed = 0; }
+    state.bushProgress = smooth(state.stageElapsed / BUSH_ENTER_SECONDS); updateBushPosition(state);
+    if (state.bushProgress >= .5) burst(state, 0, .85);
+    if (state.stageElapsed >= BUSH_ENTER_SECONDS) {
+      state.bushProgress = 1; updateBushPosition(state);
+      state.stage = state.bushLeaving ? "bush-exit" : "bush-hidden"; state.stageElapsed = 0;
+    }
   } else if (state.stage === "bush-hidden") {
-    if (state.stageElapsed >= (route.pauseSeconds ?? 4.2)) { state.stage = "bush-exit"; state.stageElapsed = 0; }
+    const duration = route.pauseSeconds ?? 4.2;
+    if (state.stageElapsed >= .65) burst(state, 1, .7);
+    if (state.stageElapsed >= Math.max(1.25, duration * .58)) burst(state, 2, 1);
+    if (state.stageElapsed >= duration) { state.stage = "bush-exit"; state.stageElapsed = 0; }
   } else if (state.stage === "bush-exit") {
-    state.bushProgress = clamp(state.bushProgress - dt / BUSH_EXIT_SECONDS); updateBushPosition(state);
-    state.direction = bush.entry.x < bush.hide.x ? "left" : "right";
-    if (state.bushProgress <= 0) { state.stage = "bush-land"; state.stageElapsed = 0; }
+    const travel = clamp((state.stageElapsed - .18) / (BUSH_EXIT_SECONDS - .18));
+    state.bushProgress = 1 - smooth(travel); updateBushPosition(state);
+    state.direction = bushDirection(bush.hide, bush.entry);
+    if (travel >= .07) burst(state, 3, .65);
+    if (state.stageElapsed >= BUSH_EXIT_SECONDS) {
+      state.bushProgress = 0; updateBushPosition(state); state.stage = "bush-land"; state.stageElapsed = 0;
+    }
   } else if (state.stageElapsed >= BUSH_LAND_SECONDS) {
     if (state.bushWake) beginAttention(state, false, "return");
     else { state.stage = "return"; state.stageElapsed = 0; }
   }
 }
-function bushFrame(state: ClearingActivityState, still: boolean): Partial<ClearingActivityFrame> {
-  const route = state.routes[state.routeIndex], bush = route?.bush;
-  if (!bush || !bushStage(state.stage)) return {};
-  const t = state.stageElapsed, progress = state.bushProgress;
-  const jumping = state.stage === "bush-enter" || state.stage === "bush-exit";
-  const hidden = state.stage === "bush-hidden";
-  const rustle = state.stage === "bush-enter" ? Math.sin(Math.PI * clamp((progress - .3) / .7))
-    : state.stage === "bush-exit" ? Math.sin(Math.PI * clamp((1 - progress) / .65))
-    : hidden ? .25 + .55 * Math.max(0, Math.sin(t * 2.3)) ** 3
-    : state.stage === "bush-land" ? .35 * Math.exp(-t * 5) : 0;
-  return { lift: jumping ? Math.sin(progress * Math.PI) * state.size * (state.stage === "bush-enter" ? .28 : .2) : 0,
-    bush: { id: bush.id, rustle: still ? 0 : clamp(rustle), occlude: true },
-    opacity: hidden ? 0 : 1,
-    pose: jumping ? progress > .78 ? "crouch" : "jump" : state.stage === "bush-prepare" ? t < .65 ? "wonder" : "crouch"
-      : state.stage === "bush-land" ? t < .2 ? "crouch" : t < .75 ? "shake" : "blink" : "crouch",
-    frame: jumping ? Math.min(3, Math.floor((state.stage === "bush-enter" ? progress : 1 - progress) * 4)) : Math.floor(t * 5) % 4 };
+function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame> {
+  const routeBush = state.routeKind === "clearing" ? state.routes[state.routeIndex]?.bush : undefined;
+  const effect = state.bushEffect;
+  const id = routeBush?.id ?? effect?.id;
+  if (!id) return {};
+  const matchingEffect = effect?.id === id ? effect : null;
+  // Each physical nudge starts one finite damped shake. Pausing freezes this
+  // clock, preserving both the moving foliage and every airborne berry.
+  const rustle = (matchingEffect?.bursts ?? []).reduce((sum, item) => {
+    const age = matchingEffect!.elapsed - item.at;
+    return age < 0 || age > 1.3 ? sum : sum + item.strength * smooth(age / .08) * Math.exp(-age * 3.5)
+      * (.8 + .2 * Math.cos(age * 20));
+  }, 0);
+  const foliage = { id, rustle: clamp(rustle), occlude: Boolean(routeBush), occupied: bushStage(state.stage),
+    elapsed: matchingEffect?.elapsed ?? 0, bursts: matchingEffect?.bursts ?? [] };
+  if (!routeBush || !bushStage(state.stage)) return { bush: foliage };
+  const t = state.stageElapsed;
+  let lift = 0, compression = 0, pose: PixelPose = "idle", frame = 0;
+  if (state.stage === "bush-prepare") {
+    compression = .28 * smooth((t - .45) / (BUSH_PREPARE_SECONDS - .45));
+    pose = t < .45 ? "wonder" : "idle";
+  } else if (state.stage === "bush-enter") {
+    const travel = clamp(t / BUSH_ENTER_SECONDS);
+    compression = .28 * (1 - smooth(travel / .22)) + smooth((travel - .25) / .75);
+    lift = state.size * (.2 * Math.sin(travel * Math.PI) + BUSH_TUCK_LIFT * smooth((travel - .35) / .65));
+    pose = "jump"; frame = Math.min(3, Math.floor(travel * 4));
+  } else if (state.stage === "bush-hidden") {
+    compression = 1; lift = state.size * BUSH_TUCK_LIFT;
+    pose = "jump"; frame = 3;
+  } else if (state.stage === "bush-exit") {
+    const travel = clamp((t - .18) / (BUSH_EXIT_SECONDS - .18));
+    compression = 1 - smooth(travel);
+    lift = state.size * (BUSH_TUCK_LIFT * (1 - smooth(travel)) + .18 * Math.sin(travel * Math.PI));
+    pose = "jump"; frame = Math.min(3, Math.floor(travel * 4));
+  } else {
+    compression = .2 * Math.sin(Math.PI * clamp(t / .3));
+    pose = t < .3 ? "jump" : t < .85 ? "shake" : "blink";
+    frame = Math.floor(t * 5) % 4;
+  }
+  return { bush: foliage, lift, compression: clamp(compression), pose, frame };
 }
 
 export function clearingActivityFrame(state: ClearingActivityState, options: { still?: boolean } = {}): ClearingActivityFrame {
   const opacity = state.stage === "home-sleep" ? 0 : state.stage === "entering" || state.stage === "exiting"
     ? 1 - state.doorProgress * state.doorProgress * (3 - 2 * state.doorProgress) : 1;
   const base = { ...state.position, direction: state.direction, opacity, homeSleeping: state.stage === "home-sleep",
-    residing: state.routeKind === "home", attention: !options.still && (state.stage === "attention" || state.waking || state.bushWake || state.bushRequested || state.bushLeaving) };
-  if (bushStage(state.stage)) return { ...base, pose: "idle", frame: 0, ...bushFrame(state, Boolean(options.still || state.frozen)) };
+    ...bushFrame(state), residing: state.routeKind === "home", attention: !options.still && (state.stage === "attention" || state.waking || state.bushWake || state.bushRequested || state.bushLeaving) };
+  if (bushStage(state.stage)) return { ...base, pose: base.pose ?? "idle", frame: base.frame ?? 0 };
   if (state.stage === "home-sleep") return { ...base, pose: "sleep", frame: 0 };
   if (options.still || state.frozen) return { ...base, pose: "idle", frame: 0 };
   if (state.stage === "entering" || state.stage === "exiting") return { ...base, pose: "walk", frame: Math.floor(state.stageElapsed * 5) % 4 };

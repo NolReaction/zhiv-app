@@ -113,11 +113,11 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   if (dev?.showHero !== false && (walking?.opacity ?? 1) > 0) {
     const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
     const motion = automatic && walking ? walking : null;
-    const manualDirection = dev && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
+    const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     drawGroundedHero(context, { ...actor, direction: routine?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
       ...(routine ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
-      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift });
+      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression });
     if (routine) drawForestLifePartner(context, routine, elapsed);
     context.restore();
   }
@@ -161,7 +161,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife) || current.attention || dev?.showBuildings === false && current.residing;
+    return Boolean(state.pendingLife || state.clearing.bushEffect?.bursts.length)
+      || current.attention || dev?.showBuildings === false && current.residing;
   }
   function preview(): NewMapPaintPreview {
     return { state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
@@ -293,7 +294,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     dev = worldDevStore.getSnapshot();
     if (session.consumeControls(dev)) {
       if ((dev.animation?.id !== before.animation?.id && dev.animation || dev.pose !== before.pose && dev.pose !== "auto")
-        && clearingActivityFrame(state.clearing).bush) noticeClearingActivity(state.clearing, { still: true });
+        && clearingActivityFrame(state.clearing).bush?.occupied) noticeClearingActivity(state.clearing, { still: true });
       if (dev.animation?.id !== before.animation?.id) {
         if (!dev.animation) state.animation = null;
         else if (session.consumeEvent("pose", dev.animation.id)) state.animation = { pose: dev.animation.pose, elapsed: 0 };
@@ -362,7 +363,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const actor = clearingActivityFrame(state.clearing);
       if (disposed || dev?.showHero === false) return false;
       if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
-      const bush = actor.bush && TILED_WORLD.bushes?.find(item => item.id === actor.bush!.id);
+      const bush = actor.bush?.occupied && TILED_WORLD.bushes?.find(item => item.id === actor.bush!.id);
       if (bush && pointInPolygon(point, bush.points)) return true;
       const feetY = actor.y - (actor.lift ?? 0);
       return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2

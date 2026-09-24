@@ -41,15 +41,17 @@ export function heroSpriteContact(sprite: HTMLCanvasElement, pose: PixelPose, fr
 
 export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
   x: number; y: number; size: number; pose: PixelPose; direction: PixelDirection; frame: number;
-  appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number; shadow?: boolean; lift?: number;
+  appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number; shadow?: boolean; lift?: number; compression?: number;
 }) {
   if (![actor.x, actor.y, actor.size].every(Number.isFinite) || actor.size <= 0) return;
   const sprite = pixelSprite(actor.pose, actor.direction, actor.frame, actor.appearance);
-  const contact = heroSpriteContact(sprite, actor.pose, actor.frame), scale = actor.size / HERO_SOURCE_SIZE;
+  const compression = Number.isFinite(actor.compression) ? Math.max(0, Math.min(1, actor.compression!)) : 0;
+  const width = actor.size * (1 - .14 * compression);
+  const contact = heroSpriteContact(sprite, actor.pose, actor.frame), scale = width / HERO_SOURCE_SIZE;
   const footWidth = (contact.right - contact.left) * scale;
   const footX = actor.x + ((contact.left + contact.right) / 2 - HERO_SOURCE_SIZE / 2) * scale;
   const breathe = Number.isFinite(actor.breathe) ? Math.max(-.008, Math.min(.008, actor.breathe!)) : 0;
-  const height = actor.size * (1 + breathe);
+  const height = actor.size * (1 + breathe) * (1 - .35 * compression);
   const lift = Number.isFinite(actor.lift) ? Math.max(0, Math.min(actor.size, actor.lift!)) : 0;
   ctx.save();
   if (actor.shadow !== false) {
@@ -62,7 +64,7 @@ export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
     ctx.restore();
   }
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sprite, actor.x - actor.size / 2, actor.y - lift - contact.bottom / HERO_SOURCE_SIZE * height, actor.size, height);
+  ctx.drawImage(sprite, actor.x - width / 2, actor.y - lift - contact.bottom / HERO_SOURCE_SIZE * height, width, height);
   ctx.restore();
 }
 

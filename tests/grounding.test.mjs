@@ -150,6 +150,29 @@ test("invalid actor coordinates and size never send nonfinite geometry to canvas
   }
 });
 
+test("ducking shrinks the body continuously around its feet without hiding or moving its ground shadow", () => {
+  let previousWidth = Infinity, previousHeight = Infinity;
+  for (const compression of [0, .25, .5, .75, 1]) {
+    const ctx = recordingContext();
+    drawGroundedHero(ctx, { x: 100, y: 200, size: 56, pose: "crouch", direction: "back", frame: 0, compression, lift: 6 });
+    const [sprite, x, y, width, height] = ctx.draws[0].args;
+    assert.equal(x + width / 2, 100);
+    assert.ok(Math.abs(y + heroSpriteContact(sprite, "crouch", 0).bottom / 48 * height - 194) < 1e-10);
+    assert.ok(width <= previousWidth && height <= previousHeight);
+    assert.ok(width >= 56 * .86 && height >= 56 * .65);
+    assert.equal(ctx.ellipses[1].args[1], 200);
+    assert.equal(ctx.globalAlpha, 1);
+    previousWidth = width; previousHeight = height;
+  }
+  for (const compression of [-4, 4, Number.NaN, Infinity]) {
+    const ctx = recordingContext();
+    drawGroundedHero(ctx, { x: 0, y: 0, size: 56, pose: "crouch", direction: "back", frame: 0, compression });
+    const [, , , width, height] = ctx.draws[0].args;
+    assert.ok(Number.isFinite(width) && width >= 56 * .86 && width <= 56);
+    assert.ok(Number.isFinite(height) && height >= 56 * .65 && height <= 56);
+  }
+});
+
 test("an unavailable or empty alpha buffer keeps the rig's safe contact without repeated reads", () => {
   for (const mode of ["missing", "throw", "transparent"]) {
     let reads = 0;

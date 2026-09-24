@@ -1,6 +1,12 @@
 import type { FixedWorldScene, WorldBounds, WorldBush, WorldPoint } from "./tiled/types";
+import { forestBushBounds, forestBushParticles, type ForestBushBurst, type ForestBushParticle } from "./forest-bush-particles";
 
-export type ForestBushFrame = { id: string; rustle: number; occlude: boolean };
+export type ForestBushFrame = {
+  id: string; rustle: number; occlude: boolean;
+  /** Encounter clock freezes with the actor, independent of the ambient scene clock. */
+  elapsed?: number;
+  bursts?: readonly ForestBushBurst[];
+};
 type TerrainSource = { image: HTMLImageElement; bounds: WorldBounds };
 type BushTexture = { leaves: HTMLCanvasElement | null; bounds: WorldBounds; sources: TerrainSource[] };
 const textures = new WeakMap<FixedWorldScene, WeakMap<WorldBush, BushTexture>>();
@@ -10,14 +16,6 @@ function polygon(ctx: CanvasRenderingContext2D, points: readonly WorldPoint[]) {
   ctx.beginPath();
   points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
   ctx.closePath();
-}
-
-function boundsOf(points: readonly WorldPoint[]): WorldBounds | null {
-  if (points.length < 3 || !points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y))) return null;
-  const xs = points.map(point => point.x), ys = points.map(point => point.y);
-  const x = Math.min(...xs), y = Math.min(...ys);
-  const width = Math.max(...xs) - x, height = Math.max(...ys) - y;
-  return width > 0 && height > 0 ? { x, y, width, height } : null;
 }
 
 function overlaps(a: WorldBounds, b: WorldBounds) {
@@ -71,6 +69,44 @@ function textureFor(scene: FixedWorldScene, bush: WorldBush, bounds: WorldBounds
   return result;
 }
 
+const berryColors = [
+  { shadow: "#713921", body: "#c97831", light: "#edba60" },
+  { shadow: "#783326", body: "#bb5d32", light: "#e89c4b" },
+  { shadow: "#75522c", body: "#c5923c", light: "#efd176" },
+];
+
+function drawParticles(ctx: CanvasRenderingContext2D, particles: readonly ForestBushParticle[]) {
+  if (!particles.length) return;
+  ctx.save();
+  for (const particle of particles) {
+    const height = Math.max(0, particle.groundY - particle.y), closeness = 1 / (1 + height * .12);
+    ctx.globalAlpha = particle.opacity * (.05 + .16 * closeness);
+    ctx.fillStyle = "#243319";
+    ctx.beginPath(); ctx.ellipse(particle.x, particle.groundY + particle.radius * .4,
+      particle.radius * (1.2 + .55 * (1 - closeness)), particle.radius * .42, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  for (const particle of particles) {
+    const { radius: r } = particle;
+    ctx.save(); ctx.globalAlpha = particle.opacity; ctx.translate(particle.x, particle.y); ctx.rotate(particle.rotation);
+    if (particle.kind === "leaf") {
+      ctx.fillStyle = ["#9dad48", "#b3ae4c", "#7c963e"][particle.color];
+      ctx.beginPath(); ctx.moveTo(-r, 0); ctx.quadraticCurveTo(-r * .2, -r * .8, r, 0);
+      ctx.quadraticCurveTo(r * .2, r * .65, -r, 0); ctx.fill();
+      ctx.strokeStyle = "#657a33"; ctx.lineWidth = r * .17;
+      ctx.beginPath(); ctx.moveTo(-r * .8, 0); ctx.lineTo(r * .85, 0); ctx.stroke();
+    } else {
+      const palette = berryColors[particle.color];
+      ctx.fillStyle = palette.shadow; ctx.beginPath(); ctx.ellipse(0, r * .12, r, r * 1.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = palette.body; ctx.beginPath(); ctx.ellipse(-r * .1, -r * .14, r * .85, r * .88, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = palette.light; ctx.beginPath(); ctx.ellipse(-r * .32, -r * .4, r * .26, r * .35, -.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#577432"; ctx.beginPath(); ctx.moveTo(-r * .4, -r * .78);
+      ctx.lineTo(0, -r * 1.12); ctx.lineTo(r * .4, -r * .73); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 /**
  * Foreground foliage comes from the exact Tiled polygon, never a rectangular cover.
  * Call after the actor and before rain/light. The ground itself stays stationary:
@@ -85,12 +121,15 @@ export function drawForestBush(
   still = false,
 ) {
   if (!frame) return;
-  const rustle = still ? 0 : clamp(frame.rustle);
-  if (!frame.occlude && !rustle) return;
+  const hasClock = Number.isFinite(frame.elapsed);
+  const rustle = still && !hasClock ? 0 : clamp(frame.rustle);
+  const time = hasClock ? frame.elapsed! : Number.isFinite(elapsed) ? elapsed : 0;
   const bush = scene.bushes?.find(item => item.id === frame.id);
   if (!bush) return;
-  const bounds = boundsOf(bush.points);
+  const bounds = forestBushBounds(bush);
   if (!bounds) return;
+  const particles = forestBushParticles(bush, time, frame.bursts ?? []);
+  if (!frame.occlude && !rustle && !particles.length) return;
   const padded = { x: bounds.x - 4, y: bounds.y - 4, width: bounds.width + 8, height: bounds.height + 8 };
   const sources: TerrainSource[] = [];
   for (const terrain of scene.terrain) {
@@ -101,6 +140,9 @@ export function drawForestBush(
     sources.push({ image, bounds: terrain.bounds });
   }
   if (!sources.length) return;
+  // Residual berries can settle while the actor is already leaving. They must not
+  // reactivate an old foreground mask above an unrelated pose or a new route.
+  if (!frame.occlude && !rustle) { drawParticles(ctx, particles); return; }
   const texture = textureFor(scene, bush, bounds, sources);
   ctx.save();
   polygon(ctx, bush.points); ctx.clip();
@@ -109,12 +151,12 @@ export function drawForestBush(
   // change its sharpness. This also works without offscreen canvas or Path2D.
   paintTerrain(ctx, sources);
   if (texture && rustle > .001 && texture.leaves) {
-    const area = texture.bounds, time = Number.isFinite(elapsed) ? elapsed : 0;
-    const amplitude = rustle * Math.min(1.8, bounds.width * .022, bounds.height * .028);
+    const area = texture.bounds;
+    const amplitude = rustle * Math.min(2.1, bounds.width * .028, bounds.height * .034);
     const displacement = (y: number) => {
       const height = clamp((y - bounds.y) / bounds.height), freedom = Math.pow(1 - height, .65);
-      return amplitude * freedom * (.72 * Math.sin(time * 17 + height * 2.4)
-        + .28 * Math.sin(time * 27 - height * 6));
+      return amplitude * freedom * (.72 * Math.sin(time * 13 + height * 2.4)
+        + .28 * Math.sin(time * 21 - height * 6));
     };
     const bands = 12, bandHeight = bounds.height / bands;
     for (let index = 0; index < bands; index++) {
@@ -130,4 +172,5 @@ export function drawForestBush(
     }
   }
   ctx.restore();
+  drawParticles(ctx, particles);
 }
