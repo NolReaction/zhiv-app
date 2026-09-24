@@ -272,7 +272,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           <Toggle label="Проходимость и цель Мохлика" checked={state.debugNavigation} onChange={debugNavigation => change({ debugNavigation })} />
           {state.debugNavigation && <p className={styles.hint}>Зелёный — разрешённая область и безопасные точки сетки, красный — препятствия, голубой — вода. Жёлтый — путь и цель; круг под лапами показывает радиус обхода.</p>}
           <Toggle label="Особи и их цели" checked={state.debugFauna} onChange={debugFauna => change({ debugFauna })} />
-          {state.debugFauna && <p className={styles.hint}>Подписи показывают постоянный ID, состояние и цель особи. Фиолетовый пунктир — размеченная территория вида; подпись встречи указывает её участника и фазу.</p>}
+          {state.debugFauna && <p className={styles.hint}>Подписи показывают постоянный ID, состояние и цель особи. Фиолетовый пунктир — территория, красный — вычтенная из неё область. Подпись встречи указывает участника и фазу. Бабочки активны днём, светлячки — ночью.</p>}
           {TILED_WORLD.sites.map(site => <Field key={site.id} label={site.label}>
             <select value={state.levels[site.id] ?? site.initialLevel} onChange={event => change({ levels: { ...state.levels, [site.id]: Number(event.target.value) } })}>
               {site.states.map(visual => <option key={visual.level} value={visual.level}>{visual.label} · уровень {visual.level}</option>)}

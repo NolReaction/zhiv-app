@@ -1519,9 +1519,11 @@ test("static night and DEV lighting edits update real firefly glow without advan
     const frozen = structuredClone(probe.state.fauna), night = glowFrame();
     assert.equal(night.length, 3); assert.ok(night.every(alpha => alpha > 0), "a first static night frame has luminous real insects");
     worldDevStore.patch({ timeOfDay: "day" });
-    assert.ok(glowFrame().every(alpha => alpha === 0), "daylight suppresses the halo while keeping the insect body");
+    assert.deepEqual(glowFrame(), [], "daylight hides the nocturnal population entirely");
     worldDevStore.patch({ fireflies: "on" });
-    assert.ok(glowFrame().every(alpha => alpha > 0), "the explicit DEV override updates a frozen frame immediately");
+    assert.deepEqual(glowFrame(), [], "DEV on cannot show nocturnal insects during the day");
+    worldDevStore.patch({ timeOfDay: "night" });
+    assert.equal(glowFrame().length, 3); assert.ok(glowFrame().every(alpha => alpha > 0), "a frozen frame reflects the current night immediately");
     assert.deepEqual(probe.state.fauna, frozen); assert.equal(env.frames.size, 0);
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

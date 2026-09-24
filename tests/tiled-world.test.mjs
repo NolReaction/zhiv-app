@@ -664,6 +664,60 @@ test("empty living metadata is deliberate and named groups preserve roles throug
   assert.deepEqual(empty.habitats, []);
 });
 
+test("habitat exclusions follow the referenced contour regardless of authoring order without rewriting polygons", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(...livingLayers());
+  const forest = map.layers[4].objects[0];
+  forest.properties.push(...props({ excludeHabitatId: "clearing-butterflies" }));
+  const clearing = { ...livingPolygon(30, "clearing-butterflies", "wildlife-habitat", {
+    species: "butterfly", capacity: 3, excludeHabitatId: "flower-patch",
+  }), x: 40, y: 40, polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }] };
+  const patch = { ...livingPolygon(31, "flower-patch", "wildlife-habitat", { species: "butterfly", capacity: 1 }),
+    x: 42, y: 42, polygon: [{ x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: 3 }, { x: 0, y: 3 }] };
+  map.layers[4].objects.push(clearing, patch);
+  map.layers[5].objects.push(livingPoint(32, "clearing-leaf", 48, 48, {
+    role: "wildlife-anchor", habitatId: "clearing-butterflies", kind: "rest",
+  }));
+  const original = clone(map);
+  const scene = await compile();
+  const byId = scene => Object.fromEntries(scene.habitats.map(habitat => [habitat.id, habitat]));
+  const habitats = byId(scene);
+  assert.deepEqual(habitats.butterflies.exclusions, [{ id: "clearing-butterflies", points: habitats["clearing-butterflies"].points }]);
+  assert.deepEqual(habitats["clearing-butterflies"].exclusions, [{ id: "flower-patch", points: habitats["flower-patch"].points }]);
+  assert.equal(Object.hasOwn(habitats["flower-patch"], "exclusions"), false);
+  assert.equal(habitats.butterflies.exclusions.length, 1, "only the raw referenced contour is subtracted, without recursive expansion");
+  assert.deepEqual(map, original, "only generated geometry receives exclusions");
+  map.layers.reverse();
+  map.layers.find(layer => layer.name === "Habitats").objects.reverse();
+  assert.deepEqual(byId(await compile()), habitats);
+  clearing.polygon[1].x = 12;
+  clearing.polygon[2].x = 12;
+  assert.equal(byId(await compile()).butterflies.exclusions[0].points[1].x, 52, "moving clearing vertices updates the forest exclusion on export");
+});
+
+test("habitat exclusions reject broken references and anchors in the excluded contour including its boundary", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(...livingLayers());
+  const forest = map.layers[4].objects[0];
+  forest.properties.push(...props({ excludeHabitatId: "clearing-butterflies" }));
+  map.layers[4].objects.push({ ...livingPolygon(30, "clearing-butterflies", "wildlife-habitat", {
+    species: "butterfly", capacity: 3,
+  }), x: 40, y: 40, polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }] });
+  const cases = [
+    ["missing target", value => { setProp(value.layers[4].objects[0], "excludeHabitatId", "missing"); }, /unknown excluded habitat missing/],
+    ["self reference", value => { setProp(value.layers[4].objects[0], "excludeHabitatId", "butterflies"); }, /habitat cannot exclude itself/],
+    ["invalid identifier", value => { setProp(value.layers[4].objects[0], "excludeHabitatId", "Clearing Butterflies"); }, /expected a lowercase identifier/],
+    ["wrong property type", value => { value.layers[4].objects[0].properties.at(-1).type = "int"; }, /type: expected "string"/],
+    ["rest inside exclusion", value => { Object.assign(value.layers[5].objects[0], { x: 45, y: 45 }); }, /wildlife anchor must be outside excluded contours of habitat butterflies/],
+    ["shelter on exclusion boundary", value => { Object.assign(value.layers[5].objects[1], { x: 40, y: 45 }); }, /wildlife anchor must be outside excluded contours of habitat butterflies/],
+  ];
+  for (const [name, mutate, pattern] of cases) await t.test(name, async () => {
+    const value = clone(map);
+    mutate(value);
+    await assert.rejects(compile(value), pattern);
+  });
+});
+
 test("malformed living geometry, stable IDs, references and activity values fail explicitly", async t => {
   const { map, compile } = await fixture(t);
   map.layers.push(...livingLayers());

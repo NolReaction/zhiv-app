@@ -1,6 +1,7 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene, WorldBounds, WorldHabitat, WorldPoint } from "./tiled/types";
 import type { ForestFirefly } from "./forest-wildlife";
+import { habitatContains, habitatFallbackPoint, habitatFlightTarget, habitatCanTraverse } from "./forest-habitats";
 import { heroHandAnchor, type FaunaActor, type HeroAnchorPose } from "./hero-anchors";
 
 export type { FaunaActor } from "./hero-anchors";
@@ -83,7 +84,7 @@ function legacyHabitat(field: WorldBounds, species: FaunaSpecies, id: string, ca
     { x: field.x + field.width, y: field.y + field.height }, { x: field.x, y: field.y + field.height },
   ] };
 }
-function entity(habitat: WorldHabitat, seed: number, index: number, scale: number, legacy: boolean): ForestFaunaEntity {
+function entity(habitat: WorldHabitat, seed: number, index: number, scale: number, legacy: boolean): ForestFaunaEntity | null {
   const field = bounds(habitat.points), butterfly = habitat.species === "butterfly";
   const n = butterfly ? index + 1 : index + 20, stride = butterfly ? 5 : 7;
   const phase = noise(seed, n * stride) * TAU;
@@ -110,6 +111,23 @@ function entity(habitat: WorldHabitat, seed: number, index: number, scale: numbe
       y: orbit.y + Math.cos(i / 16 * TAU) * orbit.ry })).every(p => inPolygon(p, habitat.points));
     if (fits) break;
     orbit.rx *= .65; orbit.ry *= .65;
+  }
+  if (habitat.exclusions?.length) {
+    if (!habitatContains(habitat, orbit, 3)) {
+      let centre: WorldPoint | null = null;
+      for (let attempt = 0; attempt < 128; attempt++) {
+        const candidate = { x: field.x + field.width * noise(seed, 2400 + index * 128 + attempt),
+          y: field.y + field.height * noise(seed, 8400 + index * 128 + attempt) };
+        if (habitatContains(habitat, candidate, 3)) { centre = candidate; break; }
+      }
+      centre ??= habitatFallbackPoint(habitat);
+      if (!centre) return null;
+      orbit.x = centre.x; orbit.y = centre.y;
+    }
+    for (let attempt = 0; attempt < 32 && !habitatContains(habitat, orbit, Math.hypot(orbit.rx, orbit.ry) + 2.1); attempt++) {
+      orbit.rx *= .65; orbit.ry *= .65;
+    }
+    if (!habitatContains(habitat, orbit, Math.hypot(orbit.rx, orbit.ry) + 2.1)) return null;
   }
   const e: ForestFaunaEntity = { id: `${habitat.id}:${habitat.species}:${index + 1}`, species: habitat.species,
     habitatId: habitat.id, size: scale * (butterfly ? (.8 + noise(seed, n * 5 + 3) * .3) * 1.35
@@ -138,8 +156,9 @@ export function createForestFauna(scene: FixedWorldScene, seed = hash(scene.id))
     if (habitat.points.length < 3) continue;
     const capacity = Math.min(LIMITS[habitat.species] - counts[habitat.species], Math.max(0, Math.floor(habitat.capacity)));
     for (let i = 0; i < capacity; i++) {
-      const index = counts[habitat.species]++;
-      entities.push(entity(habitat, legacy ? seed : seed ^ hash(habitat.id), index, scale, legacy));
+      const index = counts[habitat.species];
+      const individual = entity(habitat, legacy ? seed : seed ^ hash(habitat.id), index, scale, legacy);
+      if (individual) { entities.push(individual); counts[habitat.species]++; }
     }
   }
   return { elapsed: 0, entities, habitats, encounter: null, nextEncounterAt: 0, sequence: 0,
@@ -147,10 +166,15 @@ export function createForestFauna(scene: FixedWorldScene, seed = hash(scene.id))
     dusk: 0, firefliesForced: false, lastReason: null };
 }
 
+/** Day and night populations never overlap, including forced DEV visibility. */
+export function isFaunaActiveAtTime(species: FaunaSpecies, dusk: number): boolean {
+  const night = clamp(finite(dusk)) >= .55;
+  return species === "firefly" ? night : !night;
+}
 function permitted(species: FaunaSpecies, options: ForestFaunaConditions) {
   const enabled = species === "butterfly" ? options.butterflies : options.fireflies;
   return !options.blocked && enabled !== "off" && options.rain < .35
-    && (enabled === "on" || (species === "butterfly" ? options.dusk < .55 : options.dusk >= .55));
+    && isFaunaActiveAtTime(species, options.dusk);
 }
 function candidate(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActor, options: ForestFaunaConditions, forced: boolean) {
   if (state.encounter || state.elapsed < state.nextEncounterAt || !permitted(kind, options)
@@ -160,6 +184,9 @@ function candidate(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActo
   for (const e of state.entities) {
     if (e.species !== kind || e.interactionToken !== null || e.cooldownUntil > state.elapsed
       || !["fly", "rest", "rest-seek", "refuge"].includes(e.mode)) continue;
+    const habitat = state.habitats.find(h => h.id === e.habitatId);
+    // Forest residents cannot be invited through the excluded home clearing.
+    if (habitat?.exclusions?.length && !habitatContains(habitat, heroHandAnchor(actor, { pose: "greet", frame: 0, direction: "front" }), 2.1)) continue;
     const d = distance(e, actor);
     if (d < nearest) { nearest = d; best = e; }
   }
@@ -174,8 +201,10 @@ export function canRequestFaunaInteraction(state: ForestFaunaState, kind: FaunaS
 export function requestFaunaInteraction(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActor,
   options: ForestFaunaConditions, forced = false): boolean {
   if (state.encounter) {
-    const same = state.encounter.kind === kind && !["interrupt", "release"].includes(state.encounter.phase);
-    state.lastReason = same ? null : "Мохлик уже занят другой встречей.";
+    const same = state.encounter.kind === kind && !["interrupt", "release"].includes(state.encounter.phase)
+      && permitted(kind, options);
+    state.lastReason = same ? null : !permitted(kind, options)
+      ? "Для встречи не подходят время суток, погода или настройки." : "Мохлик уже занят другой встречей.";
     return same;
   }
   const e = candidate(state, kind, actor, options, forced);
@@ -241,7 +270,8 @@ export function faunaInteractionFrame(state: ForestFaunaState): FaunaInteraction
 
 function anchorFor(state: ForestFaunaState, e: ForestFaunaEntity, kind: "rest" | "shelter") {
   const habitat = state.habitats.find(item => item.id === e.habitatId);
-  const suitable = habitat?.anchors.filter(a => a.kind === kind) ?? [];
+  const suitable = habitat?.anchors.filter(a => a.kind === kind
+    && (!habitat.exclusions?.length || habitatContains(habitat, a.position, 2.1))) ?? [];
   // Occupancy keeps a visible resting population from collapsing onto one identical point.
   const occupancy = (id: string) => state.entities.filter(other => other !== e && other.anchorId === id).length;
   return suitable.filter(a => kind === "shelter" || occupancy(a.id) === 0)
@@ -253,11 +283,11 @@ function setAnchor(state: ForestFaunaState, e: ForestFaunaEntity, anchor: WorldH
   // A shelter marks a patch of real foliage, so several bodies can share it without overlapping.
   const offset = { x: Math.cos(e.phase * 2.7) * (1 + e.size * 1.2), y: Math.sin(e.phase * 2.7) * 2 };
   const habitat = state.habitats.find(h => h.id === e.habitatId);
-  if (habitat && inPolygon({ x: anchor.position.x + offset.x, y: anchor.position.y + offset.y }, habitat.points)) e.anchorOffset = offset;
+  if (habitat && habitatContains(habitat, { x: anchor.position.x + offset.x, y: anchor.position.y + offset.y },
+    habitat.exclusions?.length ? 2.1 : 0)) e.anchorOffset = offset;
 }
 function shelterNeeded(e: ForestFaunaEntity, options: ForestFaunaConditions) {
-  const forced = (e.species === "butterfly" ? options.butterflies : options.fireflies) === "on";
-  return options.rain >= .35 || !forced && (e.species === "butterfly" ? options.dusk >= .55 : options.dusk < .55);
+  return options.rain >= .35 || !isFaunaActiveAtTime(e.species, options.dusk);
 }
 
 /** A bounded impulse is integrated, never a position change. Reserved partners ignore disturbances. */
@@ -267,6 +297,7 @@ export function emitFaunaStimulus(state: ForestFaunaState, stimulus: FaunaStimul
   let affected = 0;
   for (const e of state.entities) {
     if (affected >= 4) break;
+    if (!isFaunaActiveAtTime(e.species, state.dusk)) continue;
     if (e.stimulusCooldownUntil > state.elapsed || ["approach", "perch", "depart", "return"].includes(e.mode)) continue;
     const d = distance(e, stimulus);
     if (d >= radius) continue;
@@ -283,7 +314,17 @@ export function emitFaunaStimulus(state: ForestFaunaState, stimulus: FaunaStimul
 }
 
 /** Continuous acceleration and braking preserve velocity across every mode change. */
-function steer(e: ForestFaunaEntity, target: WorldPoint, dt: number, velocity: WorldPoint = { x: 0, y: 0 }, wind?: WorldPoint) {
+function steer(state: ForestFaunaState, e: ForestFaunaEntity, target: WorldPoint, dt: number, velocity: WorldPoint = { x: 0, y: 0 }, wind?: WorldPoint) {
+  const habitat = state.habitats.find(h => h.id === e.habitatId);
+  const constrained = habitat?.exclusions?.length ? habitat : null;
+  const before = point(e);
+  if (constrained) {
+    const goal = habitatContains(constrained, target, 2.1) ? target : e.orbit;
+    const waypoint = habitatFlightTarget(constrained, e, goal, state.elapsed);
+    if (!waypoint) { e.vx = 0; e.vy = 0; e.target = point(goal); return; }
+    if (waypoint !== target) { velocity = { x: 0, y: 0 }; wind = undefined; }
+    target = waypoint;
+  }
   const maxSpeed = e.species === "butterfly" ? 23 : 16;
   let desiredX = (target.x - e.x) * 2.1 + velocity.x, desiredY = (target.y - e.y) * 2.1 + velocity.y;
   if (wind && ["fly", "return", "depart"].includes(e.mode)) {
@@ -296,6 +337,9 @@ function steer(e: ForestFaunaEntity, target: WorldPoint, dt: number, velocity: W
   if (acceleration > limit) { ax *= limit / acceleration; ay *= limit / acceleration; }
   e.vx += ax * dt; e.vy += ay * dt;
   e.x += e.vx * dt; e.y += e.vy * dt;
+  if (constrained && !habitatCanTraverse(constrained, before, e)) {
+    e.x = before.x; e.y = before.y; e.vx = 0; e.vy = 0;
+  }
   if (Math.hypot(e.vx, e.vy) > .15) {
     const desiredAngle = Math.atan2(e.vy, e.vx) + Math.PI / 2;
     const turn = Math.atan2(Math.sin(desiredAngle - e.angle), Math.cos(desiredAngle - e.angle));
@@ -331,7 +375,7 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
   if (encounter && ["approach", "perch"].includes(e.mode)) {
     const pose = { pose: "greet", frame: 0, direction: encounter.direction } as const;
     const hand = heroHandAnchor(encounter.actor, pose);
-    steer(e, hand, dt);
+    steer(state, e, hand, dt);
     if (encounter.phase === "approach" && distance(e, hand) < .65 && Math.hypot(e.vx, e.vy) < 1.6) {
       setMode(e, "perch"); encounter.phase = "perch"; encounter.phaseElapsed = 0;
     }
@@ -339,13 +383,13 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
   }
   if (["approach", "perch"].includes(e.mode)) depart(state, e);
   if (e.mode === "depart") {
-    steer(e, e.departure ?? orbitSample(e, state.elapsed), dt, undefined, options.wind);
+    steer(state, e, e.departure ?? orbitSample(e, state.elapsed), dt, undefined, options.wind);
     if (e.modeElapsed > 1.5) { setMode(e, "return"); e.departure = null; }
     return;
   }
   if (e.mode === "return") {
     const live = orbitSample(e, state.elapsed);
-    steer(e, live, dt, { x: live.vx, y: live.vy }, options.wind);
+    steer(state, e, live, dt, { x: live.vx, y: live.vy }, options.wind);
     if (distance(e, live) < 2.5 && Math.hypot(e.vx - live.vx, e.vy - live.vy) < 3) {
       setMode(e, "fly");
       if (e.interactionToken !== null) e.cooldownUntil = Math.max(e.cooldownUntil, state.elapsed + 14);
@@ -370,13 +414,13 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
     const anchor = state.habitats.find(h => h.id === e.habitatId)?.anchors.find(a => a.id === e.anchorId);
     if (!anchor) { setMode(e, "return"); e.anchorId = null; return; }
     const target = { x: anchor.position.x + e.anchorOffset.x, y: anchor.position.y + e.anchorOffset.y };
-    steer(e, target, dt);
+    steer(state, e, target, dt);
     if (e.mode === "rest-seek" && distance(e, target) < .65 && Math.hypot(e.vx, e.vy) < 1.6) setMode(e, "rest");
     if (!refuge && e.mode === "rest" && state.elapsed >= e.restUntil) { setMode(e, "return"); e.anchorId = null; }
     return;
   }
   const live = orbitSample(e, state.elapsed);
-  steer(e, live, dt, { x: live.vx, y: live.vy }, options.wind);
+  steer(state, e, live, dt, { x: live.vx, y: live.vy }, options.wind);
 }
 
 /** Exactly one session clock owner calls this; rendering and both cameras only read state. */
@@ -395,11 +439,16 @@ export function advanceForestFauna(state: ForestFaunaState, dt: number, options:
 
 /** Snapshot arrays include the reserved partner once, at its actual simulated coordinates. */
 export function faunaRenderFrame(state: ForestFaunaState,
-  options?: Pick<ForestFaunaConditions, "dusk" | "fireflies">): { elapsed: number; butterflies: FaunaRenderParticle[]; fireflies: FaunaRenderParticle[] } {
+  options?: Pick<ForestFaunaConditions, "dusk" | "butterflies" | "fireflies">): { elapsed: number; butterflies: FaunaRenderParticle[]; fireflies: FaunaRenderParticle[] } {
   const butterflies: FaunaRenderParticle[] = [], fireflies: FaunaRenderParticle[] = [];
-  const glow = (options ? options.fireflies === "on" : state.firefliesForced) ? 1 : clamp(options?.dusk ?? state.dusk);
+  const dusk = clamp(finite(options?.dusk ?? state.dusk));
+  const glow = (options ? options.fireflies === "on" : state.firefliesForced) ? 1 : dusk;
   for (const e of state.entities) {
-    if (!(e.species === "butterfly" ? state.visibility.butterflies : state.visibility.fireflies)) continue;
+    if (!isFaunaActiveAtTime(e.species, dusk)) continue;
+    const mode = e.species === "butterfly" ? options?.butterflies : options?.fireflies;
+    const enabled = mode === undefined ? (e.species === "butterfly" ? state.visibility.butterflies : state.visibility.fireflies)
+      : mode !== "off";
+    if (!enabled) continue;
     const resting = e.mode === "perch" || e.mode === "rest" || e.mode === "refuge" && Math.hypot(e.vx, e.vy) < 1;
     const particle: FaunaRenderParticle = { id: e.id, species: e.species, mode: e.mode, x: e.x, y: e.y,
       size: e.size, phase: e.phase, opacity: e.opacity, angle: e.angle, resting,

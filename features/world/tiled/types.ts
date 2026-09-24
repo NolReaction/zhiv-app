@@ -49,6 +49,8 @@ export type WorldHabitat = {
   id: string;
   species: "butterfly" | "firefly";
   points: WorldPoint[];
+  /** Raw contours excluded from this territory; referenced exclusions are not recursive. */
+  exclusions?: { id: string; points: WorldPoint[] }[];
   capacity: number;
   anchors: { id: string; position: WorldPoint; kind: "rest" | "shelter" }[];
 };

@@ -125,6 +125,10 @@ function fauna(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, snapshot: 
   polygons(ctx, scene.habitats ?? [], COLORS.habitat, unit, true);
   for (const habitat of (scene.habitats ?? []).slice(0, LIMITS.polygons)) {
     if (habitat.points[0]) label(ctx, `${habitat.id} · ${habitat.species}`, habitat.points[0], COLORS.habitat, unit);
+    polygons(ctx, habitat.exclusions ?? [], COLORS.obstacle, unit, true);
+    for (const hole of (habitat.exclusions ?? []).slice(0, LIMITS.polygons)) {
+      if (hole.points[0]) label(ctx, `${habitat.id}: исключено ${hole.id}`, hole.points[0], COLORS.obstacle, unit, 1);
+    }
     for (const anchor of habitat.anchors.slice(0, LIMITS.anchors)) {
       marker(ctx, anchor.position, COLORS.habitat, unit);
     }

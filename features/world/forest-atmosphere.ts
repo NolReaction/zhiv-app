@@ -3,6 +3,7 @@ import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestAirP
 
 import { forestBirdFrame, FOREST_BIRD_LIMIT } from "./forest-birds";
 import { sampleForestRain, drawForestRain, type ForestRaindrop } from "./forest-rain";
+import { isFaunaActiveAtTime } from "./forest-fauna";
 
 const TAU = Math.PI * 2;
 const WEATHER_PERIOD = 24 * 60;
@@ -133,8 +134,8 @@ export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtm
   const seed = sceneSeed(scene.id), seconds = state.elapsed;
   const frame: ForestAtmosphereFrame = { ...state, butterflies: [], fireflies: [], birds: [], raindrops: [] };
   const daylight = clamp((1 - state.dusk) * (1 - state.rain * 1.8));
-  const butterflies = wildlifeVisibility(options.butterflies, daylight);
-  const fireflies = wildlifeVisibility(options.fireflies, state.dusk * (1 - state.rain));
+  const butterflies = isFaunaActiveAtTime("butterfly", state.dusk) ? wildlifeVisibility(options.butterflies, daylight) : 0;
+  const fireflies = isFaunaActiveAtTime("firefly", state.dusk) ? wildlifeVisibility(options.fireflies, state.dusk * (1 - state.rain)) : 0;
 
   if (!options.fauna && butterflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.butterflies; i++) {
     const particle = insect(i < 3 ? focus : world, seed, i + 1, seconds, scale);

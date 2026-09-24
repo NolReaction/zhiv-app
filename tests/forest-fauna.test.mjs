@@ -27,10 +27,11 @@ const speed = e=>Math.hypot(e.vx,e.vy);
 test('fallback population begins on the existing atmosphere orbit with stable appearance and identity',()=>{
   const legacy = {...scene};delete legacy.habitats;
   const fauna=createForestFauna(legacy),copy=createForestFauna(legacy);
-  const original=forestAtmosphereFrame(legacy,{elapsed:0,timestamp:0,dusk:0,reducedMotion:false,weather:'clear',butterflies:'on',fireflies:'on'});
   assert.equal(fauna.entities.length,18);assert.deepEqual(fauna,copy);
   for(const [name,species] of [['butterflies','butterfly'],['fireflies','firefly']]){
-    const ours=faunaRenderFrame(fauna)[name];assert.equal(ours.length,original[name].length);
+    const dusk=species==='firefly'?1:0;
+    const original=forestAtmosphereFrame(legacy,{elapsed:0,timestamp:0,dusk,reducedMotion:false,weather:'clear',butterflies:'on',fireflies:'on'});
+    const ours=faunaRenderFrame(fauna,{dusk})[name];assert.equal(ours.length,original[name].length);
     ours.forEach((e,i)=>{for(const key of ['x','y','size','phase'])assert.ok(Math.abs(e[key]-original[name][i][key])<1e-10,`${species} ${i} ${key}`)});
   }
   assert.equal(new Set(fauna.entities.map(e=>e.id)).size,18);
@@ -197,11 +198,66 @@ test('real authored clearing supports both species without moving or conjuring a
   }
 });
 
-test('firefly emission follows dusk independently of body visibility and paused simulation',()=>{
+test('rendering day and night populations is exclusive even before ticking, while paused and under DEV overrides',()=>{
+  const state=createForestFauna(scene),initial=structuredClone(state);
+  assert.equal(faunaRenderFrame(state).fireflies.length,0,'a first default day frame has no fireflies');
+  for(const dusk of [0,.4,.549,.55,.7,1])for(const mode of ['auto','on','off']){
+    const options={dusk,butterflies:mode,fireflies:mode};
+    const frame=faunaRenderFrame(state,options),night=dusk>=.55;
+    assert.equal(frame.butterflies.length,mode!=='off'&&!night?6:0);
+    assert.equal(frame.fireflies.length,mode!=='off'&&night?12:0);
+    assert.equal(frame.butterflies.length>0&&frame.fireflies.length>0,false);
+  }
+  assert.deepEqual(state,initial,'rendering never changes identity, position or encounter state');
+  advance(state,1,{...conditions,butterflies:'off',fireflies:'off'});
+  const stopped=structuredClone(state);
+  for(const freeze of [{paused:true},{reducedMotion:true}]){
+    advance(state,2,{...conditions,dusk:1,...freeze});
+    assert.equal(faunaRenderFrame(state,{dusk:1,fireflies:'auto'}).fireflies.length,12);
+    assert.equal(faunaRenderFrame(state,{dusk:0,butterflies:'auto'}).butterflies.length,6);
+  }
+  assert.deepEqual(state,stopped,'visibility changes do not resume a frozen simulation');
+});
+
+test('inactive species stay hidden, seek shelter and ignore new encounters and disturbances',()=>{
+  for(const dusk of [0,1]){
+    const state=createForestFauna(scene),options={...conditions,dusk,butterflies:'on',fireflies:'on'};
+    const active=dusk===0?'butterfly':'firefly',inactive=dusk===0?'firefly':'butterfly';
+    const ids=state.entities.map(e=>e.id);
+    assert.equal(requestFaunaInteraction(state,inactive,actor,options,true),false,'DEV requests respect time of day');
+    advance(state,20,options);
+    const sleepers=state.entities.filter(e=>e.species===inactive);
+    assert.ok(sleepers.every(e=>e.mode==='refuge'),'forced visibility cannot wake the wrong population');
+    const snapshots=structuredClone(sleepers);
+    emitFaunaStimulus(state,{...sleepers[0],kind:'rustle',radius:90});
+    assert.deepEqual(sleepers,snapshots,'hidden resting animals are not startled into ambient flights');
+    assert.deepEqual(state.entities.map(e=>e.id),ids);
+    assert.ok(faunaRenderFrame(state)[active==='butterfly'?'butterflies':'fireflies'].length>0);
+  }
+});
+
+test('a time-of-day change releases an existing partner without replacing the animal',()=>{
+  for(const kind of ['butterfly','firefly']){
+    const state=createForestFauna(scene),dusk=kind==='firefly'?1:0;
+    const options={...conditions,dusk,butterflies:'on',fireflies:'on'};
+    assert.equal(requestFaunaInteraction(state,kind,actor,options,true),true);
+    advance(state,2,options);const e=getPartner(state),id=e.id,before={x:e.x,y:e.y};
+    const changed={...options,dusk:1-dusk};
+    assert.equal(requestFaunaInteraction(state,kind,actor,changed,true),false);
+    advance(state,.025,changed);
+    assert.equal(state.encounter.phase,'interrupt');assert.ok(Math.hypot(e.x-before.x,e.y-before.y)<1);
+    assert.equal(faunaRenderFrame(state)[kind==='butterfly'?'butterflies':'fireflies'].length,0);
+    advance(state,.6,changed);assert.equal(state.encounter,null);
+    advance(state,20,changed);assert.equal(e.interactionToken,null);assert.equal(e.mode,'refuge');
+    assert.equal(state.entities.find(other=>other.id===id),e);
+  }
+});
+
+test('firefly emission uses current dusk on static night frames and cannot be forced into daytime',()=>{
   const state=createForestFauna(scene);advance(state,3);
-  const day=faunaRenderFrame(state);assert.equal(day.fireflies.length,12);assert.ok(day.fireflies.every(e=>e.glow===0&&e.opacity>0));
+  const day=faunaRenderFrame(state);assert.equal(day.fireflies.length,0);
   const frozen=structuredClone(state),night=faunaRenderFrame(state,{dusk:1});
-  assert.ok(night.fireflies.every(e=>e.glow===1));assert.deepEqual(state,frozen);
-  assert.ok(faunaRenderFrame(state,{dusk:.4}).fireflies.every(e=>e.glow===.4));
-  assert.ok(faunaRenderFrame(state,{dusk:0,fireflies:'on'}).fireflies.every(e=>e.glow===1));
+  assert.equal(night.fireflies.length,12);assert.ok(night.fireflies.every(e=>e.glow===1));assert.deepEqual(state,frozen);
+  assert.ok(faunaRenderFrame(state,{dusk:.7}).fireflies.every(e=>e.glow===.7));
+  assert.equal(faunaRenderFrame(state,{dusk:0,fireflies:'on'}).fireflies.length,0);
 });

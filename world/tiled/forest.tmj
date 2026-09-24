@@ -8701,6 +8701,12 @@
                  "height":0,
                  "id":135,
                  "name":"clearing-south-stone",
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"nav-obstacle"
+                        }],
                  "opacity":1,
                  "polygon":[
                         {
@@ -9250,6 +9256,11 @@
                         }],
                  "properties":[
                         {
+                         "name":"excludeHabitatId",
+                         "type":"string",
+                         "value":"clearing-fireflies"
+                        },
+                        {
                          "name":"capacity",
                          "type":"int",
                          "value":7
@@ -9399,6 +9410,11 @@
                         }],
                  "properties":[
                         {
+                         "name":"excludeHabitatId",
+                         "type":"string",
+                         "value":"clearing-butterflies"
+                        },
+                        {
                          "name":"capacity",
                          "type":"int",
                          "value":3
@@ -9499,7 +9515,7 @@
                         {
                          "name":"habitatId",
                          "type":"string",
-                         "value":"clearing-butterflies"
+                         "value":"forest-butterflies"
                         }, 
                         {
                          "name":"kind",
@@ -9528,7 +9544,7 @@
                         {
                          "name":"habitatId",
                          "type":"string",
-                         "value":"clearing-butterflies"
+                         "value":"forest-butterflies"
                         }, 
                         {
                          "name":"kind",
@@ -9557,7 +9573,7 @@
                         {
                          "name":"habitatId",
                          "type":"string",
-                         "value":"clearing-fireflies"
+                         "value":"forest-fireflies"
                         }, 
                         {
                          "name":"kind",
@@ -9586,7 +9602,7 @@
                         {
                          "name":"habitatId",
                          "type":"string",
-                         "value":"clearing-fireflies"
+                         "value":"forest-fireflies"
                         }, 
                         {
                          "name":"kind",
@@ -9615,7 +9631,7 @@
                         {
                          "name":"habitatId",
                          "type":"string",
-                         "value":"clearing-fireflies"
+                         "value":"forest-fireflies"
                         }, 
                         {
                          "name":"kind",
@@ -9644,7 +9660,7 @@
                         {
                          "name":"habitatId",
                          "type":"string",
-                         "value":"clearing-fireflies"
+                         "value":"forest-fireflies"
                         }, 
                         {
                          "name":"kind",
@@ -9894,6 +9910,64 @@
                  "width":0,
                  "x":867,
                  "y":703
+                },
+                {
+                 "height":0,
+                 "id":137,
+                 "name":"firefly-clearing-leaf",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"habitatId",
+                         "type":"string",
+                         "value":"clearing-fireflies"
+                        },
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"rest"
+                        },
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"wildlife-anchor"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":550,
+                 "y":616
+                },
+                {
+                 "height":0,
+                 "id":138,
+                 "name":"firefly-clearing-shelter",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"habitatId",
+                         "type":"string",
+                         "value":"clearing-fireflies"
+                        },
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"shelter"
+                        },
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"wildlife-anchor"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":540,
+                 "y":601
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -9902,7 +9976,7 @@
          "y":0
         }],
  "nextlayerid":24,
- "nextobjectid":137,
+ "nextobjectid":139,
  "orientation":"orthogonal",
  "properties":[
         {

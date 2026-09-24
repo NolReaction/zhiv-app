@@ -102,8 +102,8 @@ test("particles stay in authored world and focus bounds after changing map dimen
   for (const layout of layouts) {
     const edited = { ...scene, ...layout };
     const world = { x: 0, y: 0, width: edited.width, height: edited.height };
-    for (let elapsed = 0; elapsed < 300; elapsed += 3) {
-      const frame = forestAtmosphereFrame(edited, { ...options, elapsed, timestamp: rainTimestamp, dusk: .5 });
+    for (let elapsed = 0; elapsed < 300; elapsed += 3) for(const dusk of [0,1]) {
+      const frame = forestAtmosphereFrame(edited, { ...options, elapsed, timestamp: rainTimestamp, dusk });
       for (const group of groups) for (const particle of frame[group]) {
         const extent = group === "birds" ? particle.size * 9 : 0;
         assert.ok(inside(particle, { x: -extent, y: -extent, width: world.width + extent * 2, height: world.height + extent * 2 }),
@@ -111,7 +111,7 @@ test("particles stay in authored world and focus bounds after changing map dimen
         assert.ok(Number.isFinite(particle.size) && particle.size > 0);
         assert.ok(particle.opacity >= 0 && particle.opacity <= 1);
       }
-      for (const group of ["butterflies", "fireflies", "raindrops"])
+      for (const group of [dusk===0?"butterflies":"fireflies", "raindrops"])
         assert.ok(frame[group].some(particle => inside(particle, edited.focus)), `${group} remain visible near the authored focus`);
     }
   }
@@ -119,9 +119,9 @@ test("particles stay in authored world and focus bounds after changing map dimen
 
 test("moving the authored focus moves its local insects while preserving world-wide insects", () => {
   const moved = { ...scene, focus: { ...scene.focus, x: scene.focus.x + 300, y: scene.focus.y - 150 } };
-  const input = { ...options, timestamp: clearTimestamp, dusk: .5 };
-  const before = forestAtmosphereFrame(scene, input), after = forestAtmosphereFrame(moved, input);
   for (const group of ["butterflies", "fireflies"]) {
+    const input = { ...options, timestamp: clearTimestamp, dusk: group==="fireflies"?1:0 };
+    const before = forestAtmosphereFrame(scene, input), after = forestAtmosphereFrame(moved, input);
     let relocated = 0, fixed = 0;
     before[group].forEach((particle, index) => {
       const next = after[group][index];
@@ -215,12 +215,13 @@ test("rain intensities increase density while keeping droplets short and translu
   }
 });
 
-test("wildlife overrides are independent of daylight and rain, and explicit off always wins", () => {
+test("wildlife overrides respect insect day/night separation, and explicit off always wins", () => {
   for (const dusk of [0, 1]) {
     for (const enabled of ["on", true]) {
       const frame = forestAtmosphereFrame(scene, { ...options, dusk, weather: "downpour", elapsed: 0,
         butterflies: enabled, fireflies: enabled, birds: enabled, birdElapsed: 10 });
       for (const group of ["butterflies", "fireflies", "birds"]) {
+        if(group === (dusk === 0 ? "fireflies" : "butterflies")) { assert.deepEqual(frame[group], []); continue; }
         assert.equal(frame[group].length, group === "birds" ? 2 : FOREST_ATMOSPHERE_LIMITS[group]);
         assert.ok(frame[group].every(particle => particle.opacity > .2), `${group} are visible when forced on`);
         if (group !== "birds") assert.ok(frame[group].some(particle => inside(particle, scene.focus)));
@@ -439,7 +440,10 @@ test("manual downpour and wildlife respect reduced motion while preserving the s
   assert.deepEqual(first.birds, []);
   assert.deepEqual(first.raindrops, []);
   assert.equal(first.butterflies.length, FOREST_ATMOSPHERE_LIMITS.butterflies);
-  assert.equal(first.fireflies.length, FOREST_ATMOSPHERE_LIMITS.fireflies);
+  assert.equal(first.fireflies.length, 0);
+  const night = forestAtmosphereFrame(scene, { ...input, dusk: 1 });
+  assert.equal(night.butterflies.length, 0);
+  assert.equal(night.fireflies.length, FOREST_ATMOSPHERE_LIMITS.fireflies);
   const rendered = drawing();
   drawForestAtmosphere(rendered.ctx, scene, input);
   assert.equal(rendered.calls.some(call => call[0] === "stroke"), false);

@@ -293,7 +293,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const objects = new Set(), layers = new Set(), sites = new Map(), markers = new Map(), terrainIds = new Set(), pathIds = new Set();
   const waterIds = { surfaces: new Set(), exclusions: new Set() }, lightIds = new Set();
   const mushroomIds = new Set(), bushes = new Map(), bushMarkers = new Map(), bushRoutes = [];
-  const navigationIds = new Set(), habitats = new Map(), habitatAnchors = [], anchorIds = new Set();
+  const navigationIds = new Set(), habitats = new Map(), habitatExclusions = [], habitatAnchors = [], anchorIds = new Set();
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
   const navigation = () => world.navigation ??= { version: 1, cellSize, areas: [], obstacles: [], interests: [] };
   if (own(mapProperties, "navigationCellSize")) navigation();
@@ -371,7 +371,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const livingAt = `${at} (${object.name || `object ${objectId}`})`;
         const role = livingKind ?? authoredRole;
         const allowed = role === "interest" ? { activity: "string" }
-          : role === "wildlife-habitat" ? { species: "string", capacity: "int" }
+          : role === "wildlife-habitat" ? { species: "string", capacity: "int", excludeHabitatId: "string" }
           : role === "wildlife-anchor" ? { habitatId: "string", kind: "string" } : {};
         const props = properties(object, livingAt, { role: "string", ...allowed });
         exact(props.role, role, `${livingAt}.properties.role`);
@@ -398,6 +398,11 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
           const capacity = integer(props.capacity, `${livingAt}.properties.capacity`, 1);
           requireThat(capacity <= 64, `${livingAt}.properties.capacity`, "expected capacity <= 64");
           habitats.set(id, { id, species: props.species, points: vertices(object, "polygon", livingAt, world), capacity, anchors: [] });
+          if (own(props, "excludeHabitatId")) {
+            const excludedId = identifier(props.excludeHabitatId, `${livingAt}.properties.excludeHabitatId`);
+            requireThat(excludedId !== id, livingAt, "habitat cannot exclude itself");
+            habitatExclusions.push({ id, excludedId, at: livingAt });
+          }
           world.habitats ??= [];
         } else {
           exact(shape, "point", `${livingAt} shape`);
@@ -566,10 +571,19 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       ...(geometry.doorway ? { doorway: geometry.doorway } : {}), hitArea: geometry.hitArea, collision: geometry.collision,
       ...(geometry.light ? { light: geometry.light } : {}), initialLevel: site.initialLevel, states: site.states };
   });
+  for (const { id, excludedId, at } of habitatExclusions) {
+    const excluded = habitats.get(excludedId);
+    requireThat(excluded, at, `habitat references unknown excluded habitat ${excludedId}`);
+    // Subtract the referenced raw contour so authoring order and chained references
+    // cannot change the meaning of the same exclusion.
+    habitats.get(id).exclusions = [{ id: excludedId, points: excluded.points }];
+  }
   for (const { habitatId, at, anchor } of habitatAnchors) {
     const habitat = habitats.get(habitatId);
     requireThat(habitat, at, `wildlife anchor references unknown habitat ${habitatId}`);
     requireThat(insidePolygon(anchor.position, habitat.points), at, `wildlife anchor must be inside habitat ${habitatId}`);
+    requireThat(!habitat.exclusions?.some(exclusion => insidePolygon(anchor.position, exclusion.points)), at,
+      `wildlife anchor must be outside excluded contours of habitat ${habitatId}`);
     habitat.anchors.push(anchor);
   }
   if (world.habitats) world.habitats = [...habitats.values()];

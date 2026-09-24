@@ -80,7 +80,9 @@ function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
 function atmosphereOptions(options: SceneOptions, timestamp: number, dusk: number, preview?: NewMapPaintPreview): ForestAtmosphereOptions {
   const dev = preview?.state;
   const effectiveDusk = dev?.timeOfDay === "day" ? 0 : dev?.timeOfDay === "night" ? 1 : dusk;
-  const fauna = preview?.fauna ? faunaRenderFrame(preview.fauna, { dusk: effectiveDusk, fireflies: dev?.fireflies }) : undefined;
+  const fauna = preview?.fauna ? faunaRenderFrame(preview.fauna, {
+    dusk: effectiveDusk, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
+  }) : undefined;
   return { elapsed: timestamp / 1000, timestamp, reducedMotion: reducedMotion(options, dev),
     dusk: effectiveDusk,
     weather: dev?.weather, butterflies: dev?.butterflies, fireflies: dev?.fireflies, birds: dev?.birds,
