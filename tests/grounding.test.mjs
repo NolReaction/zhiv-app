@@ -84,8 +84,8 @@ after(async () => {
 function recordingContext() {
   const draws = [], ellipses = [], stack = [];
   return {
-    draws, ellipses, fillStyle: "original", filter: "none", imageSmoothingEnabled: true, globalCompositeOperation: "source-over",
-    save() { stack.push({ fillStyle: this.fillStyle, filter: this.filter, imageSmoothingEnabled: this.imageSmoothingEnabled }); },
+    draws, ellipses, globalAlpha: 1, fillStyle: "original", filter: "none", imageSmoothingEnabled: true, globalCompositeOperation: "source-over",
+    save() { stack.push({ globalAlpha: this.globalAlpha, fillStyle: this.fillStyle, filter: this.filter, imageSmoothingEnabled: this.imageSmoothingEnabled }); },
     restore() { Object.assign(this, stack.pop()); },
     beginPath() {}, rect() {}, clip() {}, fill() {},
     ellipse(...args) { ellipses.push({ args, fillStyle: this.fillStyle }); },
@@ -132,11 +132,44 @@ test("breathing is bounded and keeps the feet fixed, including nonfinite input",
   }
 });
 
+test("a jump raises the body while its shrinking shadow stays on the ground", () => {
+  const ground = recordingContext(), airborne = recordingContext();
+  const actor = { x: 100, y: 200, size: 56, pose: "jump", direction: "left", frame: 2 };
+  drawGroundedHero(ground, actor); drawGroundedHero(airborne, { ...actor, lift: 14 });
+  assert.equal(ground.draws[0].args[2] - airborne.draws[0].args[2], 14);
+  assert.equal(airborne.ellipses[1].args[1], actor.y);
+  assert.ok(airborne.ellipses[1].args[2] < ground.ellipses[1].args[2]);
+  assert.equal(airborne.globalAlpha, 1, "shadow transparency cannot leak to the hero or next effect");
+});
+
 test("invalid actor coordinates and size never send nonfinite geometry to canvas", () => {
   for (const patch of [{ x: Number.NaN }, { y: Infinity }, { size: Number.NaN }, { size: 0 }, { size: -1 }]) {
     const ctx = recordingContext();
     drawGroundedHero(ctx, { x: 0, y: 100, size: 60, pose: "idle", direction: "front", frame: 0, ...patch });
     assert.equal(ctx.draws.length, 0); assert.equal(ctx.ellipses.length, 0);
+  }
+});
+
+test("ducking shrinks the body continuously around its feet without hiding or moving its ground shadow", () => {
+  let previousWidth = Infinity, previousHeight = Infinity;
+  for (const compression of [0, .25, .5, .75, 1]) {
+    const ctx = recordingContext();
+    drawGroundedHero(ctx, { x: 100, y: 200, size: 56, pose: "crouch", direction: "back", frame: 0, compression, lift: 6 });
+    const [sprite, x, y, width, height] = ctx.draws[0].args;
+    assert.equal(x + width / 2, 100);
+    assert.ok(Math.abs(y + heroSpriteContact(sprite, "crouch", 0).bottom / 48 * height - 194) < 1e-10);
+    assert.ok(width <= previousWidth && height <= previousHeight);
+    assert.ok(width >= 56 * .86 && height >= 56 * .65);
+    assert.equal(ctx.ellipses[1].args[1], 200);
+    assert.equal(ctx.globalAlpha, 1);
+    previousWidth = width; previousHeight = height;
+  }
+  for (const compression of [-4, 4, Number.NaN, Infinity]) {
+    const ctx = recordingContext();
+    drawGroundedHero(ctx, { x: 0, y: 0, size: 56, pose: "crouch", direction: "back", frame: 0, compression });
+    const [, , , width, height] = ctx.draws[0].args;
+    assert.ok(Number.isFinite(width) && width >= 56 * .86 && width <= 56);
+    assert.ok(Number.isFinite(height) && height >= 56 * .65 && height <= 56);
   }
 });
 

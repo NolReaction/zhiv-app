@@ -1,7 +1,14 @@
 import type { WorldPoint } from "./tiled/types";
 
 const TAU = Math.PI * 2;
-export type ForestAirParticle = WorldPoint & { size: number; opacity: number; phase: number };
+export type ForestAirParticle = WorldPoint & { size: number; opacity: number; phase: number; resting?: boolean };
+export type ForestFirefly = ForestAirParticle & {
+  /** Rotation from an upward-facing body; omitted for a hovering scene partner. */
+  angle?: number;
+  resting?: boolean;
+  /** Ambient day/night light, separate from the insect body. */
+  glow?: number;
+};
 export type ForestBirdSpecies = "robin" | "blue-tit" | "swallow" | "finch";
 export type ForestBirdState = "flap" | "glide" | "landing" | "perched" | "preen" | "hop" | "takeoff";
 export type ForestBird = ForestAirParticle & {
@@ -29,7 +36,7 @@ const BUTTERFLY_COLORS = [
 
 /** Four rounded, tapered wings retain the butterfly silhouette at clearing scale. */
 export function drawForestButterfly(ctx: CanvasRenderingContext2D, particle: ForestAirParticle, elapsed: number) {
-  const s = particle.size, flutter = .42 + Math.abs(Math.sin(elapsed * 7 + particle.phase)) * .58;
+  const s = particle.size, flutter = particle.resting ? .22 : .42 + Math.abs(Math.sin(elapsed * 7 + particle.phase)) * .58;
   const palette = BUTTERFLY_COLORS[Math.floor(Math.abs(particle.phase) * 3) % BUTTERFLY_COLORS.length];
   ctx.save(); ctx.translate(particle.x, particle.y); ctx.rotate(Math.sin(particle.phase) * .38);
   ctx.globalAlpha = particle.opacity;
@@ -54,18 +61,55 @@ export function drawForestButterfly(ctx: CanvasRenderingContext2D, particle: For
   ctx.restore();
 }
 
-/** A radial falloff and round warm core avoid hard square pixels around the glow. */
-export function drawForestFirefly(ctx: CanvasRenderingContext2D, particle: ForestAirParticle, elapsed: number) {
-  const s = particle.size * (.97 + Math.cos(elapsed * .65 + particle.phase) * .03);
-  ctx.save();
-  const glow = ctx.createRadialGradient(particle.x, particle.y, 0, particle.x, particle.y, s * 4.4);
-  glow.addColorStop(0, "rgba(223,245,154,.55)");
-  glow.addColorStop(.3, "rgba(194,232,120,.2)");
-  glow.addColorStop(1, "rgba(178,225,101,0)");
-  ctx.globalAlpha = particle.opacity; ctx.fillStyle = glow;
-  ctx.beginPath(); ctx.ellipse(particle.x, particle.y, s * 4.4, s * 4.4, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = "#f5f5be";
-  ctx.beginPath(); ctx.ellipse(particle.x, particle.y, s * .46, s * .46, 0, 0, TAU); ctx.fill();
+/** Each insect has its own slow flash; only the abdomen pulses, never the body. */
+export function forestFireflyPose(elapsed: number, phase: number, resting = false) {
+  const pulse = .5 + Math.sin(elapsed * (.82 + Math.sin(phase * 1.7) * .16) + phase) * .5;
+  return {
+    glow: .14 + pulse * pulse * pulse * .86,
+    wingSpread: resting ? .08 : .35 + Math.abs(Math.sin(elapsed * 21 + phase)) * .65,
+    sway: resting ? 0 : Math.sin(elapsed * .7 + phase) * .13,
+  };
+}
+
+/** A small winged beetle with a luminous tail, not a floating star or a lens flare. */
+export function drawForestFirefly(ctx: CanvasRenderingContext2D, particle: ForestFirefly, elapsed: number) {
+  const s = particle.size, pose = forestFireflyPose(elapsed, particle.phase, particle.resting);
+  ctx.save(); ctx.translate(particle.x, particle.y); ctx.rotate((particle.angle ?? 0) + pose.sway);
+
+  // The close halo follows the abdomen rather than obscuring the head and wings.
+  const radius = s * (2.5 + pose.glow * .6), tailY = s * .82;
+  const halo = ctx.createRadialGradient(0, tailY, s * .12, 0, tailY, radius);
+  halo.addColorStop(0, "rgba(225,246,147,.48)");
+  halo.addColorStop(.35, "rgba(196,225,118,.17)");
+  halo.addColorStop(1, "rgba(176,211,94,0)");
+  ctx.globalAlpha = particle.opacity * pose.glow * (particle.glow ?? 1); ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.ellipse(0, tailY, radius, radius, 0, 0, TAU); ctx.fill();
+
+  // Paired translucent flight wings and darker wing cases keep a readable silhouette.
+  ctx.globalAlpha = particle.opacity;
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = "rgba(207,225,167,.43)";
+    ctx.beginPath(); ctx.moveTo(side * s * .2, -s * .56);
+    ctx.bezierCurveTo(side * s * 2.1 * pose.wingSpread, -s * 1.45,
+      side * s * 2.2 * pose.wingSpread, s * .18, side * s * .4, s * .48);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#777747";
+    ctx.beginPath(); ctx.ellipse(side * s * (.23 + pose.wingSpread * .19), -s * .15,
+      s * .21, s * .74, side * pose.wingSpread * .45, 0, TAU); ctx.fill();
+  }
+  ctx.fillStyle = "#3c4229";
+  ctx.beginPath(); ctx.ellipse(0, s * .12, s * .37, s * 1.02, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = "#929057";
+  ctx.beginPath(); ctx.ellipse(0, -s * .6, s * .38, s * .28, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = "#343c28";
+  ctx.beginPath(); ctx.ellipse(0, -s * .98, s * .28, s * .33, 0, 0, TAU); ctx.fill();
+
+  // An olive abdomen remains visible between flashes; the pale centre rises gradually.
+  ctx.fillStyle = "#a6b85f";
+  ctx.beginPath(); ctx.ellipse(0, tailY, s * .4, s * .51, 0, 0, TAU); ctx.fill();
+  ctx.globalAlpha = particle.opacity * pose.glow * (particle.glow ?? 1);
+  ctx.fillStyle = "#edf5ad";
+  ctx.beginPath(); ctx.ellipse(0, tailY + s * .07, s * .31, s * .39, 0, 0, TAU); ctx.fill();
   ctx.restore();
 }
 

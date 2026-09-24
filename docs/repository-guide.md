@@ -1,5 +1,7 @@
 # Где менять код
 
+Для ручной работы в редакторе начните с [памятки Tiled: слои и конкретные действия](game/tiled-quickstart.md).
+
 Ищите задачу в таблице и открывайте указанный файл. Подробности изменения и проверки — в последнем столбце. Пути ниже относятся к текущей Tiled-карте; прежний рендер отделён в конце.
 
 ## Карта, свет и анимации
@@ -14,8 +16,16 @@
 | Изменить границы реки и исключить листья, камни, причал | [`forest.tmj`](../world/tiled/forest.tmj): `Water`, `WaterExclusions` | [Разметка Tiled](game/tiled-editor.md) |
 | Изменить попадания на землю и существующие лужи | [`forest-ground-impacts.ts`](../features/world/forest-ground-impacts.ts), [`forest-ground-layout.json`](../features/world/forest-ground-layout.json), [`forest-ground-weather.ts`](../features/world/forest-ground-weather.ts) | [Атмосфера](game/world-atmosphere.md) |
 | Добавить вид птиц, стаю, маршрут или посадку | [`forest-birds.ts`](../features/world/forest-birds.ts) | [Птицы и привязка к фону](game/world-atmosphere.md) |
-| Изменить бабочек и светлячков | [`forest-wildlife.ts`](../features/world/forest-wildlife.ts) | [Атмосфера](game/world-atmosphere.md) |
-| Изменить занятия героя, рост грибов и общие часы | [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-session.ts`](../features/world/forest-session.ts) | [Устройство мира](game/world-foundation.md) |
+| Изменить жизнь бабочек/светлячков, отдых и встречу | [`forest-fauna.ts`](../features/world/forest-fauna.ts), [`hero-anchors.ts`](../features/world/hero-anchors.ts); рисунок — [`forest-wildlife.ts`](../features/world/forest-wildlife.ts) | [Атмосфера](game/world-atmosphere.md) |
+| Изменить вычитание полянки и обход её насекомыми | [`forest-habitats.ts`](../features/world/forest-habitats.ts); `excludeHabitatId` в Habitats | [Исключения территорий](game/tiled-editor.md#территории-и-посадки-насекомых) |
+| Разметить территории и посадки насекомых | `Habitats`, `WildlifeAnchors` в [`forest.tmj`](../world/tiled/forest.tmj) | [Посадки в Tiled](game/tiled-editor.md#территории-и-посадки-насекомых) |
+| Изменить реакцию сидящих птиц на шаги/куст | [`forest-bird-reactions.ts`](../features/world/forest-bird-reactions.ts), события в [`forest-director.ts`](../features/world/forest-director.ts) | [Атмосфера](game/world-atmosphere.md) |
+| Расставить грибы в Tiled, изменить их рост и общие часы | `Mushrooms` в `world/tiled/forest.tmj`, [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-session.ts`](../features/world/forest-session.ts) | [Устройство мира](game/world-foundation.md) |
+| Изменить проходимость и поиск пути | [`navigation.ts`](../features/world/navigation.ts); `WalkAreas`, `Obstacles`, `PointsOfInterest` в [`forest.tmj`](../world/tiled/forest.tmj) | [Поиск пути: алгоритм, границы, диагностика](game/world-navigation.md) |
+| Изменить плавность поворотов, скорость и прибытие | [`steering.ts`](../features/world/steering.ts), исполнение — [`clearing-activity.ts`](../features/world/clearing-activity.ts) | [Закругление, торможение и безопасность](game/world-navigation.md#плавные-повороты-и-прибытие) |
+| Изменить выбор занятия, подход к предмету и прерывание | [`forest-director.ts`](../features/world/forest-director.ts), [`forest-behavior.ts`](../features/world/forest-behavior.ts) | [Устройство мира](game/world-foundation.md) |
+| Изменить подход к дому/кусту и точный переход | [`interaction-navigation.ts`](../features/world/interaction-navigation.ts); `Buildings`, `Bushes` в Tiled | [Поиск пути и входы](game/world-navigation.md) |
+| Изменить исполнение ходьбы, прятки, пробуждение и сон | [`clearing-activity.ts`](../features/world/clearing-activity.ts); `Routes` — только для прежнего режима | [Устройство мира](game/world-foundation.md#прерывания-и-сон-в-домике) |
 | Изменить порядок слоёв и работу двух камер | [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`map-engine.ts`](../features/world/map-engine.ts), [`world-scene.tsx`](../features/world/world-scene.tsx) | [Устройство мира](game/world-foundation.md) |
 | Исправить масштаб, перетаскивание и границы камеры | [`camera.ts`](../features/world/camera.ts), [`map-engine.ts`](../features/world/map-engine.ts) | [Устройство мира](game/world-foundation.md) |
 | Перенести героя, дом или круглую камеру | [`forest.tmj`](../world/tiled/forest.tmj): `Actors`, `Buildings`, `Clearing focus` | [Разметка Tiled](game/tiled-editor.md) |
@@ -23,9 +33,11 @@
 | Изменить программный спрайт Мохлика и его контактную тень | [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts), [`grounding.ts`](../features/world/grounding.ts) | [Устройство мира](game/world-foundation.md) |
 | Изменить экспорт Tiled и валидацию свойств | [`scripts/lib/tiled-world.mjs`](../scripts/lib/tiled-world.mjs), [`types.ts`](../features/world/tiled/types.ts), [`scripts/tiled-world.mjs`](../scripts/tiled-world.mjs) | [Разметка Tiled](game/tiled-editor.md) |
 | Доработать страницу проверки без аккаунта | [`tiled-world-preview.tsx`](../features/world/tiled/tiled-world-preview.tsx), [`renderer.ts`](../features/world/tiled/renderer.ts) | [Разметка Tiled](game/tiled-editor.md) |
-| Добавить управление эффектом в DEV | [`world-dev-panel.tsx`](../features/world/dev/world-dev-panel.tsx), [`world-dev-store.ts`](../features/world/dev/world-dev-store.ts) | [Атмосфера](game/world-atmosphere.md) |
+| Добавить управление эффектом или диагностику в DEV | [`world-dev-panel.tsx`](../features/world/dev/world-dev-panel.tsx), [`world-dev-store.ts`](../features/world/dev/world-dev-store.ts), [`living-world-debug.ts`](../features/world/living-world-debug.ts) | [Атмосфера](game/world-atmosphere.md) |
 
 `features/world/tiled/forest.generated.json` — результат `npm run world:export`, его не редактируют вручную. Проверка соответствия: `npm run world:check`.
+
+Реализованная локальная основа, её инварианты и дальнейшие границы: [живой лес](game/living-world-plan.md). Экспортёр поддерживает свободную полянку и территории; сеть дальних переходов и новые путешествия остаются отдельным этапом.
 
 ## Интерфейс и правила игры
 

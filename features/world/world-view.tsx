@@ -25,6 +25,7 @@ const WorldDevPanel = process.env.NODE_ENV === "development"
 const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind, shell: Shell, float: FishingHook };
 export default function WorldView({ world, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items }: WorldPortalProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
+  const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
   const claim = useRef<{ id: string; owner: string } | null>(null);
   useEffect(() => {
     const pending = claim.current;
@@ -67,10 +68,10 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
           : "Обе коллекции собраны! Игра в разработке — новые приключения появятся позже.";
   return <section className={styles.world} aria-label="Лес Мохлика">
     <WorldScene state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={world.now} timeZone={timeZone}
-      onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} />
+      onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} worldView active={panel === null}
       onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
-    <header className={styles.hud}>
+    <header ref={topHud} className={styles.hud}>
       <div className={styles.playerBar}>
         <button id="world-exit" onClick={onClose} aria-label="Вернуться к отметке Я живой"><ArrowLeft size={22} /></button>
         <button className={styles.player} onClick={() => openPanel("stats")} aria-label={`Статистика Мохлика. ${displayName}, уровень ${level}`}>
@@ -82,7 +83,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
       <WorldBalances key={ownerPublicId} value={state.resources} />
     </header>
     {panel === null && <WorldFeedback world={world} />}
-    <div className={styles.bottomHud}>
+    <div ref={bottomHud} className={styles.bottomHud}>
       {!WORLD_PRESENTATION.rebuilding && <button className={styles.goalChip} onClick={() => openPanel(!state.firstJourneyCompleted ? "journeys" : houseCost ? "build" : "collection")}><Sprout size={18} /><span>{!state.firstJourneyCompleted ? "Первая прогулка" : houseCost ? "Обустроить дом" : "Лесной альбом"}</span><ChevronRight size={16} /></button>}
       <nav className={styles.gameDock} aria-label="Действия в игре">
         {!WORLD_PRESENTATION.rebuilding && <button onClick={() => openPanel("build")}><Hammer size={23} /><span>Строить</span></button>}

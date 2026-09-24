@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { LocateFixed, Minus, Plus, LoaderCircle, Scan } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
@@ -14,8 +14,9 @@ import { MAP_PLACES } from "./map-layout";
 import { WORLD_PRESENTATION } from "./presentation";
 import styles from "./world.module.css";
 
-type Props = { state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void };
-export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace }: Props) {
+type Props = { state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void;
+  topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
+export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, topHud, bottomHud }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
   const time = useRef(now);
@@ -39,7 +40,8 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     void import("./map-engine").then(module => {
       if (disposed) return null;
-      return module.createMapEngine(canvas.current!, options(), place => latest.current.onPlace(place), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), abort.signal);
+      return module.createMapEngine(canvas.current!, options(), place => latest.current.onPlace(place), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), abort.signal,
+        { top: topHud.current, bottom: bottomHud.current });
     }).then(value => {
       if (!value) return;
       if (disposed) { value.dispose(); return; }
@@ -55,7 +57,7 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
     });
     const change = () => engine.current?.update(options()); media.addEventListener("change", change);
     return () => { disposed = true; abort.abort(); media.removeEventListener("change", change); engine.current?.dispose(); engine.current = null; };
-  }, [reload]);
+  }, [reload, topHud, bottomHud]);
   useEffect(() => {
     const taps = Math.max(0, wakeSignal - previousWake.current); previousWake.current = wakeSignal;
     if (engine.current) { for (let i = 0; i < taps; i++) engine.current.notice(); }

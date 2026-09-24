@@ -4,25 +4,60 @@ import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/moch
 import { NEW_MAP_FOCUS, NEW_MAP_PET_SIZE as PET_SIZE, NEW_MAP_SPAWN, TILED_WORLD } from "./presentation";
 import { paintFixedWorld } from "./tiled/renderer";
 import { initialPreviewLevels, previewSiteVisual } from "./tiled/preview-state";
-import type { PreviewLevels, SiteVisual } from "./tiled/types";
+import type { PreviewLevels, SiteVisual, WorldPoint } from "./tiled/types";
 import { drawGroundedHero } from "./grounding";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "./forest-atmosphere";
 import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
 import { drawForestGroundImpacts } from "./forest-ground-impacts";
 import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
-import { advanceForestLife, cancelForestLife, forestLifeFrame, triggerForestLife, type ForestLifeState } from "./forest-life";
+import { forestLifeFrame, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
+import { drawForestBush } from "./forest-bush-painter";
+import { drawWaterDebug } from "./dev/water-debug";
+import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity } from "./clearing-activity";
+import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, type ForestDirectorOptions } from "./forest-director";
+import { faunaInteractionFrame, faunaRenderFrame, type ForestFaunaState } from "./forest-fauna";
+import { forestBirdFrame } from "./forest-birds";
+import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reactions";
+import type { ForestBird } from "./forest-wildlife";
+import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
-import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState } from "./dev/world-dev-store";
+import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
+const home = TILED_WORLD.sites.find(site => site.id === "home");
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
 const initialVisuals = visualsFor(levels);
 const artworkUrls = (visuals: Record<string, SiteVisual>) => [...new Set([
   ...TILED_WORLD.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
 ])];
+
+function pointInPolygon(point: WorldPoint, polygon: WorldPoint[]) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[j], b = polygon[i];
+    if ((a.y > point.y) !== (b.y > point.y)
+      && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Quiet, font-independent sleep cue anchored to the authored doorway. */
+function drawHomeSleep(ctx: CanvasRenderingContext2D, door: WorldPoint, elapsed: number, still: boolean) {
+  ctx.save(); ctx.fillStyle = "#ecdba7";
+  const alpha = ctx.globalAlpha;
+  for (let index = 0; index < 2; index++) {
+    const phase = still ? .35 + index * .25 : (elapsed * .24 + index * .5) % 1;
+    const unit = 1 + index * .3, x = door.x - 4 + index * 5, y = door.y - 23 - phase * 9;
+    ctx.globalAlpha = alpha * (still ? .7 : Math.sin(phase * Math.PI) * .8);
+    ctx.fillRect(x, y, 4 * unit, unit);
+    for (let row = 1; row < 4; row++) ctx.fillRect(x + (3 - row) * unit, y + row * unit, unit, unit);
+    ctx.fillRect(x, y + 4 * unit, 4 * unit, unit);
+  }
+  ctx.restore();
+}
 
 type ManualAnimation = { pose: PixelPose; elapsed: number };
 export type NewMapPaintPreview = {
@@ -32,7 +67,11 @@ export type NewMapPaintPreview = {
   birdElapsed?: number;
   birdSeed?: number;
   life?: ForestLifeState;
+  clearing?: ReturnType<typeof clearingActivityFrame>;
   wetness?: number;
+  fauna?: ForestFaunaState;
+  birdFrame?: ForestBird[];
+  livingDebug?: LivingWorldDebugSnapshot;
 };
 
 function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
@@ -40,10 +79,17 @@ function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
 }
 function atmosphereOptions(options: SceneOptions, timestamp: number, dusk: number, preview?: NewMapPaintPreview): ForestAtmosphereOptions {
   const dev = preview?.state;
+  const effectiveDusk = dev?.timeOfDay === "day" ? 0 : dev?.timeOfDay === "night" ? 1 : dusk;
+  const fauna = preview?.fauna ? faunaRenderFrame(preview.fauna, {
+    dusk: effectiveDusk, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
+  }) : undefined;
   return { elapsed: timestamp / 1000, timestamp, reducedMotion: reducedMotion(options, dev),
-    dusk: dev?.timeOfDay === "day" ? 0 : dev?.timeOfDay === "night" ? 1 : dusk,
+    dusk: effectiveDusk,
     weather: dev?.weather, butterflies: dev?.butterflies, fireflies: dev?.fireflies, birds: dev?.birds,
-    birdElapsed: preview?.birdElapsed, birdSeed: preview?.birdSeed };
+    birdElapsed: preview?.birdElapsed, birdSeed: preview?.birdSeed,
+    fauna: fauna ? { ...fauna, butterflies: dev?.butterflies === "off" ? [] : fauna.butterflies,
+      fireflies: dev?.fireflies === "off" ? [] : fauna.fireflies } : undefined,
+    birdFrame: preview?.birdFrame };
 }
 function actorFrame(elapsed: number, reacting: boolean, still: boolean, preview?: NewMapPaintPreview) {
   const cycle = elapsed % 48, animation = preview?.animation, chosen = preview?.state?.pose;
@@ -60,11 +106,14 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   options: SceneOptions, elapsed: number, reacting: boolean, timestamp = options.serverNow ?? 0,
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
-  const actor = { ...NEW_MAP_SPAWN, size: PET_SIZE * (dev?.heroScale ?? 1) };
+  const walking = preview?.clearing;
+  const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const life = preview?.life;
-  const routine = life?.routine && !still && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
+  const routine = life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, actor, elapsed) : null;
+  const encounter = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
+    ? faunaInteractionFrame(preview.fauna) : null;
   context.save();
   context.beginPath(); context.rect(0, 0, TILED_WORLD.width, TILED_WORLD.height); context.clip();
   paintFixedWorld(context, TILED_WORLD, { images, visuals: preview?.visuals ?? initialVisuals, actor: null,
@@ -79,16 +128,27 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     },
     options: { levels: dev?.levels ?? levels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
-  if (dev?.showHero !== false) {
-    drawGroundedHero(context, { ...actor, direction: routine?.direction ?? dev?.direction ?? "front",
-      ...(routine ?? actorFrame(elapsed, reacting, still, preview)),
-      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow });
+  if (dev?.showHero !== false && (walking?.opacity ?? 1) > 0) {
+    const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+    const motion = automatic && walking ? walking : null;
+    const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
+    context.save(); context.globalAlpha *= walking?.opacity ?? 1;
+    drawGroundedHero(context, { ...actor, direction: routine?.direction ?? encounter?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
+      ...(routine ?? encounter ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
+      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression });
     if (routine) drawForestLifePartner(context, routine, elapsed);
+    context.restore();
+  }
+  if (walking?.bush && dev?.showHero !== false) drawForestBush(context, TILED_WORLD, images, walking.bush, elapsed, still);
+  if (walking?.homeSleeping && home && dev?.showHero !== false && dev?.showBuildings !== false) {
+    drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
     showBuildings: dev?.showBuildings, levels: dev?.levels ?? levels };
   drawForestAtmosphere(context, TILED_WORLD, atmosphere, () => drawForestLighting(context, TILED_WORLD, lighting));
   drawForestLightEmitters(context, TILED_WORLD, lighting);
+  if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, TILED_WORLD);
+  if (WORLD_DEV_ENABLED && preview?.livingDebug) drawLivingWorldDebug(context, TILED_WORLD, preview.livingDebug);
   context.restore();
 }
 
@@ -118,8 +178,34 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         if (ownerChanged) resume();
       });
   }
+  function clearingMustContinue() {
+    const current = clearingActivityFrame(state.clearing);
+    return Boolean(state.pendingLife || state.clearing.retiring || state.clearing.bushEffect?.bursts.length)
+      || current.attention || dev?.showBuildings === false && current.residing;
+  }
+  function birdBase() {
+    const atmosphere = atmosphereOptions(options, state.timestamp, state.dusk, { state: dev,
+      birdElapsed: state.birdStarted === null ? undefined : state.elapsed - state.birdStarted,
+      birdSeed: state.birdStarted === null ? undefined : state.birdSeed });
+    const environment = forestAtmosphereState(TILED_WORLD, atmosphere);
+    return forestBirdFrame(TILED_WORLD, { ...atmosphere, elapsed: state.elapsed, dusk: environment.dusk, rain: environment.rain });
+  }
+  function directorOptions(blocked = false): ForestDirectorOptions {
+    const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
+    return { autoLife: dev?.autoLife !== false, blocked, dusk: environment.dusk, rain: environment.rain,
+      homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
+      reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale };
+  }
   function preview(): NewMapPaintPreview {
+    const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
     return { state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
+      fauna: state.fauna, birdFrame: applyBirdReactions(state.birdReactions, birdBase()),
+      livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
+        debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
+        position: state.clearing.position, path: path?.path, target: path?.target, activity: path?.activity,
+        reason: `${state.director.reason}${path?.reason ? ` · ${path.reason}` : ""}`,
+        fauna: state.fauna.entities, encounter: state.fauna.encounter } : undefined,
+      clearing: clearingActivityFrame(state.clearing, { still: reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue() }),
       birdElapsed: state.birdStarted === null ? undefined : state.elapsed - state.birdStarted,
       birdSeed: state.birdStarted === null ? undefined : state.birdSeed };
   }
@@ -134,7 +220,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       ctx.translate(-NEW_MAP_FOCUS.x, -NEW_MAP_FOCUS.y);
       paintWorld(ctx);
     }
-    const activity = state.reaction > 0 ? "greet" : "idle";
+    const activity = state.reaction > 0 || state.pendingAttention || clearingActivityFrame(state.clearing).attention ? "greet" : "idle";
     if (lastActivity !== activity) { lastActivity = activity; callbacks.activity(activity); }
     callbacks.rendered?.();
   }
@@ -156,11 +242,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       state.dusk += (Number(options.dusk) - state.dusk) * Math.min(1, step * .7);
       if (state.animation) { state.animation.elapsed += step; if (state.animation.elapsed >= REACTION_SECONDS) state.animation = null; }
       state.reaction = Math.max(0, state.reaction - step);
-      const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, preview()));
+      const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
-      advanceForestLife(state.life, step, { autoLife: !manual && dev?.autoLife !== false,
-        dusk: environment.dusk, rain: environment.rain, butterflies: dev?.butterflies, fireflies: dev?.fireflies });
+      advanceForestDirector(state, step, directorOptions(manual));
+      const stimulus = state.director.stimulus;
+      advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
+        ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength }
+        : undefined, TILED_WORLD);
+      if (stimulus) state.lastBirdStimulus = stimulus.id;
       previous = now; session.publish();
     }
     if (active() && session.isOwner()) frame = requestAnimationFrame(tick);
@@ -222,26 +312,35 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       } else { dispose(); callbacks.failure(error); }
     });
   }
+  function requestLife(kind: WorldDevLifeAction) {
+    state.reaction = 0;
+    requestForestDirective(state, kind, directorOptions());
+  }
   if (WORLD_DEV_ENABLED) unsubscribe = worldDevStore.subscribe(() => {
     if (disposed) return;
     const before = dev!;
     dev = worldDevStore.getSnapshot();
     if (session.consumeControls(dev)) {
+      if ((dev.animation?.id !== before.animation?.id && dev.animation || dev.pose !== before.pose && dev.pose !== "auto")
+        && clearingActivityFrame(state.clearing).bush?.occupied) noticeClearingActivity(state.clearing, { still: true });
       if (dev.animation?.id !== before.animation?.id) {
         if (!dev.animation) state.animation = null;
         else if (session.consumeEvent("pose", dev.animation.id)) state.animation = { pose: dev.animation.pose, elapsed: 0 };
-        cancelForestLife(state.life);
+        cancelForestDirector(state);
       }
       if (dev.birdEvent !== before.birdEvent) {
         if (!dev.birdEvent) state.birdStarted = null;
         else if (session.consumeEvent("birds", dev.birdEvent)) { state.birdStarted = state.elapsed; state.birdSeed += 1; }
       }
       if (dev.pose !== before.pose || dev.autoLife === false && before.autoLife || dev.showHero === false
-        || state.life.routine?.kind === "butterfly" && dev.butterflies === "off"
-        || state.life.routine?.kind === "firefly" && dev.fireflies === "off") cancelForestLife(state.life);
+        || state.fauna.encounter?.kind === "butterfly" && dev.butterflies === "off"
+        || (state.fauna.encounter?.kind === "firefly" || state.pendingLife === "firefly") && dev.fireflies === "off"
+        || state.pendingLife === "butterfly" && dev.butterflies === "off") {
+        cancelForestDirector(state);
+      }
       if (dev.lifeEvent?.id !== before.lifeEvent?.id) {
-        if (!dev.lifeEvent) cancelForestLife(state.life);
-        else if (session.consumeEvent("life", dev.lifeEvent.id)) triggerForestLife(state.life, dev.lifeEvent.kind);
+        if (!dev.lifeEvent) { cancelForestDirector(state); }
+        else if (session.consumeEvent("life", dev.lifeEvent.id)) requestLife(dev.lifeEvent.kind);
       }
     }
     stop(); syncOwner();
@@ -253,7 +352,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   });
   prepareArtwork();
   return {
-    position: () => ({ x: NEW_MAP_SPAWN.x, y: NEW_MAP_SPAWN.y - PET_SIZE * (dev?.heroScale ?? 1) / 2 }),
+    position: () => {
+      const actor = clearingActivityFrame(state.clearing);
+      return { x: actor.x, y: actor.y - PET_SIZE * (dev?.heroScale ?? 1) / 2 };
+    },
     configure(next) {
       if (disposed) return;
       const identityChanged = next.presenceKey !== options.presenceKey;
@@ -270,14 +372,23 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     notice() {
       if (disposed) return;
-      cancelForestLife(state.life); state.reaction = REACTION_SECONDS; cancelReactionTimer();
+      const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
+      noticeForestDirector(state, still || manualPose);
+      // Static accessibility / explicit DEV poses use a bounded feedback timer.
+      if ((still || manualPose) && state.reaction <= 0) state.reaction = REACTION_SECONDS;
       if (active()) session.publish(); resume();
     },
     hitPet(x, y) {
       const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
       const size = PET_SIZE * (dev?.heroScale ?? 1);
-      return !disposed && dev?.showHero !== false && Math.abs(point.x - NEW_MAP_SPAWN.x) < size / 2
-        && point.y > NEW_MAP_SPAWN.y - size && point.y < NEW_MAP_SPAWN.y;
+      const actor = clearingActivityFrame(state.clearing);
+      if (disposed || dev?.showHero === false) return false;
+      if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
+      const bush = actor.bush?.occupied && TILED_WORLD.bushes?.find(item => item.id === actor.bush!.id);
+      if (bush && pointInPolygon(point, bush.points)) return true;
+      const feetY = actor.y - (actor.lift ?? 0);
+      return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
+        && point.y > feetY - size && point.y < feetY;
     },
     setTime(now) {
       if (disposed || !Number.isFinite(now)) return;
@@ -285,7 +396,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     invite() {}, moveTo() {},
     ambience: () => {
-      const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, preview()));
+      const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       return { elapsed: state.elapsed, ecologyTime: reducedMotion(options, dev) ? 0 : state.timestamp / 1000,
         rain: environment.rain, dusk: environment.dusk };
     },

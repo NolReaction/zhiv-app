@@ -5,6 +5,8 @@ import { ChevronDown, FlaskConical, RotateCcw, X } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { worldCatalog } from "../model";
 import { TILED_WORLD } from "../presentation";
+import { clearingRouteDiagnostics } from "../clearing-activity";
+import { compileWorldInteractions } from "../interaction-navigation";
 import type { WorldController } from "../use-world";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevLifeAction, type WorldDevState } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
@@ -32,10 +34,34 @@ const POSE_LABELS: Record<PixelPose, string> = {
 const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], ["drizzle", "Морось"], ["rain", "Дождь"], ["downpour", "Ливень"]] as const;
 const TIME = [["auto", "По времени профиля"], ["day", "День"], ["night", "Ночь"]] as const;
 const MODES = [["auto", "Авто"], ["on", "Включить"], ["off", "Выключить"]] as const;
+const clearingRoutes = clearingRouteDiagnostics(TILED_WORLD);
+const interactionDiagnostics = WORLD_DEV_ENABLED ? compileWorldInteractions(TILED_WORLD).diagnostics : [];
+const routeReasons: Record<string, string> = {
+  "missing-actor": "Нет корректной точки Мохлика.", "invalid-points": "Нужны от 2 до 64 вершин линии.",
+  "start-away-from-spawn": "Первая вершина должна совпадать с точкой Мохлика.", "invalid-focus": "Проверьте область фокуса круга.",
+  "invalid-activity": "Неизвестное занятие в конце маршрута.", "invalid-pause": "Пауза должна быть от 2 до 20 секунд.",
+  "outside-clearing-radius": "Маршрут уходит слишком далеко от домашней точки.", "outside-map": "Герой выходит за край карты.",
+  "outside-focus": "Герой не помещается в круг главного экрана.", "building-collision": "Лапы пересекают коллизию здания.",
+  "invalid-home-site": "Домашнему маршруту нужен siteId = home.", "missing-home-site": "Не найден дом или точка входа.",
+  "home-end-away-from-entry": "Последняя вершина должна совпадать с home-entry.",
+  "invalid-doorway": "Порог должен находиться не дальше 0.6 размера Мохлика от входа.",
+  "missing-bush": "Маршруту нужны behavior = clearing и bushId существующего куста.",
+  "invalid-bush": "Проверьте контур и точки куста: укрытие должно находиться внутри контура.",
+  "bush-end-away-from-entry": "Последняя вершина маршрута должна совпадать с точкой входа в куст.",
+  "invalid-bush-corridor": "Расстояние от входа в куст до укрытия должно быть от 0.1 до 0.8 размера Мохлика.",
+  "water-collision": "Маршрут проходит по воде.", "invalid-length": "Маршрут слишком короткий или длинный для полянки.",
+  "missing-navigation": "Нужны доступная WalkAreas и корректный размер Мохлика.",
+  "unreachable-door-entry": "Подведите WalkAreas ближе к home-entry; снаружи порога нужен запас для лап.",
+  "unreachable-bush-entry": "Точка входа в куст должна стоять на свободной земле с запасом для лап.",
+  "blocked-doorway": "Переход через порог пересекает воду, препятствие или другое здание.",
+  "blocked-bush-corridor": "Прыжку в куст мешают вода, препятствие или здание.",
+};
 const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", "Влево"], ["right", "Вправо"]] as const;
 const LIFE_ACTIONS = [
   ["butterfly", "Поиграть с бабочкой"], ["firefly", "Поиграть со светлячком"],
-  ["mushroom", "Съесть гриб"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
+  ["mushroom", "Съесть гриб"], ["leaf", "Рассмотреть листик"],
+  ["bush", "Спрятаться в кусте"],
+  ["home-sleep", "Отправиться спать домой"], ["wake", "Разбудить Мохлика"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
 ] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
 
 function subscribeMotion(listener: () => void) {
@@ -114,6 +140,8 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
     if (action.action === "idle") return null;
     if (action.action === "grow-mushrooms") return motionUnavailable;
     if (heroUnavailable) return heroUnavailable;
+    if (action.action === "bush" && !TILED_WORLD.bushes?.length) return "Добавьте куст и маршрут к нему в Tiled.";
+    if (action.action === "home-sleep" && !state.showBuildings) return "Дом скрыт. Включите «Показывать здания».";
     if (action.action === "butterfly" && state.butterflies === "off") return "Бабочки выключены. Выберите «Авто» или «Включить».";
     if (action.action === "firefly" && state.fireflies === "off") return "Светлячки выключены. Выберите «Авто» или «Включить».";
     return null;
@@ -139,6 +167,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
     } else if (action.kind === "life") {
       worldDevStore.triggerLife(action.action);
       setFeedback(action.action === "idle" ? "Сценка отменена. Автоматические сценки выключены."
+        : action.action === "butterfly" || action.action === "firefly" ? "Запрошена встреча с доступной особью. Если подходящей рядом нет, сценка не начнётся."
         : `Лесная сценка: ${LIFE_ACTIONS.find(([kind]) => kind === action.action)![1].toLowerCase()}`);
     } else {
       worldDevStore.triggerPose(action.pose); setFeedback(`Анимация: ${POSE_LABELS[action.pose].toLowerCase()}`);
@@ -188,6 +217,10 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
 
         <Section title="Лесные сценки" initiallyOpen>
           <Toggle label="Автоматические сценки" checked={state.autoLife} onChange={autoLife => change({ autoLife })} />
+          <p className={styles.hint}>Включает прогулки по полянке и занятия на остановках. Выключение останавливает Мохлика на текущем месте; включение продолжает прогулку.</p>
+          <Select label="Способ прогулки" value={state.navigationMode} values={[["auto", "Свободная полянка"], ["routes", "Прежние маршруты"]]}
+            onChange={navigationMode => change({ navigationMode }, "Способ прогулки изменится после возвращения к домашней точке")} />
+          <p className={styles.hint}>Переключение позволяет сравнить прогулки. Мохлик сначала безопасно возвращается к домашней точке.</p>
           <div className={styles.lifeActions}>
             {LIFE_ACTIONS.map(([action, label]) => {
               const reason = unavailable({ kind: "life", action });
@@ -199,8 +232,19 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
               </div>;
             })}
           </div>
-          <p className={styles.hint}>«Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» подготавливает один гриб для сценки. Наград и изменений инвентаря нет.</p>
-          <p className={styles.hint}>В режиме «Авто» бабочка или светлячок появятся для ручной сценки в любое время. «Отменить сценку» возвращает покой и выключает автоматические сценки.</p>
+          <p className={styles.hint}>«Отправиться спать домой» проверяет весь путь без ожидания трёх минут. Нажмите на дом или круг, чтобы разбудить. «Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» выбирает уже выросший гриб с доступным подходом. Наград и изменений инвентаря нет.</p>
+          <p className={styles.hint}>Встречи с бабочкой и светлячком выбирают уже существующую свободную особь поблизости. Новое насекомое по кнопке не появляется. Учитываются погода, освещение и занятость участников; если подходящей особи нет, запрос не запускает сценку. «Отменить сценку» останавливает Мохлика и выключает автоматические сценки.</p>
+          <details><summary>Входы дома и кустов · {interactionDiagnostics.filter(item => item.valid).length} готовы</summary>
+            <p className={styles.hint}>На свободной полянке путь строится от текущего места. Здесь проверяются точки входа; доступность всего пути зависит от положения Мохлика.</p>
+            {interactionDiagnostics.map(item => <p key={item.id} className={item.valid ? styles.hint : styles.error}>
+              <strong>{item.id}</strong>: {item.valid ? "Точки перехода готовы" : routeReasons[item.reason ?? ""] ?? "Проверьте точки перехода в Tiled."}
+            </p>)}
+          </details>
+          <details><summary>Прежние маршруты · {clearingRoutes.filter(route => route.valid).length} доступны</summary>
+            {clearingRoutes.length ? clearingRoutes.map(route => <p key={route.id} className={route.valid ? styles.hint : styles.error}>
+              <strong>{route.id}</strong>: {route.valid ? "Готов к прогулке" : routeReasons[route.reason ?? ""] ?? "Проверьте разметку маршрута."}
+            </p>) : <p className={styles.hint}>Авторских линий нет. Свободная полянка использует WalkAreas и точки входов.</p>}
+          </details>
         </Section>
 
         <Section title="Мохлик и анимации">
@@ -220,7 +264,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
               aria-describedby={heroUnavailable ? `${id}-pose-reason` : undefined} onClick={() => play({ kind: "pose", pose })}>{POSE_LABELS[pose]}</button>)}
           </div></fieldset>
           {heroUnavailable && <p id={`${id}-pose-reason`} className={styles.hint}>{heroUnavailable}</p>}
-          <p className={styles.hint}>Проверка кадров на месте. Походы по маршрутам — в редакторе карты.</p>
+          <p className={styles.hint}>Ручная поза проигрывается на текущем месте. Для прогулок выберите «Обычное поведение» и включите автоматические сценки. Линии проверяются в редакторе карты.</p>
           <fieldset className={styles.fieldset}><legend>Примерка · без выдачи предметов</legend>
             {([['palette', 'Цвет мха'], ['head', 'Головной убор'], ['neck', 'Шарф']] as const).map(([slot, label]) =>
               <Field key={slot} label={label}><select value={appearance[slot] ?? ""} onChange={event => outfit(slot, event.target.value)}>
@@ -236,6 +280,12 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           <Toggle label="Показывать постройки" checked={state.showBuildings} onChange={showBuildings => change({ showBuildings })} />
           <Toggle label="Тени у основания" checked={state.buildingShadow} onChange={buildingShadow => change({ buildingShadow })} />
           <Toggle label="Границы и точки карты" checked={state.debug} onChange={debug => change({ debug })} />
+          <Toggle label="Границы воды" checked={state.debugWater} onChange={debugWater => change({ debugWater })} />
+          {state.debugWater && <p className={styles.hint}>Голубой контур — вода. Коралловый пунктир — исключения: листья, камни и другие предметы над водой.</p>}
+          <Toggle label="Проходимость и цель Мохлика" checked={state.debugNavigation} onChange={debugNavigation => change({ debugNavigation })} />
+          {state.debugNavigation && <p className={styles.hint}>Зелёный — разрешённая область и безопасные точки сетки, красный — препятствия, голубой — вода. Жёлтый — путь и цель; круг под лапами показывает радиус обхода.</p>}
+          <Toggle label="Особи и их цели" checked={state.debugFauna} onChange={debugFauna => change({ debugFauna })} />
+          {state.debugFauna && <p className={styles.hint}>Подписи показывают постоянный ID, состояние и цель особи. Фиолетовый пунктир — территория, красный — вычтенная из неё область. Подпись встречи указывает участника и фазу. Бабочки активны днём, светлячки — ночью.</p>}
           {TILED_WORLD.sites.map(site => <Field key={site.id} label={site.label}>
             <select value={state.levels[site.id] ?? site.initialLevel} onChange={event => change({ levels: { ...state.levels, [site.id]: Number(event.target.value) } })}>
               {site.states.map(visual => <option key={visual.level} value={visual.level}>{visual.label} · уровень {visual.level}</option>)}
