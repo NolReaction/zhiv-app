@@ -122,7 +122,7 @@ class JdbcForestMemoryRepositoryIntegrationTest {
         assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { memory.command(p.hash, save(a, renewed)) }.code)
         val recovered = memory.command(other, acquire(p, revision = renewed.revision)).state
         assertTrue(recovered.lease.owned)
-        execute("UPDATE app_users SET banned_at=clock_timestamp() WHERE id=?", p.id)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Forest memory access test' WHERE id=?", p.id)
         assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { memory.read(other, p.publicId, UUID.randomUUID()) }.code)
     }
 
