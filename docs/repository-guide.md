@@ -31,6 +31,7 @@
 | Изменить порядок слоёв и работу двух камер | [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`map-engine.ts`](../features/world/map-engine.ts), [`world-scene.tsx`](../features/world/world-scene.tsx) | [Устройство мира](game/world-foundation.md) |
 | Исправить масштаб, перетаскивание и границы камеры | [`camera.ts`](../features/world/camera.ts), [`map-engine.ts`](../features/world/map-engine.ts) | [Устройство мира](game/world-foundation.md) |
 | Перенести героя, дом или круглую камеру | [`forest.tmj`](../world/tiled/forest.tmj): `Actors`, `Buildings`, `Clearing focus` | [Разметка Tiled](game/tiled-editor.md) |
+| Добавить здание и примерить уровни без правок кода | `Buildings` и `Forest image collection` в [`forest.tmj`](../world/tiled/forest.tmj); `/prototype/tiled-world` | [Мастерская зданий](game/building-workbench.md) |
 | Заменить рисунок мира или дома | [`art/world/prototype/`](../art/world/prototype/), [`public/world/prototype/`](../public/world/prototype/) | [Исходники и экспорт](../art/README.md) |
 | Изменить программный спрайт Мохлика и его контактную тень | [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts), [`grounding.ts`](../features/world/grounding.ts) | [Устройство мира](game/world-foundation.md) |
 | Изменить экспорт Tiled и валидацию свойств | [`scripts/lib/tiled-world.mjs`](../scripts/lib/tiled-world.mjs), [`types.ts`](../features/world/tiled/types.ts), [`scripts/tiled-world.mjs`](../scripts/tiled-world.mjs) | [Разметка Tiled](game/tiled-editor.md) |
