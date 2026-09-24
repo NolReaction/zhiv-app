@@ -41,7 +41,7 @@ export function heroSpriteContact(sprite: HTMLCanvasElement, pose: PixelPose, fr
 
 export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
   x: number; y: number; size: number; pose: PixelPose; direction: PixelDirection; frame: number;
-  appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number; shadow?: boolean;
+  appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number; shadow?: boolean; lift?: number;
 }) {
   if (![actor.x, actor.y, actor.size].every(Number.isFinite) || actor.size <= 0) return;
   const sprite = pixelSprite(actor.pose, actor.direction, actor.frame, actor.appearance);
@@ -50,15 +50,19 @@ export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
   const footX = actor.x + ((contact.left + contact.right) / 2 - HERO_SOURCE_SIZE / 2) * scale;
   const breathe = Number.isFinite(actor.breathe) ? Math.max(-.008, Math.min(.008, actor.breathe!)) : 0;
   const height = actor.size * (1 + breathe);
+  const lift = Number.isFinite(actor.lift) ? Math.max(0, Math.min(actor.size, actor.lift!)) : 0;
   ctx.save();
   if (actor.shadow !== false) {
+    const shadowScale = 1 - lift / actor.size * .4;
+    ctx.save(); ctx.globalAlpha *= 1 - lift / actor.size * .65;
     ctx.fillStyle = "rgba(24,38,25,.045)";
-    ctx.beginPath(); ctx.ellipse(footX, actor.y + actor.size * .01, footWidth * .54, actor.size * .04, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(footX, actor.y + actor.size * .01, footWidth * .54 * shadowScale, actor.size * .04, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "rgba(24,38,25,.16)";
-    ctx.beginPath(); ctx.ellipse(footX, actor.y, footWidth * .44, actor.size * .024, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(footX, actor.y, footWidth * .44 * shadowScale, actor.size * .024, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sprite, actor.x - actor.size / 2, actor.y - contact.bottom / HERO_SOURCE_SIZE * height, actor.size, height);
+  ctx.drawImage(sprite, actor.x - actor.size / 2, actor.y - lift - contact.bottom / HERO_SOURCE_SIZE * height, actor.size, height);
   ctx.restore();
 }
 

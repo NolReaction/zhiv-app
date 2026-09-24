@@ -359,3 +359,170 @@ test("rain replaces an exposed outdoor nap with grooming", () => {
   assert.ok(state.steps.some(step => step.pose === "groom"));
   assert.ok(state.steps.every(step => !["yawn", "drowsy", "sleep"].includes(step.pose)));
 });
+
+const bushScene = (withHome = false) => {
+  const source = withHome ? residenceScene() : scene();
+  source.bushes = [{ id: "nearby-bush", points: rect(150, 135, 40, 50), entry: point(180, 190), hide: point(165, 175) }];
+  source.paths.unshift({ ...route("bush", "bush"), bushId: "nearby-bush", pauseSeconds: 3 });
+  return source;
+};
+const { requestClearingBush } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+
+test("bush routes require an authored reachable entry and validate the whole jump corridor", () => {
+  const source = bushScene();
+  assert.equal(clearingRouteDiagnostics(source)[0].valid, true);
+  for (const [reason, change] of [
+    ["missing-bush", s => { s.bushes = []; }],
+    ["missing-bush", s => { s.paths[0].bushId = "missing"; }],
+    ["invalid-bush", s => { s.bushes[0].hide = point(195, 175); }],
+    ["bush-end-away-from-entry", s => { s.bushes[0].entry.x += 1; }],
+    ["invalid-bush-corridor", s => { s.bushes[0].hide = point(150.1, 155); }],
+    ["water-collision", s => { s.water = { surfaces: [{ points: rect(169, 178, 2, 2) }], exclusions: [] }; }],
+    ["building-collision", s => { s.sites.push({ id: "obstacle", collision: rect(169, 178, 2, 2) }); }],
+  ]) {
+    const broken = bushScene(); change(broken);
+    const state = createClearingActivity(broken, 1);
+    assert.equal(state.diagnostics[0].reason, reason);
+    assert.equal(requestClearingBush(state), false);
+    assert.equal(state.routes.length, 1, "ordinary valid walks remain available");
+  }
+});
+
+test("bush play walks, anticipates, jumps behind foliage, rustles, exits, lands and retraces", () => {
+  const state = createClearingActivity(bushScene(), 1), stages = new Set(), poses = new Set();
+  assert.equal(requestClearingBush(state), true);
+  assert.equal(canStartClearingLife(state), false, "a pending request owns its next turn");
+  let jumped = false, hidden = false, rustled = false, started = false;
+  for (let t = 0; t < 30 && (!started || state.stage !== "home"); t += .025) {
+    const before = { ...state.position };
+    advanceClearingActivity(state, .025, conditions);
+    const frame = clearingActivityFrame(state); stages.add(state.stage); poses.add(frame.pose);
+    assert.ok(Math.hypot(frame.x - before.x, frame.y - before.y) <= .67, "no teleport between walk and bush corridor");
+    started ||= state.stage === "outbound";
+    jumped ||= (frame.lift ?? 0) > 5;
+    if (state.stage === "bush-hidden") {
+      hidden = true; assert.equal(frame.opacity, 0); assert.equal(frame.bush.occlude, true);
+      assert.deepEqual(state.position, bushScene().bushes[0].hide);
+      rustled ||= frame.bush.rustle > .4;
+    } else assert.equal(frame.opacity, 1, "ground travel is hidden by foliage, never faded in empty air");
+    if (state.stage !== "home") assert.equal(frame.attention, true, "explicit DEV scene finishes even if automatic life is off");
+  }
+  assert.ok(jumped && hidden && rustled);
+  assert.deepEqual(stages, new Set(["outbound", "bush-prepare", "bush-enter", "bush-hidden", "bush-exit", "bush-land", "return", "home"]));
+  assert.ok(poses.has("jump") && poses.has("crouch") && poses.has("shake"));
+  assert.equal(isClearingAtHome(state), true); assert.equal(clearingActivityFrame(state).attention, false);
+});
+
+test("touching any bush phase leaves physically before greeting and repeated taps never reset the jump", () => {
+  for (const stage of ["bush-prepare", "bush-enter", "bush-hidden", "bush-exit", "bush-land"]) {
+    const state = createClearingActivity(bushScene(), 1);
+    requestClearingBush(state);
+    until(state, s => s.stage === stage && (stage !== "bush-enter" || s.bushProgress >= .4));
+    const before = { ...state.position }, lift = clearingActivityFrame(state).lift;
+    assert.equal(noticeClearingActivity(state), true, stage);
+    assert.deepEqual(state.position, before, stage);
+    if (stage === "bush-enter") assert.equal(clearingActivityFrame(state).lift, lift);
+    for (let t = 0; t < 5 && state.stage !== "attention"; t += .025) {
+      assert.equal(noticeClearingActivity(state), false);
+      advanceClearingActivity(state, .025, conditions);
+    }
+    assert.equal(state.stage, "attention", stage);
+    assert.deepEqual(state.position, bushScene().bushes[0].entry, "response happens outside the foliage");
+    assert.equal(clearingActivityFrame(state).opacity, 1);
+    for (let t = 0; t < 1; t += .025) {
+      assert.equal(noticeClearingActivity(state), false);
+      advanceClearingActivity(state, .025, conditions);
+    }
+    until(state, isClearingAtHome, 30);
+    assert.equal(state.bushWake, false); assert.equal(state.bushRequested, false);
+  }
+});
+
+test("a queued bush scene safely returns from another route before starting its own", () => {
+  const source = bushScene(), state = createClearingActivity(source, 1);
+  state.routeIndex = 1; state.stage = "outbound"; state.distance = 0;
+  advance(state, .8);
+  const before = { ...state.position };
+  assert.equal(requestClearingBush(state), true);
+  assert.deepEqual(state.position, before); assert.equal(state.stage, "return");
+  assert.equal(state.pendingBush, 0);
+  until(state, s => s.stage === "home");
+  assert.equal(state.bushRequested, true); assert.deepEqual(state.position, source.actor.spawn);
+  advanceClearingActivity(state, .025, conditions);
+  assert.equal(state.stage, "outbound"); assert.equal(state.routeIndex, 0);
+  assert.deepEqual(state.position, source.actor.spawn);
+});
+
+test("sleep requests and inactivity leave the bush before retracing to the house", () => {
+  for (const forced of [false, true]) {
+    const state = createClearingActivity(bushScene(true), 2);
+    requestClearingBush(state); until(state, s => s.stage === "bush-enter" && s.bushProgress > .3, 30, homeConditions);
+    const before = { ...state.position };
+    if (forced) assert.equal(requestClearingSleep(state), true);
+    else state.idleSeconds = CLEARING_HOME_IDLE_SECONDS;
+    assert.deepEqual(state.position, before);
+    let sawExit = false, sawReturn = false;
+    for (let t = 0; t < 40 && state.stage !== "home-sleep"; t += .025) {
+      const previous = state.stage;
+      advanceClearingActivity(state, .025, homeConditions);
+      sawExit ||= state.stage === "bush-exit"; sawReturn ||= state.stage === "return";
+      if (state.stage === "homebound" && previous !== "homebound") assert.deepEqual(state.position, state.home);
+    }
+    assert.ok(sawExit && sawReturn); assert.equal(state.stage, "home-sleep");
+  }
+});
+
+test("bush pause keeps the same geometry and reduced-motion touch settles visibly at the entry", () => {
+  for (const stage of ["bush-enter", "bush-hidden", "bush-exit"]) {
+    const state = createClearingActivity(bushScene(), 1);
+    requestClearingBush(state); until(state, s => s.stage === stage && (stage !== "bush-enter" || s.bushProgress > .3));
+    const before = clearingActivityFrame(state);
+    for (const change of [{ enabled: false }, { blocked: true }]) {
+      advance(state, 5, { ...conditions, ...change });
+      const frozen = clearingActivityFrame(state, { still: true });
+      assert.deepEqual({ x: frozen.x, y: frozen.y, lift: frozen.lift, opacity: frozen.opacity },
+        { x: before.x, y: before.y, lift: before.lift, opacity: before.opacity });
+      assert.equal(frozen.bush.rustle, 0);
+    }
+    assert.equal(noticeClearingActivity(state, { still: true }), true);
+    const settled = clearingActivityFrame(state, { still: true });
+    assert.deepEqual(state.position, bushScene().bushes[0].entry);
+    assert.equal(settled.pose, "idle"); assert.equal(settled.opacity, 1);
+    assert.equal(settled.lift, undefined); assert.equal(settled.attention, false);
+    until(state, isClearingAtHome, 30);
+  }
+});
+
+test("cancelled bush requests relinquish their queue and do not restart after a prop, touch or sleep", () => {
+  for (const cancel of [returnClearingHome, noticeClearingActivity, requestClearingSleep]) {
+    const state = createClearingActivity(bushScene(true), 1);
+    requestClearingBush(state);
+    assert.equal(canStartClearingLife(state), false);
+    cancel(state);
+    assert.equal(state.pendingBush, null); assert.equal(state.bushRequested, false);
+    if (cancel === returnClearingHome) assert.equal(canStartClearingLife(state), true);
+    else if (cancel === noticeClearingActivity) until(state, s => s.stage === "home");
+    else until(state, s => s.stage === "home-sleep", 30, homeConditions);
+    assert.equal(state.pendingBush, null); assert.equal(state.bushRequested, false);
+  }
+  const walking = createClearingActivity(bushScene(), 1);
+  requestClearingBush(walking); advance(walking, .7);
+  const before = { ...walking.position };
+  noticeClearingActivity(walking, { still: true });
+  assert.deepEqual(walking.position, before); assert.equal(walking.stage, "return");
+  assert.equal(walking.pendingBush, null); assert.equal(walking.bushRequested, false);
+  assert.equal(clearingActivityFrame(walking).attention, false, "static cancellation cannot keep forcing a DEV scene");
+});
+
+test("requesting a bush scene wakes from home sleep and resets the inactivity deadline", () => {
+  const state = createClearingActivity(bushScene(true), 1);
+  requestClearingSleep(state); until(state, s => s.stage === "home-sleep", 30, homeConditions);
+  advance(state, 250, homeConditions);
+  assert.equal(requestClearingBush(state), true); assert.equal(state.idleSeconds, 0);
+  until(state, s => s.stage === "bush-hidden", 30, homeConditions);
+  assert.equal(state.retiring, false); assert.ok(state.idleSeconds < CLEARING_HOME_IDLE_SECONDS);
+  state.idleSeconds = CLEARING_HOME_IDLE_SECONDS - .1;
+  assert.equal(requestClearingBush(state), true); assert.equal(state.idleSeconds, 0);
+  advance(state, .5, homeConditions);
+  assert.equal(state.stage, "bush-hidden"); assert.equal(state.retiring, false);
+});

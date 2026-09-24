@@ -143,6 +143,18 @@ function simplePolygon(points, at) {
   }
 }
 
+function insidePolygon(p, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[j], b = points[i];
+    if (Math.abs(cross(a, b, p)) < 0.000000001
+      && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x)
+      && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)) return true;
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
 function vertices(object, kind, at, world) {
   const points = array(object[kind], `${at}.${kind}`);
   requireThat(points.length >= (kind === "polygon" ? 3 : 2), `${at}.${kind}`, `requires at least ${kind === "polygon" ? 3 : 2} points`);
@@ -278,6 +290,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
 
   const objects = new Set(), layers = new Set(), sites = new Map(), markers = new Map(), terrainIds = new Set(), pathIds = new Set();
   const waterIds = { surfaces: new Set(), exclusions: new Set() }, lightIds = new Set();
+  const mushroomIds = new Set(), bushes = new Map(), bushMarkers = new Map(), bushRoutes = [];
   // Named metadata groups include every descendant object layer regardless
   // of their organizational names or object draw order. Other layers retain the
   // fixed-world subset's strict placement/order rules.
@@ -288,6 +301,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights" : undefined;
       requireThat(!namedKind || !inheritedKind || namedKind === inheritedKind, layerAt, "Water, WaterExclusions and Lights must not be nested inside each other");
       const metadataKind = namedKind ?? inheritedKind;
+      const isLifeLayer = !metadataKind && ["Mushrooms", "Bushes"].includes(layer.name);
       const waterKind = metadataKind === "lights" ? undefined : metadataKind;
       const isMetadataGroup = metadataKind && layer.type === "group";
       if (!isMetadataGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
@@ -299,10 +313,12 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       layers.add(layerId);
       if (waterKind) world.water ??= { surfaces: [], exclusions: [] };
       if (metadataKind === "lights") world.lights ??= [];
+      if (isLifeLayer && layer.name === "Mushrooms") world.mushrooms ??= [];
+      if (isLifeLayer && layer.name === "Bushes") world.bushes ??= [];
       if (isMetadataGroup) {
         yield* objectLayers(layer.layers, `${layerAt}.layers`, metadataKind);
       } else {
-        if (metadataKind) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata");
+        if (metadataKind || isLifeLayer) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
         yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights" };
       }
@@ -342,7 +358,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         continue;
       }
       const props = properties(object, at, { role: "string", siteId: "string", label: "string", initialLevel: "int", size: "float",
-        behavior: "string", activity: "string", pauseSeconds: "float" });
+        behavior: "string", activity: "string", pauseSeconds: "float", bushId: "string" });
       const role = string(props.role, `${at}.properties.role`);
       if (own(object, "gid")) {
         const gid = integer(object.gid, `${at}.gid`, 1);
@@ -388,12 +404,41 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const size = number(props.size, `${at}.properties.size`);
         requireThat(size > 0 && size <= Math.min(world.width, world.height), `${at}.properties.size`, "spawn size must be positive and no larger than the smaller world dimension");
         world.actor = { spawn: point(object, at, world), size };
+      } else if (role === "mushroom") {
+        exact(shape, "point", `${at} shape`);
+        exact(object.point, true, `${at}.point`);
+        defaultValue(object, "width", 0, at);
+        defaultValue(object, "height", 0, at);
+        requireThat(Object.keys(props).length === 1, at, "mushrooms only accept the role property");
+        const id = identifier(object.name, `${at}.name`);
+        requireThat(!mushroomIds.has(id), at, `duplicate mushroom ID ${id}`);
+        mushroomIds.add(id);
+        world.mushrooms ??= [];
+        world.mushrooms.push({ id, position: point(object, at, world) });
+      } else if (["bush", "bush-entry", "bush-hide"].includes(role)) {
+        requireThat(Object.keys(props).every(key => ["role", "bushId"].includes(key)), at, "bush objects only accept role and bushId properties");
+        const id = identifier(props.bushId, `${at}.properties.bushId`);
+        if (role === "bush") {
+          exact(shape, "polygon", `${at} shape`);
+          requireThat(!bushes.has(id), at, `duplicate bush ID ${id}`);
+          bushes.set(id, { id, points: vertices(object, "polygon", at, world) });
+        } else {
+          exact(shape, "point", `${at} shape`);
+          exact(object.point, true, `${at}.point`);
+          defaultValue(object, "width", 0, at);
+          defaultValue(object, "height", 0, at);
+          const markers = bushMarkers.get(id) ?? {};
+          const key = role === "bush-entry" ? "entry" : "hide";
+          requireThat(!own(markers, key), at, `duplicate ${role} for bush ${id}`);
+          markers[key] = point(object, at, world);
+          bushMarkers.set(id, markers);
+        }
       } else if (role === "path") {
         exact(shape, "polyline", `${at} shape`);
         const id = identifier(object.name, `${at}.name`);
         requireThat(!pathIds.has(id), at, `duplicate path ID ${id}`);
-        requireThat(Object.keys(props).every(key => ["role", "siteId", "behavior", "activity", "pauseSeconds"].includes(key)), at,
-          "path only accepts role, siteId, behavior, activity and pauseSeconds properties");
+        requireThat(Object.keys(props).every(key => ["role", "siteId", "behavior", "activity", "pauseSeconds", "bushId"].includes(key)), at,
+          "path only accepts role, siteId, behavior, activity, pauseSeconds and bushId properties");
         pathIds.add(id);
         const route = { id, points: vertices(object, "polyline", at, world) };
         if (own(props, "siteId")) {
@@ -409,13 +454,18 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
           requireThat(route.behavior === "clearing", at, "activity and pauseSeconds require behavior: clearing");
         }
         if (own(props, "activity")) {
-          requireThat(["look", "sniff", "groom", "rest"].includes(props.activity), `${at}.properties.activity`, "expected look, sniff, groom or rest");
+          requireThat(["look", "sniff", "groom", "rest", "bush"].includes(props.activity), `${at}.properties.activity`, "expected look, sniff, groom, rest or bush");
           route.activity = props.activity;
         }
         if (own(props, "pauseSeconds")) {
           requireThat(props.pauseSeconds >= 2 && props.pauseSeconds <= 20, `${at}.properties.pauseSeconds`, "expected a number from 2 to 20 seconds");
           route.pauseSeconds = props.pauseSeconds;
         }
+        if (route.activity === "bush") {
+          requireThat(!own(props, "siteId"), at, "bush activity uses bushId instead of siteId");
+          route.bushId = identifier(props.bushId, `${at}.properties.bushId`);
+          bushRoutes.push({ id: route.bushId, at });
+        } else requireThat(!own(props, "bushId"), at, "bushId requires activity: bush");
         world.paths.push(route);
       } else {
         requireThat(["anchor", "entry", "doorway", "light", "hitArea", "collision"].includes(role), `${at}.properties.role`, `unknown marker role ${JSON.stringify(role)}`);
@@ -440,6 +490,17 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   for (const id of catalogs.keys()) requireThat(sites.has(id), "map", `state catalog ${id} has no placed site`);
   for (const id of markers.keys()) requireThat(sites.has(id), "map", `markers reference unknown site ${id}`);
   for (const owner of routeOwners) requireThat(sites.has(owner.id), owner.at, `path references unknown site ${owner.id}`);
+  for (const id of bushMarkers.keys()) requireThat(bushes.has(id), "map", `markers reference unknown bush ${id}`);
+  for (const route of bushRoutes) requireThat(bushes.has(route.id), route.at, `path references unknown bush ${route.id}`);
+  if (bushes.size) world.bushes = [...bushes.values()].map(bush => {
+    const geometry = bushMarkers.get(bush.id) ?? {};
+    for (const role of ["entry", "hide"]) requireThat(own(geometry, role), "map", `bush ${bush.id} is missing ${role}`);
+    requireThat(insidePolygon(geometry.hide, bush.points), "map", `bush ${bush.id} hide must be inside its leaf contour`);
+    const jumpLimit = world.actor?.size ?? Math.min(world.width, world.height) * 0.1;
+    requireThat(Math.hypot(geometry.entry.x - geometry.hide.x, geometry.entry.y - geometry.hide.y) <= jumpLimit,
+      "map", `bush ${bush.id} entry and hide must be within one actor size (${jumpLimit} world units)`);
+    return { ...bush, entry: geometry.entry, hide: geometry.hide };
+  });
   world.sites = [...sites.values()].map(site => {
     const geometry = markers.get(site.id) ?? {};
     for (const role of ["anchor", "entry", "hitArea", "collision"]) requireThat(own(geometry, role), "map", `site ${site.id} is missing ${role}`);

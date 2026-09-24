@@ -42,6 +42,18 @@ function polygon(ctx: CanvasRenderingContext2D, points: readonly WorldPoint[]) {
   ctx.closePath();
 }
 
+function debugPoint(ctx: CanvasRenderingContext2D, point: WorldPoint, color: string, label: string) {
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(point.x, point.y, 2.4, 0, Math.PI * 2); ctx.fill();
+  debugLabel(ctx, point, color, label);
+}
+
+function debugLabel(ctx: CanvasRenderingContext2D, point: WorldPoint, color: string, label: string) {
+  ctx.font = "7px ui-monospace, monospace"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.strokeStyle = "rgba(7, 20, 20, .9)"; ctx.lineWidth = 2.5;
+  ctx.strokeText(label, point.x + 5, point.y); ctx.fillStyle = color; ctx.fillText(label, point.x + 5, point.y);
+  ctx.lineWidth = 1.5;
+}
+
 /** Both cameras call this exact compositor in world pixels, including its light pass. */
 export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame: PaintFrame) {
   ctx.save();
@@ -92,6 +104,15 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
     ctx.strokeStyle = "#91efb0";
     for (const path of scene.paths) {
       ctx.beginPath(); path.points.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.stroke();
+    }
+    for (const mushroom of scene.mushrooms ?? []) debugPoint(ctx, mushroom.position, "#ffd995", mushroom.id);
+    for (const bush of scene.bushes ?? []) {
+      ctx.strokeStyle = "#c7ed82"; polygon(ctx, bush.points); ctx.stroke();
+      if (bush.points[0]) debugLabel(ctx, { x: bush.points[0].x, y: bush.points[0].y - 6 }, "#c7ed82", bush.id);
+      ctx.strokeStyle = "#c7ed82"; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(bush.entry.x, bush.entry.y); ctx.lineTo(bush.hide.x, bush.hide.y); ctx.stroke(); ctx.setLineDash([]);
+      debugPoint(ctx, bush.entry, "#a5f3c3", "вход");
+      debugPoint(ctx, bush.hide, "#c7b7ff", "укрытие");
     }
     ctx.strokeStyle = "#c0dcff";
     ctx.strokeRect(scene.focus.x, scene.focus.y, scene.focus.width, scene.focus.height);

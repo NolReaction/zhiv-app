@@ -29,7 +29,7 @@ function drawLeaf(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   ctx.restore();
 }
 
-/** Ground props share the same authored clearing footprint and remain through camera handoffs. */
+/** Tiled mushroom points remain exact; both cameras share their growth and pickup state. */
 export function drawForestMushrooms(ctx: CanvasRenderingContext2D, life: ForestLifeState, size: number) {
   ctx.save(); ctx.imageSmoothingEnabled = false;
   for (const mushroom of life.mushrooms) {

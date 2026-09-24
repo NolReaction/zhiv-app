@@ -84,8 +84,8 @@ after(async () => {
 function recordingContext() {
   const draws = [], ellipses = [], stack = [];
   return {
-    draws, ellipses, fillStyle: "original", filter: "none", imageSmoothingEnabled: true, globalCompositeOperation: "source-over",
-    save() { stack.push({ fillStyle: this.fillStyle, filter: this.filter, imageSmoothingEnabled: this.imageSmoothingEnabled }); },
+    draws, ellipses, globalAlpha: 1, fillStyle: "original", filter: "none", imageSmoothingEnabled: true, globalCompositeOperation: "source-over",
+    save() { stack.push({ globalAlpha: this.globalAlpha, fillStyle: this.fillStyle, filter: this.filter, imageSmoothingEnabled: this.imageSmoothingEnabled }); },
     restore() { Object.assign(this, stack.pop()); },
     beginPath() {}, rect() {}, clip() {}, fill() {},
     ellipse(...args) { ellipses.push({ args, fillStyle: this.fillStyle }); },
@@ -130,6 +130,16 @@ test("breathing is bounded and keeps the feet fixed, including nonfinite input",
     assert.ok(height >= 60 * .992 && height <= 60 * 1.008);
     assert.ok(Math.abs(y + height * bottom / 48 - 100) < 1e-10);
   }
+});
+
+test("a jump raises the body while its shrinking shadow stays on the ground", () => {
+  const ground = recordingContext(), airborne = recordingContext();
+  const actor = { x: 100, y: 200, size: 56, pose: "jump", direction: "left", frame: 2 };
+  drawGroundedHero(ground, actor); drawGroundedHero(airborne, { ...actor, lift: 14 });
+  assert.equal(ground.draws[0].args[2] - airborne.draws[0].args[2], 14);
+  assert.equal(airborne.ellipses[1].args[1], actor.y);
+  assert.ok(airborne.ellipses[1].args[2] < ground.ellipses[1].args[2]);
+  assert.equal(airborne.globalAlpha, 1, "shadow transparency cannot leak to the hero or next effect");
 });
 
 test("invalid actor coordinates and size never send nonfinite geometry to canvas", () => {

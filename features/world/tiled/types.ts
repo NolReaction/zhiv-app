@@ -24,11 +24,22 @@ export type WorldPath = {
   siteId?: string;
   /** Opt-in local life; unmarked paths remain available only to route consumers. */
   behavior?: "clearing" | "home";
-  activity?: "look" | "sniff" | "groom" | "rest";
+  activity?: "look" | "sniff" | "groom" | "rest" | "bush";
+  /** Required for a bush activity; references a separately authored leaf contour. */
+  bushId?: string;
   /** Time at the outward endpoint, from 2 to 20 seconds. */
   pauseSeconds?: number;
 };
 export type WorldWaterPolygon = { id: string; points: WorldPoint[] };
+export type WorldMushroom = { id: string; position: WorldPoint };
+export type WorldBush = {
+  id: string;
+  /** Contour of the existing bush artwork used for foreground leaves. */
+  points: WorldPoint[];
+  /** Foot positions outside the leaves and while hiding inside them. */
+  entry: WorldPoint;
+  hide: WorldPoint;
+};
 export type WorldWater = {
   surfaces: WorldWaterPolygon[];
   exclusions: WorldWaterPolygon[];
@@ -54,6 +65,8 @@ export type FixedWorldScene = {
   actor?: { spawn: WorldPoint; size: number };
   sites: FixedSite[];
   paths: WorldPath[];
+  mushrooms?: WorldMushroom[];
+  bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];
 };

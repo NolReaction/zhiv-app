@@ -188,6 +188,82 @@ test("home routes retain their existing site owner without adding clearing actio
   }
 });
 
+function addClearingProps(map) {
+  const point = (id, name, x, y, values) => ({ id, name, x, y, width: 0, height: 0, point: true, properties: props(values) });
+  map.layers.push({ ...waterLayer(2, "Actors", [spawn()]), draworder: "index" });
+  map.layers.push(waterLayer(3, "Mushrooms", [point(20, "mushroom-1", 36.125, 57.875, { role: "mushroom" })]));
+  map.layers.push(waterLayer(4, "Bushes", [
+    { id: 21, name: "clearing-bush", x: 40, y: 60, polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+      properties: props({ role: "bush", bushId: "clearing-bush" }) },
+    point(22, "clearing-bush-entry", 50, 70, { role: "bush-entry", bushId: "clearing-bush" }),
+    point(23, "clearing-bush-hide", 45, 65, { role: "bush-hide", bushId: "clearing-bush" }),
+  ]));
+  map.layers[0].objects[8].properties.push(...props({ behavior: "clearing", activity: "bush", bushId: "clearing-bush", pauseSeconds: 5 }));
+}
+
+test("authored mushrooms and bush contours retain exact positions and route links", async t => {
+  const { map, compile } = await fixture(t);
+  const before = await compile();
+  assert.equal(Object.hasOwn(before, "mushrooms"), false);
+  assert.equal(Object.hasOwn(before, "bushes"), false);
+  addClearingProps(map);
+  const scene = await compile();
+  assert.deepEqual(scene.mushrooms, [{ id: "mushroom-1", position: { x: 36.125, y: 57.875 } }]);
+  assert.deepEqual(scene.bushes, [{ id: "clearing-bush", points: [{ x: 40, y: 60 }, { x: 50, y: 60 }, { x: 50, y: 70 }, { x: 40, y: 70 }],
+    entry: { x: 50, y: 70 }, hide: { x: 45, y: 65 } }]);
+  assert.deepEqual(scene.paths[0], { ...before.paths[0], behavior: "clearing", activity: "bush", pauseSeconds: 5, bushId: "clearing-bush" });
+  map.layers[2].objects[0].x = 77.75;
+  assert.deepEqual((await compile()).mushrooms, [{ id: "mushroom-1", position: { x: 77.75, y: 57.875 } }], "placement is never snapped or clamped to the hero");
+  map.layers[2].objects = [];
+  map.layers[3].objects = [];
+  map.layers[0].objects[8].properties = props({ role: "path" });
+  const emptied = await compile();
+  assert.deepEqual(emptied.mushrooms, [], "an intentionally empty layer removes all mushrooms");
+  assert.deepEqual(emptied.bushes, [], "an intentionally empty layer removes all interactive bushes");
+});
+
+test("mushroom and bush authoring rejects broken markers, geometry and links", async t => {
+  const { map, compile } = await fixture(t);
+  addClearingProps(map);
+  const mushroom = value => value.layers[2].objects[0];
+  const bush = value => value.layers[3].objects[0];
+  const entry = value => value.layers[3].objects[1];
+  const hide = value => value.layers[3].objects[2];
+  const route = value => value.layers[0].objects[8];
+  const cases = [
+    ["mushroom point required", value => { delete mushroom(value).point; }, /shape: expected "point"/],
+    ["mushroom point must be true", value => { mushroom(value).point = false; }, /point: expected true/],
+    ["mushroom outside map", value => { mushroom(value).x = 101; }, /point is outside world bounds/],
+    ["duplicate mushroom name", value => { value.layers[2].objects.push({ ...clone(mushroom(value)), id: 24 }); }, /duplicate mushroom ID mushroom-1/],
+    ["mushroom with path setting", value => { mushroom(value).properties.push(...props({ activity: "bush" })); }, /mushrooms only accept the role/],
+    ["mushroom blank name", value => { mushroom(value).name = ""; }, /name: expected a non-empty string/],
+    ["bush polygon required", value => { delete bush(value).polygon; }, /shape: expected "polygon"/],
+    ["bush crossed contour", value => { bush(value).polygon = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 8 }, { x: 8, y: 10 }]; }, /polygon must not self-intersect/],
+    ["duplicate bush", value => { value.layers[3].objects.push({ ...clone(bush(value)), id: 24 }); }, /duplicate bush ID clearing-bush/],
+    ["unknown bush marker", value => { setProp(hide(value), "bushId", "missing"); }, /markers reference unknown bush missing/],
+    ["missing entry", value => { value.layers[3].objects.splice(1, 1); }, /bush clearing-bush is missing entry/],
+    ["missing hiding point", value => { value.layers[3].objects.pop(); }, /bush clearing-bush is missing hide/],
+    ["duplicate hiding point", value => { value.layers[3].objects.push({ ...clone(hide(value)), id: 24 }); }, /duplicate bush-hide for bush clearing-bush/],
+    ["entry shape required", value => { delete entry(value).point; }, /shape: expected "point"/],
+    ["point dimensions rejected", value => { hide(value).width = 5; }, /width: expected 0/],
+    ["hide outside leaves", value => { hide(value).x = 55; }, /hide must be inside its leaf contour/],
+    ["entry too far from hide", value => { entry(value).x = 90; }, /entry and hide must be within one actor size/],
+    ["bush extra property", value => { bush(value).properties.push(...props({ siteId: "kiln" })); }, /bush objects only accept role and bushId/],
+    ["route missing bushId", value => { route(value).properties = route(value).properties.filter(property => property.name !== "bushId"); }, /properties.bushId: expected a non-empty string/],
+    ["route unknown bush", value => { setProp(route(value), "bushId", "missing"); }, /path references unknown bush missing/],
+    ["bushId on another action", value => { setProp(route(value), "activity", "look"); }, /bushId requires activity: bush/],
+    ["bush action without behavior", value => { route(value).properties = route(value).properties.filter(property => property.name !== "behavior"); }, /require behavior: clearing/],
+    ["bush action with site owner", value => { route(value).properties.push(...props({ siteId: "kiln" })); }, /bush activity uses bushId instead of siteId/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
 test("optional doorway markers preserve the outside entry and validate the visible threshold", async t => {
   const { map, compile } = await fixture(t);
   const before = (await compile()).sites[0];
@@ -215,7 +291,7 @@ test("clearing route properties reject misspellings, wrong types and unsupported
   route(map).properties.push(...props({ behavior: "clearing", activity: "sniff", pauseSeconds: 4 }));
   const cases = [
     ["unknown behavior", value => { setProp(route(value), "behavior", "journey"); }, /properties\.behavior: expected "clearing"/],
-    ["unknown activity", value => { setProp(route(value), "activity", "fishing"); }, /expected look, sniff, groom or rest/],
+    ["unknown activity", value => { setProp(route(value), "activity", "fishing"); }, /expected look, sniff, groom, rest or bush/],
     ["activity without opt-in", value => { route(value).properties = props({ role: "path", activity: "rest" }); }, /require behavior: clearing/],
     ["pause without opt-in", value => { route(value).properties = props({ role: "path", pauseSeconds: 5 }); }, /require behavior: clearing/],
     ["pause too short", value => { setProp(route(value), "pauseSeconds", 1); }, /from 2 to 20 seconds/],
@@ -257,7 +333,7 @@ test("invalid focus and spawn authoring fails instead of ignoring editor changes
     ["wrong spawn role", value => { setProp(value.layers[1].objects[0], "role", "spwan"); }, /unknown marker role "spwan"/],
     ["extra spawn property", value => { value.layers[1].objects[0].properties.push(...props({ siteId: "kiln" })); }, /spawn only accepts role and size/],
     ["size on site", value => { value.layers[0].objects[1].properties.push({ name: "size", type: "float", value: 12 }); }, /site objects only accept/],
-    ["size on path", value => { value.layers[0].objects[8].properties.push({ name: "size", type: "float", value: 12 }); }, /path only accepts role, siteId, behavior, activity and pauseSeconds/],
+    ["size on path", value => { value.layers[0].objects[8].properties.push({ name: "size", type: "float", value: 12 }); }, /path only accepts role, siteId, behavior, activity, pauseSeconds and bushId/],
   ];
   for (const [name, mutate, pattern] of cases) {
     await t.test(name, async () => {
@@ -546,7 +622,15 @@ test("committed authoring exports identically and --check refuses stale output w
       bounds: rect(object), initialLevel: property(object, "initialLevel") })));
   assert.deepEqual(scene.paths, withRole("path").map(object => ({ id: object.name,
     points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
-    ...Object.fromEntries(["siteId", "behavior", "activity", "pauseSeconds"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
+    ...Object.fromEntries(["siteId", "behavior", "activity", "pauseSeconds", "bushId"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
+  assert.deepEqual(scene.mushrooms, withRole("mushroom").map(object => ({ id: object.name, position: { x: object.x, y: object.y } })));
+  assert.deepEqual(scene.bushes, withRole("bush").map(object => {
+    const id = property(object, "bushId");
+    const marker = role => withRole(role).find(candidate => property(candidate, "bushId") === id);
+    return { id, points: object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
+      entry: { x: marker("bush-entry").x, y: marker("bush-entry").y },
+      hide: { x: marker("bush-hide").x, y: marker("bush-hide").y } };
+  }));
   assert.equal(withRole("focus").length, 1);
   assert.deepEqual(scene.focus, rect(withRole("focus")[0]));
   assert.equal(withRole("spawn").length, 1, "the live forest needs one authored spawn point");

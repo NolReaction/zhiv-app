@@ -43,12 +43,17 @@ const routeReasons: Record<string, string> = {
   "invalid-home-site": "Домашнему маршруту нужен siteId = home.", "missing-home-site": "Не найден дом или точка входа.",
   "home-end-away-from-entry": "Последняя вершина должна совпадать с home-entry.",
   "invalid-doorway": "Порог должен находиться не дальше 0.6 размера Мохлика от входа.",
+  "missing-bush": "Маршруту нужны behavior = clearing и bushId существующего куста.",
+  "invalid-bush": "Проверьте контур и точки куста: укрытие должно находиться внутри контура.",
+  "bush-end-away-from-entry": "Последняя вершина маршрута должна совпадать с точкой входа в куст.",
+  "invalid-bush-corridor": "Расстояние от входа в куст до укрытия должно быть от 0.1 до 0.8 размера Мохлика.",
   "water-collision": "Маршрут проходит по воде.", "invalid-length": "Маршрут слишком короткий или длинный для полянки.",
 };
 const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", "Влево"], ["right", "Вправо"]] as const;
 const LIFE_ACTIONS = [
   ["butterfly", "Поиграть с бабочкой"], ["firefly", "Поиграть со светлячком"],
   ["mushroom", "Съесть гриб"], ["leaf", "Рассмотреть листик"],
+  ["bush", "Спрятаться в кусте"],
   ["home-sleep", "Отправиться спать домой"], ["wake", "Разбудить Мохлика"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
 ] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
 
@@ -128,6 +133,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
     if (action.action === "idle") return null;
     if (action.action === "grow-mushrooms") return motionUnavailable;
     if (heroUnavailable) return heroUnavailable;
+    if (action.action === "bush" && !TILED_WORLD.bushes?.length) return "Добавьте куст и маршрут к нему в Tiled.";
     if (action.action === "home-sleep" && !state.showBuildings) return "Дом скрыт. Включите «Показывать здания».";
     if (action.action === "butterfly" && state.butterflies === "off") return "Бабочки выключены. Выберите «Авто» или «Включить».";
     if (action.action === "firefly" && state.fireflies === "off") return "Светлячки выключены. Выберите «Авто» или «Включить».";
@@ -257,6 +263,8 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           <Toggle label="Показывать постройки" checked={state.showBuildings} onChange={showBuildings => change({ showBuildings })} />
           <Toggle label="Тени у основания" checked={state.buildingShadow} onChange={buildingShadow => change({ buildingShadow })} />
           <Toggle label="Границы и точки карты" checked={state.debug} onChange={debug => change({ debug })} />
+          <Toggle label="Границы воды" checked={state.debugWater} onChange={debugWater => change({ debugWater })} />
+          {state.debugWater && <p className={styles.hint}>Голубой контур — вода. Коралловый пунктир — исключения: листья, камни и другие предметы над водой.</p>}
           {TILED_WORLD.sites.map(site => <Field key={site.id} label={site.label}>
             <select value={state.levels[site.id] ?? site.initialLevel} onChange={event => change({ levels: { ...state.levels, [site.id]: Number(event.target.value) } })}>
               {site.states.map(visual => <option key={visual.level} value={visual.level}>{visual.label} · уровень {visual.level}</option>)}

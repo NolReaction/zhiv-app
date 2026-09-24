@@ -9,6 +9,8 @@ const fixture = {
   terrain: [{ id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1254, height: 1254 } }],
   focus: { x: 455, y: 480, width: 350, height: 350 },
   actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [],
+  water: { surfaces: [], exclusions: [] }, bushes: [],
+  mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
 const options = { paused: false, reducedMotion: true, lampOn: false, dusk: false };
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -53,7 +55,7 @@ function browser() {
       get: (target, key) => key in target ? target[key] : (...args) => calls.push({ method: key, args }),
       set: (target, key, value) => {
         target[key] = value;
-        if (key === "globalCompositeOperation") calls.push({ method: "globalCompositeOperation", args: [value] });
+        if (key === "globalCompositeOperation" || key === "strokeStyle") calls.push({ method: key, args: [value] });
         return true;
       },
     });
@@ -759,6 +761,11 @@ const clearingHome = { id: "home", label: "Дом", bounds: { x: 620, y: 580, wi
   initialLevel: 1, states: [{ level: 1, label: "Дом", image: "/test-residence.webp" }] };
 const clearingHomePath = { id: "clearing-home", behavior: "home", siteId: "home",
   points: [{ ...fixture.actor.spawn }, { x: 642, y: 655 }, { ...clearingHome.entry }] };
+const clearingBush = { id: "test-bush", entry: { x: 611, y: 666 }, hide: { x: 600, y: 641 },
+  points: [{ x: 578, y: 600 }, { x: 621, y: 594 }, { x: 628, y: 616 },
+    { x: 621, y: 650 }, { x: 584, y: 652 }, { x: 575, y: 630 }] };
+const clearingBushPath = { id: "clearing-bush", behavior: "clearing", activity: "bush", bushId: clearingBush.id, pauseSeconds: 4,
+  points: [{ ...fixture.actor.spawn }, { x: 620, y: 666 }, { ...clearingBush.entry }] };
 const quietClearing = { weather: "clear", timeOfDay: "day", butterflies: "off", fireflies: "off", birds: "off" };
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const circlePoint = point => ({ x: (point.x - fixture.focus.x) / fixture.focus.width,
@@ -1165,5 +1172,157 @@ test("hiding the home returns its sleeping resident outside even when automatic 
     assert.deepEqual(scene.position(), returnedAt, "after the safe return no new automatic walk begins");
     assert.ok(sample().body, "the character remains visible once his house disappears");
     assert.equal(sample().hasPose("sleep"), false);
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("DEV bush interaction walks, jumps, hides and returns while automatic life stays disabled", async () => {
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD, pixelSprite, clearingActivityFrame } = await modules({
+    bushes: [clearingBush], paths: [clearingBushPath],
+  });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, presenceKey: "dev-bush" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    assert.ok(probe.state.clearing.diagnostics.every(item => item.valid), JSON.stringify(probe.state.clearing.diagnostics));
+    const spawn = scene.position(), clock = sceneClock(env), stages = new Set(), poses = new Set();
+    worldDevStore.triggerLife("bush");
+    assert.deepEqual(scene.position(), spawn, "requesting the scene cannot teleport to its target");
+    let hidden = false, lifted = false, returned = false, foreground = false;
+    for (let index = 0; index < 500 && !returned; index++) {
+      clock.step();
+      const frame = clearingActivityFrame(probe.state.clearing), sample = sampleHero(scene, env, pixelSprite);
+      stages.add(probe.state.clearing.stage);
+      for (const pose of ["walk", "jump", "crouch", "shake", "blink"]) if (sample.hasPose(pose)) poses.add(pose);
+      lifted ||= frame.lift > 0 && sample.hasPose("jump");
+      if (probe.state.clearing.stage === "bush-hidden") {
+        hidden = true;
+        assert.equal(sample.body, undefined, "the hidden actor is absent from the actual canvas composition");
+      }
+      if (frame.bush && sample.body) {
+        foreground ||= sample.calls.slice(sample.calls.indexOf(sample.body) + 1)
+          .some(call => call.method === "drawImage" && !(call.args[0] instanceof Image));
+      }
+      returned = hidden && probe.state.clearing.stage === "home";
+    }
+    assert.ok(returned && hidden && lifted && foreground, "the full rendered story includes lift, foliage occlusion, hiding and return");
+    for (const stage of ["outbound", "bush-prepare", "bush-enter", "bush-hidden", "bush-exit", "bush-land", "return", "home"]) {
+      assert.ok(stages.has(stage), `the scene must visit ${stage}`);
+    }
+    assert.ok(poses.has("walk") && poses.has("jump") && poses.has("shake"), "travel, jumping and shaking leaves off use distinct sprites");
+    assert.deepEqual(scene.position(), spawn);
+    assert.equal(worldDevStore.getSnapshot().autoLife, false);
+    clock.advance(10);
+    assert.deepEqual(scene.position(), spawn, "completing an explicit DEV request does not enable new automatic outings");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a map tap on an occupied bush starts a continuous exit and repeat taps cannot trap the pet", async () => {
+  const { mountHabitat, createMapEngine, worldDevStore, connectForestSession, TILED_WORLD, pixelSprite } = await modules({
+    bushes: [clearingBush], paths: [clearingBushPath],
+  });
+  const env = browser(); let scene, probe, engine;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, presenceKey: "bush-touch", view: "world" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const spawn = scene.position(), clock = sceneClock(env), touch = circlePoint(clearingBush.hide);
+    assert.equal(scene.hitPet(touch.x, touch.y), false, "an empty bush is not a ghost character touch target");
+    worldDevStore.triggerLife("bush");
+    clock.until(() => probe.state.clearing.stage === "bush-hidden", "the character enters the actual bush", 200);
+    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined);
+    assert.equal(scene.hitPet(touch.x, touch.y), true, "the authored foliage makes its hidden resident reachable");
+    const map = env.surface(400);
+    engine = await createMapEngine(map, initial, assert.fail, []);
+    engine.control("overview");
+    const point = clearingBush.hide, event = { pointerId: 1, pointerType: "touch", button: 0,
+      clientX: point.x * 400 / fixture.width, clientY: point.y * 400 / fixture.height };
+    map.events.get("pointerdown")({ ...event, type: "pointerdown" });
+    map.events.get("pointerup")({ ...event, type: "pointerup" });
+    assert.equal(probe.state.clearing.stage, "bush-exit", "the real map handler wakes the hidden resident");
+    assert.ok(distanceBetween(scene.position(), spawn) > 10, "touch does not snap back to the clearing");
+    engine.dispose(); engine = null;
+    clock.until(() => Boolean(sampleHero(scene, env, pixelSprite).body), "the pet becomes visible while exiting", 40);
+    for (let index = 0; index < 160; index++) { scene.notice(); clock.step(); }
+    assert.deepEqual(scene.position(), spawn, "even repeated touches finish the exit and return");
+    assert.equal(scene.hitPet(touch.x, touch.y), false, "departing removes the occupied-bush touch target");
+    assert.ok(sampleHero(scene, env, pixelSprite).body);
+  } finally { engine?.dispose(); scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a hidden bush resident survives camera handoff and pause without restarting or revealing the actor", async () => {
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD, pixelSprite } = await modules({
+    bushes: [clearingBush], paths: [clearingBushPath],
+  });
+  const env = browser(), scenes = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, presenceKey: "shared-bush" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const clock = sceneClock(env);
+    worldDevStore.triggerLife("bush");
+    clock.until(() => probe.state.clearing.stage === "bush-hidden", "circle reaches the hidden phase", 200);
+    const snapshot = structuredClone(probe.state.clearing);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    await flush();
+    assert.deepEqual(probe.state.clearing, snapshot, "opening the world preserves the exact scene phase");
+    assert.equal(env.frames.size, 1);
+    assert.equal(sampleHero(circle, env, pixelSprite).body, undefined);
+    assert.equal(sampleHero(world, env, pixelSprite).body, undefined);
+    circle.configure({ ...initial, backgrounded: true });
+    for (const mode of ["paused", "reducedMotion"]) {
+      world.configure({ ...initial, view: "world", [mode]: true });
+      const frozen = structuredClone(probe.state.clearing);
+      clock.step(60_000);
+      assert.deepEqual(probe.state.clearing, frozen, `${mode} cannot advance the bush choreography`);
+      assert.equal(sampleHero(world, env, pixelSprite).body, undefined, `${mode} keeps the actor behind its foliage`);
+      world.configure({ ...initial, view: "world" }); clock.step();
+    }
+    const beforeReturn = structuredClone(probe.state.clearing);
+    world.dispose(); circle.configure(initial); await flush();
+    assert.deepEqual(probe.state.clearing, beforeReturn);
+    assert.equal(sampleHero(circle, env, pixelSprite).body, undefined);
+    clock.until(() => probe.state.clearing.stage === "home", "returning to the circle finishes the existing outing", 240);
+    assert.ok(sampleHero(circle, env, pixelSprite).body);
+  } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("water outlines are an independent DEV overlay above night lighting and redraw while paused", async () => {
+  const rectangle = (x, y, size) => [{ x, y }, { x: x + size, y }, { x: x + size, y: y + size }, { x, y: y + size }];
+  const water = { surfaces: [{ id: "river", points: rectangle(900, 950, 100) }],
+    exclusions: [{ id: "leaf", points: rectangle(930, 980, 10) }] };
+  const { mountHabitat, worldDevStore } = await modules({ water });
+  const env = browser(); let scene;
+  try {
+    worldDevStore.patch({ ...quietClearing, paused: true, timeOfDay: "night", debug: false, debugWater: false });
+    const canvas = env.surface();
+    scene = mountHabitat(canvas, options, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    const sample = () => { const target = env.surface(); scene.paintWorld(target.context); return target.calls; };
+    const colors = calls => calls.filter(call => call.method === "strokeStyle").map(call => call.args[0]);
+    const generalBounds = calls => calls.some(call => call.method === "strokeRect"
+      && call.args.join() === Object.values(fixture.focus).join());
+    assert.equal(colors(sample()).includes("#58e5ff"), false);
+    const before = canvas.calls.length;
+    worldDevStore.patch({ debugWater: true });
+    assert.ok(canvas.calls.length > before, "the new toggle redraws the paused circle without a frame loop");
+    const outlined = sample();
+    assert.ok(colors(outlined).includes("#58e5ff") && colors(outlined).includes("#ff997e"), "water and exclusions have distinct outlines");
+    assert.equal(generalBounds(outlined), false, "water debugging does not enable all map markup");
+    assert.ok(outlined.findIndex(call => call.method === "strokeStyle" && call.args[0] === "#58e5ff")
+      > outlined.findIndex(call => call.method === "globalCompositeOperation" && call.args[0] === "multiply"),
+    "night shading cannot hide the debug boundaries");
+    worldDevStore.patch({ debugWater: false, debug: true });
+    const marked = sample();
+    assert.equal(colors(marked).includes("#58e5ff"), false);
+    assert.equal(generalBounds(marked), true, "ordinary markup stays independently available");
+    assert.equal(env.frames.size, 0);
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
 });

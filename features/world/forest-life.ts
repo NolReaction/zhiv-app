@@ -1,13 +1,18 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { isForestGroundClear } from "./forest-ground-weather";
+import { previewPointInPolygon } from "./tiled/preview-state";
 
 export type ForestLifeKind = "butterfly" | "firefly" | "mushroom" | "leaf";
 export type ForestLifeAction = ForestLifeKind | "grow-mushrooms" | "idle";
-export type ForestMushroom = WorldPoint & { id: number; growth: number; regrowIn: number };
+export type ForestMushroom = WorldPoint & {
+  id: string; growth: number; regrowIn: number;
+  /** Placement is authoritative; only nearby ground props participate in the stationary pickup. */
+  reachable: boolean;
+};
 export type ForestLifeState = {
   elapsed: number; nextRoutineAt: number; sequence: number; fastGrowthUntil: number;
-  routine: { kind: ForestLifeKind; elapsed: number; mushroomId?: number; picked?: boolean;
+  routine: { kind: ForestLifeKind; elapsed: number; mushroomId?: string; picked?: boolean;
     interrupting?: { from: number; elapsed: number } } | null;
   mushrooms: ForestMushroom[];
   leaf: (WorldPoint & { angle: number }) | null;
@@ -26,16 +31,22 @@ const mix = (a: number, b: number, t: number) => a + (b - a) * clamp(t);
 const smooth = (t: number) => { t = clamp(t); return t * t * (3 - 2 * t); };
 const INTERRUPT_SECONDS = .6;
 
-/** Only a few reachable props around the authored feet; no new route or world progression. */
+function mushroomWithinReach(scene: FixedWorldScene, point: WorldPoint): boolean {
+  const actor = scene.actor;
+  if (!actor || !Number.isFinite(actor.size) || actor.size <= 0) return false;
+  const dx = point.x - actor.spawn.x, dy = point.y - actor.spawn.y;
+  if (Math.hypot(dx, dy) > actor.size * .4 || dy < -actor.size * .16 || dy > actor.size * .24) return false;
+  if (scene.sites.some(site => previewPointInPolygon(point, site.collision))) return false;
+  // Water exclusions are scenery such as floating leaves, not permission to reach across the river.
+  return !scene.water?.surfaces.some(surface => previewPointInPolygon(point, surface.points));
+}
+
+/** Every mushroom belongs to Tiled; removing its point removes it from the next scene. */
 export function createForestLife(scene: FixedWorldScene): ForestLifeState {
-  const actor = scene.actor, mushrooms: ForestMushroom[] = [];
-  if (actor) for (const [dx, dy] of [[.12, .12], [-.32, .06], [.3, .08], [-.12, .14]]) {
-    const point = { x: actor.spawn.x + dx * actor.size, y: actor.spawn.y + dy * actor.size };
-    if (isForestGroundClear(scene, point, actor.size * .09)) {
-      mushrooms.push({ ...point, id: mushrooms.length, growth: mushrooms.length ? .55 : 1, regrowIn: 0 });
-      if (mushrooms.length === 2) break;
-    }
-  }
+  const actor = scene.actor;
+  const mushrooms: ForestMushroom[] = (scene.mushrooms ?? []).map(({ id, position }, index) => ({
+    ...position, id, growth: index ? .55 : 1, regrowIn: 0, reachable: mushroomWithinReach(scene, position),
+  }));
   let leaf: ForestLifeState["leaf"] = null;
   if (actor) for (const [dx, dy] of [[.34, .08], [-.3, .16], [.06, .28], [.34, .2]]) {
     const point = { x: actor.spawn.x + dx * actor.size, y: actor.spawn.y + dy * actor.size };
@@ -89,7 +100,9 @@ export function triggerForestLife(state: ForestLifeState, kind: ForestLifeAction
     return;
   }
   if (state.routine) cancelForestLife(state);
-  const mushroom = kind === "mushroom" ? state.mushrooms.find(item => item.growth >= .98) ?? state.mushrooms[0] : undefined;
+  const mushroom = kind === "mushroom"
+    ? state.mushrooms.find(item => item.reachable && item.growth >= .98) ?? state.mushrooms.find(item => item.reachable)
+    : undefined;
   if (mushroom) { mushroom.growth = 1; mushroom.regrowIn = 0; }
   if (kind === "mushroom" && !mushroom) { cancelForestLife(state); return; }
   if (kind === "leaf" && !state.leaf) { cancelForestLife(state); return; }
@@ -135,7 +148,7 @@ export function advanceForestLife(state: ForestLifeState, dt: number, options: F
     const insect = nighttime ? "firefly" : "butterfly";
     const mode = nighttime ? options.fireflies : options.butterflies;
     const canPlay = mode !== "off" && (mode === "on" || options.rain < .5);
-    const canEat = state.mushrooms.some(item => item.growth >= .98);
+    const canEat = state.mushrooms.some(item => item.reachable && item.growth >= .98);
     if (state.leaf && (state.sequence % 3 === 2 || !canPlay && !canEat)) triggerForestLife(state, "leaf");
     else if (canEat && (state.sequence % 3 === 1 || !canPlay)) triggerForestLife(state, "mushroom");
     else if (canPlay) triggerForestLife(state, insect);

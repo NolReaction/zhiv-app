@@ -13,7 +13,9 @@ import { drawForestGroundImpacts } from "./forest-ground-impacts";
 import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
 import { advanceForestLife, cancelForestLife, interruptForestLife, forestLifeFrame, triggerForestLife, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
-import { advanceClearingActivity, clearingActivityFrame, canStartClearingLife, isClearingAtHome, noticeClearingActivity, requestClearingSleep, returnClearingHome } from "./clearing-activity";
+import { drawForestBush } from "./forest-bush-painter";
+import { drawWaterDebug } from "./dev/water-debug";
+import { advanceClearingActivity, clearingActivityFrame, canStartClearingLife, isClearingAtHome, noticeClearingActivity, requestClearingBush, requestClearingSleep, returnClearingHome } from "./clearing-activity";
 import { connectForestSession } from "./forest-session";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 
@@ -115,10 +117,11 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     drawGroundedHero(context, { ...actor, direction: routine?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
       ...(routine ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
-      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow });
+      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift });
     if (routine) drawForestLifePartner(context, routine, elapsed);
     context.restore();
   }
+  if (walking?.bush && dev?.showHero !== false) drawForestBush(context, TILED_WORLD, images, walking.bush, elapsed, still);
   if (walking?.homeSleeping && home && dev?.showHero !== false && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
@@ -126,6 +129,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     showBuildings: dev?.showBuildings, levels: dev?.levels ?? levels };
   drawForestAtmosphere(context, TILED_WORLD, atmosphere, () => drawForestLighting(context, TILED_WORLD, lighting));
   drawForestLightEmitters(context, TILED_WORLD, lighting);
+  if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, TILED_WORLD);
   context.restore();
 }
 
@@ -276,16 +280,20 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function requestLife(kind: WorldDevLifeAction) {
     cancelForestLife(state.life); state.pendingLife = null; state.pendingAttention = false;
+    if (kind === "bush") { state.reaction = 0; requestClearingBush(state.clearing); return; }
     if (kind === "home-sleep") { state.reaction = 0; requestClearingSleep(state.clearing); return; }
     if (kind === "wake") { state.reaction = 0; noticeClearingActivity(state.clearing, { still: reducedMotion(options, dev) }); return; }
+    if (kind !== "grow-mushrooms") returnClearingHome(state.clearing);
     if (kind === "idle" || kind === "grow-mushrooms" || isClearingAtHome(state.clearing)) triggerForestLife(state.life, kind);
-    else { state.pendingLife = kind; returnClearingHome(state.clearing); }
+    else state.pendingLife = kind;
   }
   if (WORLD_DEV_ENABLED) unsubscribe = worldDevStore.subscribe(() => {
     if (disposed) return;
     const before = dev!;
     dev = worldDevStore.getSnapshot();
     if (session.consumeControls(dev)) {
+      if ((dev.animation?.id !== before.animation?.id && dev.animation || dev.pose !== before.pose && dev.pose !== "auto")
+        && clearingActivityFrame(state.clearing).bush) noticeClearingActivity(state.clearing, { still: true });
       if (dev.animation?.id !== before.animation?.id) {
         if (!dev.animation) state.animation = null;
         else if (session.consumeEvent("pose", dev.animation.id)) state.animation = { pose: dev.animation.pose, elapsed: 0 };
@@ -354,8 +362,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const actor = clearingActivityFrame(state.clearing);
       if (disposed || dev?.showHero === false) return false;
       if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
+      const bush = actor.bush && TILED_WORLD.bushes?.find(item => item.id === actor.bush!.id);
+      if (bush && pointInPolygon(point, bush.points)) return true;
+      const feetY = actor.y - (actor.lift ?? 0);
       return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
-        && point.y > actor.y - size && point.y < actor.y;
+        && point.y > feetY - size && point.y < feetY;
     },
     setTime(now) {
       if (disposed || !Number.isFinite(now)) return;
