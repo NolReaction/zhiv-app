@@ -10006,7 +10006,7 @@
                  "name":"Home-lvl-1",
                  "opacity":1,
                  "type":"group",
-                 "visible":true,
+                 "visible":false,
                  "x":0,
                  "y":0
                 }, 
@@ -10164,7 +10164,7 @@
                 }, 
                 {
                  "id":2,
-                 "image":"..\/..\/..\/..\/..\/Desktop\/imalive\/\u041c\u041e\u0414\u0415\u041b\u0418_\u0414\u041e\u041c\u0410\/home-level-2.png",
+                 "image":"..\/..\/public\/world\/prototype\/home-level-2.png",
                  "imageheight":1254,
                  "imagewidth":1254,
                  "properties":[
