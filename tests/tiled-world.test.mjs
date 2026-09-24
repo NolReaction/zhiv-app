@@ -71,6 +71,8 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   assert.equal(Object.hasOwn(scene, "actor"), false, "legacy maps may omit a spawn point");
   assert.equal(Object.hasOwn(scene, "water"), false, "legacy maps do not invent water geometry");
   assert.equal(Object.hasOwn(scene, "lights"), false, "legacy maps keep their site light markers without inventing new lights");
+  assert.equal(Object.hasOwn(scene, "navigation"), false, "legacy maps retain their authored routes without inventing walk areas");
+  assert.equal(Object.hasOwn(scene, "habitats"), false, "legacy maps do not invent habitats");
   assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 });
   assert.deepEqual(scene.sites[0], {
     id: "kiln", label: "Pottery kiln", bounds: { x: 20, y: 30, width: 20, height: 30 },
@@ -598,6 +600,133 @@ test("malformed Lights authoring fails at the exact marker rather than silently 
       await assert.rejects(compile(value), pattern);
     });
   }
+});
+
+const livingPolygon = (id, name, role, extra = {}) => ({
+  id, name, x: 10.125, y: 12.5, width: 0, height: 0,
+  polygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 80, y: 80 }, { x: 0, y: 80 }],
+  properties: props({ role, ...extra }),
+});
+const livingPoint = (id, name, x, y, values) => ({ id, name, x, y, width: 0, height: 0, point: true, properties: props(values) });
+const livingLayers = () => [
+  waterLayer(2, "WalkAreas", [livingPolygon(20, "clearing", "walk-area")]),
+  waterLayer(3, "Obstacles", [{ ...livingPolygon(21, "stone", "nav-obstacle"), x: 60, y: 20,
+    polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }] }]),
+  waterLayer(4, "PointsOfInterest", [livingPoint(22, "grass-rest", 70.125, 70.5, { role: "interest", activity: "rest" })]),
+  waterLayer(5, "Habitats", [livingPolygon(23, "butterflies", "wildlife-habitat", { species: "butterfly", capacity: 6 })]),
+  waterLayer(6, "WildlifeAnchors", [
+    livingPoint(24, "leaf-rest", 50.5, 60.25, { role: "wildlife-anchor", habitatId: "butterflies", kind: "rest" }),
+    livingPoint(25, "leaf-shelter", 52.5, 62.25, { role: "wildlife-anchor", habitatId: "butterflies", kind: "shelter" }),
+  ]),
+];
+
+test("navigation and habitats compile explicit names and world geometry without changing legacy scene data", async t => {
+  const { map, compile } = await fixture(t);
+  const legacy = await compile();
+  map.properties.push({ name: "navigationCellSize", type: "float", value: 5.5 });
+  map.layers.push(...livingLayers());
+  const original = clone(map);
+  const scene = await compile();
+  const absolute = object => object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y }));
+  assert.deepEqual(scene.navigation, { version: 1, cellSize: 5.5,
+    areas: [{ id: "clearing", points: absolute(map.layers[1].objects[0]) }],
+    obstacles: [{ id: "stone", points: absolute(map.layers[2].objects[0]) }],
+    interests: [{ id: "grass-rest", position: { x: 70.125, y: 70.5 }, activity: "rest" }] });
+  assert.deepEqual(scene.habitats, [{ id: "butterflies", species: "butterfly", capacity: 6,
+    points: absolute(map.layers[4].objects[0]), anchors: [
+      { id: "leaf-rest", position: { x: 50.5, y: 60.25 }, kind: "rest" },
+      { id: "leaf-shelter", position: { x: 52.5, y: 62.25 }, kind: "shelter" },
+    ] }]);
+  const { navigation, habitats, ...unchanged } = scene;
+  assert.deepEqual(unchanged, legacy);
+  assert.deepEqual(map, original, "authoring coordinates and existing layers remain untouched");
+  assert.equal(serializeTiledWorld(scene), serializeTiledWorld(await compile()));
+  map.layers[4].objects[0].properties = props({ role: "wildlife-habitat", species: "firefly", capacity: 12 });
+  assert.equal((await compile()).habitats[0].species, "firefly");
+  for (const activity of ["look", "sniff", "groom", "rest"]) {
+    setProp(map.layers[3].objects[0], "activity", activity);
+    assert.equal((await compile()).navigation.interests[0].activity, activity);
+  }
+  assert.equal(navigation.areas.length, 1);
+  assert.equal(habitats.length, 1);
+});
+
+test("empty living metadata is deliberate and named groups preserve roles throughout nested layers", async t => {
+  const { map, compile } = await fixture(t);
+  const layers = livingLayers();
+  map.layers.push(...layers.map(layer => ({ id: layer.id + 10, name: layer.name, type: "group", layers: [{ ...layer, name: "Local" }] })));
+  assert.equal((await compile()).navigation.cellSize, 6);
+  map.layers.reverse();
+  assert.equal((await compile()).habitats[0].anchors.length, 2, "anchors may precede habitats in authoring order");
+  for (const layer of map.layers) if (layer.layers) layer.layers = [];
+  const empty = await compile();
+  assert.deepEqual(empty.navigation, { version: 1, cellSize: 6, areas: [], obstacles: [], interests: [] });
+  assert.deepEqual(empty.habitats, []);
+});
+
+test("malformed living geometry, stable IDs, references and activity values fail explicitly", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(...livingLayers());
+  const object = (map, layer, index = 0) => map.layers[layer].objects[index];
+  const cases = [
+    ["blank navigation ID", value => { object(value, 1).name = ""; }, /name: expected a non-empty string/],
+    ["unstable generated ID", value => { delete object(value, 1).name; }, /name: expected a non-empty string/],
+    ["duplicate navigation ID", value => { object(value, 2).name = "clearing"; }, /duplicate navigation ID clearing/],
+    ["wrong role in a named layer", value => { setProp(object(value, 1), "role", "nav-obstacle"); }, /role: expected "walk-area"/],
+    ["missing role", value => { object(value, 1).properties = []; }, /role: expected "walk-area"/],
+    ["navigation polyline", value => { const o = object(value, 1); o.polyline = o.polygon; delete o.polygon; }, /shape: expected "polygon"/],
+    ["invalid polygon", value => { object(value, 1).polygon.length = 2; }, /requires at least 3 points/],
+    ["repeated closure", value => { const o = object(value, 1); o.polygon.push(clone(o.polygon[0])); }, /polygon vertices must be unique/],
+    ["extent on metadata point", value => { object(value, 3).width = 4; }, /width: expected 0/],
+    ["disabled point", value => { object(value, 3).point = false; }, /point: expected true/],
+    ["unknown activity", value => { setProp(object(value, 3), "activity", "bush"); }, /expected look, sniff, groom or rest/],
+    ["interest outside walk areas", value => { object(value, 3).x = 99; }, /interest grass-rest: position must be inside a walk area/],
+    ["interest inside site collision", value => { Object.assign(object(value, 3), { x: 25, y: 35 }); }, /position must not overlap an obstacle, site collision or water surface/],
+    ["interest inside obstacle", value => { Object.assign(object(value, 3), { x: 65, y: 25 }); }, /position must not overlap an obstacle, site collision or water surface/],
+    ["interest inside water exclusion", value => {
+      value.layers.push(waterLayer(7, "Water", [waterPolygon(30, "river", 70, 70)]), waterLayer(8, "WaterExclusions", [waterPolygon(31, "leaf", 70, 70)]));
+    }, /position must not overlap an obstacle, site collision or water surface/],
+    ["unknown property", value => { object(value, 1).properties.push(...props({ activity: "look" })); }, /unknown property "activity"/],
+    ["duplicate habitat ID", value => { value.layers[4].objects.push({ ...clone(object(value, 4)), id: 30 }); }, /duplicate habitat ID butterflies/],
+    ["unknown species", value => { setProp(object(value, 4), "species", "bird"); }, /expected butterfly or firefly/],
+    ["missing capacity", value => { object(value, 4).properties = props({ role: "wildlife-habitat", species: "butterfly" }); }, /capacity: expected a finite number/],
+    ["zero capacity", value => { setProp(object(value, 4), "capacity", 0); }, /capacity: expected a finite number >= 1/],
+    ["excess capacity", value => { setProp(object(value, 4), "capacity", 65); }, /expected capacity <= 64/],
+    ["fractional capacity", value => { setProp(object(value, 4), "capacity", 1.5); }, /expected a safe integer/],
+    ["wrong capacity type", value => { object(value, 4).properties.at(-1).type = "float"; }, /type: expected "int"/],
+    ["duplicate anchor ID", value => { object(value, 5, 1).name = "leaf-rest"; }, /duplicate wildlife anchor ID leaf-rest/],
+    ["unknown anchor owner", value => { setProp(object(value, 5), "habitatId", "missing"); }, /unknown habitat missing/],
+    ["anchor outside habitat", value => { object(value, 5).x = 99; }, /wildlife anchor must be inside habitat butterflies/],
+    ["unknown anchor kind", value => { setProp(object(value, 5), "kind", "spawn"); }, /expected rest or shelter/],
+    ["zero cell size", value => { value.properties.push(...props({ navigationCellSize: 0 })); }, /expected a cell size > 0 and <= 64/],
+    ["nonfinite cell size", value => { value.properties.push({ name: "navigationCellSize", type: "float", value: Infinity }); }, /expected a finite number/],
+    ["excess cell size", value => { value.properties.push(...props({ navigationCellSize: 65 })); }, /expected a cell size > 0 and <= 64/],
+    ["hidden layer", value => { value.layers[1].visible = false; }, /visible: expected true/],
+    ["transformed layer", value => { value.layers[1].offsetx = 1; }, /offsetx: expected 0/],
+    ["spawn outside walk area", value => { value.layers[0].objects.push({ ...spawn(), x: 95, y: 95 }); }, /navigation spawn: position must be inside a walk area/],
+    ["spawn inside site collision", value => { value.layers[0].objects.push({ ...spawn(), x: 25, y: 35 }); }, /navigation spawn: position must not overlap/],
+  ];
+  for (const [name, mutate, pattern] of cases) await t.test(name, async () => {
+    const value = clone(map);
+    mutate(value);
+    await assert.rejects(compile(value), pattern);
+  });
+});
+
+test("CLI preserves the last playable export when living authoring has a broken reference", async t => {
+  const { map, options, directory } = await fixture(t, { directoryRoot: path.join(root, "public") });
+  map.layers.push(...livingLayers());
+  await writeFile(options.mapPath, `${JSON.stringify(map)}\n`);
+  const output = path.join(directory, "scene.generated.json");
+  const command = [path.join(root, "scripts/tiled-world.mjs"), options.mapPath, output];
+  await run(process.execPath, command);
+  const playable = await readFile(output);
+  setProp(map.layers[5].objects[0], "habitatId", "deleted-habitat");
+  await writeFile(options.mapPath, `${JSON.stringify(map)}\n`);
+  const authoring = await readFile(options.mapPath);
+  await assert.rejects(run(process.execPath, command), error => error.code === 1 && /unknown habitat deleted-habitat/.test(error.stderr));
+  assert.deepEqual(await readFile(output), playable);
+  assert.deepEqual(await readFile(options.mapPath), authoring);
 });
 
 test("committed authoring exports identically and --check refuses stale output without rewriting it", async t => {

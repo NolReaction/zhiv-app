@@ -31,6 +31,27 @@ export type WorldPath = {
   pauseSeconds?: number;
 };
 export type WorldWaterPolygon = { id: string; points: WorldPoint[] };
+export type WorldNavigationPolygon = { id: string; points: WorldPoint[] };
+export type WorldInterest = {
+  id: string;
+  position: WorldPoint;
+  activity: "look" | "sniff" | "groom" | "rest";
+};
+export type WorldNavigation = {
+  version: 1;
+  /** Search resolution in world units; unrelated to Tiled's drawing grid. */
+  cellSize: number;
+  areas: WorldNavigationPolygon[];
+  obstacles: WorldNavigationPolygon[];
+  interests: WorldInterest[];
+};
+export type WorldHabitat = {
+  id: string;
+  species: "butterfly" | "firefly";
+  points: WorldPoint[];
+  capacity: number;
+  anchors: { id: string; position: WorldPoint; kind: "rest" | "shelter" }[];
+};
 export type WorldMushroom = { id: string; position: WorldPoint };
 export type WorldBush = {
   id: string;
@@ -69,5 +90,9 @@ export type FixedWorldScene = {
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];
+  /** Absent means legacy routes; an explicitly empty area list permits no free walking. */
+  navigation?: WorldNavigation;
+  /** Absent retains legacy fauna; [] deliberately contains no inhabitants. */
+  habitats?: WorldHabitat[];
 };
 export type PreviewLevels = Record<string, number>;

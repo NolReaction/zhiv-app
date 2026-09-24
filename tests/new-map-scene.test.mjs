@@ -9,9 +9,20 @@ const fixture = {
   terrain: [{ id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1254, height: 1254 } }],
   focus: { x: 455, y: 480, width: 350, height: 350 },
   actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [],
-  water: { surfaces: [], exclusions: [] }, bushes: [],
+  water: { surfaces: [], exclusions: [] }, bushes: [], navigation: undefined, habitats: undefined,
   mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
+const livingHabitats = [
+  { id: "test-flowers", species: "butterfly", capacity: 3,
+    points: [{ x: 600, y: 615 }, { x: 670, y: 615 }, { x: 670, y: 675 }, { x: 600, y: 675 }],
+    anchors: [{ id: "test-leaf", kind: "rest", position: { x: 620, y: 640 } }, { id: "test-cover", kind: "shelter", position: { x: 605, y: 625 } }] },
+  { id: "test-grass", species: "firefly", capacity: 3,
+    points: [{ x: 600, y: 615 }, { x: 670, y: 615 }, { x: 670, y: 675 }, { x: 600, y: 675 }],
+    anchors: [{ id: "test-tip", kind: "rest", position: { x: 640, y: 635 } }, { id: "test-base", kind: "shelter", position: { x: 655, y: 665 } }] },
+];
+const livingNavigation = { version: 1, cellSize: 8,
+  areas: [{ id: "test-clearing", points: [{ x: 570, y: 610 }, { x: 720, y: 610 }, { x: 720, y: 735 }, { x: 570, y: 735 }] }],
+  obstacles: [], interests: [{ id: "test-flowers", position: { x: 680, y: 705 }, activity: "sniff" }] };
 const options = { paused: false, reducedMotion: true, lampOn: false, dusk: false };
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
@@ -717,14 +728,16 @@ test("same-account art-ready world owns one clock and preserves life, moisture a
 });
 
 test("shared DEV transitions apply once and pause, reduced motion and account changes isolate life", async () => {
-  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD } = await modules();
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD } = await modules({ habitats: livingHabitats });
   const env = browser(), scenes = [], probes = [];
   try {
+    worldDevStore.patch({ weather: "clear", timeOfDay: "day", autoLife: false });
     const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "life-account" };
     const callbacks = { activity() {}, ready() {}, failure: assert.fail };
     const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
     const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
     env.finish(); await flush();
+    const clock = sceneClock(env);
     const probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {}); probes.push(probe);
     worldDevStore.triggerBirds();
     assert.equal(probe.state.birdSeed, 0, "both cameras consume the first bird visit only once");
@@ -732,10 +745,14 @@ test("shared DEV transitions apply once and pause, reduced motion and account ch
     worldDevStore.triggerBirds();
     assert.equal(probe.state.birdSeed, 1, "another DEV invocation chooses the next shared scenario");
     worldDevStore.triggerPose("greet"); worldDevStore.triggerLife("butterfly");
-    assert.equal(probe.state.life.routine.kind, "butterfly", "second subscriber cannot cancel the first subscriber's new routine");
+    assert.equal(probe.state.pendingLife, "butterfly", "the shared request survives both camera subscribers");
+    clock.advance(.1);
+    assert.equal(probe.state.fauna.encounter?.kind, "butterfly", "the next visible step reserves one real individual");
+    assert.equal(probe.state.fauna.sequence, 1, "the two cameras cannot create duplicate reservations");
+    assert.equal(probe.state.life.routine, null, "insects never use the old transient prop routine");
     assert.equal(probe.state.animation, null);
     worldDevStore.patch({ pose: "sleep" }); worldDevStore.triggerLife("firefly");
-    assert.equal(probe.state.life.routine.kind, "firefly", "changing a held pose to auto is also a single shared transition");
+    assert.equal(probe.state.pendingLife, "firefly", "changing a held pose to auto is also a single shared transition");
     worldDevStore.patch({ paused: true });
     const paused = structuredClone(probe.state); env.tick(10_000);
     assert.deepEqual(probe.state, paused); assert.equal(env.frames.size, 0);
@@ -744,6 +761,7 @@ test("shared DEV transitions apply once and pause, reduced motion and account ch
     assert.deepEqual(probe.state, still); assert.equal(env.frames.size, 0);
     worldDevStore.patch({ reducedMotion: "off" }); worldDevStore.triggerPose("jump");
     assert.equal(probe.state.life.routine, null, "manual sprite poses cancel interaction props immediately");
+    assert.equal(probe.state.fauna.encounter, null); assert.equal(probe.state.pendingLife, null);
     world.configure({ ...initial, presenceKey: "other-account", view: "world" });
     const other = connectForestSession("other-account", TILED_WORLD, "circle", 0, 0, () => {}); probes.push(other);
     assert.notEqual(other.state, probe.state); assert.equal(other.state.life.elapsed, 0);
@@ -968,6 +986,7 @@ test("DEV interaction requested away from home waits for a continuous return alo
     worldDevStore.triggerLife("mushroom");
     assert.deepEqual(scene.position(), requestedAt, "DEV does not teleport the hero back to its props");
     assert.equal(probe.state.pendingLife, "mushroom"); assert.equal(probe.state.life.routine, null);
+    clock.step(); clock.step();
     assert.equal(probe.state.clearing.stage, "return");
     let previous = requestedAt, previousDistance = distanceBetween(previous, home);
     for (let i = 0; i < 160 && !probe.state.life.routine; i++) {
@@ -1365,4 +1384,144 @@ test("water outlines are an independent DEV overlay above night lighting and red
     assert.equal(generalBounds(marked), true, "ordinary markup stays independently available");
     assert.equal(env.frames.size, 0);
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a real insect is painted once through contact, camera handoff, pause and a reduced-motion tap", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } =
+    await modules({ habitats: livingHabitats, navigation: livingNavigation });
+  const env = browser(), scenes = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, butterflies: "on" });
+    const initial = { ...options, reducedMotion: false, presenceKey: "persistent-visitor" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const ids = probe.state.fauna.entities.map(entity => entity.id), clock = sceneClock(env);
+    worldDevStore.triggerLife("butterfly");
+    clock.until(() => probe.state.fauna.encounter !== null, "a DEV request reserves a nearby real body");
+    const partner = probe.state.fauna.entities.find(entity => entity.id === probe.state.fauna.encounter.entityId);
+    const reservation = probe.state.fauna.encounter;
+    clock.until(() => probe.state.fauna.encounter?.phase === "perch", "the individual physically reaches the paw");
+    assert.equal(probe.state.life.routine, null);
+    const contact = sampleHero(circle, env, pixelSprite);
+    assert.equal(contact.hasPose("greet"), true);
+    assert.equal(contact.calls.filter(call => call.method === "translate" && call.args[0] === partner.x && call.args[1] === partner.y).length, 1,
+      "the ambient painter paints the reserved body exactly once");
+    const atContact = structuredClone(probe.state.fauna);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world); await flush();
+    assert.equal(env.frames.size, 1); assert.equal(probe.state.fauna.encounter, reservation);
+    assert.deepEqual(probe.state.fauna, atContact, "mounting the other camera cannot advance or recreate the visitor");
+    const otherContact = sampleHero(world, env, pixelSprite);
+    assert.equal(otherContact.body.args[0], contact.body.args[0]);
+    assert.equal(otherContact.calls.filter(call => call.method === "translate" && call.args[0] === partner.x && call.args[1] === partner.y).length, 1);
+    worldDevStore.patch({ paused: true });
+    const paused = structuredClone(probe.state); clock.step(60_000); assert.deepEqual(probe.state, paused);
+    worldDevStore.patch({ paused: false, reducedMotion: "on" });
+    const still = structuredClone(probe.state); clock.step(60_000); assert.deepEqual(probe.state, still);
+    const coordinates = probe.state.fauna.entities.map(({ id, x, y }) => ({ id, x, y }));
+    world.notice();
+    assert.equal(probe.state.fauna.encounter, null);
+    assert.deepEqual(probe.state.fauna.entities.map(({ id, x, y }) => ({ id, x, y })), coordinates,
+      "a static greeting releases the paw constraint at the insect's exact world position");
+    clock.step(60_000);
+    assert.deepEqual(probe.state.fauna.entities.map(({ id, x, y }) => ({ id, x, y })), coordinates);
+    worldDevStore.patch({ reducedMotion: "off" }); clock.advance(.1);
+    assert.equal(partner.mode, "depart");
+    assert.ok(distanceBetween(partner, coordinates.find(entity => entity.id === partner.id)) < 1.2);
+    assert.deepEqual(probe.state.fauna.entities.map(entity => entity.id), ids);
+    assert.equal(probe.state.fauna.entities.find(entity => entity.id === partner.id), partner);
+    env.visibility(true); const hidden = structuredClone(probe.state); clock.step(60_000); assert.deepEqual(probe.state, hidden);
+    env.visibility(false); world.dispose(); await flush();
+    assert.equal(env.frames.size, 1); assert.equal(probe.state.fauna.entities.find(entity => entity.id === partner.id), partner);
+  } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("visible taps let the same insect depart before the actor greets and repeated taps cannot restart release", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, clearingActivityFrame } = await modules({ habitats: livingHabitats });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, butterflies: "on" });
+    const initial = { ...options, reducedMotion: false, presenceKey: "visitor-attention" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const clock = sceneClock(env); worldDevStore.triggerLife("butterfly");
+    clock.until(() => probe.state.fauna.encounter?.phase === "perch", "the real butterfly reaches contact");
+    const partner = probe.state.fauna.entities.find(entity => entity.id === probe.state.fauna.encounter.entityId);
+    const point = { x: partner.x, y: partner.y }, feet = scene.position();
+    scene.notice(); assert.equal(probe.state.pendingAttention, true);
+    assert.deepEqual({ x: partner.x, y: partner.y }, point, "the tap does not teleport the perched body");
+    for (let index = 0; index < 13; index++) { scene.notice(); clock.step(); }
+    assert.equal(probe.state.fauna.encounter, null); assert.equal(probe.state.pendingAttention, false);
+    assert.equal(partner.mode, "depart"); assert.equal(clearingActivityFrame(probe.state.clearing).attention, true);
+    assert.deepEqual(scene.position(), feet);
+    assert.equal(probe.state.life.routine, null);
+    assert.equal(probe.state.fauna.entities.find(entity => entity.id === partner.id), partner);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("DEV navigation comparison and independent living overlays redraw a paused scene without advancing it", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } =
+    await modules({ navigation: livingNavigation, habitats: livingHabitats, paths: [clearingPath], mushrooms: [] });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, reducedMotion: false, presenceKey: "living-overlays" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    probe.state.life.leaf = null;
+    const clock = sceneClock(env), home = scene.position();
+    clock.until(() => probe.state.clearing.stage === "free-walk" && distanceBetween(scene.position(), home) > 3, "free movement begins");
+    const beforeSwitch = scene.position(); worldDevStore.patch({ navigationMode: "routes" });
+    assert.deepEqual(scene.position(), beforeSwitch);
+    clock.until(() => !probe.state.clearing.navigationEnabled, "the DEV route mode takes effect after a physical return");
+    assert.ok(distanceBetween(scene.position(), home) < 1);
+    clock.until(() => probe.state.clearing.stage === "outbound", "the old authored route can still be compared");
+    worldDevStore.patch({ navigationMode: "auto" });
+    clock.until(() => probe.state.clearing.navigationEnabled, "free navigation can be restored safely");
+    worldDevStore.patch({ paused: true, debugNavigation: true, debugFauna: false });
+    const frozen = structuredClone(probe.state), nav = env.surface(); scene.paintWorld(nav.context);
+    assert.ok(nav.calls.some(call => call.method === "strokeStyle" && call.args[0] === "#78edb0"));
+    assert.equal(nav.calls.some(call => call.method === "fillText" && String(call.args[0]).includes("test-flowers")), false);
+    worldDevStore.patch({ debugNavigation: false, debugFauna: true });
+    const fauna = env.surface(); scene.paintWorld(fauna.context);
+    assert.ok(fauna.calls.some(call => call.method === "fillText" && String(call.args[0]).includes(probe.state.fauna.entities[0].id)));
+    assert.equal(fauna.calls.some(call => call.method === "strokeStyle" && call.args[0] === "#78edb0"), false);
+    assert.deepEqual(probe.state, frozen); assert.equal(env.frames.size, 0);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("static night and DEV lighting edits update real firefly glow without advancing their bodies", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules({ habitats: livingHabitats });
+  const env = browser(); let scene, probe;
+  function glowFrame() {
+    const base = env.surface().context, values = []; let fillStyle, alpha = 1;
+    const context = new Proxy(base, {
+      get(target, key) {
+        if (key === "createRadialGradient") return () => ({ firefly: false,
+          addColorStop(_at, color) { if (color === "rgba(225,246,147,.48)") this.firefly = true; } });
+        if (key === "fill") return () => { if (fillStyle?.firefly) values.push(alpha); };
+        return target[key];
+      },
+      set(target, key, value) {
+        if (key === "fillStyle") fillStyle = value;
+        if (key === "globalAlpha") alpha = value;
+        target[key] = value; return true;
+      },
+    });
+    scene.paintWorld(context); return values;
+  }
+  try {
+    worldDevStore.patch({ ...quietClearing, timeOfDay: "auto", fireflies: "auto", autoLife: false });
+    const initial = { ...options, dusk: true, presenceKey: "static-night-fireflies" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 1, () => {});
+    const frozen = structuredClone(probe.state.fauna), night = glowFrame();
+    assert.equal(night.length, 3); assert.ok(night.every(alpha => alpha > 0), "a first static night frame has luminous real insects");
+    worldDevStore.patch({ timeOfDay: "day" });
+    assert.ok(glowFrame().every(alpha => alpha === 0), "daylight suppresses the halo while keeping the insect body");
+    worldDevStore.patch({ fireflies: "on" });
+    assert.ok(glowFrame().every(alpha => alpha > 0), "the explicit DEV override updates a frozen frame immediately");
+    assert.deepEqual(probe.state.fauna, frozen); assert.equal(env.frames.size, 0);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

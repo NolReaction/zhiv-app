@@ -1,11 +1,13 @@
 import type { WorldPoint } from "./tiled/types";
 
 const TAU = Math.PI * 2;
-export type ForestAirParticle = WorldPoint & { size: number; opacity: number; phase: number };
+export type ForestAirParticle = WorldPoint & { size: number; opacity: number; phase: number; resting?: boolean };
 export type ForestFirefly = ForestAirParticle & {
   /** Rotation from an upward-facing body; omitted for a hovering scene partner. */
   angle?: number;
   resting?: boolean;
+  /** Ambient day/night light, separate from the insect body. */
+  glow?: number;
 };
 export type ForestBirdSpecies = "robin" | "blue-tit" | "swallow" | "finch";
 export type ForestBirdState = "flap" | "glide" | "landing" | "perched" | "preen" | "hop" | "takeoff";
@@ -34,7 +36,7 @@ const BUTTERFLY_COLORS = [
 
 /** Four rounded, tapered wings retain the butterfly silhouette at clearing scale. */
 export function drawForestButterfly(ctx: CanvasRenderingContext2D, particle: ForestAirParticle, elapsed: number) {
-  const s = particle.size, flutter = .42 + Math.abs(Math.sin(elapsed * 7 + particle.phase)) * .58;
+  const s = particle.size, flutter = particle.resting ? .22 : .42 + Math.abs(Math.sin(elapsed * 7 + particle.phase)) * .58;
   const palette = BUTTERFLY_COLORS[Math.floor(Math.abs(particle.phase) * 3) % BUTTERFLY_COLORS.length];
   ctx.save(); ctx.translate(particle.x, particle.y); ctx.rotate(Math.sin(particle.phase) * .38);
   ctx.globalAlpha = particle.opacity;
@@ -80,7 +82,7 @@ export function drawForestFirefly(ctx: CanvasRenderingContext2D, particle: Fores
   halo.addColorStop(0, "rgba(225,246,147,.48)");
   halo.addColorStop(.35, "rgba(196,225,118,.17)");
   halo.addColorStop(1, "rgba(176,211,94,0)");
-  ctx.globalAlpha = particle.opacity * pose.glow; ctx.fillStyle = halo;
+  ctx.globalAlpha = particle.opacity * pose.glow * (particle.glow ?? 1); ctx.fillStyle = halo;
   ctx.beginPath(); ctx.ellipse(0, tailY, radius, radius, 0, 0, TAU); ctx.fill();
 
   // Paired translucent flight wings and darker wing cases keep a readable silhouette.
@@ -105,7 +107,7 @@ export function drawForestFirefly(ctx: CanvasRenderingContext2D, particle: Fores
   // An olive abdomen remains visible between flashes; the pale centre rises gradually.
   ctx.fillStyle = "#a6b85f";
   ctx.beginPath(); ctx.ellipse(0, tailY, s * .4, s * .51, 0, 0, TAU); ctx.fill();
-  ctx.globalAlpha = particle.opacity * pose.glow;
+  ctx.globalAlpha = particle.opacity * pose.glow * (particle.glow ?? 1);
   ctx.fillStyle = "#edf5ad";
   ctx.beginPath(); ctx.ellipse(0, tailY + s * .07, s * .31, s * .39, 0, 0, TAU); ctx.fill();
   ctx.restore();

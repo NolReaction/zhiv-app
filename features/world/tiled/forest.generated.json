@@ -7387,5 +7387,491 @@
         "y": 619.609788617671
       }
     }
+  ],
+  "navigation": {
+    "version": 1,
+    "cellSize": 6,
+    "areas": [
+      {
+        "id": "home-clearing",
+        "points": [
+          {
+            "x": 552,
+            "y": 641
+          },
+          {
+            "x": 580,
+            "y": 633
+          },
+          {
+            "x": 603,
+            "y": 635
+          },
+          {
+            "x": 621,
+            "y": 645
+          },
+          {
+            "x": 641,
+            "y": 669
+          },
+          {
+            "x": 665,
+            "y": 675
+          },
+          {
+            "x": 691,
+            "y": 680
+          },
+          {
+            "x": 695,
+            "y": 710
+          },
+          {
+            "x": 708,
+            "y": 730
+          },
+          {
+            "x": 707,
+            "y": 748
+          },
+          {
+            "x": 681,
+            "y": 750
+          },
+          {
+            "x": 656,
+            "y": 741
+          },
+          {
+            "x": 639,
+            "y": 724
+          },
+          {
+            "x": 611,
+            "y": 724
+          },
+          {
+            "x": 593,
+            "y": 716
+          },
+          {
+            "x": 579,
+            "y": 711
+          },
+          {
+            "x": 569,
+            "y": 693
+          },
+          {
+            "x": 551,
+            "y": 679
+          },
+          {
+            "x": 548,
+            "y": 659
+          }
+        ]
+      }
+    ],
+    "obstacles": [
+      {
+        "id": "clearing-south-stone",
+        "points": [
+          {
+            "x": 689,
+            "y": 730
+          },
+          {
+            "x": 700,
+            "y": 731
+          },
+          {
+            "x": 711,
+            "y": 738
+          },
+          {
+            "x": 719,
+            "y": 751
+          },
+          {
+            "x": 718,
+            "y": 766
+          },
+          {
+            "x": 708,
+            "y": 777
+          },
+          {
+            "x": 689,
+            "y": 777
+          },
+          {
+            "x": 674,
+            "y": 768
+          },
+          {
+            "x": 667,
+            "y": 755
+          },
+          {
+            "x": 672,
+            "y": 741
+          }
+        ]
+      }
+    ],
+    "interests": [
+      {
+        "id": "clearing-grass-look",
+        "position": {
+          "x": 580,
+          "y": 649
+        },
+        "activity": "look"
+      },
+      {
+        "id": "clearing-leaf-sniff",
+        "position": {
+          "x": 564,
+          "y": 671
+        },
+        "activity": "sniff"
+      },
+      {
+        "id": "clearing-soft-grass-rest",
+        "position": {
+          "x": 632,
+          "y": 704
+        },
+        "activity": "rest"
+      },
+      {
+        "id": "clearing-path-groom",
+        "position": {
+          "x": 665,
+          "y": 701
+        },
+        "activity": "groom"
+      }
+    ]
+  },
+  "habitats": [
+    {
+      "id": "clearing-butterflies",
+      "species": "butterfly",
+      "points": [
+        {
+          "x": 525,
+          "y": 590
+        },
+        {
+          "x": 565,
+          "y": 575
+        },
+        {
+          "x": 615,
+          "y": 605
+        },
+        {
+          "x": 639,
+          "y": 649
+        },
+        {
+          "x": 643,
+          "y": 701
+        },
+        {
+          "x": 610,
+          "y": 724
+        },
+        {
+          "x": 563,
+          "y": 724
+        },
+        {
+          "x": 537,
+          "y": 716
+        },
+        {
+          "x": 525,
+          "y": 684
+        }
+      ],
+      "capacity": 3,
+      "anchors": [
+        {
+          "id": "butterfly-north-leaf",
+          "position": {
+            "x": 550,
+            "y": 616
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "butterfly-north-shelter",
+          "position": {
+            "x": 540,
+            "y": 601
+          },
+          "kind": "shelter"
+        },
+        {
+          "id": "butterfly-south-leaf",
+          "position": {
+            "x": 549,
+            "y": 698
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "butterfly-south-shelter",
+          "position": {
+            "x": 544,
+            "y": 704
+          },
+          "kind": "shelter"
+        }
+      ]
+    },
+    {
+      "id": "clearing-fireflies",
+      "species": "firefly",
+      "points": [
+        {
+          "x": 518,
+          "y": 684
+        },
+        {
+          "x": 531,
+          "y": 714
+        },
+        {
+          "x": 559,
+          "y": 727
+        },
+        {
+          "x": 638,
+          "y": 745
+        },
+        {
+          "x": 681,
+          "y": 731
+        },
+        {
+          "x": 694,
+          "y": 690
+        },
+        {
+          "x": 645,
+          "y": 636
+        },
+        {
+          "x": 585,
+          "y": 615
+        },
+        {
+          "x": 535,
+          "y": 638
+        }
+      ],
+      "capacity": 5,
+      "anchors": [
+        {
+          "id": "firefly-west-leaf",
+          "position": {
+            "x": 550,
+            "y": 702
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "firefly-west-shelter",
+          "position": {
+            "x": 540,
+            "y": 710
+          },
+          "kind": "shelter"
+        },
+        {
+          "id": "firefly-south-leaf",
+          "position": {
+            "x": 628,
+            "y": 741
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "firefly-south-shelter",
+          "position": {
+            "x": 611,
+            "y": 738
+          },
+          "kind": "shelter"
+        }
+      ]
+    },
+    {
+      "id": "forest-butterflies",
+      "species": "butterfly",
+      "points": [
+        {
+          "x": 80,
+          "y": 65
+        },
+        {
+          "x": 1180,
+          "y": 65
+        },
+        {
+          "x": 1180,
+          "y": 900
+        },
+        {
+          "x": 940,
+          "y": 1110
+        },
+        {
+          "x": 760,
+          "y": 1110
+        },
+        {
+          "x": 760,
+          "y": 550
+        },
+        {
+          "x": 500,
+          "y": 550
+        },
+        {
+          "x": 500,
+          "y": 1120
+        },
+        {
+          "x": 160,
+          "y": 1060
+        },
+        {
+          "x": 80,
+          "y": 830
+        }
+      ],
+      "capacity": 3,
+      "anchors": [
+        {
+          "id": "forest-butterfly-west-leaf",
+          "position": {
+            "x": 355,
+            "y": 415
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "forest-butterfly-west-shelter",
+          "position": {
+            "x": 365,
+            "y": 428
+          },
+          "kind": "shelter"
+        },
+        {
+          "id": "forest-butterfly-east-leaf",
+          "position": {
+            "x": 967,
+            "y": 420
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "forest-butterfly-east-shelter",
+          "position": {
+            "x": 982,
+            "y": 428
+          },
+          "kind": "shelter"
+        }
+      ]
+    },
+    {
+      "id": "forest-fireflies",
+      "species": "firefly",
+      "points": [
+        {
+          "x": 80,
+          "y": 65
+        },
+        {
+          "x": 1180,
+          "y": 65
+        },
+        {
+          "x": 1180,
+          "y": 900
+        },
+        {
+          "x": 940,
+          "y": 1110
+        },
+        {
+          "x": 760,
+          "y": 1110
+        },
+        {
+          "x": 760,
+          "y": 550
+        },
+        {
+          "x": 500,
+          "y": 550
+        },
+        {
+          "x": 500,
+          "y": 1120
+        },
+        {
+          "x": 160,
+          "y": 1060
+        },
+        {
+          "x": 80,
+          "y": 830
+        }
+      ],
+      "capacity": 7,
+      "anchors": [
+        {
+          "id": "forest-firefly-north-leaf",
+          "position": {
+            "x": 395,
+            "y": 248
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "forest-firefly-north-shelter",
+          "position": {
+            "x": 410,
+            "y": 255
+          },
+          "kind": "shelter"
+        },
+        {
+          "id": "forest-firefly-south-leaf",
+          "position": {
+            "x": 857,
+            "y": 687
+          },
+          "kind": "rest"
+        },
+        {
+          "id": "forest-firefly-south-shelter",
+          "position": {
+            "x": 867,
+            "y": 703
+          },
+          "kind": "shelter"
+        }
+      ]
+    }
   ]
 }

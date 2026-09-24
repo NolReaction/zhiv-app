@@ -28,7 +28,8 @@ test("development store starts from authored scene defaults with stable server s
 test("disabled store ignores every mutation and does not register subscribers", () => {
   const store = createWorldDevStore(false);
   const unsubscribe = store.subscribe(() => assert.fail("disabled store notified a listener"));
-  store.patch({ weather: "downpour", heroScale: 2, levels: { unknown: 1 }, autoLife: false, puddles: false, debugWater: true });
+  store.patch({ weather: "downpour", heroScale: 2, levels: { unknown: 1 }, autoLife: false, puddles: false,
+    debugWater: true, debugNavigation: true, debugFauna: true, navigationMode: "routes" });
   store.triggerPose("greet"); store.triggerLife("butterfly"); store.triggerLife("bush"); store.triggerLife("idle");
   store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
@@ -66,13 +67,15 @@ test("visual controls accept valid options and ignore malformed values", () => {
   const store = createWorldDevStore(true);
   const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off",
     paused: true, autoLife: false, puddles: false, reducedMotion: "on", pose: "fishing-walk", direction: "back", showHero: false, showBuildings: false,
-    heroShadow: false, buildingShadow: false, debug: true, debugWater: true };
+    heroShadow: false, buildingShadow: false, debug: true, debugWater: true,
+    debugNavigation: true, debugFauna: true, navigationMode: "routes" };
   store.patch(controls);
   for (const [key, value] of Object.entries(controls)) assert.equal(store.getSnapshot()[key], value);
   const before = store.getSnapshot();
   store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, paused: "yes",
     reducedMotion: false, autoLife: "yes", puddles: 1, pose: "dance", direction: "north", showHero: 0, showBuildings: null, heroShadow: "off",
-    buildingShadow: 1, debug: undefined, debugWater: "true", equipment: { palette: "fern", head: 0, neck: null }, unknown: true });
+    buildingShadow: 1, debug: undefined, debugWater: "true", debugNavigation: 1, debugFauna: "on", navigationMode: "free",
+    equipment: { palette: "fern", head: 0, neck: null }, unknown: true });
   store.patch(null); store.patch([]); store.patch(undefined);
   assert.equal(store.getSnapshot(), before);
   assert.equal("unknown" in store.getSnapshot(), false);
@@ -106,6 +109,25 @@ test("water outlines switch independently from general map markup and reset with
   store.reset();
   assert.equal(store.getSnapshot().debug, false);
   assert.equal(store.getSnapshot().debugWater, false);
+});
+
+test("navigation and fauna diagnostics are independent ephemeral views", () => {
+  const store = createWorldDevStore(true);
+  assert.equal(store.getSnapshot().debugNavigation, false);
+  assert.equal(store.getSnapshot().debugFauna, false);
+  assert.equal(store.getSnapshot().navigationMode, "auto");
+  store.patch({ debugNavigation: true, navigationMode: "routes" });
+  assert.equal(store.getSnapshot().debugNavigation, true);
+  assert.equal(store.getSnapshot().debugFauna, false);
+  assert.equal(store.getSnapshot().debug, false);
+  assert.equal(store.getSnapshot().debugWater, false);
+  store.patch({ debugNavigation: false, debugFauna: true });
+  assert.equal(store.getSnapshot().debugNavigation, false);
+  assert.equal(store.getSnapshot().debugFauna, true);
+  assert.equal(store.getSnapshot().navigationMode, "routes");
+  assert.equal(createWorldDevStore(true).getSnapshot(), WORLD_DEV_DEFAULTS, "another mount has no persisted overrides");
+  store.reset();
+  assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
 });
 
 test("hero scale clamps finite values without accepting non-numeric input", () => {

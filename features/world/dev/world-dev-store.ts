@@ -19,6 +19,7 @@ export type WorldDevState = Readonly<{
   fireflies: "auto" | "on" | "off";
   birds: "auto" | "on" | "off";
   autoLife: boolean;
+  navigationMode: "auto" | "routes";
   puddles: boolean;
   paused: boolean;
   reducedMotion: "auto" | "on" | "off";
@@ -31,6 +32,8 @@ export type WorldDevState = Readonly<{
   buildingShadow: boolean;
   debug: boolean;
   debugWater: boolean;
+  debugNavigation: boolean;
+  debugFauna: boolean;
   levels: Readonly<Record<string, number>>;
   equipment: Readonly<{ palette: string; head: string | null; neck: string | null }> | null;
   animation: Readonly<{ id: number; pose: PixelPose }> | null;
@@ -42,9 +45,10 @@ export type WorldDevState = Readonly<{
 
 export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   weather: "auto", timeOfDay: "auto", butterflies: "auto", fireflies: "auto", birds: "auto",
-  autoLife: true, puddles: true,
+  autoLife: true, navigationMode: "auto", puddles: true,
   paused: false, reducedMotion: "auto", pose: "auto", direction: "front", heroScale: 1,
-  showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true, debug: false, debugWater: false,
+  showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true,
+  debug: false, debugWater: false, debugNavigation: false, debugFauna: false,
   levels: Object.freeze(initialPreviewLevels(TILED_WORLD)), equipment: null,
   animation: null, lifeEvent: null, birdEvent: 0, cameraEvent: null, artError: null,
 });
@@ -54,9 +58,10 @@ const enumValues = {
   timeOfDay: ["auto", "day", "night"],
   butterflies: ["auto", "on", "off"], fireflies: ["auto", "on", "off"], birds: ["auto", "on", "off"],
   reducedMotion: ["auto", "on", "off"], pose: ["auto", ...WORLD_DEV_POSES],
+  navigationMode: ["auto", "routes"],
   direction: ["front", "back", "left", "right"],
 } as const;
-const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "debug", "debugWater"] as const;
+const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
 const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "idle"].some(kind => kind === value);

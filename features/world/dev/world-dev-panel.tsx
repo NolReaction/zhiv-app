@@ -160,6 +160,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
     } else if (action.kind === "life") {
       worldDevStore.triggerLife(action.action);
       setFeedback(action.action === "idle" ? "Сценка отменена. Автоматические сценки выключены."
+        : action.action === "butterfly" || action.action === "firefly" ? "Запрошена встреча с доступной особью. Если подходящей рядом нет, сценка не начнётся."
         : `Лесная сценка: ${LIFE_ACTIONS.find(([kind]) => kind === action.action)![1].toLowerCase()}`);
     } else {
       worldDevStore.triggerPose(action.pose); setFeedback(`Анимация: ${POSE_LABELS[action.pose].toLowerCase()}`);
@@ -210,6 +211,9 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
         <Section title="Лесные сценки" initiallyOpen>
           <Toggle label="Автоматические сценки" checked={state.autoLife} onChange={autoLife => change({ autoLife })} />
           <p className={styles.hint}>Включает прогулки по полянке и занятия на остановках. Выключение останавливает Мохлика на текущем месте; включение продолжает прогулку.</p>
+          <Select label="Способ прогулки" value={state.navigationMode} values={[["auto", "Свободная полянка"], ["routes", "Прежние маршруты"]]}
+            onChange={navigationMode => change({ navigationMode }, "Способ прогулки изменится после возвращения к домашней точке")} />
+          <p className={styles.hint}>Переключение позволяет сравнить прогулки. Мохлик сначала безопасно возвращается к домашней точке.</p>
           <div className={styles.lifeActions}>
             {LIFE_ACTIONS.map(([action, label]) => {
               const reason = unavailable({ kind: "life", action });
@@ -221,8 +225,8 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
               </div>;
             })}
           </div>
-          <p className={styles.hint}>«Отправиться спать домой» проверяет весь путь без ожидания трёх минут. Нажмите на дом или круг, чтобы разбудить. «Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» подготавливает один гриб для сценки. Наград и изменений инвентаря нет.</p>
-          <p className={styles.hint}>В режиме «Авто» насекомое доступно для ручной сценки в любое время. Если Мохлик гуляет, он сначала вернётся к домашней точке по своей тропке. «Отменить сценку» останавливает его и выключает автоматические сценки.</p>
+          <p className={styles.hint}>«Отправиться спать домой» проверяет весь путь без ожидания трёх минут. Нажмите на дом или круг, чтобы разбудить. «Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» выбирает уже выросший гриб с доступным подходом. Наград и изменений инвентаря нет.</p>
+          <p className={styles.hint}>Встречи с бабочкой и светлячком выбирают уже существующую свободную особь поблизости. Новое насекомое по кнопке не появляется. Учитываются погода, освещение и занятость участников; если подходящей особи нет, запрос не запускает сценку. «Отменить сценку» останавливает Мохлика и выключает автоматические сценки.</p>
           <details><summary>Маршруты полянки · {clearingRoutes.filter(route => route.valid).length} доступны</summary>
             {clearingRoutes.length ? clearingRoutes.map(route => <p key={route.id} className={route.valid ? styles.hint : styles.error}>
               <strong>{route.id}</strong>: {route.valid ? "Готов к прогулке" : routeReasons[route.reason ?? ""] ?? "Проверьте разметку маршрута."}
@@ -265,6 +269,10 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           <Toggle label="Границы и точки карты" checked={state.debug} onChange={debug => change({ debug })} />
           <Toggle label="Границы воды" checked={state.debugWater} onChange={debugWater => change({ debugWater })} />
           {state.debugWater && <p className={styles.hint}>Голубой контур — вода. Коралловый пунктир — исключения: листья, камни и другие предметы над водой.</p>}
+          <Toggle label="Проходимость и цель Мохлика" checked={state.debugNavigation} onChange={debugNavigation => change({ debugNavigation })} />
+          {state.debugNavigation && <p className={styles.hint}>Зелёный — разрешённая область и безопасные точки сетки, красный — препятствия, голубой — вода. Жёлтый — путь и цель; круг под лапами показывает радиус обхода.</p>}
+          <Toggle label="Особи и их цели" checked={state.debugFauna} onChange={debugFauna => change({ debugFauna })} />
+          {state.debugFauna && <p className={styles.hint}>Подписи показывают постоянный ID, состояние и цель особи. Фиолетовый пунктир — размеченная территория вида; подпись встречи указывает её участника и фазу.</p>}
           {TILED_WORLD.sites.map(site => <Field key={site.id} label={site.label}>
             <select value={state.levels[site.id] ?? site.initialLevel} onChange={event => change({ levels: { ...state.levels, [site.id]: Number(event.target.value) } })}>
               {site.states.map(visual => <option key={visual.level} value={visual.level}>{visual.label} · уровень {visual.level}</option>)}

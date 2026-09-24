@@ -33,6 +33,9 @@ export type ForestAtmosphereOptions = {
   /** Seconds since a manual flight trigger; overrides the schedule until removed. */
   birdElapsed?: number;
   birdSeed?: number;
+  /** Session-owned fauna replace analytic ambient insects, including their scene partner. */
+  fauna?: { elapsed: number; butterflies: ForestAirParticle[]; fireflies: ForestFirefly[] };
+  birdFrame?: ForestBird[];
 };
 
 export type ForestAtmosphereState = {
@@ -133,19 +136,23 @@ export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtm
   const butterflies = wildlifeVisibility(options.butterflies, daylight);
   const fireflies = wildlifeVisibility(options.fireflies, state.dusk * (1 - state.rain));
 
-  if (butterflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.butterflies; i++) {
+  if (!options.fauna && butterflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.butterflies; i++) {
     const particle = insect(i < 3 ? focus : world, seed, i + 1, seconds, scale);
     particle.size *= 1.35;
     particle.opacity = .85 * butterflies;
     frame.butterflies.push(particle);
   }
-  if (fireflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.fireflies; i++) {
+  if (!options.fauna && fireflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.fireflies; i++) {
     const particle = firefly(i < 5 ? focus : world, seed, i + 20, seconds, scale);
     particle.opacity = fireflies * .9;
     frame.fireflies.push(particle);
   }
 
-  frame.birds = forestBirdFrame(scene, { ...options, elapsed: state.elapsed, dusk: state.dusk, rain: state.rain });
+  if (options.fauna) {
+    frame.butterflies = options.fauna.butterflies;
+    frame.fireflies = options.fauna.fireflies;
+  }
+  frame.birds = options.birdFrame ?? forestBirdFrame(scene, { ...options, elapsed: state.elapsed, dusk: state.dusk, rain: state.rain });
   frame.raindrops = sampleForestRain(scene, { elapsed: state.elapsed, rain: state.rain,
     reducedMotion: options.reducedMotion, automatic: !options.weather || options.weather === "auto" });
   return frame;
@@ -157,11 +164,11 @@ export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: Fixed
   const frame = forestAtmosphereFrame(scene, options);
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
-  for (const particle of frame.butterflies) drawForestButterfly(ctx, particle, frame.elapsed);
+  for (const particle of frame.butterflies) drawForestButterfly(ctx, particle, options.fauna?.elapsed ?? frame.elapsed);
   for (const bird of frame.birds) drawForestBird(ctx, bird);
   // Bodies receive the same light as the scene; luminous insects remain above it.
   paintLighting?.();
-  for (const particle of frame.fireflies) drawForestFirefly(ctx, particle, frame.elapsed);
+  for (const particle of frame.fireflies) drawForestFirefly(ctx, particle, options.fauna?.elapsed ?? frame.elapsed);
   drawForestRain(ctx, scene, frame.raindrops);
   ctx.restore();
 }

@@ -8422,9 +8422,1031 @@
          "visible":true,
          "x":0,
          "y":0
-        }],
- "nextlayerid":19,
- "nextobjectid":109,
+        },
+{
+  "id": 19,
+  "name": "WalkAreas",
+  "type": "objectgroup",
+  "draworder": "topdown",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 109,
+      "name": "home-clearing",
+      "x": 552,
+      "y": 641,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "polygon": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 28,
+          "y": -8
+        },
+        {
+          "x": 51,
+          "y": -6
+        },
+        {
+          "x": 69,
+          "y": 4
+        },
+        {
+          "x": 89,
+          "y": 28
+        },
+        {
+          "x": 113,
+          "y": 34
+        },
+        {
+          "x": 139,
+          "y": 39
+        },
+        {
+          "x": 143,
+          "y": 69
+        },
+        {
+          "x": 156,
+          "y": 89
+        },
+        {
+          "x": 155,
+          "y": 107
+        },
+        {
+          "x": 129,
+          "y": 109
+        },
+        {
+          "x": 104,
+          "y": 100
+        },
+        {
+          "x": 87,
+          "y": 83
+        },
+        {
+          "x": 59,
+          "y": 83
+        },
+        {
+          "x": 41,
+          "y": 75
+        },
+        {
+          "x": 27,
+          "y": 70
+        },
+        {
+          "x": 17,
+          "y": 52
+        },
+        {
+          "x": -1,
+          "y": 38
+        },
+        {
+          "x": -4,
+          "y": 18
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "walk-area"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": 20,
+  "name": "Obstacles",
+  "type": "objectgroup",
+  "draworder": "topdown",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 110,
+      "name": "clearing-south-stone",
+      "x": 689,
+      "y": 730,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "polygon": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 11,
+          "y": 1
+        },
+        {
+          "x": 22,
+          "y": 8
+        },
+        {
+          "x": 30,
+          "y": 21
+        },
+        {
+          "x": 29,
+          "y": 36
+        },
+        {
+          "x": 19,
+          "y": 47
+        },
+        {
+          "x": 0,
+          "y": 47
+        },
+        {
+          "x": -15,
+          "y": 38
+        },
+        {
+          "x": -22,
+          "y": 25
+        },
+        {
+          "x": -17,
+          "y": 11
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "nav-obstacle"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": 21,
+  "name": "PointsOfInterest",
+  "type": "objectgroup",
+  "draworder": "topdown",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 111,
+      "name": "clearing-grass-look",
+      "x": 580,
+      "y": 649,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "interest"
+        },
+        {
+          "name": "activity",
+          "type": "string",
+          "value": "look"
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "name": "clearing-leaf-sniff",
+      "x": 564,
+      "y": 671,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "interest"
+        },
+        {
+          "name": "activity",
+          "type": "string",
+          "value": "sniff"
+        }
+      ]
+    },
+    {
+      "id": 113,
+      "name": "clearing-soft-grass-rest",
+      "x": 632,
+      "y": 704,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "interest"
+        },
+        {
+          "name": "activity",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 114,
+      "name": "clearing-path-groom",
+      "x": 665,
+      "y": 701,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "interest"
+        },
+        {
+          "name": "activity",
+          "type": "string",
+          "value": "groom"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": 22,
+  "name": "Habitats",
+  "type": "objectgroup",
+  "draworder": "topdown",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 115,
+      "name": "clearing-butterflies",
+      "x": 525,
+      "y": 590,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "polygon": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 40,
+          "y": -15
+        },
+        {
+          "x": 90,
+          "y": 15
+        },
+        {
+          "x": 114,
+          "y": 59
+        },
+        {
+          "x": 118,
+          "y": 111
+        },
+        {
+          "x": 85,
+          "y": 134
+        },
+        {
+          "x": 38,
+          "y": 134
+        },
+        {
+          "x": 12,
+          "y": 126
+        },
+        {
+          "x": 0,
+          "y": 94
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-habitat"
+        },
+        {
+          "name": "species",
+          "type": "string",
+          "value": "butterfly"
+        },
+        {
+          "name": "capacity",
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": 116,
+      "name": "clearing-fireflies",
+      "x": 518,
+      "y": 684,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "polygon": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 13,
+          "y": 30
+        },
+        {
+          "x": 41,
+          "y": 43
+        },
+        {
+          "x": 120,
+          "y": 61
+        },
+        {
+          "x": 163,
+          "y": 47
+        },
+        {
+          "x": 176,
+          "y": 6
+        },
+        {
+          "x": 127,
+          "y": -48
+        },
+        {
+          "x": 67,
+          "y": -69
+        },
+        {
+          "x": 17,
+          "y": -46
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-habitat"
+        },
+        {
+          "name": "species",
+          "type": "string",
+          "value": "firefly"
+        },
+        {
+          "name": "capacity",
+          "type": "int",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "id": 125,
+      "name": "forest-butterflies",
+      "x": 80,
+      "y": 65,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "polygon": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 1100,
+          "y": 0
+        },
+        {
+          "x": 1100,
+          "y": 835
+        },
+        {
+          "x": 860,
+          "y": 1045
+        },
+        {
+          "x": 680,
+          "y": 1045
+        },
+        {
+          "x": 680,
+          "y": 485
+        },
+        {
+          "x": 420,
+          "y": 485
+        },
+        {
+          "x": 420,
+          "y": 1055
+        },
+        {
+          "x": 80,
+          "y": 995
+        },
+        {
+          "x": 0,
+          "y": 765
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-habitat"
+        },
+        {
+          "name": "species",
+          "type": "string",
+          "value": "butterfly"
+        },
+        {
+          "name": "capacity",
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": 126,
+      "name": "forest-fireflies",
+      "x": 80,
+      "y": 65,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "polygon": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 1100,
+          "y": 0
+        },
+        {
+          "x": 1100,
+          "y": 835
+        },
+        {
+          "x": 860,
+          "y": 1045
+        },
+        {
+          "x": 680,
+          "y": 1045
+        },
+        {
+          "x": 680,
+          "y": 485
+        },
+        {
+          "x": 420,
+          "y": 485
+        },
+        {
+          "x": 420,
+          "y": 1055
+        },
+        {
+          "x": 80,
+          "y": 995
+        },
+        {
+          "x": 0,
+          "y": 765
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-habitat"
+        },
+        {
+          "name": "species",
+          "type": "string",
+          "value": "firefly"
+        },
+        {
+          "name": "capacity",
+          "type": "int",
+          "value": 7
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": 23,
+  "name": "WildlifeAnchors",
+  "type": "objectgroup",
+  "draworder": "topdown",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 117,
+      "name": "butterfly-north-leaf",
+      "x": 550,
+      "y": 616,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 118,
+      "name": "butterfly-north-shelter",
+      "x": 540,
+      "y": 601,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    },
+    {
+      "id": 119,
+      "name": "butterfly-south-leaf",
+      "x": 549,
+      "y": 698,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 120,
+      "name": "butterfly-south-shelter",
+      "x": 544,
+      "y": 704,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    },
+    {
+      "id": 121,
+      "name": "firefly-west-leaf",
+      "x": 550,
+      "y": 702,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 122,
+      "name": "firefly-west-shelter",
+      "x": 540,
+      "y": 710,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    },
+    {
+      "id": 123,
+      "name": "firefly-south-leaf",
+      "x": 628,
+      "y": 741,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 124,
+      "name": "firefly-south-shelter",
+      "x": 611,
+      "y": 738,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "clearing-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    },
+    {
+      "id": 127,
+      "name": "forest-butterfly-west-leaf",
+      "x": 355,
+      "y": 415,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 128,
+      "name": "forest-butterfly-west-shelter",
+      "x": 365,
+      "y": 428,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    },
+    {
+      "id": 129,
+      "name": "forest-butterfly-east-leaf",
+      "x": 967,
+      "y": 420,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 130,
+      "name": "forest-butterfly-east-shelter",
+      "x": 982,
+      "y": 428,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-butterflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    },
+    {
+      "id": 131,
+      "name": "forest-firefly-north-leaf",
+      "x": 395,
+      "y": 248,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 132,
+      "name": "forest-firefly-north-shelter",
+      "x": 410,
+      "y": 255,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    },
+    {
+      "id": 133,
+      "name": "forest-firefly-south-leaf",
+      "x": 857,
+      "y": 687,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "rest"
+        }
+      ]
+    },
+    {
+      "id": 134,
+      "name": "forest-firefly-south-shelter",
+      "x": 867,
+      "y": 703,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "visible": true,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "wildlife-anchor"
+        },
+        {
+          "name": "habitatId",
+          "type": "string",
+          "value": "forest-fireflies"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "shelter"
+        }
+      ]
+    }
+  ]
+}],
+ "nextlayerid":24,
+ "nextobjectid":135,
  "orientation":"orthogonal",
  "properties":[
         {

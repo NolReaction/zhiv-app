@@ -90,7 +90,8 @@ function finishRoutine(state: ForestLifeState) {
   state.sequence++;
 }
 
-export function triggerForestLife(state: ForestLifeState, kind: ForestLifeAction) {
+export function triggerForestLife(state: ForestLifeState, kind: ForestLifeAction,
+  target?: { mushroomId?: string; requireGrown?: boolean }) {
   if (kind === "idle") { cancelForestLife(state); return; }
   if (kind === "grow-mushrooms") {
     cancelForestLife(state);
@@ -101,8 +102,10 @@ export function triggerForestLife(state: ForestLifeState, kind: ForestLifeAction
   }
   if (state.routine) cancelForestLife(state);
   const mushroom = kind === "mushroom"
-    ? state.mushrooms.find(item => item.reachable && item.growth >= .98) ?? state.mushrooms.find(item => item.reachable)
+    ? target?.mushroomId ? state.mushrooms.find(item => item.id === target.mushroomId)
+      : state.mushrooms.find(item => item.reachable && item.growth >= .98) ?? state.mushrooms.find(item => item.reachable)
     : undefined;
+  if (kind === "mushroom" && target?.requireGrown && (!mushroom || mushroom.growth < .98)) return;
   if (mushroom) { mushroom.growth = 1; mushroom.regrowIn = 0; }
   if (kind === "mushroom" && !mushroom) { cancelForestLife(state); return; }
   if (kind === "leaf" && !state.leaf) { cancelForestLife(state); return; }
