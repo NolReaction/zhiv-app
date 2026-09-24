@@ -395,12 +395,16 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         requireThat(Object.keys(props).every(key => ["role", "siteId", "behavior", "activity", "pauseSeconds"].includes(key)), at,
           "path only accepts role, siteId, behavior, activity and pauseSeconds properties");
         pathIds.add(id);
-        if (own(props, "siteId")) routeOwners.push({ id: identifier(props.siteId, `${at}.properties.siteId`), at });
         const route = { id, points: vertices(object, "polyline", at, world) };
+        if (own(props, "siteId")) {
+          route.siteId = identifier(props.siteId, `${at}.properties.siteId`);
+          routeOwners.push({ id: route.siteId, at });
+        }
         if (own(props, "behavior")) {
-          exact(props.behavior, "clearing", `${at}.properties.behavior`);
+          requireThat(["clearing", "home"].includes(props.behavior), `${at}.properties.behavior`, 'expected "clearing" or "home"');
           route.behavior = props.behavior;
         }
+        if (route.behavior === "home") requireThat(own(route, "siteId"), at, "home behavior requires siteId");
         if (own(props, "activity") || own(props, "pauseSeconds")) {
           requireThat(route.behavior === "clearing", at, "activity and pauseSeconds require behavior: clearing");
         }
@@ -414,7 +418,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         }
         world.paths.push(route);
       } else {
-        requireThat(["anchor", "entry", "light", "hitArea", "collision"].includes(role), `${at}.properties.role`, `unknown marker role ${JSON.stringify(role)}`);
+        requireThat(["anchor", "entry", "doorway", "light", "hitArea", "collision"].includes(role), `${at}.properties.role`, `unknown marker role ${JSON.stringify(role)}`);
         requireThat(Object.keys(props).length === 2, at, "markers only accept role and siteId properties");
         const id = identifier(props.siteId, `${at}.properties.siteId`);
         const siteMarkers = markers.get(id) ?? {};
@@ -439,7 +443,13 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   world.sites = [...sites.values()].map(site => {
     const geometry = markers.get(site.id) ?? {};
     for (const role of ["anchor", "entry", "hitArea", "collision"]) requireThat(own(geometry, role), "map", `site ${site.id} is missing ${role}`);
-    return { id: site.id, label: site.label, bounds: site.bounds, anchor: geometry.anchor, entry: geometry.entry, hitArea: geometry.hitArea, collision: geometry.collision, ...(geometry.light ? { light: geometry.light } : {}), initialLevel: site.initialLevel, states: site.states };
+    if (geometry.doorway) {
+      const { x, y } = geometry.doorway, rect = site.bounds;
+      requireThat(x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height, "map", `site ${site.id} doorway must be inside its image bounds`);
+    }
+    return { id: site.id, label: site.label, bounds: site.bounds, anchor: geometry.anchor, entry: geometry.entry,
+      ...(geometry.doorway ? { doorway: geometry.doorway } : {}), hitArea: geometry.hitArea, collision: geometry.collision,
+      ...(geometry.light ? { light: geometry.light } : {}), initialLevel: site.initialLevel, states: site.states };
   });
   return world;
 }

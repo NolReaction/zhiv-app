@@ -10,6 +10,7 @@ export type ForestSessionState = {
   life: ReturnType<typeof createForestLife>;
   clearing: ReturnType<typeof createClearingActivity>;
   pendingLife: ForestLifeAction | null;
+  pendingAttention: boolean;
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object };
@@ -21,7 +22,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   const identity = key === undefined ? undefined : `account:${key}`;
   let shared = identity === undefined ? undefined : sessions.get(identity);
   if (!shared) {
-    shared = { state: { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene), pendingLife: null,
+    shared = { state: { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene), pendingLife: null, pendingAttention: false,
       reaction: 0, animation: null, birdStarted: null, birdSeed: -1 }, members: new Set(), owner: null, events: new Map() };
     if (identity !== undefined) sessions.set(identity, shared);
   }

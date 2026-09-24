@@ -163,6 +163,50 @@ test("clearing routes opt into local life without changing unmarked prototype pa
   assert.equal((await compile()).paths[0].pauseSeconds, 20);
   route.properties.push(...props({ siteId: "kiln" }));
   assert.equal((await compile()).paths[0].behavior, "clearing", "existing site ownership remains valid");
+  assert.equal((await compile()).paths[0].siteId, "kiln", "the runtime can resolve an authored route owner");
+});
+
+test("home routes retain their existing site owner without adding clearing actions", async t => {
+  const { map, compile } = await fixture(t);
+  const route = map.layers[0].objects[8];
+  const unmarked = (await compile()).paths[0];
+  route.properties.push(...props({ siteId: "kiln" }));
+  assert.deepEqual((await compile()).paths[0], { ...unmarked, siteId: "kiln" }, "legacy site-owned paths retain their geometry");
+  route.properties.push(...props({ behavior: "home" }));
+  assert.deepEqual((await compile()).paths[0], { ...unmarked, siteId: "kiln", behavior: "home" });
+  for (const [name, values, pattern] of [
+    ["missing owner", { role: "path", behavior: "home" }, /home behavior requires siteId/],
+    ["unknown owner", { role: "path", behavior: "home", siteId: "missing" }, /path references unknown site missing/],
+    ["clearing action", { role: "path", behavior: "home", siteId: "kiln", activity: "rest" }, /require behavior: clearing/],
+    ["clearing pause", { role: "path", behavior: "home", siteId: "kiln", pauseSeconds: 5 }, /require behavior: clearing/],
+  ]) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      value.layers[0].objects[8].properties = props(values);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
+test("optional doorway markers preserve the outside entry and validate the visible threshold", async t => {
+  const { map, compile } = await fixture(t);
+  const before = (await compile()).sites[0];
+  const doorway = { id: 10, name: "kiln-doorway", x: 32, y: 52, width: 0, height: 0, point: true,
+    properties: props({ role: "doorway", siteId: "kiln" }) };
+  map.layers[0].objects.push(doorway);
+  assert.deepEqual((await compile()).sites[0], { ...before, doorway: { x: 32, y: 52 } });
+  for (const [name, mutate, pattern] of [
+    ["outside building", value => { value.layers[0].objects[9].x = 60; }, /doorway must be inside its image bounds/],
+    ["unknown building", value => { setProp(value.layers[0].objects[9], "siteId", "missing"); }, /markers reference unknown site missing/],
+    ["duplicate doorway", value => { value.layers[0].objects.push({ ...clone(doorway), id: 11 }); }, /duplicate doorway for site kiln/],
+    ["rectangle instead of point", value => { delete value.layers[0].objects[9].point; }, /shape: expected "point"/],
+  ]) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
 });
 
 test("clearing route properties reject misspellings, wrong types and unsupported behavior", async t => {
@@ -502,7 +546,7 @@ test("committed authoring exports identically and --check refuses stale output w
       bounds: rect(object), initialLevel: property(object, "initialLevel") })));
   assert.deepEqual(scene.paths, withRole("path").map(object => ({ id: object.name,
     points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
-    ...Object.fromEntries(["behavior", "activity", "pauseSeconds"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
+    ...Object.fromEntries(["siteId", "behavior", "activity", "pauseSeconds"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
   assert.equal(withRole("focus").length, 1);
   assert.deepEqual(scene.focus, rect(withRole("focus")[0]));
   assert.equal(withRole("spawn").length, 1, "the live forest needs one authored spawn point");

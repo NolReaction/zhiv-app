@@ -16,7 +16,7 @@
 | Добавить вид птиц, стаю, маршрут или посадку | [`forest-birds.ts`](../features/world/forest-birds.ts) | [Птицы и привязка к фону](game/world-atmosphere.md) |
 | Изменить бабочек и светлячков | [`forest-wildlife.ts`](../features/world/forest-wildlife.ts) | [Атмосфера](game/world-atmosphere.md) |
 | Изменить занятия героя, рост грибов и общие часы | [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-session.ts`](../features/world/forest-session.ts) | [Устройство мира](game/world-foundation.md) |
-| Изменить прогулки Мохлика по полянке | [`clearing-activity.ts`](../features/world/clearing-activity.ts), `Routes` в `world/tiled/forest.tmj` | [Маршруты Tiled](game/tiled-editor.md#короткие-прогулки-возле-дома) |
+| Изменить прогулки, пробуждение и уход Мохлика спать | [`clearing-activity.ts`](../features/world/clearing-activity.ts), `Routes` в `world/tiled/forest.tmj` | [Маршруты Tiled](game/tiled-editor.md#короткие-прогулки-возле-дома) |
 | Изменить порядок слоёв и работу двух камер | [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`map-engine.ts`](../features/world/map-engine.ts), [`world-scene.tsx`](../features/world/world-scene.tsx) | [Устройство мира](game/world-foundation.md) |
 | Исправить масштаб, перетаскивание и границы камеры | [`camera.ts`](../features/world/camera.ts), [`map-engine.ts`](../features/world/map-engine.ts) | [Устройство мира](game/world-foundation.md) |
 | Перенести героя, дом или круглую камеру | [`forest.tmj`](../world/tiled/forest.tmj): `Actors`, `Buildings`, `Clearing focus` | [Разметка Tiled](game/tiled-editor.md) |

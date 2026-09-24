@@ -27,6 +27,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
       ...await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-session.ts"),
+      ...await vite.ssrLoadModule("/features/world/clearing-activity.ts"),
     };
   } finally { await vite.close(); }
 }
@@ -751,6 +752,13 @@ test("shared DEV transitions apply once and pause, reduced motion and account ch
 
 const clearingPath = { id: "clearing-fern", label: "Fern", behavior: "clearing", activity: "groom", pauseSeconds: 3,
   points: [{ ...fixture.actor.spawn }, { x: 617, y: 654 }, { x: 605, y: 647 }] };
+const clearingHome = { id: "home", label: "Дом", bounds: { x: 620, y: 580, width: 80, height: 70 },
+  anchor: { x: 650, y: 650 }, entry: { x: 650, y: 650 }, doorway: { x: 650, y: 640 },
+  hitArea: [{ x: 620, y: 580 }, { x: 700, y: 580 }, { x: 700, y: 650 }, { x: 620, y: 650 }],
+  collision: [{ x: 640, y: 600 }, { x: 675, y: 600 }, { x: 675, y: 644 }, { x: 640, y: 644 }],
+  initialLevel: 1, states: [{ level: 1, label: "Дом", image: "/test-residence.webp" }] };
+const clearingHomePath = { id: "clearing-home", behavior: "home", siteId: "home",
+  points: [{ ...fixture.actor.spawn }, { x: 642, y: 655 }, { ...clearingHome.entry }] };
 const quietClearing = { weather: "clear", timeOfDay: "day", butterflies: "off", fireflies: "off", birds: "off" };
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const circlePoint = point => ({ x: (point.x - fixture.focus.x) / fixture.focus.width,
@@ -769,8 +777,22 @@ function sceneClock(env) {
   };
 }
 
+function sampleHero(scene, env, pixelSprite) {
+  const target = env.surface();
+  scene.paintWorld(target.context);
+  const body = target.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
+    && call.args[3] === fixture.actor.size && call.args[4] === fixture.actor.size);
+  return {
+    body, calls: target.calls,
+    hasPose(...poses) {
+      return Boolean(body) && poses.some(pose => ["front", "back", "left", "right"].some(direction =>
+        [0, 1, 2, 3].some(frame => body.args[0] === pixelSprite(pose, direction, frame))));
+    },
+  };
+}
+
 test("authored clearing routes move the rendered pet, its hit area and camera target together", async () => {
-  const { mountHabitat, createMapEngine, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules({ paths: [clearingPath] });
+  const { mountHabitat, createMapEngine, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite, clearingActivityFrame } = await modules({ paths: [clearingPath] });
   const env = browser(); let scene, engine, probe;
   try {
     worldDevStore.patch(quietClearing);
@@ -800,10 +822,10 @@ test("authored clearing routes move the rendered pet, its hit area and camera ta
     const live = circlePoint(scene.position()), old = circlePoint(home);
     assert.equal(scene.hitPet(live.x, live.y), true, "the new position responds to touches");
     assert.equal(scene.hitPet(old.x, old.y), false, "the departed spawn is not an invisible touch target");
-    canvas.calls.length = 0; clock.advance(.8);
+    canvas.calls.length = 0;
     const grooming = [0, 1, 2, 3].map(frame => pixelSprite("groom", "front", frame));
-    assert.ok(canvas.calls.some(call => call.method === "drawImage" && grooming.includes(call.args[0])),
-      "the authored endpoint activity reaches the visible sprite rather than remaining only controller state");
+    clock.until(() => canvas.calls.some(call => call.method === "drawImage" && grooming.includes(call.args[0])),
+      "each variant of the authored endpoint activity reaches the visible grooming sprite", 60);
     assert.deepEqual(scene.position(), { x: 605, y: 629 }, "the endpoint activity keeps its authored contact point");
 
     const world = env.surface(400);
@@ -820,8 +842,8 @@ test("authored clearing routes move the rendered pet, its hit area and camera ta
       world.events.get("pointerdown")({ ...event, type: "pointerdown" });
       world.events.get("pointerup")({ ...event, type: "pointerup" });
     };
-    tap(home, 1); assert.equal(probe.state.reaction, 0, "a map tap at the old spawn also misses");
-    tap(target, 2); assert.ok(probe.state.reaction > 0, "a map tap finds and greets the relocated pet");
+    tap(home, 1); assert.equal(clearingActivityFrame(probe.state.clearing).attention, false, "a map tap at the old spawn also misses");
+    tap(target, 2); assert.equal(clearingActivityFrame(probe.state.clearing).attention, true, "a map tap finds and greets the relocated pet");
   } finally { engine?.dispose(); scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
@@ -836,12 +858,11 @@ test("greetings, reduced motion and hidden tabs pause an outing without catch-up
     probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
     const home = scene.position(), clock = sceneClock(env);
     clock.until(() => distanceBetween(scene.position(), home) > 10, "the hero has left its spawn");
-    const greetedAt = scene.position(), leg = probe.state.clearing.stage;
+    const greetedAt = scene.position();
     scene.notice(); clock.advance(.8);
     assert.deepEqual(scene.position(), greetedAt, "greeting freezes translation at the actual location");
-    assert.equal(probe.state.clearing.stage, leg, "greeting does not discard the remaining path");
     assert.equal(activities.at(-1), "greet");
-    clock.advance(.25);
+    clock.until(() => distanceBetween(scene.position(), greetedAt) > 0, "the finite greeting returns to its interrupted route", 80);
     assert.equal(activities.at(-1), "idle");
     assert.ok(distanceBetween(scene.position(), greetedAt) > 0 && distanceBetween(scene.position(), greetedAt) < 3,
       "the outing continues from the same spot after greeting");
@@ -936,4 +957,213 @@ test("DEV interaction requested away from home waits for a continuous return alo
     assert.deepEqual(scene.position(), home, "interacting with a ground prop never resumes walking underneath it");
     assert.ok(probe.state.life.routine.elapsed > 0);
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a tap wakes an outdoor nap without replaying the interrupted sleep afterwards", async () => {
+  const rest = { ...clearingPath, id: "clearing-nap", activity: "rest", pauseSeconds: 20 };
+  const { mountHabitat, worldDevStore, pixelSprite } = await modules({ paths: [rest] });
+  const env = browser(); let scene;
+  try {
+    worldDevStore.patch(quietClearing);
+    scene = mountHabitat(env.surface(), { ...options, view: "world", reducedMotion: false },
+      { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    const clock = sceneClock(env), sample = () => sampleHero(scene, env, pixelSprite);
+    clock.until(() => sample().hasPose("sleep"), "the authored rest route reaches a visible natural nap", 600);
+    const sleepingAt = scene.position(), sleepingTouch = circlePoint(sleepingAt);
+    assert.equal(scene.hitPet(sleepingTouch.x, sleepingTouch.y), true, "a sleeping body retains its touch target");
+    scene.notice();
+    const poses = new Set();
+    for (let i = 0; i < 100; i++) {
+      clock.step();
+      const current = sample();
+      for (const pose of ["drowsy", "stretch", "greet", "idle", "walk", "blink", "wonder"]) {
+        if (current.hasPose(pose)) poses.add(pose);
+      }
+      assert.equal(current.hasPose("sleep"), false, "the interrupted nap cannot resume after the response");
+    }
+    assert.ok(poses.has("stretch"), "waking has a visible transition before ordinary activity");
+    assert.ok(poses.has("walk") || poses.has("idle") || poses.has("wonder"), "the hero settles into awake behavior");
+    assert.ok(distanceBetween(scene.position(), sleepingAt) < fixture.actor.size * 1.6, "waking stays on the clearing");
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a DEV mushroom interaction cannot consume a prop while its hero is hidden", async () => {
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD } = await modules();
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, showHero: false });
+    const initial = { ...options, view: "world", reducedMotion: false, presenceKey: "hidden-mushroom" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const clock = sceneClock(env);
+    worldDevStore.triggerLife("mushroom");
+    const mushrooms = structuredClone(probe.state.life.mushrooms);
+    assert.ok(mushrooms.length > 0, "the fixture has a real ground prop to interact with");
+    clock.advance(3);
+    for (const mushroom of mushrooms) {
+      const current = probe.state.life.mushrooms.find(item => item.id === mushroom.id);
+      assert.ok(current.growth >= mushroom.growth, "a hidden interaction cannot pick an unseen mushroom");
+      assert.equal(current.regrowIn, 0);
+    }
+    assert.notEqual(probe.state.life.routine?.picked, true);
+    worldDevStore.patch({ showHero: true });
+    worldDevStore.triggerLife("mushroom");
+    clock.advance(3);
+    assert.equal(probe.state.life.routine?.picked, true, "the visible requested interaction still picks its prop normally");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("tapping a held mushroom finishes putting it back before greeting and repeated taps do not restart cleanup", async () => {
+  const { mountHabitat, worldDevStore, pixelSprite, connectForestSession, TILED_WORLD } = await modules();
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, view: "world", reducedMotion: false, presenceKey: "interrupted-mushroom" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const clock = sceneClock(env), sample = () => sampleHero(scene, env, pixelSprite);
+    worldDevStore.triggerLife("mushroom"); clock.advance(3);
+    assert.equal(probe.state.life.routine?.picked, true);
+    const id = probe.state.life.routine.mushroomId;
+    assert.equal(sample().hasPose("hold"), true, "the actor visibly holds the uneaten mushroom");
+    const beforeStill = sample();
+    const heldRectangles = sample => sample.calls.slice(sample.calls.indexOf(sample.body) + 1)
+      .filter(call => call.method === "fillRect");
+    assert.ok(heldRectangles(beforeStill).length > 0, "the held prop is painted after the body");
+    scene.configure({ ...initial, reducedMotion: true });
+    clock.step(60_000);
+    const frozen = sample();
+    assert.equal(frozen.body.args[0], beforeStill.body.args[0], "reduced motion keeps the current holding pose");
+    assert.deepEqual(heldRectangles(frozen), heldRectangles(beforeStill), "reduced motion freezes the held prop instead of hiding it");
+    scene.configure(initial); clock.step();
+    scene.notice();
+    assert.equal(sample().hasPose("hold"), true, "the touch does not instantly discard the held object");
+    for (let i = 0; i < 16; i++) { scene.notice(); clock.step(); }
+    assert.equal(probe.state.life.routine, null, "repeat touches cannot keep restarting the finite put-back animation");
+    const restored = probe.state.life.mushrooms.find(mushroom => mushroom.id === id);
+    assert.equal(restored.growth, 1); assert.equal(restored.regrowIn, 0);
+    const response = new Set();
+    for (let i = 0; i < 32; i++) {
+      const hero = sample();
+      for (const pose of ["greet", "wonder", "jump", "blink", "idle"]) if (hero.hasPose(pose)) response.add(pose);
+      clock.step();
+    }
+    assert.ok(response.has("greet") || response.has("wonder") || response.has("jump"), "the queued touch response runs after the prop is safe");
+    assert.deepEqual(scene.position(), { x: fixture.actor.spawn.x, y: fixture.actor.spawn.y - fixture.actor.size / 2 });
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("only visible inactivity sends the hero indoors and a map tap on the house wakes him along the authored path", async () => {
+  const { mountHabitat, createMapEngine, worldDevStore, pixelSprite } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
+  const env = browser(); let scene, engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, view: "world", reducedMotion: false, presenceKey: "natural-residence" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); env.finish(); await flush();
+    const clock = sceneClock(env), sample = () => sampleHero(scene, env, pixelSprite);
+    const spawn = scene.position();
+    clock.advance(179);
+    assert.ok(sample().body, "the character remains outdoors before three active minutes without taps");
+    for (const mode of ["paused", "backgrounded", "hidden", "reducedMotion"]) {
+      if (mode === "hidden") env.visibility(true); else scene.configure({ ...initial, [mode]: true });
+      const before = scene.ambience().elapsed, position = scene.position();
+      clock.step(300_000);
+      assert.equal(scene.ambience().elapsed, before, `${mode} must not count as player inactivity`);
+      assert.deepEqual(scene.position(), position);
+      if (mode === "hidden") env.visibility(false); else scene.configure(initial);
+      clock.step();
+      assert.ok(sample().body, `${mode} cannot catch up to a hidden indoor sleep on resume`);
+    }
+    clock.until(() => !sample().body, "the actor walks to the authored entrance and disappears inside", 700);
+    assert.deepEqual(scene.position(), { x: clearingHome.doorway.x, y: clearingHome.doorway.y - fixture.actor.size / 2 });
+    const oldTouch = circlePoint({ x: spawn.x, y: fixture.actor.spawn.y - 1 });
+    const housePoint = { x: 675, y: 610 }, houseTouch = circlePoint(housePoint);
+    assert.equal(scene.hitPet(oldTouch.x, oldTouch.y), false, "the departed clearing position is not a ghost touch target");
+    assert.equal(scene.hitPet(houseTouch.x, houseTouch.y), true, "the sleeping character can be reached through the house");
+
+    const map = env.surface(400);
+    engine = await createMapEngine(map, initial, assert.fail, []);
+    engine.control("overview");
+    const tap = { pointerId: 1, pointerType: "touch", button: 0,
+      clientX: housePoint.x * 400 / fixture.width, clientY: housePoint.y * 400 / fixture.height };
+    map.events.get("pointerdown")({ ...tap, type: "pointerdown" });
+    map.events.get("pointerup")({ ...tap, type: "pointerup" });
+    engine.dispose(); engine = null;
+    clock.until(() => Boolean(sample().body), "the real map pointer handler starts the resident's exit", 100);
+    let previous = scene.position();
+    const awakePoses = new Set();
+    for (let i = 0; i < 240; i++) {
+      if (i < 60) scene.notice();
+      clock.step();
+      const current = scene.position(), hero = sample();
+      assert.ok(hero.body, "repeat taps cannot make the hero disappear back indoors");
+      assert.equal(hero.hasPose("sleep"), false, "waking does not resume the former sleep");
+      assert.equal(hero.hasPose("drowsy"), false, "after walking outside the resident stays standing instead of curling up again");
+      assert.ok(distanceBetween(current, previous) <= fixture.actor.size * .36 * .05 + 1e-7,
+        "returning from the doorway moves continuously without a spawn teleport");
+      for (const pose of ["walk", "stretch", "greet", "idle", "blink", "wonder"]) if (hero.hasPose(pose)) awakePoses.add(pose);
+      previous = current;
+    }
+    assert.ok(awakePoses.has("walk"), "wake-up includes actual movement out of the house");
+    assert.ok(awakePoses.has("stretch") || awakePoses.has("greet"), "the character acknowledges the wake-up after coming outside");
+    assert.deepEqual(scene.position(), spawn, "repeated taps do not pin the exit or prevent returning to the clearing");
+  } finally { engine?.dispose(); scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("indoor sleep survives circle/world ownership handoff and a circle tap wakes the shared resident", async () => {
+  const { mountHabitat, worldDevStore, pixelSprite } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
+  const env = browser(), scenes = [];
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, reducedMotion: false, presenceKey: "shared-residence" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    env.finish(); env.finish(); await flush();
+    worldDevStore.triggerLife("home-sleep");
+    const clock = sceneClock(env);
+    clock.until(() => !sampleHero(world, env, pixelSprite).body, "DEV uses the same route and indoor sleep as automatic life", 500);
+    const sleepingAt = world.position(), elapsed = world.ambience().elapsed;
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    await flush();
+    assert.deepEqual(circle.position(), sleepingAt);
+    assert.equal(sampleHero(circle, env, pixelSprite).body, undefined, "mounting a second view does not reveal the sleeping body");
+    assert.equal(env.frames.size, 1, "both views retain a single active residence clock");
+    world.dispose();
+    await flush();
+    assert.deepEqual(circle.position(), sleepingAt); assert.equal(circle.ambience().elapsed, elapsed);
+    assert.equal(sampleHero(circle, env, pixelSprite).body, undefined, "returning to the circle preserves indoor sleep");
+    circle.notice();
+    clock.until(() => Boolean(sampleHero(circle, env, pixelSprite).body), "tapping the circle brings its resident outside", 100);
+    clock.advance(4);
+    assert.equal(sampleHero(circle, env, pixelSprite).hasPose("sleep"), false);
+  } finally { scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
+});
+
+test("hiding the home returns its sleeping resident outside even when automatic life is disabled", async () => {
+  const { mountHabitat, worldDevStore, pixelSprite } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
+  const env = browser(); let scene;
+  try {
+    worldDevStore.patch(quietClearing);
+    scene = mountHabitat(env.surface(), { ...options, view: "world", reducedMotion: false },
+      { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); const houseImage = env.finish(); await flush();
+    const spawn = scene.position(), clock = sceneClock(env), sample = () => sampleHero(scene, env, pixelSprite);
+    worldDevStore.triggerLife("home-sleep");
+    clock.until(() => !sample().body, "the resident falls asleep inside the visible home", 500);
+    worldDevStore.patch({ autoLife: false, showBuildings: false });
+    assert.equal(sample().calls.some(call => call.method === "drawImage" && call.args[0] === houseImage), false,
+      "the home is actually hidden by the development control");
+    clock.until(() => Boolean(sample().body) && distanceBetween(scene.position(), spawn) < .001,
+      "finishing the necessary exit must not depend on automatic life being enabled", 400);
+    assert.equal(worldDevStore.getSnapshot().autoLife, false, "the cleanup does not change the user's development setting");
+    const returnedAt = scene.position();
+    clock.advance(10);
+    assert.deepEqual(scene.position(), returnedAt, "after the safe return no new automatic walk begins");
+    assert.ok(sample().body, "the character remains visible once his house disappears");
+    assert.equal(sample().hasPose("sleep"), false);
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
 });

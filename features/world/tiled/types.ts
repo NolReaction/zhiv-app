@@ -9,6 +9,8 @@ export type FixedSite = {
   bounds: WorldBounds;
   anchor: WorldPoint;
   entry: WorldPoint;
+  /** Optional foot position on the visible threshold, beyond the outside entry. */
+  doorway?: WorldPoint;
   hitArea: WorldPoint[];
   collision: WorldPoint[];
   light?: WorldPoint;
@@ -18,8 +20,10 @@ export type FixedSite = {
 export type WorldPath = {
   id: string;
   points: WorldPoint[];
+  /** An authored route may belong to a placed site. Required for home approaches. */
+  siteId?: string;
   /** Opt-in local life; unmarked paths remain available only to route consumers. */
-  behavior?: "clearing";
+  behavior?: "clearing" | "home";
   activity?: "look" | "sniff" | "groom" | "rest";
   /** Time at the outward endpoint, from 2 to 20 seconds. */
   pauseSeconds?: number;

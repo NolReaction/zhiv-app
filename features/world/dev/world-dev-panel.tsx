@@ -40,12 +40,16 @@ const routeReasons: Record<string, string> = {
   "invalid-activity": "Неизвестное занятие в конце маршрута.", "invalid-pause": "Пауза должна быть от 2 до 20 секунд.",
   "outside-clearing-radius": "Маршрут уходит слишком далеко от домашней точки.", "outside-map": "Герой выходит за край карты.",
   "outside-focus": "Герой не помещается в круг главного экрана.", "building-collision": "Лапы пересекают коллизию здания.",
+  "invalid-home-site": "Домашнему маршруту нужен siteId = home.", "missing-home-site": "Не найден дом или точка входа.",
+  "home-end-away-from-entry": "Последняя вершина должна совпадать с home-entry.",
+  "invalid-doorway": "Порог должен находиться не дальше 0.6 размера Мохлика от входа.",
   "water-collision": "Маршрут проходит по воде.", "invalid-length": "Маршрут слишком короткий или длинный для полянки.",
 };
 const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", "Влево"], ["right", "Вправо"]] as const;
 const LIFE_ACTIONS = [
   ["butterfly", "Поиграть с бабочкой"], ["firefly", "Поиграть со светлячком"],
-  ["mushroom", "Съесть гриб"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
+  ["mushroom", "Съесть гриб"], ["leaf", "Рассмотреть листик"],
+  ["home-sleep", "Отправиться спать домой"], ["wake", "Разбудить Мохлика"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
 ] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
 
 function subscribeMotion(listener: () => void) {
@@ -124,6 +128,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
     if (action.action === "idle") return null;
     if (action.action === "grow-mushrooms") return motionUnavailable;
     if (heroUnavailable) return heroUnavailable;
+    if (action.action === "home-sleep" && !state.showBuildings) return "Дом скрыт. Включите «Показывать здания».";
     if (action.action === "butterfly" && state.butterflies === "off") return "Бабочки выключены. Выберите «Авто» или «Включить».";
     if (action.action === "firefly" && state.fireflies === "off") return "Светлячки выключены. Выберите «Авто» или «Включить».";
     return null;
@@ -210,7 +215,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
               </div>;
             })}
           </div>
-          <p className={styles.hint}>«Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» подготавливает один гриб для сценки. Наград и изменений инвентаря нет.</p>
+          <p className={styles.hint}>«Отправиться спать домой» проверяет весь путь без ожидания трёх минут. Нажмите на дом или круг, чтобы разбудить. «Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» подготавливает один гриб для сценки. Наград и изменений инвентаря нет.</p>
           <p className={styles.hint}>В режиме «Авто» насекомое доступно для ручной сценки в любое время. Если Мохлик гуляет, он сначала вернётся к домашней точке по своей тропке. «Отменить сценку» останавливает его и выключает автоматические сценки.</p>
           <details><summary>Маршруты полянки · {clearingRoutes.filter(route => route.valid).length} доступны</summary>
             {clearingRoutes.length ? clearingRoutes.map(route => <p key={route.id} className={route.valid ? styles.hint : styles.error}>

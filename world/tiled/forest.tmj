@@ -3916,6 +3916,31 @@
                  "width":0,
                  "x":740.890625775601,
                  "y":646.939912458787
+                },
+                {
+                    "height":0,
+                    "id":102,
+                    "name":"home-doorway",
+                    "opacity":1,
+                    "point":true,
+                    "properties":[
+                        {
+                            "name":"role",
+                            "type":"string",
+                            "value":"doorway"
+                        },
+                        {
+                            "name":"siteId",
+                            "type":"string",
+                            "value":"home"
+                        }
+                    ],
+                    "rotation":0,
+                    "type":"",
+                    "visible":true,
+                    "width":0,
+                    "x":661.5,
+                    "y":632.5
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -4129,6 +4154,53 @@
                  "width":0,
                  "x":598.491243496739,
                  "y":690.043232944969
+                },
+                {
+                    "height":0,
+                    "id":101,
+                    "name":"home-approach",
+                    "opacity":1,
+                    "polyline":[
+                        {
+                            "x":0.0,
+                            "y":0.0
+                        },
+                        {
+                            "x":15.508756503260997,
+                            "y":-12.043232944968963
+                        },
+                        {
+                            "x":31.508756503260997,
+                            "y":-26.043232944968963
+                        },
+                        {
+                            "x":42.792726582816954,
+                            "y":-42.88190358779491
+                        }
+                    ],
+                    "properties":[
+                        {
+                            "name":"role",
+                            "type":"string",
+                            "value":"path"
+                        },
+                        {
+                            "name":"behavior",
+                            "type":"string",
+                            "value":"home"
+                        },
+                        {
+                            "name":"siteId",
+                            "type":"string",
+                            "value":"home"
+                        }
+                    ],
+                    "rotation":0,
+                    "type":"",
+                    "visible":true,
+                    "width":0,
+                    "x":598.491243496739,
+                    "y":690.043232944969
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -7936,7 +8008,7 @@
             ]
         }],
  "nextlayerid":17,
- "nextobjectid":101,
+ "nextobjectid":103,
  "orientation":"orthogonal",
  "properties":[
         {

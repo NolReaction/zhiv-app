@@ -4,26 +4,52 @@ import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/moch
 import { NEW_MAP_FOCUS, NEW_MAP_PET_SIZE as PET_SIZE, NEW_MAP_SPAWN, TILED_WORLD } from "./presentation";
 import { paintFixedWorld } from "./tiled/renderer";
 import { initialPreviewLevels, previewSiteVisual } from "./tiled/preview-state";
-import type { PreviewLevels, SiteVisual } from "./tiled/types";
+import type { PreviewLevels, SiteVisual, WorldPoint } from "./tiled/types";
 import { drawGroundedHero } from "./grounding";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "./forest-atmosphere";
 import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
 import { drawForestGroundImpacts } from "./forest-ground-impacts";
 import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
-import { advanceForestLife, cancelForestLife, forestLifeFrame, triggerForestLife, type ForestLifeAction, type ForestLifeState } from "./forest-life";
+import { advanceForestLife, cancelForestLife, interruptForestLife, forestLifeFrame, triggerForestLife, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
-import { advanceClearingActivity, clearingActivityFrame, isClearingAtHome, returnClearingHome } from "./clearing-activity";
+import { advanceClearingActivity, clearingActivityFrame, canStartClearingLife, isClearingAtHome, noticeClearingActivity, requestClearingSleep, returnClearingHome } from "./clearing-activity";
 import { connectForestSession } from "./forest-session";
-import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState } from "./dev/world-dev-store";
+import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
+const home = TILED_WORLD.sites.find(site => site.id === "home");
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
 const initialVisuals = visualsFor(levels);
 const artworkUrls = (visuals: Record<string, SiteVisual>) => [...new Set([
   ...TILED_WORLD.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
 ])];
+
+function pointInPolygon(point: WorldPoint, polygon: WorldPoint[]) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[j], b = polygon[i];
+    if ((a.y > point.y) !== (b.y > point.y)
+      && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Quiet, font-independent sleep cue anchored to the authored doorway. */
+function drawHomeSleep(ctx: CanvasRenderingContext2D, door: WorldPoint, elapsed: number, still: boolean) {
+  ctx.save(); ctx.fillStyle = "#ecdba7";
+  const alpha = ctx.globalAlpha;
+  for (let index = 0; index < 2; index++) {
+    const phase = still ? .35 + index * .25 : (elapsed * .24 + index * .5) % 1;
+    const unit = 1 + index * .3, x = door.x - 4 + index * 5, y = door.y - 23 - phase * 9;
+    ctx.globalAlpha = alpha * (still ? .7 : Math.sin(phase * Math.PI) * .8);
+    ctx.fillRect(x, y, 4 * unit, unit);
+    for (let row = 1; row < 4; row++) ctx.fillRect(x + (3 - row) * unit, y + row * unit, unit, unit);
+    ctx.fillRect(x, y + 4 * unit, 4 * unit, unit);
+  }
+  ctx.restore();
+}
 
 type ManualAnimation = { pose: PixelPose; elapsed: number };
 export type NewMapPaintPreview = {
@@ -66,7 +92,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const life = preview?.life;
-  const routine = life?.routine && !still && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
+  const routine = life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, actor, elapsed) : null;
   context.save();
   context.beginPath(); context.rect(0, 0, TILED_WORLD.width, TILED_WORLD.height); context.clip();
@@ -82,14 +108,19 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     },
     options: { levels: dev?.levels ?? levels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
-  if (dev?.showHero !== false) {
+  if (dev?.showHero !== false && (walking?.opacity ?? 1) > 0) {
     const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
     const motion = automatic && walking ? walking : null;
     const manualDirection = dev && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
+    context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     drawGroundedHero(context, { ...actor, direction: routine?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
       ...(routine ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
       appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow });
     if (routine) drawForestLifePartner(context, routine, elapsed);
+    context.restore();
+  }
+  if (walking?.homeSleeping && home && dev?.showHero !== false && dev?.showBuildings !== false) {
+    drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
     showBuildings: dev?.showBuildings, levels: dev?.levels ?? levels };
@@ -124,9 +155,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         if (ownerChanged) resume();
       });
   }
+  function clearingMustContinue() {
+    const current = clearingActivityFrame(state.clearing);
+    return Boolean(state.pendingLife) || current.attention || dev?.showBuildings === false && current.residing;
+  }
   function preview(): NewMapPaintPreview {
     return { state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
-      clearing: clearingActivityFrame(state.clearing, { still: reducedMotion(options, dev) || dev?.autoLife === false && !state.pendingLife }),
+      clearing: clearingActivityFrame(state.clearing, { still: reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue() }),
       birdElapsed: state.birdStarted === null ? undefined : state.elapsed - state.birdStarted,
       birdSeed: state.birdStarted === null ? undefined : state.birdSeed };
   }
@@ -141,7 +176,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       ctx.translate(-NEW_MAP_FOCUS.x, -NEW_MAP_FOCUS.y);
       paintWorld(ctx);
     }
-    const activity = state.reaction > 0 ? "greet" : "idle";
+    const activity = state.reaction > 0 || state.pendingAttention || clearingActivityFrame(state.clearing).attention ? "greet" : "idle";
     if (lastActivity !== activity) { lastActivity = activity; callbacks.activity(activity); }
     callbacks.rendered?.();
   }
@@ -166,10 +201,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, preview()));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
-      advanceForestLife(state.life, step, { autoLife: !manual && !state.pendingLife && dev?.autoLife !== false && isClearingAtHome(state.clearing),
+      advanceForestLife(state.life, step, { autoLife: !manual && !state.pendingLife && !state.pendingAttention && dev?.autoLife !== false && canStartClearingLife(state.clearing),
+        blocked: manual,
         dusk: environment.dusk, rain: environment.rain, butterflies: dev?.butterflies, fireflies: dev?.fireflies });
-      advanceClearingActivity(state.clearing, step, { enabled: dev?.autoLife !== false || Boolean(state.pendingLife),
-        blocked: manual || Boolean(state.life.routine), dusk: environment.dusk, rain: environment.rain });
+      advanceClearingActivity(state.clearing, step, { enabled: dev?.autoLife !== false || clearingMustContinue(),
+        blocked: manual || Boolean(state.life.routine), idleEligible: !manual && !state.pendingLife && !state.pendingAttention,
+        homeAvailable: dev?.showBuildings !== false, dusk: environment.dusk, rain: environment.rain });
+      if (state.pendingAttention && !manual && !state.life.routine) {
+        state.pendingAttention = false; noticeClearingActivity(state.clearing);
+      }
       if (state.pendingLife && !manual && isClearingAtHome(state.clearing)) {
         triggerForestLife(state.life, state.pendingLife); state.pendingLife = null;
       }
@@ -234,8 +274,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       } else { dispose(); callbacks.failure(error); }
     });
   }
-  function requestLife(kind: ForestLifeAction) {
-    cancelForestLife(state.life); state.pendingLife = null;
+  function requestLife(kind: WorldDevLifeAction) {
+    cancelForestLife(state.life); state.pendingLife = null; state.pendingAttention = false;
+    if (kind === "home-sleep") { state.reaction = 0; requestClearingSleep(state.clearing); return; }
+    if (kind === "wake") { state.reaction = 0; noticeClearingActivity(state.clearing, { still: reducedMotion(options, dev) }); return; }
     if (kind === "idle" || kind === "grow-mushrooms" || isClearingAtHome(state.clearing)) triggerForestLife(state.life, kind);
     else { state.pendingLife = kind; returnClearingHome(state.clearing); }
   }
@@ -247,7 +289,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (dev.animation?.id !== before.animation?.id) {
         if (!dev.animation) state.animation = null;
         else if (session.consumeEvent("pose", dev.animation.id)) state.animation = { pose: dev.animation.pose, elapsed: 0 };
-        cancelForestLife(state.life); state.pendingLife = null;
+        cancelForestLife(state.life); state.pendingLife = null; state.pendingAttention = false;
       }
       if (dev.birdEvent !== before.birdEvent) {
         if (!dev.birdEvent) state.birdStarted = null;
@@ -257,10 +299,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         || state.life.routine?.kind === "butterfly" && dev.butterflies === "off"
         || (state.life.routine?.kind === "firefly" || state.pendingLife === "firefly") && dev.fireflies === "off"
         || state.pendingLife === "butterfly" && dev.butterflies === "off") {
-        cancelForestLife(state.life); state.pendingLife = null;
+        cancelForestLife(state.life); state.pendingLife = null; state.pendingAttention = false;
       }
       if (dev.lifeEvent?.id !== before.lifeEvent?.id) {
-        if (!dev.lifeEvent) { cancelForestLife(state.life); state.pendingLife = null; }
+        if (!dev.lifeEvent) { cancelForestLife(state.life); state.pendingLife = null; state.pendingAttention = false; }
         else if (session.consumeEvent("life", dev.lifeEvent.id)) requestLife(dev.lifeEvent.kind);
       }
     }
@@ -293,14 +335,26 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     notice() {
       if (disposed) return;
-      cancelForestLife(state.life); state.pendingLife = null; state.reaction = REACTION_SECONDS; cancelReactionTimer();
+      state.pendingLife = null;
+      const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
+      if (still || manualPose) {
+        cancelForestLife(state.life); state.pendingAttention = false;
+        noticeClearingActivity(state.clearing, { still: true });
+        // Static accessibility / explicit DEV poses use a bounded feedback timer.
+        if (state.reaction <= 0) state.reaction = REACTION_SECONDS;
+      } else if (!state.pendingAttention) {
+        state.pendingAttention = interruptForestLife(state.life);
+        if (!state.pendingAttention) noticeClearingActivity(state.clearing);
+      }
       if (active()) session.publish(); resume();
     },
     hitPet(x, y) {
       const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
       const size = PET_SIZE * (dev?.heroScale ?? 1);
       const actor = clearingActivityFrame(state.clearing);
-      return !disposed && dev?.showHero !== false && Math.abs(point.x - actor.x) < size / 2
+      if (disposed || dev?.showHero === false) return false;
+      if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
+      return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
         && point.y > actor.y - size && point.y < actor.y;
     },
     setTime(now) {

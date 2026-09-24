@@ -5,7 +5,7 @@ import { createServer } from 'vite';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const vite=await createServer({appType:'custom',configFile:false,root,resolve:{alias:{'@':root}},server:{middlewareMode:true,hmr:false}});
 after(()=>vite.close());
-const {createForestLife,triggerForestLife,cancelForestLife,advanceForestLife,forestLifeFrame}=await vite.ssrLoadModule('/features/world/forest-life.ts');
+const {createForestLife,triggerForestLife,cancelForestLife,interruptForestLife,advanceForestLife,forestLifeFrame}=await vite.ssrLoadModule('/features/world/forest-life.ts');
 const {connectForestSession}=await vite.ssrLoadModule('/features/world/forest-session.ts');
 const {isForestGroundClear}=await vite.ssrLoadModule('/features/world/forest-ground-weather.ts');
 const {TILED_WORLD:scene}=await vite.ssrLoadModule('/features/world/presentation.ts');
@@ -41,11 +41,17 @@ test('food is picked once, lifted to paws, bitten, swallowed, then regrows on ac
  advance(life,40);assert.equal(picked.growth,1);assert.equal(life.routine,null);
 });
 
-test('cancelling a picked meal never resurrects its ground mushroom',()=>{
- const life=createForestLife(scene);triggerForestLife(life,'mushroom');advance(life,2.6);
- const picked=life.mushrooms.find(m=>m.id===life.routine.mushroomId);cancelForestLife(life);
- assert.equal(picked.growth,0);assert.equal(life.routine,null);assert.equal(forestLifeFrame(life,actor,life.elapsed).heldMushroom,null);
- advance(life,2);assert.equal(picked.growth,0);
+test('static or DEV cancellation restores untouched food but never resurrects a bitten meal',()=>{
+ for(const time of [2.6,5]){
+  const life=createForestLife(scene);triggerForestLife(life,'mushroom');advance(life,time);
+  const picked=life.mushrooms.find(m=>m.id===life.routine.mushroomId);cancelForestLife(life);
+  const expected=time<4.1?1:0;
+  assert.equal(picked.growth,expected);assert.equal(life.routine,null);assert.equal(forestLifeFrame(life,actor,life.elapsed).heldMushroom,null);
+  advance(life,2);assert.equal(picked.growth,expected);
+ }
+ const switched=createForestLife(scene);triggerForestLife(switched,'mushroom');advance(switched,2.6);
+ const picked=switched.mushrooms.find(m=>m.id===switched.routine.mushroomId);triggerForestLife(switched,'leaf');
+ assert.equal(picked.growth,1);assert.equal(switched.routine.kind,'leaf');
 });
 
 test('DEV growth is visible over time and immediate feeding readies only a single mushroom',()=>{
@@ -78,6 +84,85 @@ test('automatic routines respect day/night, weather, off switches and disabled a
  const rainy=createForestLife(scene);advance(rainy,8,{...conditions,autoLife:true,rain:1});assert.notEqual(rainy.routine?.kind,'butterfly');
  const idle=createForestLife(scene);advance(idle,60);assert.equal(idle.routine,null);
  const before=structuredClone(idle);for(const dt of [0,-1,NaN,Infinity])advanceForestLife(idle,dt,conditions);assert.deepEqual(idle,before);
+});
+
+test('a reachable fallen leaf is lifted, turned in the paws and returned to the same ground point',()=>{
+ const life=createForestLife(scene);assert.ok(life.leaf,'the current authored clearing has a reachable leaf');
+ assert.ok(isForestGroundClear(scene,life.leaf,actor.size*.065));
+ const ground=structuredClone(life.leaf);triggerForestLife(life,'leaf');
+ advance(life,1.4);assert.equal(life.routine.picked,false);assert.equal(forestLifeFrame(life,actor,life.elapsed).pose,'reach');
+ advance(life,1.8);const held=forestLifeFrame(life,actor,life.elapsed);
+ assert.equal(life.routine.picked,true);assert.equal(held.stage,'examine');assert.ok(held.heldLeaf.y<actor.y);
+ advance(life,.5);assert.notEqual(forestLifeFrame(life,actor,life.elapsed).heldLeaf.angle,held.heldLeaf.angle);
+ advance(life,1.7);const lowering=forestLifeFrame(life,actor,life.elapsed);assert.equal(lowering.stage,'put-down');
+ assert.ok(lowering.heldLeaf.y>held.heldLeaf.y);
+ advance(life,.5);assert.equal(life.routine.picked,false);assert.equal(forestLifeFrame(life,actor,life.elapsed).heldLeaf,null);
+ advance(life,2);assert.equal(life.routine,null);assert.deepEqual(life.leaf,ground);
+ const noLeaf=createForestLife({...scene,actor:undefined});triggerForestLife(noLeaf,'leaf');assert.equal(noLeaf.routine,null);
+});
+
+test('manual blocking freezes the story and held food while independent mushrooms keep growing',()=>{
+ const life=createForestLife(scene);triggerForestLife(life,'mushroom');advance(life,2.7);
+ const routine=structuredClone(life.routine),frame=forestLifeFrame(life,actor,life.elapsed);
+ const held=life.mushrooms.find(m=>m.id===routine.mushroomId);
+ life.mushrooms.push({id:99,x:0,y:0,growth:0,regrowIn:0});
+ advance(life,45,{...conditions,blocked:true,autoLife:true});
+ assert.deepEqual(life.routine,routine);assert.deepEqual(forestLifeFrame(life,actor,life.elapsed),frame);
+ assert.equal(held.growth,0,'a held mushroom must not regrow a duplicate during a long manual pose');
+ assert.equal(life.mushrooms.find(m=>m.id===99).growth,1);
+ advance(life,.5);assert.ok(life.routine.elapsed>routine.elapsed);
+ const idle=createForestLife(scene);advance(idle,50,{...conditions,blocked:true,autoLife:true});assert.equal(idle.routine,null);
+});
+
+test('attention puts an untouched held mushroom back smoothly and repeated taps do not restart recovery',()=>{
+ const life=createForestLife(scene);triggerForestLife(life,'mushroom');advance(life,3.1);
+ const ground=life.mushrooms.find(m=>m.id===life.routine.mushroomId),before=forestLifeFrame(life,actor,life.elapsed);
+ assert.equal(interruptForestLife(life),true);assert.deepEqual(forestLifeFrame(life,actor,life.elapsed).heldMushroom,before.heldMushroom);
+ advance(life,.3);const midway=forestLifeFrame(life,actor,life.elapsed);assert.ok(midway.heldMushroom.y>before.heldMushroom.y);assert.equal(ground.growth,0);
+ const elapsed=life.routine.interrupting.elapsed;assert.equal(interruptForestLife(life),true);assert.equal(life.routine.interrupting.elapsed,elapsed);
+ advance(life,.31);assert.equal(life.routine,null);assert.equal(ground.growth,1);assert.equal(ground.regrowIn,0);
+ assert.equal(forestLifeFrame(life,actor,life.elapsed).heldMushroom,null);assert.ok(life.nextRoutineAt>life.elapsed+8);
+});
+
+test('attention finishes a bitten meal without restoring it; before pickup there is no artificial delay',()=>{
+ const life=createForestLife(scene);triggerForestLife(life,'mushroom');advance(life,5);
+ const ground=life.mushrooms.find(m=>m.id===life.routine.mushroomId);
+ assert.equal(interruptForestLife(life),true);advance(life,.5);assert.equal(forestLifeFrame(life,actor,life.elapsed).pose,'swallow');
+ advance(life,.11);assert.equal(life.routine,null);assert.equal(ground.growth,0);
+ const before=createForestLife(scene);triggerForestLife(before,'mushroom');advance(before,1.5);
+ assert.equal(interruptForestLife(before),false);assert.equal(before.routine,null);assert.equal(before.mushrooms[0].growth,1);
+});
+
+test('attention lets a perched insect depart from its current position, and pauses preserve the departure',()=>{
+ for(const kind of ['butterfly','firefly']){
+  const life=createForestLife(scene);triggerForestLife(life,kind);advance(life,4);
+  const before=forestLifeFrame(life,actor,life.elapsed).insect;assert.equal(interruptForestLife(life),true);
+  assert.deepEqual(forestLifeFrame(life,actor,life.elapsed).insect,before);
+  advance(life,.3);const departing=forestLifeFrame(life,actor,life.elapsed).insect;
+  assert.ok(departing.x>before.x&&departing.y<before.y);assert.ok(departing.opacity<before.opacity);
+  advance(life,10,{...conditions,blocked:true});assert.deepEqual(forestLifeFrame(life,actor,life.elapsed).insect,departing);
+  advance(life,.31);assert.equal(life.routine,null);
+ }
+});
+
+test('interrupted leaf inspection restores exactly one grounded leaf after a short put-down',()=>{
+ const life=createForestLife(scene);triggerForestLife(life,'leaf');advance(life,3.5);
+ const ground=structuredClone(life.leaf),before=forestLifeFrame(life,actor,life.elapsed).heldLeaf;
+ assert.equal(interruptForestLife(life),true);assert.deepEqual(forestLifeFrame(life,actor,life.elapsed).heldLeaf,before);
+ advance(life,.3);assert.equal(life.routine.picked,true);assert.ok(forestLifeFrame(life,actor,life.elapsed).heldLeaf.y>before.y);
+ advance(life,.31);assert.equal(life.routine,null);assert.deepEqual(life.leaf,ground);assert.equal(forestLifeFrame(life,actor,life.elapsed).heldLeaf,null);
+});
+
+test('automatic clearing stories include distinct environment interactions and rain keeps insects away',()=>{
+ const life=createForestLife(scene),seen=[];let previous=null;
+ for(let elapsed=0;elapsed<105;elapsed+=.05){
+  advanceForestLife(life,.05,{...conditions,autoLife:true});
+  if(life.routine&&life.routine!==previous)seen.push(life.routine.kind);
+  previous=life.routine;
+ }
+ assert.deepEqual(seen.slice(0,3),['butterfly','mushroom','leaf']);
+ const rainy=createForestLife(scene);rainy.mushrooms.forEach(m=>{m.growth=0;m.regrowIn=100});
+ advance(rainy,4.1,{...conditions,autoLife:true,rain:1});assert.equal(rainy.routine.kind,'leaf');
 });
 
 test('two cameras share life, wetness and clock with one eligible owner and event deduplication',async()=>{
