@@ -52,6 +52,9 @@ import ru.zhiv.game.gameEventRoutes
 import ru.zhiv.world.WorldRepository
 import ru.zhiv.world.worldRoutes
 import ru.zhiv.db.JdbcWorldRepository
+import ru.zhiv.db.JdbcForestMemoryRepository
+import ru.zhiv.forest.ForestMemoryRepository
+import ru.zhiv.forest.forestMemoryRoutes
 import ru.zhiv.game.gameRoutes
 import ru.zhiv.game.GameRepository
 import ru.zhiv.db.JdbcGameRepository
@@ -118,6 +121,7 @@ fun Application.module() {
         vk = vk,
         games = JdbcGameRepository(dataSource),
         worlds = JdbcWorldRepository(dataSource),
+        forestMemory = JdbcForestMemoryRepository(dataSource),
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
         incidents = UserIncidentRepository(dataSource),
         feedback = JdbcFeedbackRepository(dataSource, AdminConfig(config.adminPublicIds)),
@@ -145,6 +149,7 @@ fun Application.installZhivApi(
     admin: AdminRepository? = null,
     incidents: UserIncidentRepository? = null,
     feedback: FeedbackRepository? = null,
+    forestMemory: ForestMemoryRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -174,6 +179,8 @@ fun Application.installZhivApi(
             "game-read" to 1_200,
             "world-read" to 60,
             "world-write" to 120,
+            "forest-memory-read" to 30,
+            "forest-memory-write" to 30,
             "game-session" to 120,
             "game-write" to 90,
             "client-incidents" to 120,
@@ -185,7 +192,7 @@ fun Application.installZhivApi(
             "account-recovery-read" to 600,
         )) {
             register(RateLimitName(name)) {
-                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read")) kotlin.time.Duration.parse("1m") else 1.hours)
+                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read", "forest-memory-read", "forest-memory-write")) kotlin.time.Duration.parse("1m") else 1.hours)
                 requestKey { call ->
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))
@@ -293,6 +300,7 @@ fun Application.installZhivApi(
         games?.let { gameRoutes(it, tokenCodec, config) }
         incidents?.let { userIncidentRoutes(it, admin, config, tokenCodec) }
         worlds?.let { worldRoutes(it, tokenCodec, config) }
+        forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)

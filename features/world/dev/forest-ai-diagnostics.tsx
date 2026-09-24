@@ -1,4 +1,5 @@
 import type { ForestObservation } from "../use-forest-observation";
+import type { ForestMemorySyncStatus } from "../forest-memory-sync";
 import styles from "./world-dev-panel.module.css";
 
 const NEEDS = [
@@ -10,6 +11,11 @@ const MEMORY_LABELS: Record<ForestObservation["memory"]["status"], string> = {
   saved: "Сохранено на этом устройстве",
   restored: "Восстановлено на этом устройстве",
   unavailable: "Хранилище недоступно — память только до закрытия",
+};
+const SYNC_LABELS: Record<ForestMemorySyncStatus["mode"], string> = {
+  loading: "Загрузка памяти аккаунта", synced: "Синхронизация подключена", saving: "Сохранение в аккаунт",
+  offline: "Нет связи с сервером памяти", "other-device": "Право записи у другого устройства",
+  error: "Ошибка подключения памяти", disabled: "DEV-сценарий — запись отключена",
 };
 const percent = (value: number) => Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100);
 const scoreText = (score: number) => Number.isFinite(score) ? score.toFixed(2) : "—";
@@ -32,7 +38,9 @@ export function createForestAiReport(observation: ForestObservation, exportedAt 
     activity: text(observation.activity), detail: text(observation.detail), mood: text(observation.mood),
     sleeping: observation.sleeping, paused: observation.paused,
     needs: Object.fromEntries(NEEDS.map(([key]) => [key, observation.needs[key]])),
-    memory: { status: observation.memory.status, savedAt: observation.memory.savedAt },
+    memory: { status: observation.memory.status, savedAt: observation.memory.savedAt,
+      ...(observation.memory.sync ? { sync: { mode: observation.memory.sync.mode,
+        revision: observation.memory.sync.revision, serverSavedAt: observation.memory.sync.serverSavedAt } } : {}) },
     diagnostics: {
       reason: text(observation.diagnostics.reason),
       candidates: observation.diagnostics.candidates.slice(0, 32).map(candidate => ({
@@ -55,7 +63,7 @@ export function ForestAiDiagnostics({ observation, onExport }: {
   const candidates = observation.diagnostics.candidates.slice(0, 32)
     .sort((a, b) => Number(b.available) - Number(a.available) || b.score - a.score);
   const events = observation.diagnostics.events.slice(-24).reverse();
-  const savedAt = observation.memory.savedAt;
+  const savedAt = observation.memory.sync ? observation.memory.sync.serverSavedAt : observation.memory.savedAt;
   const savedDate = savedAt !== null && Number.isFinite(savedAt) ? new Date(savedAt) : null;
   const validSavedDate = savedDate && Number.isFinite(savedDate.getTime()) ? savedDate : null;
   return <div className={styles.aiDiagnostics}>
@@ -78,8 +86,9 @@ export function ForestAiDiagnostics({ observation, onExport }: {
     <p className={styles.hint}>Внутренние мотивы влияют на выбор занятий. Эти показатели не требуют обязательного ухода.</p>
     <div className={styles.aiMemory}>
       <strong>Память</strong><span>{MEMORY_LABELS[observation.memory.status]}</span>
+      {observation.memory.sync && <span>{SYNC_LABELS[observation.memory.sync.mode]} · revision {observation.memory.sync.revision ?? "—"}</span>}
       {validSavedDate && <time dateTime={validSavedDate.toISOString()}>
-        Последняя запись: {validSavedDate.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        {observation.memory.sync ? "Последняя серверная запись" : "Последняя запись"}: {validSavedDate.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
       </time>}
     </div>
     <div className={styles.aiChoices}>

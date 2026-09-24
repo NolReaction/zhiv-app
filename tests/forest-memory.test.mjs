@@ -203,3 +203,18 @@ test("reset removes only the current account snapshot and does not save it again
   a.resetMemory(); a.release(); assert.equal(env.records.has(forestMemoryKey("memory-reset-a")), false);
   assert.equal(env.records.get(forestMemoryKey("memory-reset-b")), other); b.release();
 });
+
+test("opening the world after a DEV override preserves the account clock and suspends its shared writer", () => {
+  const env = environment(), map = scene(), circle = connect("memory-shared-dev", map, env);
+  circle.configure("circle", true); circle.state.elapsed = 12;
+  circle.state.clearing.behavior.mind.needs.energy = .48;
+  const world = connect("memory-shared-dev", map, env, "world", { persistence: false });
+  try {
+    assert.equal(world.state, circle.state); assert.equal(world.state.elapsed, 12);
+    world.configure("world", true); assert.equal(world.isOwner(), true); assert.equal(circle.isOwner(), false);
+    const clean = env.records.get(forestMemoryKey("memory-shared-dev"));
+    assert.equal(JSON.parse(clean).mind.needs.energy, .48); assert.equal(circle.state.memory.enabled, false);
+    world.state.clearing.behavior.mind.needs.energy = 0; world.saveMemory(); circle.saveMemory();
+    assert.equal(env.records.get(forestMemoryKey("memory-shared-dev")), clean);
+  } finally { world.release(); circle.release(); }
+});

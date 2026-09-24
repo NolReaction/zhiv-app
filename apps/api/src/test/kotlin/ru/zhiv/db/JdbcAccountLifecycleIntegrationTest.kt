@@ -8,6 +8,7 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import kotlinx.serialization.encodeToString
 import ru.zhiv.world.*
+import ru.zhiv.forest.*
 import ru.zhiv.installZhivApi
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.Test
@@ -454,4 +455,40 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { world.snapshot(a.session) }.code)
     }
 
+    @Test fun `forest memory merge keeps target or adopts source and invalidates leases then deletion erases snapshots`() = runBlocking<Unit> {
+        val memory = JdbcForestMemoryRepository(source)
+        suspend fun saved(account: Account, energy: Double): Pair<ForestMemoryCommand, ForestMemoryView> {
+            val publicId = people.findBySession(account.session)!!.publicId
+            val acquire = ForestMemoryCommand(publicId, UUID.randomUUID().toString(), UUID.randomUUID().toString(), 0, "acquire")
+            val leased = memory.command(account.session, acquire).state
+            val write = acquire.copy(requestId = UUID.randomUUID().toString(), expectedRevision = leased.revision, action = "save",
+                leaseToken = leased.lease.token, snapshot = memoryFixture(energy))
+            return write to memory.command(account.session, write).state
+        }
+        for (targetHasMemory in listOf(false, true)) {
+            val target = account(); val other = account(); val browser = tokens.issue().hash
+            val existing = if (targetHasMemory) saved(target, 0.3) else null
+            val previous = saved(other, 0.9)
+            val targetPublicId = people.findBySession(target.session)!!.publicId
+            val client = existing?.first?.clientId?.let(UUID::fromString) ?: UUID.randomUUID()
+            val preview = readyMerge(target, other, browser)
+            auth.confirmMerge(target.session, browser, preview)
+            val merged = memory.read(target.session, targetPublicId, client)
+            assertEquals(memoryFixture(if (targetHasMemory) 0.3 else 0.9), merged.snapshot)
+            assertEquals(3L, merged.revision)
+            assertFalse(merged.lease.owned); assertNull(merged.lease.token); assertNull(merged.lease.expiresAt)
+            if (existing != null) {
+                val replay = memory.command(target.session, existing.first)
+                assertTrue(replay.replayed); assertFalse(replay.state.lease.owned)
+                assertEquals("FOREST_MEMORY_LEASE_LOST", assertFailsWith<AuthFailure> {
+                    memory.command(target.session, existing.first.copy(requestId = UUID.randomUUID().toString(), expectedRevision = merged.revision))
+                }.code)
+            }
+            assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { memory.command(other.session, previous.first) }.code)
+            for (table in listOf("forest_memory", "forest_memory_receipts")) assertEquals("0", scalar("SELECT count(*) FROM $table WHERE user_id=?", other.id))
+            prove(target, browser, "delete"); auth.deleteAccount(target.session, browser, tokens.issue().hash)
+            for (table in listOf("forest_memory", "forest_memory_receipts")) assertEquals("0", scalar("SELECT count(*) FROM $table WHERE user_id=?", target.id))
+            assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { memory.read(target.session, targetPublicId, client) }.code)
+        }
+    }
 }

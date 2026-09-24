@@ -96,6 +96,20 @@ test("memory status does not promise persistence when DEV disables writes or sto
   } finally { session.release(); }
 });
 
+test("remote writer pauses observation and publishes lease changes immediately without exposing mutable state", () => {
+  const session = connect("observer-server-memory");
+  try {
+    session.state.memory.sync = { mode: "synced", revision: 1, serverSavedAt: 1234, canTakeOver: false };
+    publishForestObservation("observer-server-memory", session.state, { now: 0 });
+    session.state.memory.sync = { mode: "other-device", revision: 2, serverSavedAt: 1234, canTakeOver: true };
+    publishForestObservation("observer-server-memory", session.state, { now: 1 });
+    const snapshot = getForestObservation("observer-server-memory");
+    assert.equal(snapshot.paused, true); assert.equal(snapshot.memory.sync.canTakeOver, true);
+    session.state.memory.sync.revision = 99;
+    assert.equal(snapshot.memory.sync.revision, 2); assert.ok(Object.isFrozen(snapshot.memory.sync));
+  } finally { session.release(); }
+});
+
 test("DEV inspection preserves memory, forced actions and simulation conditions disable it", () => {
   const levels = WORLD_DEV_DEFAULTS.levels;
   for (const patch of [{}, { paused: true }, { debugNavigation: true, debugWater: true, debugFauna: true },

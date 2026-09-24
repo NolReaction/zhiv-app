@@ -6,6 +6,7 @@ import { ChevronRight, Heart, Leaf, Search, Sprout, X } from "lucide-react";
 import { Dialog, DialogClose, DialogDescription, DialogPortal, DialogOverlay, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useForestObservation } from "./use-forest-observation";
 import type { ForestObservation } from "./forest-observer";
+import { takeOverForestSession } from "./forest-session";
 import glass from "@/components/glass-dialog.module.css";
 import styles from "./mochlik-state.module.css";
 
@@ -19,10 +20,23 @@ const feelingLabels = {
 } as const;
 
 /** Words, rather than percentages, describe the visible character without turning care into a task. */
-export function MochlikStateDetails({ observation }: { observation: ForestObservation | null }) {
+export function MochlikStateDetails({ observation, onTakeOver }: {
+  observation: ForestObservation | null; onTakeOver?: () => void;
+}) {
   if (!observation) return <p className={styles.waiting}>Состояние появится, когда полянка загрузится.</p>;
-  const memoryText = observation.memory.status === "saved" || observation.memory.status === "restored"
-    ? "Мохлик помнит свои занятия и отдых на этом устройстве. На другом устройстве у него своя жизнь."
+  const sync = observation.memory.sync;
+  const memoryText = sync ? {
+    loading: "Загружаем память Мохлика из аккаунта…",
+    synced: sync.serverSavedAt !== null
+      ? "Память Мохлика сохранена в аккаунте. Его занятия и отдых можно продолжить на другом устройстве."
+      : "Готовим первое сохранение памяти Мохлика в аккаунте…",
+    saving: "Сохраняем память Мохлика в аккаунте…",
+    offline: "Нет связи с памятью аккаунта. После восстановления связи загрузится последнее подтверждённое сохранение.",
+    "other-device": "Мохлик сейчас живёт на другом устройстве или в другой вкладке. Здесь полянка на паузе. Можно продолжить его жизнь здесь.",
+    error: "Не удалось подключить память аккаунта. Перезагрузи приложение, чтобы попробовать снова.",
+    disabled: "Включён просмотр DEV-сценария. Его изменения не сохраняются в память Мохлика.",
+  }[sync.mode] : observation.memory.status === "saved" || observation.memory.status === "restored"
+    ? "Память Мохлика пока сохранена только на этом устройстве."
     : observation.memory.status === "unavailable"
       ? "Сейчас не получается сохранить память на этом устройстве. Пока приложение открыто, жизнь полянки продолжается."
       : "Сейчас память Мохлика сохраняется только на время этой сессии.";
@@ -43,7 +57,12 @@ export function MochlikStateDetails({ observation }: { observation: ForestObserv
       })}
     </dl>
     <p className={styles.note}>Мохлик сам отдыхает и находит занятия. Заходи, когда хочется: забота о нём не требует расписания.</p>
-    <p className={styles.memory}>{memoryText}</p>
+    <div className={styles.memory}>
+      <p>{memoryText}</p>
+      {sync?.canTakeOver && onTakeOver && <button type="button" className={styles.takeOver} onClick={onTakeOver}>
+        Продолжить здесь
+      </button>}
+    </div>
   </>;
 }
 
@@ -71,7 +90,7 @@ function MochlikStateDialog({ presenceKey }: Props) {
           <DialogClose className={styles.close} aria-label="Закрыть состояние Мохлика"><X size={20} aria-hidden="true" /></DialogClose>
         </div>
         <DialogDescription className={styles.description}>Его настроение и самочувствие на полянке.</DialogDescription>
-        <MochlikStateDetails observation={observation} />
+        <MochlikStateDetails observation={observation} onTakeOver={() => takeOverForestSession(presenceKey)} />
       </DialogPrimitive.Content>
     </DialogPortal>
   </Dialog>;

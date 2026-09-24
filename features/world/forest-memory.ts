@@ -3,10 +3,13 @@ import type { ForestSessionState } from "./forest-session";
 import { isWalkable } from "./navigation";
 import { CLEARING_AWAKE_GRACE_SECONDS, requestClearingSleep } from "./clearing-activity";
 import { restoreForestMind } from "./forest-mind";
+import type { ForestMemoryPayload } from "./forest-memory-model";
+import type { ForestMemorySyncStatus } from "./forest-memory-sync";
 
 export type ForestMemoryStatus = {
   mode: "local" | "ephemeral" | "unavailable";
   restored: boolean; reconciled: boolean; lastSavedAt: number | null; enabled: boolean;
+  sync?: ForestMemorySyncStatus;
 };
 export type ForestMemoryEnvironment = {
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -73,13 +76,15 @@ function stablePosition(state: MemoryState): WorldPoint {
   return safeOutdoorPosition(state, authored?.dock);
 }
 
-function snapshot(state: MemoryState, account: string, scene: FixedWorldScene, savedAt: number) {
+export function captureForestMemory(state: MemoryState, scene: FixedWorldScene): ForestMemoryPayload {
   const clearing = state.clearing, mind = clearing.behavior.mind;
   const carrying = state.life.routine?.kind === "mushroom" && state.life.routine.picked && state.life.routine.elapsed < 4.1
     ? state.life.routine.mushroomId : null;
-  return { version: VERSION, account, sceneId: scene.id, fingerprint: forestSceneFingerprint(scene), savedAt,
+  return { version: VERSION, sceneId: scene.id, fingerprint: forestSceneFingerprint(scene),
     // Decisions, encounter tokens, path graphs and frame clocks are deliberately absent.
-    mind: { elapsed: mind.elapsed, needs: { ...mind.needs }, recent: mind.recent.slice(-16), attentionUntil: mind.attentionUntil },
+    mind: { elapsed: mind.elapsed, needs: { ...mind.needs },
+      recent: mind.recent.filter(item => item.at <= mind.elapsed && mind.elapsed - item.at <= 300).slice(-16).map(item => ({ ...item })),
+      attentionUntil: Math.min(mind.elapsed + 30, mind.attentionUntil) },
     hero: { position: stablePosition(state), sleepingHome: clearing.stage === "home-sleep",
       awakeFor: bounded(clearing.awakeUntil - clearing.elapsed, 0, CLEARING_AWAKE_GRACE_SECONDS),
       restFor: bounded(clearing.behavior.restUntil - clearing.elapsed, 0, 45),
@@ -105,15 +110,15 @@ function restoreHomeSleep(state: MemoryState): boolean {
   return true;
 }
 
-function restore(state: MemoryState, account: string, scene: FixedWorldScene, raw: string): { savedAt: number; reconciled: boolean } | null {
-  if (raw.length > MAX_BYTES) return null;
+function restore(state: MemoryState, account: string, scene: FixedWorldScene, raw: string, remote = false): { savedAt: number; reconciled: boolean } | null {
+  if (raw.length > MAX_BYTES + (remote ? 512 : 0)) return null;
   let data: unknown;
   try { data = JSON.parse(raw); } catch { return null; }
-  if (!object(data) || data.version !== VERSION || data.account !== account || data.sceneId !== scene.id
+  if (!object(data) || data.version !== VERSION || data.account !== account || !remote && data.sceneId !== scene.id
     || !text(data.fingerprint) || !finite(data.savedAt) || data.savedAt < 0 || data.savedAt > MAX_TIMESTAMP || !object(data.mind)
     || !object(data.mind.needs) || !object(data.hero) || !Array.isArray(data.mushrooms)
     || data.mushrooms.length > 128) return null;
-  const reconciled = data.fingerprint !== forestSceneFingerprint(scene), clearing = state.clearing;
+  const reconciled = data.sceneId !== scene.id || data.fingerprint !== forestSceneFingerprint(scene), clearing = state.clearing;
   clearing.behavior.mind = restoreForestMind(reconciled ? { needs: data.mind.needs } : data.mind);
   if (!reconciled) {
     clearing.position = safeOutdoorPosition(state, data.hero.position);
@@ -160,7 +165,7 @@ export function createForestMemory(account: string | undefined, scene: FixedWorl
     try {
       const now = environment.now(); if (!finite(now) || now < 0 || now > MAX_TIMESTAMP) return;
       lastAttempt = now;
-      const raw = JSON.stringify(snapshot(state, account!, scene, now));
+      const raw = JSON.stringify({ ...captureForestMemory(state, scene), account, savedAt: now });
       if (raw.length > MAX_BYTES) return;
       environment.storage.setItem(key, raw); status.lastSavedAt = now;
     } catch { unavailable(); }
@@ -168,6 +173,12 @@ export function createForestMemory(account: string | undefined, scene: FixedWorl
   let unsubscribe = () => {};
   if (status.enabled && environment?.onLifecycleSave) try { unsubscribe = environment.onLifecycleSave(save); } catch { /* Optional lifecycle hooks. */ }
   return { status,
+    capture: () => captureForestMemory(state, scene),
+    apply(payload: ForestMemoryPayload) {
+      if (disposed || !eligible) return;
+      const result = restore(state, account!, scene, JSON.stringify({ ...payload, account, savedAt: environment?.now() ?? Date.now() }), true);
+      if (result) { status.restored = true; status.reconciled = result.reconciled; save(); }
+    },
     pulse(active: boolean) {
       if (!active || !status.enabled || !environment || disposed) return;
       const now = environment.now();

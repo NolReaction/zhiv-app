@@ -37,17 +37,31 @@ test("attention describes a recent player interaction and low energy describes r
   assert.doesNotMatch(markup, /Занят своими делами|Полон сил/);
 });
 
-test("missing state remains truthful and saved memory is explicitly device-local", () => {
+test("missing state and local fallback never promise an account save", () => {
   assert.match(render(null), /Состояние появится, когда полянка загрузится/);
   assert.doesNotMatch(render(null), /Полон сил|Исследует|сохраня/);
   for (const status of ["saved", "restored"]) {
     const markup = render({ ...observation, memory: { status, savedAt: 1_000 } });
-    assert.match(markup, /помнит свои занятия и отдых на этом устройстве/);
-    assert.match(markup, /На другом устройстве у него своя жизнь/);
+    assert.match(markup, /пока сохранена только на этом устройстве/);
+    assert.doesNotMatch(markup, /сохранена в аккаунте/);
   }
   assert.match(render({ ...observation, memory: { status: "session", savedAt: null } }), /только на время этой сессии/);
   assert.match(render({ ...observation, memory: { status: "unavailable", savedAt: null } }), /не получается сохранить память/);
   assert.match(render({ ...observation, memory: { status: "unavailable", savedAt: null } }), /жизнь полянки продолжается/);
+});
+
+test("account memory reports confirmation, pending save, offline loss and explicit takeover truthfully", () => {
+  const sync = { mode: "synced", revision: 2, serverSavedAt: 1234, canTakeOver: false };
+  const markup = mode => render({ ...observation, memory: { ...observation.memory, sync: { ...sync, mode } } });
+  assert.match(markup("synced"), /сохранена в аккаунте/);
+  assert.match(markup("saving"), /Сохраняем память/);
+  assert.match(markup("offline"), /последнее подтверждённое сохранение/);
+  assert.doesNotMatch(markup("offline"), /сохранена в аккаунте/);
+  assert.match(render({ ...observation, memory: { ...observation.memory, sync: { ...sync, serverSavedAt: null } } }), /первое сохранение/);
+  const elsewhere = { ...observation, memory: { ...observation.memory, sync: { ...sync, mode: "other-device", canTakeOver: true } } };
+  const withAction = renderToStaticMarkup(createElement(MochlikStateDetails, { observation: elsewhere, onTakeOver: () => {} }));
+  assert.match(withAction, /полянка на паузе/); assert.match(withAction, /Продолжить здесь/);
+  assert.doesNotMatch(markup("synced"), /Продолжить здесь/);
 });
 
 test("switching accounts remounts the dialog and initial trigger has an accessible target", () => {

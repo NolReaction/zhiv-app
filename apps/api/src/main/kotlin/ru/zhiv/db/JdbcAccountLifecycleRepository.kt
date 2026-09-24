@@ -319,6 +319,8 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         """.trimIndent(),target)
     }
     private fun tombstone(c: Connection,id: UUID) {
+        c.update("DELETE FROM forest_memory_receipts WHERE user_id=?",id)
+        c.update("DELETE FROM forest_memory WHERE user_id=?",id)
         c.update("DELETE FROM user_incidents WHERE user_id=?",id)
         c.update("DELETE FROM world_commands WHERE user_id=?",id)
         c.update("DELETE FROM world_ledger WHERE user_id=?",id)
@@ -395,6 +397,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("UPDATE app_users SET tap_signal_at=GREATEST(tap_signal_at,(SELECT tap_signal_at FROM app_users WHERE id=?)) WHERE id=?",s.other,id)
         c.update("UPDATE player_feedback SET user_id=? WHERE user_id=?",id,s.other)
         mergeWorldProfiles(c,id,s.other)
+        mergeForestMemory(c,id,s.other)
         mergeGameProgress(c,id,s.other)
         c.update("""
             INSERT INTO game_achievements(user_id,achievement_id,unlocked_at)

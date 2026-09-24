@@ -61,6 +61,10 @@
 .feelings dd { margin: 7px 0 0; color: #e1e9d9; font-size: .8125rem; line-height: 1.4; overflow-wrap: anywhere; }
 .note, .memory, .waiting { margin: 0; color: #b5c2a8; font-size: .8125rem; line-height: 1.6; }
 .memory { padding-top: 12px; border-top: 1px solid rgb(188 214 162 / 12%); color: #a4b098; font-size: .75rem; }
+.memory p { margin: 0; }
+.takeOver { min-height: 44px; margin-top: 10px; padding: 10px 15px; border: 1px solid rgb(195 220 167 / 40%); border-radius: 12px; background: #344b2a; color: #edf5e4; font: inherit; font-size: .8125rem; cursor: pointer; }
+.takeOver:hover { background: #405c33; }
+.takeOver:focus-visible { outline: 2px solid #cee5b8; outline-offset: 3px; }
 .waiting { padding: 10px 0; }
 @media (max-width: 360px) { .feelings { gap: 7px; } .feelings > div { padding: 10px; } }
 @media (prefers-reduced-transparency: reduce) { .dialog[data-slot="dialog-content"] { background: #1b261a; } .chip { background: #172318; } }

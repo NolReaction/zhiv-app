@@ -234,7 +234,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function updateObservation(force = false) {
     if (!art || !session.isObservationOwner()) return;
     publishForestObservation(options.presenceKey, state, { force,
-      paused: !active() || reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue(),
+      paused: !active() || !session.isSimulationAllowed() || reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue(),
       manual: Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false) });
   }
   function syncOwner() { session.configure(options.view ?? "circle", active()); updateObservation(true); }
@@ -383,7 +383,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       resize(); if (active()) draw(); resume();
     },
     notice() {
-      if (disposed) return;
+      if (disposed || !session.isSimulationAllowed()) return;
       const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
       noticeForestDirector(state, still || manualPose);
       // Static accessibility / explicit DEV poses use a bounded feedback timer.

@@ -31,6 +31,7 @@ import { activeUserStatus, normalizeUserStatus, validStatusDuration } from "@/li
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
+import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
 import {
   calculateRollingStreak,
   formatLocalDate,
@@ -199,6 +200,7 @@ function store(): Store {
 
 export function resetDevStoreForTests() {
   delete globalStore.__zhivDevStore;
+  resetDevForestMemoryStoreForTests();
 }
 
 function randomToken(bytesCount = 32): string {

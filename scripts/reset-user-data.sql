@@ -13,6 +13,7 @@ DECLARE
         'account_registration_tickets', 'admin_actions', 'app_sessions', 'app_users', 'check_in_audiences',
         'check_ins', 'circle_invites', 'circle_memberships', 'circle_sharing_preferences',
         'circles', 'direct_invite_links', 'direct_invite_redemptions', 'direct_person_favorites', 'direct_requests',
+        'forest_memory', 'forest_memory_receipts',
         'game_achievements', 'game_items', 'game_monthly_scores', 'game_profiles', 'game_sessions', 'game_tap_activity_minutes', 'game_tap_activity_seconds',
         'identity_bootstrap_keys', 'player_feedback', 'player_feedback_actions', 'private_person_nicknames', 'recipient_sharing_preferences',
         'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys', 'world_commands', 'world_ledger', 'world_profiles'
@@ -31,9 +32,9 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
-    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '30'
+    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '31'
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migration V30. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migration V31. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;
