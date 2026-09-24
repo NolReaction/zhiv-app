@@ -20,9 +20,11 @@ const observation = {
 };
 const render = value => renderToStaticMarkup(createElement(MochlikStateDetails, { observation: value }));
 
-test("character details describe the current activity and feelings without exposing AI scoring", () => {
+test("character details show mood and feelings without a stream of animation phases or AI scoring", () => {
   const markup = render(observation);
-  for (const text of [observation.activity, observation.detail, observation.mood, "Полон сил", "Хочется открытий", "Чувствует себя уютно", "Занят своими делами"]) assert.ok(markup.includes(text));
+  for (const text of [observation.mood, "Полон сил", "Хочется открытий", "Чувствует себя уютно", "Занят своими делами"]) assert.ok(markup.includes(text));
+  assert.equal(markup, render({ ...observation, activity: "Провожает бабочку", detail: "Начал другое действие", sleeping: true }));
+  assert.ok(!markup.includes(observation.activity)); assert.ok(!markup.includes(observation.detail));
   assert.doesNotMatch(markup, /debug-private-reason|hidden-id|Hidden action|4\.9763|internal-choice|Utility|progressbar|aria-live/);
   assert.match(markup, /Самочувствие Мохлика/);
   assert.match(markup, /не требует расписания/);
@@ -31,7 +33,7 @@ test("character details describe the current activity and feelings without expos
 test("attention describes a recent player interaction and low energy describes rest", () => {
   const markup = render({ ...observation, activity: "Отдыхает", sleeping: true,
     needs: { energy: .1, curiosity: .1, comfort: .2, attention: 1 } });
-  for (const text of ["Отдыхает", "Пора передохнуть", "Уже нагулялся", "Ищет место поуютнее", "Рад тебя видеть"]) assert.ok(markup.includes(text));
+  for (const text of ["Пора передохнуть", "Уже нагулялся", "Ищет место поуютнее", "Рад тебя видеть"]) assert.ok(markup.includes(text));
   assert.doesNotMatch(markup, /Занят своими делами|Полон сил/);
 });
 
@@ -54,11 +56,11 @@ test("switching accounts remounts the dialog and initial trigger has an accessib
   assert.notEqual(first.key, second.key);
   const markup = renderToStaticMarkup(createElement(MochlikState, { presenceKey: "zhiv:mochlik:presence:first" }));
   assert.match(markup, /aria-haspopup="dialog"/);
-  assert.match(markup, /aria-label="Мохлик: Ждём полянку…\. Посмотреть состояние"/);
+  assert.match(markup, /Как Мохлик\?/);
   assert.doesNotMatch(markup, /aria-live/);
 });
 
-test("status trigger cannot count a game tap and the world camera measures its HUD space", async () => {
+test("home has no state button; the map button stays outside taps and inside the measured HUD", async () => {
   for (const [path, world] of [["features/check-in/check-in-app.tsx", false], ["features/world/world-view.tsx", true]]) {
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     const tree = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -77,6 +79,6 @@ test("status trigger cannot count a game tap and the world camera measures its H
       ts.forEachChild(node, visit);
     };
     visit(tree);
-    assert.equal(found, true);
+    assert.equal(found, world);
   }
 });

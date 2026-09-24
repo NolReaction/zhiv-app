@@ -20,7 +20,6 @@
 }
 .chip > svg { flex-shrink: 0; color: #adc992; }
 .chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip .name { color: #a8b79b; }
 .chip:hover { background: #273725; border-color: rgb(195 220 167 / 50%); }
 .chip:focus-visible, .close:focus-visible { outline: 2px solid #cee5b8; outline-offset: 3px; }
 .scrim { z-index: 105; }
@@ -54,9 +53,7 @@
 .description { margin: 0; font-size: .875rem; }
 .current { padding: 14px; border: 1px solid rgb(186 210 159 / 20%); border-radius: 16px; background: rgb(177 208 143 / 5%); }
 .eyebrow { color: #b1c59f; font-size: .75rem; }
-.current h3 { margin: 5px 0 7px; font-size: 1.125rem; line-height: 1.35; font-weight: 650; }
-.current p { margin: 0; color: #c2cdb7; font-size: .875rem; line-height: 1.55; }
-.mood { display: inline-block; margin-top: 12px; padding: 4px 9px; border-radius: 9px; background: rgb(188 215 157 / 10%); color: #c7dfac; font-size: .75rem; line-height: 1.4; }
+.current h3 { margin: 5px 0 0; font-size: 1.125rem; line-height: 1.35; font-weight: 650; }
 .feelings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 0; }
 .feelings > div { min-width: 0; padding: 11px; border: 1px solid rgb(188 214 162 / 13%); border-radius: 13px; background: rgb(5 14 7 / 14%); }
 .feelings dt { display: flex; align-items: center; gap: 6px; color: #aebe9e; font-size: .75rem; }
