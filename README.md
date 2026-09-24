@@ -23,6 +23,7 @@ npm run dev:local
 |---|---|
 | Ночь, фонарь, факел или радиус света | [Освещение: параметры, Tiled, код, проверки](docs/game/world-lighting.md) |
 | Дождь, воду, всплески, птиц и занятия Мохлика | [Атмосфера и анимации](docs/game/world-atmosphere.md) |
+| Разобраться со слоями Tiled и настроить прогулки/посадки | [Практическая памятка Tiled](docs/game/tiled-quickstart.md) |
 | Карту, здание, границы воды или положение героя | [Работа в Tiled](docs/game/tiled-editor.md) · [изображения и экспорт](art/README.md) |
 | Камеру, слои сцены и переход в мир | [Устройство мира](docs/game/world-foundation.md) |
 | Главный экран, отметки, людей, аккаунт и PWA | [Разделы приложения](docs/development/app-features.md) |
