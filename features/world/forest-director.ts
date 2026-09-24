@@ -2,9 +2,9 @@ import type { ForestSessionState } from "./forest-session";
 import type { WorldPoint } from "./tiled/types";
 import type { ForestLifeAction } from "./forest-life";
 import { advanceForestLife, cancelForestLife, interruptForestLife, triggerForestLife } from "./forest-life";
-import { advanceClearingActivity, canStartClearingInteraction, canStartClearingLife, clearingActivityFrame,
+import { advanceClearingActivity, canStartClearingInteraction, canStartClearingLife, canVisitClearingBush, clearingActivityFrame,
   isClearingAtHome, isClearingAtPoint, noticeClearingActivity, releaseClearingPoint,
-  requestClearingBush, requestClearingPoint, requestClearingSleep, returnClearingHome } from "./clearing-activity";
+  requestClearingBush, requestClearingPoint, requestClearingSleep, requestClearingOutside, returnClearingHome } from "./clearing-activity";
 import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction, emitFaunaStimulus,
   interruptFaunaInteraction, requestFaunaInteraction } from "./forest-fauna";
 import { findWorldPath } from "./navigation";
@@ -131,12 +131,12 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
     return;
   }
   if (kind === "butterfly" || kind === "firefly") {
-    if (director.waitingForExit && !isClearingAtHome(clearing)) return;
+    if (director.waitingForExit && !(clearing.navigationEnabled ? canStartClearingInteraction(clearing) : isClearingAtHome(clearing))) return;
     if (!canStartClearingInteraction(clearing)) {
       // Stop a free walk at its real feet; leave an authored transition once,
       // without restarting wake-up/greeting on every frame of the exit.
       if (!requestClearingPoint(clearing, clearing.position)) {
-        if (!director.waitingForExit) { returnClearingHome(clearing); director.waitingForExit = true; }
+        if (!director.waitingForExit) { requestClearingOutside(clearing); director.waitingForExit = true; }
         director.reason = "Сначала безопасно выходит к полянке"; return;
       }
     }
@@ -150,11 +150,11 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
   }
   if (kind !== "mushroom" && kind !== "leaf") { clearRequest(state); return; }
   if (!director.target && clearing.navigationEnabled) {
-    if (director.waitingForExit && !isClearingAtHome(clearing)) return;
+    if (director.waitingForExit && !(clearing.navigationEnabled ? canStartClearingInteraction(clearing) : isClearingAtHome(clearing))) return;
     if (!requestClearingPoint(clearing, clearing.position)) {
       if (!director.waitingForExit) {
         const idleSeconds = clearing.idleSeconds, awakeUntil = clearing.awakeUntil;
-        returnClearingHome(clearing);
+        requestClearingOutside(clearing);
         if (!director.explicit) { clearing.idleSeconds = idleSeconds; clearing.awakeUntil = awakeUntil; }
         director.waitingForExit = true;
       }
@@ -193,7 +193,7 @@ function chooseAction(state: ForestSessionState, options: ForestDirectorOptions)
   if (state.life.leaf && distance(state.life.leaf, clearing.position) < clearing.size * 1.2)
     choices.push({ kind: "leaf", score: .8 + random(director) * .65 });
   if (clearing.navigationEnabled && options.rain < .35 && options.dusk < .75
-    && clearing.routes.some(route => route.activity === "bush" && route.bush)
+    && canVisitClearingBush(clearing)
     && !director.recent.some(item => item.key === "bush" && director.elapsed - item.at < 90))
     choices.push({ kind: "bush", score: .65 + random(director) * .6 });
   for (const choice of choices) if (choice.kind) {
@@ -242,6 +242,7 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
   const frame = clearingActivityFrame(state.clearing);
   advanceClearingActivity(state.clearing, dt, {
     enabled: options.autoLife || state.clearing.retiring || Boolean(state.pendingLife || state.clearing.bushEffect?.bursts.length)
+      || state.clearing.freePurpose === "interaction-exit"
       || frame.attention || !options.homeAvailable && frame.residing,
     blocked: options.blocked || Boolean(state.life.routine || state.fauna.encounter),
     idleEligible: !options.blocked && !state.pendingLife && !state.pendingAttention,

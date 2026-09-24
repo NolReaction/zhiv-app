@@ -6,6 +6,7 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { worldCatalog } from "../model";
 import { TILED_WORLD } from "../presentation";
 import { clearingRouteDiagnostics } from "../clearing-activity";
+import { compileWorldInteractions } from "../interaction-navigation";
 import type { WorldController } from "../use-world";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevLifeAction, type WorldDevState } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
@@ -34,6 +35,7 @@ const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], [
 const TIME = [["auto", "По времени профиля"], ["day", "День"], ["night", "Ночь"]] as const;
 const MODES = [["auto", "Авто"], ["on", "Включить"], ["off", "Выключить"]] as const;
 const clearingRoutes = clearingRouteDiagnostics(TILED_WORLD);
+const interactionDiagnostics = WORLD_DEV_ENABLED ? compileWorldInteractions(TILED_WORLD).diagnostics : [];
 const routeReasons: Record<string, string> = {
   "missing-actor": "Нет корректной точки Мохлика.", "invalid-points": "Нужны от 2 до 64 вершин линии.",
   "start-away-from-spawn": "Первая вершина должна совпадать с точкой Мохлика.", "invalid-focus": "Проверьте область фокуса круга.",
@@ -48,6 +50,11 @@ const routeReasons: Record<string, string> = {
   "bush-end-away-from-entry": "Последняя вершина маршрута должна совпадать с точкой входа в куст.",
   "invalid-bush-corridor": "Расстояние от входа в куст до укрытия должно быть от 0.1 до 0.8 размера Мохлика.",
   "water-collision": "Маршрут проходит по воде.", "invalid-length": "Маршрут слишком короткий или длинный для полянки.",
+  "missing-navigation": "Нужны доступная WalkAreas и корректный размер Мохлика.",
+  "unreachable-door-entry": "Подведите WalkAreas ближе к home-entry; снаружи порога нужен запас для лап.",
+  "unreachable-bush-entry": "Точка входа в куст должна стоять на свободной земле с запасом для лап.",
+  "blocked-doorway": "Переход через порог пересекает воду, препятствие или другое здание.",
+  "blocked-bush-corridor": "Прыжку в куст мешают вода, препятствие или здание.",
 };
 const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", "Влево"], ["right", "Вправо"]] as const;
 const LIFE_ACTIONS = [
@@ -227,10 +234,16 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
           </div>
           <p className={styles.hint}>«Отправиться спать домой» проверяет весь путь без ожидания трёх минут. Нажмите на дом или круг, чтобы разбудить. «Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» выбирает уже выросший гриб с доступным подходом. Наград и изменений инвентаря нет.</p>
           <p className={styles.hint}>Встречи с бабочкой и светлячком выбирают уже существующую свободную особь поблизости. Новое насекомое по кнопке не появляется. Учитываются погода, освещение и занятость участников; если подходящей особи нет, запрос не запускает сценку. «Отменить сценку» останавливает Мохлика и выключает автоматические сценки.</p>
-          <details><summary>Маршруты полянки · {clearingRoutes.filter(route => route.valid).length} доступны</summary>
+          <details><summary>Входы дома и кустов · {interactionDiagnostics.filter(item => item.valid).length} готовы</summary>
+            <p className={styles.hint}>На свободной полянке путь строится от текущего места. Здесь проверяются точки входа; доступность всего пути зависит от положения Мохлика.</p>
+            {interactionDiagnostics.map(item => <p key={item.id} className={item.valid ? styles.hint : styles.error}>
+              <strong>{item.id}</strong>: {item.valid ? "Точки перехода готовы" : routeReasons[item.reason ?? ""] ?? "Проверьте точки перехода в Tiled."}
+            </p>)}
+          </details>
+          <details><summary>Прежние маршруты · {clearingRoutes.filter(route => route.valid).length} доступны</summary>
             {clearingRoutes.length ? clearingRoutes.map(route => <p key={route.id} className={route.valid ? styles.hint : styles.error}>
               <strong>{route.id}</strong>: {route.valid ? "Готов к прогулке" : routeReasons[route.reason ?? ""] ?? "Проверьте разметку маршрута."}
-            </p>) : <p className={styles.hint}>Добавьте линию с behavior = clearing в Tiled. Пока доступны только занятия на месте.</p>}
+            </p>) : <p className={styles.hint}>Авторских линий нет. Свободная полянка использует WalkAreas и точки входов.</p>}
           </details>
         </Section>
 

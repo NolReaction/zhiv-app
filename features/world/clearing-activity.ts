@@ -1,6 +1,7 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
 import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
+import { compileWorldInteractions, findInteractionApproach, type WorldInteraction } from "./interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
@@ -30,8 +31,11 @@ export type ClearingActivityState = {
   bushProgress: number; bushWake: boolean; bushLeaving: boolean; pendingBush: number | null; bushRequested: boolean;
   /** One movement owner: navigation feeds the same speed, feet and gait as authored routes. */
   navigation: WorldNavigation | null; navigationEnabled: boolean; interests: ForestInterest[]; behavior: ForestBehaviorMemory;
-  freeRoute: ClearingRoute | null; freePurpose: "roam" | "point" | "home" | null;
+  freeRoute: ClearingRoute | null; freePurpose: "roam" | "point" | "home" | "interaction-exit" | null;
   requestedPoint: WorldPoint | null; navigationRetryAt: number;
+  interactions: ReturnType<typeof compileWorldInteractions>;
+  activeInteraction: { kind: WorldInteraction["kind"]; route: ClearingRoute; departure: WorldPoint[] } | null;
+  pendingInteractionBush: string | null; returnToSpawn: boolean; exitAttention: "sleepy" | "awake" | null;
 };
 export type ClearingActivityOptions = {
   enabled: boolean; blocked: boolean; dusk: number; rain: number;
@@ -201,7 +205,9 @@ export function createClearingActivity(scene: FixedWorldScene, seed = Math.rando
     wakeOnExit: false, lastActivity: null, lastVariant: -1,
     bushEffect: null, bushProgress: 0, bushWake: false, bushLeaving: false, pendingBush: null, bushRequested: false,
     navigation, navigationEnabled: Boolean(navigation), interests: navigation ? (scene.navigation?.interests ?? []).map(item => ({ ...item, position: { ...item.position } })) : [],
-    behavior: createForestBehavior(), freeRoute: null, freePurpose: null, requestedPoint: null, navigationRetryAt: 0 };
+    behavior: createForestBehavior(), freeRoute: null, freePurpose: null, requestedPoint: null, navigationRetryAt: 0,
+    interactions: compileWorldInteractions(scene), activeInteraction: null, pendingInteractionBush: null,
+    returnToSpawn: false, exitAttention: null };
 }
 function random(state: ClearingActivityState) {
   state.seed = (Math.imul(state.seed, 1664525) + 1013904223) >>> 0;
@@ -247,7 +253,8 @@ function arriveHome(state: ClearingActivityState, dusk: number) {
   state.speed = 0; state.routeIndex = -1; state.routeKind = "clearing"; state.direction = "front"; state.steps = [];
   state.attentionResume = null; state.wakeOnExit = false; state.waking = false; state.doorProgress = 0;
   state.bushProgress = 0; state.bushWake = false; state.bushLeaving = false;
-  state.bushRequested = state.pendingBush !== null;
+  state.bushRequested = state.pendingBush !== null || state.pendingInteractionBush !== null;
+  state.activeInteraction = null; state.returnToSpawn = false; state.exitAttention = null;
   state.freeRoute = null; state.freePurpose = null;
   state.waitSeconds = 2.8 + random(state) * 3 + clamp(dusk) * 2;
 }
@@ -256,7 +263,7 @@ export function isClearingAtHome(state: ClearingActivityState) {
 }
 /** Whether an automatic prop routine may take ownership of the stationary actor. */
 export function canStartClearingLife(state: ClearingActivityState) {
-  return (state.stage === "home" || state.stage === "clearing") && !state.retiring && !state.bushRequested && state.pendingBush === null && state.elapsed >= state.attentionQuietUntil
+  return (state.stage === "home" || state.stage === "clearing") && !state.retiring && !state.bushRequested && state.pendingBush === null && state.pendingInteractionBush === null && state.elapsed >= state.attentionQuietUntil
     && !(state.homeEnabled && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS);
 }
 /** Wildlife may approach a quiet actor wherever its feet are safely standing outdoors. */
@@ -285,8 +292,8 @@ function settleClearing(state: ClearingActivityState) {
 }
 /** Holds the destination until releaseClearingPoint so a queued routine cannot lose its turn. */
 export function requestClearingPoint(state: ClearingActivityState, point: WorldPoint): boolean {
-  if (!finitePoint(point) || !state.navigation || !state.navigationEnabled || state.retiring || state.bushRequested
-    || state.pendingBush !== null || state.routeKind !== "clearing" || bushStage(state.stage)
+  if (!finitePoint(point) || !state.navigation || !state.navigationEnabled || state.activeInteraction || state.retiring || state.bushRequested
+    || state.pendingBush !== null || state.pendingInteractionBush !== null || state.routeKind !== "clearing" || bushStage(state.stage)
     || !["home", "clearing", "free-walk", "activity"].includes(state.stage) || state.routeIndex >= 0) return false;
   if (state.requestedPoint && distance(state.requestedPoint, point) < .001
     && (state.freePurpose === "point" || isClearingAtPoint(state, point))) return true;
@@ -312,13 +319,78 @@ export function clearingNavigationFrame(state: ClearingActivityState): Readonly<
   enabled: boolean; path: readonly Readonly<WorldPoint>[]; target: Readonly<WorldPoint> | null;
   reason: string; activity: string | null;
 }> {
-  const route = state.freeRoute;
+  const route = state.freeRoute ?? state.activeInteraction?.route;
   return { enabled: state.navigationEnabled, path: route?.points.map(point => ({ ...point })) ?? [],
     target: route ? { ...route.points.at(-1)! } : state.behavior.target ? { ...state.behavior.target.position } : null,
     reason: state.behavior.reason, activity: route?.activity ?? state.behavior.target?.activity ?? null };
 }
+function homeRoute(state: ClearingActivityState) {
+  return state.activeInteraction?.kind === "home" ? state.activeInteraction.route : state.homeRoute;
+}
+function bushRoute(state: ClearingActivityState) {
+  return state.activeInteraction?.kind === "bush" ? state.activeInteraction.route : state.routes[state.routeIndex];
+}
+export function canVisitClearingBush(state: ClearingActivityState) {
+  return state.navigationEnabled ? state.interactions.bushes.length > 0 : state.routes.some(route => route.activity === "bush" && route.bush);
+}
+function startDynamicInteraction(state: ClearingActivityState, interaction: WorldInteraction): boolean {
+  if (!state.navigation) return false;
+  const approach = findInteractionApproach(state.navigation, state.position, interaction);
+  if (!approach) { state.behavior.reason = `${interaction.kind}-unreachable`; return false; }
+  const points = approach.points.map(point => ({ ...point }));
+  if (points.length === 1) points.push({ ...points[0] });
+  const distances = [0];
+  for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + distance(points[i - 1], points[i]));
+  const route: ClearingRoute = { id: interaction.id, points, distances, length: distances.at(-1)!,
+    activity: interaction.kind === "bush" ? "bush" : "look",
+    ...(interaction.kind === "bush" ? { bush: { id: interaction.id, entry: { ...interaction.entry }, hide: { ...interaction.hide } },
+      pauseSeconds: interaction.pauseSeconds } : {}) };
+  state.activeInteraction = { kind: interaction.kind, route, departure: approach.departure.map(point => ({ ...point })) };
+  state.freeRoute = null; state.freePurpose = null; state.routeIndex = -1;
+  state.stage = interaction.kind === "home" ? "homebound" : "outbound";
+  state.routeKind = interaction.kind === "home" ? "home" : "clearing";
+  state.stageElapsed = 0; state.distance = 0; state.speed = 0; state.steps = []; state.attentionResume = null;
+  state.requestedPoint = null; state.returnToSpawn = false; state.exitAttention = null;
+  state.behavior.reason = `path-to-${interaction.kind}`;
+  state.behavior.target = { id: interaction.id, position: { ...interaction.entry }, activity: "look" };
+  if (interaction.kind === "home") {
+    state.doorway = { ...interaction.doorway }; state.doorProgress = 0;
+    state.doorSeconds = Math.max(DOOR_FADE_SECONDS, distance(interaction.entry, interaction.doorway) / (state.size * .24));
+  }
+  return true;
+}
+function completeDynamicExit(state: ClearingActivityState) {
+  const attention = state.exitAttention;
+  state.activeInteraction = null; state.exitAttention = null;
+  state.routeKind = "clearing"; state.doorProgress = 0; state.waking = false; state.wakeOnExit = false;
+  state.bushProgress = 0; state.bushWake = false; state.bushLeaving = false;
+  state.bushRequested = state.pendingInteractionBush !== null;
+  settleClearing(state);
+  if (state.returnToSpawn) retrace(state);
+  else if (attention) beginAttention(state, attention === "sleepy", "clearing", attention === "sleepy");
+}
+/** Reverse only the exact entry corridor; long approaches are never retraced after an ordinary visit. */
+function finishDynamicInteraction(state: ClearingActivityState, attention: "sleepy" | "awake" | null = null) {
+  const interaction = state.activeInteraction;
+  if (!interaction || !state.navigation) return;
+  state.exitAttention = attention;
+  let points: WorldPoint[];
+  if (isWalkable(state.navigation, state.position)) points = [{ ...state.position }];
+  else if (state.stage === "homebound" || state.stage === "outbound") {
+    points = [{ ...state.position }];
+    for (let i = interaction.route.points.length - 1; i >= 0; i--) {
+      if (interaction.route.distances[i] >= state.distance - .001) continue;
+      const point = interaction.route.points[i]; points.push({ ...point });
+      if (isWalkable(state.navigation, point)) break;
+    }
+  } else points = [{ ...state.position }, ...interaction.departure.slice(1).map(point => ({ ...point }))];
+  if (points.length > 1) {
+    beginFreeWalk(state, points, "interaction-exit");
+    state.behavior.reason = "leave-interaction-corridor";
+  } else completeDynamicExit(state);
+}
 function updateDoorPosition(state: ClearingActivityState) {
-  const entry = state.homeRoute?.points.at(-1);
+  const entry = homeRoute(state)?.points.at(-1);
   if (!entry || !state.doorway) return;
   state.position = { x: entry.x + (state.doorway.x - entry.x) * state.doorProgress,
     y: entry.y + (state.doorway.y - entry.y) * state.doorProgress };
@@ -326,12 +398,15 @@ function updateDoorPosition(state: ClearingActivityState) {
 function beginExit(state: ClearingActivityState, wake: boolean, still = false) {
   state.wakeOnExit = wake; state.waking ||= wake;
   state.stageElapsed = 0; state.stage = still ? "home-return" : "exiting";
-  if (still) { state.wakeOnExit = false; state.doorProgress = 0; updateDoorPosition(state); }
+  if (still) {
+    state.wakeOnExit = false; state.doorProgress = 0; updateDoorPosition(state);
+    if (state.activeInteraction) finishDynamicInteraction(state);
+  }
   state.direction = "front"; state.speed = 0;
 }
 
 function updateBushPosition(state: ClearingActivityState) {
-  const bush = state.routes[state.routeIndex]?.bush;
+  const bush = bushRoute(state)?.bush;
   if (!bush) return;
   state.position = { x: bush.entry.x + (bush.hide.x - bush.entry.x) * state.bushProgress,
     y: bush.entry.y + (bush.hide.y - bush.entry.y) * state.bushProgress };
@@ -340,11 +415,14 @@ function leaveBush(state: ClearingActivityState, wake = false, still = false) {
   state.bushWake ||= wake; state.bushLeaving = true; state.steps = []; state.speed = 0;
   if (still) {
     state.bushProgress = 0; updateBushPosition(state); state.stage = "return"; state.stageElapsed = 0;
-    state.bushWake = false; state.bushLeaving = false; state.bushRequested = false; return;
+    state.bushWake = false; state.bushLeaving = false; state.bushRequested = false;
+    if (state.activeInteraction) finishDynamicInteraction(state);
+    return;
   }
   // Finish an airborne landing before turning around; repeated requests never reset the arc.
   if (state.stage === "bush-enter" || state.stage === "bush-exit" || state.stage === "bush-land") return;
   if (state.stage === "bush-prepare") {
+    if (state.activeInteraction) { finishDynamicInteraction(state, wake ? "awake" : null); return; }
     if (wake) beginAttention(state, false, "return"); else { state.stage = "return"; state.stageElapsed = 0; }
     return;
   }
@@ -352,9 +430,11 @@ function leaveBush(state: ClearingActivityState, wake = false, still = false) {
 }
 function retrace(state: ClearingActivityState) {
   state.steps = []; state.attentionResume = null;
+  if (state.freePurpose === "interaction-exit") return;
   if (bushStage(state.stage)) { leaveBush(state); return; }
   if (state.stage === "home-sleep" || state.stage === "entering") { beginExit(state, false); return; }
   if (state.stage === "exiting") { state.wakeOnExit = false; return; }
+  if (state.activeInteraction) { finishDynamicInteraction(state); return; }
   if (state.stage === "return" || state.stage === "home-return" || state.stage === "home") return;
   if (state.navigationEnabled && state.navigation && state.routeKind === "clearing" && state.routeIndex < 0) {
     if (state.freePurpose === "home" && state.stage === "free-walk") return;
@@ -373,14 +453,48 @@ function retrace(state: ClearingActivityState) {
 /** DEV / deliberate scene requests also bring a sleeping resident back outside. */
 export function returnClearingHome(state: ClearingActivityState) {
   state.requestedPoint = null;
-  state.retiring = false; state.idleSeconds = 0; state.pendingBush = null; state.bushRequested = false;
+  state.retiring = false; state.idleSeconds = 0; state.pendingBush = null; state.pendingInteractionBush = null; state.bushRequested = false;
+  state.returnToSpawn = true;
   if (state.routeKind === "clearing" && state.routes[state.routeIndex]?.bush && state.distance > 0) state.bushLeaving = true;
   if (state.routeKind === "home") state.waking = true;
   state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
   retrace(state);
 }
-/** Deliberate bush requests use an authored route after any current excursion has returned. */
+/** End a special scene on its nearest safe outdoor ground, ready for another local action. */
+export function requestClearingOutside(state: ClearingActivityState) {
+  if (!state.navigationEnabled) { returnClearingHome(state); return; }
+  state.requestedPoint = null; state.retiring = false; state.idleSeconds = 0;
+  state.pendingBush = null; state.pendingInteractionBush = null; state.bushRequested = false; state.returnToSpawn = false;
+  state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
+  if (state.activeInteraction) retrace(state);
+  else if (state.routeIndex >= 0 || state.routeKind === "home") retrace(state);
+  else if (state.stage !== "attention") settleClearing(state);
+}
+/** Auto mode chooses a reachable marked bush from the current feet; Routes remain a DEV fallback. */
 export function requestClearingBush(state: ClearingActivityState): boolean {
+  if (state.navigationEnabled) {
+    if (!state.interactions.bushes.length) return false;
+    if ((state.activeInteraction?.kind === "bush" && state.freePurpose !== "interaction-exit") || state.pendingInteractionBush) {
+      // A renewed bush choice supersedes a queued retirement without restarting an airborne jump.
+      state.retiring = false; state.idleSeconds = 0; state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
+      state.bushRequested = true; state.requestedPoint = null; state.returnToSpawn = false;
+      if (state.bushLeaving && state.activeInteraction?.route.bush) state.pendingInteractionBush = state.activeInteraction.route.bush.id;
+      return true;
+    }
+    const candidates = [...state.interactions.bushes].sort((a, b) => distance(a.entry, state.position) - distance(b.entry, state.position));
+    let selected = candidates[0];
+    if (!state.activeInteraction && state.routeIndex < 0 && state.routeKind === "clearing") {
+      const reachable = candidates.find(item => startDynamicInteraction(state, item));
+      if (!reachable) return false;
+      selected = reachable;
+    } else {
+      state.pendingInteractionBush = selected.id;
+      retrace(state);
+    }
+    state.retiring = false; state.idleSeconds = 0; state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
+    state.requestedPoint = null; state.returnToSpawn = false; state.pendingBush = null; state.bushRequested = true;
+    return true;
+  }
   const routeIndex = state.routes.findIndex(route => route.activity === "bush" && route.bush);
   if (routeIndex < 0) return false;
   state.retiring = false; state.idleSeconds = 0; state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
@@ -389,8 +503,19 @@ export function requestClearingBush(state: ClearingActivityState): boolean {
   state.pendingBush = routeIndex; state.bushRequested = true;
   return true;
 }
-/** DEV uses the same safe return-and-enter path as inactivity, never a teleport. */
+/** In auto mode the house is a pathfinding destination; only its marked threshold is scripted. */
 export function requestClearingSleep(state: ClearingActivityState): boolean {
+  if (state.navigationEnabled) {
+    const home = state.interactions.home;
+    if (!home) return false;
+    if (state.activeInteraction?.kind === "home" && ["homebound", "entering", "home-sleep"].includes(state.stage)) return true;
+    if (!state.activeInteraction && state.routeIndex < 0 && state.routeKind === "clearing") {
+      if (!startDynamicInteraction(state, home)) return false;
+    } else retrace(state);
+    state.pendingBush = null; state.pendingInteractionBush = null; state.bushRequested = false; state.requestedPoint = null;
+    state.retiring = true; state.idleSeconds = CLEARING_HOME_IDLE_SECONDS; state.waking = false; state.returnToSpawn = false;
+    return true;
+  }
   if (!state.homeRoute) return false;
   state.requestedPoint = null;
   state.pendingBush = null; state.bushRequested = false;
@@ -409,11 +534,19 @@ function beginAttention(state: ClearingActivityState, sleepy: boolean, resume: C
 /** A meaningful touch cancels a nap, rather than painting a greeting over paused sleep. */
 export function noticeClearingActivity(state: ClearingActivityState, options: { still?: boolean } = {}): boolean {
   state.idleSeconds = 0; state.retiring = false; state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
-  state.pendingBush = null; state.bushRequested = false;
-  state.requestedPoint = null;
+  state.pendingBush = null; state.pendingInteractionBush = null; state.bushRequested = false;
+  state.returnToSpawn = false; state.requestedPoint = null;
   if (bushStage(state.stage)) {
     if (state.bushWake && !options.still) return false;
     leaveBush(state, true, options.still);
+    if (options.still) state.attentionQuietUntil = state.elapsed + 1.5;
+    return true;
+  }
+  if (state.activeInteraction && (state.stage === "homebound" || state.stage === "outbound" || state.freePurpose === "interaction-exit")) {
+    if (state.freePurpose === "interaction-exit") {
+      if (state.exitAttention && !options.still) return false;
+      state.exitAttention = options.still ? null : "awake";
+    } else finishDynamicInteraction(state, options.still ? null : "awake");
     if (options.still) state.attentionQuietUntil = state.elapsed + 1.5;
     return true;
   }
@@ -428,6 +561,7 @@ export function noticeClearingActivity(state: ClearingActivityState, options: { 
         state.doorProgress = 0; updateDoorPosition(state);
       }
       state.stage = "home-return";
+      if (state.activeInteraction) finishDynamicInteraction(state);
     } else state.stage = resume === "activity" ? state.routeIndex < 0 ? state.navigationEnabled ? "clearing" : "home" : "return"
       : resume === "outbound" && state.routes[state.routeIndex]?.bush ? "return" : resume;
     if (state.freePurpose === "point" || state.stage === "clearing") settleClearing(state);
@@ -453,7 +587,7 @@ export function noticeClearingActivity(state: ClearingActivityState, options: { 
 }
 function advanceWalk(state: ClearingActivityState, dt: number, options: ClearingActivityOptions) {
   const free = state.stage === "free-walk";
-  const route = free ? state.freeRoute : state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex];
+  const route = free ? state.freeRoute : state.activeInteraction?.route ?? (state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex]);
   if (free && !route) { settleClearing(state); return; }
   if (!route) { arriveHome(state, options.dusk); return; }
   const returning = state.stage === "return" || state.stage === "home-return";
@@ -473,6 +607,7 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   if (remaining - step < .001) {
     if (free) {
       if (state.freePurpose === "home") arriveHome(state, options.dusk);
+      else if (state.freePurpose === "interaction-exit") completeDynamicExit(state);
       else if (state.freePurpose === "point") settleClearing(state);
       else startActivity(state, options, route);
     } else if (returning) arriveHome(state, options.dusk);
@@ -487,7 +622,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   if (!Number.isFinite(delta) || delta <= 0 || !options.enabled) return;
   const dt = Math.min(delta, .1);
   if (options.idleEligible ?? !options.blocked) state.idleSeconds += dt;
-  state.homeEnabled = Boolean(options.homeAvailable && state.homeRoute);
+  state.homeEnabled = Boolean(options.homeAvailable && (state.navigationEnabled ? state.interactions.home : state.homeRoute));
   if (!state.homeEnabled) state.retiring = false;
   if (state.frozen) return;
   state.elapsed += dt; state.stageElapsed += dt;
@@ -506,8 +641,9 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     state.retiring = false; retrace(state);
   }
   if (state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS
-    && state.stage !== "attention" && state.routeKind !== "home") {
-    state.retiring = true; retrace(state);
+    && state.stage !== "attention" && state.routeKind !== "home" && state.elapsed >= state.navigationRetryAt) {
+    state.retiring = true;
+    if (!state.navigationEnabled || state.activeInteraction || state.routeIndex >= 0) retrace(state);
   }
   if (bushStage(state.stage)) { advanceBush(state); return; }
   if (state.stage === "home-sleep") return;
@@ -519,6 +655,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   if (state.stage === "exiting") {
     state.doorProgress = clamp(state.doorProgress - dt / state.doorSeconds); updateDoorPosition(state);
     if (state.doorProgress <= 0) {
+      if (state.activeInteraction) { finishDynamicInteraction(state, state.wakeOnExit ? "sleepy" : null); return; }
       if (state.wakeOnExit) beginAttention(state, true, "home-return", true);
       else { state.stage = "home-return"; state.stageElapsed = 0; }
       state.wakeOnExit = false;
@@ -533,6 +670,15 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
       if (state.stage === "home") state.waitSeconds = Math.max(5, state.waitSeconds);
     }
     return;
+  }
+  if (state.navigationEnabled && !state.activeInteraction && state.routeIndex < 0 && state.routeKind === "clearing"
+    && ["home", "clearing", "free-walk", "activity"].includes(state.stage)
+    && state.freePurpose !== "home" && (state.retiring || state.pendingInteractionBush !== null)) {
+    const target = state.retiring ? state.interactions.home
+      : state.interactions.bushes.find(item => item.id === state.pendingInteractionBush);
+    state.pendingInteractionBush = null;
+    if (target && startDynamicInteraction(state, target)) return;
+    state.retiring = false; state.bushRequested = false; state.navigationRetryAt = state.elapsed + 5;
   }
   if (state.stage === "home" || state.stage === "clearing") {
     if (state.stage === "clearing" && (state.retiring || state.pendingBush !== null)) { retrace(state); return; }
@@ -587,7 +733,7 @@ function burst(state: ClearingActivityState, slot: number, strength: number) {
   effect.bursts.push({ at: effect.elapsed, strength, seed: (effect.seed ^ Math.imul(slot + 1, 0x9e3779b9)) >>> 0 });
 }
 function advanceBush(state: ClearingActivityState) {
-  const route = state.routes[state.routeIndex], bush = route?.bush;
+  const route = bushRoute(state), bush = route?.bush;
   if (!bush) { retrace(state); return; }
   if (state.stage === "bush-prepare") {
     if (state.stageElapsed >= BUSH_PREPARE_SECONDS) { state.stage = "bush-enter"; state.stageElapsed = 0; }
@@ -612,12 +758,13 @@ function advanceBush(state: ClearingActivityState) {
       state.bushProgress = 0; updateBushPosition(state); state.stage = "bush-land"; state.stageElapsed = 0;
     }
   } else if (state.stageElapsed >= BUSH_LAND_SECONDS) {
+    if (state.activeInteraction) { finishDynamicInteraction(state, state.bushWake ? "awake" : null); return; }
     if (state.bushWake) beginAttention(state, false, "return");
     else { state.stage = "return"; state.stageElapsed = 0; }
   }
 }
 function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame> {
-  const routeBush = state.routeKind === "clearing" ? state.routes[state.routeIndex]?.bush : undefined;
+  const routeBush = state.routeKind === "clearing" ? bushRoute(state)?.bush : undefined;
   const effect = state.bushEffect;
   const id = routeBush?.id ?? effect?.id;
   if (!id) return {};
