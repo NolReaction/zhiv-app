@@ -23,6 +23,8 @@ import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reaction
 import type { ForestBird } from "./forest-wildlife";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
+import { publishForestObservation } from "./forest-observer";
+import { forestPersistenceOverridden } from "./forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 
 const REACTION_SECONDS = .9;
@@ -170,13 +172,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let state = session.state;
 
   function connect() {
-    return connectForestSession(options.presenceKey, TILED_WORLD, options.view ?? "circle",
+    const connected = connectForestSession(options.presenceKey, TILED_WORLD, options.view ?? "circle",
       Number.isFinite(options.serverNow) ? options.serverNow! : Date.now(), Number(options.dusk), ownerChanged => {
         if (disposed) return;
         if (ownerChanged) stop();
         if (visible()) draw();
         if (ownerChanged) resume();
-      });
+      }, { persistence: !forestPersistenceOverridden(dev, levels) });
+    if (forestPersistenceOverridden(dev, levels)) connected.suspendPersistence();
+    return connected;
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
@@ -214,6 +218,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function draw() {
     if (disposed || !art) return;
+    updateObservation();
     if (options.view !== "world") {
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(canvas.width / NEW_MAP_FOCUS.width, 0, 0, canvas.height / NEW_MAP_FOCUS.height, 0, 0);
@@ -226,7 +231,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function visible() { return !disposed && !options.backgrounded && !document.hidden; }
   function active() { return visible() && Boolean(art) && !options.paused && !dev?.paused; }
-  function syncOwner() { session.configure(options.view ?? "circle", active()); }
+  function updateObservation(force = false) {
+    if (!art || !session.isObservationOwner()) return;
+    publishForestObservation(options.presenceKey, state, { force,
+      paused: !active() || reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue(),
+      manual: Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false) });
+  }
+  function syncOwner() { session.configure(options.view ?? "circle", active()); updateObservation(true); }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
   }
@@ -320,6 +331,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (disposed) return;
     const before = dev!;
     dev = worldDevStore.getSnapshot();
+    if (forestPersistenceOverridden(dev, levels)) session.suspendPersistence();
     if (session.consumeControls(dev)) {
       if ((dev.animation?.id !== before.animation?.id && dev.animation || dev.pose !== before.pose && dev.pose !== "auto")
         && clearingActivityFrame(state.clearing).bush?.occupied) noticeClearingActivity(state.clearing, { still: true });

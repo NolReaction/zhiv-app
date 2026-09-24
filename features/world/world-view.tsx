@@ -18,6 +18,7 @@ import { WorldFeedback } from "./world-feedback";
 import { WorldBalances } from "./world-balances";
 import { WORLD_PRESENTATION } from "./presentation";
 import { WorldHelp } from "./world-help";
+import { MochlikState } from "./mochlik-state";
 
 type Panel = "journeys" | "build" | "customize" | "wardrobe" | "collection" | "stats" | "cave" | "fishing" | "help";
 const WorldDevPanel = process.env.NODE_ENV === "development"
@@ -70,6 +71,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
     <WorldScene state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={world.now} timeZone={timeZone}
       onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} worldView active={panel === null}
+      presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header ref={topHud} className={styles.hud}>
       <div className={styles.playerBar}>
@@ -84,6 +86,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
     </header>
     {panel === null && <WorldFeedback world={world} />}
     <div ref={bottomHud} className={styles.bottomHud}>
+      <MochlikState presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} />
       {!WORLD_PRESENTATION.rebuilding && <button className={styles.goalChip} onClick={() => openPanel(!state.firstJourneyCompleted ? "journeys" : houseCost ? "build" : "collection")}><Sprout size={18} /><span>{!state.firstJourneyCompleted ? "Первая прогулка" : houseCost ? "Обустроить дом" : "Лесной альбом"}</span><ChevronRight size={16} /></button>}
       <nav className={styles.gameDock} aria-label="Действия в игре">
         {!WORLD_PRESENTATION.rebuilding && <button onClick={() => openPanel("build")}><Hammer size={23} /><span>Строить</span></button>}

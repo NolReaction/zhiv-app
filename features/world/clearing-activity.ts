@@ -4,6 +4,7 @@ import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type Wor
 import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./steering";
 import { compileWorldInteractions, findInteractionApproach, type WorldInteraction } from "./interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
+import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
 type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint };
@@ -222,13 +223,27 @@ function startActivity(state: ClearingActivityState, options: ClearingActivityOp
     state.direction = bushDirection(route.bush.entry, route.bush.hide);
     state.bushEffect = { id: route.bush.id, elapsed: 0, seed: Math.trunc(random(state) * 0x100000000), emitted: 0, bursts: [] };
     state.lastActivity = "bush";
+    if (state.behavior.mind.intention?.action !== "bush")
+      beginForestIntention(state.behavior.mind, "bush", route.bush.id, "Исследует шуршащий куст", "clearing");
     return;
   }
   const night = clamp(options.dusk), wet = clamp(options.rain), choice = random(state);
-  let activity = route?.activity ?? (wet > .45 ? "sniff" : night > .5 ? "rest" : choice < .35 ? "groom" : "look");
+  let activity = route?.activity;
+  if (!activity) {
+    const candidates = (["look", "sniff", "groom", "rest"] as const).map(action =>
+      scoreForestAction(state.behavior.mind, action, `nearby-${action}`, { rain: wet, dusk: night, noise: random(state) * .6 }));
+    for (const candidate of candidates) if (candidate.action === "rest" && (wet > .35 || state.elapsed < state.awakeUntil)) {
+      candidate.available = false; candidate.score = null; candidate.reasons = ["Сейчас лучше оставаться бодрым"];
+    }
+    const selected = candidates.filter(item => item.available).sort((a, b) => b.score! - a.score!)[0];
+    activity = (selected?.action ?? "look") as ClearingAction;
+    recordForestCandidates(state.behavior.mind, candidates, selected?.key ?? null);
+  }
   if (activity === "rest" && state.elapsed < state.awakeUntil) activity = "look";
   if (activity === "rest" && wet > .35) activity = "groom";
-  if (!route && activity === state.lastActivity) activity = activity === "groom" ? "look" : "groom";
+  if (!state.behavior.mind.intention || state.behavior.mind.intention.action !== activity)
+    beginForestIntention(state.behavior.mind, activity, route?.id ?? `nearby-${activity}`,
+      activity === "rest" ? "Восстанавливает силы на полянке" : "Выбрал спокойное занятие рядом", "clearing");
   const variant = state.lastVariant < 0 ? Math.floor(random(state) * 3) : (state.lastVariant + 1 + Math.floor(random(state) * 2)) % 3;
   state.lastActivity = activity; state.lastVariant = variant;
   let steps: ActionStep[];
@@ -373,6 +388,7 @@ function startDynamicInteraction(state: ClearingActivityState, interaction: Worl
   state.behavior.reason = `path-to-${interaction.kind}`;
   state.behavior.target = { id: interaction.id, position: { ...interaction.entry }, activity: "look" };
   if (interaction.kind === "home") {
+    beginForestIntention(state.behavior.mind, "home-sleep", "home-sleep", "Хочет отдохнуть в домике", "clearing");
     state.doorway = { ...interaction.doorway }; state.doorProgress = 0;
     state.doorSeconds = Math.max(DOOR_FADE_SECONDS, distance(interaction.entry, interaction.doorway) / (state.size * .24));
   }
@@ -551,7 +567,8 @@ function beginAttention(state: ClearingActivityState, sleepy: boolean, resume: C
     : [{ pose: "blink", seconds: .2 }, { pose: random(state) < .5 ? "greet" : "wonder", seconds: .9 }, { pose: "idle", seconds: .25 }];
 }
 /** A meaningful touch cancels a nap, rather than painting a greeting over paused sleep. */
-export function noticeClearingActivity(state: ClearingActivityState, options: { still?: boolean } = {}): boolean {
+export function noticeClearingActivity(state: ClearingActivityState, options: { still?: boolean; mindNoticed?: boolean } = {}): boolean {
+  if (!options.mindNoticed) noticeForestMind(state.behavior.mind, { rested: state.stage === "home-sleep" && state.stageElapsed >= 5 });
   state.idleSeconds = 0; state.retiring = false; state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
   state.pendingBush = null; state.pendingInteractionBush = null; state.bushRequested = false;
   state.returnToSpawn = false; state.requestedPoint = null;
@@ -696,6 +713,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     else { retrace(state); state.behavior.reason = "return-before-mode-change"; }
   }
   if (!state.homeEnabled && state.routeKind === "home" && state.stage !== "home-return" && state.stage !== "exiting") {
+    if (state.behavior.mind.intention?.action === "home-sleep") finishForestIntention(state.behavior.mind, "interrupted", "Домик недоступен — выходит на полянку");
     state.retiring = false; retrace(state);
   }
   if (state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS
@@ -741,6 +759,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   if (state.stage === "home" || state.stage === "clearing") {
     if (state.stage === "clearing" && (state.retiring || state.pendingBush !== null)) { retrace(state); return; }
     if (state.retiring && state.homeEnabled) {
+      beginForestIntention(state.behavior.mind, "home-sleep", "home-sleep", "Отправляется отдохнуть в домике", "clearing");
       state.stage = "homebound"; state.routeKind = "home"; state.stageElapsed = 0; state.distance = 0; state.speed = 0; return;
     }
     if (state.pendingBush !== null) {
@@ -770,6 +789,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   }
   if (state.stage === "activity") {
     if (state.stageElapsed < state.steps.reduce((sum, step) => sum + step.seconds, 0)) return;
+    finishForestIntention(state.behavior.mind, "completed", "Закончил занятие на полянке");
     if (state.navigationEnabled && state.routeIndex < 0) settleClearing(state);
     else if (state.routeIndex >= 0) { state.stage = "return"; state.stageElapsed = 0; state.steps = []; }
     else arriveHome(state, options.dusk);
@@ -816,6 +836,7 @@ function advanceBush(state: ClearingActivityState) {
       state.bushProgress = 0; updateBushPosition(state); state.stage = "bush-land"; state.stageElapsed = 0;
     }
   } else if (state.stageElapsed >= BUSH_LAND_SECONDS) {
+    if (state.behavior.mind.intention?.action === "bush") finishForestIntention(state.behavior.mind, "completed", "Выбрался из куста и закончил исследование");
     if (state.activeInteraction) { finishDynamicInteraction(state, state.bushWake ? "awake" : null); return; }
     if (state.bushWake) beginAttention(state, false, "return");
     else { state.stage = "return"; state.stageElapsed = 0; }

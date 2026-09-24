@@ -8,6 +8,7 @@ import { TILED_WORLD } from "../presentation";
 import { clearingRouteDiagnostics } from "../clearing-activity";
 import { compileWorldInteractions } from "../interaction-navigation";
 import type { WorldController } from "../use-world";
+import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevLifeAction, type WorldDevState } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
 
@@ -15,6 +16,7 @@ export type WorldDevPanelProps = {
   world: WorldController;
   active?: boolean;
   worldView?: boolean;
+  presenceKey?: string;
   onOpenWorld?: () => void;
   onOpenCalendar?: () => void;
   onOpenGame?: () => void;
@@ -99,7 +101,7 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, active = true, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(false);
@@ -140,7 +142,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
     if (action.action === "idle") return null;
     if (action.action === "grow-mushrooms") return motionUnavailable;
     if (heroUnavailable) return heroUnavailable;
-    if (action.action === "bush" && !TILED_WORLD.bushes?.length) return "Добавьте куст и маршрут к нему в Tiled.";
+    if (action.action === "bush" && !TILED_WORLD.bushes?.length) return "Добавьте куст и точки входа в Tiled.";
     if (action.action === "home-sleep" && !state.showBuildings) return "Дом скрыт. Включите «Показывать здания».";
     if (action.action === "butterfly" && state.butterflies === "off") return "Бабочки выключены. Выберите «Авто» или «Включить».";
     if (action.action === "firefly" && state.fireflies === "off") return "Светлячки выключены. Выберите «Авто» или «Включить».";
@@ -191,7 +193,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
         <button ref={closeButton} type="button" className={styles.iconButton} onClick={close} aria-label="Закрыть панель разработчика"><X size={20} aria-hidden /></button>
       </header>
       <div className={styles.body}>
-        <p className={styles.scope}>Вид меняется только в этой вкладке. Закрытие панели сохраняет настройки, перезагрузка сбрасывает.</p>
+        <p className={styles.scope}>Настройки DEV действуют в этой вкладке и сбрасываются при перезагрузке. Память Мохлика хранится отдельно; сброс вида её не удаляет.</p>
         {state.artError && <p className={styles.error} role="alert">Не удалось показать графику: {state.artError}</p>}
         <div className={styles.globalControls}>
           <Toggle label="Пауза сцены" checked={state.paused} onChange={paused => change({ paused }, paused ? "Сцена на паузе" : "Сцена продолжена")} />
@@ -200,6 +202,10 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
         <Toggle label="Сворачивать при запуске" checked={collapseOnPlay} onChange={setCollapseOnPlay} />
         {(state.paused || reduced) && <p className={styles.hint}>{state.paused ? "Сцена на паузе. Снимите паузу для проигрывания событий." : "Движение ограничено. Показан статичный кадр; для анимаций выберите «Выключить»."}</p>}
         {prefersReducedMotion && state.reducedMotion === "off" && <p className={styles.hint}>Для предпросмотра включена анимация, хотя в системе выбрано меньше движения.</p>}
+
+        <Section title="Мышление и память" initiallyOpen>
+          <WorldAiDiagnostics presenceKey={presenceKey} />
+        </Section>
 
         <Section title="Погода и живность" initiallyOpen>
           <Select label="Погода" value={state.weather} values={WEATHER} onChange={weather => change({ weather })} />

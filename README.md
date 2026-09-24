@@ -36,6 +36,8 @@ npm run dev:local
 
 **[Все инструкции](docs/README.md)** · **[Карта исходников по задачам](docs/repository-guide.md)** · [Архитектура](docs/architecture.md)
 
+Поведение и память Мохлика в рабочей ветке: [Utility AI, состояние игрока и диагностика DEV](docs/game/world-mind.md).
+
 Продолжаете работу после перерыва? Прочитайте [WORK_STATE.md](WORK_STATE.md), [AGENTS.md](AGENTS.md) и [CONTRIBUTING.md](CONTRIBUTING.md), затем проверьте ветку и локальные изменения.
 
 ## Проверить изменения

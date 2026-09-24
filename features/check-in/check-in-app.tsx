@@ -80,6 +80,7 @@ import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useWorld } from "@/features/world/use-world";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
+import { MochlikState } from "@/features/world/mochlik-state";
 import styles from "./check-in-app.module.css";
 import glass from "@/components/glass-action.module.css";
 import { notify, TransientNotice } from "@/components/app-notifications";
@@ -1568,6 +1569,7 @@ export function CheckInApp() {
             ) : null}
             </div>
             </div>
+            {mochlikVisible && me && <MochlikState presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`} />}
           </div>
 
           <div className={styles.statusBlock}>
@@ -1648,6 +1650,7 @@ export function CheckInApp() {
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
       {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world}
+        presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`}
         active={activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}
         onOpenWorld={() => worldEntryButton.current?.click()}
         onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}

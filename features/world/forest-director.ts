@@ -8,6 +8,8 @@ import { advanceClearingActivity, canStartClearingInteraction, canStartClearingL
 import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction, emitFaunaStimulus,
   interruptFaunaInteraction, requestFaunaInteraction } from "./forest-fauna";
 import { findWorldPath } from "./navigation";
+import { advanceForestMind, beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates,
+  scoreForestAction, type ForestMindAction, type ForestMindCandidate } from "./forest-mind";
 
 export type ForestDirective = ForestLifeAction | "bush" | "home-sleep" | "wake";
 export type ForestDirectorOptions = {
@@ -42,6 +44,9 @@ function clearRequest(state: ForestSessionState) {
 function finishAction(state: ForestSessionState) {
   const director = state.director;
   if (!director.activeKey || state.life.routine || state.fauna.encounter) return;
+  if (!state.pendingLife && !state.pendingAttention && state.clearing.behavior.mind.intention?.source === "director"
+    && state.clearing.behavior.mind.intention.action === director.activeKey.split(":")[0])
+    finishForestIntention(state.clearing.behavior.mind, "completed", "Встреча закончилась — можно выбрать новое занятие");
   director.recent.push({ key: director.activeKey, at: director.elapsed });
   director.recent = director.recent.filter(item => director.elapsed - item.at < 90).slice(-8);
   director.activeKey = null; director.nextDecisionAt = director.elapsed + 7 + random(director) * 6;
@@ -50,21 +55,23 @@ function finishAction(state: ForestSessionState) {
 
 /** A DEV pose is a deliberate interruption, never a second owner of a seated insect. */
 export function cancelForestDirector(state: ForestSessionState) {
+  finishForestIntention(state.clearing.behavior.mind, "interrupted", "Занятие остановлено в DEV");
   cancelForestLife(state.life); cancelFaunaInteraction(state.fauna);
   clearRequest(state); state.pendingAttention = false; state.director.activeKey = null;
   state.director.nextDecisionAt = state.director.elapsed + 10;
   releaseClearingPoint(state.clearing);
 }
 export function noticeForestDirector(state: ForestSessionState, still = false) {
+  noticeForestMind(state.clearing.behavior.mind, { rested: state.clearing.stage === "home-sleep" && state.clearing.stageElapsed >= 5 });
   clearRequest(state); state.director.nextDecisionAt = state.director.elapsed + 12;
   if (still) {
-    cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true }); return;
+    cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true, mindNoticed: true }); return;
   }
   if (state.pendingAttention) return;
   const prop = interruptForestLife(state.life), insect = interruptFaunaInteraction(state.fauna);
   state.pendingAttention = prop || insect;
   if (!state.pendingAttention) {
-    releaseClearingPoint(state.clearing); noticeClearingActivity(state.clearing);
+    releaseClearingPoint(state.clearing); noticeClearingActivity(state.clearing, { mindNoticed: true });
   }
 }
 
@@ -77,6 +84,8 @@ export function requestForestDirective(state: ForestSessionState, kind: ForestDi
     triggerForestLife(state.life, kind); return;
   }
   if (options.reducedMotion) { state.director.reason = "Перелёты и прогулки при уменьшенном движении остановлены"; return; }
+  finishForestIntention(state.clearing.behavior.mind, "interrupted", "Выбрано занятие через DEV");
+  beginForestIntention(state.clearing.behavior.mind, kind, kind, "Занятие выбрано через DEV", "director");
   interruptForestLife(state.life); interruptFaunaInteraction(state.fauna);
   state.pendingAttention = false; state.pendingLife = kind;
   Object.assign(state.director, { pendingSince: state.director.elapsed, waitingForExit: false, objectId: null, target: null, explicit: true,
@@ -84,6 +93,7 @@ export function requestForestDirective(state: ForestSessionState, kind: ForestDi
 }
 
 function failRequest(state: ForestSessionState, reason: string) {
+  finishForestIntention(state.clearing.behavior.mind, "failed", reason);
   clearRequest(state); releaseClearingPoint(state.clearing);
   state.director.reason = reason; state.director.nextDecisionAt = state.director.elapsed + 8;
 }
@@ -119,9 +129,11 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
   const { clearing, director } = state;
   if (director.elapsed - director.pendingSince > 35) { failRequest(state, "Цель недоступна — выберет другое занятие"); return; }
   if (kind === "bush" || kind === "home-sleep") {
+    if (kind === "home-sleep" && !options.homeAvailable) { failRequest(state, "Домик сейчас недоступен"); return; }
     releaseClearingPoint(clearing);
     const idleSeconds = clearing.idleSeconds, explicit = director.explicit;
     const accepted = kind === "bush" ? requestClearingBush(clearing) : requestClearingSleep(clearing);
+    if (!accepted) finishForestIntention(clearing.behavior.mind, "failed", "Безопасный подход не найден");
     if (accepted && kind === "bush") {
       director.recent.push({ key: "bush", at: director.elapsed });
       director.recent = director.recent.slice(-8);
@@ -179,30 +191,38 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
 }
 
 function chooseAction(state: ForestSessionState, options: ForestDirectorOptions) {
-  const { director, clearing } = state;
+  const { director, clearing } = state, mind = clearing.behavior.mind;
+  // A chosen journey/action owns its intention until completion or an explicit interruption.
   if (!options.autoLife || state.pendingLife || state.pendingAttention || state.life.routine || state.fauna.encounter
-    || !canStartClearingLife(clearing) || director.elapsed < director.nextDecisionAt) return;
+    || mind.intention || !canStartClearingLife(clearing) || director.elapsed < director.nextDecisionAt) return;
   director.nextDecisionAt = director.elapsed + .6;
   const visitor = options.dusk > .5 ? "firefly" : "butterfly";
   const nearby = state.life.mushrooms.filter(item => item.growth >= .98
     && distance(item, clearing.position) < clearing.size * 1.35 && (clearing.navigationEnabled || item.reachable));
-  const choices: { kind: ForestDirective | null; score: number }[] = [{ kind: null, score: .55 + random(director) * .55 }];
-  if (canStartClearingInteraction(clearing) && canRequestFaunaInteraction(state.fauna, visitor, actor(state, options), options))
-    choices.push({ kind: visitor, score: 1.2 + random(director) * .6 });
-  if (nearby.length) choices.push({ kind: "mushroom", score: 1.1 + random(director) * .55 });
-  if (state.life.leaf && distance(state.life.leaf, clearing.position) < clearing.size * 1.2)
-    choices.push({ kind: "leaf", score: .8 + random(director) * .65 });
-  if (clearing.navigationEnabled && options.rain < .35 && options.dusk < .75
-    && canVisitClearingBush(clearing)
-    && !director.recent.some(item => item.key === "bush" && director.elapsed - item.at < 90))
-    choices.push({ kind: "bush", score: .65 + random(director) * .6 });
-  for (const choice of choices) if (choice.kind) {
-    const last = director.recent.filter(item => item.key.startsWith(choice.kind!)).at(-1);
-    if (last) choice.score -= Math.max(0, 1 - (director.elapsed - last.at) / 65) * 1.4;
+  const candidates: ForestMindCandidate[] = [];
+  const candidate = (action: ForestMindAction, available: boolean, unavailableReason: string) => {
+    const item = scoreForestAction(mind, action, action, { rain: options.rain, dusk: options.dusk, noise: random(director) * .6 });
+    if (!available) { item.available = false; item.score = null; item.reasons = [unavailableReason]; }
+    candidates.push(item);
+  };
+  candidate("idle", true, "");
+  candidate(visitor, canStartClearingInteraction(clearing) && canRequestFaunaInteraction(state.fauna, visitor, actor(state, options), options),
+    options.rain > .35 ? "Обитатели укрываются от дождя" : "Рядом нет свободного обитателя подходящего вида");
+  candidate("mushroom", nearby.length > 0, "Рядом нет выросшего гриба");
+  candidate("leaf", Boolean(state.life.leaf && distance(state.life.leaf, clearing.position) < clearing.size * 1.2), "Рядом нет подходящего листика");
+  candidate("bush", clearing.navigationEnabled && options.rain < .35 && options.dusk < .75 && canVisitClearingBush(clearing)
+    && !director.recent.some(item => item.key === "bush" && director.elapsed - item.at < 90),
+    options.rain >= .35 ? "Куст мокрый — лучше другое занятие" : options.dusk >= .75 ? "Ночью куст оставит в покое" : "Куст недоступен или недавно уже исследован");
+  candidate("home-sleep", options.homeAvailable && Boolean(clearing.navigationEnabled ? clearing.interactions.home : clearing.homeRoute)
+    && clearing.elapsed >= clearing.awakeUntil && (mind.needs.energy < .32 || options.rain > .55 && mind.needs.comfort < .45),
+    clearing.elapsed < clearing.awakeUntil ? "Недавно проснулся — остаётся с игроком" : "Пока достаточно сил для жизни на полянке");
+  const selected = candidates.filter(item => item.available).sort((a, b) => b.score! - a.score!)[0];
+  recordForestCandidates(mind, candidates, selected?.key ?? null);
+  if (!selected || selected.action === "idle") {
+    director.reason = "Спокойно осматривается"; director.nextDecisionAt = director.elapsed + 6 + random(director) * 7; return;
   }
-  choices.sort((a, b) => b.score - a.score);
-  const kind = choices[0].kind;
-  if (!kind) { director.reason = "Спокойно осматривается"; director.nextDecisionAt = director.elapsed + 6 + random(director) * 7; return; }
+  const kind = selected.action as ForestDirective;
+  beginForestIntention(mind, selected.action, selected.key, selected.reasons[0], "director");
   state.pendingLife = kind; director.pendingSince = director.elapsed; director.explicit = false;
 }
 
@@ -229,13 +249,28 @@ function stimuli(state: ForestSessionState) {
 export function advanceForestDirector(state: ForestSessionState, dt: number, options: ForestDirectorOptions) {
   if (!Number.isFinite(dt) || dt <= 0 || options.reducedMotion) return;
   const director = state.director; director.elapsed += Math.min(dt, .1);
+  if (options.autoLife && !options.blocked) {
+    const frame = clearingActivityFrame(state.clearing), pose = frame.pose;
+    advanceForestMind(state.clearing.behavior.mind, dt, {
+      moving: frame.pose === "walk", resting: pose === "sleep" || pose === "drowsy",
+      sleeping: frame.homeSleeping, sheltered: frame.residing,
+      rain: options.rain, dusk: options.dusk,
+      engaged: Boolean(state.life.routine || state.fauna.encounter) || state.clearing.stage === "bush-hidden"
+        || state.clearing.stage === "activity" && !["sleep", "drowsy", "yawn"].includes(pose),
+      grooming: ["groom", "shake", "scratch"].includes(pose),
+    });
+  }
+  const previousEncounter = state.fauna.encounter;
   advanceForestFauna(state.fauna, dt, { ...options, actor: actor(state, options) });
+  const encounter = state.fauna.encounter ?? previousEncounter;
+  if (encounter?.phase === "interrupt" && state.clearing.behavior.mind.intention?.action === encounter.kind)
+    finishForestIntention(state.clearing.behavior.mind, "interrupted", "Встреча закончилась раньше — обитатель возвращается в лес");
   advanceForestLife(state.life, dt, { autoLife: false, blocked: options.blocked || Boolean(state.fauna.encounter),
     dusk: options.dusk, rain: options.rain, butterflies: options.butterflies, fireflies: options.fireflies });
   finishAction(state);
   if (!options.blocked) {
     if (state.pendingAttention && !state.life.routine && !state.fauna.encounter) {
-      state.pendingAttention = false; releaseClearingPoint(state.clearing); noticeClearingActivity(state.clearing);
+      state.pendingAttention = false; releaseClearingPoint(state.clearing); noticeClearingActivity(state.clearing, { mindNoticed: true });
     }
     chooseAction(state, options); processRequest(state, options);
   }

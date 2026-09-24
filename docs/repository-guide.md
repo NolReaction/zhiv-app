@@ -24,6 +24,8 @@
 | Изменить проходимость и поиск пути | [`navigation.ts`](../features/world/navigation.ts); `WalkAreas`, `Obstacles`, `PointsOfInterest` в [`forest.tmj`](../world/tiled/forest.tmj) | [Поиск пути: алгоритм, границы, диагностика](game/world-navigation.md) |
 | Изменить плавность поворотов, скорость и прибытие | [`steering.ts`](../features/world/steering.ts), исполнение — [`clearing-activity.ts`](../features/world/clearing-activity.ts) | [Закругление, торможение и безопасность](game/world-navigation.md#плавные-повороты-и-прибытие) |
 | Изменить выбор занятия, подход к предмету и прерывание | [`forest-director.ts`](../features/world/forest-director.ts), [`forest-behavior.ts`](../features/world/forest-behavior.ts) | [Устройство мира](game/world-foundation.md) |
+| Настроить потребности, оценки занятий и память повторов | [`forest-mind.ts`](../features/world/forest-mind.ts), [`forest-behavior.ts`](../features/world/forest-behavior.ts), [`forest-director.ts`](../features/world/forest-director.ts) | [Utility AI](game/world-mind.md) |
+| Изменить локальное сохранение жизни леса | [`forest-memory.ts`](../features/world/forest-memory.ts), [`forest-session.ts`](../features/world/forest-session.ts), [`forest-dev-memory.ts`](../features/world/forest-dev-memory.ts) | [Память и восстановление](game/world-mind.md#что-переживает-перезагрузку) |
 | Изменить подход к дому/кусту и точный переход | [`interaction-navigation.ts`](../features/world/interaction-navigation.ts); `Buildings`, `Bushes` в Tiled | [Поиск пути и входы](game/world-navigation.md) |
 | Изменить исполнение ходьбы, прятки, пробуждение и сон | [`clearing-activity.ts`](../features/world/clearing-activity.ts); `Routes` — только для прежнего режима | [Устройство мира](game/world-foundation.md#прерывания-и-сон-в-домике) |
 | Изменить порядок слоёв и работу двух камер | [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`map-engine.ts`](../features/world/map-engine.ts), [`world-scene.tsx`](../features/world/world-scene.tsx) | [Устройство мира](game/world-foundation.md) |
@@ -44,6 +46,7 @@
 | Задача | Главные файлы | Инструкция |
 |---|---|---|
 | Кнопки над картой, коллекции, гардероб, игровые панели | [`world-view.tsx`](../features/world/world-view.tsx), [`world.module.css`](../features/world/world.module.css) | [Устройство мира](game/world-foundation.md) |
+| Состояние Мохлика для игрока и диагностика его решений | [`mochlik-state.tsx`](../features/world/mochlik-state.tsx), [`forest-observer.ts`](../features/world/forest-observer.ts), [`forest-ai-diagnostics.tsx`](../features/world/dev/forest-ai-diagnostics.tsx) | [Utility AI и DEV](game/world-mind.md) |
 | Тексты игровой справки | [`world-help-content.ts`](../features/world/world-help-content.ts) | Правило редактирования ниже |
 | Поиск, раскрываемые темы и оформление справки | [`world-help.tsx`](../features/world/world-help.tsx), [`world-help.module.css`](../features/world/world-help.module.css) | Проверка ниже |
 | Включить перенесённые возможности новой карты | [`presentation.ts`](../features/world/presentation.ts) | [Текущие ограничения мира](game/world-foundation.md); смена флага не переносит старую геометрию |

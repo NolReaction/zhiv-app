@@ -296,6 +296,7 @@ test("behavior memory reduces recent repeats and refuses rest in rain, after wak
   const interests = [{ id: "soft-grass", position: point(180, 210), activity: "rest" },
     { id: "flowers", position: point(200, 230), activity: "look" }];
   const memory = createForestBehavior();
+  memory.mind.needs.energy = .15;
   assert.equal(chooseForestGoal(state.navigation, interests, memory, context).id, "soft-grass");
   assert.ok(memory.restUntil > context.elapsed);
   assert.equal(chooseForestGoal(state.navigation, interests, memory, { ...context, elapsed: 11 }).id, "flowers");
