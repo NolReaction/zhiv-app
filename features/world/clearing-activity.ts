@@ -1,6 +1,7 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
-import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
+import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
+import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./steering";
 import { compileWorldInteractions, findInteractionApproach, type WorldInteraction } from "./interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
 
@@ -10,7 +11,8 @@ type BushBurst = { at: number; strength: number; seed: number };
 type BushEffect = { id: string; elapsed: number; seed: number; emitted: number; bursts: BushBurst[] };
 type ActionStep = { pose: PixelPose; seconds: number; direction?: PixelDirection };
 type ClearingRoute = { id: string; points: WorldPoint[]; distances: number[]; length: number;
-  activity: ClearingAction; pauseSeconds?: number; bush?: ClearingBush };
+  activity: ClearingAction; pauseSeconds?: number; bush?: ClearingBush;
+  steering?: SteeringPath; navigationLength?: number };
 type ClearingStage = "home" | "outbound" | "activity" | "return" | "attention"
   | "clearing" | "free-walk"
   | "homebound" | "entering" | "home-sleep" | "exiting" | "home-return"
@@ -276,11 +278,32 @@ export function isClearingAtPoint(state: ClearingActivityState, point: WorldPoin
   return finitePoint(point) && (state.stage === "clearing" || state.stage === "home")
     && state.speed === 0 && distance(state.position, point) <= tolerance;
 }
-function beginFreeWalk(state: ClearingActivityState, points: WorldPoint[], purpose: NonNullable<ClearingActivityState["freePurpose"]>,
-  activity: ForestInterest["activity"] = "look", id: string = purpose) {
+/** Round only freely navigable ground. The optional last porch segment remains exact. */
+function navigatedRoute(state: ClearingActivityState, input: WorldPoint[], id: string,
+  activity: ClearingAction, protectedEnd = false, smoothPath = true): ClearingRoute {
+  const prefix = protectedEnd ? input.slice(0, -1) : input;
+  const prepared = smoothPath && state.navigation ? prepareSteeringPath(state.navigation, prefix, state.size) : null;
+  const points = (prepared?.points ?? prefix).map(point => ({ ...point }));
+  const prefixEnd = points.length - 1;
+  if (protectedEnd) points.push({ ...input.at(-1)! });
+  if (points.length === 1) points.push({ ...points[0] });
   const distances = [0];
   for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + distance(points[i - 1], points[i]));
-  state.freeRoute = { id, points: points.map(point => ({ ...point })), distances, length: distances.at(-1)!, activity };
+  const length = distances.at(-1)!;
+  let steering: SteeringPath | undefined;
+  if (prepared) {
+    const speedLimits = [...prepared.speedLimits];
+    if (protectedEnd) { speedLimits[speedLimits.length - 1] = .35; speedLimits.push(0); }
+    else if (speedLimits.length === 1) speedLimits.push(0);
+    // The profile becomes immutable before its first speed query.
+    steering = { ...prepared, points, distances, length, speedLimits };
+  }
+  return { id, points, distances, length, activity, steering,
+    ...(smoothPath ? { navigationLength: protectedEnd ? distances[prefixEnd] : length } : {}) };
+}
+function beginFreeWalk(state: ClearingActivityState, points: WorldPoint[], purpose: NonNullable<ClearingActivityState["freePurpose"]>,
+  activity: ForestInterest["activity"] = "look", id: string = purpose) {
+  state.freeRoute = navigatedRoute(state, points, id, activity, false, purpose !== "interaction-exit");
   state.freePurpose = purpose; state.stage = "free-walk"; state.stageElapsed = 0; state.distance = 0;
   state.navigationRetryAt = 0;
   state.speed = 0; state.routeIndex = -1; state.routeKind = "clearing"; state.steps = []; state.attentionResume = null;
@@ -337,12 +360,8 @@ function startDynamicInteraction(state: ClearingActivityState, interaction: Worl
   if (!state.navigation) return false;
   const approach = findInteractionApproach(state.navigation, state.position, interaction);
   if (!approach) { state.behavior.reason = `${interaction.kind}-unreachable`; return false; }
-  const points = approach.points.map(point => ({ ...point }));
-  if (points.length === 1) points.push({ ...points[0] });
-  const distances = [0];
-  for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + distance(points[i - 1], points[i]));
-  const route: ClearingRoute = { id: interaction.id, points, distances, length: distances.at(-1)!,
-    activity: interaction.kind === "bush" ? "bush" : "look",
+  const route: ClearingRoute = { ...navigatedRoute(state, approach.points, interaction.id,
+    interaction.kind === "bush" ? "bush" : "look", interaction.kind === "home" && approach.departure.length > 1),
     ...(interaction.kind === "bush" ? { bush: { id: interaction.id, entry: { ...interaction.entry }, hide: { ...interaction.hide } },
       pauseSeconds: interaction.pauseSeconds } : {}) };
   state.activeInteraction = { kind: interaction.kind, route, departure: approach.departure.map(point => ({ ...point })) };
@@ -593,18 +612,38 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   const returning = state.stage === "return" || state.stage === "home-return";
   const remaining = returning ? state.distance : route.length - state.distance;
   const maxSpeed = state.size * .36 * (1 - clamp(options.dusk) * .25) * (1 - clamp(options.rain) * .12);
-  const acceleration = state.size * .8, targetSpeed = Math.min(maxSpeed, Math.sqrt(2 * acceleration * remaining));
+  const acceleration = state.size * .8;
+  const targetSpeed = route.steering && !returning
+    ? desiredSteeringSpeed(route.steering, state.distance, maxSpeed, acceleration)
+    : Math.min(maxSpeed, Math.sqrt(2 * acceleration * remaining));
   state.speed += clamp(targetSpeed - state.speed, -acceleration * dt, acceleration * dt);
-  const step = Math.min(remaining, state.speed * dt);
-  state.distance = clamp(state.distance + step * (returning ? -1 : 1), 0, route.length); state.walked += step;
-  let segment = 1;
-  while (segment < route.points.length - 1 && route.distances[segment] < state.distance) segment++;
-  const a = route.points[segment - 1], b = route.points[segment], length = route.distances[segment] - route.distances[segment - 1];
-  const progress = length > 0 ? clamp((state.distance - route.distances[segment - 1]) / length) : 1;
-  state.position = { x: a.x + (b.x - a.x) * progress, y: a.y + (b.y - a.y) * progress };
+  let nextDistance = clamp(state.distance + Math.min(remaining, state.speed * dt) * (returning ? -1 : 1), 0, route.length);
+  const navigationLength = route.navigationLength;
+  // Never blend the last ground turn into the authored doorway exception.
+  if (!returning && navigationLength !== undefined && state.distance < navigationLength && nextDistance > navigationLength)
+    nextDistance = navigationLength;
+  let sample = sampleWalk(route, nextDistance);
+  if (!returning && state.navigation && navigationLength !== undefined && nextDistance <= navigationLength
+    && !canTraverse(state.navigation, state.position, sample.position)) {
+    // A long frame can span several rounded chords. Even then the rendered
+    // before→after segment must not shortcut a wall: stop at the next safe vertex.
+    let nextVertex = 1;
+    while (nextVertex < route.points.length - 1 && route.distances[nextVertex] <= state.distance + 1e-7) nextVertex++;
+    nextDistance = Math.min(nextDistance, route.distances[nextVertex]);
+    sample = sampleWalk(route, nextDistance);
+    if (!canTraverse(state.navigation, state.position, sample.position)) {
+      state.speed = 0; state.behavior.reason = "steering-blocked"; return;
+    }
+  }
+  const step = Math.abs(nextDistance - state.distance);
+  state.distance = nextDistance; state.walked += step; state.position = sample.position;
+  const { a, b } = sample;
   const dx = (b.x - a.x) * (returning ? -1 : 1), dy = (b.y - a.y) * (returning ? -1 : 1);
-  state.direction = Math.abs(dx) >= Math.abs(dy) * .9 ? dx < 0 ? "left" : "right" : dy < 0 ? "back" : "front";
+  state.direction = route.steering ? walkDirection(state.direction, dx, dy)
+    : Math.abs(dx) >= Math.abs(dy) * .9 ? dx < 0 ? "left" : "right" : dy < 0 ? "back" : "front";
   if (remaining - step < .001) {
+    state.distance = returning ? 0 : route.length;
+    state.position = { ...(returning ? route.points[0] : route.points.at(-1)!) };
     if (free) {
       if (state.freePurpose === "home") arriveHome(state, options.dusk);
       else if (state.freePurpose === "interaction-exit") completeDynamicExit(state);
@@ -614,6 +653,25 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
     else if (state.routeKind === "home") { state.stage = "entering"; state.stageElapsed = 0; state.doorProgress = 0; state.speed = 0; state.direction = "back"; }
     else startActivity(state, options, route);
   }
+}
+
+function sampleWalk(route: ClearingRoute, distanceAlong: number) {
+  let lo = 1, hi = route.points.length - 1;
+  while (lo < hi) {
+    const middle = (lo + hi) >>> 1;
+    if (route.distances[middle] < distanceAlong) lo = middle + 1; else hi = middle;
+  }
+  const a = route.points[lo - 1], b = route.points[lo], length = route.distances[lo] - route.distances[lo - 1];
+  const progress = length > 0 ? clamp((distanceAlong - route.distances[lo - 1]) / length) : 1;
+  return { a, b, position: { x: a.x + (b.x - a.x) * progress, y: a.y + (b.y - a.y) * progress } };
+}
+function walkDirection(previous: PixelDirection, dx: number, dy: number): PixelDirection {
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-7) return previous;
+  const alignment = previous === "left" ? -dx : previous === "right" ? dx : previous === "back" ? -dy : dy;
+  // Four authored sprite views: a 10° dead band avoids flicker around diagonals.
+  if (alignment / length >= Math.cos(55 * Math.PI / 180)) return previous;
+  return Math.abs(dx) >= Math.abs(dy) ? dx < 0 ? "left" : "right" : dy < 0 ? "back" : "front";
 }
 
 /** Single-owner active time. Hidden tabs cannot produce a catch-up jump. */
