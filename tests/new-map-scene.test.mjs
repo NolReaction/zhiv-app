@@ -33,6 +33,7 @@ async function modules(override) {
 
 function browser() {
   const saved = new Map(), pending = [], requests = [], timers = new Map(), frames = new Map(), observers = [];
+  const documentEvents = new Map();
   let id = 0;
   const install = (key, value) => {
     saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
@@ -67,7 +68,13 @@ function browser() {
       focus() {},
     };
   }
-  install("document", { hidden: false, createElement: () => surface(), addEventListener() {}, removeEventListener() {} });
+  install("document", { hidden: false, createElement: () => surface(),
+    addEventListener(name, callback) {
+      if (!documentEvents.has(name)) documentEvents.set(name, new Set());
+      documentEvents.get(name).add(callback);
+    },
+    removeEventListener(name, callback) { documentEvents.get(name)?.delete(callback); },
+  });
   install("window", { devicePixelRatio: 2, addEventListener() {}, removeEventListener() {} });
   install("Image", class {
     naturalWidth = 2560; naturalHeight = 2560;
@@ -106,6 +113,10 @@ function browser() {
       return request.image;
     },
     tick(now) { const current = [...frames.values()]; frames.clear(); current.forEach(callback => callback(now)); },
+    visibility(hidden) {
+      document.hidden = hidden;
+      for (const callback of documentEvents.get("visibilitychange") ?? []) callback();
+    },
     fireTimer(key) { const timer = timers.get(key); assert.ok(timer); timers.delete(key); timer.callback(); },
     restore() {
       for (const [key, descriptor] of saved) {
@@ -500,6 +511,12 @@ test("development overrides redraw immediately while paused without advancing ti
     assert.ok(hero, "the hero remains present before the night-lighting texture");
     assert.equal(hero.args[3], 54);
     env.tick(4000); assert.equal(scene.ambience().elapsed, time);
+    for (const still of [false, true]) for (const direction of ["right", "left"]) {
+      worldDevStore.patch({ pose: "auto", autoLife: still, reducedMotion: still ? "on" : "off", direction });
+      const currentPaint = canvas.calls.slice(canvas.calls.findLastIndex(call => call.method === "clearRect"));
+      assert.ok(currentPaint.some(call => call.method === "drawImage" && call.args[0] === pixelSprite("idle", direction, 0)),
+        `DEV direction ${direction} redraws the automatic pose with ${still ? "reduced motion" : "automatic life disabled"}`);
+    }
     scene.configure({ ...initial, backgrounded: true });
     const hidden = canvas.calls.length;
     worldDevStore.patch({ paused: false, weather: "clear", reducedMotion: "off" });
@@ -730,4 +747,193 @@ test("shared DEV transitions apply once and pause, reduced motion and account ch
     assert.equal(other.state.animation, null); assert.equal(other.state.wetness, 0);
     await flush(); assert.equal(env.frames.size, 2, "different accounts and anonymous scenes remain independent");
   } finally { probes.forEach(probe => probe.release()); scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
+});
+
+const clearingPath = { id: "clearing-fern", label: "Fern", behavior: "clearing", activity: "groom", pauseSeconds: 3,
+  points: [{ ...fixture.actor.spawn }, { x: 617, y: 654 }, { x: 605, y: 647 }] };
+const quietClearing = { weather: "clear", timeOfDay: "day", butterflies: "off", fireflies: "off", birds: "off" };
+const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const circlePoint = point => ({ x: (point.x - fixture.focus.x) / fixture.focus.width,
+  y: (point.y - fixture.focus.y) / fixture.focus.height });
+function sceneClock(env) {
+  let now = 100;
+  env.tick(now);
+  const step = (milliseconds = 50) => { now += milliseconds; env.tick(now); };
+  return {
+    step,
+    advance(seconds) { for (let i = 0; i < Math.ceil(seconds * 20); i++) step(); },
+    until(predicate, message, limit = 400) {
+      for (let i = 0; i < limit && !predicate(); i++) step();
+      assert.ok(predicate(), message);
+    },
+  };
+}
+
+test("authored clearing routes move the rendered pet, its hit area and camera target together", async () => {
+  const { mountHabitat, createMapEngine, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules({ paths: [clearingPath] });
+  const env = browser(); let scene, engine, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, reducedMotion: false, presenceKey: "walking-pet" }, canvas = env.surface();
+    scene = mountHabitat(canvas, initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const home = scene.position(), clock = sceneClock(env);
+    let previous = home, moved = false;
+    for (let i = 0; i < 200 && probe.state.clearing.stage !== "activity"; i++) {
+      clock.step();
+      const current = scene.position();
+      assert.ok(distanceBetween(current, previous) <= fixture.actor.size * .36 * .05 + 1e-8,
+        "each visual frame moves at walking speed, including route corners and arrival");
+      assert.ok(distanceBetween(current, home) <= fixture.actor.size * 1.6, "the actor stays near its clearing spawn");
+      moved ||= distanceBetween(current, home) > 10;
+      previous = current;
+    }
+    assert.equal(moved, true, "automatic life starts walking without DEV commands or a user tap");
+    assert.equal(probe.state.clearing.stage, "activity", "the hero reaches the authored local destination");
+    assert.deepEqual(scene.position(), { x: 605, y: 629 });
+    const actorDraw = canvas.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
+      && call.args[3] === fixture.actor.size && call.args[4] === fixture.actor.size);
+    assert.ok(actorDraw, "the moving actor is painted");
+    assert.equal(actorDraw.args[1] + fixture.actor.size / 2, scene.position().x,
+      "sprite drawing uses the live position rather than the original Tiled spawn");
+    const live = circlePoint(scene.position()), old = circlePoint(home);
+    assert.equal(scene.hitPet(live.x, live.y), true, "the new position responds to touches");
+    assert.equal(scene.hitPet(old.x, old.y), false, "the departed spawn is not an invisible touch target");
+    canvas.calls.length = 0; clock.advance(.8);
+    const grooming = [0, 1, 2, 3].map(frame => pixelSprite("groom", "front", frame));
+    assert.ok(canvas.calls.some(call => call.method === "drawImage" && grooming.includes(call.args[0])),
+      "the authored endpoint activity reaches the visible sprite rather than remaining only controller state");
+    assert.deepEqual(scene.position(), { x: 605, y: 629 }, "the endpoint activity keeps its authored contact point");
+
+    const world = env.surface(400);
+    engine = await createMapEngine(world, initial, assert.fail, []);
+    worldDevStore.patch({ paused: true });
+    engine.control("pet");
+    const projection = mapProjection(world), target = scene.position();
+    approximately(projection.left + target.x * projection.zoom, 200, "find pet centers its current X");
+    approximately(projection.top + target.y * projection.zoom, 200, "find pet centers its current Y");
+    engine.control("overview");
+    const tap = (point, pointerId) => {
+      const event = { pointerId, pointerType: "touch", button: 0,
+        clientX: point.x * 400 / fixture.width, clientY: point.y * 400 / fixture.height };
+      world.events.get("pointerdown")({ ...event, type: "pointerdown" });
+      world.events.get("pointerup")({ ...event, type: "pointerup" });
+    };
+    tap(home, 1); assert.equal(probe.state.reaction, 0, "a map tap at the old spawn also misses");
+    tap(target, 2); assert.ok(probe.state.reaction > 0, "a map tap finds and greets the relocated pet");
+  } finally { engine?.dispose(); scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("greetings, reduced motion and hidden tabs pause an outing without catch-up jumps", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules({ paths: [clearingPath] });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, reducedMotion: false, presenceKey: "interrupted-outing" }, activities = [];
+    scene = mountHabitat(env.surface(), initial, { activity: value => activities.push(value), ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const home = scene.position(), clock = sceneClock(env);
+    clock.until(() => distanceBetween(scene.position(), home) > 10, "the hero has left its spawn");
+    const greetedAt = scene.position(), leg = probe.state.clearing.stage;
+    scene.notice(); clock.advance(.8);
+    assert.deepEqual(scene.position(), greetedAt, "greeting freezes translation at the actual location");
+    assert.equal(probe.state.clearing.stage, leg, "greeting does not discard the remaining path");
+    assert.equal(activities.at(-1), "greet");
+    clock.advance(.25);
+    assert.equal(activities.at(-1), "idle");
+    assert.ok(distanceBetween(scene.position(), greetedAt) > 0 && distanceBetween(scene.position(), greetedAt) < 3,
+      "the outing continues from the same spot after greeting");
+
+    scene.configure({ ...initial, reducedMotion: true });
+    const still = scene.position(), travelTime = probe.state.clearing.elapsed;
+    clock.step(60_000);
+    assert.deepEqual(scene.position(), still); assert.equal(probe.state.clearing.elapsed, travelTime);
+    assert.equal(env.frames.size, 0);
+    scene.configure(initial); clock.step(); clock.step();
+    assert.ok(distanceBetween(scene.position(), still) > 0 && distanceBetween(scene.position(), still) < 1,
+      "turning motion back on resumes one short frame without applying the hidden minute");
+
+    for (const mode of ["paused", "backgrounded", "hidden"]) {
+      if (mode === "hidden") env.visibility(true); else scene.configure({ ...initial, [mode]: true });
+      const frozen = scene.position(), elapsed = probe.state.clearing.elapsed;
+      assert.equal(env.frames.size, 0, `${mode} cancels the scene clock`);
+      clock.step(60_000);
+      assert.deepEqual(scene.position(), frozen, `${mode} keeps the live actor stationary`);
+      assert.equal(probe.state.clearing.elapsed, elapsed);
+      if (mode === "hidden") env.visibility(false); else scene.configure(initial);
+      clock.step(); clock.step();
+      assert.ok(distanceBetween(scene.position(), frozen) <= fixture.actor.size * .36 * .05 + 1e-8,
+        `${mode} resumes without replaying the elapsed background time`);
+    }
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("circle/world handoff preserves one walking clock, path progress and position", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules({ paths: [clearingPath] });
+  const env = browser(), scenes = []; let probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, reducedMotion: false, presenceKey: "shared-outing" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const home = circle.position(), clock = sceneClock(env);
+    clock.until(() => distanceBetween(circle.position(), home) > 8, "circle starts its short walk");
+    const snapshot = structuredClone(probe.state.clearing);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    await flush();
+    assert.deepEqual(probe.state.clearing, snapshot, "mounting a second view preserves the existing outing");
+    assert.deepEqual(circle.position(), world.position()); assert.equal(env.frames.size, 1);
+    clock.step();
+    const before = probe.state.clearing.elapsed;
+    clock.advance(.5);
+    approximately(probe.state.clearing.elapsed - before, .5, "two mounted views advance exactly one active clock");
+    assert.deepEqual(circle.position(), world.position());
+    assert.notDeepEqual(circle.position(), home);
+    circle.configure({ ...initial, backgrounded: true });
+    const beforeReturn = structuredClone(probe.state.clearing);
+    world.dispose(); circle.configure(initial); await flush();
+    assert.deepEqual(probe.state.clearing, beforeReturn, "closing the world continues the circle from the same route progress");
+    assert.equal(env.frames.size, 1);
+    clock.step(); clock.step();
+    assert.ok(probe.state.clearing.elapsed > beforeReturn.elapsed);
+    assert.ok(distanceBetween(circle.position(), { x: beforeReturn.position.x, y: beforeReturn.position.y - fixture.actor.size / 2 }) < 1);
+  } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("DEV interaction requested away from home waits for a continuous return along the local path", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules({ paths: [clearingPath] });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, reducedMotion: false, presenceKey: "return-before-life" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const home = scene.position(), clock = sceneClock(env);
+    clock.until(() => distanceBetween(scene.position(), home) > 12, "the hero leaves home before the requested interaction");
+    const requestedAt = scene.position();
+    worldDevStore.triggerLife("mushroom");
+    assert.deepEqual(scene.position(), requestedAt, "DEV does not teleport the hero back to its props");
+    assert.equal(probe.state.pendingLife, "mushroom"); assert.equal(probe.state.life.routine, null);
+    assert.equal(probe.state.clearing.stage, "return");
+    let previous = requestedAt, previousDistance = distanceBetween(previous, home);
+    for (let i = 0; i < 160 && !probe.state.life.routine; i++) {
+      clock.step();
+      const current = scene.position(), remaining = distanceBetween(current, home);
+      assert.ok(distanceBetween(current, previous) <= fixture.actor.size * .36 * .05 + 1e-8,
+        "returning and final arrival retain bounded visual displacement");
+      assert.ok(remaining <= previousDistance + 1e-8, "the character retraces the authored route towards home");
+      if (remaining > .001) assert.equal(probe.state.life.routine, null, "the mushroom remains at home until the actor returns");
+      previous = current; previousDistance = remaining;
+    }
+    assert.deepEqual(scene.position(), home);
+    assert.equal(probe.state.pendingLife, null); assert.equal(probe.state.life.routine?.kind, "mushroom");
+    clock.advance(1);
+    assert.deepEqual(scene.position(), home, "interacting with a ground prop never resumes walking underneath it");
+    assert.ok(probe.state.life.routine.elapsed > 0);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

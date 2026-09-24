@@ -5,6 +5,7 @@ import { ChevronDown, FlaskConical, RotateCcw, X } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { worldCatalog } from "../model";
 import { TILED_WORLD } from "../presentation";
+import { clearingRouteDiagnostics } from "../clearing-activity";
 import type { WorldController } from "../use-world";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevLifeAction, type WorldDevState } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
@@ -32,6 +33,15 @@ const POSE_LABELS: Record<PixelPose, string> = {
 const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], ["drizzle", "Морось"], ["rain", "Дождь"], ["downpour", "Ливень"]] as const;
 const TIME = [["auto", "По времени профиля"], ["day", "День"], ["night", "Ночь"]] as const;
 const MODES = [["auto", "Авто"], ["on", "Включить"], ["off", "Выключить"]] as const;
+const clearingRoutes = clearingRouteDiagnostics(TILED_WORLD);
+const routeReasons: Record<string, string> = {
+  "missing-actor": "Нет корректной точки Мохлика.", "invalid-points": "Нужны от 2 до 64 вершин линии.",
+  "start-away-from-spawn": "Первая вершина должна совпадать с точкой Мохлика.", "invalid-focus": "Проверьте область фокуса круга.",
+  "invalid-activity": "Неизвестное занятие в конце маршрута.", "invalid-pause": "Пауза должна быть от 2 до 20 секунд.",
+  "outside-clearing-radius": "Маршрут уходит слишком далеко от домашней точки.", "outside-map": "Герой выходит за край карты.",
+  "outside-focus": "Герой не помещается в круг главного экрана.", "building-collision": "Лапы пересекают коллизию здания.",
+  "water-collision": "Маршрут проходит по воде.", "invalid-length": "Маршрут слишком короткий или длинный для полянки.",
+};
 const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", "Влево"], ["right", "Вправо"]] as const;
 const LIFE_ACTIONS = [
   ["butterfly", "Поиграть с бабочкой"], ["firefly", "Поиграть со светлячком"],
@@ -188,6 +198,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
 
         <Section title="Лесные сценки" initiallyOpen>
           <Toggle label="Автоматические сценки" checked={state.autoLife} onChange={autoLife => change({ autoLife })} />
+          <p className={styles.hint}>Включает прогулки по полянке и занятия на остановках. Выключение останавливает Мохлика на текущем месте; включение продолжает прогулку.</p>
           <div className={styles.lifeActions}>
             {LIFE_ACTIONS.map(([action, label]) => {
               const reason = unavailable({ kind: "life", action });
@@ -200,7 +211,12 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
             })}
           </div>
           <p className={styles.hint}>«Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» подготавливает один гриб для сценки. Наград и изменений инвентаря нет.</p>
-          <p className={styles.hint}>В режиме «Авто» бабочка или светлячок появятся для ручной сценки в любое время. «Отменить сценку» возвращает покой и выключает автоматические сценки.</p>
+          <p className={styles.hint}>В режиме «Авто» насекомое доступно для ручной сценки в любое время. Если Мохлик гуляет, он сначала вернётся к домашней точке по своей тропке. «Отменить сценку» останавливает его и выключает автоматические сценки.</p>
+          <details><summary>Маршруты полянки · {clearingRoutes.filter(route => route.valid).length} доступны</summary>
+            {clearingRoutes.length ? clearingRoutes.map(route => <p key={route.id} className={route.valid ? styles.hint : styles.error}>
+              <strong>{route.id}</strong>: {route.valid ? "Готов к прогулке" : routeReasons[route.reason ?? ""] ?? "Проверьте разметку маршрута."}
+            </p>) : <p className={styles.hint}>Добавьте линию с behavior = clearing в Tiled. Пока доступны только занятия на месте.</p>}
+          </details>
         </Section>
 
         <Section title="Мохлик и анимации">
@@ -220,7 +236,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, onOpenWorld
               aria-describedby={heroUnavailable ? `${id}-pose-reason` : undefined} onClick={() => play({ kind: "pose", pose })}>{POSE_LABELS[pose]}</button>)}
           </div></fieldset>
           {heroUnavailable && <p id={`${id}-pose-reason`} className={styles.hint}>{heroUnavailable}</p>}
-          <p className={styles.hint}>Проверка кадров на месте. Походы по маршрутам — в редакторе карты.</p>
+          <p className={styles.hint}>Ручная поза проигрывается на текущем месте. Для прогулок выберите «Обычное поведение» и включите автоматические сценки. Линии проверяются в редакторе карты.</p>
           <fieldset className={styles.fieldset}><legend>Примерка · без выдачи предметов</legend>
             {([['palette', 'Цвет мха'], ['head', 'Головной убор'], ['neck', 'Шарф']] as const).map(([slot, label]) =>
               <Field key={slot} label={label}><select value={appearance[slot] ?? ""} onChange={event => outfit(slot, event.target.value)}>

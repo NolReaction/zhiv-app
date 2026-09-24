@@ -15,7 +15,15 @@ export type FixedSite = {
   initialLevel: number;
   states: SiteVisual[];
 };
-export type WorldPath = { id: string; points: WorldPoint[] };
+export type WorldPath = {
+  id: string;
+  points: WorldPoint[];
+  /** Opt-in local life; unmarked paths remain available only to route consumers. */
+  behavior?: "clearing";
+  activity?: "look" | "sniff" | "groom" | "rest";
+  /** Time at the outward endpoint, from 2 to 20 seconds. */
+  pauseSeconds?: number;
+};
 export type WorldWaterPolygon = { id: string; points: WorldPoint[] };
 export type WorldWater = {
   surfaces: WorldWaterPolygon[];

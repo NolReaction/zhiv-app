@@ -341,7 +341,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         world.water[waterKind].push({ id, points: vertices(object, "polygon", waterAt, world) });
         continue;
       }
-      const props = properties(object, at, { role: "string", siteId: "string", label: "string", initialLevel: "int", size: "float" });
+      const props = properties(object, at, { role: "string", siteId: "string", label: "string", initialLevel: "int", size: "float",
+        behavior: "string", activity: "string", pauseSeconds: "float" });
       const role = string(props.role, `${at}.properties.role`);
       if (own(object, "gid")) {
         const gid = integer(object.gid, `${at}.gid`, 1);
@@ -391,10 +392,27 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         exact(shape, "polyline", `${at} shape`);
         const id = identifier(object.name, `${at}.name`);
         requireThat(!pathIds.has(id), at, `duplicate path ID ${id}`);
-        requireThat(Object.keys(props).every(key => ["role", "siteId"].includes(key)), at, "path only accepts role and optional siteId properties");
+        requireThat(Object.keys(props).every(key => ["role", "siteId", "behavior", "activity", "pauseSeconds"].includes(key)), at,
+          "path only accepts role, siteId, behavior, activity and pauseSeconds properties");
         pathIds.add(id);
         if (own(props, "siteId")) routeOwners.push({ id: identifier(props.siteId, `${at}.properties.siteId`), at });
-        world.paths.push({ id, points: vertices(object, "polyline", at, world) });
+        const route = { id, points: vertices(object, "polyline", at, world) };
+        if (own(props, "behavior")) {
+          exact(props.behavior, "clearing", `${at}.properties.behavior`);
+          route.behavior = props.behavior;
+        }
+        if (own(props, "activity") || own(props, "pauseSeconds")) {
+          requireThat(route.behavior === "clearing", at, "activity and pauseSeconds require behavior: clearing");
+        }
+        if (own(props, "activity")) {
+          requireThat(["look", "sniff", "groom", "rest"].includes(props.activity), `${at}.properties.activity`, "expected look, sniff, groom or rest");
+          route.activity = props.activity;
+        }
+        if (own(props, "pauseSeconds")) {
+          requireThat(props.pauseSeconds >= 2 && props.pauseSeconds <= 20, `${at}.properties.pauseSeconds`, "expected a number from 2 to 20 seconds");
+          route.pauseSeconds = props.pauseSeconds;
+        }
+        world.paths.push(route);
       } else {
         requireThat(["anchor", "entry", "light", "hitArea", "collision"].includes(role), `${at}.properties.role`, `unknown marker role ${JSON.stringify(role)}`);
         requireThat(Object.keys(props).length === 2, at, "markers only accept role and siteId properties");

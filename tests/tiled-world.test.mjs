@@ -145,6 +145,52 @@ test("authored focus, spawn, size and path edits are exported in world coordinat
   assert.deepEqual((await compile()).actor, { spawn: { x: 40, y: 60 }, size: 18 });
 });
 
+test("clearing routes opt into local life without changing unmarked prototype paths", async t => {
+  const { map, compile } = await fixture(t);
+  const route = map.layers[0].objects[8];
+  const unmarked = (await compile()).paths[0];
+  route.properties.push(...props({ behavior: "clearing" }));
+  assert.deepEqual((await compile()).paths[0], { ...unmarked, behavior: "clearing" }, "optional values are left to the life controller");
+  route.properties.push(...props({ activity: "look", pauseSeconds: 2 }));
+  for (const activity of ["look", "sniff", "groom", "rest"]) {
+    setProp(route, "activity", activity);
+    assert.deepEqual((await compile()).paths[0], { ...unmarked, behavior: "clearing", activity, pauseSeconds: 2 });
+  }
+  route.properties.find(property => property.name === "pauseSeconds").type = "float";
+  setProp(route, "pauseSeconds", 4.5);
+  assert.equal((await compile()).paths[0].pauseSeconds, 4.5);
+  setProp(route, "pauseSeconds", 20);
+  assert.equal((await compile()).paths[0].pauseSeconds, 20);
+  route.properties.push(...props({ siteId: "kiln" }));
+  assert.equal((await compile()).paths[0].behavior, "clearing", "existing site ownership remains valid");
+});
+
+test("clearing route properties reject misspellings, wrong types and unsupported behavior", async t => {
+  const { map, compile } = await fixture(t);
+  const route = value => value.layers[0].objects[8];
+  route(map).properties.push(...props({ behavior: "clearing", activity: "sniff", pauseSeconds: 4 }));
+  const cases = [
+    ["unknown behavior", value => { setProp(route(value), "behavior", "journey"); }, /properties\.behavior: expected "clearing"/],
+    ["unknown activity", value => { setProp(route(value), "activity", "fishing"); }, /expected look, sniff, groom or rest/],
+    ["activity without opt-in", value => { route(value).properties = props({ role: "path", activity: "rest" }); }, /require behavior: clearing/],
+    ["pause without opt-in", value => { route(value).properties = props({ role: "path", pauseSeconds: 5 }); }, /require behavior: clearing/],
+    ["pause too short", value => { setProp(route(value), "pauseSeconds", 1); }, /from 2 to 20 seconds/],
+    ["pause too long", value => { setProp(route(value), "pauseSeconds", 21); }, /from 2 to 20 seconds/],
+    ["pause as string", value => { route(value).properties.find(property => property.name === "pauseSeconds").type = "string"; }, /expected float or int/],
+    ["behavior as bool", value => { route(value).properties.find(property => property.name === "behavior").type = "bool"; }, /type: expected "string"/],
+    ["unknown setting", value => { route(value).properties.push(...props({ speed: 20 })); }, /unknown property "speed"/],
+    ["route setting on focus", value => { value.layers[0].objects[7].properties.push(...props({ behavior: "clearing" })); }, /focus only accepts the role/],
+    ["route setting on site", value => { value.layers[0].objects[1].properties.push(...props({ activity: "rest" })); }, /site objects only accept/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
 test("invalid focus and spawn authoring fails instead of ignoring editor changes", async t => {
   const { map, compile } = await fixture(t);
   map.layers.push({ id: 2, name: "Actors", type: "objectgroup", draworder: "index", objects: [spawn()] });
@@ -167,7 +213,7 @@ test("invalid focus and spawn authoring fails instead of ignoring editor changes
     ["wrong spawn role", value => { setProp(value.layers[1].objects[0], "role", "spwan"); }, /unknown marker role "spwan"/],
     ["extra spawn property", value => { value.layers[1].objects[0].properties.push(...props({ siteId: "kiln" })); }, /spawn only accepts role and size/],
     ["size on site", value => { value.layers[0].objects[1].properties.push({ name: "size", type: "float", value: 12 }); }, /site objects only accept/],
-    ["size on path", value => { value.layers[0].objects[8].properties.push({ name: "size", type: "float", value: 12 }); }, /path only accepts role and optional siteId/],
+    ["size on path", value => { value.layers[0].objects[8].properties.push({ name: "size", type: "float", value: 12 }); }, /path only accepts role, siteId, behavior, activity and pauseSeconds/],
   ];
   for (const [name, mutate, pattern] of cases) {
     await t.test(name, async () => {
@@ -455,7 +501,8 @@ test("committed authoring exports identically and --check refuses stale output w
     withRole("site").map(object => ({ id: property(object, "siteId"), label: property(object, "label"),
       bounds: rect(object), initialLevel: property(object, "initialLevel") })));
   assert.deepEqual(scene.paths, withRole("path").map(object => ({ id: object.name,
-    points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })) })));
+    points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
+    ...Object.fromEntries(["behavior", "activity", "pauseSeconds"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
   assert.equal(withRole("focus").length, 1);
   assert.deepEqual(scene.focus, rect(withRole("focus")[0]));
   assert.equal(withRole("spawn").length, 1, "the live forest needs one authored spawn point");

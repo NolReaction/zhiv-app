@@ -1,5 +1,5 @@
 import type { FixedWorldScene, WorldBounds } from "./tiled/types";
-import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestAirParticle, type ForestBird } from "./forest-wildlife";
+import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestAirParticle, type ForestBird, type ForestFirefly } from "./forest-wildlife";
 
 import { forestBirdFrame, FOREST_BIRD_LIMIT } from "./forest-birds";
 import { sampleForestRain, drawForestRain, type ForestRaindrop } from "./forest-rain";
@@ -47,7 +47,7 @@ type Bird = ForestBird;
 type Raindrop = ForestRaindrop;
 export type ForestAtmosphereFrame = ForestAtmosphereState & {
   butterflies: AirParticle[];
-  fireflies: AirParticle[];
+  fireflies: ForestFirefly[];
   birds: Bird[];
   raindrops: Raindrop[];
 };
@@ -107,6 +107,23 @@ function insect(field: WorldBounds, seed: number, index: number, seconds: number
   };
 }
 
+/** Small, unhurried drifting loops have the same speed in the clearing and across the map. */
+function firefly(field: WorldBounds, seed: number, index: number, seconds: number, scale: number): ForestFirefly {
+  const phase = noise(seed, index * 7) * TAU;
+  const radiusX = Math.min(field.width * .065, scale * (11 + noise(seed, index * 7 + 1) * 8));
+  const radiusY = Math.min(field.height * .05, scale * (7 + noise(seed, index * 7 + 2) * 5));
+  const speed = .16 + noise(seed, index * 7 + 3) * .06;
+  const horizontal = seconds * speed + phase, vertical = seconds * speed * .81 + phase * 1.7;
+  const dx = Math.cos(horizontal) * radiusX * speed;
+  const dy = Math.cos(vertical) * radiusY * speed * .81;
+  return {
+    x: field.x + field.width * (.15 + noise(seed, index * 7 + 4) * .7) + Math.sin(horizontal) * radiusX,
+    y: field.y + field.height * (.15 + noise(seed, index * 7 + 5) * .7) + Math.sin(vertical) * radiusY,
+    size: scale * (1.35 + noise(seed, index * 7 + 6) * .25),
+    opacity: 1, phase, angle: Math.atan2(dy, dx) + Math.PI / 2,
+  };
+}
+
 /** Pure world-coordinate samples; no camera size, asset, DOM, or mutable particle state. */
 export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtmosphereOptions): ForestAtmosphereFrame {
   const state = forestAtmosphereState(scene, options), { world, focus, scale } = geometry(scene);
@@ -123,10 +140,8 @@ export function forestAtmosphereFrame(scene: FixedWorldScene, options: ForestAtm
     frame.butterflies.push(particle);
   }
   if (fireflies > .01) for (let i = 0; i < FOREST_ATMOSPHERE_LIMITS.fireflies; i++) {
-    const particle = insect(i < 5 ? focus : world, seed, i + 20, seconds * .62, scale);
-    const pulse = .5 + Math.sin(seconds * .65 + particle.phase) * .5;
-    particle.size *= 1.5;
-    particle.opacity = fireflies * (.4 + pulse * pulse * .5);
+    const particle = firefly(i < 5 ? focus : world, seed, i + 20, seconds, scale);
+    particle.opacity = fireflies * .9;
     frame.fireflies.push(particle);
   }
 

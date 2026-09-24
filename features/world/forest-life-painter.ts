@@ -33,6 +33,6 @@ export function drawForestLifePartner(ctx: CanvasRenderingContext2D, frame: Fore
   }
   if (frame.insect) {
     if (frame.insect.kind === "butterfly") drawForestButterfly(ctx, frame.insect, elapsed);
-    else drawForestFirefly(ctx, frame.insect, elapsed);
+    else drawForestFirefly(ctx, { ...frame.insect, resting: frame.stage === "perch" }, elapsed);
   }
 }

@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { FOREST_ATMOSPHERE_LIMITS, FOREST_BIRD_FLIGHT_DURATION, forestAtmosphereState, forestAtmosphereFrame, drawForestAtmosphere }
   = await vite.ssrLoadModule("/features/world/forest-atmosphere.ts");
-const { drawForestBird, drawForestButterfly, drawForestFirefly }
+const { drawForestBird, drawForestButterfly, drawForestFirefly, forestFireflyPose }
   = await vite.ssrLoadModule("/features/world/forest-wildlife.ts");
 const { updateForestWetness, isForestGroundClear, forestGroundWeatherFrame, drawForestGroundWeather }
   = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
@@ -299,6 +299,70 @@ test("wildlife painters use shaped colored wings, a feathered body and soft roun
       assert.ok(colors.size >= 3, "wing color, feather/body outline and highlights stay distinct");
     }
   }
+});
+
+test("fireflies drift slowly and continuously at the same speed across small and large worlds", () => {
+  const input = { ...options, dusk: 1, weather: "clear" };
+  const larger = { ...scene, width: scene.width * 8, height: scene.height * 8 };
+  const scale = Math.min(scene.focus.width, scene.focus.height) / 256;
+  let moved = false;
+  for (let elapsed = 0; elapsed < 120; elapsed += .25) {
+    const before = forestAtmosphereFrame(scene, { ...input, elapsed }).fireflies;
+    const after = forestAtmosphereFrame(scene, { ...input, elapsed: elapsed + .1 }).fireflies;
+    const farBefore = forestAtmosphereFrame(larger, { ...input, elapsed }).fireflies;
+    const farAfter = forestAtmosphereFrame(larger, { ...input, elapsed: elapsed + .1 }).fireflies;
+    before.forEach((particle, index) => {
+      const next = after[index], dx = next.x - particle.x, dy = next.y - particle.y;
+      assert.ok(Math.hypot(dx, dy) <= scale * .6, "no jumps or fast screen-wide swoops");
+      assert.ok(Number.isFinite(particle.angle), "the body follows its flight direction");
+      assert.equal(next.opacity, particle.opacity, "a flash must not make the whole insect disappear");
+      assert.ok(Math.abs(farAfter[index].x - farBefore[index].x - dx) < 1e-8);
+      assert.ok(Math.abs(farAfter[index].y - farBefore[index].y - dy) < 1e-8);
+      moved ||= Math.hypot(dx, dy) > .05;
+    });
+  }
+  assert.ok(moved, "night insects actually move, rather than only changing opacity");
+});
+
+test("firefly flashes are gradual and staggered, with a stable body and foldable wings", () => {
+  const phases = forestAtmosphereFrame(scene, { ...options, dusk: 1, weather: "clear" }).fireflies.map(f => f.phase);
+  const brightAt = new Set();
+  for (const phase of phases) {
+    let low = 1, high = 0, previous;
+    for (let elapsed = 0; elapsed <= 20; elapsed += .05) {
+      const pose = forestFireflyPose(elapsed, phase);
+      assert.ok(pose.glow >= .14 && pose.glow <= 1);
+      if (previous) assert.ok(Math.abs(pose.glow - previous.glow) < .04, "no single-frame blinking");
+      low = Math.min(low, pose.glow); high = Math.max(high, pose.glow);
+      if (pose.glow > .99) brightAt.add(Math.floor(elapsed));
+      const perched = forestFireflyPose(elapsed, phase, true);
+      assert.ok(perched.wingSpread < pose.wingSpread, "wings fold when the scene partner lands");
+      assert.equal(perched.sway, 0);
+      assert.equal(perched.glow, pose.glow, "landing preserves the individual flash cycle");
+      previous = pose;
+    }
+    assert.ok(low < .2 && high > .95, "each abdomen fades down and lights again");
+  }
+  assert.ok(brightAt.size > 12, "different insects do not blink as a synchronized string of lights");
+});
+
+test("a firefly has paired wings, an elongated body and a close light centred on its abdomen", () => {
+  const particle = { x: 40, y: 60, size: 2, opacity: .8, phase: .8, angle: .4 };
+  const paints = [0, 4].map(elapsed => {
+    const paint = drawing(); paint.ctx.clipped = true;
+    drawForestFirefly(paint.ctx, particle, elapsed);
+    assert.deepEqual(paint.snapshot(), { ...paint.initial, clipped: true });
+    const gradient = paint.calls.find(call => call[0] === "createRadialGradient")[1];
+    assert.ok(gradient.args[1] > 0, "light is below the head at the tip of the abdomen");
+    assert.ok(gradient.args[5] <= particle.size * 3.1, "the halo cannot obscure the insect with a large flare");
+    assert.equal(paint.calls.filter(call => call[0] === "bezierCurveTo").length, 2, "distinct left and right flight wings");
+    const body = paint.calls.filter(call => call[0] === "fill" && call.at(-1).fillStyle === "#3c4229");
+    assert.equal(body.length, 1); assert.equal(body[0].at(-1).globalAlpha, particle.opacity);
+    assert.equal(paint.calls.some(call => call[0] === "stroke" || call[0] === "fillRect"), false);
+    return paint;
+  });
+  const glowAlpha = paint => paint.calls.find(call => call[0] === "fill" && call.at(-1).fillStyle?.type === "radial").at(-1).globalAlpha;
+  assert.notEqual(glowAlpha(paints[0]), glowAlpha(paints[1]), "the tail light visibly pulses while the body stays solid");
 });
 
 const groundScene = { ...scene, actor: { spawn: { x: 290, y: 330 }, size: 48 } };

@@ -11,8 +11,9 @@ import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
 import { drawForestGroundImpacts } from "./forest-ground-impacts";
 import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
-import { advanceForestLife, cancelForestLife, forestLifeFrame, triggerForestLife, type ForestLifeState } from "./forest-life";
+import { advanceForestLife, cancelForestLife, forestLifeFrame, triggerForestLife, type ForestLifeAction, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
+import { advanceClearingActivity, clearingActivityFrame, isClearingAtHome, returnClearingHome } from "./clearing-activity";
 import { connectForestSession } from "./forest-session";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState } from "./dev/world-dev-store";
 
@@ -32,6 +33,7 @@ export type NewMapPaintPreview = {
   birdElapsed?: number;
   birdSeed?: number;
   life?: ForestLifeState;
+  clearing?: ReturnType<typeof clearingActivityFrame>;
   wetness?: number;
 };
 
@@ -60,7 +62,8 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   options: SceneOptions, elapsed: number, reacting: boolean, timestamp = options.serverNow ?? 0,
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
-  const actor = { ...NEW_MAP_SPAWN, size: PET_SIZE * (dev?.heroScale ?? 1) };
+  const walking = preview?.clearing;
+  const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const life = preview?.life;
   const routine = life?.routine && !still && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
@@ -80,8 +83,11 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     options: { levels: dev?.levels ?? levels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
   if (dev?.showHero !== false) {
-    drawGroundedHero(context, { ...actor, direction: routine?.direction ?? dev?.direction ?? "front",
-      ...(routine ?? actorFrame(elapsed, reacting, still, preview)),
+    const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+    const motion = automatic && walking ? walking : null;
+    const manualDirection = dev && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
+    drawGroundedHero(context, { ...actor, direction: routine?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
+      ...(routine ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
       appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow });
     if (routine) drawForestLifePartner(context, routine, elapsed);
   }
@@ -120,6 +126,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function preview(): NewMapPaintPreview {
     return { state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
+      clearing: clearingActivityFrame(state.clearing, { still: reducedMotion(options, dev) || dev?.autoLife === false && !state.pendingLife }),
       birdElapsed: state.birdStarted === null ? undefined : state.elapsed - state.birdStarted,
       birdSeed: state.birdStarted === null ? undefined : state.birdSeed };
   }
@@ -159,8 +166,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, preview()));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
-      advanceForestLife(state.life, step, { autoLife: !manual && dev?.autoLife !== false,
+      advanceForestLife(state.life, step, { autoLife: !manual && !state.pendingLife && dev?.autoLife !== false && isClearingAtHome(state.clearing),
         dusk: environment.dusk, rain: environment.rain, butterflies: dev?.butterflies, fireflies: dev?.fireflies });
+      advanceClearingActivity(state.clearing, step, { enabled: dev?.autoLife !== false || Boolean(state.pendingLife),
+        blocked: manual || Boolean(state.life.routine), dusk: environment.dusk, rain: environment.rain });
+      if (state.pendingLife && !manual && isClearingAtHome(state.clearing)) {
+        triggerForestLife(state.life, state.pendingLife); state.pendingLife = null;
+      }
       previous = now; session.publish();
     }
     if (active() && session.isOwner()) frame = requestAnimationFrame(tick);
@@ -222,6 +234,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       } else { dispose(); callbacks.failure(error); }
     });
   }
+  function requestLife(kind: ForestLifeAction) {
+    cancelForestLife(state.life); state.pendingLife = null;
+    if (kind === "idle" || kind === "grow-mushrooms" || isClearingAtHome(state.clearing)) triggerForestLife(state.life, kind);
+    else { state.pendingLife = kind; returnClearingHome(state.clearing); }
+  }
   if (WORLD_DEV_ENABLED) unsubscribe = worldDevStore.subscribe(() => {
     if (disposed) return;
     const before = dev!;
@@ -230,7 +247,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (dev.animation?.id !== before.animation?.id) {
         if (!dev.animation) state.animation = null;
         else if (session.consumeEvent("pose", dev.animation.id)) state.animation = { pose: dev.animation.pose, elapsed: 0 };
-        cancelForestLife(state.life);
+        cancelForestLife(state.life); state.pendingLife = null;
       }
       if (dev.birdEvent !== before.birdEvent) {
         if (!dev.birdEvent) state.birdStarted = null;
@@ -238,10 +255,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       }
       if (dev.pose !== before.pose || dev.autoLife === false && before.autoLife || dev.showHero === false
         || state.life.routine?.kind === "butterfly" && dev.butterflies === "off"
-        || state.life.routine?.kind === "firefly" && dev.fireflies === "off") cancelForestLife(state.life);
+        || (state.life.routine?.kind === "firefly" || state.pendingLife === "firefly") && dev.fireflies === "off"
+        || state.pendingLife === "butterfly" && dev.butterflies === "off") {
+        cancelForestLife(state.life); state.pendingLife = null;
+      }
       if (dev.lifeEvent?.id !== before.lifeEvent?.id) {
-        if (!dev.lifeEvent) cancelForestLife(state.life);
-        else if (session.consumeEvent("life", dev.lifeEvent.id)) triggerForestLife(state.life, dev.lifeEvent.kind);
+        if (!dev.lifeEvent) { cancelForestLife(state.life); state.pendingLife = null; }
+        else if (session.consumeEvent("life", dev.lifeEvent.id)) requestLife(dev.lifeEvent.kind);
       }
     }
     stop(); syncOwner();
@@ -253,7 +273,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   });
   prepareArtwork();
   return {
-    position: () => ({ x: NEW_MAP_SPAWN.x, y: NEW_MAP_SPAWN.y - PET_SIZE * (dev?.heroScale ?? 1) / 2 }),
+    position: () => {
+      const actor = clearingActivityFrame(state.clearing);
+      return { x: actor.x, y: actor.y - PET_SIZE * (dev?.heroScale ?? 1) / 2 };
+    },
     configure(next) {
       if (disposed) return;
       const identityChanged = next.presenceKey !== options.presenceKey;
@@ -270,14 +293,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     notice() {
       if (disposed) return;
-      cancelForestLife(state.life); state.reaction = REACTION_SECONDS; cancelReactionTimer();
+      cancelForestLife(state.life); state.pendingLife = null; state.reaction = REACTION_SECONDS; cancelReactionTimer();
       if (active()) session.publish(); resume();
     },
     hitPet(x, y) {
       const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
       const size = PET_SIZE * (dev?.heroScale ?? 1);
-      return !disposed && dev?.showHero !== false && Math.abs(point.x - NEW_MAP_SPAWN.x) < size / 2
-        && point.y > NEW_MAP_SPAWN.y - size && point.y < NEW_MAP_SPAWN.y;
+      const actor = clearingActivityFrame(state.clearing);
+      return !disposed && dev?.showHero !== false && Math.abs(point.x - actor.x) < size / 2
+        && point.y > actor.y - size && point.y < actor.y;
     },
     setTime(now) {
       if (disposed || !Number.isFinite(now)) return;
