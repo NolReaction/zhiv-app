@@ -3,8 +3,8 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/mochlik/scene";
 import { NEW_MAP_FOCUS, NEW_MAP_PET_SIZE as PET_SIZE, NEW_MAP_SPAWN, TILED_WORLD } from "./presentation";
 import { paintFixedWorld } from "./tiled/renderer";
-import { initialPreviewLevels, previewSiteVisual } from "./tiled/preview-state";
-import type { PreviewLevels, SiteVisual, WorldPoint } from "./tiled/types";
+import { initialPreviewLevels, previewSiteVisual, previewWorldScene } from "./tiled/preview-state";
+import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldPoint } from "./tiled/types";
 import { drawGroundedHero } from "./grounding";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "./forest-atmosphere";
 import { drawForestWater } from "./forest-water";
@@ -24,12 +24,12 @@ import type { ForestBird } from "./forest-wildlife";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
 import { publishForestObservation } from "./forest-observer";
+import { forestSceneFingerprint } from "./forest-memory";
 import { forestPersistenceOverridden } from "./forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
-const home = TILED_WORLD.sites.find(site => site.id === "home");
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
 const initialVisuals = visualsFor(levels);
 const artworkUrls = (visuals: Record<string, SiteVisual>) => [...new Set([
@@ -63,6 +63,7 @@ function drawHomeSleep(ctx: CanvasRenderingContext2D, door: WorldPoint, elapsed:
 
 type ManualAnimation = { pose: PixelPose; elapsed: number };
 export type NewMapPaintPreview = {
+  scene?: FixedWorldScene;
   state?: WorldDevState;
   visuals?: Record<string, SiteVisual>;
   animation?: ManualAnimation | null;
@@ -108,6 +109,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   options: SceneOptions, elapsed: number, reacting: boolean, timestamp = options.serverNow ?? 0,
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
+  const world = preview?.scene ?? previewWorldScene(TILED_WORLD, dev?.levels ?? levels);
+  const home = world.sites.find(site => site.id === "home");
+  const selectedVisuals = preview?.visuals ?? visualsFor(dev?.levels ?? levels);
+  const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
   const walking = preview?.clearing;
   const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
@@ -117,18 +122,18 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const encounter = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
     ? faunaInteractionFrame(preview.fauna) : null;
   context.save();
-  context.beginPath(); context.rect(0, 0, TILED_WORLD.width, TILED_WORLD.height); context.clip();
-  paintFixedWorld(context, TILED_WORLD, { images, visuals: preview?.visuals ?? initialVisuals, actor: null,
+  context.beginPath(); context.rect(0, 0, world.width, world.height); context.clip();
+  paintFixedWorld(context, world, { images, visuals: selectedVisuals, actor: null,
     paintGround: ground => {
-      const weather = { ...forestAtmosphereState(TILED_WORLD, atmosphere), reducedMotion: still };
+      const weather = { ...forestAtmosphereState(world, atmosphere), reducedMotion: still };
       const groundExclusions = life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 }));
-      drawForestWater(ground, TILED_WORLD, weather);
-      drawForestGroundImpacts(ground, TILED_WORLD, { ...weather, groundExclusions });
-      if (dev?.puddles !== false) drawForestGroundWeather(ground, TILED_WORLD, { ...atmosphere, wetness: preview?.wetness ?? 0,
+      drawForestWater(ground, world, weather);
+      drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
+      if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions });
       if (life) drawForestMushrooms(ground, life, PET_SIZE);
     },
-    options: { levels: dev?.levels ?? levels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
+    options: { levels: selectedLevels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
   if (dev?.showHero !== false && (walking?.opacity ?? 1) > 0) {
     const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
@@ -141,16 +146,16 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     if (routine) drawForestLifePartner(context, routine, elapsed);
     context.restore();
   }
-  if (walking?.bush && dev?.showHero !== false) drawForestBush(context, TILED_WORLD, images, walking.bush, elapsed, still);
+  if (walking?.bush && dev?.showHero !== false) drawForestBush(context, world, images, walking.bush, elapsed, still);
   if (walking?.homeSleeping && home && dev?.showHero !== false && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
-    showBuildings: dev?.showBuildings, levels: dev?.levels ?? levels };
-  drawForestAtmosphere(context, TILED_WORLD, atmosphere, () => drawForestLighting(context, TILED_WORLD, lighting));
-  drawForestLightEmitters(context, TILED_WORLD, lighting);
-  if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, TILED_WORLD);
-  if (WORLD_DEV_ENABLED && preview?.livingDebug) drawLivingWorldDebug(context, TILED_WORLD, preview.livingDebug);
+    showBuildings: dev?.showBuildings, levels: selectedLevels };
+  drawForestAtmosphere(context, world, atmosphere, () => drawForestLighting(context, world, lighting));
+  drawForestLightEmitters(context, world, lighting);
+  if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, world);
+  if (WORLD_DEV_ENABLED && preview?.livingDebug) drawLivingWorldDebug(context, world, preview.livingDebug);
   context.restore();
 }
 
@@ -161,6 +166,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const ctx = context;
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
+  let world = previewWorldScene(TILED_WORLD, dev?.levels ?? levels);
   let visuals = initialVisuals, requestedKey: string | null = null, artworkVersion = 0;
   let unsubscribe = () => {};
   let frame = 0, previous = 0;
@@ -171,15 +177,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let session = connect();
   let state = session.state;
 
-  function connect() {
-    const connected = connectForestSession(options.presenceKey, TILED_WORLD, options.view ?? "circle",
-      Number.isFinite(options.serverNow) ? options.serverNow! : Date.now(), Number(options.dusk), ownerChanged => {
+  function connect(timestamp = Number.isFinite(options.serverNow) ? options.serverNow! : Date.now(), allowPersistence = true) {
+    const connected = connectForestSession(options.presenceKey, world, options.view ?? "circle",
+      timestamp, Number(options.dusk), ownerChanged => {
         if (disposed) return;
         if (ownerChanged) stop();
         if (visible()) draw();
         if (ownerChanged) resume();
-      }, { persistence: !forestPersistenceOverridden(dev, levels) });
-    if (forestPersistenceOverridden(dev, levels)) connected.suspendPersistence();
+      }, { persistence: allowPersistence && !forestPersistenceOverridden(dev, levels) });
+    if (!allowPersistence || forestPersistenceOverridden(dev, levels)) connected.suspendPersistence();
     return connected;
   }
   function clearingMustContinue() {
@@ -191,18 +197,18 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const atmosphere = atmosphereOptions(options, state.timestamp, state.dusk, { state: dev,
       birdElapsed: state.birdStarted === null ? undefined : state.elapsed - state.birdStarted,
       birdSeed: state.birdStarted === null ? undefined : state.birdSeed });
-    const environment = forestAtmosphereState(TILED_WORLD, atmosphere);
-    return forestBirdFrame(TILED_WORLD, { ...atmosphere, elapsed: state.elapsed, dusk: environment.dusk, rain: environment.rain });
+    const environment = forestAtmosphereState(world, atmosphere);
+    return forestBirdFrame(world, { ...atmosphere, elapsed: state.elapsed, dusk: environment.dusk, rain: environment.rain });
   }
   function directorOptions(blocked = false): ForestDirectorOptions {
-    const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
+    const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
     return { autoLife: dev?.autoLife !== false, blocked, dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
       reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale };
   }
   function preview(): NewMapPaintPreview {
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
-    return { state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
+    return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
       fauna: state.fauna, birdFrame: applyBirdReactions(state.birdReactions, birdBase()),
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
@@ -253,14 +259,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       state.dusk += (Number(options.dusk) - state.dusk) * Math.min(1, step * .7);
       if (state.animation) { state.animation.elapsed += step; if (state.animation.elapsed >= REACTION_SECONDS) state.animation = null; }
       state.reaction = Math.max(0, state.reaction - step);
-      const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
+      const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
       advanceForestDirector(state, step, directorOptions(manual));
       const stimulus = state.director.stimulus;
       advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
         ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength }
-        : undefined, TILED_WORLD);
+        : undefined, world);
       if (stimulus) state.lastBirdStimulus = stimulus.id;
       previous = now; session.publish();
     }
@@ -299,6 +305,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function prepareArtwork() {
     const next = visualsFor(dev?.levels ?? levels), urls = artworkUrls(next);
+    const nextWorld = previewWorldScene(TILED_WORLD, dev?.levels ?? levels);
     const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
     if (key === requestedKey) return;
     requestedKey = key;
@@ -310,6 +317,17 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     })).then(images => {
       if (disposed || version !== artworkVersion) return;
       const first = art === null;
+      // Commit artwork and its geometry together; stale/failed loads retain the
+      // previous usable scene, including its navigation and indoor resident.
+      if (world !== nextWorld) {
+        const changed = forestSceneFingerprint(world) !== forestSceneFingerprint(nextWorld);
+        world = nextWorld;
+        if (changed) {
+          const timestamp = state.timestamp;
+          stop(); session.suspendPersistence(); session.release();
+          session = connect(timestamp, false); state = session.state;
+        }
+      }
       art = new Map(images); visuals = next; syncOwner();
       if (WORLD_DEV_ENABLED) worldDevStore.reportArtError(null);
       if (visible()) draw();
@@ -395,8 +413,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const size = PET_SIZE * (dev?.heroScale ?? 1);
       const actor = clearingActivityFrame(state.clearing);
       if (disposed || dev?.showHero === false) return false;
+      const home = world.sites.find(site => site.id === "home");
       if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
-      const bush = actor.bush?.occupied && TILED_WORLD.bushes?.find(item => item.id === actor.bush!.id);
+      const bush = actor.bush?.occupied && world.bushes?.find(item => item.id === actor.bush!.id);
       if (bush && pointInPolygon(point, bush.points)) return true;
       const feetY = actor.y - (actor.lift ?? 0);
       return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
@@ -408,7 +427,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     invite() {}, moveTo() {},
     ambience: () => {
-      const environment = forestAtmosphereState(TILED_WORLD, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
+      const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       return { elapsed: state.elapsed, ecologyTime: reducedMotion(options, dev) ? 0 : state.timestamp / 1000,
         rain: environment.rain, dusk: environment.dusk };
     },

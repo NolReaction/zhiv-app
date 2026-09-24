@@ -40,6 +40,8 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
       ...await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-session.ts"),
+      ...await vite.ssrLoadModule("/features/world/tiled/preview-state.ts"),
+      ...await vite.ssrLoadModule("/features/world/navigation.ts"),
       ...await vite.ssrLoadModule("/features/world/clearing-activity.ts"),
     };
   } finally { await vite.close(); }
@@ -649,6 +651,62 @@ test("development building levels load only selected artwork and reject stale an
     assert.equal(env.requests.length, 5, "invalid or unauthored states never load artwork");
     worldDevStore.reset(); await flush(); assert.equal(paintedBuilding(), first); assert.equal(worldDevStore.getSnapshot().artError, null);
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("building geometry switches with loaded art and both cameras share the new doorway and collision", async () => {
+  const shift = offset => ({
+    bounds: { ...clearingHome.bounds, x: clearingHome.bounds.x + offset },
+    anchor: { ...clearingHome.anchor, x: clearingHome.anchor.x + offset },
+    entry: { ...clearingHome.entry, x: clearingHome.entry.x + offset },
+    doorway: { ...clearingHome.doorway, x: clearingHome.doorway.x + offset },
+    hitArea: clearingHome.hitArea.map(point => ({ ...point, x: point.x + offset })),
+    collision: clearingHome.collision.map(point => ({ ...point, x: point.x + offset })),
+  });
+  const site = { ...clearingHome, states: [1, 2, 3].map(level => ({ level, label: `Level ${level}`,
+    image: `/moving-home-${level}.webp`, geometry: shift((level - 1) * 50) })) };
+  const navigation = { ...livingNavigation, areas: [{ id: "clearing", points: [
+    { x: 570, y: 610 }, { x: 780, y: 610 }, { x: 780, y: 735 }, { x: 570, y: 735 },
+  ] }] };
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD, previewWorldScene, isWalkable } = await modules({ sites: [site], navigation });
+  const env = browser(), scenes = [], probes = [];
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, presenceKey: "moving-home-account" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    env.finish(); const first = env.finish(); await flush();
+    const probe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { home: 1 }), "circle", 0, 0, () => {}); probes.push(probe);
+    const building = scene => {
+      const surface = env.surface(); scene.paintWorld(surface.context);
+      return surface.calls.findLast(call => call.method === "drawImage" && call.args[0] instanceof Image && call.args.length === 5).args;
+    };
+    worldDevStore.patch({ levels: { home: 2 } });
+    assert.deepEqual(building(circle), [first, 620, 580, 80, 70], "pending artwork keeps its old bounds");
+    const second = env.finishPath("/moving-home-2.webp"); await flush();
+    const current = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { home: 2 }), "circle", 0, 0, () => {}); probes.push(current);
+    assert.notEqual(current.state, probe.state, "old paths and residence cannot survive changed geometry");
+    assert.equal(current.state.memory.enabled, false, "DEV geometry cannot persist a test residence");
+    assert.deepEqual(current.state.clearing.interactions.home.entry, shift(50).entry);
+    assert.equal(isWalkable(current.state.clearing.navigation, { x: 650, y: 630 }), true, "old collision is removed");
+    assert.equal(isWalkable(current.state.clearing.navigation, { x: 700, y: 630 }), false, "new footprint blocks navigation");
+    assert.deepEqual(building(circle), [second, 670, 580, 80, 70]);
+    assert.deepEqual(building(world), building(circle));
+    assert.equal(env.frames.size, 1, "the two cameras share one replacement simulation");
+    worldDevStore.triggerLife("home-sleep");
+    const clock = sceneClock(env);
+    clock.until(() => current.state.clearing.stage === "home-sleep", "the new entrance is reachable", 600);
+    assert.deepEqual(circle.position(), { x: 700, y: 640 - fixture.actor.size / 2 });
+    assert.deepEqual(world.position(), circle.position());
+    const oldHit = circlePoint({ x: 630, y: 610 }), newHit = circlePoint({ x: 730, y: 610 });
+    assert.equal(circle.hitPet(oldHit.x, oldHit.y), false);
+    assert.equal(circle.hitPet(newHit.x, newHit.y), true, "sleeping house uses its new hit area");
+    worldDevStore.patch({ levels: { home: 3 } }); env.finishPath("/moving-home-3.webp", true); await flush();
+    assert.deepEqual(building(circle), [second, 670, 580, 80, 70], "failed art keeps the complete previous geometry");
+    assert.equal(circle.hitPet(newHit.x, newHit.y), true);
+    circle.notice();
+    clock.until(() => current.state.clearing.stage !== "home-sleep", "the replacement resident can wake");
+  } finally { probes.forEach(probe => probe.release()); scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
 });
 
 test("full map responds to shared paused edits and camera commands and releases dev subscriptions", async () => {

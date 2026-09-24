@@ -1,6 +1,6 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
 import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
-import { previewSiteAt, previewSiteVisual } from "./preview-state";
+import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
 
@@ -123,7 +123,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
 export async function createFixedWorldRenderer(
   worldCanvas: HTMLCanvasElement,
   circleCanvas: HTMLCanvasElement,
-  scene: FixedWorldScene,
+  sourceScene: FixedWorldScene,
   initial: FixedWorldRenderOptions,
   callbacks: FixedWorldRenderCallbacks = {},
   signal?: AbortSignal,
@@ -134,6 +134,7 @@ export async function createFixedWorldRenderer(
   if (!worldContext || !circleContext) throw new Error("Canvas 2D недоступен");
   const worldCtx = worldContext, circleCtx = circleContext;
   let options = { ...initial, levels: { ...initial.levels } }, disposed = false, ready = false;
+  let scene = previewWorldScene(sourceScene, options.levels);
   let worldView: Viewport = { width: 1, height: 1 }, circleView: Viewport = { width: 1, height: 1 };
   let camera: Camera = { x: scene.width / 2, y: scene.height / 2, zoom: 1 };
   let framing = "world", elapsed = 0, raf = 0, previous = 0, lastPaint = 0, frameNumber = 0;
@@ -144,7 +145,7 @@ export async function createFixedWorldRenderer(
   const imagePromises = new Map<string, Promise<HTMLImageElement>>(), images = new Map<string, HTMLImageElement>();
   const cancelImages = new Set<() => void>();
   let visuals: Record<string, SiteVisual> = {}, requestVersion = 0, requestedKey: string | null = null;
-  const route = createPreviewRoute(scene);
+  let route = createPreviewRoute(scene);
   let routeStatusKey = "";
   const reportStatus = (status: FixedWorldRenderStatus) => {
     for (const canvas of [worldCanvas, circleCanvas]) {
@@ -209,7 +210,8 @@ export async function createFixedWorldRenderer(
     return promise;
   }
   async function prepareImages(force = false) {
-    const next = Object.fromEntries(scene.sites.map(site => [site.id, previewSiteVisual(site, options.levels)]));
+    const nextScene = previewWorldScene(sourceScene, options.levels);
+    const next = Object.fromEntries(nextScene.sites.map(site => [site.id, previewSiteVisual(site, options.levels)]));
     const urls = [...new Set([...scene.terrain.map(image => image.image), ...Object.values(next).map(visual => visual.image)])];
     const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
     if (!force && key === requestedKey) return;
@@ -220,6 +222,13 @@ export async function createFixedWorldRenderer(
       await Promise.all(urls.map(loadImage));
       if (disposed || version !== requestVersion) return;
       // A complete requested state replaces the previous complete frame atomically.
+      if (scene !== nextScene) {
+        const pathId = route.status().pathId;
+        scene = nextScene;
+        route = createPreviewRoute(scene);
+        route.select(pathId);
+        frameCamera();
+      }
       visuals = next; ready = true;
       reportStatus({ loading: false, error: null }); draw(); animate();
     } catch (error) {

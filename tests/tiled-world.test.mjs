@@ -389,7 +389,128 @@ test("building folders split images, anchors and contours without changing the e
   assert.deepEqual(await compile(), before, "folder names do not introduce levels or change siteId ownership");
   assert.deepEqual(map, authored, "grouping never rewrites coordinates or source objects");
   map.layers[1].layers[1].layers.push(objectLayer(10, "Another level image", [{ ...clone(image), id: 20 }]));
-  await assert.rejects(compile(), /site kiln has more than one preview object/, "levels remain a tile catalog, not simultaneous site copies");
+  await assert.rejects(compile(), /site kiln has more than one preview object for level 0/, "a level still has exactly one placed image");
+});
+
+function separateBuildingLevels(map) {
+  const [ground, image, anchor, entry, light, hitArea, collision, focus, route] = map.layers[0].objects;
+  const baseMarkers = [anchor, entry, light, hitArea, collision];
+  const nextImage = { ...clone(image), id: 20, gid: 3, x: image.x + 25,
+    properties: props({ role: "site", initialLevel: 1 }) };
+  const nextMarkers = baseMarkers.map(object => ({ ...clone(object), id: object.id + 20, x: object.x + 25 }));
+  map.layers = [
+    objectLayer(1, "Terrain", [ground]),
+    groupLayer(2, "Buildings", [
+      groupLayer(3, "Any base folder name", [
+        objectLayer(4, "Anchors", baseMarkers),
+        groupLayer(5, "Artwork", [objectLayer(6, "Image", [image])]),
+      ]),
+      groupLayer(7, "Any next folder name", [
+        groupLayer(8, "Geometry", [objectLayer(9, "Markers", nextMarkers)]),
+        objectLayer(10, "Image", [nextImage]),
+      ]),
+    ]),
+    objectLayer(11, "Camera and routes", [focus, route]),
+  ];
+  return { image, nextImage, baseMarkers, nextMarkers };
+}
+
+test("grouped levels inherit tile identity and switch their own bounds and marker geometry", async t => {
+  const { map, compile } = await fixture(t);
+  const { image, nextImage, nextMarkers } = separateBuildingLevels(map);
+  const authored = clone(map);
+  const site = (await compile()).sites[0];
+  assert.equal(site.label, "Pottery kiln", "the lowest placed level owns the building label");
+  assert.equal(site.initialLevel, 1);
+  assert.deepEqual(site.bounds, { x: 45, y: 30, width: 20, height: 30 });
+  assert.deepEqual(site.anchor, { x: 55, y: 50 });
+  assert.deepEqual(site.entry, { x: 55, y: 60 });
+  assert.deepEqual(site.states[0].geometry.bounds, { x: 20, y: 30, width: 20, height: 30 });
+  assert.deepEqual(site.states[0].geometry.anchor, { x: 30, y: 50 });
+  assert.deepEqual(site.states[1].geometry.collision, nextMarkers[4].polygon.map(point => ({ x: nextMarkers[4].x + point.x, y: nextMarkers[4].y + point.y })));
+  assert.deepEqual(site.states[1].geometry.light, { x: 57, y: 40 });
+  assert.deepEqual(map, authored, "inherited properties are never copied back into authoring data");
+  setProp(image, "initialLevel", 0);
+  setProp(nextImage, "initialLevel", 1);
+  map.layers[1].layers.reverse();
+  const reordered = (await compile()).sites[0];
+  assert.equal(reordered.initialLevel, 0, "the lowest placed level controls startup regardless of folder order");
+  assert.deepEqual(reordered.bounds, site.states[0].geometry.bounds);
+});
+
+test("each placed level may have its own image aspect and scale while unplaced variants retain legacy checks", async t => {
+  const { map, compile, writeImage } = await fixture(t);
+  const { nextImage } = separateBuildingLevels(map);
+  await writeImage("kiln-1.webp", 80, 80, "#a8693b");
+  map.tilesets[0].tiles[2].imageheight = 80;
+  nextImage.width = 30;
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.states[1].geometry.bounds, { x: 45, y: 30, width: 30, height: 30 });
+  map.layers[1].layers.splice(1, 1);
+  await assert.rejects(compile(), /object aspect ratio must match its image/, "a catalog-only image must fit the shared placement");
+});
+
+test("unfinished level folders fall back to the base geometry and explicit levels work outside folders", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  map.layers[1].layers[1].layers[0].layers[0].objects = [];
+  let site = (await compile()).sites[0];
+  assert.deepEqual(site.states[1].geometry.anchor, site.states[0].geometry.anchor);
+  assert.deepEqual(site.states[1].geometry.collision, site.states[0].geometry.collision);
+  assert.equal(site.states[1].geometry.bounds.x, 45, "the new image retains its authored bounds during gradual tracing");
+  const entry = nextMarkers[1];
+  entry.properties.push(...props({ level: 1 }));
+  map.layers[2].objects.push(entry);
+  site = (await compile()).sites[0];
+  assert.deepEqual(site.states[1].geometry.entry, { x: 55, y: 60 });
+  assert.deepEqual(site.states[0].geometry.entry, { x: 30, y: 60 });
+});
+
+test("explicit per-level markers can specialize a legacy single-placement catalog", async t => {
+  const { map, compile } = await fixture(t);
+  const entry = { ...clone(map.layers[0].objects[3]), id: 20, x: 34, properties: props({ role: "entry", siteId: "kiln", level: 1 }) };
+  map.layers[0].objects.push(entry);
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.states[0].geometry.entry, { x: 30, y: 60 });
+  assert.deepEqual(site.states[1].geometry.entry, { x: 34, y: 60 });
+  assert.deepEqual(site.entry, { x: 34, y: 60 });
+});
+
+test("per-level geometry rejects duplicate markers, mismatched tiles, unknown levels and displaced doorways", async t => {
+  const { map, compile } = await fixture(t);
+  separateBuildingLevels(map);
+  const nextLayer = value => value.layers[1].layers[1].layers[0].layers[0];
+  const nextImage = value => value.layers[1].layers[1].layers[1].objects[0];
+  const cases = [
+    ["duplicate level image", value => { nextLayer(value).objects.push({ ...clone(nextImage(value)), id: 50 }); }, /more than one preview object for level 1/],
+    ["duplicate marker within level", value => { nextLayer(value).objects.push({ ...clone(nextLayer(value).objects[0]), id: 50 }); }, /duplicate anchor for site kiln, level 1/],
+    ["explicit unknown level", value => { nextLayer(value).objects[0].properties.push(...props({ level: 7 })); }, /marker references unknown level 7 for site kiln/],
+    ["explicit mismatched tile level", value => { nextImage(value).properties.push(...props({ level: 0 })); }, /properties.level: expected 1/],
+    ["explicit mismatched tile site", value => { nextImage(value).properties.push(...props({ siteId: "home" })); }, /gid siteId: expected "home"/],
+    ["doorway outside its level bounds", value => { nextLayer(value).objects.push({ id: 50, x: 32, y: 52, point: true, properties: props({ role: "doorway", siteId: "kiln" }) }); }, /doorway must be inside its image bounds for level 1/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
+test("navigation spawn and interests must remain clear of every building level", async t => {
+  const { map, compile } = await fixture(t);
+  const { image } = separateBuildingLevels(map);
+  setProp(image, "initialLevel", 0);
+  const actor = { ...spawn(), id: 50, x: 50, y: 50 };
+  map.layers.push(objectLayer(12, "Actors", [actor]), objectLayer(13, "WalkAreas", [{ id: 51, name: "clearing", x: 0, y: 0,
+    polygon: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }], properties: props({ role: "walk-area" }) }]));
+  await assert.rejects(compile(), /navigation spawn: position must not overlap/, "inactive upgrades must not cover the fallback spawn");
+  actor.y = 65;
+  await compile();
+  map.layers.push(objectLayer(14, "PointsOfInterest", [{ id: 52, name: "look-here", x: 50, y: 50, point: true,
+    properties: props({ role: "interest", activity: "look" }) }]));
+  await assert.rejects(compile(), /navigation interest look-here: position must not overlap/);
 });
 
 test("nested folders retain authored depth-first draw order and the terrain-before-sites guard", async t => {
@@ -900,9 +1021,21 @@ test("committed authoring exports identically and --check refuses stale output w
   assert.equal(scene.height, source.height);
   assert.deepEqual(scene.terrain.map(({ id, bounds }) => ({ id, bounds })),
     withRole("terrain").map(object => ({ id: object.name, bounds: rect(object) })));
-  assert.deepEqual(scene.sites.map(({ id, label, bounds, initialLevel }) => ({ id, label, bounds, initialLevel })),
-    withRole("site").map(object => ({ id: property(object, "siteId"), label: property(object, "label"),
-      bounds: rect(object), initialLevel: property(object, "initialLevel") })));
+  const tileFor = object => source.tilesets.flatMap(tileset => tileset.tiles.map(tile => ({ gid: tileset.firstgid + tile.id, tile }))).find(entry => entry.gid === object.gid)?.tile;
+  const placedSites = withRole("site");
+  for (const site of scene.sites) {
+    const placements = placedSites.filter(object => (property(object, "siteId") ?? property(tileFor(object), "siteId")) === site.id)
+      .sort((a, b) => property(tileFor(a), "level") - property(tileFor(b), "level"));
+    const base = placements[0], selected = placements.find(object => property(tileFor(object), "level") === site.initialLevel) ?? base;
+    assert.ok(base);
+    assert.equal(site.label, property(base, "label") ?? property(tileFor(base), "label"));
+    assert.equal(site.initialLevel, property(base, "initialLevel") ?? property(tileFor(base), "level"));
+    assert.deepEqual(site.bounds, rect(selected));
+    if (placements.length > 1) for (const placed of placements) {
+      assert.deepEqual(site.states.find(state => state.level === property(tileFor(placed), "level")).geometry.bounds, rect(placed));
+    }
+  }
+  assert.equal(scene.sites.length, new Set(placedSites.map(object => property(object, "siteId") ?? property(tileFor(object), "siteId"))).size);
   assert.deepEqual(scene.paths, withRole("path").map(object => ({ id: object.name,
     points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
     ...Object.fromEntries(["siteId", "behavior", "activity", "pauseSeconds", "bushId"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));

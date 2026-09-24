@@ -129,7 +129,7 @@ function canvasEnvironment(t) {
   const frames = new Map(); let nextFrame = 0;
   const context = () => {
     const calls = [];
-    return new Proxy({ calls, drawImage() {}, createRadialGradient: () => ({ addColorStop() {} }),
+    return new Proxy({ calls, drawImage: (...args) => calls.push({ method: "drawImage", args }), createRadialGradient: () => ({ addColorStop() {} }),
       bezierCurveTo: (...args) => calls.push({ method: "bezierCurveTo", args }),
     }, { get: (target, key) => key in target ? target[key] : () => {} });
   };
@@ -157,6 +157,44 @@ function canvasEnvironment(t) {
   } };
 }
 const options = { levels: {}, night: false, debug: false, selectedSiteId: null, reducedMotion: false };
+
+test("loaded level atomically changes image bounds and revalidates routes in both preview views", async t => {
+  const env = canvasEnvironment(t);
+  let release;
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: class {
+    naturalWidth = 1; naturalHeight = 1;
+    set src(value) {
+      if (value === "/home-2.png") release = () => this.onload?.();
+      else queueMicrotask(() => this.onload?.());
+    }
+    removeAttribute() {}
+  } });
+  t.after(() => descriptor ? Object.defineProperty(globalThis, "Image", descriptor) : delete globalThis.Image);
+  const base = { bounds: { x: 300, y: 300, width: 40, height: 40 }, anchor: { x: 320, y: 330 },
+    entry: { x: 320, y: 345 }, hitArea: [], collision: [] };
+  const changed = { ...base, bounds: { x: 80, y: 0, width: 60, height: 60 }, entry: { x: 70, y: 20 },
+    collision: [{ x: 80, y: 10 }, { x: 100, y: 10 }, { x: 100, y: 30 }, { x: 80, y: 30 }] };
+  const authored = { ...scene, sites: [{ id: "home", label: "Home", ...base, initialLevel: 1,
+    states: [{ level: 1, label: "1", image: "/home-1.png", geometry: base },
+      { level: 2, label: "2", image: "/home-2.png", geometry: changed }] }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, authored, options);
+  t.after(() => renderer.dispose());
+  assert.equal(renderer.selectPath("river-bank"), true);
+  renderer.update({ ...options, levels: { home: 2 } });
+  assert.equal(renderer.selectPath("river-bank"), true, "pending art preserves old navigation");
+  assert.equal(env.world.dataset.renderedLevels, '{"home":1}');
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(renderer.selectPath("river-bank"), false, "new collision invalidates old route");
+  for (const canvas of [env.world, env.circle]) {
+    assert.equal(canvas.dataset.renderedLevels, '{"home":2}');
+    const image = canvas.context.calls.filter(call => call.method === "drawImage" && call.args[0] instanceof Image).at(-1);
+    assert.deepEqual(image.args.slice(-4), [80, 0, 60, 60]);
+    assert.equal(canvas.dataset.actorMoving, "false");
+  }
+  renderer.dispose();
+});
 
 test("renderer stays idle by default, settles on reduced motion, and cancels pending animation on reset/dispose", async t => {
   const env = canvasEnvironment(t), statuses = [];

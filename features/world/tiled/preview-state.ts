@@ -1,6 +1,6 @@
 import type { FixedSite, FixedWorldScene, PreviewLevels, WorldPoint } from "./types";
 
-/** Preview state contains levels only. Coordinates always belong to the authored scene. */
+/** Preview state contains levels only; each level may select its own authored geometry. */
 export function initialPreviewLevels(scene: FixedWorldScene): PreviewLevels {
   return Object.fromEntries(scene.sites.map(site => [site.id, site.initialLevel]));
 }
@@ -9,6 +9,26 @@ export function previewSiteVisual(site: FixedSite, levels: PreviewLevels) {
   return site.states.find(state => state.level === levels[site.id])
     ?? site.states.find(state => state.level === site.initialLevel)
     ?? site.states[0];
+}
+
+const sceneCache = new WeakMap<FixedWorldScene, Map<string, FixedWorldScene>>();
+
+/** One effective scene feeds drawing, hit testing and navigation without mutating the map. */
+export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels): FixedWorldScene {
+  const states = scene.sites.map(site => previewSiteVisual(site, levels));
+  if (!states.some(state => state?.geometry)) return scene;
+  let cache = sceneCache.get(scene);
+  if (!cache) { cache = new Map(); sceneCache.set(scene, cache); }
+  const key = JSON.stringify(states.map(state => state?.level));
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const effective = { ...scene, sites: scene.sites.map((site, index) => {
+    const geometry = states[index]?.geometry;
+    return geometry ? { ...site, doorway: undefined, light: undefined, ...geometry } : site;
+  }) };
+  if (cache.size >= 32) cache.delete(cache.keys().next().value!);
+  cache.set(key, effective);
+  return effective;
 }
 
 export function setPreviewLevel(scene: FixedWorldScene, levels: PreviewLevels, siteId: string, level: number): PreviewLevels {

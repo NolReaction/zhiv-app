@@ -2,10 +2,7 @@
 export type WorldPoint = { x: number; y: number };
 export type WorldBounds = WorldPoint & { width: number; height: number };
 export type WorldImage = { id: string; image: string; bounds: WorldBounds };
-export type SiteVisual = { level: number; label: string; image: string };
-export type FixedSite = {
-  id: string;
-  label: string;
+export type SiteGeometry = {
   bounds: WorldBounds;
   anchor: WorldPoint;
   entry: WorldPoint;
@@ -14,6 +11,11 @@ export type FixedSite = {
   hitArea: WorldPoint[];
   collision: WorldPoint[];
   light?: WorldPoint;
+};
+export type SiteVisual = { level: number; label: string; image: string; geometry?: SiteGeometry };
+export type FixedSite = SiteGeometry & {
+  id: string;
+  label: string;
   initialLevel: number;
   states: SiteVisual[];
 };

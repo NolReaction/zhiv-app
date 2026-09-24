@@ -58,7 +58,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -3535,7 +3535,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7166,7 +7166,7 @@
          "name":"WaterExclusions",
          "opacity":1,
          "type":"group",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7201,7 +7201,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7308,7 +7308,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7663,7 +7663,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7912,7 +7912,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -8078,7 +8078,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -8271,7 +8271,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -8804,7 +8804,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -9337,7 +9337,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -9367,7 +9367,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -9534,7 +9534,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -10006,7 +10006,7 @@
                  "name":"Home-lvl-1",
                  "opacity":1,
                  "type":"group",
-                 "visible":false,
+                 "visible":true,
                  "x":0,
                  "y":0
                 }, 
@@ -10014,7 +10014,7 @@
                  "id":29,
                  "layers":[
                         {
-                         "draworder":"topdown",
+                         "draworder":"index",
                          "id":33,
                          "name":"Home-image",
                          "objects":[
@@ -10049,7 +10049,7 @@
                          "y":0
                         }, 
                         {
-                         "draworder":"topdown",
+                         "draworder":"index",
                          "id":32,
                          "name":"Home-tracing",
                          "objects":[],
@@ -10060,7 +10060,7 @@
                          "y":0
                         }, 
                         {
-                         "draworder":"topdown",
+                         "draworder":"index",
                          "id":31,
                          "name":"Home-anchors",
                          "objects":[],
