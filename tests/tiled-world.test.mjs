@@ -476,6 +476,49 @@ test("explicit per-level markers can specialize a legacy single-placement catalo
   assert.deepEqual(site.entry, { x: 34, y: 60 });
 });
 
+test("building windows and chimneys follow their level folder without appearing on earlier levels", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  nextMarkers.push({ id: 50, x: 50, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 51, x: 55, y: 45, polygon: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 8 }, { x: 0, y: 8 }],
+      properties: props({ role: "window", siteId: "kiln" }) });
+  const site = (await compile()).sites[0];
+  assert.equal(site.states[0].geometry.chimney, undefined);
+  assert.equal(site.states[0].geometry.window, undefined);
+  assert.deepEqual(site.states[1].geometry.chimney, { x: 50, y: 32 });
+  assert.deepEqual(site.states[1].geometry.window, [{ x: 55, y: 45 }, { x: 60, y: 45 }, { x: 60, y: 53 }, { x: 55, y: 53 }]);
+  assert.deepEqual(site.chimney, site.states[1].geometry.chimney);
+  assert.deepEqual(site.window, site.states[1].geometry.window);
+});
+
+test("shared building details remain compatible with a single-placement catalog", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers[0].objects.push({ id: 50, x: 25, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 51, x: 25, y: 40, polygon: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 8 }, { x: 0, y: 8 }],
+      properties: props({ role: "window", siteId: "kiln" }) });
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.chimney, { x: 25, y: 32 });
+  assert.equal(site.window.length, 4);
+  assert.equal(site.states[0].geometry, undefined, "legacy scenes need no geometry duplication");
+});
+
+test("building details reject wrong shapes and positions outside the selected image", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  nextMarkers.push({ id: 50, x: 50, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 51, x: 55, y: 45, polygon: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 8 }, { x: 0, y: 8 }],
+      properties: props({ role: "window", siteId: "kiln" }) });
+  for (const [name, change, error] of [
+    ["chimney outside", objects => { objects.at(-2).x = 44; }, /chimney must be inside its image bounds for level 1/],
+    ["window outside", objects => { objects.at(-1).polygon[1].x = 11; }, /window must be inside its image bounds for level 1/],
+    ["window requires contour", objects => { delete objects.at(-1).polygon; objects.at(-1).point = true; }, /shape: expected "polygon"/],
+    ["chimney requires point", objects => { delete objects.at(-2).point; }, /shape: expected "point"/],
+  ]) {
+    const invalid = clone(map); change(invalid.layers[1].layers[1].layers[0].layers[0].objects);
+    await assert.rejects(compile(invalid), error, name);
+  }
+});
+
 test("per-level geometry rejects duplicate markers, mismatched tiles, unknown levels and displaced doorways", async t => {
   const { map, compile } = await fixture(t);
   separateBuildingLevels(map);

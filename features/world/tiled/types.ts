@@ -11,6 +11,9 @@ export type SiteGeometry = {
   hitArea: WorldPoint[];
   collision: WorldPoint[];
   light?: WorldPoint;
+  /** Chimney mouth and window glass contour, authored separately for each visual level. */
+  chimney?: WorldPoint;
+  window?: WorldPoint[];
 };
 export type SiteVisual = { level: number; label: string; image: string; geometry?: SiteGeometry };
 export type FixedSite = SiteGeometry & {

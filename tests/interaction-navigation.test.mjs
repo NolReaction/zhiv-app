@@ -8,8 +8,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { compileWorldInteractions, findInteractionApproach } = await vite.ssrLoadModule("/features/world/interaction-navigation.ts");
-const { createWorldNavigation, canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
+const { createWorldNavigation, canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const rect = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
 const scene = () => ({ ...structuredClone(TILED_WORLD), paths: [] });
@@ -77,4 +78,29 @@ test("disconnected grass cannot reach otherwise valid interactions", () => {
   assert.equal(isWalkable(nav, start), true);
   assert.equal(findInteractionApproach(nav, start, compiled.home), null);
   assert.equal(findInteractionApproach(nav, start, compiled.bushes[0]), null);
+});
+
+test("all five authored homes are reachable from the clearing and their docks can leave for every interest", () => {
+  for (const level of [1, 2, 3, 4, 5]) {
+    const map = previewWorldScene(TILED_WORLD, { home: level }), nav = createWorldNavigation(map);
+    const { home, diagnostics } = compileWorldInteractions(map);
+    assert.ok(home, `level ${level}: ${JSON.stringify(diagnostics)}`);
+    const origins = [map.actor.spawn, ...map.navigation.interests.map(interest => interest.position)];
+    // Include both sides of the clearing and off-centre positions near its rocks.
+    for (let id = 0; id < nav.grid.walkable.length; id += 7) {
+      if (nav.grid.walkable[id]) origins.push({ x: nav.grid.origin.x + id % nav.grid.columns * nav.cellSize,
+        y: nav.grid.origin.y + Math.floor(id / nav.grid.columns) * nav.cellSize });
+    }
+    for (const origin of origins) {
+      const approach = findInteractionApproach(nav, origin, home);
+      assert.ok(approach, `level ${level}, from ${JSON.stringify(origin)}: ${nav.stats.lastSearch?.reason}`);
+      assert.deepEqual(approach.points.at(-1), home.entry);
+      const dockIndex = approach.points.findIndex(point => distance(point, home.dock) < 1e-7);
+      assert.ok(dockIndex >= 0);
+      for (let index = 1; index <= dockIndex; index++) assert.ok(canTraverse(nav, approach.points[index - 1], approach.points[index]));
+      const departure = findWorldPath(nav, home.dock, origin);
+      assert.ok(departure, `level ${level} must leave its own porch`);
+      for (let index = 1; index < departure.length; index++) assert.ok(canTraverse(nav, departure[index - 1], departure[index]));
+    }
+  }
 });

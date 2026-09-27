@@ -279,3 +279,73 @@ test("night torches animate while the actor stands still and stop on pause, redu
   lateCallback(1000);
   assert.equal(env.world.dataset.frame, finalFrame, "a queued light tick cannot repaint a disposed preview");
 });
+
+test("daytime chimneys share one clock across both views and stop when paused, hidden, reduced, downgraded or disposed", async t => {
+  const env = canvasEnvironment(t);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: class {
+    naturalWidth = 1; naturalHeight = 1;
+    set src(value) { queueMicrotask(() => this.onload?.()); }
+    removeAttribute() {}
+  } });
+  t.after(() => descriptor ? Object.defineProperty(globalThis, "Image", descriptor) : delete globalThis.Image);
+  const base = { bounds: { x: 205, y: 205, width: 145, height: 145 }, anchor: { x: 275, y: 335 },
+    entry: { x: 250, y: 355 }, hitArea: [], collision: [] };
+  const upgraded = { ...base, chimney: { x: 230, y: 225 } };
+  const authored = { ...scene, sites: [{ id: "home", label: "Home", ...upgraded, initialLevel: 5,
+    states: [{ level: 1, label: "1", image: "/chimney-test-home-1.png", geometry: base },
+      { level: 5, label: "5", image: "/chimney-test-home-5.png", geometry: upgraded }] }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, authored, options);
+  t.after(() => renderer.dispose());
+  assert.equal(env.world.dataset.night, "false");
+  assert.equal(env.frames.size, 1, "authored chimney starts the daytime clock without walking or flickering lights");
+  const firstPuffs = env.world.context.calls.filter(call => call.method === "drawImage").slice(-6);
+  assert.equal(firstPuffs.length, 6);
+  const texture = firstPuffs[0].args[0];
+  assert.equal(texture.width, 64); assert.equal(texture.height, 64);
+  const puffs = canvas => canvas.context.calls.filter(call => call.method === "drawImage" && call.args[0] === texture)
+    .slice(-6).map(call => call.args.slice(1));
+  const initialPuffs = puffs(env.world), initialFrame = env.world.dataset.frame;
+  env.tick(100); env.tick(180);
+  assert.notEqual(env.world.dataset.frame, initialFrame);
+  assert.notDeepEqual(puffs(env.world), initialPuffs, "the clock advances actual smoke geometry");
+  assert.deepEqual(puffs(env.circle), puffs(env.world), "world and circle consume identical elapsed time");
+  assert.equal(env.world.dataset.actorMoving, "false");
+  assert.equal(env.world.dataset.actorX, "250");
+  assert.equal(env.world.dataset.actorY, "300");
+
+  for (const stopped of [{ ...options, paused: true }, { ...options, reducedMotion: true }, { ...options, showBuildings: false }]) {
+    env.world.context.calls.length = 0;
+    renderer.update(stopped);
+    const frame = env.world.dataset.frame, stillPuffs = puffs(env.world);
+    assert.equal(env.frames.size, 0);
+    if (stopped.reducedMotion || stopped.showBuildings === false) assert.deepEqual(stillPuffs, [], "disabled smoke is not drawn");
+    env.tick(500);
+    assert.equal(env.world.dataset.frame, frame);
+    assert.deepEqual(puffs(env.world), stillPuffs);
+    renderer.update(options);
+    assert.equal(env.frames.size, 1, "resuming smoke creates exactly one animation loop");
+  }
+
+  document.hidden = true; document.dispatchEvent(new Event("visibilitychange"));
+  const hiddenFrame = env.world.dataset.frame;
+  assert.equal(env.frames.size, 0);
+  env.tick(600); assert.equal(env.world.dataset.frame, hiddenFrame);
+  document.hidden = false; document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(env.frames.size, 1);
+
+  renderer.update({ ...options, levels: { home: 1 } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(env.world.dataset.renderedLevels, '{"home":1}');
+  assert.equal(env.frames.size, 0, "downgrading to geometry without a chimney releases the animation loop");
+  const lowerFrame = env.world.dataset.frame;
+  env.tick(700); assert.equal(env.world.dataset.frame, lowerFrame);
+  renderer.update({ ...options, levels: { home: 5 } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(env.frames.size, 1);
+  const lateCallback = [...env.frames.values()][0], finalFrame = env.world.dataset.frame;
+  renderer.dispose();
+  assert.equal(env.frames.size, 0);
+  lateCallback(1000);
+  assert.equal(env.world.dataset.frame, finalFrame, "a queued smoke tick cannot repaint a disposed preview");
+});

@@ -1,4 +1,5 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
+import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
 import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
 import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
@@ -32,6 +33,8 @@ export type PaintFrame = {
   options: FixedWorldRenderOptions;
   actor: PreviewActor | null;
   elapsed?: number;
+  /** Ambient night amount when the main scene applies lighting in a later pass. */
+  dusk?: number;
   /** Ground effects belong above terrain and below all buildings and actors. */
   paintGround?: (context: CanvasRenderingContext2D) => void;
 };
@@ -68,7 +71,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
   for (const site of frame.options.showBuildings === false ? [] : scene.sites) {
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {
-      if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image);
+      if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image, frame.dusk ?? Number(frame.options.night));
       ctx.drawImage(image, site.bounds.x, site.bounds.y, site.bounds.width, site.bounds.height);
     }
   }
@@ -246,7 +249,12 @@ export async function createFixedWorldRenderer(
     worldCtx.fillStyle = "#12231b"; worldCtx.fillRect(0, 0, worldView.width, worldView.height);
     worldCtx.save(); worldCtx.translate(worldView.width / 2, worldView.height / 2);
     worldCtx.scale(camera.zoom, camera.zoom); worldCtx.translate(-camera.x, -camera.y);
-    if (ready) paintFixedWorld(worldCtx, scene, paintFrame); worldCtx.restore();
+    if (ready) {
+      paintFixedWorld(worldCtx, scene, paintFrame);
+      drawBuildingDetails(worldCtx, scene, { night: Number(options.night), elapsed,
+        reducedMotion: options.reducedMotion, showBuildings: options.showBuildings });
+    }
+    worldCtx.restore();
     circleCtx.setTransform(circleCanvas.width / circleView.width, 0, 0, circleCanvas.height / circleView.height, 0, 0);
     circleCtx.clearRect(0, 0, circleView.width, circleView.height);
     circleCtx.save(); circleCtx.beginPath();
@@ -255,7 +263,12 @@ export async function createFixedWorldRenderer(
     const circleZoom = Math.min(circleView.width / scene.focus.width, circleView.height / scene.focus.height);
     circleCtx.translate(circleView.width / 2, circleView.height / 2); circleCtx.scale(circleZoom, circleZoom);
     circleCtx.translate(-scene.focus.x - scene.focus.width / 2, -scene.focus.y - scene.focus.height / 2);
-    if (ready) paintFixedWorld(circleCtx, scene, paintFrame); circleCtx.restore();
+    if (ready) {
+      paintFixedWorld(circleCtx, scene, paintFrame);
+      drawBuildingDetails(circleCtx, scene, { night: Number(options.night), elapsed,
+        reducedMotion: options.reducedMotion, showBuildings: options.showBuildings });
+    }
+    circleCtx.restore();
     const levels = JSON.stringify(Object.fromEntries(Object.entries(visuals).map(([id, visual]) => [id, visual.level])));
     frameNumber++;
     for (const canvas of [worldCanvas, circleCanvas]) {
@@ -270,7 +283,9 @@ export async function createFixedWorldRenderer(
     if (routeStatusKey !== nextRouteStatusKey) { routeStatusKey = nextRouteStatusKey; callbacks.onRouteChange?.(routeStatus); }
     worldCanvas.dataset.cameraX = String(camera.x); worldCanvas.dataset.cameraY = String(camera.y); worldCanvas.dataset.cameraZoom = String(camera.zoom);
   }
-  const moving = () => route.moving() || options.night && forestLightSources(scene, options).some(light => light.intensity > 0 && light.flicker > 0);
+  const moving = () => route.moving()
+    || options.showBuildings !== false && buildingDetailsAnimated(scene)
+    || options.night && forestLightSources(scene, options).some(light => light.intensity > 0 && light.flicker > 0);
   function animate() {
     cancelAnimationFrame(raf); raf = 0; previous = 0; lastPaint = 0;
     if (!disposed && ready && !options.paused && !options.reducedMotion && moving() && canPaint()) raf = requestAnimationFrame(tick);

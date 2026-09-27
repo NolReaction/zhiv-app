@@ -7829,8 +7829,8 @@
                          "y":-26.043232944969
                         }, 
                         {
-                         "x":42.792726582817,
-                         "y":-42.8819035877949
+                         "x":42.981295187158,
+                         "y":-43.044423218732
                         }],
                  "properties":[
                         {
@@ -10787,6 +10787,72 @@
                                  "width":0,
                                  "x":740.915805022157,
                                  "y":646.971935007386
+                                },
+                                {
+                                 "height":0,
+                                 "id":172,
+                                 "name":"home-window",
+                                 "opacity":1,
+                                 "polygon":[
+                                  {
+                                   "x":0.0,
+                                   "y":0.0
+                                  },
+                                  {
+                                   "x":0.0,
+                                   "y":-5.31898
+                                  },
+                                  {
+                                   "x":0.57815,
+                                   "y":-7.74721
+                                  },
+                                  {
+                                   "x":1.73445,
+                                   "y":-9.82855
+                                  },
+                                  {
+                                   "x":3.12201,
+                                   "y":-11.10048
+                                  },
+                                  {
+                                   "x":4.74083,
+                                   "y":-11.79426
+                                  },
+                                  {
+                                   "x":5.89713,
+                                   "y":-11.21611
+                                  },
+                                  {
+                                   "x":6.70654,
+                                   "y":-9.48166
+                                  },
+                                  {
+                                   "x":7.05343,
+                                   "y":-7.63158
+                                  },
+                                  {
+                                   "x":7.05343,
+                                   "y":-2.65949
+                                  }
+                                 ],
+                                 "properties":[
+                                  {
+                                   "name":"role",
+                                   "type":"string",
+                                   "value":"window"
+                                  },
+                                  {
+                                   "name":"siteId",
+                                   "type":"string",
+                                   "value":"home"
+                                  }
+                                 ],
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":703.42346,
+                                 "y":615.37461
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
@@ -11250,6 +11316,72 @@
                                  "width":0,
                                  "x":740.915805022157,
                                  "y":646.971935007386
+                                },
+                                {
+                                 "height":0,
+                                 "id":173,
+                                 "name":"home-window",
+                                 "opacity":1,
+                                 "polygon":[
+                                  {
+                                   "x":0.0,
+                                   "y":0.0
+                                  },
+                                  {
+                                   "x":0.0,
+                                   "y":-5.31898
+                                  },
+                                  {
+                                   "x":0.69378,
+                                   "y":-7.97847
+                                  },
+                                  {
+                                   "x":1.85008,
+                                   "y":-9.82855
+                                  },
+                                  {
+                                   "x":3.35327,
+                                   "y":-10.98485
+                                  },
+                                  {
+                                   "x":4.85646,
+                                   "y":-11.44737
+                                  },
+                                  {
+                                   "x":6.01276,
+                                   "y":-10.86922
+                                  },
+                                  {
+                                   "x":6.59091,
+                                   "y":-9.36603
+                                  },
+                                  {
+                                   "x":6.82217,
+                                   "y":-7.51595
+                                  },
+                                  {
+                                   "x":6.82217,
+                                   "y":-2.77512
+                                  }
+                                 ],
+                                 "properties":[
+                                  {
+                                   "name":"role",
+                                   "type":"string",
+                                   "value":"window"
+                                  },
+                                  {
+                                   "name":"siteId",
+                                   "type":"string",
+                                   "value":"home"
+                                  }
+                                 ],
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":703.65472,
+                                 "y":614.60587
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
@@ -11333,6 +11465,31 @@
                                  "width":0,
                                  "x":683.604135893649,
                                  "y":616.248153618907
+                                },
+                                {
+                                 "height":0,
+                                 "id":174,
+                                 "name":"home-chimney",
+                                 "opacity":1,
+                                 "point":true,
+                                 "properties":[
+                                  {
+                                   "name":"role",
+                                   "type":"string",
+                                   "value":"chimney"
+                                  },
+                                  {
+                                   "name":"siteId",
+                                   "type":"string",
+                                   "value":"home"
+                                  }
+                                 ],
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":660.06221,
+                                 "y":548.81241
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
@@ -11717,6 +11874,72 @@
                                  "width":0,
                                  "x":740.915805022157,
                                  "y":646.971935007386
+                                },
+                                {
+                                 "height":0,
+                                 "id":175,
+                                 "name":"home-window",
+                                 "opacity":1,
+                                 "polygon":[
+                                  {
+                                   "x":0.0,
+                                   "y":0.0
+                                  },
+                                  {
+                                   "x":0.0,
+                                   "y":-5.47368
+                                  },
+                                  {
+                                   "x":0.79824,
+                                   "y":-8.21052
+                                  },
+                                  {
+                                   "x":2.16666,
+                                   "y":-10.26315
+                                  },
+                                  {
+                                   "x":3.87719,
+                                   "y":-11.51754
+                                  },
+                                  {
+                                   "x":5.01754,
+                                   "y":-11.74561
+                                  },
+                                  {
+                                   "x":6.27193,
+                                   "y":-10.83333
+                                  },
+                                  {
+                                   "x":7.07017,
+                                   "y":-9.1228
+                                  },
+                                  {
+                                   "x":7.29824,
+                                   "y":-6.61403
+                                  },
+                                  {
+                                   "x":7.29824,
+                                   "y":-2.39473
+                                  }
+                                 ],
+                                 "properties":[
+                                  {
+                                   "name":"role",
+                                   "type":"string",
+                                   "value":"window"
+                                  },
+                                  {
+                                   "name":"siteId",
+                                   "type":"string",
+                                   "value":"home"
+                                  }
+                                 ],
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":703.48327,
+                                 "y":611.7829
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
@@ -11800,6 +12023,31 @@
                                  "width":0,
                                  "x":683.604135893649,
                                  "y":616.248153618907
+                                },
+                                {
+                                 "height":0,
+                                 "id":176,
+                                 "name":"home-chimney",
+                                 "opacity":1,
+                                 "point":true,
+                                 "properties":[
+                                  {
+                                   "name":"role",
+                                   "type":"string",
+                                   "value":"chimney"
+                                  },
+                                  {
+                                   "name":"siteId",
+                                   "type":"string",
+                                   "value":"home"
+                                  }
+                                 ],
+                                 "rotation":0,
+                                 "type":"",
+                                 "visible":true,
+                                 "width":0,
+                                 "x":659.69379,
+                                 "y":546.4408
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
@@ -11822,7 +12070,7 @@
          "y":0
         }],
  "nextlayerid":45,
- "nextobjectid":172,
+ "nextobjectid":177,
  "orientation":"orthogonal",
  "properties":[
         {

@@ -98,6 +98,32 @@ function failRequest(state: ForestSessionState, reason: string) {
   state.director.reason = reason; state.director.nextDecisionAt = state.director.elapsed + 8;
 }
 
+function interactionFailureReason(state: ForestSessionState, kind: "bush" | "home-sleep") {
+  const { clearing } = state, home = kind === "home-sleep";
+  if (!clearing.navigationEnabled) return home
+    ? "Для этого уровня дома нет подходящего прежнего маршрута — включите свободную полянку"
+    : "Для куста нет подходящего прежнего маршрута — включите свободную полянку";
+  const available = home ? clearing.interactions.home : clearing.interactions.bushes.length > 0;
+  if (!available) {
+    const diagnostic = clearing.interactions.diagnostics.find(item => home ? item.id === "home" : item.id !== "home" && !item.valid);
+    const details: Record<string, string> = {
+      "invalid-doorway": "Проверьте точки entry и doorway: порог слишком длинный или некорректный",
+      "outside-focus": "Вход не помещается в круглый вид вместе с Мохликом",
+      "blocked-doorway": "Подход к порогу пересекает препятствие",
+      "unreachable-door-entry": "Перед входом не хватает доступной земли для опоры Мохлика",
+      "invalid-bush": "Проверьте контур куста и точку hide",
+      "invalid-bush-corridor": "Проверьте расстояние между entry и hide куста",
+      "unreachable-bush-entry": "Перед кустом не хватает доступной земли для опоры Мохлика",
+      "blocked-bush-corridor": "Прыжок в куст пересекает препятствие",
+    };
+    return details[diagnostic?.reason ?? ""] ?? (home ? "У этого уровня дома нет доступного входа" : "Нет куста с доступным входом");
+  }
+  const search = clearing.navigation?.stats.lastSearch;
+  if (search?.reason === "invalid-endpoint") return "Текущая позиция или точка подхода не вмещает опору Мохлика";
+  if (search?.reason === "search-limit") return "Поиск подхода достиг лимита — проверьте разметку проходов";
+  return home ? "Из текущего места нет безопасного пути к дому" : "Из текущего места нет безопасного пути к кусту";
+}
+
 function prepareProp(state: ForestSessionState, kind: "mushroom" | "leaf") {
   const { director, clearing, life } = state, size = clearing.size;
   const objects = kind === "leaf" ? life.leaf ? [{ ...life.leaf, id: "leaf" }] : []
@@ -133,13 +159,14 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
     releaseClearingPoint(clearing);
     const idleSeconds = clearing.idleSeconds, explicit = director.explicit;
     const accepted = kind === "bush" ? requestClearingBush(clearing) : requestClearingSleep(clearing);
-    if (!accepted) finishForestIntention(clearing.behavior.mind, "failed", "Безопасный подход не найден");
+    const reason = accepted ? kind === "bush" ? "Идёт к кусту" : "Отправляется домой" : interactionFailureReason(state, kind);
+    if (!accepted) finishForestIntention(clearing.behavior.mind, "failed", reason);
     if (accepted && kind === "bush") {
       director.recent.push({ key: "bush", at: director.elapsed });
       director.recent = director.recent.slice(-8);
       if (!explicit) clearing.idleSeconds = idleSeconds;
     }
-    clearRequest(state); director.reason = accepted ? kind === "bush" ? "Идёт к кусту" : "Отправляется домой" : "Безопасный подход не найден";
+    clearRequest(state); director.reason = reason;
     return;
   }
   if (kind === "butterfly" || kind === "firefly") {
@@ -275,6 +302,7 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     chooseAction(state, options); processRequest(state, options);
   }
   const frame = clearingActivityFrame(state.clearing);
+  const previousIntention = state.clearing.behavior.mind.intention;
   advanceClearingActivity(state.clearing, dt, {
     enabled: options.autoLife || state.clearing.retiring || Boolean(state.pendingLife || state.clearing.bushEffect?.bursts.length)
       || state.clearing.freePurpose === "interaction-exit"
@@ -283,5 +311,9 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     idleEligible: !options.blocked && !state.pendingLife && !state.pendingAttention,
     homeAvailable: options.homeAvailable, dusk: options.dusk, rain: options.rain, navigationMode: options.navigationMode,
   });
+  const intention = state.clearing.behavior.mind.intention;
+  // A new successful walk owns the current explanation. Earlier failed requests
+  // remain in the mind's event log, not over the actor's unrelated next activity.
+  if (!state.pendingLife && intention?.source === "clearing" && intention !== previousIntention) director.reason = intention.reason;
   stimuli(state);
 }

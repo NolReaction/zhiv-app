@@ -6,6 +6,7 @@ import { paintFixedWorld } from "./tiled/renderer";
 import { initialPreviewLevels, previewSiteVisual, previewWorldScene } from "./tiled/preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldPoint } from "./tiled/types";
 import { drawGroundedHero } from "./grounding";
+import { drawBuildingDetails } from "./building-details";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "./forest-atmosphere";
 import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
@@ -123,7 +124,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     ? faunaInteractionFrame(preview.fauna) : null;
   context.save();
   context.beginPath(); context.rect(0, 0, world.width, world.height); context.clip();
-  paintFixedWorld(context, world, { images, visuals: selectedVisuals, actor: null,
+  paintFixedWorld(context, world, { images, visuals: selectedVisuals, actor: null, dusk: Number(atmosphere.dusk),
     paintGround: ground => {
       const weather = { ...forestAtmosphereState(world, atmosphere), reducedMotion: still };
       const groundExclusions = life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 }));
@@ -154,6 +155,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     showBuildings: dev?.showBuildings, levels: selectedLevels };
   drawForestAtmosphere(context, world, atmosphere, () => drawForestLighting(context, world, lighting));
   drawForestLightEmitters(context, world, lighting);
+  drawBuildingDetails(context, world, lighting);
   if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, world);
   if (WORLD_DEV_ENABLED && preview?.livingDebug) drawLivingWorldDebug(context, world, preview.livingDebug);
   context.restore();

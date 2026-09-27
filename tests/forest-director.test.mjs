@@ -10,7 +10,7 @@ after(() => vite.close());
 const { advanceForestDirector, requestForestDirective, noticeForestDirector, cancelForestDirector } =
   await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { clearingActivityFrame, requestClearingPoint } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+const { clearingActivityFrame, requestClearingPoint, isClearingAtPoint } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
 const { faunaRenderFrame } = await vite.ssrLoadModule("/features/world/forest-fauna.ts");
 const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const rectangle = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
@@ -298,5 +298,63 @@ test("an indoor butterfly request exits once without repeated attention or repla
   } else {
     assert.ok(state.fauna.lastReason, "without a suitable participant the request explains why it ended");
     assert.equal(state.director.reason, state.fauna.lastReason);
+  }
+});
+
+test("a successful clearing intention replaces a previous approach warning but preserves its history", () => {
+  const state = create(), options = { ...calm, autoLife: true, homeAvailable: true };
+  requestForestDirective(state, "home-sleep", options);
+  advance(state, .025, options);
+  assert.equal(state.director.reason, "У этого уровня дома нет доступного входа");
+  const failure = state.clearing.behavior.mind.events.find(item => item.type === "failed");
+  assert.equal(failure?.action, "home-sleep");
+  state.director.nextDecisionAt = Infinity;
+  state.clearing.waitSeconds = 0;
+  advance(state, .025, options);
+  const intention = state.clearing.behavior.mind.intention;
+  assert.equal(intention?.source, "clearing");
+  assert.equal(state.director.reason, intention.reason);
+  assert.notEqual(state.director.reason, failure.reason);
+  assert.ok(state.clearing.behavior.mind.events.includes(failure), "the actual failure remains in diagnostics history");
+});
+
+test("a disconnected home reports a path problem separately from an invalid entrance", async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const map = structuredClone(previewWorldScene(TILED_WORLD, { home: 5 }));
+  map.navigation.obstacles.push({ id: "closed-clearing", points: rectangle(610, 600, 8, 180) });
+  const state = create(map), options = { ...calm, homeAvailable: true };
+  assert.ok(state.clearing.interactions.home, "the entrance itself is valid");
+  requestForestDirective(state, "home-sleep", options);
+  advance(state, .025, options);
+  assert.equal(state.director.reason, "Из текущего места нет безопасного пути к дому");
+  assert.equal(state.clearing.activeInteraction, null);
+  assert.deepEqual(state.clearing.position, map.actor.spawn);
+});
+
+test("the fifth home supports repeated approaches, interrupted journeys, sleep and safe exit near the right rock", async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const map = previewWorldScene(TILED_WORLD, { home: 5 }), state = create(map);
+  state.clearing.seed = 57;
+  state.director.nextDecisionAt = Infinity;
+  const options = { ...calm, autoLife: true, homeAvailable: true };
+  for (const interest of map.navigation.interests) {
+    assert.ok(requestClearingPoint(state.clearing, interest.position));
+    until(state, current => isClearingAtPoint(current.clearing, interest.position), 40, options);
+    requestForestDirective(state, "home-sleep", options);
+    advance(state, .5, options);
+    assert.equal(state.clearing.activeInteraction?.kind, "home");
+    noticeForestDirector(state);
+    until(state, current => !current.clearing.activeInteraction && current.clearing.stage === "clearing", 15, options);
+    assert.ok(isWalkable(state.clearing.navigation, state.clearing.position));
+    requestForestDirective(state, "home-sleep", options);
+    until(state, current => current.clearing.stage === "home-sleep", 40, options);
+    assert.deepEqual(state.clearing.position, map.sites.find(site => site.id === "home").doorway);
+    requestForestDirective(state, "wake", options);
+    until(state, current => !current.clearing.activeInteraction && current.clearing.stage === "clearing", 15, options);
+    assert.ok(isWalkable(state.clearing.navigation, state.clearing.position));
+    assert.equal(state.clearing.behavior.mind.events.some(item => item.type === "failed" && item.action === "home-sleep"), false);
+    state.director.nextDecisionAt = Infinity;
   }
 });

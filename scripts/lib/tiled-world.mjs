@@ -542,7 +542,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         } else requireThat(!own(props, "bushId"), at, "bushId requires activity: bush");
         world.paths.push(route);
       } else {
-        requireThat(["anchor", "entry", "doorway", "light", "hitArea", "collision"].includes(role), `${at}.properties.role`, `unknown marker role ${JSON.stringify(role)}`);
+        requireThat(["anchor", "entry", "doorway", "light", "chimney", "window", "hitArea", "collision"].includes(role), `${at}.properties.role`, `unknown marker role ${JSON.stringify(role)}`);
         requireThat(Object.keys(props).every(key => ["role", "siteId", "level"].includes(key)), at, "markers only accept role, siteId and level properties");
         const id = identifier(props.siteId, `${at}.properties.siteId`);
         const scope = [...groups].reverse().map(group => groupSites.get(group)).find(placements => placements?.length === 1)?.[0];
@@ -552,7 +552,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         if (level !== undefined && catalogs.has(id)) requireThat(catalogs.get(id).some(state => state.level === level), at, `marker references unknown level ${level} for site ${id}`);
         const siteMarkers = level === undefined ? markerSets.shared : markerSets.levels.get(level) ?? {};
         requireThat(!own(siteMarkers, role), at, `duplicate ${role} for site ${id}${level === undefined ? "" : `, level ${level}`}`);
-        if (["hitArea", "collision"].includes(role)) {
+        if (["hitArea", "collision", "window"].includes(role)) {
           exact(shape, "polygon", `${at} shape`);
           siteMarkers[role] = vertices(object, "polygon", at, world);
         } else {
@@ -592,9 +592,10 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (!placement) aspect(state, rect, `${base.at} site ${site.id}, level ${state.level}`);
       const geometry = { bounds: rect, ...fallback, ...markerSets?.levels.get(state.level) };
       for (const role of ["anchor", "entry", "hitArea", "collision"]) requireThat(own(geometry, role), "map", `site ${site.id} is missing ${role} for level ${state.level}`);
-      if (geometry.doorway) {
-        const { x, y } = geometry.doorway;
-        requireThat(x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height, "map", `site ${site.id} doorway must be inside its image bounds for level ${state.level}`);
+      for (const role of ["doorway", "chimney", "window"]) {
+        const points = geometry[role] ? role === "window" ? geometry[role] : [geometry[role]] : [];
+        requireThat(points.every(({ x, y }) => x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height),
+          "map", `site ${site.id} ${role} must be inside its image bounds for level ${state.level}`);
       }
       geometries.set(state.level, geometry);
       return { level: state.level, label: state.label, image: state.image, ...(hasVariants ? { geometry } : {}) };
@@ -602,7 +603,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     const geometry = geometries.get(base.initialLevel);
     return { id: site.id, label: base.label, bounds: geometry.bounds, anchor: geometry.anchor, entry: geometry.entry,
       ...(geometry.doorway ? { doorway: geometry.doorway } : {}), hitArea: geometry.hitArea, collision: geometry.collision,
-      ...(geometry.light ? { light: geometry.light } : {}), initialLevel: base.initialLevel, states };
+      ...(geometry.light ? { light: geometry.light } : {}), ...(geometry.chimney ? { chimney: geometry.chimney } : {}),
+      ...(geometry.window ? { window: geometry.window } : {}), initialLevel: base.initialLevel, states };
   });
   for (const { id, excludedId, at } of habitatExclusions) {
     const excluded = habitats.get(excludedId);

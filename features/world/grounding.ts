@@ -86,21 +86,22 @@ function collisionBounds(site: FixedSite): WorldBounds | null {
 export function siteContactArea(site: FixedSite): WorldBounds | null {
   if (!Object.values(site.bounds).every(Number.isFinite) || site.bounds.width <= 0 || site.bounds.height <= 0) return null;
   const footprint = collisionBounds(site);
-  if (footprint) return { ...footprint, y: footprint.y + footprint.height * .58, height: footprint.height * .42 };
+  if (footprint) return { ...footprint, y: footprint.y + footprint.height * .28, height: footprint.height * .72 };
   const { bounds, anchor } = site, width = bounds.width * .44, height = bounds.height * .08;
   const x = Math.max(bounds.x, Math.min(bounds.x + bounds.width, Number.isFinite(anchor.x) ? anchor.x : bounds.x + bounds.width / 2));
   const y = Math.max(bounds.y, Math.min(bounds.y + bounds.height, Number.isFinite(anchor.y) ? anchor.y : bounds.y + bounds.height * .92));
   return intersect(bounds, { x: x - width / 2, y: y - height / 2, width, height });
 }
 
-const siteMasks = new WeakMap<HTMLImageElement, WeakMap<FixedSite, HTMLCanvasElement | null>>();
+type SiteShadow = { contact: HTMLCanvasElement; diffuse: HTMLCanvasElement; bounds: WorldBounds };
+const siteShadows = new WeakMap<HTMLImageElement, WeakMap<FixedSite, SiteShadow | null>>();
 
-function siteContactMask(site: FixedSite, image: HTMLImageElement): HTMLCanvasElement | null {
-  let bySite = siteMasks.get(image);
-  if (!bySite) { bySite = new WeakMap(); siteMasks.set(image, bySite); }
+function siteShadow(site: FixedSite, image: HTMLImageElement): SiteShadow | null {
+  let bySite = siteShadows.get(image);
+  if (!bySite) { bySite = new WeakMap(); siteShadows.set(image, bySite); }
   if (bySite.has(site)) return bySite.get(site) ?? null;
   const area = siteContactArea(site), { bounds } = site;
-  let mask: HTMLCanvasElement | null = null;
+  let shadow: SiteShadow | null = null;
   if (area && bounds.width > 0 && bounds.height > 0 && typeof document !== "undefined") {
     const canvas = document.createElement("canvas");
     const scale = Math.min(2, 512 / Math.max(bounds.width, bounds.height));
@@ -123,22 +124,54 @@ function siteContactMask(site: FixedSite, image: HTMLImageElement): HTMLCanvasEl
       ctx.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height);
       // Source-in keeps all holes and soft alpha edges of the current level artwork.
       ctx.globalCompositeOperation = "source-in";
-      ctx.fillStyle = "rgba(24,38,25,.12)";
+      ctx.fillStyle = "#22231e";
       ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-      mask = canvas;
+      // Bake blur once per artwork/geometry. Padding prevents a rectangular blur cutoff.
+      const padding = Math.min(16, Math.max(bounds.width, bounds.height) * .09);
+      const shadowBounds = { x: bounds.x - padding, y: bounds.y - padding,
+        width: bounds.width + padding * 2, height: bounds.height + padding * 2 };
+      const shadowScale = Math.min(2, 512 / Math.max(shadowBounds.width, shadowBounds.height));
+      const contact = document.createElement("canvas"), diffuse = document.createElement("canvas");
+      for (const layer of [contact, diffuse]) {
+        layer.width = Math.max(1, Math.ceil(shadowBounds.width * shadowScale));
+        layer.height = Math.max(1, Math.ceil(shadowBounds.height * shadowScale));
+      }
+      const contactCtx = contact.getContext("2d"), diffuseCtx = diffuse.getContext("2d");
+      if (contactCtx && diffuseCtx) {
+        const paint = (target: CanvasRenderingContext2D, alpha: number, blur: number,
+          dx: number, dy: number, widthScale = 1, heightScale = 1) => {
+          target.globalAlpha = alpha;
+          target.filter = `blur(${blur * shadowScale}px)`;
+          // Compress toward the foundation, never project a standing duplicate of the house.
+          const bottom = area.y + area.height - bounds.y;
+          target.drawImage(canvas,
+            (padding + dx + bounds.width * (1 - widthScale) / 2) * shadowScale,
+            (padding + dy + bottom * (1 - heightScale)) * shadowScale,
+            bounds.width * widthScale * shadowScale, bounds.height * heightScale * shadowScale);
+        };
+        const size = Math.min(bounds.width, bounds.height);
+        paint(contactCtx, .28, Math.min(1.1, size * .006), 0, size * .005);
+        paint(diffuseCtx, .14, Math.min(5, size * .026), 0, size * .01, 1.025);
+        paint(diffuseCtx, .19, Math.min(3.5, size * .017), size * .028, size * .018, 1, .82);
+        shadow = { contact, diffuse, bounds: shadowBounds };
+      }
     }
   }
-  bySite.set(site, mask);
-  return mask;
+  bySite.set(site, shadow);
+  return shadow;
 }
 
 /** Draw immediately under the original image; no colored rectangle or art mutation. */
-export function drawSiteGrounding(ctx: CanvasRenderingContext2D, site: FixedSite, image: HTMLImageElement) {
-  const mask = siteContactMask(site, image);
-  if (!mask) return;
-  const { bounds } = site, softness = Math.min(1, bounds.width * .004);
+export function drawSiteGrounding(ctx: CanvasRenderingContext2D, site: FixedSite, image: HTMLImageElement, night = 0) {
+  const shadow = siteShadow(site, image);
+  if (!shadow) return;
+  const { bounds } = shadow;
+  const darkness = Number.isFinite(night) ? Math.max(0, Math.min(1, night)) : 0;
   ctx.save();
-  ctx.filter = `blur(${softness}px)`;
-  ctx.drawImage(mask, bounds.x, bounds.y + Math.min(1, bounds.height * .005), bounds.width, bounds.height);
+  const opacity = ctx.globalAlpha;
+  ctx.globalAlpha = opacity * (1 - darkness * .58);
+  ctx.drawImage(shadow.diffuse, bounds.x, bounds.y, bounds.width, bounds.height);
+  ctx.globalAlpha = opacity * (1 - darkness * .15);
+  ctx.drawImage(shadow.contact, bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.restore();
 }
