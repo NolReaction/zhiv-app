@@ -142,7 +142,8 @@ test("a distant grown mushroom is approached through safe ground and held only a
   requestForestDirective(state, "mushroom", calm); advance(state, .025);
   assert.equal(state.pendingLife, "mushroom"); assert.equal(state.life.routine, null);
   const target = { ...state.director.target };
-  assert.ok(distance(target, mushroom) < state.clearing.size * .2);
+  assert.ok(distance(target, mushroom) < state.clearing.size * .36);
+  assert.ok(target.y > mushroom.y, "feet stop below the item, within the crouching paw reach");
   let previous = { ...state.clearing.position }, walking = false;
   advance(state, 15, calm, () => {
     const foot = state.clearing.position;
@@ -412,5 +413,46 @@ test("the fifth home supports repeated approaches, interrupted journeys, sleep a
     assert.ok(isWalkable(state.clearing.navigation, state.clearing.position));
     assert.equal(state.clearing.behavior.mind.events.some(item => item.type === "failed" && item.action === "home-sleep"), false);
     state.director.nextDecisionAt = Infinity;
+  }
+});
+
+
+test("all five authored homes permit mushroom and leaf pickup from a short contact approach at sizes 50 and 56", async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/forest-life.ts");
+  for (const level of [1, 2, 3, 4, 5]) for (const size of [50, 56]) for (const kind of ["mushroom", "leaf"]) {
+    const map = previewWorldScene(TILED_WORLD, { home: level });
+    const state = create({ ...map, actor: { ...map.actor, size } });
+    requestForestDirective(state, kind, calm);
+    until(state, current => current.life.routine?.kind === kind, 40);
+    const item = kind === "mushroom" ? state.life.mushrooms.find(prop => prop.id === state.life.routine.mushroomId) : state.life.leaf;
+    const feet = { ...state.clearing.position, size };
+    assert.ok(feet.y > item.y, `level ${level}, size ${size}: above-ground contact cannot reach past the feet`);
+    assert.ok(isWalkable(state.clearing.navigation, feet));
+    until(state, current => current.life.routine?.picked === true, 5);
+    const frame = forestLifeFrame(state.life, feet, state.elapsed), held = frame.heldMushroom ?? frame.heldLeaf;
+    assert.ok(frame.arms.some(arm => arm.hand.x === held.x && arm.hand.y === held.y));
+    assert.deepEqual(state.clearing.position, { x: feet.x, y: feet.y }, "pickup does not teleport the feet");
+  }
+});
+
+
+test("DEV hero scale uses the same reach for approach and arrival without resizing the ground prop", async () => {
+  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/forest-life.ts");
+  for (const heroScale of [.5, 1, 2]) for (const kind of ["mushroom", "leaf"]) {
+    const state = create(), options = { ...calm, heroScale }, originalSize = state.clearing.size;
+    const original = kind === "mushroom" ? { ...state.life.mushrooms[0] } : { ...state.life.leaf };
+    requestForestDirective(state, kind, options);
+    until(state, current => current.life.routine?.kind === kind, 40, options);
+    const feet = { ...state.clearing.position, size: originalSize * heroScale, propSize: originalSize };
+    assert.ok(distance(feet, original) < feet.size * .4, `actual rendered reach at scale ${heroScale}`);
+    assert.ok(isWalkable(state.clearing.navigation, feet));
+    until(state, current => current.life.routine?.picked === true, 5, options);
+    const frame = forestLifeFrame(state.life, feet, state.elapsed), held = frame.heldMushroom ?? frame.heldLeaf;
+    assert.equal(held.size, originalSize * (kind === "mushroom" ? .19 : .18));
+    assert.ok(frame.arms.some(arm => arm.hand.x === held.x && arm.hand.y === held.y));
+    const source = kind === "mushroom" ? state.life.mushrooms[0] : state.life.leaf;
+    assert.equal(source.x, original.x); assert.equal(source.y, original.y);
   }
 });

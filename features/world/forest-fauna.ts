@@ -16,6 +16,7 @@ export type ForestFaunaEntity = WorldPoint & {
   interactionToken: number | null;
   stimulusCooldownUntil: number; nextRestAt: number; restUntil: number;
   shelterReadyAt: number | null;
+  landingRetryAt: number; landingExpiresAt: number;
   /** Short-lived individual memory; it advances only with the shared world clock. */
   alertness: number; familiarity: number; lastMovementAt: number; lastRestAnchorId: string | null;
   orbit: Orbit; opacity: number; departure: WorldPoint | null;
@@ -138,6 +139,7 @@ function entity(habitat: WorldHabitat, seed: number, index: number, scale: numbe
     x: 0, y: 0, vx: 0, vy: 0, angle: 0, orbit, mode: "fly", modeElapsed: 0,
     target: null, anchorId: null, anchorOffset: { x: 0, y: 0 }, cooldownUntil: 0, interactionToken: null, stimulusCooldownUntil: 0,
     nextRestAt: 13 + noise(seed, n + 90) * 25, restUntil: 0, shelterReadyAt: null,
+    landingRetryAt: 0, landingExpiresAt: 0,
     alertness: 0, familiarity: 0, lastMovementAt: -10, lastRestAnchorId: null,
     departure: null, opacity: butterfly ? .85 : .9 };
   const initial = orbitSample(e, 0);
@@ -232,6 +234,7 @@ export function requestFaunaInteraction(state: ForestFaunaState, kind: FaunaSpec
 function setMode(e: ForestFaunaEntity, mode: FaunaMode) {
   if (e.mode === mode) return;
   e.mode = mode; e.modeElapsed = 0;
+  if (!["rest-seek", "rest", "refuge"].includes(mode)) e.landingExpiresAt = 0;
 }
 function depart(state: ForestFaunaState, e: ForestFaunaEntity) {
   if (e.mode === "depart" || e.mode === "return") return;
@@ -273,26 +276,52 @@ export function faunaInteractionFrame(state: ForestFaunaState): FaunaInteraction
     direction: encounter.direction, stage: encounter.phase, entityId: encounter.entityId, token: encounter.token };
 }
 
-function anchorFor(state: ForestFaunaState, e: ForestFaunaEntity, kind: "rest" | "shelter") {
-  const habitat = state.habitats.find(item => item.id === e.habitatId);
-  const suitable = habitat?.anchors.filter(a => a.kind === kind
-    && (!habitat.exclusions?.length || habitatContains(habitat, a.position, 2.1))) ?? [];
-  // Occupancy keeps a visible resting population from collapsing onto one identical point.
-  const occupancy = (id: string) => state.entities.filter(other => other !== e && other.anchorId === id).length;
-  // Prefer a different nearby leaf after a landing, without making a long detour.
-  const cost = (anchor: WorldHabitat["anchors"][number]) => distance(e, anchor.position)
-    + (kind === "rest" && anchor.id === e.lastRestAnchorId ? 24 : 0);
-  return suitable.filter(a => kind === "shelter" || occupancy(a.id) === 0)
-    .sort((a, b) => occupancy(a.id) - occupancy(b.id) || cost(a) - cost(b) || a.id.localeCompare(b.id))[0];
+type Landing = { anchor: WorldHabitat["anchors"][number]; offset: WorldPoint; position: WorldPoint };
+const landingModes: readonly FaunaMode[] = ["rest-seek", "rest", "refuge"];
+const landingRadius = (e: ForestFaunaEntity) => e.size * (e.species === "butterfly" ? 2.5 : 1.5);
+function landingPosition(state: ForestFaunaState, e: ForestFaunaEntity): WorldPoint | null {
+  if (!e.anchorId || !landingModes.includes(e.mode)) return null;
+  const anchor = state.habitats.find(h => h.id === e.habitatId)?.anchors.find(a => a.id === e.anchorId);
+  return anchor ? { x: anchor.position.x + e.anchorOffset.x, y: anchor.position.y + e.anchorOffset.y } : null;
 }
-function setAnchor(state: ForestFaunaState, e: ForestFaunaEntity, anchor: WorldHabitat["anchors"][number]) {
-  e.anchorId = anchor.id; e.anchorOffset = { x: 0, y: 0 };
-  if (anchor.kind !== "shelter") return;
-  // A shelter marks a patch of real foliage, so several bodies can share it without overlapping.
-  const offset = { x: Math.cos(e.phase * 2.7) * (1 + e.size * 1.2), y: Math.sin(e.phase * 2.7) * 2 };
-  const habitat = state.habitats.find(h => h.id === e.habitatId);
-  if (habitat && habitatContains(habitat, { x: anchor.position.x + offset.x, y: anchor.position.y + offset.y },
-    habitat.exclusions?.length ? 2.1 : 0)) e.anchorOffset = offset;
+function landingAvailable(state: ForestFaunaState, e: ForestFaunaEntity, position: WorldPoint) {
+  return state.entities.every(other => {
+    if (other === e) return true;
+    // Different habitats/species may name the very same leaf differently. Reserve
+    // world space from departure to arrival, and let a departing body clear it too.
+    const separation = landingRadius(e) + landingRadius(other) + 1.5;
+    const reserved = landingPosition(state, other);
+    return (!reserved || distance(reserved, position) >= separation)
+      && distance(other, position) >= separation;
+  });
+}
+function anchorFor(state: ForestFaunaState, e: ForestFaunaEntity, kind: "rest" | "shelter"): Landing | undefined {
+  const habitat = state.habitats.find(item => item.id === e.habitatId);
+  if (!habitat) return undefined;
+  const suitable: Landing[] = [];
+  for (const anchor of habitat.anchors) {
+    if (anchor.kind !== kind) continue;
+    // A shelter is a small authored foliage patch, with a finite number of seats.
+    // Overflow keeps flying; random jitter must never squeeze bodies into a pile.
+    const phase = noise(hash(anchor.id), 3) * TAU;
+    for (let slot = 0; slot < (kind === "shelter" ? 7 : 1); slot++) {
+      const angle = phase + (slot - 1) * TAU / 6;
+      const offset = slot ? { x: Math.cos(angle) * 10, y: Math.sin(angle) * 10 } : { x: 0, y: 0 };
+      const position = { x: anchor.position.x + offset.x, y: anchor.position.y + offset.y };
+      if (habitatContains(habitat, position, habitat.exclusions?.length ? 2.1 : 0)
+        && landingAvailable(state, e, position)) suitable.push({ anchor, offset, position });
+    }
+  }
+  // Prefer a different nearby leaf after a landing, without making a long detour.
+  const cost = (landing: Landing) => distance(e, landing.position) + Math.hypot(landing.offset.x, landing.offset.y) * 1.05
+    + (kind === "rest" && landing.anchor.id === e.lastRestAnchorId ? 24 : 0);
+  return suitable.sort((a, b) => cost(a) - cost(b) || a.anchor.id.localeCompare(b.anchor.id))[0];
+}
+function setAnchor(state: ForestFaunaState, e: ForestFaunaEntity, landing: Landing) {
+  e.anchorId = landing.anchor.id; e.anchorOffset = landing.offset;
+  const speed = e.species === "butterfly" ? 23 : 16;
+  // A disconnected destination must not hold a reservation forever.
+  e.landingExpiresAt = state.elapsed + 12 + distance(e, landing.position) / speed * 3;
 }
 function shelterNeeded(e: ForestFaunaEntity, options: ForestFaunaConditions) {
   // Once sheltered, wait for a genuine clearing rather than turning around at
@@ -417,10 +446,11 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
   const refuge = shelterNeeded(e, options);
   // Finishing the small departure first clears the hero's hand. Afterwards a
   // nearby authored shelter takes priority over a detour to the old orbit.
-  if (refuge && e.mode !== "refuge" && e.mode !== "depart") {
+  if (refuge && e.mode !== "refuge" && e.mode !== "depart" && state.elapsed >= e.landingRetryAt) {
     const anchor = anchorFor(state, e, "shelter") ?? anchorFor(state, e, "rest");
     // Legacy scenes without anchors keep their subdued orbit; never invent foliage.
     if (anchor) { setMode(e, "refuge"); setAnchor(state, e, anchor); e.shelterReadyAt = null; }
+    else e.landingRetryAt = state.elapsed + 1.2 + noise(hash(e.id), 29) * 1.6;
   }
   if (e.mode === "depart") {
     steer(state, e, e.departure ?? orbitSample(e, state.elapsed), dt, undefined, options.wind);
@@ -447,6 +477,13 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
     const target = { x: anchor.position.x + e.anchorOffset.x, y: anchor.position.y + e.anchorOffset.y };
     steer(state, e, target, dt);
     const settled = distance(e, target) < .65 && Math.hypot(e.vx, e.vy) < 1.6;
+    if (settled) e.landingExpiresAt = 0;
+    else if (e.landingExpiresAt > 0 && state.elapsed >= e.landingExpiresAt) {
+      setMode(e, "return"); e.anchorId = null; e.shelterReadyAt = null;
+      e.landingRetryAt = state.elapsed + 3;
+      e.nextRestAt = Math.max(e.nextRestAt, e.landingRetryAt);
+      return;
+    }
     if (e.mode === "refuge") {
       if (settled) releaseAnimalReservation(state, e);
       if (refuge || !settled) e.shelterReadyAt = null;
@@ -480,10 +517,12 @@ export function advanceForestFauna(state: ForestFaunaState, dt: number, options:
   state.visibility.butterflies = options.butterflies !== "off";
   state.visibility.fireflies = options.fireflies !== "off";
   state.dusk = clamp(finite(options.dusk)); state.firefliesForced = options.fireflies === "on";
+  // Stable tie-breaking also makes reservation outcomes independent of draw order.
+  const individuals = [...state.entities].sort((a, b) => a.id.localeCompare(b.id));
   for (let remaining = elapsed; remaining > 1e-9;) {
     const step = Math.min(1 / 40, remaining); remaining -= step; state.elapsed += step;
     advanceEncounter(state, step, options);
-    for (const e of state.entities) advanceEntity(state, e, step, options);
+    for (const e of individuals) advanceEntity(state, e, step, options);
   }
 }
 

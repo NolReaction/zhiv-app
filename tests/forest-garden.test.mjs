@@ -38,6 +38,32 @@ function until(state, predicate, seconds = 90, options = calm, inspect) {
 }
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
+test("actual DEV scale rejects unreachable care and resizing mid-harvest preserves the crop", () => {
+  for (const heroScale of [.5, 2]) for (const kind of ["water-bush", "harvest-berries"]) {
+    const state = create();
+    if (kind === "harvest-berries") growForestBerries(state.life.garden);
+    const feet = { ...state.clearing.position };
+    requestForestDirective(state, kind, { ...calm, heroScale });
+    advance(state, .2, { ...calm, heroScale });
+    assert.equal(state.life.garden.routine, null);
+    assert.match(state.director.reason, /текущим размером/);
+    assert.equal(state.life.garden.basket.berries, 0);
+    assert.deepEqual(state.clearing.position, feet);
+  }
+  for (const heroScale of [1, 1.12]) {
+    const state = create(), settings = { ...calm, heroScale };
+    growForestBerries(state.life.garden);
+    requestForestDirective(state, "harvest-berries", settings);
+    until(state, current => current.life.garden.routine?.phase === "collect", 90, settings);
+    const feet = { ...state.clearing.position };
+    advance(state, .025, { ...settings, heroScale: .5 });
+    assert.equal(state.life.garden.routine, null);
+    assert.equal(state.life.garden.bushes[0].growth, 1);
+    assert.equal(state.life.garden.basket.berries, 0);
+    assert.deepEqual(state.clearing.position, feet);
+  }
+});
+
 test("garden reuses authored bushes and places its basket clear of every house level and route", () => {
   for (const level of [1, 2, 3, 4, 5]) for (const size of [50, 56]) {
     const map = scene(level, size), garden = createForestGarden(map), basket = garden.basket;

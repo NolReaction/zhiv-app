@@ -1,6 +1,7 @@
 import type { FixedWorldScene, WorldBounds, WorldBush, WorldImage } from "./tiled/types";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { forestBushBounds } from "./forest-bush-particles";
+import { drawForestBushSoil } from "./forest-bush-soil";
 
 type BushShadow = {
   image: HTMLImageElement; terrain: WorldImage; bounds: WorldBounds;
@@ -52,11 +53,12 @@ function shadowFor(bush: WorldBush, terrain: WorldImage, image: HTMLImageElement
 
 /** Called directly before the matching terrain cutout; baked legacy bushes keep their own shading. */
 export function drawForestBushGrounding(ctx: CanvasRenderingContext2D, scene: FixedWorldScene,
-  terrain: WorldImage, image: HTMLImageElement, night = 0) {
+  terrain: WorldImage, image: HTMLImageElement, night = 0, moisture = .32) {
   const bush = scene.bushes?.find(item => item.imageId === terrain.id);
   if (!bush || !forestBushArtworkAvailable(scene, bush)) return;
   const shadow = shadowFor(bush, terrain, image);
   if (!shadow) return;
+  drawForestBushSoil(ctx, bush.points, moisture);
   const darkness = Number.isFinite(night) ? Math.max(0, Math.min(1, night)) : 0;
   const { bounds } = shadow;
   ctx.save();

@@ -226,7 +226,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
       worldDevStore.triggerScenario(action.scenario);
       setFeedback(`${WORLD_DEV_SCENARIOS.find(item => item.id === action.scenario)!.label}: условия применены. Память аккаунта отключена для тестовой сессии.`);
     } else if (action.kind === "birds") {
-      worldDevStore.triggerBirds(); setFeedback("Птицы: пролёт, посадка на дерево и взлёт");
+      worldDevStore.triggerBirds(); setFeedback("Птицы: новый визит на деревья или землю и последующий взлёт");
     } else if (action.kind === "life") {
       worldDevStore.triggerLife(action.action);
       setFeedback(action.action === "idle" ? "Сценка отменена. Автоматические сценки выключены."
@@ -402,7 +402,7 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
       <Toggle label="Лужи после дождя" checked={state.puddles} onChange={puddles => change({ puddles })} />
       <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Сценарий с птицами</button>
       {birdsUnavailable && <p className={styles.hint}>{birdsUnavailable}</p>}
-      <p className={styles.hint}>Птицы садятся на деревья, осматриваются и снова взлетают. Полная сценка длится около полуминуты. Дождевые круги на реке видны на большой карте.</p>
+      <p className={styles.hint}>Птицы отдыхают на деревьях или ищут корм на земле. Для наземной сценки выберите «Птицы на земле» в сценариях. Полный визит длится около полуминуты.</p>
       <Select label="Меньше движения" value={state.reducedMotion} values={MODES} onChange={reducedMotion => change({ reducedMotion })} />
       {prefersReducedMotion && state.reducedMotion === "off" && <p className={styles.hint}>Для предпросмотра включена анимация, хотя в системе выбрано меньше движения.</p>}
     </>}

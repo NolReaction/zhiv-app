@@ -1,9 +1,10 @@
-import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
+import type { PixelDirection, PixelPose, PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { isForestGroundClear } from "./forest-ground-weather";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import { createForestGarden, type ForestGardenState } from "./forest-garden";
 
+import { heroSourceAnchor, type FaunaActor } from "./hero-anchors";
 import { createForestCampfires, type ForestCampfire } from "./forest-campfire";
 
 export type ForestLifeKind = "butterfly" | "firefly" | "mushroom" | "leaf";
@@ -24,9 +25,11 @@ export type ForestLifeState = {
 };
 export type ForestLifeOptions = { autoLife?: boolean; blocked?: boolean; dusk: number; rain: number;
   butterflies?: "auto" | "on" | "off"; fireflies?: "auto" | "on" | "off" };
-export type ForestLifeActor = WorldPoint & { size: number };
+export type ForestLifeActor = FaunaActor & { propSize?: number };
+export type ForestPropArm = { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint };
 export type ForestLifeFrame = {
   pose: PixelPose; frame: number; direction: PixelDirection; stage: string;
+  rig?: PixelRigOptions; arms?: ForestPropArm[]; unit?: number;
   heldMushroom: (WorldPoint & { size: number; bite: number }) | null;
   heldLeaf: (WorldPoint & { size: number; angle: number }) | null;
   insect: (WorldPoint & { kind: "butterfly" | "firefly"; size: number; opacity: number; phase: number }) | null;
@@ -182,13 +185,13 @@ function routineFrame(state: ForestLifeState, actor: ForestLifeActor, elapsed: n
     else if (t < 7.4) { result.stage = "swallow"; result.pose = "swallow"; result.frame = Math.min(3, Math.floor((t - 6.5) / .9 * 4)); }
     else { result.stage = "settle"; result.pose = "groom"; }
     if (t >= 2.2 && t < 6.5) {
-      const handY = result.pose === "chew" ? 29 + result.frame % 2 : [37, 34, 31, 29][result.frame];
-      const hand = at(24, handY), mushroom = state.mushrooms.find(item => item.id === routine.mushroomId);
-      // A short pickup bridges the ground cap to the first hold frame without teleporting.
-      const pickup = smooth((t - 2.2) / .22);
-      result.heldMushroom = { x: mix(mushroom?.x ?? hand.x, hand.x, pickup),
-        y: mix(mushroom ? mushroom.y - actor.size * .19 * .38 : hand.y, hand.y, pickup),
-        size: actor.size * .19, bite: clamp((t - 4.1) / 2.4) };
+      const size = (actor.propSize ?? actor.size) * .19;
+      const mushroom = state.mushrooms.find(item => item.id === routine.mushroomId);
+      const ground = { x: mushroom?.x ?? actor.x, y: (mushroom?.y ?? actor.y) - size * .38 };
+      const held = at(24, 29 + (t >= 4.1 ? Math.sin((t - 4.1) * Math.PI * 5) * .5 : 0));
+      const lift = smooth((t - 2.2) / 1.2);
+      result.heldMushroom = { x: mix(ground.x, held.x, lift), y: mix(ground.y, held.y, lift),
+        size, bite: clamp((t - 4.1) / 2.4) };
     }
   } else if (routine.kind === "leaf") {
     if (t < .9) { result.stage = "notice"; result.pose = "sniff"; }
@@ -199,11 +202,10 @@ function routineFrame(state: ForestLifeState, actor: ForestLifeActor, elapsed: n
     else if (t < 6.4) { result.stage = "release"; result.pose = "reach"; result.frame = 0; }
     else { result.stage = "settle"; result.pose = "wonder"; }
     if (state.leaf && t >= 1.9 && t < 5.8) {
-      const hand = at(24, [37, 34, 31, 29][result.frame]);
-      const pickup = smooth((t - 1.9) / .2), putDown = smooth((t - 4.9) / .9);
-      result.heldLeaf = { x: mix(mix(state.leaf.x, hand.x, pickup), state.leaf.x, putDown),
-        y: mix(mix(state.leaf.y, hand.y, pickup), state.leaf.y, putDown), size: actor.size * .18,
-        angle: mix(state.leaf.angle, Math.sin((t - 2.8) * 2.5) * .6, pickup * (1 - putDown)) };
+      const hand = at(24, 30), lift = smooth((t - 1.9) / .9), putDown = smooth((t - 4.9) / .9);
+      result.heldLeaf = { x: mix(mix(state.leaf.x, hand.x, lift), state.leaf.x, putDown),
+        y: mix(mix(state.leaf.y, hand.y, lift), state.leaf.y, putDown), size: (actor.propSize ?? actor.size) * .18,
+        angle: mix(state.leaf.angle, Math.sin((t - 2.8) * 2.5) * .6, lift * (1 - putDown)) };
     }
   } else {
     if (t < 1.6) { result.stage = "approach"; result.pose = "wonder"; }
@@ -225,7 +227,7 @@ function routineFrame(state: ForestLifeState, actor: ForestLifeActor, elapsed: n
 export function forestLifeFrame(state: ForestLifeState, actor: ForestLifeActor, elapsed: number): ForestLifeFrame {
   const routine = state.routine, recovery = routine?.interrupting;
   const result = routineFrame(state, actor, elapsed, recovery?.from ?? routine?.elapsed ?? 0);
-  if (!recovery) return result;
+  if (!recovery) { attachPropArms(result, state, actor, routine?.elapsed ?? 0); return result; }
   const progress = smooth(recovery.elapsed / INTERRUPT_SECONDS);
   result.stage = "interrupt";
   if (result.heldMushroom) {
@@ -253,5 +255,52 @@ export function forestLifeFrame(state: ForestLifeState, actor: ForestLifeActor, 
   } else {
     result.pose = "swallow"; result.frame = Math.min(3, Math.floor(progress * 4));
   }
+  attachPropArms(result, state, actor, recovery.from, progress);
   return result;
+}
+
+/** Ground props never travel ahead of the paw: one continuous grip drives both object and arm. */
+function attachPropArms(frame: ForestLifeFrame, state: ForestLifeState, actor: ForestLifeActor, t: number, recovery?: number) {
+  const kind = state.routine?.kind;
+  if (kind !== "mushroom" && kind !== "leaf") return;
+  const prop = kind === "mushroom" ? state.mushrooms.find(item => item.id === state.routine?.mushroomId) : state.leaf;
+  if (!prop) return;
+  const pickupAt = kind === "mushroom" ? 2.2 : 1.9, reachAt = kind === "mushroom" ? 1 : .9;
+  const liftEnd = kind === "mushroom" ? 3.4 : 2.8;
+  const size = actor.propSize ?? actor.size;
+  const ground = { x: prop.x, y: prop.y - (kind === "mushroom" ? size * .19 * .38 : 0) };
+  let bend = t < reachAt ? 0 : t < pickupAt ? smooth((t - reachAt) / (pickupAt - reachAt))
+    : 1 - smooth((t - pickupAt) / (liftEnd - pickupAt));
+  if (kind === "leaf" && t >= 4.9) bend = t < 5.8 ? smooth((t - 4.9) / .9) : 1 - smooth((t - 5.8) / .6);
+  if (recovery !== undefined && (frame.heldLeaf || frame.heldMushroom && t < 4.1)) bend = mix(bend, 1, recovery);
+  const crouch = Math.round(bend * 6);
+  frame.rig = { gardening: true, crouch };
+  frame.unit = actor.size / 48;
+  const anchor = (x: number, y: number) => heroSourceAnchor(actor, { x, y }, frame);
+  // Shoulders settle with the bend; feet and the scene actor position stay fixed.
+  const shoulders = [anchor(14, 31 + crouch), anchor(34, 31 + crouch)];
+  const rests = [anchor(14, 34 + crouch), anchor(34, 34 + crouch)];
+  const held = frame.heldMushroom ?? frame.heldLeaf;
+  const reaching = ground.x < actor.x ? 0 : 1;
+  const hands = [...rests];
+  if (held) {
+    hands[reaching] = { x: held.x, y: held.y };
+    // The spare paw supports the object only once it is back within the body width.
+    const support = clamp((t - pickupAt - .15) / .45) * (1 - bend);
+    const other = 1 - reaching;
+    const grip = { x: held.x + (other ? 1 : -1) * actor.size * .055, y: held.y + actor.size * .01 };
+    hands[other] = { x: mix(rests[other].x, grip.x, support), y: mix(rests[other].y, grip.y, support) };
+  } else if (t >= reachAt && t < pickupAt) {
+    const contact = smooth((t - reachAt) / (pickupAt - reachAt));
+    hands[reaching] = { x: mix(rests[reaching].x, ground.x, contact), y: mix(rests[reaching].y, ground.y, contact) };
+  } else if (kind === "leaf" && t >= 5.8 && t < 6.4) {
+    const release = smooth((t - 5.8) / .6);
+    hands[reaching] = { x: mix(ground.x, rests[reaching].x, release), y: mix(ground.y, rests[reaching].y, release) };
+  }
+  frame.arms = shoulders.map((shoulder, index) => {
+    const hand = hands[index], outward = index ? 1 : -1;
+    const elbow = { x: (shoulder.x + hand.x) / 2 + outward * actor.size * .035,
+      y: (shoulder.y + hand.y) / 2 + actor.size * .025 };
+    return { shoulder, elbow, hand };
+  });
 }

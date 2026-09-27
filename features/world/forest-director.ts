@@ -12,7 +12,7 @@ import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction,
   interruptFaunaInteraction, requestFaunaInteraction } from "./forest-fauna";
 import { findWorldPath } from "./navigation";
 import { advanceForestGarden, cancelForestGarden, gardenActionAvailable, gardenEligibleBushes,
-  gardenRoutineStationary, gardenRoutineTarget, growForestBerries, FOREST_GARDEN_LIMITS,
+  gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, growForestBerries, FOREST_GARDEN_LIMITS,
   type ForestGardenAction, type ForestGardenPhase } from "./forest-garden";
 import { advanceForestMind, beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates,
   scoreForestAction, type ForestMindAction, type ForestMindCandidate } from "./forest-mind";
@@ -145,8 +145,8 @@ function interactionFailureReason(state: ForestSessionState, kind: "bush" | "hom
   return home ? "Из текущего места нет безопасного пути к дому" : "Из текущего места нет безопасного пути к кусту";
 }
 
-function prepareProp(state: ForestSessionState, kind: "mushroom" | "leaf") {
-  const { director, clearing, life } = state, size = clearing.size;
+function prepareProp(state: ForestSessionState, kind: "mushroom" | "leaf", heroScale = 1) {
+  const { director, clearing, life } = state, size = clearing.size * heroScale;
   const objects = kind === "leaf" ? life.leaf ? [{ ...life.leaf, id: "leaf" }] : []
     : life.mushrooms.filter(item => item.growth >= .98).sort((a, b) => distance(a, clearing.position) - distance(b, clearing.position));
   for (const item of objects.slice(0, 12)) {
@@ -158,9 +158,9 @@ function prepareProp(state: ForestSessionState, kind: "mushroom" | "leaf") {
       if (!director.explicit) { clearing.idleSeconds = idleSeconds; clearing.awakeUntil = awakeUntil; }
       return true;
     }
-    // The facing-front pickup rig reaches slightly ahead of its feet. Only a
-    // safe approach point makes a distant decorative prop an interactive one.
-    for (const [dx, dy] of [[.12, -.14], [-.12, -.14], [0, -.1]]) {
+    // Stop beside and slightly below the prop: it stays visible outside the
+    // body while the bent paw makes a short reach above the sole.
+    for (const [dx, dy] of [[.3, .1], [-.3, .1], [.24, .14], [-.24, .14], [.3, .04], [-.3, .04]]) {
       const target = { x: item.x + size * dx, y: item.y + size * dy };
       if (!findWorldPath(clearing.navigation, clearing.position, target)) continue;
       if (!requestClearingPoint(clearing, target)) continue;
@@ -171,10 +171,11 @@ function prepareProp(state: ForestSessionState, kind: "mushroom" | "leaf") {
 }
 
 /** One reserved task owns every leg; no actor position is ever assigned by this executor. */
-function prepareGarden(state: ForestSessionState, kind: ForestGardenAction) {
+function prepareGarden(state: ForestSessionState, kind: ForestGardenAction, heroScale = 1) {
   const { clearing, director } = state, garden = state.life.garden, nav = clearing.navigation;
   if (!nav) return false;
-  const candidates = gardenEligibleBushes(garden, kind).sort((a, b) => distance(a.workPosition!, clearing.position) - distance(b.workPosition!, clearing.position));
+  const candidates = gardenEligibleBushes(garden, kind).filter(bush => gardenWorkReachable(bush, clearing.size * heroScale))
+    .sort((a, b) => distance(a.workPosition!, clearing.position) - distance(b.workPosition!, clearing.position));
   for (const bush of candidates) {
     const first = kind === "water-bush" ? bush.workPosition! : garden.basket!.approach;
     if (!findWorldPath(nav, clearing.position, first)) continue;
@@ -200,6 +201,9 @@ function advanceGardenRoutine(state: ForestSessionState, delta: number, options:
   if (!routine) return;
   const dt = Math.min(delta, .1), bush = garden.bushes.find(item => item.id === routine.bushId);
   routine.totalElapsed += dt;
+  if (bush && !gardenWorkReachable(bush, actor(state, options).size)) {
+    failGarden(state, "Размер Мохлика изменился — до ягод больше не дотянуться с этой точки"); return;
+  }
   if (!bush?.workPosition || routine.kind === "harvest-berries" && !garden.basket || !state.clearing.navigationEnabled || options.navigationMode === "routes" || routine.totalElapsed > 120 || options.rain >= .7) {
     failGarden(state, options.rain >= .7 ? "Дождь усилился — аккуратно отложил заботы о ягодах" : "Подход изменился — занятие остановлено без потери урожая"); return;
   }
@@ -261,7 +265,8 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
       failRequest(state, "Сейчас нельзя спокойно остановиться для наблюдения"); return;
     }
     director.birdwatch = createForestBirdwatch(bird, 6 + random(director) * 2);
-    director.activeKey = "watch-birds"; director.reason = "Остановился и наблюдает за птицей на ветке";
+    director.activeKey = "watch-birds"; director.reason = bird.surface === "ground"
+      ? "Остановился и наблюдает за птицей на земле" : "Остановился и наблюдает за птицей на ветке";
     clearRequest(state); return;
   }
   if (kind === "campfire") {
@@ -335,9 +340,12 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
         director.reason = "Сначала безопасно выходит к полянке"; return;
       }
     }
-    if (!prepareGarden(state, kind)) {
+    if (!prepareGarden(state, kind, options.heroScale)) {
       const garden = state.life.garden;
-      const reason = kind === "water-bush" ? "Куст уже полит или к нему нет безопасного подхода"
+      const eligible = gardenEligibleBushes(garden, kind);
+      const reachBlocked = eligible.length > 0 && !eligible.some(bush => gardenWorkReachable(bush, actor(state, options).size));
+      const reason = reachBlocked ? "С текущим размером Мохлик не достаёт до куста с безопасной точки"
+        : kind === "water-bush" ? "Куст уже полит или к нему нет безопасного подхода"
         : !garden.basket ? "Для корзинки пока нет свободного места у полянки"
           : garden.basket.berries + FOREST_GARDEN_LIMITS.harvest > garden.basket.capacity ? "Корзинка уже наполнена — ягоды останутся на кусте"
             : "Пока нет спелых ягод с доступным подходом";
@@ -359,13 +367,13 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
     }
     director.waitingForExit = false;
   }
-  if (!director.target && !prepareProp(state, kind)) {
+  if (!director.target && !prepareProp(state, kind, options.heroScale)) {
     failRequest(state, kind === "mushroom" ? "Нет выросшего гриба с доступным подходом" : "К листику пока нельзя подойти"); return;
   }
   const arrived = clearing.navigationEnabled ? isClearingAtPoint(clearing, director.target!) : isClearingAtHome(clearing);
   if (!arrived) { director.reason = kind === "mushroom" ? "Подходит к выросшему грибу" : "Идёт рассмотреть листик"; return; }
   const object = kind === "mushroom" ? state.life.mushrooms.find(item => item.id === director.objectId) : state.life.leaf;
-  if (!object || distance(object, clearing.position) > clearing.size * .4
+  if (!object || distance(object, clearing.position) > actor(state, options).size * .4
     || !clearing.navigationEnabled && kind === "mushroom" && !(object as { reachable?: boolean }).reachable) {
     failRequest(state, "Подход изменился — предмет слишком далеко"); return;
   }
@@ -419,9 +427,11 @@ function chooseAction(state: ForestSessionState, options: ForestDirectorOptions)
     && !director.recent.some(item => item.key === "bush" && director.elapsed - item.at < 90),
     options.rain >= .35 ? "Куст мокрый — лучше другое занятие" : options.dusk >= .75 ? "Ночью куст оставит в покое" : "Куст недоступен или недавно уже исследован");
   const canGarden = clearing.navigationEnabled && options.navigationMode !== "routes" && options.rain < .35 && options.dusk < .65 && mind.needs.energy > .4;
-  candidate("water-bush", canGarden && gardenActionAvailable(state.life.garden, "water-bush"),
+  const gardenWithinReach = (kind: ForestGardenAction) => gardenEligibleBushes(state.life.garden, kind)
+    .some(bush => gardenWorkReachable(bush, actor(state, options).size));
+  candidate("water-bush", canGarden && gardenActionAvailable(state.life.garden, "water-bush") && gardenWithinReach("water-bush"),
     "Кусту пока не нужен полив, погода не подходит или Мохлик устал");
-  candidate("harvest-berries", canGarden && gardenActionAvailable(state.life.garden, "harvest-berries"),
+  candidate("harvest-berries", canGarden && gardenActionAvailable(state.life.garden, "harvest-berries") && gardenWithinReach("harvest-berries"),
     "Ягоды ещё растут, корзинка полна или сейчас лучше отдохнуть");
   candidate("home-sleep", options.homeAvailable && Boolean(clearing.navigationEnabled ? clearing.interactions.home : clearing.homeRoute)
     && clearing.elapsed >= clearing.awakeUntil && (mind.needs.energy < .32 || options.rain > .55 && mind.needs.comfort < .45),

@@ -210,3 +210,115 @@ test("quiet observation builds tolerance for that visitor without protecting a d
   for (let i = 0; i < 30; i++) advanceBirdReactions(calm, birds, .05, undefined, bounds, { ...visitor, y: 113, moving: true });
   assert.equal(calm.escapes.size, 1);
 });
+
+test("ground birds pause pecking to listen and leave more cautiously than a tree visitor", () => {
+  const ground = { ...bird("ground", 100, 100, "peck"), surface: "ground", groundY: 106.6, peck: 1 };
+  const state = createBirdReactions();
+  advanceBirdReactions(state, [ground], .02, sound(ground), bounds);
+  advanceBirdReactions(state, [ground], .2);
+  assert.ok(applyBirdReactions(state, [ground])[0].peck < .1, "listening lifts the beak from the soil");
+  const groundState = createBirdReactions(), treeState = createBirdReactions();
+  const visitor = { x: 100, y: 165, size: 50, moving: true };
+  for (let i = 0; i < 30; i++) {
+    advanceBirdReactions(groundState, [ground], .05, undefined, bounds, visitor);
+    advanceBirdReactions(treeState, [bird("tree", 100, 100)], .05, undefined, bounds, visitor);
+  }
+  assert.equal(groundState.escapes.size, 1); assert.equal(treeState.escapes.size, 0);
+  const first = groundState.escapes.get("ground").bird;
+  assert.deepEqual({ x: first.x, y: first.y }, { x: ground.x, y: ground.y }, "departure captures the current foraging location");
+});
+
+test("rain or dusk ends ground feeding progressively while paused and explicit previews remain unchanged", () => {
+  const birds = [
+    { ...bird("a", 100, 100, "lookout"), surface: "ground", groundY: 106.6 },
+    { ...bird("b", 145, 100, "peck"), surface: "ground", groundY: 106.6, peck: 1 },
+  ];
+  for (const weather of [{ rain: .3, dusk: 0 }, { rain: 0, dusk: .5 }]) {
+    const state = createBirdReactions(), frozen = structuredClone(state);
+    advanceBirdReactions(state, birds, 0, undefined, bounds, undefined, weather);
+    assert.deepEqual(state, frozen);
+    advanceBirdReactions(state, birds, .05, undefined, bounds, undefined, weather);
+    assert.equal(state.escapes.size, 2, "both visible birds are reserved before the weather mask hides them");
+    assert.ok(state.escapes.get("b").startedAt > state.elapsed, "the partner waits before pushing off");
+    const initial = applyBirdReactions(state, birds)[0];
+    assert.deepEqual({ x: initial.x, y: initial.y }, { x: birds[0].x, y: birds[0].y });
+    for (let i = 0; i < 22; i++) advanceBirdReactions(state, birds, .05, undefined, bounds, undefined, weather);
+    assert.equal(state.escapes.size, 2);
+    assert.equal(applyBirdReactions(state, birds)[0].groundY, undefined, "airborne departures leave the ground depth pass");
+    const preview = createBirdReactions();
+    for (let i = 0; i < 22; i++) advanceBirdReactions(preview, birds, .05, undefined, bounds, undefined, { ...weather, forced: true });
+    assert.equal(preview.escapes.size, 0, "explicit DEV replay keeps its weather override");
+  }
+});
+
+test("abrupt downpour and darkness preserve actual departing birds until they leave the map", () => {
+  const options = { dusk: 0, rain: 0, reducedMotion: false };
+  let arrival = 0, clear = [];
+  for (let elapsed = 0; elapsed < 1800; elapsed += .25) {
+    const frame = forestBirdFrame(scene, { ...options, elapsed });
+    if (frame.length === 2 && frame.every(b => b.surface === "ground" && b.state === "lookout")) {
+      arrival = elapsed; clear = frame; break;
+    }
+  }
+  assert.equal(clear.length, 2, "find an actual automatic ground pair");
+  for (const weather of [{ rain: 1, dusk: 0 }, { rain: 0, dusk: 1 }]) {
+    const state = createBirdReactions();
+    advanceBirdReactions(state, clear, .05, undefined, bounds, undefined, { rain: 0, dusk: 0 });
+    let previous = new Map(clear.map(b => [b.id, b])), exited = new Set();
+    for (let tick = 1; tick <= 330; tick++) {
+      const base = forestBirdFrame(scene, { ...options, ...weather, elapsed: arrival + tick * .05 });
+      assert.equal(base.length, 0, "automatic weather mask removed authored visits");
+      advanceBirdReactions(state, base, .05, undefined, bounds, undefined, weather);
+      const frame = applyBirdReactions(state, base);
+      assert.equal(new Set(frame.map(b => b.id)).size, frame.length);
+      assert.deepEqual(applyBirdReactions(state, base, false), [], "explicit off/reduced motion still wins over escape snapshots");
+      for (const bird of frame) {
+        const before = previous.get(bird.id);
+        if (before) assert.ok(Math.hypot(bird.x - before.x, bird.y - before.y) < 20, "weather cannot teleport a resting body");
+        if (bird.x < -20 || bird.y < -20 || bird.x > scene.width + 20 || bird.y > scene.height + 20) exited.add(bird.id);
+      }
+      if (tick === 1) {
+        assert.equal(frame.length, 2, "the waiting partner stays visible while the first bird pushes off");
+        assert.equal(frame[1].state, "lookout");
+      }
+      if (tick === 22) assert.equal(frame.length, 2, "its partner also leaves from a retained visible snapshot");
+      previous = new Map(frame.map(b => [b.id, b]));
+    }
+    assert.equal(exited.size, 2, "both snapshots stay visible until their flight really exits the map");
+    assert.deepEqual(applyBirdReactions(state, []), []);
+    assert.equal(state.recentGround.size, 0, "old snapshots expire without accumulating");
+  }
+});
+
+test("sudden weather during a ground hop or low takeoff preserves that pose and continues the departure", () => {
+  const options = { dusk: 0, rain: 0, reducedMotion: false };
+  for (const movement of ["hop", "takeoff"]) {
+  let arrival = 0, clear = [], hopping;
+  for (let elapsed = 0; elapsed < 1800; elapsed += .025) {
+    const frame = forestBirdFrame(scene, { ...options, elapsed });
+    const candidate = frame.find(b => b.surface === "ground" && b.state === movement && b.groundY !== undefined && b.hopHeight > 1);
+    if (candidate) { arrival = elapsed; clear = frame; hopping = candidate; break; }
+  }
+  assert.ok(hopping, "find an actual automatic ground hop");
+  for (const weather of [{ rain: 1, dusk: 0 }, { rain: 0, dusk: 1 }]) {
+    const state = createBirdReactions();
+    advanceBirdReactions(state, clear, .05, undefined, bounds, undefined, options);
+    const base = forestBirdFrame(scene, { ...options, ...weather, elapsed: arrival + .05 });
+    assert.deepEqual(base, []);
+    advanceBirdReactions(state, base, .05, undefined, bounds, undefined, weather);
+    let previous = applyBirdReactions(state, base).find(b => b.id === hopping.id), exited = false;
+    assert.ok(previous, "the hopping individual cannot vanish when its authored frame is masked");
+    for (const key of ["x", "y", "groundY", "hopHeight", "wingFold", "legReach"])
+      assert.equal(previous[key], hopping[key], `departure starts from the current ${key}`);
+    for (let tick = 0; tick < 330; tick++) {
+      advanceBirdReactions(state, [], .05, undefined, bounds, undefined, weather);
+      const bird = applyBirdReactions(state, []).find(b => b.id === hopping.id);
+      if (!bird) { assert.ok(exited, "the bird disappears only after leaving the world"); continue; }
+      assert.ok(Math.hypot(bird.x - previous.x, bird.y - previous.y) < 20, "the hop joins its escape continuously");
+      if (bird.x < -20 || bird.y < -20 || bird.x > scene.width + 20 || bird.y > scene.height + 20) exited = true;
+      previous = bird;
+    }
+    assert.ok(exited);
+  }
+  }
+});

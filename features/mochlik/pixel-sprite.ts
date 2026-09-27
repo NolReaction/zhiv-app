@@ -2,8 +2,8 @@
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
   | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
-/** Gardening owns continuous arms outside the cached body sprite. */
-export type PixelRigOptions = { gardening?: boolean };
+/** Interaction painters own continuous arms outside the cached body sprite. */
+export type PixelRigOptions = { gardening?: boolean; crouch?: number };
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
   moss: "#7c8845", mossLight: "#a5ad58", mossDark: "#58683b", eye: "#30291d",
@@ -13,7 +13,8 @@ const CACHE_LIMIT = 384;
 
 export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }, rig?: PixelRigOptions): HTMLCanvasElement {
   frame = Number.isFinite(frame) ? ((Math.trunc(frame) % 4) + 4) % 4 : 0;
-  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}`;
+  const rigCrouch = Number.isFinite(rig?.crouch) ? Math.max(0, Math.min(6, Math.round(rig!.crouch!))) : undefined;
+  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}`;
   const existing = cache.get(key);
   if (existing) { cache.delete(key); cache.set(key, existing); return existing; }
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
@@ -52,7 +53,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(21, 41, 7, 3, c.shade); oval(20, 40, 6, 2, c.cream); rect(17, 39, 5, 1, c.light);
     oval(33, 38, 7, 6, c.mossDark); oval(33, 37, 6, 5, c.moss); rect(32, 34, 4, 2, c.mossLight);
   } else {
-    const crouch = pose === "crouch" ? 4 : pose === "sniff" || pose === "fish" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0;
+    const crouch = rigCrouch ?? (pose === "crouch" ? 4 : pose === "sniff" || pose === "fish" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0);
     const stretch = pose === "stretch" ? -3 : pose === "yawn" ? [0, -2, -3, 0][frame % 4]
       : pose === "sneeze" ? [-2, -1, 4, 1][frame % 4] : pose === "wonder" ? -2 : 0;
     const faceY = 20 + bob + crouch + stretch;
@@ -89,8 +90,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       rect(21, faceY - 13, 3, 2, c.mossLight); rect(24, faceY - 8, 3, 2, c.moss);
       const look = direction === "left" ? -3 : direction === "right" ? 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
       for (const x of [19 + look, 29 + look]) {
-        if (rig?.gardening) { oval(x, faceY + 1, 1, 2, c.eye); rect(x, faceY, 1, 1, "#fff8e8"); }
-        else if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
+        if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
         else { oval(x, faceY, 2, pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
       }
       rect(23 + look, faceY + 3, 3, 2, c.outline); rect(24 + look, faceY + 5, 1, 2, c.outline);

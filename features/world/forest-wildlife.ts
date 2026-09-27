@@ -10,7 +10,7 @@ export type ForestFirefly = ForestAirParticle & {
   glow?: number;
 };
 export type ForestBirdSpecies = "robin" | "blue-tit" | "swallow" | "finch";
-export type ForestBirdState = "flap" | "glide" | "landing" | "perched" | "preen" | "hop" | "takeoff";
+export type ForestBirdState = "flap" | "glide" | "landing" | "perched" | "preen" | "hop" | "takeoff" | "peck" | "lookout";
 export type ForestBird = ForestAirParticle & {
   angle: number;
   id?: string;
@@ -26,6 +26,11 @@ export type ForestBird = ForestAirParticle & {
   facing?: -1 | 1;
   preen?: number;
   perchId?: string;
+  surface?: "tree" | "ground";
+  /** Foot support Y while close to the ground; the compositor uses it for depth. */
+  groundY?: number;
+  hopHeight?: number;
+  peck?: number;
 };
 
 const BUTTERFLY_COLORS = [
@@ -129,12 +134,19 @@ export function drawForestBird(ctx: CanvasRenderingContext2D, bird: ForestBird) 
   const bank = bird.bank ?? Math.atan2(Math.sin(bird.angle), Math.abs(Math.cos(bird.angle)));
   const lift = bird.wingLift ?? .45 + Math.sin(bird.phase) * .5;
   const headTurn = bird.headTurn ?? 0, preen = bird.preen ?? 0, legs = bird.legReach ?? 0;
+  const peck = bird.peck ?? 0, alpha = ctx.globalAlpha * bird.opacity;
   const px = (x: number) => x * s * facing, py = (y: number) => y * s;
   const ellipse = (x: number, y: number, rx: number, ry: number, rotation = 0) => {
     ctx.beginPath(); ctx.ellipse(px(x), py(y), s * rx, s * ry, rotation * facing, 0, TAU); ctx.fill();
   };
-  ctx.save(); ctx.translate(bird.x, bird.y); ctx.rotate(bank * facing);
-  ctx.globalAlpha = bird.opacity;
+  ctx.save();
+  if (bird.groundY !== undefined) {
+    const weight = Math.max(0, 1 - (bird.hopHeight ?? 0) / (s * 12));
+    ctx.globalAlpha = alpha * .18 * weight; ctx.fillStyle = "#273a25";
+    ctx.beginPath(); ctx.ellipse(bird.x, bird.groundY, s * (2.9 + (1 - weight)), s * .75, 0, 0, TAU); ctx.fill();
+  }
+  ctx.translate(bird.x, bird.y); ctx.rotate(bank * facing);
+  ctx.globalAlpha = alpha;
   // Legs extend before touch-down; feet end exactly at the authored crown anchor.
   if (legs > .01) {
     ctx.strokeStyle = "#7d633f"; ctx.lineWidth = s * .27;
@@ -146,6 +158,11 @@ export function drawForestBird(ctx: CanvasRenderingContext2D, bird: ForestBird) 
       ctx.moveTo(px(footX), py(1.1 + 2.2 * legs));
       ctx.lineTo(px(footX - .45), py(1 + 2.2 * legs)); ctx.stroke();
     }
+  }
+  // Feet stay planted while the whole torso tips forward and crouches. Moving
+  // just the head down to the soil leaves a detached head on a vertical body.
+  if (peck > 0) {
+    ctx.translate(0, py(.8 + peck * .65)); ctx.rotate(peck * 1.1 * facing); ctx.translate(0, -py(.8));
   }
   const tailY = folded * 2 + (bird.tailFlick ?? 0) * .8;
   ctx.fillStyle = palette.tail;
@@ -179,14 +196,14 @@ export function drawForestBird(ctx: CanvasRenderingContext2D, bird: ForestBird) 
   ctx.fillStyle = palette.breast;
   ellipse(.55, .28 + folded * .3, 1.45 - folded * .6, .52 + folded * .68, -.2 * folded);
   if (folded > .01) {
-    ctx.globalAlpha = bird.opacity * folded; ctx.fillStyle = palette.farWing;
+    ctx.globalAlpha = alpha * folded; ctx.fillStyle = palette.farWing;
     ellipse(-.48, .12, 1.12, 1.35, -.48);
     ctx.fillStyle = palette.wing; ellipse(-.53, -.15, .65, .85, -.48);
     ctx.fillStyle = palette.feather; ellipse(-.56, -.03, .18, .82, -.56);
-    ctx.globalAlpha = bird.opacity;
+    ctx.globalAlpha = alpha;
   }
-  const headX = 2 - folded * .85 - preen * 1.3;
-  const headY = -.18 - folded * 1.55 + preen * 1.3;
+  const headX = 2 - folded * .85 - preen * 1.3 + peck * .15;
+  const headY = -.18 - folded * 1.55 + preen * 1.3 + peck * 1.15;
   ctx.fillStyle = palette.head; ellipse(headX, headY, .92, .81);
   ctx.fillStyle = palette.cheek; ellipse(headX + .15, headY + .24, .6, .4);
   if (tit) {
@@ -198,7 +215,7 @@ export function drawForestBird(ctx: CanvasRenderingContext2D, bird: ForestBird) 
   const beakDirection = headTurn < -.65 ? -1 : 1;
   ctx.fillStyle = palette.beak;
   ctx.beginPath(); ctx.moveTo(px(headX + beakDirection * .6), py(headY - .05));
-  ctx.lineTo(px(headX + beakDirection * (1.48 - Math.abs(headTurn) * .2)), py(headY + .18 + preen * .35));
+  ctx.lineTo(px(headX + beakDirection * (1.48 - Math.abs(headTurn) * .2 - peck * .3)), py(headY + .18 + preen * .35 + peck * .4));
   ctx.lineTo(px(headX + beakDirection * .6), py(headY + .32)); ctx.closePath(); ctx.fill();
   ctx.fillStyle = palette.eye; ellipse(headX + beakDirection * .31, headY - .17, .19, .19);
   ctx.fillStyle = "#f7eed0"; ellipse(headX + beakDirection * .34, headY - .23, .055, .055);

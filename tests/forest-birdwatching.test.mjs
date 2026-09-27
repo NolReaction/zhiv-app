@@ -26,7 +26,7 @@ test('only nearby visible perches are candidates; absent, flying and faded night
     ...['flap', 'glide', 'landing', 'takeoff', undefined].map(state => bird(`state-${state}`, { state }))];
   assert.equal(chooseForestBirdwatchTarget([], actor), null);
   assert.equal(chooseForestBirdwatchTarget(invalid, actor), null);
-  for (const state of ['perched', 'preen', 'hop']) {
+  for (const state of ['perched', 'preen', 'hop', 'peck', 'lookout']) {
     const candidate = bird(`valid-${state}`, { state, opacity: .5 });
     assert.equal(chooseForestBirdwatchTarget([...invalid, candidate], actor), candidate);
   }

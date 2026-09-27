@@ -26,7 +26,7 @@ const durationOf = (duration: number) => Number.isFinite(duration) ? Math.max(6,
 const visiblePerch = (bird: ForestBird) => typeof bird.id === "string" && bird.id.trim().length > 0
   && finitePoint(bird) && Number.isFinite(bird.size) && bird.size > 0
   && Number.isFinite(bird.opacity) && bird.opacity >= .5
-  && (bird.state === "perched" || bird.state === "preen" || bird.state === "hop");
+  && (bird.state === "perched" || bird.state === "preen" || bird.state === "hop" || bird.state === "peck" || bird.state === "lookout");
 const finished = (watch: ForestBirdwatch) => seconds(watch.elapsed) + EPSILON >= durationOf(watch.duration)
   || seconds(watch.missingSeconds) + EPSILON >= OUTRO_SECONDS;
 

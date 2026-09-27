@@ -860,7 +860,7 @@ function sceneClock(env) {
   };
 }
 
-function sampleHero(scene, env, pixelSprite) {
+function sampleHero(scene, env, pixelSprite, withInteractionRig = false) {
   const target = env.surface();
   scene.paintWorld(target.context);
   const body = target.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
@@ -868,8 +868,11 @@ function sampleHero(scene, env, pixelSprite) {
   return {
     body, calls: target.calls,
     hasPose(...poses) {
+      const rigs = withInteractionRig
+        ? [undefined, ...Array.from({ length: 7 }, (_, crouch) => ({ gardening: true, crouch }))]
+        : [undefined];
       return Boolean(body) && poses.some(pose => ["front", "back", "left", "right"].some(direction =>
-        [0, 1, 2, 3].some(frame => body.args[0] === pixelSprite(pose, direction, frame))));
+        [0, 1, 2, 3].some(frame => rigs.some(rig => body.args[0] === pixelSprite(pose, direction, frame, undefined, rig)))));
     },
   };
 }
@@ -1129,7 +1132,7 @@ test("tapping a held mushroom finishes putting it back before greeting and repea
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
     env.finish(); await flush();
     probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
-    const clock = sceneClock(env), sample = () => sampleHero(scene, env, pixelSprite);
+    const clock = sceneClock(env), sample = () => sampleHero(scene, env, pixelSprite, true);
     worldDevStore.triggerLife("mushroom"); clock.advance(3);
     assert.equal(probe.state.life.routine?.picked, true);
     const id = probe.state.life.routine.mushroomId;

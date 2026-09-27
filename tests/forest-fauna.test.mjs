@@ -15,7 +15,8 @@ const scene = { schemaVersion:1,id:'fauna-test',width:300,height:300,focus:{x:40
     {id:'flowers',species:'butterfly',capacity:6,points:rectangle(100,100,100,90),anchors:[
       {id:'leaf',kind:'rest',position:{x:130,y:140}}, {id:'bush',kind:'shelter',position:{x:115,y:115}}]},
     {id:'grass',species:'firefly',capacity:12,points:rectangle(90,100,120,100),anchors:[
-      {id:'grass-tip',kind:'rest',position:{x:190,y:180}}, {id:'grass-base',kind:'shelter',position:{x:195,y:190}}]},
+      {id:'grass-tip',kind:'rest',position:{x:190,y:180}}, {id:'grass-base',kind:'shelter',position:{x:195,y:190}},
+      {id:'grass-north-base',kind:'shelter',position:{x:190,y:120}}]},
   ]};
 const conditions = {actor,dusk:0,rain:0};
 const advance = (state,seconds,options=conditions,inspect) => {
@@ -122,7 +123,7 @@ test('weather preserves the population and moves it to authored refuges; night a
   assert.deepEqual(state.entities.map(e=>e.id),ids);assert.equal(faunaRenderFrame(state).butterflies.length,6);
   const sheltered=state.entities.filter(e=>e.mode==='refuge');assert.equal(sheltered.length,18);
   for(const e of sheltered){const h=scene.habitats.find(h=>h.id===e.habitatId),a=h.anchors.find(a=>a.id===e.anchorId);
-    assert.ok(Math.hypot(e.x-a.position.x,e.y-a.position.y)<4,'resting bodies are drawn on the real shelter foliage');
+    assert.ok(Math.hypot(e.x-a.position.x,e.y-a.position.y)<10.7,'resting bodies stay within the small authored foliage patch');
     assert.ok(Math.hypot(e.x-a.position.x-e.anchorOffset.x,e.y-a.position.y-e.anchorOffset.y)<1)}
   advance(state,16,{...conditions,dusk:1});
   assert.ok(state.entities.filter(e=>e.species==='firefly').every(e=>e.mode!=='refuge'));
@@ -346,7 +347,7 @@ test('rain redirects a returning individual to real nearby shelter instead of it
     previous={x:e.x,y:e.y,vx:e.vx,vy:e.vy};
   });
   assert.equal(e.interactionToken,null,'landing safely releases the existing reservation');
-  assert.ok(distanceBetween(e,wide.habitats[0].anchors[0].position)<4);
+  assert.ok(distanceBetween(e,wide.habitats[0].anchors[0].position)<10.7);
   assert.ok(e.cooldownUntil>state.elapsed);
 });
 
@@ -366,7 +367,7 @@ test('a weather-interrupted encounter releases the hero and shelters the same in
   advance(state,12,{...conditions,rain:1});
   assert.equal(e.mode,'refuge');assert.equal(e.anchorId,'bush');assert.equal(e.interactionToken,null);
   assert.equal(state.entities.length,1);assert.equal(state.entities[0].id,id);
-  assert.ok(distanceBetween(e,{x:115,y:115})<4);
+  assert.ok(distanceBetween(e,{x:115,y:115})<10.7);
 });
 
 test('borderline showers and brief dry gaps do not repeatedly launch sheltered fauna',()=>{

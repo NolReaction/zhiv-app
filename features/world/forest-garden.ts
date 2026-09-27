@@ -2,6 +2,7 @@ import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { createWorldNavigation, findWorldPath, isWalkable } from "./navigation";
 import { isForestGroundClear } from "./forest-ground-weather";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
+import { forestGardenBerryLayout } from "./forest-garden-layout";
 
 export type ForestGardenAction = "water-bush" | "harvest-berries";
 export type ForestGardenPhase = "approach-basket" | "take-basket" | "approach-bush" | "water" | "collect"
@@ -40,17 +41,21 @@ export function createForestGarden(scene: FixedWorldScene): ForestGardenState {
   for (const bush of state.bushes) {
     const authored = scene.bushes?.find(item => item.id === bush.id);
     if (!authored || !forestBushArtworkAvailable(scene, authored)) continue;
-    const edge = bush.points.reduce((nearest, current) => Math.hypot(current.x - bush.position.x, current.y - bush.position.y)
-      < Math.hypot(nearest.x - bush.position.x, nearest.y - bush.position.y) ? current : nearest);
-    const length = Math.hypot(bush.position.x - edge.x, bush.position.y - edge.y);
-    if (length <= 0) continue;
-    // The hide/jump entry can be far from the leaves. Work uses a nearby safe
-    // foot position so paws and water reach the authored shrub, never empty air.
-    for (const margin of [actor.size * .32, actor.size * .38, actor.size * .44]) {
-      if (margin > length) continue;
-      const candidate = { x: edge.x + (bush.position.x - edge.x) / length * margin,
-        y: edge.y + (bush.position.y - edge.y) / length * margin };
-      if (findWorldPath(nav, actor.spawn, candidate)) { bush.workPosition = candidate; break; }
+    const cluster = forestGardenBerryLayout(bush, bush.position)[0];
+    if (!cluster) continue;
+    const middleX = bush.points.reduce((sum, point) => sum + point.x, 0) / bush.points.length;
+    const side = bush.position.x < middleX ? -1 : 1;
+    // Feet stay on navigable ground; the worked fruit must be below the near ear
+    // and beside a short paw, not behind the face or at full arm's extension.
+    for (const vertical of [.27, .255, .28]) {
+      for (const horizontal of [.4, .36, .44]) {
+        const candidate = { x: cluster.x + side * actor.size * horizontal, y: cluster.y + actor.size * vertical };
+        const shoulder = { x: candidate.x - side * actor.size * 10 / 48, y: candidate.y - actor.size * 14 / 48 };
+        const reach = Math.hypot(cluster.x - shoulder.x, cluster.y - shoulder.y) + cluster.radius;
+        if (reach > actor.size * .27 || !findWorldPath(nav, actor.spawn, candidate)) continue;
+        bush.workPosition = candidate; break;
+      }
+      if (bush.workPosition) break;
     }
   }
   if (!state.bushes.length) return state;
@@ -58,7 +63,7 @@ export function createForestGarden(scene: FixedWorldScene): ForestGardenState {
   // position keeps the body in front of the basket instead of standing inside it.
   for (const [dx, dy] of [[.49, -.08], [-.49, -.08], [.31, .34], [-.31, .34], [.55, .04], [-.55, .04], [.25, .4], [-.25, .4], [.19, .28], [-.19, .28]]) {
     const position = { x: actor.spawn.x + actor.size * dx, y: actor.spawn.y + actor.size * dy };
-    const approach = { x: position.x, y: position.y + actor.size * .13 };
+    const approach = { x: position.x, y: position.y + actor.size * .055 };
     if (!isForestGroundClear(scene, position, actor.size * .085) || !isWalkable(nav, position)
       || !findWorldPath(nav, actor.spawn, approach)) continue;
     if ((scene.mushrooms ?? []).some(mushroom => Math.hypot(mushroom.position.x - position.x, mushroom.position.y - position.y) < actor.size * .16)) continue;
@@ -81,6 +86,17 @@ export function advanceForestGarden(state: ForestGardenState, delta: number, opt
     // A watered bush takes 30 minutes; a dry bush still grows in 60. Nothing dies.
     bush.growth = unit(bush.growth + dt * (1 + bush.moisture) / 3600);
   }
+}
+
+/** DEV can resize only the rendered rig. Do not stretch it toward a stale work point. */
+export function gardenWorkReachable(bush: ForestBerryBush, size: number): boolean {
+  const foot = bush.workPosition, cluster = forestGardenBerryLayout(bush, bush.position)[0];
+  if (!foot || !cluster || !Number.isFinite(size) || size <= 0) return false;
+  const side = cluster.x < foot.x ? -1 : 1;
+  const shoulder = { x: foot.x + side * size * 10 / 48, y: foot.y - size * 14 / 48 };
+  return foot.y - cluster.y <= size * .285 && foot.y >= cluster.y
+    && Math.abs(cluster.x - foot.x) >= size * .32
+    && Math.hypot(cluster.x - shoulder.x, cluster.y - shoulder.y) + cluster.radius <= size * .27;
 }
 
 export function gardenActionAvailable(state: ForestGardenState, kind: ForestGardenAction): boolean {

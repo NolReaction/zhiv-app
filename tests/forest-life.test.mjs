@@ -235,3 +235,49 @@ test('account and anonymous sessions are isolated and disposed callbacks never r
  for(const s of [a,b,c,d]){s.release();s.release()}
  await Promise.resolve();assert.equal(calls,0);
 });
+
+test('a ground prop stays under the contacting paw through lift, inspection and return at either actor scale',()=>{
+ for(const kind of ['mushroom','leaf'])for(const size of [50,56]){
+  const life=createForestLife(scene),prop=kind==='mushroom'?life.mushrooms[0]:life.leaf;
+  const feet={x:prop.x+size*.3,y:prop.y+size*.1,size,propSize:50};
+  triggerForestLife(life,kind,{mushroomId:prop.id});
+  const pickup=kind==='mushroom'?2.2:1.9;
+  const propGround={x:prop.x,y:prop.y-(kind==='mushroom'?50*.19*.38:0)};
+  life.routine.elapsed=pickup-1e-6;
+  const touch=forestLifeFrame(life,feet,0),hand=touch.arms.reduce((best,arm)=>
+   Math.hypot(arm.hand.x-propGround.x,arm.hand.y-propGround.y)<Math.hypot(best.x-propGround.x,best.y-propGround.y)?arm.hand:best,touch.arms[0].hand);
+  assert.ok(Math.hypot(hand.x-propGround.x,hand.y-propGround.y)<1e-7,'hand arrives before prop is detached');
+  life.routine.elapsed=pickup;
+  const first=forestLifeFrame(life,feet,0),firstProp=first.heldMushroom??first.heldLeaf;
+  assert.equal(firstProp.x,propGround.x);assert.equal(firstProp.y,propGround.y);
+  assert.equal(firstProp.size,50*(kind==='mushroom'?.19:.18),'ground and held size do not change with hero scale');
+  for(let t=pickup;t<(kind==='mushroom'?6.5:5.8);t+=.025){
+   life.routine.elapsed=t;const before=JSON.stringify(life),frame=forestLifeFrame(life,feet,0),held=frame.heldMushroom??frame.heldLeaf;
+   assert.ok(frame.arms.some(arm=>Math.hypot(arm.hand.x-held.x,arm.hand.y-held.y)<1e-8),'the item follows a real paw every frame');
+   for(const arm of frame.arms){
+    assert.ok(Math.hypot(arm.hand.x-arm.shoulder.x,arm.hand.y-arm.shoulder.y)<size*.3,'pickup cannot stretch a paw beyond a short reach');
+   }
+   assert.equal(JSON.stringify(life),before,'drawing is pure');
+  }
+  if(kind==='leaf'){
+   life.routine.elapsed=5.8-1e-6;const final=forestLifeFrame(life,feet,0).heldLeaf;
+   assert.ok(Math.hypot(final.x-prop.x,final.y-prop.y)<1e-7,'release ends exactly at the original ground point');
+  }
+ }
+});
+
+test('an interrupted unbitten prop stays in a paw through the complete return to the ground',()=>{
+ for(const kind of ['mushroom','leaf']){
+  const life=createForestLife(scene),prop=kind==='mushroom'?life.mushrooms[0]:life.leaf;
+  const feet={x:prop.x+4,y:prop.y+7,size:50};
+  triggerForestLife(life,kind,{mushroomId:prop.id});advance(life,3.3);
+  const before=forestLifeFrame(life,feet,0);interruptForestLife(life);
+  assert.deepEqual(forestLifeFrame(life,feet,0).arms,before.arms,'no arm snap at interruption');
+  for(let i=0;i<23;i++){
+   const frame=forestLifeFrame(life,feet,0),held=frame.heldMushroom??frame.heldLeaf;
+   assert.ok(frame.arms.some(arm=>arm.hand.x===held.x&&arm.hand.y===held.y));
+   advance(life,.025);
+  }
+  advance(life,.05);assert.equal(life.routine,null);
+ }
+});

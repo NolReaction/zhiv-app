@@ -21,6 +21,7 @@ test("presets publish atomically, preserve artwork and accessibility settings, a
     const count = updates; store.triggerScenario(id); const state = store.getSnapshot();
     assert.equal(updates, count + 1); assert.equal(state.levels, before.levels); assert.equal(state.heroScale, 1.12);
     assert.equal(state.reducedMotion, "on"); assert.equal(state.paused, false); assert.equal(state.pose, "auto");
+    if (id === "ground-birds") { assert.equal(state.timeOfDay, "day"); assert.equal(state.weather, "clear"); }
     assert.ok(state.scenarioEvent.id > lastId); lastId = state.scenarioEvent.id;
     assert.ok(forestPersistenceOverridden(state, before.levels));
     assert.ok(Object.isFrozen(state.scenarioEvent));
@@ -34,6 +35,8 @@ test("scenarios retain real feet, prepare repeatable birds and let the coordinat
   const state = session.state, feet = { ...state.clearing.position };
   applyForestDevScenario(state, "birds", options);
   assert.equal(state.birdSeed, 0); assert.equal(state.birdStarted, state.elapsed); assert.deepEqual(state.clearing.position, feet);
+  applyForestDevScenario(state, "ground-birds", { ...options, dusk: 0 });
+  assert.equal(state.birdSeed, 6); assert.equal(state.birdStarted, state.elapsed); assert.deepEqual(state.clearing.position, feet);
   for (const fire of state.life.campfires) fire.wetness = 1;
   applyForestDevScenario(state, "campfire", options); assert.equal(state.pendingLife, "campfire"); assert.deepEqual(state.clearing.position, feet);
   for (let i = 0; i < 700 && !state.director.campfireVisit; i++) advanceForestDirector(state, .05, options);

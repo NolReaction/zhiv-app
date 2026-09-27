@@ -36,6 +36,8 @@ export type PaintFrame = {
   elapsed?: number;
   /** Ambient night amount when the main scene applies lighting in a later pass. */
   dusk?: number;
+  /** Existing crop moisture darkens only the matching cutout's root bed. */
+  bushMoisture?: readonly { id: string; moisture: number }[];
   /** Ground effects belong above terrain and below all buildings and actors. */
   paintGround?: (context: CanvasRenderingContext2D) => void;
 };
@@ -66,7 +68,9 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
   for (const terrain of scene.terrain) {
     const image = frame.images.get(terrain.image), bounds = terrain.bounds;
     if (image) {
-      drawForestBushGrounding(ctx, scene, terrain, image, frame.dusk ?? Number(frame.options.night));
+      const bushId = scene.bushes?.find(bush => bush.imageId === terrain.id)?.id;
+      drawForestBushGrounding(ctx, scene, terrain, image, frame.dusk ?? Number(frame.options.night),
+        frame.bushMoisture?.find(bush => bush.id === bushId)?.moisture);
       ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
     }
   }

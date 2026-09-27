@@ -47,6 +47,9 @@ function rasterCanvas() {
     moveTo(x, y) { path.push(transform(x, y)); },
     lineTo(x, y) { path.push(transform(x, y)); },
     closePath() {},
+    fill() {}, stroke() {},
+    createLinearGradient() { return { addColorStop() {} }; },
+    createRadialGradient() { return { addColorStop() {} }; },
     ellipse(x, y, rx, ry) { path = Array.from({ length: 64 }, (_, i) => transform(x + rx * Math.cos(i * Math.PI / 32), y + ry * Math.sin(i * Math.PI / 32))); },
     rect(x, y, width, height) { path = [transform(x, y), transform(x + width, y), transform(x + width, y + height), transform(x, y + height)]; },
     clip() { clips.push([...path]); },
@@ -57,7 +60,7 @@ function rasterCanvas() {
       this.globalAlpha = state.alpha; this.filter = state.filter;
     },
     fillRect(x, y, width, height) {
-      const alpha = this.fillStyle.startsWith("rgba") ? Number(this.fillStyle.match(/,\s*([\d.]+)\)$/)[1]) : 1;
+      const alpha = typeof this.fillStyle === "string" && this.fillStyle.startsWith("rgba") ? Number(this.fillStyle.match(/,\s*([\d.]+)\)$/)[1]) : 1;
       paint(x, y, width, height, () => alpha);
     },
     drawImage(image, x, y, width, height) {
@@ -223,8 +226,8 @@ test("shrub shadows preserve cutout holes, remain under the crown and reuse boun
   const day = recordingContext(), night = recordingContext(); day.globalAlpha = .6; night.globalAlpha = .6;
   drawForestBushGrounding(day, scene, terrain, image, 0);
   drawForestBushGrounding(night, scene, terrain, image, 1);
-  assert.equal(day.draws.length, 2);
-  for (const draw of day.draws) {
+  assert.equal(day.draws.length, 4);
+  for (const draw of day.draws.slice(-2)) {
     const [layer, x, y, width, height] = draw.args;
     assert.ok(layer.width <= 384 && layer.height <= 384);
     assert.ok(layer.pixels.size > 0);
@@ -239,10 +242,10 @@ test("shrub shadows preserve cutout holes, remain under the crown and reuse boun
     }
     assert.ok(width > 70); assert.equal(draw.filter, "none", "blur is baked once, not per frame");
   }
-  assert.equal(day.draws[0].args[0], night.draws[0].args[0]);
-  assert.equal(day.draws[1].args[0], night.draws[1].args[0]);
-  assert.ok(night.draws[0].alpha < day.draws[0].alpha * .4);
-  assert.ok(night.draws[1].alpha > day.draws[1].alpha * .8);
+  assert.equal(day.draws[2].args[0], night.draws[2].args[0]);
+  assert.equal(day.draws[3].args[0], night.draws[3].args[0]);
+  assert.ok(night.draws[2].alpha < day.draws[2].alpha * .4);
+  assert.ok(night.draws[3].alpha > day.draws[3].alpha * .8);
   assert.equal(day.globalAlpha, .6); assert.equal(night.globalAlpha, .6);
   assert.deepEqual(image.pixels, original); assert.equal(image.reads, 0);
 });
@@ -252,8 +255,8 @@ test("shrub shadow refreshes for replacement artwork and never shadows baked or 
   drawForestBushGrounding(ctx, scene, terrain, image);
   const blank = rasterCanvas(); blank.width = blank.naturalWidth = 100; blank.height = blank.naturalHeight = 100;
   drawForestBushGrounding(ctx, scene, terrain, blank);
-  assert.notEqual(ctx.draws[2].args[0], ctx.draws[0].args[0]);
-  assert.equal(ctx.draws[2].args[0].pixels.size, 0); assert.equal(ctx.draws[3].args[0].pixels.size, 0);
+  assert.notEqual(ctx.draws[6].args[0], ctx.draws[2].args[0]);
+  assert.equal(ctx.draws[6].args[0].pixels.size, 0); assert.equal(ctx.draws[7].args[0].pixels.size, 0);
   const missing = recordingContext();
   drawForestBushGrounding(missing, { ...scene, bushes: [{ ...bush, imageId: undefined }] }, terrain, image);
   drawForestBushGrounding(missing, { ...scene, terrain: [{ ...terrain, bounds: { ...terrain.bounds, x: 400 } }] }, terrain, image);
@@ -261,8 +264,8 @@ test("shrub shadow refreshes for replacement artwork and never shadows baked or 
   const compositor = recordingContext();
   paintFixedWorld(compositor, scene, { images: new Map([[terrain.image, image]]), visuals: {}, actor: null,
     options: { night: false, selectedSiteId: null, debug: false } });
-  assert.equal(compositor.draws.length, 3);
-  assert.equal(compositor.draws[2].args[0], image, "cutout covers its own shadow in the shared compositor");
+  assert.equal(compositor.draws.length, 5);
+  assert.equal(compositor.draws[4].args[0], image, "cutout covers its own soil and shadow in the shared compositor");
 });
 
 test("site contact follows authored collision and intersects the image bounds", () => {

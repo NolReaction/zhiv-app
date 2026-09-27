@@ -208,9 +208,9 @@ test("account test resources still require a permitted server and an unambiguous
 test("scenario cards explain conditions and dispatch one explicit choice without navigating away", () => {
   const { elements, calls, markup } = panel("scenarios");
   const buttons = elements.filter(item => item.type === "button");
-  assert.equal(buttons.length, 4);
-  buttons[1].props.onClick();
-  assert.deepEqual(calls.actions, [{ kind: "scenario", scenario: "campfire" }]);
+  buttons.find(button => renderToStaticMarkup(button).includes("Вечер у костра")).props.onClick();
+  buttons.find(button => renderToStaticMarkup(button).includes("Птицы на земле")).props.onClick();
+  assert.deepEqual(calls.actions, [{ kind: "scenario", scenario: "campfire" }, { kind: "scenario", scenario: "ground-birds" }]);
   assert.match(markup, /Уменьшенное движение сохраняется/);
   assert.match(markup, /Положение Мохлика/);
 });

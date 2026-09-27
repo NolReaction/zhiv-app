@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { forestBirdFrame, forestBirdPerches, FOREST_BIRD_FLIGHT_DURATION, FOREST_BIRD_LIMIT }
+const { forestBirdFrame, forestBirdPerches, forestBirdGroundPatches, FOREST_BIRD_FLIGHT_DURATION, FOREST_BIRD_LIMIT }
   = await vite.ssrLoadModule("/features/world/forest-birds.ts");
 const { drawForestBird } = await vite.ssrLoadModule("/features/world/forest-wildlife.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
@@ -154,11 +154,11 @@ test("the painter supports folded wings, extended feet and preening without leak
 });
 
 
-test("all six DEV scenarios enter and leave at map edges with whole-sprite culling and staggered groups", () => {
+test("all eight DEV scenarios enter and leave at map edges with whole-sprite culling and staggered groups", () => {
   const groupSizes = new Set(), species = new Set(), scenarios = new Set();
   const nearEdge = b => b.x <= b.size * 10 || b.y <= b.size * 10
     || b.x >= scene.width - b.size * 10 || b.y >= scene.height - b.size * 10;
-  for (let seed = 0; seed < 6; seed++) {
+  for (let seed = 0; seed < 8; seed++) {
     assert.deepEqual(sample(0, scene, seed), []);
     const firstSeen = new Map(), lastSeen = new Map();
     let previous = new Map(), maxGroup = 0;
@@ -185,7 +185,60 @@ test("all six DEV scenarios enter and leave at map edges with whole-sprite culli
   }
   assert.deepEqual([...groupSizes].sort(), [1, 2, 3, 5]);
   assert.deepEqual([...species].sort(), ["blue-tit", "finch", "robin", "swallow"]);
-  assert.equal(scenarios.size, 6);
+  assert.equal(scenarios.size, 8);
+});
+
+test("tree arrivals reserve both ends of transfers and never share scarce or overlapping perches", () => {
+  const originalPerches = forestBirdPerches(scene);
+  const sparse = { ...scene, sites: originalPerches.slice(1).map(p => ({ bounds: { x: p.x - 1, y: p.y - 1, width: 2, height: 2 } })) };
+  assert.equal(forestBirdPerches(sparse).length, 1);
+  for (const changed of [scene, sparse]) for (const seed of [0, 2, 5]) {
+    const reserved = new Map();
+    for (let time = 6.9; time < 20; time += .05) {
+      const resting = sample(time, changed, seed).filter(b => ["perched", "preen", "hop", "landing"].includes(b.state));
+      for (const bird of resting) if (bird.perchId) {
+        const owner = reserved.get(bird.perchId);
+        assert.ok(owner === undefined || owner === bird.id, `${bird.perchId} stays reserved for the same individual`);
+        reserved.set(bird.perchId, bird.id);
+      }
+      for (let a = 0; a < resting.length; a++) for (let b = a + 1; b < resting.length; b++)
+        assert.ok(distance(resting[a], resting[b]) > (resting[a].size + resting[b].size) * 4,
+          "a landing silhouette never overlaps another resting bird");
+    }
+  }
+});
+
+test("ground feeding keeps feet and every hop on inspected soil and current geometry at all house levels", async () => {
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const { createWorldNavigation, isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
+  const { isForestRainGround } = await vite.ssrLoadModule("/features/world/forest-ground-impacts.ts");
+  for (const home of [1, 2, 3, 4, 5]) for (const size of [50, 56]) {
+    const levelScene = previewWorldScene(scene, { home });
+    const changed = { ...levelScene, actor: { ...levelScene.actor, size } };
+    const patches = forestBirdGroundPatches(changed), nav = createWorldNavigation(changed, 7);
+    assert.ok(patches.length >= 2, `house ${home}, actor ${size}: has safe separate patches`);
+    const states = new Set();
+    for (let time = 7; time < 19.5; time += .025) {
+      const ground = sample(time, changed, 6).filter(b => b.groundY !== undefined);
+      for (const bird of ground) {
+        const feet = { x: bird.x, y: bird.groundY };
+        assert.ok(isForestRainGround(changed, feet), "foraging never moves onto painted leaves or water");
+        assert.ok(isWalkable(nav, feet), "ground support clears authored obstacles, house and campfire");
+        if (bird.state !== "landing") {
+          assert.ok(Math.abs(bird.y + bird.size * 3.3 + bird.hopHeight - bird.groundY) < 1e-9);
+          states.add(bird.state);
+        }
+      }
+      if (ground.length === 2) assert.ok(distance(ground[0], ground[1]) > 30);
+    }
+    for (const state of ["lookout", "hop", "peck", "preen"]) assert.ok(states.has(state));
+    assert.equal(forestBirdGroundPatches(changed), patches, "bounded geometry sampling is cached");
+  }
+  for (const changed of [{ ...scene, navigation: undefined }, { ...scene, terrain: [] },
+    { ...scene, terrain: scene.terrain.map(item => ({ ...item, image: item.image + "-edited" })) }]) {
+    assert.deepEqual(forestBirdGroundPatches(changed), []);
+    assert.ok(sample(10, changed, 6).every(b => b.groundY === undefined && !b.perchId), "unsafe ground falls back to transit");
+  }
 });
 
 test("DEV replay seed changes the visit while a paused shared clock stays identical", () => {

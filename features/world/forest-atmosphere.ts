@@ -37,6 +37,8 @@ export type ForestAtmosphereOptions = {
   /** Session-owned fauna replace analytic ambient insects, including their scene partner. */
   fauna?: { elapsed: number; butterflies: ForestAirParticle[]; fireflies: ForestFirefly[] };
   birdFrame?: ForestBird[];
+  /** The scene compositor already placed low birds on either side of the actor. */
+  groundBirdsPainted?: boolean;
 };
 
 export type ForestAtmosphereState = {
@@ -166,7 +168,7 @@ export function drawForestAtmosphere(ctx: CanvasRenderingContext2D, scene: Fixed
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
   for (const particle of frame.butterflies) drawForestButterfly(ctx, particle, options.fauna?.elapsed ?? frame.elapsed);
-  for (const bird of frame.birds) drawForestBird(ctx, bird);
+  for (const bird of frame.birds) if (!options.groundBirdsPainted || bird.groundY === undefined) drawForestBird(ctx, bird);
   // Bodies receive the same light as the scene; luminous insects remain above it.
   paintLighting?.();
   for (const particle of frame.fireflies) drawForestFirefly(ctx, particle, options.fauna?.elapsed ?? frame.elapsed);

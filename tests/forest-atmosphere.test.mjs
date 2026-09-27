@@ -71,6 +71,19 @@ test("shared clock produces deterministic world particles regardless of camera a
   assert.deepEqual(scene.focus, { x: 170, y: 210, width: 240, height: 240 });
 });
 
+test("the late atmosphere pass does not redraw ground birds already placed at actor depth", () => {
+  const tree = { x: 310, y: 260, size: 3, opacity: 1, phase: 0, angle: 0, state: "perched", surface: "tree" };
+  const ground = { ...tree, x: 330, y: 360, groundY: 366, state: "lookout", surface: "ground" };
+  const input = { ...options, weather: "clear", butterflies: "off", fireflies: "off", birdFrame: [tree, ground] };
+  const ordinary = drawing(), layered = drawing();
+  drawForestAtmosphere(ordinary.ctx, scene, input);
+  drawForestAtmosphere(layered.ctx, scene, { ...input, groundBirdsPainted: true });
+  const drawsAt = (calls, bird) => calls.filter(call => call[0] === "translate" && call[1] === bird.x && call[2] === bird.y).length;
+  assert.equal(drawsAt(ordinary.calls, tree), 1); assert.equal(drawsAt(ordinary.calls, ground), 1);
+  assert.equal(drawsAt(layered.calls, tree), 1); assert.equal(drawsAt(layered.calls, ground), 0);
+  assert.deepEqual(layered.snapshot(), layered.initial);
+});
+
 test("weather changes continuously with bounded drizzle and long clear intervals", () => {
   let previous, clearRun = 0, longestClearRun = 0, rainySeconds = 0;
   const seen = new Set();

@@ -8,10 +8,12 @@ import type { WorldDevScenario } from "./world-dev-store";
 export function applyForestDevScenario(state: ForestSessionState, kind: WorldDevScenario, options: ForestDirectorOptions) {
   cancelForestDirector(state);
   state.animation = null; state.reaction = 0;
-  if (kind === "birds") {
-    state.birdStarted = state.elapsed; state.birdSeed = 0;
+  if (kind === "birds" || kind === "ground-birds") {
+    state.birdStarted = state.elapsed; state.birdSeed = kind === "ground-birds" ? 6 : 0;
     state.birdReactions = createBirdReactions(); state.lastBirdStimulus = state.director.stimulus?.id ?? 0;
-    state.director.reason = "Пара птиц прилетит на деревья у полянки; посадка примерно через 7 секунд";
+    state.director.reason = kind === "ground-birds"
+      ? "Птицы приземлятся на свободную землю, осмотрятся и начнут искать корм"
+      : "Пара птиц прилетит на деревья у полянки; посадка примерно через 7 секунд";
   } else if (kind === "campfire") {
     for (const fire of state.life.campfires) { fire.wetness = 0; fire.drySeconds = 0; }
     requestForestDirective(state, "campfire", options);

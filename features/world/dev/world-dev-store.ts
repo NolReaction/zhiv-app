@@ -8,6 +8,7 @@ export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" |
 
 export const WORLD_DEV_SCENARIOS = [
   { id: "birds", label: "Птицы на полянке", description: "Ясный день и пара птиц: посадка, реакция на близкие шаги, взлёт." },
+  { id: "ground-birds", label: "Птицы на земле", description: "Посадка на свободную землю, короткие прыжки, поиск корма и настороженность рядом с Мохликом." },
   { id: "campfire", label: "Вечер у костра", description: "Сухой очаг и ночь: огонь разгорается, Мохлик подходит и отдыхает рядом." },
   { id: "rain", label: "Дождливый вечер", description: "Ливень и ночь: костёр затухает, обитатели ищут укрытия." },
   { id: "tired", label: "Уставший Мохлик", description: "Тестовая усталость вечером: наблюдаем выбор отдыха и пути домой." },
@@ -140,7 +141,7 @@ export function createWorldDevStore(enabled: boolean) {
       if (!enabled || !WORLD_DEV_SCENARIOS.some(item => item.id === kind)) return;
       publish({ ...state, paused: false, pose: "auto", animation: null, lifeEvent: null,
         autoLife: true, navigationMode: "auto", showHero: true, showBuildings: true,
-        weather: kind === "rain" ? "downpour" : "clear", timeOfDay: kind === "birds" ? "day" : "night",
+        weather: kind === "rain" ? "downpour" : "clear", timeOfDay: kind === "birds" || kind === "ground-birds" ? "day" : "night",
         butterflies: "auto", fireflies: "auto", birds: "auto",
         scenarioEvent: Object.freeze({ id: ++scenarioEventId, kind }) });
     },

@@ -103,8 +103,8 @@ test('the garden rig keeps a calm cached body and fixed feet while external arms
   const feet = sprite => [...sprite.pixels].filter(([point]) => Number(point.split(':')[1]) >= 40);
   assert.deepEqual(feet(garden), feet(normal));
   const eyes = sprite => [...sprite.pixels].filter(([point, color]) => color === '#30291d'
-    && Number(point.split(':')[1]) <= 24).length;
-  assert.ok(eyes(garden) < eyes(normal), 'gardening uses a small focused gaze instead of the wide reach expression');
+    && Number(point.split(':')[1]) <= 24);
+  assert.deepEqual(eyes(garden), eyes(normal), 'external garden arms preserve the normal eye shape and gaze');
   assert.equal(normal.pixels.get('11:32'), '#d8bf83');
   assert.equal(garden.pixels.get('11:32'), '#f4e4ae', 'external arm replaces the cached arm, exposing the original cream torso');
 });

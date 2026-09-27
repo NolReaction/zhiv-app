@@ -11,7 +11,7 @@ after(() => vite.close());
 const { forestGardenBerries, forestGardenVisualFrame, drawForestGardenPlants, drawForestGardenGround,
   drawForestGardenProps } = await vite.ssrLoadModule('/features/world/forest-garden-painter.ts');
 const { previewPointInPolygon } = await vite.ssrLoadModule('/features/world/tiled/preview-state.ts');
-const { createForestGarden, cancelForestGarden } = await vite.ssrLoadModule('/features/world/forest-garden.ts');
+const { createForestGarden, cancelForestGarden, gardenWorkReachable } = await vite.ssrLoadModule('/features/world/forest-garden.ts');
 const { forestFruitVisual, FOREST_FRUIT_APPEARANCES } = await vite.ssrLoadModule('/features/world/forest-fruit-appearance.ts');
 const { default: sourceScene } = await vite.ssrLoadModule('/features/world/tiled/forest.generated.json');
 const scene = withPlacedBushArtwork(sourceScene);
@@ -207,7 +207,7 @@ test('harvest basket has matching endpoints at every phase and stays visible bes
   ]) assert.ok(Math.hypot(before.basket.x - after.basket.x, before.basket.y - after.basket.y) < 1e-8);
   const lowered = at('collect', 2);
   assert.equal(lowered.basket.grounded, true);
-  assert.ok(Math.abs(lowered.basket.x - actor.x) >= actor.size * .35, 'basket is outside the torso');
+  assert.ok(Math.abs(lowered.basket.x - actor.x) >= actor.size * .3, 'basket is beside the torso within paw reach');
   const behind = context(), front = context();
   drawForestGardenGround(behind.ctx, garden, actor.size, lowered, actor);
   drawForestGardenProps(front.ctx, lowered, 'front');
@@ -241,7 +241,8 @@ test('one real fruit travels from foliage via the two paws into the basket witho
     const start = .85 + cycle;
     const grasp = at(start + .300001);
     assert.ok(grasp.pickedBerry && previewPointInPolygon(grasp.pickedBerry, scene.bushes[0].points), 'fruit starts at its actual cluster');
-    assert.ok(grasp.pickedBerry.x < actor.x - actor.size * .46, 'worked fruit remains outside the near cheek/ear silhouette');
+    assert.ok(grasp.pickedBerry.y > actor.y - actor.size * .3, 'worked fruit sits below the near ear');
+    assert.ok(grasp.pickedBerry.x < actor.x - actor.size * .32, 'worked fruit stays beside the torso');
     assert.equal(forestGardenBerries(scene, garden)[0].picked, cycle + 1, 'the plucked fruit is removed from that cluster');
     let last = grasp.pickedBerry;
     for (let phase = .31; phase < .8; phase += .01) {
@@ -282,4 +283,61 @@ test('referenced shrub artwork must be placed over the contour before fruit over
   assert.ok(forestGardenBerries(placed, garden).length > 0);
   placed.terrain.find(item => item.id === 'future-shrub').bounds.x += 500;
   assert.deepEqual(forestGardenBerries(placed, garden), [], 'an image elsewhere does not turn empty grass into a fruit bush');
+});
+
+
+test('garden paws stay short and bent, water descends from the actual spout, and unsupported scales decline safely', () => {
+  for (const size of [25, 35, 50, 56, 75, 100]) {
+    const map = structuredClone(scene); map.actor.size = size;
+    const garden = createForestGarden(map), plant = garden.bushes[0];
+    if (!plant.workPosition) continue;
+    for (const phase of ['collect', 'water', 'take-basket', 'deposit']) {
+      if (phase !== 'water' && !garden.basket) continue;
+      const actor = { ...(phase === 'take-basket' || phase === 'deposit' ? garden.basket.approach : plant.workPosition), size };
+      garden.routine = { kind: phase === 'water' ? 'water-bush' : 'harvest-berries', bushId: plant.id,
+        phase, elapsed: 0, totalElapsed: 0, carryingBasket: phase !== 'water' };
+      for (let t = 0; t <= (phase === 'collect' ? 5 : phase === 'water' ? 4 : 1.5); t += .025) {
+        garden.routine.elapsed = t;
+        const frame = forestGardenVisualFrame(garden, actor, motion);
+        for (const arm of frame.arms) {
+          assert.ok(Math.hypot(arm.hand.x - arm.shoulder.x, arm.hand.y - arm.shoulder.y) <= size * .29,
+            `${size}px ${phase} ${t}: wrist stays within a short paw`);
+          assert.ok(Number.isFinite(arm.elbow.x) && Number.isFinite(arm.elbow.y));
+        }
+        if (frame.can?.pouring) {
+          assert.ok(frame.can.target.y > frame.can.spout.y, 'water falls to lower soil rather than flying up into leaves');
+          const u = frame.can.size / 14, tilt = frame.can.tilt;
+          assert.ok(Math.abs(frame.can.spout.x - (frame.can.x + frame.can.side * u * (10 * Math.cos(tilt) + 2 * Math.sin(tilt)))) < 1e-9);
+          assert.ok(Math.abs(frame.can.spout.y - (frame.can.y + u * (10 * Math.sin(tilt) - 2 * Math.cos(tilt)))) < 1e-9);
+        }
+      }
+    }
+  }
+});
+
+test('basket is grasped before lifting and gripping paws are painted over its real handle', () => {
+  const { garden, actor } = setup('take-basket', .23), home = { ...garden.basket.approach, size: actor.size };
+  const grasp = forestGardenVisualFrame(garden, home, motion);
+  assert.deepEqual([grasp.basket.x, grasp.basket.y], [garden.basket.position.x, garden.basket.position.y]);
+  garden.routine.elapsed = .24;
+  const contact = forestGardenVisualFrame(garden, home, motion);
+  const handleY = contact.basket.y - contact.basket.size * 12 / 14;
+  contact.arms.forEach(arm => assert.ok(Math.abs(arm.hand.y - handleY) < .01, 'paws touch the upper handle before it moves'));
+  const paint = context(); drawForestGardenProps(paint.ctx, contact, 'front');
+  const lastWicker = paint.calls.findLastIndex(call => call.method === 'fillRect' && call.fill === '#d2ad6c');
+  assert.ok(lastWicker > 0 && paint.calls.slice(lastWicker + 1).some(call => call.method === 'fillRect' && call.fill === '#f4e4ae'),
+    'visible paws wrap over basket artwork instead of hiding behind it');
+  garden.routine.elapsed = 1;
+  const lifted = forestGardenVisualFrame(garden, home, motion);
+  assert.ok(lifted.basket.y < grasp.basket.y - home.size * .08, 'basket visibly clears the ground');
+});
+
+
+test('a DEV-only resize rechecks the existing work point before the rendered rig can stretch', () => {
+  const { garden } = setup();
+  assert.equal(gardenWorkReachable(garden.bushes[0], 50), true);
+  assert.equal(gardenWorkReachable(garden.bushes[0], 56), true);
+  assert.equal(gardenWorkReachable(garden.bushes[0], 25), false, 'small hero cannot reach the old full-size target');
+  assert.equal(gardenWorkReachable(garden.bushes[0], 100), false, 'large hero would cover the berry with its torso');
+  for (const size of [0, -1, NaN, Infinity]) assert.equal(gardenWorkReachable(garden.bushes[0], size), false);
 });

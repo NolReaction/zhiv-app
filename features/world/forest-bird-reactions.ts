@@ -9,6 +9,7 @@ export type BirdReactionStimulus = {
 };
 
 export type BirdReactionBounds = { width: number; height: number };
+export type BirdReactionWeather = { rain: number; dusk: number; forced?: boolean };
 
 type BirdAttention = {
   startedAt: number;
@@ -29,18 +30,19 @@ export type BirdReactionState = {
   familiarity: Map<string, BirdFamiliarity>;
   escapes: Map<string, BirdEscape>;
   proximity: Map<string, { calm: number; alarm: number }>;
+  recentGround: Map<string, { bird: ForestBird; seenAt: number }>;
   nextEscapeAt: number;
 };
 
 const clamp = (value: number, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const smooth = (value: number) => { const t = clamp(value); return t * t * (3 - 2 * t); };
-const resting = (bird: ForestBird) => bird.state === "perched" || bird.state === "preen";
+const resting = (bird: ForestBird) => bird.state === "perched" || bird.state === "preen" || bird.state === "peck" || bird.state === "lookout";
 const finitePoint = (point: WorldPoint) => Number.isFinite(point.x) && Number.isFinite(point.y);
 
 /** Session-owned attention; rendering never consumes or advances it. */
 export function createBirdReactions(): BirdReactionState {
   return { elapsed: 0, quietUntil: 0, attention: new Map(), familiarity: new Map(),
-    escapes: new Map(), proximity: new Map(), nextEscapeAt: 0 };
+    escapes: new Map(), proximity: new Map(), recentGround: new Map(), nextEscapeAt: 0 };
 }
 
 function proximity(state: BirdReactionState, birds: readonly ForestBird[], dt: number,
@@ -49,19 +51,20 @@ function proximity(state: BirdReactionState, birds: readonly ForestBird[], dt: n
   for (const [id, escape] of state.escapes) {
     if (visible.has(id)) escape.lastSeenAt = state.elapsed;
     // Suppress the original visit until it is gone; never reappear on the old branch.
-    if (state.elapsed - escape.lastSeenAt > 12) state.escapes.delete(id);
+    if (state.elapsed - escape.lastSeenAt > 12 && state.elapsed - escape.startedAt >= escape.duration) state.escapes.delete(id);
   }
   for (const id of state.proximity.keys()) if (!visible.has(id)) state.proximity.delete(id);
   if (!visitor || !bounds || !finitePoint(visitor) || !Number.isFinite(visitor.size) || visitor.size <= 0
     || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0
     || visitor.x < 0 || visitor.y < 0 || visitor.x > bounds.width || visitor.y > bounds.height) return;
   for (const bird of birds.slice(0, 16).sort((a, b) => Math.hypot(a.x - visitor.x, a.y - visitor.y) - Math.hypot(b.x - visitor.x, b.y - visitor.y))) {
-    if (!bird.id || !bird.perchId || !resting(bird) || !finitePoint(bird) || bird.opacity < .5 || state.escapes.has(bird.id)) continue;
+    const lowLanding = bird.surface === "ground" && bird.state === "landing" && bird.groundY !== undefined;
+    if (!bird.id || !bird.perchId || !resting(bird) && !lowLanding || !finitePoint(bird) || bird.opacity < .5 || state.escapes.has(bird.id)) continue;
     const distance = Math.hypot(bird.x - visitor.x, bird.y + bird.size * 3.3 - visitor.y);
     const memory = state.proximity.get(bird.id) ?? { calm: 0, alarm: 0 };
     if (!visitor.moving && distance < visitor.size * 2.2) memory.calm = Math.min(1, memory.calm + dt / 10);
     else memory.calm = Math.max(0, memory.calm - dt / 25);
-    const radius = visitor.size * (1.05 - memory.calm * .25);
+    const radius = visitor.size * ((bird.surface === "ground" ? 1.35 : 1.05) - memory.calm * .25);
     const threat = distance < visitor.size * .4 || visitor.moving && distance < radius;
     memory.alarm = Math.max(0, memory.alarm + (threat ? dt : -dt * 2));
     state.proximity.set(bird.id, memory);
@@ -78,6 +81,7 @@ function proximity(state: BirdReactionState, birds: readonly ForestBird[], dt: n
 }
 
 function escapeFrame(escape: BirdEscape, elapsed: number): ForestBird | null {
+  if (elapsed < escape.startedAt) return escape.bird;
   const age = Math.max(0, elapsed - escape.startedAt), t = clamp(age / escape.duration);
   if (t >= 1) return null;
   const bird = escape.bird, move = t * t, lift = Math.sin(t * Math.PI) * 25;
@@ -85,9 +89,37 @@ function escapeFrame(escape: BirdEscape, elapsed: number): ForestBird | null {
   const unfolding = smooth(age / .5);
   return { ...bird, x: bird.x + dx * move, y: bird.y + dy * move - lift,
     state: age < .65 ? "takeoff" : "flap", angle: Math.atan2(dy, dx), facing: dx < 0 ? -1 : 1,
-    wingFold: 1 - unfolding, wingLift: .35 + Math.sin(age * 15) * .55 * unfolding,
-    phase: bird.phase + age * 15, legReach: 1 - smooth(age / .8), bank: -.15 * unfolding,
-    headTurn: 0, preen: 0, tailFlick: Math.sin(age * 3) * .1 };
+    wingFold: (bird.wingFold ?? 1) * (1 - unfolding),
+    wingLift: (bird.wingLift ?? .35) * (1 - unfolding) + (.35 + Math.sin(age * 15) * .55) * unfolding,
+    phase: bird.phase + age * 15, legReach: (bird.legReach ?? 1) * (1 - smooth(age / .8)),
+    bank: (bird.bank ?? 0) * (1 - unfolding) - .15 * unfolding,
+    groundY: bird.groundY !== undefined && age < .65 ? bird.groundY + dy * move : undefined,
+    hopHeight: bird.groundY !== undefined ? (bird.hopHeight ?? 0) + lift : undefined,
+    headTurn: (bird.headTurn ?? 0) * (1 - unfolding), preen: (bird.preen ?? 0) * (1 - unfolding),
+    ...(bird.peck !== undefined ? { peck: bird.peck * (1 - unfolding) } : {}),
+    tailFlick: Math.sin(age * 3) * .1 };
+}
+
+function weatherDeparture(state: BirdReactionState, birds: readonly ForestBird[], bounds?: BirdReactionBounds,
+  weather?: BirdReactionWeather) {
+  if (!bounds || !weather || weather.forced || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height)
+    || bounds.width <= 0 || bounds.height <= 0 || !Number.isFinite(weather.rain) || !Number.isFinite(weather.dusk)
+    || weather.rain < .24 && weather.dusk < .42 || state.elapsed < state.nextEscapeAt) return;
+  const candidates = new Map(birds.filter(bird => bird.id).map(bird => [bird.id!, bird]));
+  // The weather visibility mask may already have removed the visit this tick.
+  // Keep its last actual pose just long enough for the pair to leave in sequence.
+  for (const [id, recent] of state.recentGround) if (!candidates.has(id)) candidates.set(id, recent.bird);
+  const leaving = [...candidates.values()].filter(bird => bird.id && bird.surface === "ground"
+    && (resting(bird) || bird.groundY !== undefined) && finitePoint(bird)
+    && !state.escapes.has(bird.id));
+  const reach = Math.hypot(bounds.width, bounds.height) + 80;
+  for (const bird of leaving) {
+    if (state.escapes.size >= 16) break;
+    const facing = bird.facing ?? 1, startedAt = Math.max(state.elapsed, state.nextEscapeAt);
+    state.escapes.set(bird.id!, { bird: { ...bird }, startedAt, lastSeenAt: state.elapsed,
+      end: { x: bird.x + facing * reach, y: bird.y - reach * .35 }, duration: Math.max(6, reach / 155) });
+    state.attention.delete(bird.id!); state.nextEscapeAt = startedAt + .9;
+  }
 }
 
 /**
@@ -96,10 +128,16 @@ function escapeFrame(escape: BirdEscape, elapsed: number): ForestBird | null {
  * The session calls this once per active step; zero dt also ignores new stimuli.
  */
 export function advanceBirdReactions(state: BirdReactionState, baseBirds: readonly ForestBird[],
-  dt: number, stimulus?: BirdReactionStimulus, bounds?: BirdReactionBounds, visitor?: BirdVisitor): void {
+  dt: number, stimulus?: BirdReactionStimulus, bounds?: BirdReactionBounds, visitor?: BirdVisitor,
+  weather?: BirdReactionWeather): void {
   if (!Number.isFinite(dt) || dt <= 0) return;
   state.elapsed += dt;
+  for (const bird of baseBirds.slice(0, 16)) if (bird.id && bird.surface === "ground" && bird.opacity > .05)
+    state.recentGround.set(bird.id, { bird: { ...bird }, seenAt: state.elapsed });
+  for (const [id, recent] of state.recentGround) if (state.elapsed - recent.seenAt > 2) state.recentGround.delete(id);
+  while (state.recentGround.size > 16) state.recentGround.delete(state.recentGround.keys().next().value!);
   proximity(state, baseBirds, Math.min(dt, .1), bounds, visitor);
+  weatherDeparture(state, baseBirds, bounds, weather);
   const visible = new Map(baseBirds.filter(bird => bird.id).map(bird => [bird.id!, bird]));
   for (const [id, familiarity] of state.familiarity) {
     if (visible.has(id)) familiarity.lastSeenAt = state.elapsed;
@@ -166,8 +204,10 @@ export function advanceBirdReactions(state: BirdReactionState, baseBirds: readon
 }
 
 /** Pure presentation: gentle looks retain the authored pose; escapes replace that same individual. */
-export function applyBirdReactions(state: BirdReactionState, baseBirds: readonly ForestBird[]): ForestBird[] {
-  return baseBirds.flatMap(bird => {
+export function applyBirdReactions(state: BirdReactionState, baseBirds: readonly ForestBird[], enabled = true): ForestBird[] {
+  if (!enabled) return [];
+  const present = new Set(baseBirds.map(bird => bird.id));
+  const frame = baseBirds.flatMap(bird => {
     const escape = bird.id ? state.escapes.get(bird.id) : undefined;
     if (escape) return escapeFrame(escape, state.elapsed) ?? [];
     const attention = bird.id ? state.attention.get(bird.id) : undefined;
@@ -183,7 +223,13 @@ export function applyBirdReactions(state: BirdReactionState, baseBirds: readonly
     return { ...bird,
       headTurn: head + (attention.headTurn - head) * weight,
       preen: (bird.preen ?? 0) * (1 - weight),
+      ...(bird.peck !== undefined ? { peck: bird.peck * (1 - weight) } : {}),
       tailFlick: clamp((bird.tailFlick ?? 0) + tailFlinch * weight, -1, 1),
     };
   });
+  for (const [id, escape] of state.escapes) if (!present.has(id)) {
+    const bird = escapeFrame(escape, state.elapsed);
+    if (bird) frame.push(bird);
+  }
+  return frame;
 }
