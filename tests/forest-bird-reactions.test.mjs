@@ -179,3 +179,34 @@ test("bird familiarity recovers in quiet active time and expires with the indivi
   advanceBirdReactions(state,newcomer,.2);
   assert.ok(Math.abs(applyBirdReactions(state,newcomer)[0].headTurn)>.95);
 });
+
+test("a close moving visitor causes a continuous single departure without returning to the old perch", () => {
+  const state = createBirdReactions(), birds = [bird("one", 100, 100), bird("two", 110, 100)];
+  const visitor = { x: 105, y: 125, size: 50, moving: true };
+  let previous = birds[0], first;
+  for (let i = 0; i < 350; i++) {
+    advanceBirdReactions(state, birds, .05, undefined, { width: 300, height: 300 }, visitor);
+    const frame = applyBirdReactions(state, birds);
+    assert.equal(new Set(frame.map(item => item.id)).size, frame.length);
+    const current = frame.find(item => item.id === "one");
+    if (current && previous) assert.ok(Math.hypot(current.x - previous.x, current.y - previous.y) < 20, "no teleport at takeoff");
+    if (state.escapes.size && !first) { first = [...state.escapes.keys()]; assert.equal(first.length, 1); }
+    previous = current;
+  }
+  assert.equal(state.escapes.size, 2); assert.equal(applyBirdReactions(state, birds).length, 0, "old authored visits stay suppressed");
+  const frozen = structuredClone(state); applyBirdReactions(state, birds); assert.deepEqual(state, frozen);
+  for (let i = 0; i < 260; i++) advanceBirdReactions(state, [], .05);
+  assert.equal(state.escapes.size, 0); assert.equal(state.proximity.size, 0);
+});
+test("quiet observation builds tolerance for that visitor without protecting a dangerously close approach", () => {
+  const birds = [bird("calm", 100, 100)], bounds = { width: 300, height: 300 };
+  const visitor = { x: 100, y: 152, size: 50, moving: false };
+  const calm = createBirdReactions(), fresh = createBirdReactions();
+  for (let i = 0; i < 220; i++) advanceBirdReactions(calm, birds, .05, undefined, bounds, visitor);
+  assert.equal(calm.escapes.size, 0);
+  for (let i = 0; i < 30; i++) for (const state of [calm, fresh])
+    advanceBirdReactions(state, birds, .05, undefined, bounds, { ...visitor, moving: true });
+  assert.equal(fresh.escapes.size, 1); assert.equal(calm.escapes.size, 0);
+  for (let i = 0; i < 30; i++) advanceBirdReactions(calm, birds, .05, undefined, bounds, { ...visitor, y: 113, moving: true });
+  assert.equal(calm.escapes.size, 1);
+});

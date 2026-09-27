@@ -77,6 +77,7 @@ export function isForestGroundClear(scene: FixedWorldScene, point: WorldPoint, r
   for (const site of scene.sites) {
     if (touchesBounds(point, radius, site.bounds) || touchesPolygon(point, radius, site.collision)) return false;
   }
+  if (scene.campfires?.some(fire => Math.hypot(point.x - fire.position.x, point.y - fire.position.y) <= radius + fire.radius)) return false;
   const routeMargin = Math.max(1, (scene.actor?.size ?? 0) * .06);
   for (const path of scene.paths) {
     if (path.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return false;

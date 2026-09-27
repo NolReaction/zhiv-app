@@ -92,6 +92,8 @@ function currentActivity(state: ForestSessionState, options: Options) {
     return { label: kind === "butterfly" ? "Играет с бабочкой" : "Наблюдает за светлячком",
       detail: "Маленький сосед устроился рядом. Мохлик осторожно рассматривает его." };
   }
+  if (state.director.campfireVisit) return { label: "Греется у костра", detail: "Устроился у вечернего огня. Можно позвать его нажатием." };
+  if (state.pendingLife === "campfire") return { label: "Идёт к костру", detail: state.director.reason };
   if (state.director.birdwatch) return { label: "Наблюдает за птицей",
     detail: "Тихо смотрит на маленького соседа на ветке. Скоро вернётся к своим делам." };
   if (life.routine) return { label: forestMindActionLabel(life.routine.kind), detail: life.routine.kind === "mushroom"
@@ -163,7 +165,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
       motives: Object.freeze({ arousal: percent(motives.arousal), saturation: percent(motives.saturation), variety: percent(motives.variety) }),
       ...(garden ? { garden } : {}),
       candidates: Object.freeze(mind.candidates.slice(0, 32).map(candidate => Object.freeze({ id: candidate.key,
-        label: candidate.key === "watch-birds" ? "Наблюдает за птицей" : forestMindActionLabel(candidate.action), score: candidate.score ?? 0, available: candidate.available,
+        label: candidate.key === "campfire" ? "Погреться у костра" : candidate.key === "watch-birds" ? "Наблюдает за птицей" : forestMindActionLabel(candidate.action), score: candidate.score ?? 0, available: candidate.available,
         reason: `${candidate.selected ? "Выбрано. " : ""}${candidate.reasons.join(". ")}` }))),
       events: Object.freeze(mind.events.slice(-24).map(item => Object.freeze({ id: eventId(`${item.at}:${item.type}:${item.action}:${item.reason}`),
         at: item.at, type: item.type, label: item.action ? forestMindActionLabel(item.action) : item.type === "restored" ? "Память восстановлена" : "Внимание игрока",
@@ -176,7 +178,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
 export function publishForestObservation(key: string | undefined, state: ForestSessionState, options: Options = {}) {
   if (!key) return;
   const now = options.now ?? Date.now(), previous = entries.get(key);
-  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}`;
+  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${Boolean(state.director.campfireVisit)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}`;
   if (!options.force && previous?.phase === phase && now < previous.nextAt) return;
   const snapshot = forestObservationFrame(state, options), signature = JSON.stringify(snapshot);
   if (previous?.signature === signature) { previous.nextAt = now + 500; previous.phase = phase; return; }

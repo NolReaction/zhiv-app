@@ -13,7 +13,7 @@ import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { useForestObservation } from "../use-forest-observation";
 import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
-import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevLifeAction, type WorldDevState } from "./world-dev-store";
+import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
 
 export type WorldDevPanelProps = {
@@ -28,7 +28,7 @@ export type WorldDevPanelProps = {
   onOpenWardrobe?: () => void;
   onOpenCollection?: () => void;
 };
-type ManualAction = { kind: "pose"; pose: PixelPose } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
+type ManualAction = { kind: "scenario"; scenario: WorldDevScenario } | { kind: "pose"; pose: PixelPose } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
 
 const POSE_LABELS: Record<PixelPose, string> = {
   idle: "Покой", walk: "Шаги", blink: "Моргнуть", sleep: "Сон", drowsy: "Дремота",
@@ -53,6 +53,7 @@ const routeReasons: Record<string, string> = {
   "invalid-bush": "Проверьте контур и точки куста: укрытие должно находиться внутри контура.",
   "bush-end-away-from-entry": "Последняя вершина маршрута должна совпадать с точкой входа в куст.",
   "invalid-bush-corridor": `От входа в куст до укрытия должно быть не меньше 0,1 размера Мохлика и не больше ${WORLD_INTERACTION_LIMITS.bushJump.toLocaleString("ru-RU")} ед. карты.`,
+  "campfire-collision": "Путь проходит через очаг — передвиньте костёр или маршрут.",
   "water-collision": "Маршрут проходит по воде.", "invalid-length": "Маршрут слишком короткий или длинный для полянки.",
   "missing-navigation": "Нужны доступная WalkAreas и корректный размер Мохлика.",
   "unreachable-door-entry": "Подведите WalkAreas ближе к home-entry; снаружи порога нужен запас для лап.",
@@ -64,7 +65,7 @@ const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", 
 const LIFE_ACTIONS = [
   ["butterfly", "Поиграть с бабочкой"], ["firefly", "Поиграть со светлячком"],
   ["mushroom", "Съесть гриб"], ["leaf", "Рассмотреть листик"],
-  ["bush", "Спрятаться в кусте"], ["watch-birds", "Понаблюдать за птицей"],
+  ["campfire", "Погреться у костра"], ["bush", "Спрятаться в кусте"], ["watch-birds", "Понаблюдать за птицей"],
   ["home-sleep", "Отправиться спать домой"], ["wake", "Разбудить Мохлика"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
 ] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
 const GARDEN_ACTIONS = [["water-bush", "Полить куст"], ["harvest-berries", "Собрать ягоды"],
@@ -113,7 +114,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
 }
 
 const DEV_TABS = [["mochlik", "Мохлик"], ["world", "Мир"], ["buildings", "Здания"], ["ai", "AI"], ["debug", "Отладка"]] as const;
-const MOCHLIK_TABS = [["scenes", "Сценки"], ["activities", "Занятия"], ["animation", "Анимации"], ["appearance", "Внешность"]] as const;
+const MOCHLIK_TABS = [["scenarios", "Сценарии"], ["scenes", "Сценки"], ["activities", "Занятия"], ["animation", "Анимации"], ["appearance", "Внешность"]] as const;
 const DEBUG_TABS = [["overlays", "Разметка"], ["routes", "Пути"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
@@ -183,7 +184,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
   if (!active) return null;
 
   const overrides = (Object.keys(WORLD_DEV_DEFAULTS) as (keyof WorldDevState)[])
-    .filter(key => !["animation", "lifeEvent", "birdEvent", "cameraEvent", "artError"].includes(key)
+    .filter(key => !["scenarioEvent", "animation", "lifeEvent", "birdEvent", "cameraEvent", "artError"].includes(key)
       && JSON.stringify(state[key]) !== JSON.stringify(WORLD_DEV_DEFAULTS[key])).length;
   const reduced = state.reducedMotion === "on" || state.reducedMotion === "auto" && prefersReducedMotion;
   const motionUnavailable = state.paused ? "Сцена на паузе. Снимите паузу для проигрывания событий."
@@ -191,6 +192,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
   const heroUnavailable = motionUnavailable ?? (!state.showHero ? "Мохлик скрыт. Включите «Показывать Мохлика»." : null);
   const birdsUnavailable = motionUnavailable ?? (state.birds === "off" ? "Птицы выключены. Выберите «Авто» или «Включить»." : null);
   function unavailable(action: ManualAction) {
+    if (action.kind === "scenario") return null;
     if (action.kind === "birds") return birdsUnavailable;
     if (action.kind === "pose") return heroUnavailable;
     if (action.action === "idle") return null;
@@ -207,7 +209,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
     return null;
   }
   const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
-  const repeatLabel = lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
+  const repeatLabel = lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
     : lastAction?.kind === "life" ? lifeActionLabel(lastAction.action) : "Сценарий с птицами";
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   function change(patch: Partial<WorldDevState>, message = "Предпросмотр обновлён") {
@@ -220,7 +222,10 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
   }
   function play(action: ManualAction) {
     if (unavailable(action)) return;
-    if (action.kind === "birds") {
+    if (action.kind === "scenario") {
+      worldDevStore.triggerScenario(action.scenario);
+      setFeedback(`${WORLD_DEV_SCENARIOS.find(item => item.id === action.scenario)!.label}: условия применены. Память аккаунта отключена для тестовой сессии.`);
+    } else if (action.kind === "birds") {
       worldDevStore.triggerBirds(); setFeedback("Птицы: пролёт, посадка на дерево и взлёт");
     } else if (action.kind === "life") {
       worldDevStore.triggerLife(action.action);
@@ -310,6 +315,15 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
   const gardenReasons = page === "activities"
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   return <div className={styles.pageContent}>
+    {page === "scenarios" && <>
+      <h3 className={styles.pageTitle}>Готовые сценарии</h3>
+      <p className={styles.hint}>Один запуск задаёт погоду, время и нужное занятие, снимает паузу. Положение Мохлика, выбранный дом и масштаб сохраняются.</p>
+      <div className={styles.scenarioList}>{WORLD_DEV_SCENARIOS.map(scenario => <button key={scenario.id} type="button"
+        data-last-run={state.scenarioEvent?.kind === scenario.id || undefined} onClick={() => play({ kind: "scenario", scenario: scenario.id })}>
+        <strong>{scenario.label}</strong><span>{scenario.description}</span>
+      </button>)}</div>
+      <p className={styles.hint}>Уменьшенное движение сохраняется: для анимаций проверьте эту настройку в разделе «Мир». Сценарии отключают сохранение тестовой сессии; после проверки перезагрузите страницу для обычной игры.</p>
+    </>}
     {page === "scenes" && <>
       <h3 className={styles.pageTitle}>Лесные сценки</h3>
       <Toggle label="Автоматические сценки" checked={state.autoLife} onChange={autoLife => change({ autoLife })} />

@@ -12065,9 +12065,74 @@
          "visible":true,
          "x":0,
          "y":0
-        }],
- "nextlayerid":45,
- "nextobjectid":177,
+        },
+{
+  "draworder": "index",
+  "id": 45,
+  "name": "Campfires",
+  "objects": [
+    {
+      "height": 0,
+      "id": 177,
+      "name": "clearing-campfire",
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "campfire"
+        },
+        {
+          "name": "campfireId",
+          "type": "string",
+          "value": "clearing-campfire"
+        },
+        {
+          "name": "radius",
+          "type": "float",
+          "value": 10
+        }
+      ],
+      "rotation": 0,
+      "type": "",
+      "visible": true,
+      "width": 0,
+      "x": 655,
+      "y": 682
+    },
+    {
+      "height": 0,
+      "id": 178,
+      "name": "clearing-campfire-seat",
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "campfire-seat"
+        },
+        {
+          "name": "campfireId",
+          "type": "string",
+          "value": "clearing-campfire"
+        }
+      ],
+      "rotation": 0,
+      "type": "",
+      "visible": true,
+      "width": 0,
+      "x": 615,
+      "y": 708
+    }
+  ],
+  "opacity": 1,
+  "type": "objectgroup",
+  "visible": true,
+  "x": 0,
+  "y": 0
+}],
+ "nextlayerid":46,
+ "nextobjectid":179,
  "orientation":"orthogonal",
  "properties":[
         {

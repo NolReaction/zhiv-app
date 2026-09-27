@@ -293,6 +293,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
 
   const objects = new Set(), layers = new Set(), sites = new Map(), markers = new Map(), terrainIds = new Set(), pathIds = new Set();
   const waterIds = { surfaces: new Set(), exclusions: new Set() }, lightIds = new Set();
+  const campfires = new Map(), fireSeats = new Map();
   const mushroomIds = new Set(), bushes = new Map(), bushMarkers = new Map(), bushRoutes = [];
   const navigationIds = new Set(), habitats = new Map(), habitatExclusions = [], habitatAnchors = [], anchorIds = new Set();
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
@@ -432,7 +433,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         continue;
       }
       const props = properties(object, at, { role: "string", siteId: "string", label: "string", level: "int", initialLevel: "int", size: "float",
-        behavior: "string", activity: "string", pauseSeconds: "float", bushId: "string", imageId: "string" });
+        behavior: "string", activity: "string", pauseSeconds: "float", bushId: "string", imageId: "string", campfireId: "string", radius: "float" });
       const role = string(props.role, `${at}.properties.role`);
       if (own(object, "gid")) {
         const gid = integer(object.gid, `${at}.gid`, 1);
@@ -490,6 +491,20 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         mushroomIds.add(id);
         world.mushrooms ??= [];
         world.mushrooms.push({ id, position: point(object, at, world) });
+      } else if (role === "campfire" || role === "campfire-seat") {
+        exact(shape, "point", `${at} shape`); exact(object.point, true, `${at}.point`);
+        requireThat(Object.keys(props).every(key => ["role", "campfireId", ...(role === "campfire" ? ["radius"] : [])].includes(key)), at, "campfire accepts role, campfireId and radius; seat accepts role and campfireId");
+        const id = identifier(props.campfireId, `${at}.properties.campfireId`);
+        const position = point(object, at, world), collection = role === "campfire" ? campfires : fireSeats;
+        requireThat(!collection.has(id), at, `duplicate ${role} ${id}`);
+        if (role === "campfire-seat") fireSeats.set(id, position);
+        else {
+          const radius = number(props.radius ?? 10, `${at}.properties.radius`);
+          requireThat(radius >= 6 && radius <= 20, at, "campfire radius must be between 6 and 20");
+          requireThat(position.x >= radius && position.y >= radius && position.x + radius <= world.width && position.y + radius <= world.height, at, "campfire footprint outside world bounds");
+          campfires.set(id, { id, position, radius });
+          requireThat(campfires.size <= 8, at, "at most 8 campfires are supported");
+        }
       } else if (["bush", "bush-entry", "bush-hide"].includes(role)) {
         requireThat(Object.keys(props).every(key => ["role", "bushId", ...(role === "bush" ? ["imageId"] : [])].includes(key)), at, "bush objects only accept role and bushId properties; the polygon also accepts imageId");
         const id = identifier(props.bushId, `${at}.properties.bushId`);
@@ -572,6 +587,14 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   for (const id of catalogs.keys()) requireThat(sites.has(id), "map", `state catalog ${id} has no placed site`);
   for (const id of markers.keys()) requireThat(sites.has(id), "map", `markers reference unknown site ${id}`);
   for (const owner of routeOwners) requireThat(sites.has(owner.id), owner.at, `path references unknown site ${owner.id}`);
+  for (const id of fireSeats.keys()) requireThat(campfires.has(id), "map", `seat references unknown campfire ${id}`);
+  if (campfires.size) world.campfires = [...campfires.values()].map(fire => {
+    const seat = fireSeats.get(fire.id);
+    requireThat(seat, "map", `campfire ${fire.id} is missing seat`);
+    const distance = Math.hypot(seat.x - fire.position.x, seat.y - fire.position.y);
+    requireThat(distance >= fire.radius + 8 && distance <= 100, "map", `campfire ${fire.id} seat must be outside its footprint and within 100 world units`);
+    return { ...fire, seat };
+  });
   for (const id of bushMarkers.keys()) requireThat(bushes.has(id), "map", `markers reference unknown bush ${id}`);
   for (const route of bushRoutes) requireThat(bushes.has(route.id), route.at, `path references unknown bush ${route.id}`);
   if (bushes.size) world.bushes = [...bushes.values()].map(bush => {

@@ -1211,3 +1211,22 @@ test("bush imageId can reference artwork placed later, and only the polygon acce
     await assert.rejects(compile(invalid), /bush objects only accept/);
   }
 });
+
+test("campfires compile paired ground/seat markers and reject unsafe or orphan authoring", async t => {
+  const { map, compile } = await fixture(t);
+  const fire = { id: 90, name: "evening-fire", point: true, x: 70, y: 60, width: 0, height: 0,
+    properties: props({ role: "campfire", campfireId: "evening-fire" }) };
+  const seat = { id: 91, name: "evening-seat", point: true, x: 45, y: 65, width: 0, height: 0,
+    properties: props({ role: "campfire-seat", campfireId: "evening-fire" }) };
+  const good = clone(map); good.layers[0].objects.push(fire, seat);
+  assert.deepEqual((await compile(good)).campfires, [{ id: "evening-fire", position: { x: 70, y: 60 }, seat: { x: 45, y: 65 }, radius: 10 }]);
+  for (const [label, mutate, expected] of [
+    ["missing seat", objects => objects.pop(), /missing seat/],
+    ["orphan seat", objects => objects.splice(-2, 1), /unknown campfire/],
+    ["seat inside fire", objects => { objects.at(-1).x = 70; objects.at(-1).y = 60; }, /outside its footprint/],
+    ["footprint outside map", objects => { objects.at(-2).x = 3; }, /outside world bounds/],
+    ["duplicate fire", objects => objects.push({ ...clone(fire), id: 92 }), /duplicate campfire/],
+    ["wrong shape", objects => { delete objects.at(-1).point; }, /expected "point"/],
+    ["invalid radius", objects => objects.at(-2).properties.push({ name: "radius", type: "float", value: -4 }), /radius must be/],
+  ]) await t.test(label, async () => { const broken = clone(good); mutate(broken.layers[0].objects); await assert.rejects(compile(broken), expected); });
+});

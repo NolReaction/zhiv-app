@@ -1,3 +1,4 @@
+import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 
 type DebugPoint = Readonly<WorldPoint>;
@@ -99,6 +100,7 @@ function navigation(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, snaps
   polygons(ctx, scene.navigation?.areas ?? [], COLORS.allowed, unit);
   polygons(ctx, scene.navigation?.obstacles ?? [], COLORS.obstacle, unit);
   polygons(ctx, scene.sites.slice(0, LIMITS.polygons).map(site => ({ id: site.id, points: site.collision })), COLORS.obstacle, unit);
+  polygons(ctx, (scene.campfires ?? []).map(fire => ({ id: fire.id, points: campfireFootprint(fire) })), COLORS.obstacle, unit);
   polygons(ctx, scene.water?.surfaces ?? [], COLORS.water, unit);
   if (snapshot.nav) grid(ctx, snapshot.nav, unit);
   if (snapshot.path?.length) {

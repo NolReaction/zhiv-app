@@ -7,6 +7,6 @@ export function forestPersistenceOverridden(dev: WorldDevState | undefined, auth
     || dev.butterflies !== "auto" || dev.fireflies !== "auto" || dev.birds !== "auto"
     || !dev.autoLife || dev.navigationMode !== "auto" || dev.reducedMotion !== "auto"
     || dev.pose !== "auto" || dev.heroScale !== 1 || !dev.showHero || !dev.showBuildings
-    || dev.animation || dev.lifeEvent || dev.birdEvent > 0
+    || dev.animation || dev.lifeEvent || dev.scenarioEvent || dev.birdEvent > 0
     || Object.entries(dev.levels).some(([id, level]) => level !== authoredLevels[id])));
 }

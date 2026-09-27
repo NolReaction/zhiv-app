@@ -64,4 +64,4 @@ DEV-команды сохраняют последнее обычное сост
 | Память и строгий контракт | `forest-memory.ts`, `forest-memory-model.ts`, Ktor `ForestMemory.kt` |
 | Диагностика и ручные сценарии | `forest-observer.ts`, `dev/world-dev-panel.tsx`, `dev/world-dev-store.ts` |
 
-Рубка дров и вечерний костёр остаются [следующим этапом](clearing-activities-plan.md).
+Первый [вечерний костёр](campfire.md) уже работает. Рубка дров и запас топлива остаются [следующим этапом](clearing-activities-plan.md).

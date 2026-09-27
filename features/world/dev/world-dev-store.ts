@@ -4,7 +4,15 @@ import { initialPreviewLevels } from "../tiled/preview-state";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
 export type WorldDevCameraAction = "in" | "out" | "overview" | "pet";
-export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "water-bush" | "harvest-berries" | "grow-berries" | "watch-birds" | "idle";
+export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "water-bush" | "harvest-berries" | "grow-berries" | "watch-birds" | "campfire" | "idle";
+
+export const WORLD_DEV_SCENARIOS = [
+  { id: "birds", label: "Птицы на полянке", description: "Ясный день и пара птиц: посадка, реакция на близкие шаги, взлёт." },
+  { id: "campfire", label: "Вечер у костра", description: "Сухой очаг и ночь: огонь разгорается, Мохлик подходит и отдыхает рядом." },
+  { id: "rain", label: "Дождливый вечер", description: "Ливень и ночь: костёр затухает, обитатели ищут укрытия." },
+  { id: "tired", label: "Уставший Мохлик", description: "Тестовая усталость вечером: наблюдаем выбор отдыха и пути домой." },
+] as const;
+export type WorldDevScenario = typeof WORLD_DEV_SCENARIOS[number]["id"];
 
 export const WORLD_DEV_POSES = Object.freeze([
   "idle", "walk", "blink", "sleep", "drowsy", "stretch", "crouch", "jump", "groom", "greet",
@@ -39,6 +47,7 @@ export type WorldDevState = Readonly<{
   animation: Readonly<{ id: number; pose: PixelPose }> | null;
   lifeEvent: Readonly<{ id: number; kind: WorldDevLifeAction }> | null;
   birdEvent: number;
+  scenarioEvent: Readonly<{ id: number; kind: WorldDevScenario }> | null;
   cameraEvent: Readonly<{ id: number; action: WorldDevCameraAction }> | null;
   artError: string | null;
 }>;
@@ -50,7 +59,7 @@ export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true,
   debug: false, debugWater: false, debugNavigation: false, debugFauna: false,
   levels: Object.freeze(initialPreviewLevels(TILED_WORLD)), equipment: null,
-  animation: null, lifeEvent: null, birdEvent: 0, cameraEvent: null, artError: null,
+  animation: null, lifeEvent: null, birdEvent: 0, scenarioEvent: null, cameraEvent: null, artError: null,
 });
 
 const enumValues = {
@@ -64,12 +73,12 @@ const enumValues = {
 const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
-const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "watch-birds", "idle"].some(kind => kind === value);
+const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "watch-birds", "campfire", "idle"].some(kind => kind === value);
 
 /** Ephemeral visual overrides only; this store never touches player progress or storage. */
 export function createWorldDevStore(enabled: boolean) {
   let state = WORLD_DEV_DEFAULTS;
-  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0;
+  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0;
   const listeners = new Set<() => void>();
   const publish = (next: WorldDevState) => {
     if (!enabled || next === state) return;
@@ -126,6 +135,14 @@ export function createWorldDevStore(enabled: boolean) {
       if (enabled && isLifeAction(kind)) publish({ ...state, animation: null, pose: "auto",
         autoLife: kind === "idle" ? false : kind === "home-sleep" ? true : state.autoLife,
         lifeEvent: Object.freeze({ id: ++lifeEventId, kind }) });
+    },
+    triggerScenario(kind: WorldDevScenario) {
+      if (!enabled || !WORLD_DEV_SCENARIOS.some(item => item.id === kind)) return;
+      publish({ ...state, paused: false, pose: "auto", animation: null, lifeEvent: null,
+        autoLife: true, navigationMode: "auto", showHero: true, showBuildings: true,
+        weather: kind === "rain" ? "downpour" : "clear", timeOfDay: kind === "birds" ? "day" : "night",
+        butterflies: "auto", fireflies: "auto", birds: "auto",
+        scenarioEvent: Object.freeze({ id: ++scenarioEventId, kind }) });
     },
     triggerBirds() {
       if (enabled) publish({ ...state, birdEvent: ++birdEventId });

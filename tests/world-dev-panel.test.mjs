@@ -83,7 +83,7 @@ test("arrow keys wrap, Home and End select and focus; Tab and composing/modifier
 test("each DEV page renders only its controls, with no simulation or account mutation during inspection", () => {
   const snapshot = worldDevStore.getSnapshot();
   const expected = {
-    scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
+    scenarios: "Готовые сценарии", scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
     world: "Погода и живность", buildings: "Постройки", ai: "Мышление и память",
     overlays: "Разметка сцены", routes: "Навигация и входы", app: "Приложение и тесты",
   };
@@ -151,7 +151,7 @@ test("blocked scenes and animations retain explanatory labels, while cancellatio
   const reason = "Сцена на паузе. Снимите паузу для проигрывания событий.";
   const { elements } = panel("scenes", { unavailable: action => action.action === "idle" ? null : reason });
   const buttons = elements.filter(element => element.type === "button");
-  assert.equal(buttons.length, 10);
+  assert.equal(buttons.length, 11);
   assert.equal(elements.filter(element => element.type === "p" && labelText(element) === reason).length, 1,
     "a paused scene needs one shared explanation, not eight paragraphs to scroll past");
   for (const button of buttons) {
@@ -203,4 +203,14 @@ test("account test resources still require a permitted server and an unambiguous
   deniedGrant.props.onClick();
   assert.equal(deniedGrant.props.disabled, true);
   assert.deepEqual(grants, []);
+});
+
+test("scenario cards explain conditions and dispatch one explicit choice without navigating away", () => {
+  const { elements, calls, markup } = panel("scenarios");
+  const buttons = elements.filter(item => item.type === "button");
+  assert.equal(buttons.length, 4);
+  buttons[1].props.onClick();
+  assert.deepEqual(calls.actions, [{ kind: "scenario", scenario: "campfire" }]);
+  assert.match(markup, /Уменьшенное движение сохраняется/);
+  assert.match(markup, /Положение Мохлика/);
 });

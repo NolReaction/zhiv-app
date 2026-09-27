@@ -1,3 +1,4 @@
+import { campfireFootprint } from "./forest-campfire";
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
@@ -143,6 +144,7 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
     }
     // Floating leaves / exclusions never give permission to walk on the river.
     if (scene.water?.surfaces.some(surface => touchesPolygon(previous, point, surface.points, clearance))) return "water-collision";
+    if (scene.campfires?.some(fire => touchesPolygon(previous, point, campfireFootprint(fire), clearance))) return "campfire-collision";
     if (i) length += distance(previous, point);
   }
   if (homeSite?.doorway) {
@@ -154,11 +156,13 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
       if (((x - focus.x - focus.width / 2) / (focus.width / 2)) ** 2
         + ((y - focus.y - focus.height / 2) / (focus.height / 2)) ** 2 > 1) return "outside-focus";
     }
+    if (scene.campfires?.some(fire => touchesPolygon(entry, doorway, campfireFootprint(fire), clearance))) return "campfire-collision";
     // Only this authored threshold corridor can enter the resident's own house.
     if (scene.sites.some(site => site !== homeSite && touchesPolygon(entry, doorway, site.collision, clearance))) return "building-collision";
     if (scene.water?.surfaces.some(surface => touchesPolygon(entry, doorway, surface.points, clearance))) return "water-collision";
   }
   if (bush) {
+    if (scene.campfires?.some(fire => touchesPolygon(bush.entry, bush.hide, campfireFootprint(fire), clearance))) return "campfire-collision";
     // The jump is a short explicit corridor, never permission to cut through water or a building.
     for (const site of scene.sites) if (touchesPolygon(bush.entry, bush.hide, site.collision, clearance)) return "building-collision";
     if (scene.water?.surfaces.some(surface => touchesPolygon(bush.entry, bush.hide, surface.points, clearance))) return "water-collision";

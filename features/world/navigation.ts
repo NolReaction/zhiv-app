@@ -1,3 +1,4 @@
+import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 
 type Edge = { a: WorldPoint; b: WorldPoint; bounds: WorldBounds };
@@ -204,7 +205,8 @@ function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigatio
   const rowCount = Math.max(1, Math.ceil(box.height / rowStep) + 1);
   const budget = { remaining: WORLD_NAVIGATION_LIMITS.preparationChecks as number };
   const rawBlockers = [...source.obstacles.map(item => item.points), ...scene.sites.map(site => site.collision),
-    ...(scene.water?.surfaces.map(surface => surface.points) ?? [])];
+    ...(scene.water?.surfaces.map(surface => surface.points) ?? []),
+    ...(scene.campfires ?? []).map(campfireFootprint)];
   if (rawBlockers.some(points => !Array.isArray(points))
     || rawBlockers.reduce((sum, points) => sum + points.length, areaPoints.length) > WORLD_NAVIGATION_LIMITS.geometryEdges) return null;
   if (source.obstacles.some(item => item.points.length < 3)

@@ -85,6 +85,7 @@ export type WorldLight = {
   color: string;
   flicker: number;
 };
+export type WorldCampfire = { id: string; position: WorldPoint; seat: WorldPoint; radius: number };
 export type FixedWorldScene = {
   schemaVersion: 1;
   id: string;
@@ -96,6 +97,7 @@ export type FixedWorldScene = {
   sites: FixedSite[];
   paths: WorldPath[];
   mushrooms?: WorldMushroom[];
+  campfires?: WorldCampfire[];
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];

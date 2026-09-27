@@ -1,3 +1,4 @@
+import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
 import interactionLimits from "./interaction-limits.json";
@@ -68,7 +69,8 @@ function visibleFoot(scene: FixedWorldScene, point: WorldPoint, size: number, li
 function corridorClear(scene: FixedWorldScene, a: WorldPoint, b: WorldPoint, radius: number, ownHome?: string) {
   return !scene.sites.some(site => site.id !== ownHome && touches(a, b, site.collision, radius))
     && !scene.water?.surfaces.some(surface => touches(a, b, surface.points, radius))
-    && !scene.navigation?.obstacles.some(obstacle => touches(a, b, obstacle.points, radius));
+    && !scene.navigation?.obstacles.some(obstacle => touches(a, b, obstacle.points, radius))
+    && !scene.campfires?.some(fire => touches(a, b, campfireFootprint(fire), radius));
 }
 
 /** Compile only local animation corridors. All travel to them still uses normal A*.

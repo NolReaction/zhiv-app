@@ -4,6 +4,8 @@ import { isForestGroundClear } from "./forest-ground-weather";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import { createForestGarden, type ForestGardenState } from "./forest-garden";
 
+import { createForestCampfires, type ForestCampfire } from "./forest-campfire";
+
 export type ForestLifeKind = "butterfly" | "firefly" | "mushroom" | "leaf";
 export type ForestLifeAction = ForestLifeKind | "grow-mushrooms" | "idle";
 export type ForestMushroom = WorldPoint & {
@@ -13,6 +15,7 @@ export type ForestMushroom = WorldPoint & {
 };
 export type ForestLifeState = {
   garden: ForestGardenState;
+  campfires: ForestCampfire[];
   elapsed: number; nextRoutineAt: number; sequence: number; fastGrowthUntil: number;
   routine: { kind: ForestLifeKind; elapsed: number; mushroomId?: string; picked?: boolean;
     interrupting?: { from: number; elapsed: number } } | null;
@@ -57,7 +60,7 @@ export function createForestLife(scene: FixedWorldScene): ForestLifeState {
       leaf = { ...point, angle: -.35 }; break;
     }
   }
-  return { elapsed: 0, nextRoutineAt: 4, sequence: 0, fastGrowthUntil: 0, routine: null, mushrooms, leaf, garden: createForestGarden(scene) };
+  return { elapsed: 0, nextRoutineAt: 4, sequence: 0, fastGrowthUntil: 0, routine: null, mushrooms, leaf, garden: createForestGarden(scene), campfires: createForestCampfires(scene) };
 }
 
 export function cancelForestLife(state: ForestLifeState) {

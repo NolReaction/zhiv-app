@@ -10095,5 +10095,19 @@
       "y": 690.043232944969
     },
     "size": 50
-  }
+  },
+  "campfires": [
+    {
+      "id": "clearing-campfire",
+      "position": {
+        "x": 655,
+        "y": 682
+      },
+      "radius": 10,
+      "seat": {
+        "x": 615,
+        "y": 708
+      }
+    }
+  ]
 }

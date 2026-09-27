@@ -9,7 +9,7 @@ const fixture = {
   terrain: [{ id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1254, height: 1254 } }],
   focus: { x: 455, y: 480, width: 350, height: 350 },
   actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [],
-  water: { surfaces: [], exclusions: [] }, bushes: [], navigation: undefined, habitats: undefined,
+  water: { surfaces: [], exclusions: [] }, bushes: [], campfires: [], navigation: undefined, habitats: undefined,
   mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
 const livingHabitats = [

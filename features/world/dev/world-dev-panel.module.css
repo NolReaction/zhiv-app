@@ -162,3 +162,9 @@
   .globalControls { grid-column: 2; grid-template-columns: 94px minmax(0, 1fr); padding-inline: 6px; }
   .drawer > .tabs, .workspace, .footer { grid-column: 1 / -1; }
 }
+
+.scenarioList { display: grid; gap: 8px; }
+.scenarioList button { display: grid; gap: 5px; width: 100%; min-width: 0; padding: 12px; text-align: left; border: 1px solid rgba(146,190,154,.24); border-radius: 12px; background: rgba(41,65,49,.28); color: inherit; cursor: pointer; }
+.scenarioList button[data-last-run="true"] { border-color: #96be86; background: rgba(75,106,60,.35); }
+.scenarioList button span { font-size: 12px; line-height: 1.45; opacity: .8; }
+.scenarioList button:focus-visible { outline: 2px solid #b9dfa8; outline-offset: 2px; }
