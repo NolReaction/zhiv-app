@@ -1,7 +1,8 @@
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene } from "./tiled/types";
 import { createForestLife } from "./forest-life";
-import { createClearingActivity } from "./clearing-activity";
+import { createClearingActivity, setClearingNavigationObstacle } from "./clearing-activity";
+import { gardenBasketFootprint } from "./forest-garden";
 import { createForestFauna } from "./forest-fauna";
 import { createForestDirector, type ForestDirective } from "./forest-director";
 import { createBirdReactions } from "./forest-bird-reactions";
@@ -50,6 +51,8 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
       pendingLife: null, pendingAttention: false,
       reaction: 0, animation: null, birdStarted: null, birdSeed: -1,
       memory: { mode: "ephemeral", restored: false, reconciled: false, lastSavedAt: null, enabled: false } };
+    // A remembered outdoor position must also be clear of the parked basket.
+    setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
     const memory = createForestMemory(key, scene, state, options);
     state.memory = memory.status;
     shared = { key, state, memory, members: new Set(), owner: null, events: new Map() };
@@ -66,6 +69,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
             fauna: createForestFauna(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
             lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
+          setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
           memory.apply(payload);
         },
         onStatus(status) {

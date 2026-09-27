@@ -37,7 +37,8 @@ export function forestSceneFingerprint(scene: FixedWorldScene): string {
   const input = JSON.stringify({ id: scene.id, width: scene.width, height: scene.height, focus: scene.focus,
     actor: scene.actor, navigation: scene.navigation, sites: scene.sites.map(site => ({ id: site.id,
       entry: site.entry, doorway: site.doorway, collision: site.collision })), paths: scene.paths,
-    bushes: scene.bushes, campfires: scene.campfires, mushrooms: scene.mushrooms, habitats: scene.habitats, water: scene.water?.surfaces });
+    bushes: scene.bushes, campfires: scene.campfires, mushrooms: scene.mushrooms, habitats: scene.habitats, water: scene.water?.surfaces,
+    basket: scene.basket });
   let hash = 2166136261;
   for (let index = 0; index < input.length; index++) hash = Math.imul(hash ^ input.charCodeAt(index), 16777619);
   const fingerprint = `${input.length.toString(36)}-${(hash >>> 0).toString(36)}`;

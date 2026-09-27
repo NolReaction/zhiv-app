@@ -309,7 +309,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights" : own(livingKinds, layer.name) ? livingKinds[layer.name] : undefined;
       requireThat(!namedKind || !inheritedKind || namedKind === inheritedKind, layerAt, "different metadata layers must not be nested inside each other");
       const metadataKind = namedKind ?? inheritedKind;
-      const isLifeLayer = !metadataKind && ["Mushrooms", "Bushes"].includes(layer.name);
+      const isLifeLayer = !metadataKind && ["Mushrooms", "Bushes", "Garden"].includes(layer.name);
       const waterKind = ["surfaces", "exclusions"].includes(metadataKind) ? metadataKind : undefined;
       const livingKind = Object.values(livingKinds).includes(metadataKind) ? metadataKind : undefined;
       const isGroup = layer.type === "group";
@@ -493,6 +493,14 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         mushroomIds.add(id);
         world.mushrooms ??= [];
         world.mushrooms.push({ id, position: point(object, at, world) });
+      } else if (role === "basket") {
+        exact(shape, "point", `${at} shape`);
+        exact(object.point, true, `${at}.point`);
+        defaultValue(object, "width", 0, at);
+        defaultValue(object, "height", 0, at);
+        requireThat(Object.keys(props).length === 1, at, "basket only accepts the role property");
+        requireThat(!world.basket, at, "only one basket point is allowed");
+        world.basket = { id: identifier(object.name, `${at}.name`), position: point(object, at, world) };
       } else if (role === "campfire" || role === "campfire-seat") {
         exact(shape, "point", `${at} shape`); exact(object.point, true, `${at}.point`);
         requireThat(Object.keys(props).every(key => ["role", "campfireId", ...(role === "campfire" ? ["radius"] : [])].includes(key)), at, "campfire accepts role, campfireId and radius; seat accepts role and campfireId");

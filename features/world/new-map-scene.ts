@@ -14,7 +14,8 @@ import { drawForestGroundImpacts } from "./forest-ground-impacts";
 import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
 import { forestLifeFrame, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
-import { drawForestBush } from "./forest-bush-painter";
+import { drawForestBush, forestBushForegroundActive } from "./forest-bush-painter";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { drawForestGardenGround, drawForestGardenPlants, drawForestGardenProps, forestGardenVisualFrame } from "./forest-garden-painter";
 import { drawWaterDebug } from "./dev/water-debug";
 import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity } from "./clearing-activity";
@@ -130,7 +131,8 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const life = preview?.life;
   const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
   const motion = automatic && walking ? walking : null;
-  const garden = automatic ? forestGardenVisualFrame(life?.garden, actor,
+  // A cancelled carry may wait for clear ground; attention cannot hide its basket.
+  const garden = automatic || life?.garden.basket?.held ? forestGardenVisualFrame(life?.garden, actor,
     { pose: motion?.pose ?? "idle", frame: motion?.frame ?? 0, direction: motion?.direction ?? "front" }, still) : null;
   const routine = life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, { ...actor, propSize: PET_SIZE }, elapsed) : null;
@@ -141,10 +143,16 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const warming = automatic && fire && preview?.campfireVisit ? campfireVisitFrame(preview.campfireVisit, fire, actor, still) : null;
   const behindFires = (life?.campfires ?? []).filter(item => item.position.y < actor.y);
   const frontFires = (life?.campfires ?? []).filter(item => item.position.y >= actor.y);
+  const foregroundBush = dev?.showHero !== false && walking?.bush && forestBushForegroundActive(walking.bush, still)
+    ? world.bushes?.find(bush => bush.id === walking.bush!.id) : undefined;
+  const foregroundTerrain = foregroundBush?.imageId && forestBushArtworkAvailable(world, foregroundBush)
+    ? world.terrain.find(terrain => terrain.id === foregroundBush.imageId) : undefined;
+  const foregroundImage = foregroundTerrain && images.get(foregroundTerrain.image);
   context.save();
   context.beginPath(); context.rect(0, 0, world.width, world.height); context.clip();
   paintFixedWorld(context, world, { images, visuals: selectedVisuals, actor: null, dusk: Number(atmosphere.dusk),
     bushMoisture: life?.garden?.bushes,
+    hiddenTerrainIds: foregroundTerrain && foregroundImage?.naturalWidth && foregroundImage.naturalHeight ? [foregroundTerrain.id] : undefined,
     paintGround: ground => {
       const weather = { ...forestAtmosphereState(world, atmosphere), reducedMotion: still };
       const groundExclusions = life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 }));

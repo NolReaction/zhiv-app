@@ -44,8 +44,8 @@ function shadowFor(bush: WorldBush, terrain: WorldImage, image: HTMLImageElement
   };
   // A short cast to the lower right matches the painted upper-left daylight.
   // Contact stays immediately beneath the foliage, even when daylight fades.
-  project(castCtx, .24, size * .1, size * .055, size * .032);
-  project(contactCtx, .10, 0, size * .014, size * .012);
+  project(castCtx, .20, size * .055, -size * .025, size * .027);
+  project(contactCtx, .085, 0, -size * .022, size * .009);
   const shadow = { image, terrain, bounds, contact, cast };
   shadows.set(bush, shadow);
   return shadow;
@@ -63,9 +63,9 @@ export function drawForestBushGrounding(ctx: CanvasRenderingContext2D, scene: Fi
   const { bounds } = shadow;
   ctx.save();
   const alpha = ctx.globalAlpha;
-  ctx.globalAlpha = alpha * .20 * (1 - darkness * .68);
+  ctx.globalAlpha = alpha * .14 * (1 - darkness * .68);
   ctx.drawImage(shadow.cast, bounds.x, bounds.y, bounds.width, bounds.height);
-  ctx.globalAlpha = alpha * .25 * (1 - darkness * .18);
+  ctx.globalAlpha = alpha * .42 * (1 - darkness * .18);
   ctx.drawImage(shadow.contact, bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.restore();
 }

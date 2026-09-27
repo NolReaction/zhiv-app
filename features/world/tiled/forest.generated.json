@@ -10006,6 +10006,13 @@
     },
     "size": 50
   },
+  "basket": {
+    "id": "berry-basket",
+    "position": {
+      "x": 622.991243496739,
+      "y": 686.043232944969
+    }
+  },
   "campfires": [
     {
       "id": "clearing-campfire",

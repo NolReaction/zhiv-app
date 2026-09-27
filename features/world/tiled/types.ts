@@ -64,7 +64,8 @@ export type WorldBush = {
   id: string;
   /** Optional terrain-object ID; absent means foliage baked into the background. */
   imageId?: string;
-  /** Contour of the existing bush artwork used for foreground leaves. */
+  /** Foliage region for interactions and fruit placement. Baked artwork uses it
+   * as a foreground mask; a separate image uses its own transparent pixels. */
   points: WorldPoint[];
   /** Foot positions outside the leaves and while hiding inside them. */
   entry: WorldPoint;
@@ -86,6 +87,8 @@ export type WorldLight = {
   flicker: number;
 };
 export type WorldCampfire = { id: string; position: WorldPoint; seat: WorldPoint; radius: number };
+/** Ground contact at the bottom center of the parked berry basket. */
+export type WorldBasket = { id: string; position: WorldPoint };
 export type FixedWorldScene = {
   schemaVersion: 1;
   id: string;
@@ -98,6 +101,8 @@ export type FixedWorldScene = {
   paths: WorldPath[];
   mushrooms?: WorldMushroom[];
   campfires?: WorldCampfire[];
+  /** Absent retains automatic placement for older maps. */
+  basket?: WorldBasket;
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];

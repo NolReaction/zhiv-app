@@ -12048,9 +12048,38 @@
          "visible":true,
          "x":0,
          "y":0
+        },
+        {
+         "draworder":"index",
+         "id":46,
+         "name":"Garden",
+         "objects":[
+                {
+                 "height":0,
+                 "id":182,
+                 "name":"berry-basket",
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"basket"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":622.991243496739,
+                 "y":686.043232944969
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
         }],
- "nextlayerid":46,
- "nextobjectid":182,
+ "nextlayerid":47,
+ "nextobjectid":183,
  "orientation":"orthogonal",
  "properties":[
         {

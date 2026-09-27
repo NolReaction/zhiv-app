@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createForestGarden, advanceForestGarden, gardenActionAvailable, growForestBerries, cancelForestGarden } =
+const { createForestGarden, advanceForestGarden, gardenActionAvailable, growForestBerries, cancelForestGarden, gardenBasketFootprint } =
   await vite.ssrLoadModule("/features/world/forest-garden.ts");
 const { requestForestDirective, advanceForestDirector, noticeForestDirector, cancelForestDirector } =
   await vite.ssrLoadModule("/features/world/forest-director.ts");
@@ -16,6 +16,8 @@ const { connectForestSession } = await vite.ssrLoadModule("/features/world/fores
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { isWalkable, createWorldNavigation } = await vite.ssrLoadModule("/features/world/navigation.ts");
+const { baseClearingNavigation } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+const { forestGardenVisualFrame } = await vite.ssrLoadModule("/features/world/forest-garden-painter.ts");
 const { isForestGroundClear } = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: true };
 function scene(level = 1, size = 50) {
@@ -70,9 +72,10 @@ test("garden reuses authored bushes and places its basket clear of every house l
     assert.equal(garden.bushes.length, map.bushes.length); assert.ok(basket, `level ${level}, size ${size}`);
     assert.deepEqual(garden.bushes[0].position, map.bushes[0].entry);
     assert.notEqual(garden.bushes[0].position, map.bushes[0].entry);
-    assert.ok(isForestGroundClear(map, basket.position, size * .085));
     assert.ok(isWalkable(createWorldNavigation(map), basket.position));
     assert.ok(isWalkable(createWorldNavigation(map), basket.approach));
+    assert.deepEqual(basket.position, map.basket.position, 'the authored position is never adjusted');
+    assert.ok(Math.abs(basket.position.x - basket.approach.x) >= size * .35, 'feet stop beside the wicker body');
   }
   const unavailable = scene(); unavailable.navigation = undefined;
   assert.equal(createForestGarden(unavailable).bushes.length, unavailable.bushes.length);
@@ -99,6 +102,24 @@ test("berries grow over active minutes, rain waters, dry bushes survive, and coo
   const before = dry.bushes[0].growth;
   advanceForestGarden(dry, 36000, { rain: 0 });
   assert.ok(dry.bushes[0].growth - before < .001, "a wall-time gap is not offline growth");
+});
+
+test("authored basket markers are authoritative, unsafe points fail closed, and older maps retain fallback", () => {
+  const old = scene(); delete old.basket;
+  const legacy = createForestGarden(old);
+  assert.ok(legacy.basket);
+  assert.ok(isForestGroundClear(old, legacy.basket.position, old.actor.size * .085));
+  const moved = scene(); moved.basket.position.x += 8;
+  const valid = createForestGarden(moved);
+  assert.deepEqual(valid.basket.position, moved.basket.position);
+  assert.equal(valid.basket.size, 14);
+  for (const position of [{ x: 0, y: 0 }, moved.actor.spawn, { x: NaN, y: 0 }, moved.sites[0].entry]) {
+    const bad = scene(); bad.basket.position = position;
+    const result = createForestGarden(bad);
+    assert.equal(result.basket, null);
+    assert.equal(result.basketUnavailable, true);
+    assert.equal(gardenActionAvailable(result, 'harvest-berries'), false);
+  }
 });
 
 test("water action reaches a safe point near the foliage before pouring and commits moisture only once", () => {
@@ -142,7 +163,7 @@ test("each of five houses with size 50 and 56 supports the full berry round trip
   }
 });
 
-test("interrupting before deposit restores the untouched harvest and drops the same basket at real feet", () => {
+test("interrupting before deposit restores the crop and parks the same basket beside clear real feet", () => {
   for (const phase of ["take-basket", "approach-bush", "collect", "return-basket", "deposit"]) {
     const state = create(), garden = state.life.garden; growForestBerries(garden);
     requestForestDirective(state, "harvest-berries", calm);
@@ -151,11 +172,67 @@ test("interrupting before deposit restores the untouched harvest and drops the s
     noticeForestDirector(state); noticeForestDirector(state);
     assert.deepEqual(state.clearing.position, foot); assert.equal(garden.routine, null);
     assert.equal(garden.basket.berries, 0); assert.equal(garden.bushes[0].growth, 1);
-    if (carrying) assert.deepEqual(garden.basket.position, foot);
+    if (carrying) {
+      assert.ok(distance(garden.basket.position, foot) > 15 && distance(garden.basket.position, foot) < 25);
+      assert.ok(isWalkable(state.clearing.navigation, foot), 'dropping never traps the hero inside a new obstacle');
+    }
     advance(state, 3); assert.equal(state.pendingAttention, false);
     requestForestDirective(state, "harvest-berries", calm);
     until(state, () => garden.basket.berries === 3);
     assert.ok(garden.bushes[0].growth < .001); assert.deepEqual(garden.basket.position, garden.basket.homePosition);
+  }
+});
+
+test("interruptions along the real carrying route preserve the crop and leave the hero outside the parked footprint", () => {
+  const state = create(); growForestBerries(state.life.garden);
+  requestForestDirective(state, "harvest-berries", calm);
+  let nextSample = 0, samples = 0;
+  until(state, current => current.life.garden.basket.berries === 3, 90, calm, () => {
+    if (!state.life.garden.routine?.carryingBasket || state.director.elapsed < nextSample) return;
+    nextSample = state.director.elapsed + .45; samples++;
+    const sample = structuredClone(state), foot = { ...state.clearing.position };
+    sample.clearing.navigation = baseClearingNavigation(state.clearing);
+    noticeForestDirector(sample);
+    assert.deepEqual(sample.clearing.position, foot);
+    assert.equal(sample.life.garden.bushes[0].growth, 1);
+    assert.equal(sample.life.garden.basket.berries, 0);
+    assert.ok(isWalkable(sample.clearing.navigation, foot));
+    if (!sample.life.garden.basket.held) assert.ok(distance(sample.life.garden.basket.position, foot) < 25);
+  });
+  assert.ok(samples >= 10);
+});
+
+test("a narrow corridor keeps the cancelled basket in the hands until a safe put-down exists", () => {
+  for (const halfWidth of [7, 15]) {
+  const state = create(), garden = state.life.garden, foot = { ...state.clearing.position };
+  const map = scene();
+  map.navigation = { version: 1, cellSize: 2, areas: [{ id: 'narrow-path', points: [
+    { x: foot.x - halfWidth, y: foot.y - 50 }, { x: foot.x + halfWidth, y: foot.y - 50 },
+    { x: foot.x + halfWidth, y: foot.y + 50 }, { x: foot.x - halfWidth, y: foot.y + 50 },
+  ] }], obstacles: [] };
+  state.clearing.navigation = createWorldNavigation(map);
+  assert.ok(isWalkable(state.clearing.navigation, foot));
+  garden.bushes[0].growth = 1;
+  garden.routine = { kind: 'harvest-berries', bushId: garden.bushes[0].id, phase: 'return-basket',
+    elapsed: 0, totalElapsed: 0, carryingBasket: true };
+  const parking = { ...garden.basket.position };
+  noticeForestDirector(state);
+  assert.equal(garden.basket.held, true);
+  assert.deepEqual(garden.basket.position, parking, 'there is no fake new ground position');
+  assert.equal(gardenBasketFootprint(garden), null);
+  const visual = forestGardenVisualFrame(garden, { ...foot, size: 50 }, { pose: 'idle', direction: 'front', frame: 0 });
+  assert.ok(visual?.basket && !visual.basket.grounded);
+  assert.equal(visual.basket.x, foot.x, 'the visible basket stays in the hands');
+  const legacyRequested = { ...calm, navigationMode: 'routes' };
+  requestForestDirective(state, 'leaf', legacyRequested); advance(state, 2, legacyRequested);
+  assert.equal(state.life.routine, null, 'occupied paws cannot start another prop action');
+  assert.equal(garden.bushes[0].growth, 1); assert.equal(garden.basket.berries, 0);
+  assert.deepEqual(state.clearing.position, foot);
+  assert.equal(state.clearing.navigationEnabled, true, 'held-basket cleanup retains safe navigation until it can park');
+  state.clearing.navigation = createWorldNavigation(scene());
+  advance(state, 1.1);
+  assert.equal(garden.basket.held, false);
+  assert.ok(isWalkable(state.clearing.navigation, state.clearing.position));
   }
 });
 

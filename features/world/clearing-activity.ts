@@ -2,7 +2,8 @@ import { campfireFootprint } from "./forest-campfire";
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
-import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
+import { canTraverse, canTraverseWorldObstacle, createWorldNavigation, findWorldPath, isWalkable,
+  withWorldNavigationObstacle, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./steering";
 import { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS, type WorldInteraction } from "./interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
@@ -57,6 +58,30 @@ export type ClearingActivityFrame = WorldPoint & {
   lift?: number; compression?: number;
   bush?: { id: string; rustle: number; occlude: boolean; occupied: boolean; elapsed: number; bursts: BushBurst[] };
 };
+const temporaryNavigation = new WeakMap<ClearingActivityState, { base: WorldNavigation; key: string; current: WorldNavigation }>();
+const parkedPropWait = new WeakMap<ClearingActivityState, { navigation: WorldNavigation; route: ClearingRoute; stage: ClearingStage }>();
+
+export function baseClearingNavigation(state: ClearingActivityState): WorldNavigation | null {
+  const previous = temporaryNavigation.get(state);
+  return previous?.current === state.navigation ? previous.base : state.navigation;
+}
+
+/** Sync only when the prop moves or is lifted; repeated simulation ticks reuse
+ * one variant. Removing it restores the original shared immutable profile. */
+export function setClearingNavigationObstacle(state: ClearingActivityState, points: readonly WorldPoint[] | null): boolean {
+  if (!state.navigation) return points === null;
+  const previous = temporaryNavigation.get(state);
+  const base = baseClearingNavigation(state)!;
+  if (!points) {
+    state.navigation = base; temporaryNavigation.delete(state); return true;
+  }
+  const key = points.map(point => `${point.x},${point.y}`).join(";");
+  if (previous?.current === state.navigation && previous.key === key) return true;
+  const current = withWorldNavigationObstacle(base, points);
+  if (!current) return false;
+  state.navigation = current; temporaryNavigation.set(state, { base, key, current });
+  return true;
+}
 export const CLEARING_HOME_IDLE_SECONDS = 180;
 export const CLEARING_AWAKE_GRACE_SECONDS = 30;
 const DOOR_FADE_SECONDS = .8;
@@ -380,6 +405,10 @@ export function canVisitClearingBush(state: ClearingActivityState) {
 }
 function startDynamicInteraction(state: ClearingActivityState, interaction: WorldInteraction): boolean {
   if (!state.navigation) return false;
+  const corridor = [...interaction.departure.slice().reverse(), interaction.kind === "home" ? interaction.doorway : interaction.hide];
+  if (corridor.some((point, index) => index > 0 && !canTraverseWorldObstacle(state.navigation!, corridor[index - 1], point))) {
+    state.behavior.reason = `${interaction.kind}-blocked-by-prop`; return false;
+  }
   const approach = findInteractionApproach(state.navigation, state.position, interaction);
   if (!approach) { state.behavior.reason = `${interaction.kind}-unreachable`; return false; }
   const route: ClearingRoute = { ...navigatedRoute(state, approach.points, interaction.id,
@@ -640,6 +669,11 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   const route = free ? state.freeRoute : state.activeInteraction?.route ?? (state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex]);
   if (free && !route) { settleClearing(state); return; }
   if (!route) { arriveHome(state, options.dusk); return; }
+  const waiting = parkedPropWait.get(state);
+  if (waiting?.navigation === state.navigation && waiting.route === route && waiting.stage === state.stage) {
+    state.speed = 0; return;
+  }
+  parkedPropWait.delete(state);
   const returning = state.stage === "return" || state.stage === "home-return";
   const remaining = returning ? state.distance : route.length - state.distance;
   const maxSpeed = state.size * .36 * (1 - clamp(options.dusk) * .25) * (1 - clamp(options.rain) * .12);
@@ -654,6 +688,18 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   if (!returning && navigationLength !== undefined && state.distance < navigationLength && nextDistance > navigationLength)
     nextDistance = navigationLength;
   let sample = sampleWalk(route, nextDistance);
+  if (state.navigation && !canTraverseWorldObstacle(state.navigation, state.position, sample.position)) {
+    // A basket can be put down after this walk was planned. Replan from the real
+    // feet, including rounded steering, rather than advancing through its body.
+    if (free && state.freePurpose && state.freePurpose !== "interaction-exit" && route.activity !== "bush") {
+      const path = findWorldPath(state.navigation, state.position, route.points.at(-1)!);
+      if (path) { beginFreeWalk(state, path, state.freePurpose, route.activity, route.id); return; }
+    }
+    // Old authored paths and doorway exceptions retain their exact geometry.
+    // They wait safely if a prop blocks them instead of bypassing its collision.
+    state.speed = 0; state.behavior.reason = "parked-prop-blocked";
+    parkedPropWait.set(state, { navigation: state.navigation, route, stage: state.stage }); return;
+  }
   if (!returning && state.navigation && navigationLength !== undefined && nextDistance <= navigationLength
     && !canTraverse(state.navigation, state.position, sample.position)) {
     // A long frame can span several rounded chords. Even then the rendered

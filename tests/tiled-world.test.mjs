@@ -75,6 +75,7 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   assert.equal(Object.hasOwn(scene, "lights"), false, "legacy maps keep their site light markers without inventing new lights");
   assert.equal(Object.hasOwn(scene, "navigation"), false, "legacy maps retain their authored routes without inventing walk areas");
   assert.equal(Object.hasOwn(scene, "habitats"), false, "legacy maps do not invent habitats");
+  assert.equal(Object.hasOwn(scene, "basket"), false, "legacy maps retain automatic basket placement");
   assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 });
   assert.deepEqual(scene.sites[0], {
     id: "kiln", label: "Pottery kiln", bounds: { x: 20, y: 30, width: 20, height: 30 },
@@ -1100,6 +1101,9 @@ test("committed authoring exports identically and --check refuses stale output w
     points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
     ...Object.fromEntries(["siteId", "behavior", "activity", "pauseSeconds", "bushId"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
   assert.deepEqual(scene.mushrooms, withRole("mushroom").map(object => ({ id: object.name, position: { x: object.x, y: object.y } })));
+  assert.equal(withRole("basket").length, 1, "the live forest has one movable basket marker");
+  const basket = withRole("basket")[0];
+  assert.deepEqual(scene.basket, { id: basket.name, position: { x: basket.x, y: basket.y } });
   assert.deepEqual(scene.bushes, withRole("bush").map(object => {
     const id = property(object, "bushId");
     const marker = role => withRole(role).find(candidate => property(candidate, "bushId") === id);
@@ -1227,6 +1231,46 @@ test("bush imageId can reference artwork placed later, and only the polygon acce
     const invalid = clone(map); invalid.layers[3].objects[index].properties.push(...props({ imageId: "independent-shrub" }));
     await assert.rejects(compile(invalid), /bush objects only accept/);
   }
+});
+
+test("a single basket marker exports exact ground contact and accepts normal Garden draw orders", async t => {
+  const { map, compile } = await fixture(t);
+  const basket = { id: 90, name: "berry-basket", point: true, x: 62.125, y: 68.75, width: 0, height: 0,
+    properties: props({ role: "basket" }) };
+  const layer = objectLayer(2, "Garden", [basket]); map.layers.push(layer);
+  const before = await compile();
+  assert.deepEqual(before.basket, { id: "berry-basket", position: { x: 62.125, y: 68.75 } });
+  layer.draworder = "topdown";
+  assert.deepEqual(await compile(), before);
+  Object.assign(basket, { x: 78.625, y: 74.25 });
+  const moved = await compile();
+  assert.deepEqual(moved.basket, { id: "berry-basket", position: { x: 78.625, y: 74.25 } });
+  assert.deepEqual({ ...moved, basket: before.basket }, before, "dragging the marker changes no other geometry");
+  map.layers.pop();
+  assert.equal((await compile()).basket, undefined, "removing the optional marker restores legacy placement");
+});
+
+test("basket authoring rejects ambiguous, malformed or out-of-bounds markers", async t => {
+  const { map, compile } = await fixture(t);
+  const basket = { id: 90, name: "berry-basket", point: true, x: 62, y: 68, width: 0, height: 0,
+    properties: props({ role: "basket" }) };
+  map.layers.push(objectLayer(2, "Garden", [basket]));
+  for (const [label, mutate, expected] of [
+    ["second marker", value => value.layers.push(objectLayer(3, "Extra", [{ ...clone(basket), id: 91, name: "other-basket" }])), /only one basket point/],
+    ["empty name", value => { value.layers[1].objects[0].name = ""; }, /non-empty string/],
+    ["invalid identifier", value => { value.layers[1].objects[0].name = "Berry Basket"; }, /lowercase identifier/],
+    ["empty role", value => setProp(value.layers[1].objects[0], "role", ""), /non-empty string/],
+    ["missing role", value => { value.layers[1].objects[0].properties = []; }, /non-empty string/],
+    ["unsupported property", value => value.layers[1].objects[0].properties.push(...props({ siteId: "kiln" })), /basket only accepts/],
+    ["rectangle", value => { delete value.layers[1].objects[0].point; }, /expected "point"/],
+    ["false point", value => { value.layers[1].objects[0].point = false; }, /expected true/],
+    ["nonzero dimensions", value => { value.layers[1].objects[0].width = 7; }, /expected 0/],
+    ["outside map", value => { value.layers[1].objects[0].x = 101; }, /outside world bounds/],
+    ["negative position", value => { value.layers[1].objects[0].y = -1; }, /finite number >= 0/],
+    ["nonfinite position", value => { value.layers[1].objects[0].y = Infinity; }, /finite number/],
+  ]) await t.test(label, async () => {
+    const broken = clone(map); mutate(broken); await assert.rejects(compile(broken), expected);
+  });
 });
 
 test("campfires compile paired ground/seat markers and reject unsafe or orphan authoring", async t => {

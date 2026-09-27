@@ -109,7 +109,8 @@ test('a carried basket uses actor depth and cancellation leaves a grounded baske
   cancelForestGarden(garden, foot);
   assert.equal(forestGardenVisualFrame(garden, actor, motion), null);
   const parked = context(); drawForestGardenGround(parked.ctx, garden, actor.size, null);
-  assert.deepEqual(parked.calls.find(call => call.method === 'translate').args, [foot.x, foot.y]);
+  assert.deepEqual(parked.calls.find(call => call.method === 'translate').args, [garden.basket.position.x, garden.basket.position.y]);
+  assert.ok(Math.hypot(garden.basket.position.x - foot.x, garden.basket.position.y - foot.y) > 15, 'interruption leaves room for the feet');
   assert.equal(garden.basket.berries, 3, 'visual pending fruit does not become harvested loot');
   assert.ok(parked.calls.some(call => call.method === 'ellipse' && call.fill === '#253719'), 'the basket contacts the ground');
 });
@@ -257,7 +258,7 @@ test('one real fruit travels from foliage via the two paws into the basket witho
   }
 });
 
-test('a deposited empty or filled basket keeps the same transform and foreground depth near the hero', () => {
+test('a deposited basket keeps its transform and uses ground Y instead of proximity for depth', () => {
   for (const berries of [0, 6]) {
     const { garden, actor } = setup('deposit', 1.5);
     garden.basket.berries = berries;
@@ -268,10 +269,16 @@ test('a deposited empty or filled basket keeps the same transform and foreground
     const behind = context(), front = context();
     drawForestGardenGround(behind.ctx, garden, actor.size, null, home, 'behind');
     drawForestGardenGround(front.ctx, garden, actor.size, null, home, 'front');
-    assert.equal(behind.calls.length, 0);
-    assert.deepEqual(front.calls.find(call => call.method === 'translate').args, [frame.basket.x, frame.basket.y]);
-    const far = context(); drawForestGardenGround(far.ctx, garden, actor.size, null, { x: 0, y: 0 }, 'behind');
-    assert.ok(far.calls.length, 'distant parked props keep their ordinary ground pass');
+    assert.equal(front.calls.length, 0);
+    assert.deepEqual(behind.calls.find(call => call.method === 'translate').args, [frame.basket.x, frame.basket.y]);
+    for (const dx of [0, 100]) {
+      const above = { x: home.x + dx, y: garden.basket.position.y - .01 };
+      const a = context(), b = context();
+      drawForestGardenGround(a.ctx, garden, actor.size, null, above, 'behind');
+      drawForestGardenGround(b.ctx, garden, actor.size, null, above, 'front');
+      assert.equal(a.calls.length, 0);
+      assert.ok(b.calls.length, 'a basket below the hero is in front at any lateral distance');
+    }
   }
 });
 
@@ -322,14 +329,30 @@ test('basket is grasped before lifting and gripping paws are painted over its re
   garden.routine.elapsed = .24;
   const contact = forestGardenVisualFrame(garden, home, motion);
   const handleY = contact.basket.y - contact.basket.size * 12 / 14;
-  contact.arms.forEach(arm => assert.ok(Math.abs(arm.hand.y - handleY) < .01, 'paws touch the upper handle before it moves'));
-  const paint = context(); drawForestGardenProps(paint.ctx, contact, 'front');
+  const near = garden.basket.position.x < home.x ? 0 : 1;
+  assert.ok(Math.abs(contact.arms[near].hand.y - handleY) < .01, 'the nearer paw touches the upper handle before it moves');
+  assert.ok(Math.abs(contact.arms[1 - near].hand.x - home.x) < home.size * .25, 'the other paw does not stretch across the torso');
+  const paint = context(); drawForestGardenProps(paint.ctx, contact, 'behind'); drawForestGardenProps(paint.ctx, contact, 'front');
   const lastWicker = paint.calls.findLastIndex(call => call.method === 'fillRect' && call.fill === '#d2ad6c');
   assert.ok(lastWicker > 0 && paint.calls.slice(lastWicker + 1).some(call => call.method === 'fillRect' && call.fill === '#f4e4ae'),
     'visible paws wrap over basket artwork instead of hiding behind it');
   garden.routine.elapsed = 1;
   const lifted = forestGardenVisualFrame(garden, home, motion);
   assert.ok(lifted.basket.y < grasp.basket.y - home.size * .08, 'basket visibly clears the ground');
+});
+
+test('basket world size remains fixed through pickup, return and a DEV-only hero resize', () => {
+  const { garden } = setup('take-basket', .5);
+  for (const size of [50, 56]) for (const phase of ['take-basket', 'approach-bush', 'collect', 'return-basket', 'deposit']) {
+    const actor = { ...garden.basket.approach, size };
+    garden.routine.phase = phase; garden.routine.carryingBasket = phase !== 'take-basket';
+    assert.equal(forestGardenVisualFrame(garden, actor, motion).basket.size, 14);
+  }
+  garden.routine = null;
+  for (const size of [50, 56, 100]) {
+    const surface = context(); drawForestGardenGround(surface.ctx, garden, size, null);
+    assert.deepEqual(surface.calls.find(call => call.method === 'scale').args, [1, 1]);
+  }
 });
 
 

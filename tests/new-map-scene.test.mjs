@@ -9,7 +9,7 @@ const fixture = {
   terrain: [{ id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1254, height: 1254 } }],
   focus: { x: 455, y: 480, width: 350, height: 350 },
   actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [],
-  water: { surfaces: [], exclusions: [] }, bushes: [], campfires: [], navigation: undefined, habitats: undefined,
+  water: { surfaces: [], exclusions: [] }, bushes: [], campfires: [], basket: undefined, navigation: undefined, habitats: undefined,
   mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
 const livingHabitats = [
@@ -43,6 +43,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/tiled/preview-state.ts"),
       ...await vite.ssrLoadModule("/features/world/navigation.ts"),
       ...await vite.ssrLoadModule("/features/world/clearing-activity.ts"),
+      ...await vite.ssrLoadModule("/features/world/new-map-scene.ts"),
     };
   } finally { await vite.close(); }
 }
@@ -59,6 +60,7 @@ function browser() {
     const calls = [], events = new Map(), captured = new Set();
     const context = new Proxy({
       createRadialGradient: () => ({ addColorStop() {} }),
+      createLinearGradient: () => ({ addColorStop() {} }),
       getTransform: () => undefined,
       drawImage: (...args) => calls.push({ method: "drawImage", args }),
       setTransform: (...args) => calls.push({ method: "setTransform", args }),
@@ -1274,6 +1276,71 @@ test("hiding the home returns its sleeping resident outside even when automatic 
     assert.ok(sample().body, "the character remains visible once his house disappears");
     assert.equal(sample().hasPose("sleep"), false);
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a separate bush cutout moves to the foreground once without repainting the ground polygon", async () => {
+  const { paintNewMap, worldDevStore } = await modules();
+  const env = browser();
+  try {
+    const cutout = { id: "bush-cutout", image: "/test-bush.webp", bounds: { x: 565, y: 585, width: 80, height: 80 } };
+    const bush = { ...clearingBush, imageId: cutout.id };
+    const map = { ...fixture, terrain: [...fixture.terrain, cutout], bushes: [bush] };
+    const groundImage = new Image(), bushImage = new Image();
+    const images = new Map([[fixture.terrain[0].image, groundImage], [cutout.image, bushImage]]);
+    for (const [label, bushFrame, reducedMotion, showHero, foreground, misplaced = false] of [
+      ["idle", undefined, false, true, false],
+      ["enter", { id: bush.id, occlude: true, rustle: 0 }, false, true, true],
+      ["rustle", { id: bush.id, occlude: false, rustle: .8, elapsed: .5 }, false, true, true],
+      ["still without encounter clock", { id: bush.id, occlude: false, rustle: .8 }, true, true, false],
+      ["frozen encounter", { id: bush.id, occlude: true, rustle: .8, elapsed: .5 }, true, true, true],
+      ["hidden hero", { id: bush.id, occlude: true, rustle: .8 }, false, false, false],
+      ["misplaced image", { id: bush.id, occlude: true, rustle: .8 }, false, true, false, true],
+    ]) {
+      const surface = env.surface();
+      paintNewMap(surface.context, images, { ...options, reducedMotion }, 20, false, 0, 0, {
+        scene: misplaced ? { ...map, bushes: [{ ...bush, points: bush.points.map(point => ({ x: point.x + 100, y: point.y })) }] } : map,
+        state: { ...worldDevStore.getSnapshot(), ...quietClearing, showHero, reducedMotion: reducedMotion ? "on" : "off" },
+        clearing: { ...fixture.actor.spawn, pose: "idle", frame: 0, direction: "front", opacity: 1, bush: bushFrame },
+      });
+      const calls = surface.calls;
+      const bodyIndex = calls.findIndex(call => call.method === "drawImage" && call.args.length === 5
+        && call.args[0]?.width === 48 && call.args[0]?.height === 48);
+      const groundDraws = calls.filter(call => call.method === "drawImage" && call.args[0] === groundImage);
+      const bushDraws = calls.filter(call => call.method === "drawImage" && call.args[0] === bushImage);
+      assert.equal(groundDraws.length, 1, `${label}: soil and actor are never erased by a second terrain crop`);
+      assert.ok(bushDraws.length > 0, `${label}: the cutout remains visible`);
+      if (foreground) {
+        assert.ok(bodyIndex >= 0);
+        assert.ok(bushDraws.every(call => calls.indexOf(call) > bodyIndex), `${label}: no static duplicate behind the moving leaves`);
+      } else {
+        assert.equal(bushDraws.length, 1, `${label}: the idle cutout belongs to the terrain pass`);
+        if (showHero) assert.ok(calls.indexOf(bushDraws[0]) < bodyIndex);
+      }
+    }
+  } finally { worldDevStore.reset(); env.restore(); }
+});
+
+test("an interrupted basket stays in the paws during attention and a held DEV pose", async () => {
+  const { paintNewMap, worldDevStore } = await modules();
+  const env = browser();
+  try {
+    const foot = fixture.actor.spawn, images = new Map([[fixture.terrain[0].image, new Image()]]);
+    const life = { mushrooms: [], campfires: [], routine: null, garden: { elapsed: 0, bushes: [], routine: null,
+      basket: { position: { x: 700, y: 700 }, homePosition: { x: 700, y: 700 }, size: 14, berries: 3, capacity: 12, held: true } } };
+    const before = JSON.stringify(life);
+    for (const [reacting, pose] of [[false, "auto"], [true, "auto"], [false, "greet"]]) {
+      const surface = env.surface();
+      paintNewMap(surface.context, images, { ...options, reducedMotion: false }, 20, reacting, 0, 0, {
+        scene: fixture, life, state: { ...worldDevStore.getSnapshot(), ...quietClearing, pose },
+        clearing: { ...foot, pose: "idle", frame: 0, direction: "front", opacity: 1 },
+      });
+      const baskets = surface.calls.filter(call => call.method === "fillRect" && JSON.stringify(call.args) === "[-7,-8,14,7]");
+      assert.equal(baskets.length, 1, "occupied paws retain exactly one basket instead of losing it during attention");
+      assert.ok(surface.calls.some(call => call.method === "translate" && call.args[0] === foot.x && call.args[1] < foot.y),
+        "the carried basket stays with the actor, not its old parking spot");
+      assert.equal(JSON.stringify(life), before, "painting cannot place or consume the held basket");
+    }
+  } finally { worldDevStore.reset(); env.restore(); }
 });
 
 test("DEV bush interaction walks, jumps, hides and returns while automatic life stays disabled", async () => {

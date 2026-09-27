@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { createForestMemory, forestMemoryKey, forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
+const { forestMemoryKey, forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
 const { forestMindMotives } = await vite.ssrLoadModule("/features/world/forest-mind.ts");
 const { forestMemoryPayloadSchema } = await vite.ssrLoadModule("/features/world/forest-memory-model.ts");
 const { advanceForestDirector, requestForestDirective } = await vite.ssrLoadModule("/features/world/forest-director.ts");
@@ -286,6 +286,35 @@ test("edited or ambiguous bushes cannot borrow saved growth while deposited frui
   assert.equal(ambiguous.state.life.garden.bushes[0].growth, freshGrowth); ambiguous.release();
 });
 
+test("moving the authored basket creates a new session and preserves garden progress at its new home", () => {
+  const env = environment(), original = scene(), first = connect("garden-moved-basket", original, env);
+  const garden = first.state.life.garden;
+  assert.ok(original.basket && garden.basket);
+  Object.assign(garden.bushes[0], { growth: .63, moisture: .82, waterIn: 240 });
+  garden.basket.berries = 6;
+  garden.basket.position = { x: 665, y: 701 };
+  first.saveMemory();
+  const moved = scene();
+  moved.basket.position = { x: original.basket.position.x + 8, y: original.basket.position.y };
+  assert.notEqual(forestSceneFingerprint(moved), forestSceneFingerprint(original));
+  const next = connect("garden-moved-basket", moved, env, "world");
+  try {
+    assert.notEqual(next.state, first.state, "a different basket marker must not reuse the old mounted session");
+    assert.equal(next.state.memory.restored, true);
+    assert.equal(next.state.memory.reconciled, true);
+    const restored = next.state.life.garden;
+    assert.ok(restored.basket, "the moved marker has a safe approach");
+    assert.deepEqual(restored.basket.position, moved.basket.position);
+    assert.deepEqual(restored.basket.homePosition, moved.basket.position);
+    assert.notDeepEqual(restored.basket.position, garden.basket.position, "a dropped basket position is not restored");
+    assert.equal(restored.basket.berries, 6);
+    assert.equal(restored.bushes[0].growth, .63);
+    assert.equal(restored.bushes[0].moisture, .82);
+    assert.equal(restored.bushes[0].waterIn, 240);
+    assert.equal(restored.routine, null);
+  } finally { first.release(); next.release(); }
+});
+
 test("reload during a real harvest keeps the uncommitted fruit and resets the carried basket safely", () => {
   const env = environment(), map = scene(), first = connect("garden-carry", map, env);
   const garden = first.state.life.garden, home = { ...garden.basket.position };
@@ -323,13 +352,21 @@ test("DEV ripening and harvest cannot contaminate the saved account garden", () 
 test("a temporarily unplaceable basket retains its deposited fruit until a safe spot exists again", () => {
   const env = environment(), map = scene(), first = connect("garden-unplaced", map, env);
   first.state.life.garden.basket.berries = 6; first.release();
-  const unavailable = connect(undefined, map, environment());
-  unavailable.state.life.garden.basket = null;
-  const memory = createForestMemory("garden-unplaced", map, unavailable.state, { environment: env });
-  assert.equal(memory.status.restored, true); memory.save(); memory.release(); unavailable.release();
+  const blocked = scene(); blocked.basket.position = { x: 0, y: 0 };
+  const unavailable = connect("garden-unplaced", blocked, env);
+  try {
+    assert.equal(unavailable.state.memory.restored, true);
+    assert.equal(unavailable.state.life.garden.basket, null, "an invalid explicit marker is not silently relocated");
+    assert.equal(unavailable.state.life.garden.unplacedBerries, 6);
+    unavailable.saveMemory();
+  } finally { unavailable.release(); }
   assert.equal(JSON.parse(env.records.get(forestMemoryKey("garden-unplaced"))).garden.basketBerries, 6);
   const restored = connect("garden-unplaced", map, env);
-  assert.equal(restored.state.life.garden.basket.berries, 6); restored.release();
+  try {
+    assert.equal(restored.state.life.garden.basket.berries, 6);
+    assert.deepEqual(restored.state.life.garden.basket.position, map.basket.position);
+    assert.equal(restored.state.life.garden.unplacedBerries, 0);
+  } finally { restored.release(); }
 });
 
 test("pending shrub artwork preserves growth and delivered fruit across saves until placement resumes", () => {

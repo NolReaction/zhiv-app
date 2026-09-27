@@ -15,7 +15,7 @@ export type WorldNavigation = {
     lastSearch: { reason: NavigationSearchReason; visited: number; checks: number; pathPoints: number } | null };
 };
 type Geometry = { areas: Polygon[]; blockers: Polygon[]; boundary: SpatialIndex; blocked: SpatialIndex;
-  rowStep: number; rowOrigin: number; edgeKnown: Uint8Array; edgePass: Uint8Array };
+  rowStep: number; rowOrigin: number; edgeKnown: Uint8Array; edgePass: Uint8Array; temporary?: Polygon };
 
 /** Limits also apply to malformed editor previews; no grid or search can grow without bound. */
 export const WORLD_NAVIGATION_LIMITS = {
@@ -190,6 +190,40 @@ export function createWorldNavigation(scene: FixedWorldScene, radius = (scene.ac
   if (!profiles) { profiles = new Map(); cache.set(scene, profiles); }
   if (profiles.has(radius)) return profiles.get(radius)!;
   const result = buildNavigation(scene, radius); profiles.set(radius, result); return result;
+}
+
+/** A parked prop belongs to one live session. Never edit the scene-cached grid,
+ * diagnostics or edge caches shared by another account or camera. */
+export function withWorldNavigationObstacle(base: WorldNavigation, points: readonly WorldPoint[]): WorldNavigation | null {
+  const data = geometry.get(base);
+  if (!data || points.length < 3 || points.length > 64) return null;
+  const obstacle = preparePolygon([...points], data.rowOrigin, data.rowStep,
+    Math.max(1, Math.ceil(base.bounds.height / data.rowStep) + 1), { remaining: 10_000 });
+  if (!obstacle) return null;
+  const blockers = [...data.blockers, obstacle], edges = blockers.flatMap(polygon => polygon.edges);
+  const blocked = buildIndex(edges, data.blocked.bounds, data.blocked.step);
+  if (!blocked) return null;
+  const nav: WorldNavigation = { ...base,
+    grid: { ...base.grid, walkable: base.grid.walkable.slice() },
+    debug: { boundary: base.debug.boundary, blockers: [...base.debug.blockers, obstacle.points] },
+    stats: { ...base.stats, blockerEdges: edges.length, walkableCells: 0, lastSearch: null } };
+  geometry.set(nav, { ...data, blockers, blocked, temporary: obstacle,
+    edgeKnown: new Uint8Array(nav.grid.walkable.length), edgePass: new Uint8Array(nav.grid.walkable.length) });
+  for (let id = 0; id < nav.grid.walkable.length; id++) {
+    if (nav.grid.walkable[id] && !isWalkable(nav, gridPoint(nav, id))) nav.grid.walkable[id] = 0;
+    nav.stats.walkableCells += nav.grid.walkable[id];
+  }
+  return nav;
+}
+
+/** Legacy authored corridors may bypass static walls, but never a live prop. */
+export function canTraverseWorldObstacle(nav: WorldNavigation, a: WorldPoint, b: WorldPoint): boolean {
+  const data = geometry.get(nav), obstacle = data?.temporary;
+  if (!obstacle) return true;
+  if (!finite(a) || !finite(b) || classify(a, obstacle, data.rowOrigin, data.rowStep) >= 0
+    || classify(b, obstacle, data.rowOrigin, data.rowStep) >= 0) return false;
+  const clearanceSquared = (nav.radius + EPS) ** 2;
+  return obstacle.edges.every(edge => segmentSquared(a, b, edge.a, edge.b) > clearanceSquared);
 }
 function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigation | null {
   const source = scene.navigation;

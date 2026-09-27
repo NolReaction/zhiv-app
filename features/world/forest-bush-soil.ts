@@ -52,7 +52,11 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
   const previous = textures.get(shape);
   if (previous) return previous;
   if (typeof document === "undefined") return null;
-  const { bounds, center, radiusX, radiusY } = shape;
+  // The visible bed tucks behind the lower crown. Keep the authored watering lip
+  // stable so a visual adjustment cannot move the hand or the stream's destination.
+  const bed = { ...shape, center: { x: shape.center.x, y: shape.center.y - shape.radiusY * .28 },
+    radiusX: shape.radiusX * .80, radiusY: shape.radiusY * .95 };
+  const { center, radiusX, radiusY } = bed, { bounds } = shape;
   const scale = Math.min(3, 256 / Math.max(bounds.width, bounds.height));
   const surface = () => {
     const canvas = document.createElement("canvas");
@@ -66,9 +70,9 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
     ctx.scale(scale, scale); ctx.translate(-bounds.x, -bounds.y);
     // Warm olive edges blend into the painted grass; the interior remains visibly earthy.
     ctx.filter = `blur(${radiusY * .11 * scale}px)`;
-    outline(ctx, shape, 1.055); ctx.fillStyle = damp ? "rgba(49,42,21,.5)" : "rgba(85,78,32,.35)"; ctx.fill();
+    outline(ctx, bed, 1.055); ctx.fillStyle = damp ? "rgba(49,42,21,.5)" : "rgba(85,78,32,.35)"; ctx.fill();
     ctx.filter = "none";
-    ctx.save(); outline(ctx, shape); ctx.clip();
+    ctx.save(); outline(ctx, bed); ctx.clip();
     const fill = ctx.createLinearGradient(center.x, center.y - radiusY, center.x, center.y + radiusY);
     fill.addColorStop(0, damp ? "#3d3823" : "#69603a");
     fill.addColorStop(.65, damp ? "#514228" : "#927247");
@@ -83,12 +87,20 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
         : damp ? "rgba(177,162,112,.16)" : "rgba(194,173,110,.27)";
       ctx.beginPath(); ctx.ellipse(x, y, radiusY * (.05 + i % 4 * .018), radiusY * (.025 + i % 3 * .015), -.3, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.lineCap = "round"; ctx.lineWidth = radiusY * .035;
-    for (let i = 0; i < 6; i++) {
-      const x = center.x + (i - 2.5) * radiusX * .22;
-      ctx.strokeStyle = damp ? "rgba(180,148,85,.15)" : "rgba(210,176,101,.21)";
-      ctx.beginPath(); ctx.moveTo(x, center.y); ctx.lineTo(x + (i % 2 ? 1 : -1) * radiusY * .22, center.y + radiusY * .3);
-      ctx.lineTo(x + radiusY * .18, center.y + radiusY * .46); ctx.stroke();
+    // Short woody roots emerge from underneath the cutout and join the soil.
+    // Most of each root is covered by leaves; the few exposed tips break the
+    // detached "ball over an oval" silhouette without a second foliage sprite.
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    for (let i = 0; i < 3; i++) {
+      const side = i - 1, startX = center.x + side * radiusX * .14;
+      const middleX = center.x + side * radiusX * .46, endX = center.x + side * radiusX * .82;
+      const endY = center.y + radiusY * (side ? .55 : .8);
+      ctx.strokeStyle = damp ? "#403c24" : "#645333"; ctx.lineWidth = radiusY * .27;
+      ctx.beginPath(); ctx.moveTo(startX, center.y - radiusY * .85);
+      ctx.lineTo(middleX, center.y + radiusY * .08); ctx.lineTo(endX, endY); ctx.stroke();
+      ctx.strokeStyle = damp ? "rgba(140,124,66,.45)" : "rgba(184,157,84,.55)"; ctx.lineWidth = radiusY * .07;
+      ctx.beginPath(); ctx.moveTo(startX - radiusY * .04, center.y - radiusY * .8);
+      ctx.lineTo(middleX - radiusY * .04, center.y); ctx.lineTo(endX, endY - radiusY * .04); ctx.stroke();
     }
     ctx.restore();
     // Interrupt the edge with tiny grass-coloured chips instead of a clean ellipse border.
@@ -116,9 +128,9 @@ export function drawForestBushSoil(ctx: CanvasRenderingContext2D, points: readon
   const { bounds } = shape, wet = unit((moisture - .12) / .88);
   ctx.save();
   const alpha = ctx.globalAlpha;
-  ctx.globalAlpha = alpha * .88;
+  ctx.globalAlpha = alpha * .82;
   ctx.drawImage(texture.dry, bounds.x, bounds.y, bounds.width, bounds.height);
-  ctx.globalAlpha = alpha * .88 * wet;
+  ctx.globalAlpha = alpha * .82 * wet;
   if (wet > 0) ctx.drawImage(texture.wet, bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.restore();
 }

@@ -7,12 +7,14 @@ import { advanceForestBirdwatch, chooseForestBirdwatchTarget, createForestBirdwa
 import { advanceForestLife, cancelForestLife, interruptForestLife, triggerForestLife } from "./forest-life";
 import { advanceClearingActivity, canStartClearingInteraction, canStartClearingLife, canVisitClearingBush, clearingActivityFrame,
   isClearingAtHome, isClearingAtPoint, noticeClearingActivity, releaseClearingPoint,
-  requestClearingBush, requestClearingPoint, requestClearingSleep, requestClearingOutside, returnClearingHome } from "./clearing-activity";
+  requestClearingBush, requestClearingPoint, requestClearingSleep, requestClearingOutside, returnClearingHome,
+  setClearingNavigationObstacle, baseClearingNavigation } from "./clearing-activity";
 import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction, emitFaunaStimulus,
   interruptFaunaInteraction, requestFaunaInteraction } from "./forest-fauna";
 import { findWorldPath } from "./navigation";
 import { advanceForestGarden, cancelForestGarden, gardenActionAvailable, gardenEligibleBushes,
-  gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, growForestBerries, FOREST_GARDEN_LIMITS,
+  gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, gardenBasketApproach, gardenBasketFootprint,
+  growForestBerries, parkForestGardenBasket, FOREST_GARDEN_LIMITS,
   type ForestGardenAction, type ForestGardenPhase } from "./forest-garden";
 import { advanceForestMind, beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates,
   scoreForestAction, type ForestMindAction, type ForestMindCandidate } from "./forest-mind";
@@ -51,6 +53,13 @@ function actor(state: ForestSessionState, options: ForestDirectorOptions) {
 function clearRequest(state: ForestSessionState) {
   state.pendingLife = null; state.director.waitingForExit = false; state.director.objectId = null; state.director.target = null; state.director.explicit = false;
 }
+function syncGardenObstacle(state: ForestSessionState) {
+  setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
+}
+function cancelGarden(state: ForestSessionState) {
+  cancelForestGarden(state.life.garden, state.clearing.position, baseClearingNavigation(state.clearing));
+  syncGardenObstacle(state);
+}
 function finishAction(state: ForestSessionState) {
   const director = state.director;
   if (!director.activeKey || director.birdwatch || director.campfireVisit || state.life.routine || state.life.garden.routine || state.fauna.encounter) return;
@@ -68,7 +77,7 @@ export function cancelForestDirector(state: ForestSessionState) {
   finishForestIntention(state.clearing.behavior.mind, "interrupted", "Занятие остановлено в DEV");
   state.director.birdwatch = null; state.director.campfireVisit = null;
   cancelForestLife(state.life); cancelFaunaInteraction(state.fauna);
-  cancelForestGarden(state.life.garden, state.clearing.position);
+  cancelGarden(state);
   clearRequest(state); state.pendingAttention = false; state.director.activeKey = null;
   state.director.nextDecisionAt = state.director.elapsed + 10;
   releaseClearingPoint(state.clearing);
@@ -81,7 +90,7 @@ export function noticeForestDirector(state: ForestSessionState, still = false) {
     cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true, mindNoticed: true }); return;
   }
   if (state.pendingAttention) return;
-  cancelForestGarden(state.life.garden, state.clearing.position);
+  cancelGarden(state);
   const prop = interruptForestLife(state.life), insect = interruptFaunaInteraction(state.fauna);
   state.pendingAttention = prop || insect;
   if (!state.pendingAttention) {
@@ -94,7 +103,7 @@ export function requestForestDirective(state: ForestSessionState, kind: ForestDi
   if (kind === "wake") { noticeForestDirector(state, options.reducedMotion); return; }
   if (kind === "idle" || kind === "grow-mushrooms" || kind === "grow-berries") {
     cancelForestDirector(state);
-    if (kind === "idle") returnClearingHome(state.clearing);
+    if (kind === "idle" && !state.life.garden.basket?.held) returnClearingHome(state.clearing);
     if (kind === "grow-berries") growForestBerries(state.life.garden);
     else triggerForestLife(state.life, kind); return;
   }
@@ -106,7 +115,7 @@ export function requestForestDirective(state: ForestSessionState, kind: ForestDi
   }
   interruptForestLife(state.life); interruptFaunaInteraction(state.fauna);
   if (state.life.garden.routine) state.director.activeKey = null;
-  cancelForestGarden(state.life.garden, state.clearing.position);
+  cancelGarden(state);
   state.pendingAttention = false; state.pendingLife = kind;
   Object.assign(state.director, { pendingSince: state.director.elapsed, waitingForExit: false, objectId: null, target: null, explicit: true,
     reason: "Завершает текущее действие перед новой встречей" });
@@ -174,16 +183,25 @@ function prepareProp(state: ForestSessionState, kind: "mushroom" | "leaf", heroS
 function prepareGarden(state: ForestSessionState, kind: ForestGardenAction, heroScale = 1) {
   const { clearing, director } = state, garden = state.life.garden, nav = clearing.navigation;
   if (!nav) return false;
+  if (kind === "harvest-berries" && garden.basket) {
+    const size = clearing.size * heroScale;
+    const approach = gardenBasketApproach(garden.basket.position, size, nav, clearing.position);
+    const homeApproach = gardenBasketApproach(garden.basket.homePosition, size, nav, clearing.position);
+    if (!approach || !homeApproach) return false;
+    garden.basket.approach = approach; garden.basket.homeApproach = homeApproach;
+  }
   const candidates = gardenEligibleBushes(garden, kind).filter(bush => gardenWorkReachable(bush, clearing.size * heroScale))
     .sort((a, b) => distance(a.workPosition!, clearing.position) - distance(b.workPosition!, clearing.position));
   for (const bush of candidates) {
-    const first = kind === "water-bush" ? bush.workPosition! : garden.basket!.approach;
+    const alreadyHeld = kind === "harvest-berries" && Boolean(garden.basket?.held);
+    const first = kind === "water-bush" || alreadyHeld ? bush.workPosition! : garden.basket!.approach;
     if (!findWorldPath(nav, clearing.position, first)) continue;
     if (kind === "harvest-berries" && (!findWorldPath(nav, first, bush.workPosition!)
       || !findWorldPath(nav, bush.workPosition!, garden.basket!.homeApproach))) continue;
     if (!requestClearingPoint(clearing, first)) continue;
-    garden.routine = { kind, bushId: bush.id, phase: kind === "water-bush" ? "approach-bush" : "approach-basket",
-      elapsed: 0, totalElapsed: 0, carryingBasket: false };
+    garden.routine = { kind, bushId: bush.id, phase: kind === "water-bush" || alreadyHeld ? "approach-bush" : "approach-basket",
+      elapsed: 0, totalElapsed: 0, carryingBasket: alreadyHeld };
+    if (alreadyHeld) garden.basket!.held = false;
     director.activeKey = `${kind}:${bush.id}`;
     director.reason = kind === "water-bush" ? "Идёт полить ягодный куст" : "Берёт корзинку для спелых ягод";
     return true;
@@ -193,7 +211,7 @@ function prepareGarden(state: ForestSessionState, kind: ForestGardenAction, hero
 }
 function failGarden(state: ForestSessionState, reason: string) {
   if (state.life.garden.routine) state.director.activeKey = null;
-  cancelForestGarden(state.life.garden, state.clearing.position);
+  cancelGarden(state);
   failRequest(state, reason);
 }
 function advanceGardenRoutine(state: ForestSessionState, delta: number, options: ForestDirectorOptions) {
@@ -222,7 +240,7 @@ function advanceGardenRoutine(state: ForestSessionState, delta: number, options:
   }
   routine.elapsed += dt;
   if (routine.phase === "take-basket" && routine.elapsed >= 1) {
-    routine.carryingBasket = true; transition("approach-bush", "Несёт корзинку к ягодному кусту");
+    routine.carryingBasket = true; syncGardenObstacle(state); transition("approach-bush", "Несёт корзинку к ягодному кусту");
   } else if (routine.phase === "water" && routine.elapsed >= 4) {
     bush.moisture = 1; bush.waterIn = FOREST_GARDEN_LIMITS.waterCooldown;
     transition("settle", "Куст полит — теперь ягоды будут расти");
@@ -237,7 +255,7 @@ function advanceGardenRoutine(state: ForestSessionState, delta: number, options:
     // point keeps both the ripe bush and the previous basket contents intact.
     bush.growth = 0; basket.berries += FOREST_GARDEN_LIMITS.harvest;
     basket.position = { ...basket.homePosition }; basket.approach = { ...basket.homeApproach };
-    routine.carryingBasket = false; transition("settle", "Ягоды собраны в корзинку");
+    routine.carryingBasket = false; syncGardenObstacle(state); transition("settle", "Ягоды собраны в корзинку");
   } else if (routine.phase === "settle" && routine.elapsed >= .7) {
     const reason = routine.kind === "water-bush" ? "Закончил полив — можно заняться чем-то другим" : "Урожай на месте — куст будет расти заново";
     garden.routine = null; garden.nextActionAt = garden.elapsed + 45;
@@ -249,6 +267,9 @@ function advanceGardenRoutine(state: ForestSessionState, delta: number, options:
 function processRequest(state: ForestSessionState, options: ForestDirectorOptions) {
   const kind = state.pendingLife;
   if (!kind || state.pendingAttention || state.director.birdwatch || state.director.campfireVisit || state.life.routine || state.life.garden.routine || state.fauna.encounter) return;
+  if (state.life.garden.basket?.held && kind !== "harvest-berries") {
+    state.director.reason = "Ищет место рядом, чтобы сначала поставить корзинку"; return;
+  }
   const { clearing, director } = state;
   if (director.elapsed - director.pendingSince > 35) { failRequest(state, "Цель недоступна — выберет другое занятие"); return; }
   if (kind === "watch-birds") {
@@ -346,7 +367,8 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
       const reachBlocked = eligible.length > 0 && !eligible.some(bush => gardenWorkReachable(bush, actor(state, options).size));
       const reason = reachBlocked ? "С текущим размером Мохлик не достаёт до куста с безопасной точки"
         : kind === "water-bush" ? "Куст уже полит или к нему нет безопасного подхода"
-        : !garden.basket ? "Для корзинки пока нет свободного места у полянки"
+        : !garden.basket ? garden.basketUnavailable ? "К точке корзинки в Tiled нет безопасного подхода — переставьте её на свободную землю"
+          : "Для корзинки пока нет свободного места у полянки"
           : garden.basket.berries + FOREST_GARDEN_LIMITS.harvest > garden.basket.capacity ? "Корзинка уже наполнена — ягоды останутся на кусте"
             : "Пока нет спелых ягод с доступным подходом";
       failRequest(state, reason); return;
@@ -386,7 +408,7 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
 function chooseAction(state: ForestSessionState, options: ForestDirectorOptions) {
   const { director, clearing } = state, mind = clearing.behavior.mind;
   // A chosen journey/action owns its intention until completion or an explicit interruption.
-  if (!options.autoLife || state.pendingLife || state.pendingAttention || director.birdwatch || director.campfireVisit || state.life.routine || state.life.garden.routine || state.fauna.encounter
+  if (!options.autoLife || state.pendingLife || state.pendingAttention || director.birdwatch || director.campfireVisit || state.life.routine || state.life.garden.routine || state.life.garden.basket?.held || state.fauna.encounter
     || mind.intention || !canStartClearingLife(clearing) || director.elapsed < director.nextDecisionAt) return;
   director.nextDecisionAt = director.elapsed + .6;
   const visitor = options.dusk > .5 ? "firefly" : "butterfly";
@@ -468,6 +490,7 @@ function stimuli(state: ForestSessionState) {
 /** One session clock and one actor position: perception → interaction → walk. */
 export function advanceForestDirector(state: ForestSessionState, dt: number, options: ForestDirectorOptions) {
   if (!Number.isFinite(dt) || dt <= 0 || options.reducedMotion) return;
+  syncGardenObstacle(state);
   const director = state.director; director.elapsed += Math.min(dt, .1);
   if (options.autoLife && !options.blocked) {
     const frame = clearingActivityFrame(state.clearing), pose = frame.pose;
@@ -488,6 +511,15 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
   advanceForestLife(state.life, dt, { autoLife: false, blocked: options.blocked || Boolean(state.fauna.encounter),
     dusk: options.dusk, rain: options.rain, butterflies: options.butterflies, fireflies: options.fireflies });
   advanceForestGarden(state.life.garden, dt, { rain: options.rain });
+  const garden = state.life.garden;
+  if (!options.blocked && garden.basket?.held && garden.elapsed >= (garden.basket.dropRetryAt ?? 0)) {
+    if (parkForestGardenBasket(garden, state.clearing.position, baseClearingNavigation(state.clearing))) {
+      syncGardenObstacle(state); releaseClearingPoint(state.clearing);
+    } else {
+      requestClearingPoint(state.clearing, garden.basket.homeApproach);
+      director.reason = "Несёт корзинку к свободному месту, чтобы аккуратно поставить её";
+    }
+  }
   advanceForestCampfires(state.life.campfires, dt, options.dusk, options.rain);
   if (!options.blocked && director.campfireVisit) {
     const visit = director.campfireVisit, fire = state.life.campfires.find(item => item.id === visit.id);
@@ -518,12 +550,13 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
   const frame = clearingActivityFrame(state.clearing);
   const previousIntention = state.clearing.behavior.mind.intention;
   advanceClearingActivity(state.clearing, dt, {
-    enabled: options.autoLife || state.clearing.retiring || Boolean(state.pendingLife || state.life.garden.routine || state.clearing.bushEffect?.bursts.length)
+    enabled: options.autoLife || state.clearing.retiring || Boolean(state.pendingLife || state.life.garden.routine || state.life.garden.basket?.held || state.clearing.bushEffect?.bursts.length)
       || state.clearing.freePurpose === "interaction-exit"
       || frame.attention || !options.homeAvailable && frame.residing,
     blocked: options.blocked || Boolean(director.birdwatch || director.campfireVisit || state.life.routine || state.fauna.encounter) || gardenRoutineStationary(state.life.garden.routine),
-    idleEligible: !options.blocked && !director.birdwatch && !director.campfireVisit && !state.pendingLife && !state.pendingAttention && !state.life.garden.routine,
-    homeAvailable: options.homeAvailable, dusk: options.dusk, rain: options.rain, navigationMode: options.navigationMode,
+    idleEligible: !options.blocked && !director.birdwatch && !director.campfireVisit && !state.pendingLife && !state.pendingAttention && !state.life.garden.routine && !state.life.garden.basket?.held,
+    homeAvailable: options.homeAvailable && !state.life.garden.basket?.held, dusk: options.dusk, rain: options.rain,
+    navigationMode: state.life.garden.basket?.held ? "auto" : options.navigationMode,
   });
   const intention = state.clearing.behavior.mind.intention;
   // A new successful walk owns the current explanation. Earlier failed requests

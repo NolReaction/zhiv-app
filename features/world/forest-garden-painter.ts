@@ -124,7 +124,8 @@ function canPoint(can: { x: number; y: number; side: number; size: number; tilt:
 /** Stable feet, short articulated paws, and identical prop endpoints at phase boundaries. */
 export function forestGardenVisualFrame(garden: ForestGardenState | undefined, actor: FaunaActor,
   motion: HeroAnchorPose, still = false): ForestGardenVisualFrame | null {
-  const routine = garden?.routine;
+  const routine = garden?.routine ?? (garden?.basket?.held ? { kind: "harvest-berries" as const,
+    bushId: "", phase: "approach-bush" as const, elapsed: 0, carryingBasket: true } : null);
   if (!garden || !routine) return null;
   const t = Number.isFinite(routine.elapsed) ? Math.max(0, routine.elapsed) : 0;
   const stationary = ["take-basket", "water", "collect", "deposit"].includes(routine.phase);
@@ -134,21 +135,31 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
   const side = crownX < actor.x ? -1 : 1;
   const pose: PixelPose = stationary ? "idle" : carries ? "carry" : motion.pose;
   const frame = stationary ? 0 : motion.frame;
-  const direction = routine.phase === "take-basket" || routine.phase === "deposit" ? "front"
+  const basketPoint = routine.phase === "deposit" ? garden.basket?.homePosition : garden.basket?.position;
+  const direction = routine.phase === "take-basket" || routine.phase === "deposit" ? basketPoint && basketPoint.x < actor.x ? "left" : "right"
     : stationary ? side < 0 ? "left" : "right" : motion.direction;
-  const anchorPose = { pose, frame, direction }, rig = stationary || carries ? { gardening: true } : undefined;
+  const crouch = routine.phase === "take-basket" ? Math.round(2 * smooth(t / .24) * (1 - smooth((t - .3) / .5)))
+    : routine.phase === "deposit" ? Math.round(2 * smooth(t / .8) * (1 - smooth((t - 1.2) / .3))) : 0;
+  const anchorPose = { pose, frame, direction }, rig = stationary || carries ? { gardening: true, crouch } : undefined;
   const anchor = (x: number, y: number) => heroSourceAnchor(actor, { x, y }, anchorPose);
   const walkingBob = pose === "carry" && frame % 2 ? -1 : 0;
-  const shoulders = [anchor(14, 31 + walkingBob), anchor(34, 31 + walkingBob)];
-  const rests = [anchor(14, 35 + walkingBob), anchor(34, 35 + walkingBob)];
+  const shoulders = [anchor(14, 31 + walkingBob + crouch), anchor(34, 31 + walkingBob + crouch)];
+  const rests = [anchor(14, 35 + walkingBob + crouch), anchor(34, 35 + walkingBob + crouch)];
   let hands = [...rests];
   // Lower than the face: the basket rests against the belly, with paws over the handle.
   const held = { x: actor.x, y: actor.y - actor.size * .15 };
   const ground = { x: actor.x - side * actor.size * .31, y: actor.y + actor.size * .035 };
+  const basketSize = garden.basket?.size ?? actor.size * .28;
   const grip = (position: WorldPoint) => [
-    { x: position.x - actor.size * .065, y: position.y - actor.size * .24 },
-    { x: position.x + actor.size * .065, y: position.y - actor.size * .24 },
-  ];
+    { x: position.x - basketSize * .23, y: position.y - basketSize * 12 / 14 },
+    { x: position.x + basketSize * .23, y: position.y - basketSize * 12 / 14 },
+  ].map((hand, index) => {
+    const offset = position.x - actor.x, near = offset < 0 ? 0 : 1;
+    // The near paw grips the near end of a side handle, then both paws spread
+    // onto their ordinary grip as the basket reaches the belly.
+    if (index !== near) return hand;
+    return { ...hand, x: hand.x - Math.sign(offset) * basketSize * .46 * smooth((Math.abs(offset) / actor.size - .08) / .2) };
+  });
   // A side basket is supported by the near paw. The other joins only once the
   // handle comes within reach, instead of spanning the full width of the body.
   const basketHands = (position: WorldPoint) => grip(position).map((hand, index) => {
@@ -167,8 +178,8 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
         : t > COLLECT.liftStart ? mixPoint(ground, held, (t - COLLECT.liftStart) / (COLLECT.end - COLLECT.liftStart)) : ground;
       grounded = t >= COLLECT.lowerEnd && t <= COLLECT.liftStart;
     }
-    basket = { ...position, size: actor.size * .28, berries: Math.min(garden.basket.capacity,
-      garden.basket.berries + harvestProgress(garden).putAway), behind: direction === "back", grounded };
+    basket = { ...position, size: basketSize, berries: Math.min(garden.basket.capacity,
+      garden.basket.berries + harvestProgress(garden).putAway), behind: grounded ? position.y < actor.y : direction === "back", grounded };
     hands = basketHands(position);
     if (routine.phase === "take-basket" && t < .24) hands = rests.map((rest, index) => mixPoint(rest, hands[index], t / .24));
     if (routine.phase === "deposit" && t > 1.2) hands = hands.map((hand, index) => mixPoint(hand, rests[index], (t - 1.2) / .3));
@@ -182,7 +193,7 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
         const fruit = cluster ? clusterFruit(cluster, index) : { ...rests[side < 0 ? 0 : 1], size: actor.size * .016 };
         const reaching = side < 0 ? 0 : 1, lowering = 1 - reaching;
         const center = { x: actor.x, y: actor.y - actor.size * .24 };
-        const rim = { x: ground.x, y: ground.y - actor.size * .164 };
+        const rim = { x: ground.x, y: ground.y - basketSize * 8 / 14 };
         hands = [...rests];
         hands[reaching] = phase < .25 ? mixPoint(rests[reaching], fruit, phase / .25) : phase < .35 ? fruit
           : phase < .6 ? mixPoint(fruit, center, (phase - .35) / .25) : mixPoint(center, rests[reaching], (phase - .6) / .2);
@@ -263,13 +274,12 @@ function drawBasket(ctx: CanvasRenderingContext2D, basket: BasketVisual) {
 export function drawForestGardenGround(ctx: CanvasRenderingContext2D, garden: ForestGardenState | undefined,
   size: number, frame: ForestGardenVisualFrame | null, actor?: WorldPoint, layer: "behind" | "front" = "behind") {
   if (!garden?.basket) return;
-  // An active basket is drawn with its hands in the actor foreground, never hidden behind its body.
+  // Active props own their two draw passes; a parked basket uses its real sole.
   if (frame?.basket) return;
-  if (garden.routine?.carryingBasket) return;
-  const nearFeet = actor && Math.hypot(garden.basket.position.x - actor.x, garden.basket.position.y - actor.y) < size * .43
-    && garden.basket.position.y >= actor.y - size * .2;
-  if (Boolean(nearFeet) !== (layer === "front")) return;
-  drawBasket(ctx, { ...garden.basket.position, size: size * .28, berries: garden.basket.berries, behind: false, grounded: true });
+  if (garden.routine?.carryingBasket || garden.basket.held) return;
+  const inFront = actor && garden.basket.position.y >= actor.y;
+  if (Boolean(inFront) !== (layer === "front")) return;
+  drawBasket(ctx, { ...garden.basket.position, size: garden.basket.size ?? size * .28, berries: garden.basket.berries, behind: false, grounded: true });
 }
 
 export function drawForestGardenProps(ctx: CanvasRenderingContext2D, frame: ForestGardenVisualFrame | null, layer: "behind" | "front") {

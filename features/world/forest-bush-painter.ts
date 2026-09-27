@@ -14,6 +14,11 @@ type BushTexture = { leaves: HTMLCanvasElement | null; bounds: WorldBounds; sour
 const textures = new WeakMap<FixedWorldScene, WeakMap<WorldBush, BushTexture>>();
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 
+/** Shares ownership with the terrain pass, including reduced motion and frozen encounters. */
+export function forestBushForegroundActive(frame: ForestBushFrame | null | undefined, still = false): boolean {
+  return !!frame && (frame.occlude || (!(still && !Number.isFinite(frame.elapsed)) && clamp(frame.rustle) > 0));
+}
+
 function polygon(ctx: CanvasRenderingContext2D, points: readonly WorldPoint[]) {
   ctx.beginPath();
   points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
@@ -109,11 +114,38 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: readonly Forest
   ctx.restore();
 }
 
-/**
- * Foreground foliage comes from the exact Tiled polygon, never a rectangular cover.
- * Call after the actor and before rain/light. The ground itself stays stationary:
- * only pixels inside the authored leaves flex, with their bottom edge anchored.
- */
+/** Separate artwork carries its own alpha. Its authored polygon is navigation data,
+ * not a picture mask: transparent gaps must keep the soil and actor already below.
+ * The terrain pass omits this one cutout while this foreground pass owns it. */
+function drawCutout(ctx: CanvasRenderingContext2D, source: TerrainSource, crown: WorldBounds,
+  rustle: number, time: number) {
+  ctx.save();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  if (rustle <= .001) paintTerrain(ctx, [source]);
+  else {
+    const area = source.bounds, amplitude = rustle * Math.min(1.7, crown.width * .025, crown.height * .03);
+    const displacement = (y: number) => {
+      const height = clamp((y - crown.y) / crown.height), freedom = Math.pow(1 - height, .8);
+      return amplitude * freedom * (.72 * Math.sin(time * 13 + height * 2.4)
+        + .28 * Math.sin(time * 21 - height * 6));
+    };
+    const bands = 16, bandHeight = area.height / bands;
+    for (let index = 0; index < bands; index++) {
+      const y = area.y + index * bandHeight, nextY = y + bandHeight;
+      const offset = displacement(y), shear = (displacement(nextY) - offset) / bandHeight;
+      ctx.save();
+      // Each source row is drawn once; no still silhouette remains beneath the flexing leaves.
+      ctx.beginPath(); ctx.rect(area.x - amplitude, y, area.width + amplitude * 2, bandHeight); ctx.clip();
+      ctx.transform(1, 0, shear, 1, offset - shear * y, 0);
+      paintTerrain(ctx, [source]);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+/** Call after the actor and before rain/light. Separate images use their actual
+ * alpha; old bushes baked into the map retain their authored polygon foreground. */
 export function drawForestBush(
   ctx: CanvasRenderingContext2D,
   scene: FixedWorldScene,
@@ -132,6 +164,14 @@ export function drawForestBush(
   if (!bounds) return;
   const particles = forestBushParticles(bush, time, frame.bursts ?? [], frame.ripe ?? true);
   if (!frame.occlude && !rustle && !particles.length) return;
+  if (bush.imageId !== undefined) {
+    const terrain = scene.terrain.find(item => item.id === bush.imageId);
+    const image = terrain && images.get(terrain.image);
+    if (!terrain || !image?.naturalWidth || !image.naturalHeight) return;
+    if (forestBushForegroundActive(frame, still)) drawCutout(ctx, { image, bounds: terrain.bounds }, bounds, rustle, time);
+    drawParticles(ctx, particles);
+    return;
+  }
   const padded = { x: bounds.x - 4, y: bounds.y - 4, width: bounds.width + 8, height: bounds.height + 8 };
   const sources: TerrainSource[] = [];
   for (const terrain of scene.terrain) {

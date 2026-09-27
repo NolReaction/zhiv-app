@@ -38,6 +38,8 @@ export type PaintFrame = {
   dusk?: number;
   /** Existing crop moisture darkens only the matching cutout's root bed. */
   bushMoisture?: readonly { id: string; moisture: number }[];
+  /** Cutouts drawn in a later foreground pass retain their soil and grounding here. */
+  hiddenTerrainIds?: readonly string[];
   /** Ground effects belong above terrain and below all buildings and actors. */
   paintGround?: (context: CanvasRenderingContext2D) => void;
 };
@@ -71,7 +73,8 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       const bushId = scene.bushes?.find(bush => bush.imageId === terrain.id)?.id;
       drawForestBushGrounding(ctx, scene, terrain, image, frame.dusk ?? Number(frame.options.night),
         frame.bushMoisture?.find(bush => bush.id === bushId)?.moisture);
-      ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+      if (!frame.hiddenTerrainIds?.includes(terrain.id))
+        ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
     }
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
@@ -117,6 +120,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       ctx.beginPath(); path.points.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.stroke();
     }
     for (const mushroom of scene.mushrooms ?? []) debugPoint(ctx, mushroom.position, "#ffd995", mushroom.id);
+    if (scene.basket) debugPoint(ctx, scene.basket.position, "#e8c180", scene.basket.id);
     for (const bush of scene.bushes ?? []) {
       ctx.strokeStyle = "#c7ed82"; polygon(ctx, bush.points); ctx.stroke();
       if (bush.points[0]) debugLabel(ctx, { x: bush.points[0].x, y: bush.points[0].y - 6 }, "#c7ed82", bush.id);
