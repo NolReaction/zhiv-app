@@ -1,6 +1,8 @@
 # Fixed-site home art edits
 
-## Current editable files
+> Historical artwork record for the first Tiled prototype. The patches and commands below belong to that prototype and are not the current five houses. Current images are `public/world/prototype/home-level-1.png` through `home-level-5.png`, with separate geometry in Tiled. Use the [building workbench](building-workbench.md) and [artwork guide](../../art/README.md) for new edits; old source plates remain in Git history.
+
+## Editable files at the time of the prototype
 
 Edit `art/world/prototype/home-level-1.png`, `home-level-2.png`, or `home-level-3.png`. Each is a ready 568 × 536 home patch. Export the entire image to the same-named WebP in `public/world/prototype/`, then run `npm run world:export` and `npm run world:check`. These commands update/check scene metadata and image URLs without modifying image bytes. Proportional resolution changes are supported; preserve the doorway, ground anchor, and patch border. See the [artwork guide](../../art/README.md).
 

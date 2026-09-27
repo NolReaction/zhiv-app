@@ -82,11 +82,12 @@ test("unknown, changed, resized or obscured terrain never receives a guessed per
     { ...scene, terrain: [] },
     { ...scene, width: scene.width + 1 },
     { ...scene, terrain: [{ ...terrain, image: terrain.image + "-new" }] },
-    { ...scene, terrain: [{ ...terrain, image: "/world/prototype/forest-ground.webp?v=fedcfbd622df" }] },
     { ...scene, terrain: [{ ...terrain, bounds: { ...terrain.bounds, x: 3 } }] },
   ];
   for (const edited of changedScenes) {
     assert.deepEqual(forestBirdPerches(edited), []);
+    if (!edited.terrain.some(layer => layer.image === terrain.image))
+      assert.deepEqual(forestBirdGroundPatches(edited), [], "unreviewed artwork cannot receive a ground visit either");
     for (const time of [0, 7, 10, 18, 24])
       assert.ok(sample(time, edited).every(b => !b.perchId && ["flap", "glide"].includes(b.state)));
   }

@@ -2,12 +2,12 @@ import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import type { ForestBird, ForestBirdSpecies, ForestBirdState } from "./forest-wildlife";
 import { createWorldNavigation, canTraverse } from "./navigation";
 import { isForestRainGround } from "./forest-ground-impacts";
+import groundLayout from "./forest-ground-layout.json";
 
 export const FOREST_BIRD_FLIGHT_DURATION = 34;
 export const FOREST_BIRD_LIMIT = 5;
 const BIRD_PERIOD = 158;
 const TAU = Math.PI * 2;
-const VERIFIED_TERRAIN = "/world/prototype/forest-ground.webp?v=f3cb47cffa84";
 
 export type ForestBirdPerch = WorldPoint & { id: string; facing: -1 | 1 };
 const groundCache = new WeakMap<FixedWorldScene, readonly ForestBirdPerch[]>();
@@ -56,11 +56,12 @@ function noise(seed: number, index: number) {
   return ((value ^ value >>> 15) >>> 0) / 4294967296;
 }
 
-/** A changed image or geometry must never leave birds sitting on imaginary trees. */
+/** Ground cells and canopy perches share one reviewed artwork revision. A changed
+ * image or geometry must never leave birds sitting on imaginary trees. */
 export function forestBirdPerches(scene: FixedWorldScene): readonly ForestBirdPerch[] {
   const terrain = scene.terrain.find(layer => layer.id === "forest-ground");
   if (scene.id !== "forest" || scene.width !== 1254 || scene.height !== 1254
-    || !terrain || terrain.image !== VERIFIED_TERRAIN
+    || !terrain || terrain.image !== groundLayout.image
     || terrain.bounds.x !== 0 || terrain.bounds.y !== 0
     || terrain.bounds.width !== 1254 || terrain.bounds.height !== 1254) return [];
   return PERCHES.filter(perch => !scene.sites.some(({ bounds }) =>

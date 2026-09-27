@@ -2,7 +2,7 @@
 
 Для ручной работы в редакторе начните с [памятки Tiled: слои и конкретные действия](game/tiled-quickstart.md).
 
-Ищите задачу в таблице и открывайте указанный файл. Подробности изменения и проверки — в последнем столбце. Пути ниже относятся к текущей Tiled-карте; прежний рендер отделён в конце.
+Ищите задачу в таблице и открывайте указанный файл. Подробности изменения и проверки — в последнем столбце. Пути ниже относятся к текущей Tiled-карте; прежний рендер отделён в конце. Границы состояния и безопасного расширения — [архитектура](architecture.md); подготовка к выпуску — [0.6.7](releases/release-0.6.7.md).
 
 ## Карта, свет и анимации
 
@@ -24,6 +24,7 @@
 | Настроить рост ягод, полив, сбор и корзинку (`Garden → berry-basket` в Tiled) | [`forest-garden.ts`](../features/world/forest-garden.ts), [`forest-director.ts`](../features/world/forest-director.ts), [`forest-garden-painter.ts`](../features/world/forest-garden-painter.ts) | [Ягодный куст и корзинка](game/clearing-garden.md) |
 | Изменить вид плодов, землю, влажность и тень куста | [`forest-fruit-appearance.ts`](../features/world/forest-fruit-appearance.ts), [`forest-bush-soil.ts`](../features/world/forest-bush-soil.ts), [`forest-bush-grounding.ts`](../features/world/forest-bush-grounding.ts), [`tiled/renderer.ts`](../features/world/tiled/renderer.ts) | [Размещение и рисунок](game/clearing-garden.md#размещение-и-рисунок) |
 | Исправить контакт лапы с грибом/листиком и их подъём | [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-director.ts`](../features/world/forest-director.ts), [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts) | [Устройство мира](game/world-foundation.md) |
+| Исправить обход стоящей корзинки и освобождение места при подъёме | [`forest-garden.ts`](../features/world/forest-garden.ts), [`clearing-activity.ts`](../features/world/clearing-activity.ts), [`navigation.ts`](../features/world/navigation.ts) | [Подвижные предметы](game/world-navigation.md#подвижные-предметы) |
 | Изменить проходимость и поиск пути | [`navigation.ts`](../features/world/navigation.ts); `WalkAreas`, `Obstacles`, `PointsOfInterest` в [`forest.tmj`](../world/tiled/forest.tmj) | [Поиск пути: алгоритм, границы, диагностика](game/world-navigation.md) |
 | Изменить плавность поворотов, скорость и прибытие | [`steering.ts`](../features/world/steering.ts), исполнение — [`clearing-activity.ts`](../features/world/clearing-activity.ts) | [Закругление, торможение и безопасность](game/world-navigation.md#плавные-повороты-и-прибытие) |
 | Изменить выбор занятия, подход к предмету и прерывание | [`forest-director.ts`](../features/world/forest-director.ts), [`forest-behavior.ts`](../features/world/forest-behavior.ts) | [Устройство мира](game/world-foundation.md) |
@@ -33,9 +34,11 @@
 | Изменить сохранение жизни леса и передачу между устройствами | [`forest-memory.ts`](../features/world/forest-memory.ts), [`forest-memory-sync.ts`](../features/world/forest-memory-sync.ts), [`forest-memory-model.ts`](../features/world/forest-memory-model.ts), [`forest-session.ts`](../features/world/forest-session.ts), [`JdbcForestMemoryRepository.kt`](../apps/api/src/main/kotlin/ru/zhiv/db/JdbcForestMemoryRepository.kt) | [Синхронизация памяти](game/forest-memory-sync.md) · [состав снимка](game/world-mind.md#что-переживает-перезагрузку) |
 | Изменить подход к дому/кусту и точный переход | [`interaction-navigation.ts`](../features/world/interaction-navigation.ts); `Buildings`, `Bushes` в Tiled | [Поиск пути и входы](game/world-navigation.md) |
 | Изменить исполнение ходьбы, прятки, пробуждение и сон | [`clearing-activity.ts`](../features/world/clearing-activity.ts); `Routes` — только для прежнего режима | [Устройство мира](game/world-foundation.md#прерывания-и-сон-в-домике) |
+| Исправить перекрытие героя отдельным кустом | [`forest-bush-painter.ts`](../features/world/forest-bush-painter.ts), [`forest-bush-artwork.ts`](../features/world/forest-bush-artwork.ts), [`tiled/renderer.ts`](../features/world/tiled/renderer.ts) | [PNG, контур и опора куста](game/clearing-garden.md#разместить-новый-куст-в-tiled) |
 | Изменить порядок слоёв и работу двух камер | [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`map-engine.ts`](../features/world/map-engine.ts), [`world-scene.tsx`](../features/world/world-scene.tsx) | [Устройство мира](game/world-foundation.md) |
 | Исправить масштаб, перетаскивание и границы камеры | [`camera.ts`](../features/world/camera.ts), [`map-engine.ts`](../features/world/map-engine.ts) | [Устройство мира](game/world-foundation.md) |
 | Перенести героя, дом или круглую камеру | [`forest.tmj`](../world/tiled/forest.tmj): `Actors`, `Buildings`, `Clearing focus` | [Разметка Tiled](game/tiled-editor.md) |
+| Исправить одновременную смену рисунка и геометрии уровня | [`tiled/preview-state.ts`](../features/world/tiled/preview-state.ts), [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`navigation.ts`](../features/world/navigation.ts) | [Архитектурные границы](architecture.md#геометрия-графика-и-безопасное-расширение) |
 | Добавить здание и примерить уровни без правок кода | `Buildings` и `Forest image collection` в [`forest.tmj`](../world/tiled/forest.tmj); `/prototype/tiled-world` | [Мастерская зданий](game/building-workbench.md) |
 | Заменить рисунок мира или дома | [`art/world/prototype/`](../art/world/prototype/), [`public/world/prototype/`](../public/world/prototype/) | [Исходники и экспорт](../art/README.md) |
 | Изменить программный спрайт Мохлика и его контактную тень | [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts), [`grounding.ts`](../features/world/grounding.ts) | [Устройство мира](game/world-foundation.md) |

@@ -18,6 +18,8 @@
 | `/auth/*`, `/recovery-code` | [auth/AuthRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/auth/AuthRoutes.kt), [recovery/CodeRecoveryRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/recovery/CodeRecoveryRoutes.kt) | [db/JdbcAuthRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAuthRepository.kt), [JdbcAccountLifecycleRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAccountLifecycleRepository.kt), [JdbcCodeRecoveryRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcCodeRecoveryRepository.kt) | [lib/auth-api.ts](../../lib/auth-api.ts), [lib/account-lifecycle.ts](../../lib/account-lifecycle.ts) |
 | `/game/progress`, sessions, batches, achievements, leaderboard, visibility | [game/GameRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/game/GameRoutes.kt), [GameRewards.kt](../../apps/api/src/main/kotlin/ru/zhiv/game/GameRewards.kt) | [db/JdbcGameRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcGameRepository.kt), [GameAchievementWrites.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/GameAchievementWrites.kt) | [features/game/game-api.ts](../../features/game/game-api.ts) |
 | `GET /world`, `POST /world/commands` | [world/WorldRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/world/WorldRoutes.kt), [WorldModel.kt](../../apps/api/src/main/kotlin/ru/zhiv/world/WorldModel.kt) | [db/JdbcWorldRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcWorldRepository.kt) | [features/world/model.ts](../../features/world/model.ts), [api.ts](../../features/world/api.ts) |
+| `GET /world/forest-memory`, `POST /world/forest-memory/commands` | [forest/ForestMemoryRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/forest/ForestMemoryRoutes.kt), [ForestMemory.kt](../../apps/api/src/main/kotlin/ru/zhiv/forest/ForestMemory.kt) | [db/JdbcForestMemoryRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcForestMemoryRepository.kt) | [forest-memory-model.ts](../../features/world/forest-memory-model.ts), [forest-memory-sync.ts](../../features/world/forest-memory-sync.ts) |
+| `GET/POST /feedback`, `/admin/feedback` | [feedback/FeedbackRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/feedback/FeedbackRoutes.kt), [FeedbackRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/feedback/FeedbackRepository.kt) | [db/JdbcFeedbackRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcFeedbackRepository.kt) | [features/feedback/feedback-api.ts](../../features/feedback/feedback-api.ts) |
 | `/admin/*` | [admin/AdminRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/admin/AdminRoutes.kt), [AdminRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/admin/AdminRepository.kt) | [db/JdbcAdminRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAdminRepository.kt) | [features/admin/admin-api.ts](../../features/admin/admin-api.ts) |
 | `/game-events`, клиентские инциденты, метрики | [game/GameEventRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/game/GameEventRoutes.kt), `observability/*` | [UserIncidents.kt](../../apps/api/src/main/kotlin/ru/zhiv/observability/UserIncidents.kt), [db/TapActivityRecorder.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/TapActivityRecorder.kt) | [features/game/game-events.ts](../../features/game/game-events.ts), [lib/client-incidents.ts](../../lib/client-incidents.ts) |
 
@@ -39,7 +41,7 @@
 
 ## PostgreSQL и миграции
 
-Источник схемы: `apps/api/src/main/resources/db/migration/`. Текущая последовательность — V1–V28.
+Источник схемы: `apps/api/src/main/resources/db/migration/`. Текущая последовательность — **V1–V31**.
 
 | Область | Миграции-ориентиры |
 |---|---|
@@ -52,12 +54,25 @@
 | Квитанции, writer permits, инциденты | V26 |
 | Модерация и агрегаты тапов | V27 |
 | Коллекции и история тапов | V28 |
+| Обращения игроков | V29 |
+| Начало покрытия истории тапов без доступа runtime к журналу Flyway | V30 |
+| Память полянки и квитанции записи | V31 |
 
 Для изменения схемы добавьте следующую `V<N>__description.sql`; применённые файлы не редактируются. Учитывайте существующие строки, constraints, индексы и роли доступа. Проверяйте обновление старой схемы, а не только создание пустой БД.
 
 [db/DatabaseFactory.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/DatabaseFactory.kt) настраивает HikariCP и Flyway; [db/MigrationMain.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/MigrationMain.kt) — отдельный запуск миграций. В Compose сначала выполняются `provision` и `migrate`, затем стартует `api`. Приложение использует ограниченную роль, мигратор — отдельную. [db/schema.ts](../../db/schema.ts) и `npm run db:generate` относятся к заготовке Sites/D1 и **не создают PostgreSQL-миграции приложения**.
 
 Для новой награды/коллекции начните с [apps/api/src/main/resources/world/catalog.json](../../apps/api/src/main/resources/world/catalog.json): этот файл импортируют и TypeScript, и Kotlin. Проверьте `catalogVersion`, разрешённые ID в схемах, рецепты/стоимости, старый инвентарь и серверный ledger. Добавление картинки не добавляет серверную награду.
+
+## Память полянки и экономический прогресс
+
+Это два независимых контура. `GET /world` и команды мира управляют ресурсами, вещами, постройками и путешествиями. `forest-memory` хранит безопасный снимок локальной симуляции: потребности, короткую историю занятий, положение/сон, грибы, рост и влажность ягодного куста, уже принесённые ягоды. Декоративный сбор ягод не начисляет валюту или предметы каталога.
+
+У памяти своя `revision`, аренда записи на 90 секунд и идемпотентный `requestId`. Сервер проверяет владельца, токен аренды, версию и форму снимка; старое устройство после передачи управления не может его перезаписать. Клиент сохраняет примерно раз в 15 секунд активной сессии; при загрузке, потере связи и чужой аренде симуляция ждёт. Полный протокол и сценарии проверки — [память Мохлика](../game/forest-memory-sync.md).
+
+Текущий формат снимка — **v2**, чтение v1 сохраняется. V31 хранит JSONB и не требует новой SQL-миграции для v2. Однако новый web и API выпускаются вместе: старый API не принимает v2, а старый web не читает его после первого сохранения. Откат на старую сборку после появления v2 также требует совместимости. Не очищайте память или БД ради обновления.
+
+Позиции, ID объектов и fingerprint карты влияют на восстановление пространственной части; смена фона не является основанием сбрасывать потребности и ягоды. Нет серверной фоновой симуляции, роста за время отсутствия или сохранения каждого кадра анимации. Изменение контракта проверяйте в браузере, локальной имитации и Ktor, включая merge/delete/recovery аккаунтов.
 
 ## Рецепты изменения игровых правил
 
@@ -97,6 +112,8 @@
 | [lib/dev/api-store.ts](../../lib/dev/api-store.ts) | Тестовые аккаунты, отметки, связи, группы, статусы |
 | [lib/dev/game-store.ts](../../lib/dev/game-store.ts), [game-validation.ts](../../lib/dev/game-validation.ts) | Игровые разрешения, пакеты и прогресс |
 | [lib/dev/world-store.ts](../../lib/dev/world-store.ts) | Snapshot и команды мира |
+| [lib/dev/forest-memory-store.ts](../../lib/dev/forest-memory-store.ts), [forest-memory-state.ts](../../lib/dev/forest-memory-state.ts), [forest-memory-route.ts](../../lib/dev/forest-memory-route.ts) | Снимки полянки, аренда, повторы и строгая проверка HTTP |
+| [lib/dev/feedback-store.ts](../../lib/dev/feedback-store.ts) | Обращения, суточный лимит и квитанции |
 | [lib/dev/api-guard.ts](../../lib/dev/api-guard.ts), [api-origin.ts](../../lib/dev/api-origin.ts), [api-route.ts](../../lib/dev/api-route.ts) | Режим запуска, origin, JSON, cookie, ключи записи |
 
 Память процесса теряется после перезапуска и не разделяется между экземплярами сервера. Сохранённая браузером cookie после перезапуска не восстанавливает аккаунт. Production-запуск без Ktor всегда вернёт `DEV_API_DISABLED`, даже при `ENABLE_DEV_API=true`. Имитация доступна только в `development`/`test` и не предназначена для реальных пользовательских данных.

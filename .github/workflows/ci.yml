@@ -33,6 +33,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check committed Tiled export
+        run: npm run world:check
+
       - name: Type-check
         run: npx tsc --noEmit --incremental false
 

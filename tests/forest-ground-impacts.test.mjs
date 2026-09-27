@@ -10,6 +10,8 @@ after(() => vite.close());
 const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { forestGroundImpactFrame, isForestRainGround, drawForestGroundImpact, drawForestGroundImpacts }
   = await vite.ssrLoadModule("/features/world/forest-ground-impacts.ts");
+const { forestGroundWeatherFrame, drawForestGroundWeather }
+  = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
 const { previewPointInPolygon } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const options = { elapsed: 12, rain: 1, dusk: 0, reducedMotion: false };
 const rectangle = bounds => [
@@ -88,6 +90,19 @@ function context() {
   for (const name of ["beginPath", "ellipse", "fill", "moveTo", "lineTo", "stroke"]) ctx[name] = (...args) => calls.push([name, ...args]);
   return { ctx, calls, state, stack };
 }
+
+test("dry ground receives splashes before puddles form and without running the puddle painter", () => {
+  const input = { elapsed: options.elapsed, timestamp: 0, weather: "downpour", wetness: 0 };
+  assert.deepEqual(forestGroundWeatherFrame(scene, input).puddles, []);
+  const combined = context(), independent = context();
+  for (const drawing of [combined, independent]) drawing.ctx.canvas = { width: scene.width, height: scene.height };
+  drawForestGroundWeather(combined.ctx, scene, input);
+  assert.equal(combined.calls.length, 0, "dry soil does not receive standing-water rings");
+  drawForestGroundImpacts(combined.ctx, scene, options);
+  drawForestGroundImpacts(independent.ctx, scene, options);
+  assert.ok(combined.calls.some(call => call[0] === "fill"), "actual ground splash painter remains active");
+  assert.deepEqual(combined.calls, independent.calls, "turning off puddles cannot turn off ground splashes");
+});
 
 test("ground hit has a short splash and filled fleck, restores context, and culls out-of-view patches", () => {
   const initial = context(), late = context(), before = initial.state();
