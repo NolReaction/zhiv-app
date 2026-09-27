@@ -15,6 +15,8 @@ export type ForestFaunaEntity = WorldPoint & {
   /** Kept after hero release, until this individual has physically returned. */
   interactionToken: number | null;
   stimulusCooldownUntil: number; nextRestAt: number; restUntil: number;
+  /** Short-lived individual memory; it advances only with the shared world clock. */
+  alertness: number; familiarity: number; lastMovementAt: number; lastRestAnchorId: string | null;
   orbit: Orbit; opacity: number; departure: WorldPoint | null;
 };
 export type FaunaEncounterPhase = "notice" | "raise" | "approach" | "perch" | "release" | "interrupt";
@@ -134,7 +136,9 @@ function entity(habitat: WorldHabitat, seed: number, index: number, scale: numbe
       : 1.35 + noise(seed, n * 7 + 6) * .25), phase,
     x: 0, y: 0, vx: 0, vy: 0, angle: 0, orbit, mode: "fly", modeElapsed: 0,
     target: null, anchorId: null, anchorOffset: { x: 0, y: 0 }, cooldownUntil: 0, interactionToken: null, stimulusCooldownUntil: 0,
-    nextRestAt: 13 + noise(seed, n + 90) * 25, restUntil: 0, departure: null, opacity: butterfly ? .85 : .9 };
+    nextRestAt: 13 + noise(seed, n + 90) * 25, restUntil: 0,
+    alertness: 0, familiarity: 0, lastMovementAt: -10, lastRestAnchorId: null,
+    departure: null, opacity: butterfly ? .85 : .9 };
   const initial = orbitSample(e, 0);
   Object.assign(e, initial); e.angle = Math.atan2(e.vy, e.vx) + Math.PI / 2;
   return e;
@@ -182,7 +186,7 @@ function candidate(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActo
   const reach = forced ? Math.min(140, actor.size * 2.4) : Math.min(95, actor.size * 1.55);
   let best: ForestFaunaEntity | null = null, nearest = reach;
   for (const e of state.entities) {
-    if (e.species !== kind || e.interactionToken !== null || e.cooldownUntil > state.elapsed
+    if (e.species !== kind || e.interactionToken !== null || e.cooldownUntil > state.elapsed || e.alertness > .4
       || !["fly", "rest", "rest-seek", "refuge"].includes(e.mode)) continue;
     const habitat = state.habitats.find(h => h.id === e.habitatId);
     // Forest residents cannot be invited through the excluded home clearing.
@@ -274,8 +278,11 @@ function anchorFor(state: ForestFaunaState, e: ForestFaunaEntity, kind: "rest" |
     && (!habitat.exclusions?.length || habitatContains(habitat, a.position, 2.1))) ?? [];
   // Occupancy keeps a visible resting population from collapsing onto one identical point.
   const occupancy = (id: string) => state.entities.filter(other => other !== e && other.anchorId === id).length;
+  // Prefer a different nearby leaf after a landing, without making a long detour.
+  const cost = (anchor: WorldHabitat["anchors"][number]) => distance(e, anchor.position)
+    + (kind === "rest" && anchor.id === e.lastRestAnchorId ? 24 : 0);
   return suitable.filter(a => kind === "shelter" || occupancy(a.id) === 0)
-    .sort((a, b) => occupancy(a.id) - occupancy(b.id) || distance(e, a.position) - distance(e, b.position))[0];
+    .sort((a, b) => occupancy(a.id) - occupancy(b.id) || cost(a) - cost(b) || a.id.localeCompare(b.id))[0];
 }
 function setAnchor(state: ForestFaunaState, e: ForestFaunaEntity, anchor: WorldHabitat["anchors"][number]) {
   e.anchorId = anchor.id; e.anchorOffset = { x: 0, y: 0 };
@@ -292,21 +299,36 @@ function shelterNeeded(e: ForestFaunaEntity, options: ForestFaunaConditions) {
 
 /** A bounded impulse is integrated, never a position change. Reserved partners ignore disturbances. */
 export function emitFaunaStimulus(state: ForestFaunaState, stimulus: FaunaStimulus): number {
+  if (![stimulus.x, stimulus.y, stimulus.radius ?? 1, stimulus.strength ?? 1].every(Number.isFinite)
+    || stimulus.x < 0 || stimulus.y < 0 || stimulus.x > state.width || stimulus.y > state.height) return 0;
   const radius = clamp(stimulus.radius ?? (stimulus.kind === "rustle" ? 62 : 30), 1, 90);
   const strength = clamp(stimulus.strength ?? 1, 0, 1);
+  if (strength === 0) return 0;
   let affected = 0;
-  for (const e of state.entities) {
-    if (affected >= 4) break;
+  // Proximity, rather than array/population order, decides which neighbours notice first.
+  const nearby = state.entities.map(e => ({ e, d: distance(e, stimulus) }))
+    .filter(({ d }) => d < radius).sort((a, b) => a.d - b.d || a.e.id.localeCompare(b.e.id));
+  for (const { e, d } of nearby) {
     if (!isFaunaActiveAtTime(e.species, state.dusk)) continue;
-    if (e.stimulusCooldownUntil > state.elapsed || ["approach", "perch", "depart", "return"].includes(e.mode)) continue;
-    const d = distance(e, stimulus);
-    if (d >= radius) continue;
+    if (e.interactionToken !== null || ["approach", "perch", "refuge"].includes(e.mode)) continue;
     const amount = (1 - d / radius) * strength;
+    const familiarity = e.familiarity;
+    // Repeated ordinary footsteps become familiar, sampled at most once per 1.5 s.
+    // A sudden bush rustle still matters even to a relaxed, familiar individual.
+    if (stimulus.kind === "movement" && state.elapsed - e.lastMovementAt >= 1.5) {
+      e.familiarity = clamp(e.familiarity + .18 * (.5 + strength * .5) * (1 - d / radius));
+      e.lastMovementAt = state.elapsed;
+    }
+    if (affected >= 4 || e.stimulusCooldownUntil > state.elapsed || ["depart", "return"].includes(e.mode)) continue;
+    const response = amount * (stimulus.kind === "movement" ? 1 - familiarity * .7 : 1);
+    const threshold = .1 + noise(hash(e.id), 7) * .08;
+    if (response < threshold) continue;
     const dx = e.x - stimulus.x || Math.cos(e.phase), dy = e.y - stimulus.y || -1;
     const length = Math.hypot(dx, dy);
-    e.departure = { x: clamp(e.x + dx / length * (10 + amount * 22), 1, state.width - 1),
-      y: clamp(e.y + dy / length * (8 + amount * 15) - 6, 1, state.height - 1) };
+    e.departure = { x: clamp(e.x + dx / length * (10 + response * 22), 1, state.width - 1),
+      y: clamp(e.y + dy / length * (8 + response * 15) - 6, 1, state.height - 1) };
     setMode(e, "depart"); e.anchorId = null;
+    e.alertness = clamp(e.alertness + response * .75);
     e.stimulusCooldownUntil = state.elapsed + 7; e.cooldownUntil = Math.max(e.cooldownUntil, state.elapsed + 4);
     affected++;
   }
@@ -371,6 +393,8 @@ function advanceEncounter(state: ForestFaunaState, dt: number, options: ForestFa
 function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number, options: ForestFaunaOptions) {
   const encounter = state.encounter?.entityId === e.id ? state.encounter : null;
   if (encounter && options.freezeEncounter) return;
+  e.alertness *= Math.exp(-dt / 10);
+  e.familiarity *= Math.exp(-dt / 100);
   e.modeElapsed += dt;
   if (encounter && ["approach", "perch"].includes(e.mode)) {
     const pose = { pose: "greet", frame: 0, direction: encounter.direction } as const;
@@ -408,15 +432,20 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
   if (e.mode === "fly" && !refuge && state.elapsed >= e.nextRestAt) {
     const anchor = anchorFor(state, e, "rest");
     e.nextRestAt = state.elapsed + 25 + e.phase * 3;
-    if (anchor) { setMode(e, "rest-seek"); setAnchor(state, e, anchor); e.restUntil = state.elapsed + 12 + e.phase; }
+    if (anchor) { setMode(e, "rest-seek"); setAnchor(state, e, anchor); e.restUntil = 0; }
   }
   if (["rest-seek", "rest", "refuge"].includes(e.mode)) {
     const anchor = state.habitats.find(h => h.id === e.habitatId)?.anchors.find(a => a.id === e.anchorId);
     if (!anchor) { setMode(e, "return"); e.anchorId = null; return; }
     const target = { x: anchor.position.x + e.anchorOffset.x, y: anchor.position.y + e.anchorOffset.y };
     steer(state, e, target, dt);
-    if (e.mode === "rest-seek" && distance(e, target) < .65 && Math.hypot(e.vx, e.vy) < 1.6) setMode(e, "rest");
-    if (!refuge && e.mode === "rest" && state.elapsed >= e.restUntil) { setMode(e, "return"); e.anchorId = null; }
+    if (e.mode === "rest-seek" && distance(e, target) < .65 && Math.hypot(e.vx, e.vy) < 1.6) {
+      setMode(e, "rest"); e.restUntil = state.elapsed + 12 + e.phase;
+      e.lastRestAnchorId = anchor.id;
+    }
+    if (!refuge && e.mode === "rest" && state.elapsed >= e.restUntil) {
+      setMode(e, "return"); e.anchorId = null; e.nextRestAt = state.elapsed + 25 + e.phase * 3;
+    }
     return;
   }
   const live = orbitSample(e, state.elapsed);

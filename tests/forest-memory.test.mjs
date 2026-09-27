@@ -8,8 +8,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { forestMemoryKey, forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
+const { createForestMemory, forestMemoryKey, forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
 const { forestMindMotives } = await vite.ssrLoadModule("/features/world/forest-mind.ts");
+const { forestMemoryPayloadSchema } = await vite.ssrLoadModule("/features/world/forest-memory-model.ts");
+const { advanceForestDirector, requestForestDirective } = await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { requestClearingSleep, requestClearingBush, advanceClearingActivity, noticeClearingActivity, clearingActivityFrame } =
   await vite.ssrLoadModule("/features/world/clearing-activity.ts");
@@ -45,7 +47,7 @@ test("reload restores per-account motives, short memory and mushroom growth with
   first.state.elapsed = 900; first.state.wetness = .8; first.state.timestamp = 999;
   first.release();
   const written = JSON.parse(env.records.get(forestMemoryKey("memory-reload")));
-  assert.equal(written.version, 1); assert.equal(written.life, undefined); assert.equal(written.paths, undefined);
+  assert.equal(written.version, 2); assert.equal(written.life, undefined); assert.equal(written.paths, undefined);
   assert.deepEqual(Object.keys(written.mind.needs).sort(), ["attention", "comfort", "curiosity", "energy"]);
   assert.equal(written.mind.arousal, undefined); assert.equal(written.mind.motives, undefined);
   env.addTime(30 * 24 * 3600 * 1000);
@@ -224,4 +226,107 @@ test("opening the world after a DEV override preserves the account clock and sus
     world.state.clearing.behavior.mind.needs.energy = 0; world.saveMemory(); circle.saveMemory();
     assert.equal(env.records.get(forestMemoryKey("memory-shared-dev")), clean);
   } finally { world.release(); circle.release(); }
+});
+
+test("v2 garden remembers moisture, growth, watering cooldown and deposited fruit without offline progress", () => {
+  const env = environment(), map = scene(), first = connect("garden-memory", map, env);
+  const garden = first.state.life.garden;
+  assert.ok(garden.bushes.length && garden.basket, "the authored clearing has a usable berry garden");
+  Object.assign(garden.bushes[0], { growth: .63, moisture: .82, waterIn: 240 });
+  garden.basket.berries = 6;
+  Object.assign(first.state.clearing.behavior.mind, { elapsed: 30,
+    recent: [{ key: "water-bush", action: "water-bush", at: 20, duration: 8, outcome: "completed" }] });
+  first.release();
+  const saved = JSON.parse(env.records.get(forestMemoryKey("garden-memory")));
+  const { account, savedAt, ...payload } = saved;
+  assert.equal(account, "garden-memory"); assert.ok(savedAt > 0);
+  assert.equal(forestMemoryPayloadSchema.safeParse(payload).success, true);
+  assert.deepEqual(Object.keys(saved.garden).sort(), ["basketBerries", "bushes"]);
+  assert.equal(saved.garden.routine, undefined);
+  env.addTime(30 * 24 * 3600 * 1000);
+  const next = connect("garden-memory", map, env);
+  try {
+    const restored = next.state.life.garden;
+    assert.equal(restored.bushes[0].growth, .63); assert.equal(restored.bushes[0].moisture, .82);
+    assert.equal(restored.bushes[0].waterIn, 240); assert.equal(restored.basket.berries, 6);
+    assert.equal(restored.elapsed, 0); assert.equal(restored.routine, null);
+    assert.equal(next.state.clearing.behavior.mind.recent[0].action, "water-bush");
+  } finally { next.release(); }
+});
+
+test("an existing v1 account keeps its original memory and upgrades in the same local storage slot", () => {
+  const env = environment(), map = scene(), first = connect("garden-legacy", map, env);
+  first.state.clearing.behavior.mind.needs.energy = .38; first.state.life.mushrooms[0].growth = .42; first.release();
+  const key = forestMemoryKey("garden-legacy"), old = JSON.parse(env.records.get(key));
+  old.version = 1; delete old.garden;
+  env.records.set(key, JSON.stringify(old));
+  const next = connect("garden-legacy", map, env);
+  assert.equal(next.state.memory.restored, true);
+  assert.equal(next.state.clearing.behavior.mind.needs.energy, .38); assert.equal(next.state.life.mushrooms[0].growth, .42);
+  assert.equal(next.state.life.garden.basket.berries, 0); next.release();
+  assert.equal(env.records.size, 1); assert.equal(JSON.parse(env.records.get(key)).version, 2);
+});
+
+test("edited or ambiguous bushes cannot borrow saved growth while deposited fruit survives a same-map edit", () => {
+  const env = environment(), original = scene(), first = connect("garden-reconcile", original, env);
+  Object.assign(first.state.life.garden.bushes[0], { growth: .91, moisture: .97, waterIn: 500 });
+  first.state.life.garden.basket.berries = 3; first.release();
+  const key = forestMemoryKey("garden-reconcile"), saved = env.records.get(key);
+  const moved = scene(); moved.bushes[0].entry.x += .5;
+  const pristine = connect(undefined, moved, environment()), expected = { ...pristine.state.life.garden.bushes[0] }; pristine.release();
+  const next = connect("garden-reconcile", moved, env);
+  assert.equal(next.state.memory.reconciled, true);
+  for (const field of ["growth", "moisture", "waterIn"]) assert.equal(next.state.life.garden.bushes[0][field], expected[field]);
+  assert.equal(next.state.life.garden.basket.berries, 3); next.release();
+  const duplicated = JSON.parse(saved); duplicated.garden.bushes.push({ ...duplicated.garden.bushes[0] });
+  env.records.set(key, JSON.stringify(duplicated));
+  const clean = connect(undefined, original, environment()), freshGrowth = clean.state.life.garden.bushes[0].growth; clean.release();
+  const ambiguous = connect("garden-reconcile", original, env);
+  assert.equal(ambiguous.state.life.garden.bushes[0].growth, freshGrowth); ambiguous.release();
+});
+
+test("reload during a real harvest keeps the uncommitted fruit and resets the carried basket safely", () => {
+  const env = environment(), map = scene(), first = connect("garden-carry", map, env);
+  const garden = first.state.life.garden, home = { ...garden.basket.position };
+  garden.bushes[0].growth = 1;
+  const options = { autoLife: false, blocked: false, homeAvailable: true, dusk: 0, rain: 0 };
+  requestForestDirective(first.state, "harvest-berries", options);
+  for (let t = 0; t < 120 && garden.routine?.phase !== "return-basket"; t += .025)
+    advanceForestDirector(first.state, .025, options);
+  assert.equal(garden.routine?.phase, "return-basket", first.state.director.reason);
+  assert.equal(garden.routine.carryingBasket, true);
+  const before = { growth: garden.bushes[0].growth, berries: garden.basket.berries };
+  first.release();
+  const next = connect("garden-carry", map, env);
+  try {
+    assert.equal(next.state.life.garden.routine, null);
+    assert.equal(next.state.life.garden.bushes[0].growth, before.growth);
+    assert.equal(next.state.life.garden.basket.berries, before.berries);
+    assert.deepEqual(next.state.life.garden.basket.position, home);
+    assert.ok(isWalkable(next.state.clearing.navigation, next.state.clearing.position));
+  } finally { next.release(); }
+});
+
+test("DEV ripening and harvest cannot contaminate the saved account garden", () => {
+  const env = environment(), map = scene(), current = connect("garden-dev", map, env);
+  const garden = current.state.life.garden;
+  garden.bushes[0].growth = .25; garden.basket.berries = 3;
+  current.suspendPersistence(); const clean = env.records.get(forestMemoryKey("garden-dev"));
+  garden.bushes[0].growth = 1; garden.basket.berries = 12;
+  env.addTime(20_000); current.publish(); current.saveMemory(); env.fireLifecycle(); current.release();
+  assert.equal(env.records.get(forestMemoryKey("garden-dev")), clean);
+  const next = connect("garden-dev", map, env);
+  assert.equal(next.state.life.garden.bushes[0].growth, .25); assert.equal(next.state.life.garden.basket.berries, 3); next.release();
+});
+
+test("a temporarily unplaceable basket retains its deposited fruit until a safe spot exists again", () => {
+  const env = environment(), map = scene(), first = connect("garden-unplaced", map, env);
+  first.state.life.garden.basket.berries = 6; first.release();
+  const unavailable = connect(undefined, map, environment());
+  unavailable.state.life.garden.basket = null;
+  const memory = createForestMemory("garden-unplaced", map, unavailable.state, { environment: env });
+  assert.equal(memory.status.restored, true); memory.save(); memory.release(); unavailable.release();
+  assert.equal(JSON.parse(env.records.get(forestMemoryKey("garden-unplaced"))).garden.basketBerries, 6);
+  const restored = connect("garden-unplaced", map, env);
+  assert.equal(restored.state.life.garden.basket.berries, 6); restored.release();
 });

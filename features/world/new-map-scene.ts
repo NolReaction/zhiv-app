@@ -15,6 +15,7 @@ import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
 import { forestLifeFrame, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
 import { drawForestBush } from "./forest-bush-painter";
+import { drawForestGardenGround, drawForestGardenPlants, drawForestGardenProps, forestGardenVisualFrame } from "./forest-garden-painter";
 import { drawWaterDebug } from "./dev/water-debug";
 import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity } from "./clearing-activity";
 import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, type ForestDirectorOptions } from "./forest-director";
@@ -118,6 +119,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const life = preview?.life;
+  const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+  const motion = automatic && walking ? walking : null;
+  const garden = automatic ? forestGardenVisualFrame(life?.garden, actor,
+    { pose: motion?.pose ?? "idle", frame: motion?.frame ?? 0, direction: motion?.direction ?? "front" }, still) : null;
   const routine = life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, actor, elapsed) : null;
   const encounter = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
@@ -136,18 +141,24 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     },
     options: { levels: selectedLevels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
+  drawForestGardenPlants(context, world, life?.garden);
+  drawForestGardenGround(context, life?.garden, actor.size, garden);
   if (dev?.showHero !== false && (walking?.opacity ?? 1) > 0) {
-    const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
-    const motion = automatic && walking ? walking : null;
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
-    drawGroundedHero(context, { ...actor, direction: routine?.direction ?? encounter?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
-      ...(routine ?? encounter ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
+    drawForestGardenProps(context, garden, "behind");
+    drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
+      ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
       appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression });
     if (routine) drawForestLifePartner(context, routine, elapsed);
+    drawForestGardenProps(context, garden, "front");
     context.restore();
   }
-  if (walking?.bush && dev?.showHero !== false) drawForestBush(context, world, images, walking.bush, elapsed, still);
+  if (walking?.bush && dev?.showHero !== false) {
+    const growth = life?.garden?.bushes.find(bush => bush.id === walking.bush!.id)?.growth;
+    drawForestBush(context, world, images, { ...walking.bush, ripe: growth === undefined || growth >= .98 }, elapsed, still);
+    if (walking.bush.occlude || walking.bush.rustle > 0) drawForestGardenPlants(context, world, life?.garden);
+  }
   if (walking?.homeSleeping && home && dev?.showHero !== false && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
@@ -192,7 +203,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.clearing.retiring || state.clearing.bushEffect?.bursts.length)
+    return Boolean(state.pendingLife || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length)
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {

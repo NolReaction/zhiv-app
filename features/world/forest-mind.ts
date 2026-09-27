@@ -1,6 +1,6 @@
 /** Small local Utility AI. These are motives, never a feeding or punishment system. */
 export type ForestMindAction = "look" | "sniff" | "groom" | "rest" | "bush" | "home-sleep"
-  | "butterfly" | "firefly" | "mushroom" | "leaf" | "idle";
+  | "butterfly" | "firefly" | "mushroom" | "leaf" | "water-bush" | "harvest-berries" | "idle";
 export type ForestMindNeeds = { energy: number; curiosity: number; comfort: number; attention: number };
 /** Internal decision signals, not additional care needs or persisted account fields. */
 export type ForestMindMotives = { arousal: number; saturation: number; variety: number };
@@ -17,7 +17,7 @@ export type ForestMindState = {
   candidates: ForestMindCandidate[];
   events: { at: number; type: ForestMindOutcome | "selected" | "attention" | "restored"; action: ForestMindAction | null; reason: string }[];
 };
-const actions: readonly ForestMindAction[] = ["look", "sniff", "groom", "rest", "bush", "home-sleep", "butterfly", "firefly", "mushroom", "leaf", "idle"];
+const actions: readonly ForestMindAction[] = ["look", "sniff", "groom", "rest", "bush", "home-sleep", "butterfly", "firefly", "mushroom", "leaf", "water-bush", "harvest-berries", "idle"];
 const unit = (value: number) => Math.max(0, Math.min(1, value));
 const finite = (value: unknown, fallback: number, max = Number.MAX_SAFE_INTEGER) =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback;
@@ -25,17 +25,23 @@ const actionLabel: Record<ForestMindAction, string> = {
   look: "Осматривает полянку", sniff: "Изучает полянку", groom: "Приводит себя в порядок", rest: "Отдыхает",
   bush: "Исследует куст", "home-sleep": "Отдыхает дома", butterfly: "Играет с бабочкой", firefly: "Наблюдает за светлячком",
   mushroom: "Рассматривает гриб", leaf: "Играет с листиком", idle: "Спокойно осматривается",
+  "water-bush": "Поливает ягодный куст", "harvest-berries": "Собирает ягоды в корзинку",
 };
 type ActionFamily = "observe" | "explore" | "play" | "care" | "rest" | "idle";
 const actionFamily: Record<ForestMindAction, ActionFamily> = {
   look: "observe", sniff: "explore", groom: "care", rest: "rest", bush: "explore", "home-sleep": "rest",
   butterfly: "play", firefly: "observe", mushroom: "observe", leaf: "play", idle: "idle",
+  "water-bush": "care", "harvest-berries": "care",
 };
 // Positive values describe lively activities; negative values describe quieter ones.
 const stimulation: Record<ForestMindAction, number> = {
   look: -.65, sniff: .2, groom: -.8, rest: -1, bush: .85, "home-sleep": -1,
   butterfly: 1, firefly: -.55, mushroom: -.45, leaf: .9, idle: -.75,
+  "water-bush": -.45, "harvest-berries": -.25,
 };
+function productiveCare(action: ForestMindAction | undefined) {
+  return action === "water-bush" || action === "harvest-berries";
+}
 function interesting(action: ForestMindAction | undefined) {
   const family = action === undefined ? undefined : actionFamily[action];
   return family === "observe" || family === "explore" || family === "play";
@@ -86,17 +92,17 @@ export function advanceForestMind(mind: ForestMindState, delta: number, context:
   needs.energy = unit(needs.energy + dt * (context.sleeping ? .009 : context.resting ? .007 : context.moving ? -.0015 : context.engaged ? -.0008 : -.00018));
   // Grooming also uses engaged poses, but it is not a new impression. Interest recovers
   // on walks and in quiet moments; meaningful activity satisfies it without a zero trap.
-  const exploring = context.engaged && interesting(mind.intention?.action);
-  const curiosityTarget = exploring ? .22 : context.sleeping ? .72 : context.moving ? .7 : .8;
+  const action = mind.intention?.action;
+  const exploring = context.engaged && interesting(action), caring = context.engaged && productiveCare(action);
+  const curiosityTarget = exploring ? .22 : context.sleeping ? .72 : context.moving ? .7 : caring ? .55 : .8;
   needs.curiosity = unit(needs.curiosity + (curiosityTarget - needs.curiosity) * (1 - Math.exp(-dt / (exploring ? 45 : 100))));
   const comfortTarget = context.sheltered ? .98 : 1 - unit(context.rain) * .7 - unit(context.dusk) * .06;
   needs.comfort = unit(needs.comfort + (comfortTarget - needs.comfort) * (1 - Math.exp(-dt / 35)) + (context.grooming ? dt * .003 : 0));
   needs.attention = unit(needs.attention - dt / 45);
   const currentArousal = Number.isFinite(mind.arousal) ? unit(mind.arousal)
     : restoredArousal(mind, completedExperience(mind).saturation);
-  const action = mind.intention?.action;
   const activation = context.sleeping ? .08 : context.resting ? .12 : context.grooming ? .2
-    : context.moving ? .58 : exploring ? .38 + Math.max(0, stimulation[action!]) * .5 : .22;
+    : context.moving ? .58 : caring ? .3 : exploring ? .38 + Math.max(0, stimulation[action!]) * .5 : .22;
   const arousalTarget = unit(activation + (context.sheltered ? 0 : unit(context.rain) * .14) + needs.attention * .18);
   mind.arousal = unit(currentArousal + (arousalTarget - currentArousal) * (1 - Math.exp(-dt / 14)));
 }
@@ -119,6 +125,14 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
   } else if (action === "groom") {
     score += discomfort * 3 + unit(context.rain) * .55;
     reasons.push(discomfort > .3 ? "Хочется привести мокрую шерсть в порядок" : "Спокойное занятие на полянке");
+  } else if (productiveCare(action)) {
+    // Availability is owned by the garden: a dry bush or a ripe harvest gives this
+    // calm task its purpose. It should never turn into a need to work while tired.
+    score += .85 + curious * .7 + n.energy * .85 - tired * 2
+      - unit(context.rain) * 1.8 - unit(context.dusk) * .4 - n.attention * .5;
+    reasons.push(action === "water-bush" ? "Кусту пригодится вода — можно спокойно позаботиться о нём"
+      : "Ягоды созрели — можно отнести их в корзинку");
+    if (n.energy < .4) reasons.push("Сначала нужно восстановить силы — забота о кусте подождёт");
   } else if (action === "idle") {
     score += tired * .5 + n.attention * .8;
     reasons.push(n.attention > .3 ? "Прислушивается к игроку" : "Можно немного осмотреться");
@@ -144,11 +158,19 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
     score += variety;
     if (Math.abs(variety) > .1) reasons.push(variety < 0 ? "Недавно занимался похожим — хочется разнообразия" : "Другое занятие внесёт разнообразие");
   }
+  let recoveryStillNeeded = false;
   const repeat = mind.recent.reduce((sum, previous) => {
     const age = Math.max(0, mind.elapsed - previous.at);
     const same = previous.key === key ? 2.8 : previous.action === action ? .7 : 0;
-    return sum + same * Math.max(0, 1 - age / (previous.outcome === "failed" ? 45 : 100));
+    const freshness = Math.max(0, 1 - age / (previous.outcome === "failed" ? 45 : 100));
+    // A short completed rest may leave him exhausted. Avoiding repeated leisure
+    // must not prevent necessary recovery; failed and interrupted routes still cool down.
+    const repetitionWeight = family === "rest" && actionFamily[previous.action] === "rest" && previous.outcome === "completed"
+      ? unit((n.energy - .1) / .3) : 1;
+    if (same * freshness > 0 && repetitionWeight < 1) recoveryStillNeeded = true;
+    return sum + same * freshness * repetitionWeight;
   }, 0);
+  if (recoveryStillNeeded) reasons.push("Недавнего отдыха не хватило — восстановить силы важнее разнообразия");
   if (repeat > .1) reasons.push("Недавно уже пробовал — лучше сменить занятие");
   const cost = Math.max(0, Math.min(3, context.cost ?? 0));
   if (cost > .4) reasons.push("До цели нужно пройти по безопасному пути");
@@ -175,6 +197,12 @@ export function finishForestIntention(mind: ForestMindState, outcome: ForestMind
       mind.needs.curiosity = unit(mind.needs.curiosity * (1 - .08 * (1 - familiar * .75)));
     }
     if (intention.action === "groom") mind.needs.comfort = unit(mind.needs.comfort + .06);
+    if (productiveCare(intention.action)) {
+      // Satisfaction is a small calming effect from actually finishing the task.
+      // It grants neither energy nor impressions, and interrupted work cannot earn it.
+      const arousal = forestMindMotives(mind).arousal;
+      mind.arousal = arousal - Math.max(0, arousal - .22) * .25;
+    }
   }
   event(mind, outcome, intention.action, reason); mind.intention = null;
 }

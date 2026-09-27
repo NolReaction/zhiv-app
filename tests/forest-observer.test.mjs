@@ -121,6 +121,77 @@ test("DEV inspection preserves memory, forced actions and simulation conditions 
     assert.equal(forestPersistenceOverridden({ ...WORLD_DEV_DEFAULTS, ...patch }, levels), false);
   for (const patch of [{ weather: "rain" }, { timeOfDay: "night" }, { navigationMode: "routes" },
     { autoLife: false }, { pose: "sleep" }, { lifeEvent: { id: 1, kind: "home-sleep" } }, { birdEvent: 1 },
+    ...["water-bush", "harvest-berries", "grow-berries"].map(kind => ({ lifeEvent: { id: 1, kind } })),
     { reducedMotion: "on" }, { animation: { id: 1, pose: "jump" } }, { levels: { ...levels, home: 99 } }])
     assert.equal(forestPersistenceOverridden({ ...WORLD_DEV_DEFAULTS, ...patch }, levels), true, JSON.stringify(patch));
+});
+
+test("garden observation is bounded and detached, while phases keep a stable purpose and immediate detail", async () => {
+  const session = connect("observer-garden"), state = session.state, garden = state.life.garden;
+  let calls = 0;
+  const unsubscribe = subscribeForestObservation("observer-garden", () => calls++);
+  try {
+    assert.ok(garden.bushes.length);
+    garden.bushes[0].growth = .54; garden.bushes[0].moisture = .32;
+    garden.routine = { kind: "harvest-berries", bushId: garden.bushes[0].id, phase: "approach-basket", elapsed: 0, totalElapsed: 0, carryingBasket: false };
+    publishForestObservation("observer-garden", state, { now: 0 }); await Promise.resolve();
+    const first = getForestObservation("observer-garden");
+    assert.equal(first.activity, "Собирает ягоды в корзинку");
+    assert.match(first.detail, /Идёт за корзинкой/);
+    assert.equal(first.diagnostics.garden.bushes[0].growth, .54);
+    garden.bushes[0].growth = Infinity; garden.bushes[0].moisture = -2;
+    garden.basket.berries = 300;
+    garden.routine.phase = "collect"; garden.routine.carryingBasket = true;
+    publishForestObservation("observer-garden", state, { now: 1 }); await Promise.resolve();
+    const next = getForestObservation("observer-garden");
+    assert.equal(calls, 2, "semantic phase changes do not wait for the meter throttle");
+    assert.equal(next.activity, first.activity, "the main label follows the purpose, not every small motion");
+    assert.match(next.detail, /снимает спелые ягоды/);
+    assert.equal(next.diagnostics.garden.bushes[0].growth, 0);
+    assert.equal(next.diagnostics.garden.bushes[0].moisture, 0);
+    assert.equal(next.diagnostics.garden.basket.berries, 12);
+    assert.equal(first.diagnostics.garden.bushes[0].growth, .54);
+    assert.equal(first.diagnostics.garden.activity.phase, "approach-basket");
+    for (const value of [first.diagnostics.garden, first.diagnostics.garden.bushes, first.diagnostics.garden.bushes[0], first.diagnostics.garden.basket, first.diagnostics.garden.activity])
+      assert.ok(Object.isFrozen(value));
+    state.pendingAttention = true;
+    assert.equal(forestObservationFrame(state).activity, "Отвлекается на тебя");
+    state.pendingAttention = false; garden.routine = null;
+    state.director.reason = "Точка подхода к кусту недоступна";
+    assert.equal(forestObservationFrame(state).diagnostics.reason, state.director.reason);
+  } finally { unsubscribe(); session.release(); }
+});
+
+test("garden availability explains ripe, watered, full and missing basket states without changing progress", () => {
+  const session = connect("observer-garden-availability"), state = session.state, garden = state.life.garden;
+  try {
+    const read = () => forestObservationFrame(state).diagnostics.garden;
+    const before = structuredClone(garden);
+    assert.equal(read().waterReason, null);
+    assert.match(read().harvestReason, /ещё растут/);
+    assert.deepEqual(garden, before);
+    garden.bushes[0].growth = 1;
+    assert.equal(read().harvestReason, null);
+    assert.match(read().waterReason, /уже созрели/);
+    garden.basket.berries = 12;
+    assert.match(read().harvestReason, /заполнена/);
+    garden.basket = null;
+    assert.match(read().harvestReason, /свободное место/);
+    garden.bushes = [];
+    assert.match(read().waterReason, /Нет ягодного куста/);
+  } finally { session.release(); }
+});
+
+test("unreachable ripe bushes explain the missing work position instead of recommending more growth", () => {
+  const session = connect("observer-garden-unreachable"), state = session.state, garden = state.life.garden;
+  try {
+    assert.ok(garden.bushes.length);
+    for (const bush of garden.bushes) { bush.growth = 1; bush.workPosition = null; }
+    const before = structuredClone(garden), observation = forestObservationFrame(state).diagnostics.garden;
+    for (const reason of [observation.waterReason, observation.harvestReason]) {
+      assert.match(reason, /Нет безопасной точки подхода к кусту/);
+      assert.doesNotMatch(reason, /ещё растут|влажный|уже созрели|Созреть ягодам/);
+    }
+    assert.deepEqual(garden, before, "diagnostics cannot create a work position or change ripe fruit");
+  } finally { session.release(); }
 });

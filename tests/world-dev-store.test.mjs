@@ -31,6 +31,7 @@ test("disabled store ignores every mutation and does not register subscribers", 
   store.patch({ weather: "downpour", heroScale: 2, levels: { unknown: 1 }, autoLife: false, puddles: false,
     debugWater: true, debugNavigation: true, debugFauna: true, navigationMode: "routes" });
   store.triggerPose("greet"); store.triggerLife("butterfly"); store.triggerLife("bush"); store.triggerLife("idle");
+  for (const kind of ["water-bush", "harvest-berries", "grow-berries"]) store.triggerLife(kind);
   store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
@@ -202,7 +203,7 @@ test("every supported pixel pose can be held and triggered", () => {
 test("life events are immutable, validated and repeat with new IDs across resets", () => {
   const store = createWorldDevStore(true);
   let previousId = 0;
-  for (const kind of ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "idle", "idle"]) {
+  for (const kind of ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "idle", "idle"]) {
     const before = store.getSnapshot();
     store.triggerLife(kind);
     const after = store.getSnapshot();

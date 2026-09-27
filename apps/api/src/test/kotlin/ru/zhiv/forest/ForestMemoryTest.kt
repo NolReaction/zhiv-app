@@ -2,6 +2,8 @@ package ru.zhiv.forest
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Test
 import ru.zhiv.auth.AuthFailure
 import java.util.UUID
@@ -14,7 +16,76 @@ fun memoryFixture(energy: Double = 0.7) = ForestMemoryPayload(1, "tiled-forest",
         listOf(ForestMemoryInterest("bush-1", "sniff", 9.0))),
     listOf(ForestMemoryMushroom("mushroom-1", ForestMemoryPoint(320.0, 440.0), 0.5, 0.0)))
 
+fun gardenMemoryFixture(): ForestMemoryPayload {
+    val old = memoryFixture()
+    return old.copy(version = 2,
+        mind = old.mind.copy(recent = listOf(
+            ForestMemoryRecent("water:clearing-bush", "water-bush", "completed", 25.0, 8.0),
+            ForestMemoryRecent("harvest:clearing-bush", "harvest-berries", "completed", 35.0, 10.0))),
+        garden = ForestMemoryGarden(listOf(ForestMemoryBush("clearing-bush", ForestMemoryPoint(310.0, 420.0), 0.45, 0.7, 180.0)), 3))
+}
+
 class ForestMemoryTest {
+    @Test fun `version 1 retains exact field set while version 2 round trips garden`() {
+        val old = memoryFixture()
+        val expectedKeys = setOf("version", "sceneId", "fingerprint", "mind", "hero", "mushrooms")
+        for (codec in listOf(forestMemoryJson, Json { encodeDefaults = true; explicitNulls = true })) {
+            val encoded = codec.encodeToString(old)
+            assertEquals(expectedKeys, codec.parseToJsonElement(encoded).jsonObject.keys)
+            assertEquals(old, codec.decodeFromString<ForestMemoryPayload>(encoded))
+            val garden = gardenMemoryFixture()
+            validateForestMemoryPayload(garden)
+            assertEquals(garden, codec.decodeFromString<ForestMemoryPayload>(codec.encodeToString(garden)))
+        }
+    }
+
+    @Test fun `garden enforces schema version finite bounds and unique stable IDs`() {
+        val valid = gardenMemoryFixture()
+        val garden = requireNotNull(valid.garden)
+        val bush = garden.bushes.single()
+        val bad = listOf(
+            valid.copy(version = 1), valid.copy(version = 3), valid.copy(garden = null),
+            memoryFixture().copy(mind = valid.mind),
+            valid.copy(garden = garden.copy(basketBerries = -1)), valid.copy(garden = garden.copy(basketBerries = 13)),
+            valid.copy(garden = garden.copy(bushes = garden.bushes + garden.bushes)),
+            valid.copy(garden = garden.copy(bushes = (0..32).map { bush.copy(id = "bush-$it") })),
+        ) + listOf(
+            bush.copy(id = ""), bush.copy(id = "a".repeat(161)), bush.copy(id = "bad\u0000"),
+            bush.copy(position = ForestMemoryPoint(-1.0, 0.0)), bush.copy(position = ForestMemoryPoint(0.0, Double.NaN)),
+            bush.copy(growth = Double.POSITIVE_INFINITY), bush.copy(growth = 1.01), bush.copy(moisture = Double.NaN),
+            bush.copy(moisture = -0.01), bush.copy(waterIn = -1.0), bush.copy(waterIn = 600.01),
+        ).map { valid.copy(garden = garden.copy(bushes = listOf(it))) }
+        bad.forEach { assertEquals("INVALID_FOREST_MEMORY", assertFailsWith<AuthFailure> { validateForestMemoryPayload(it) }.code) }
+        for (edge in listOf(0.0, 1.0)) validateForestMemoryPayload(valid.copy(garden = ForestMemoryGarden(
+            (0..31).map { bush.copy(id = "bush-$it", growth = edge, moisture = edge, waterIn = edge * 600.0) }, (edge * 12).toInt())))
+        validateForestMemoryPayload(valid.copy(garden = ForestMemoryGarden(emptyList(), 0)))
+    }
+
+    @Test fun `garden JSON rejects unknown keys null and quoted or fractional primitive values`() {
+        val command = ForestMemoryCommand("0000-0000-0001", UUID.randomUUID().toString(), UUID.randomUUID().toString(), 0, "save",
+            leaseToken = UUID.randomUUID().toString(), snapshot = gardenMemoryFixture())
+        val json = forestMemoryJson.encodeToString(command)
+        val gardenJson = forestMemoryJson.encodeToString(requireNotNull(command.snapshot?.garden))
+        assertEquals(command, decodeForestMemoryCommand(forestMemoryJson.parseToJsonElement(json)))
+        val invalid = listOf(
+            json.replace("\"basketBerries\":3", "\"basketBerries\":\"3\""),
+            json.replace("\"basketBerries\":3", "\"basketBerries\":3.5"),
+            json.replace("\"basketBerries\":3", "\"basketBerries\":3,\"resources\":100"),
+            json.replace("\"moisture\":0.7", "\"moisture\":\"0.7\""),
+            json.replace("\"waterIn\":180.0", "\"waterIn\":\"180\""),
+            json.replace("\"waterIn\":180.0", "\"waterIn\":180.0,\"extra\":true"),
+            json.replace("\"garden\":$gardenJson", "\"garden\":null"),
+            json.replace(",\"garden\":$gardenJson", ""),
+        )
+        invalid.forEach { raw ->
+            assertNotEquals(json, raw)
+            assertFailsWith<AuthFailure> { decodeForestMemoryCommand(forestMemoryJson.parseToJsonElement(raw)) }
+        }
+        val old = forestMemoryJson.encodeToString(command.copy(snapshot = memoryFixture()))
+        val nullGarden = old.replace("\"mushrooms\":", "\"garden\":null,\"mushrooms\":")
+        assertFailsWith<AuthFailure> { decodeForestMemoryCommand(forestMemoryJson.parseToJsonElement(nullGarden)) }
+    }
+
     @Test fun `snapshot rejects unbounded nonfinite duplicate and stale cosmetic data`() {
         val valid = memoryFixture()
         validateForestMemoryPayload(valid)

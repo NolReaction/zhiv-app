@@ -10,6 +10,9 @@ import { compileWorldInteractions, WORLD_INTERACTION_LIMITS } from "../interacti
 import { previewWorldScene } from "../tiled/preview-state";
 import type { WorldController } from "../use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
+import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
+import { useForestObservation } from "../use-forest-observation";
+import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, worldDevStore, type WorldDevLifeAction, type WorldDevState } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
 
@@ -64,6 +67,20 @@ const LIFE_ACTIONS = [
   ["bush", "Спрятаться в кусте"],
   ["home-sleep", "Отправиться спать домой"], ["wake", "Разбудить Мохлика"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
 ] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
+const GARDEN_ACTIONS = [["water-bush", "Полить куст"], ["harvest-berries", "Собрать ягоды"],
+  ["grow-berries", "Созреть ягодам · DEV"], ["idle", "Отменить занятие"]] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
+const lifeActionLabel = (action: WorldDevLifeAction) => [...LIFE_ACTIONS, ...GARDEN_ACTIONS].find(([kind]) => kind === action)?.[1] ?? action;
+
+/** Only known current constraints are disabled here; pathfinding remains the director's responsibility. */
+export function gardenDevActionUnavailable(action: WorldDevLifeAction, garden: ForestGardenObservation | undefined, state: WorldDevState) {
+  if (!["water-bush", "harvest-berries", "grow-berries"].includes(action)) return null;
+  if (!garden) return "Дождитесь загрузки ягодного куста и корзинки.";
+  if (!garden.bushes.length) return "Нет ягодного куста с точкой подхода. Проверьте Bushes в Tiled.";
+  if (action === "grow-berries") return null;
+  if (state.navigationMode === "routes") return "Для занятий с кустом выберите Отладка → Пути → Свободная полянка.";
+  if (state.weather === "rain" || state.weather === "downpour") return "Во время сильного дождя Мохлик не занимается кустом.";
+  return action === "water-bush" ? garden.waterReason : garden.harvestReason;
+}
 
 function subscribeMotion(listener: () => void) {
   const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -96,7 +113,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
 }
 
 const DEV_TABS = [["mochlik", "Мохлик"], ["world", "Мир"], ["buildings", "Здания"], ["ai", "AI"], ["debug", "Отладка"]] as const;
-const MOCHLIK_TABS = [["scenes", "Сценки"], ["animation", "Анимации"], ["appearance", "Внешность"]] as const;
+const MOCHLIK_TABS = [["scenes", "Сценки"], ["activities", "Занятия"], ["animation", "Анимации"], ["appearance", "Внешность"]] as const;
 const DEBUG_TABS = [["overlays", "Разметка"], ["routes", "Пути"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
@@ -143,6 +160,8 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
   const page: DevPage = tab === "mochlik" ? mochlikTab : tab === "debug" ? debugTab : tab;
   const [lastAction, setLastAction] = useState<ManualAction | null>(null);
   const [feedback, setFeedback] = useState("");
+  const observation = useForestObservation(active && (open || lastAction?.kind === "life"
+    && ["water-bush", "harvest-berries", "grow-berries"].includes(lastAction.action)) ? presenceKey : undefined);
   const trigger = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -176,7 +195,10 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
     if (action.kind === "pose") return heroUnavailable;
     if (action.action === "idle") return null;
     if (action.action === "grow-mushrooms") return motionUnavailable;
+    if (action.action === "grow-berries") return motionUnavailable ?? gardenDevActionUnavailable(action.action, observation?.diagnostics.garden, state);
     if (heroUnavailable) return heroUnavailable;
+    const gardenReason = gardenDevActionUnavailable(action.action, observation?.diagnostics.garden, state);
+    if (gardenReason) return gardenReason;
     if (action.action === "bush" && !TILED_WORLD.bushes?.length) return "Добавьте куст и точки входа в Tiled.";
     if (action.action === "home-sleep" && !state.showBuildings) return "Дом скрыт. Включите «Показывать здания».";
     if (action.action === "butterfly" && state.butterflies === "off") return "Бабочки выключены. Выберите «Авто» или «Включить».";
@@ -185,7 +207,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
   }
   const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
   const repeatLabel = lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
-    : lastAction?.kind === "life" ? LIFE_ACTIONS.find(([kind]) => kind === lastAction.action)![1] : "Сценарий с птицами";
+    : lastAction?.kind === "life" ? lifeActionLabel(lastAction.action) : "Сценарий с птицами";
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   function change(patch: Partial<WorldDevState>, message = "Предпросмотр обновлён") {
     worldDevStore.patch(patch); setFeedback(message);
@@ -203,7 +225,8 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
       worldDevStore.triggerLife(action.action);
       setFeedback(action.action === "idle" ? "Сценка отменена. Автоматические сценки выключены."
         : action.action === "butterfly" || action.action === "firefly" ? "Запрошена встреча с доступной особью. Если подходящей рядом нет, сценка не начнётся."
-        : `Лесная сценка: ${LIFE_ACTIONS.find(([kind]) => kind === action.action)![1].toLowerCase()}`);
+        : action.action === "grow-berries" ? "Созревание ускорено в DEV. Память аккаунта отключена для этой проверки."
+        : `Запрошено занятие: ${lifeActionLabel(action.action).toLowerCase()}`);
     } else {
       worldDevStore.triggerPose(action.pose); setFeedback(`Анимация: ${POSE_LABELS[action.pose].toLowerCase()}`);
     }
@@ -250,7 +273,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
             onScroll={event => { scrollPositions.current[subpage] = event.currentTarget.scrollTop; }}>
             {page === subpage && <WorldDevPanelContent world={world} worldView={worldView} presenceKey={presenceKey}
               onOpenWorld={onOpenWorld} onOpenCalendar={onOpenCalendar} onOpenGame={onOpenGame} onOpenStatus={onOpenStatus} onOpenWardrobe={onOpenWardrobe} onOpenCollection={onOpenCollection}
-              state={state} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
+              state={state} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
               heroUnavailable={heroUnavailable} birdsUnavailable={birdsUnavailable} unavailable={unavailable}
               change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} />}
           </div>)}
@@ -266,9 +289,9 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
 export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection,
-  state, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion,
+  state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion,
 }: WorldDevPanelProps & {
-  state: WorldDevState; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
+  state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
   heroUnavailable: string | null; birdsUnavailable: string | null; unavailable: (action: ManualAction) => string | null;
   change: (patch: Partial<WorldDevState>, message?: string) => void; play: (action: ManualAction) => void;
   outfit: (slot: "palette" | "head" | "neck", value: string) => void; shortcut: (callback: () => void) => void;
@@ -282,6 +305,8 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
   const interactionDiagnostics = previewScene ? compileWorldInteractions(previewScene).diagnostics : [];
   const lifeReasons = page === "scenes"
     ? [...new Set(LIFE_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
+  const gardenReasons = page === "activities"
+    ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   return <div className={styles.pageContent}>
     {page === "scenes" && <>
       <h3 className={styles.pageTitle}>Лесные сценки</h3>
@@ -300,6 +325,21 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
       <p className={styles.hint}>«Отправиться спать домой» проверяет весь путь без ожидания трёх минут. Нажмите на дом или круг, чтобы разбудить. «Вырастить грибы» показывает быстрый рост из маленьких. «Съесть гриб» выбирает уже выросший гриб с доступным подходом. Наград и изменений инвентаря нет.</p>
       <p className={styles.hint}>Встречи с бабочкой и светлячком выбирают уже существующую свободную особь поблизости. Новое насекомое по кнопке не появляется. Учитываются погода, освещение и занятость участников; если подходящей особи нет, запрос не запускает сценку. «Отменить сценку» останавливает Мохлика и выключает автоматические сценки.</p>
       </Section>
+    </>}
+    {page === "activities" && <>
+      <h3 className={styles.pageTitle}>Занятия на полянке</h3>
+      <p className={styles.hint}>Полив → медленное созревание → сбор в корзинку. Мохлик сам выбирает подходящий момент; здесь можно проверить каждый шаг.</p>
+      <div className={styles.lifeActions}>
+        {GARDEN_ACTIONS.map(([action, label]) => {
+          const reason = unavailable({ kind: "life", action });
+          return <button key={action} type="button" disabled={Boolean(reason)} aria-describedby={reason ? `${id}-garden-reason-${gardenReasons.indexOf(reason)}` : undefined}
+            onClick={() => { if (!reason) play({ kind: "life", action }); }}>{label}</button>;
+        })}
+      </div>
+      {gardenReasons.map((reason, index) => <p key={reason} id={`${id}-garden-reason-${index}`} className={styles.hint}>{reason}</p>)}
+      {observation && <div className={styles.aiIntention}><strong>{observation.activity}</strong><p>{observation.diagnostics.reason}</p></div>}
+      <ForestGardenDiagnostics garden={observation?.diagnostics.garden} />
+      <p className={styles.hint}>Ручной запуск и ускорение роста отключают запись памяти аккаунта для тестовой сцены. Просмотр показателей безопасен. «Отменить занятие» также выключает автоматические сценки.</p>
     </>}
     {page === "animation" && <>
       <h3 className={styles.pageTitle}>Анимации Мохлика</h3>

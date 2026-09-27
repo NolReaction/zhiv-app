@@ -8,7 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { WorldDevTabs, WorldDevPanelContent } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
+const { WorldDevTabs, WorldDevPanelContent, gardenDevActionUnavailable } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
 const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 
@@ -83,7 +83,7 @@ test("arrow keys wrap, Home and End select and focus; Tab and composing/modifier
 test("each DEV page renders only its controls, with no simulation or account mutation during inspection", () => {
   const snapshot = worldDevStore.getSnapshot();
   const expected = {
-    scenes: "Лесные сценки", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
+    scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
     world: "Погода и живность", buildings: "Постройки", ai: "Мышление и память",
     overlays: "Разметка сцены", routes: "Навигация и входы", app: "Приложение и тесты",
   };
@@ -99,6 +99,36 @@ test("each DEV page renders only its controls, with no simulation or account mut
     if (page !== "ai") assert.doesNotMatch(markup, /Данные появятся, когда сцена/);
   }
   assert.equal(worldDevStore.getSnapshot(), snapshot, "opening and switching pages must not reset or override a running scene");
+});
+
+test("garden checks have their own compact page, descriptive disabled actions and an available cancel", () => {
+  const reason = "Ягоды ещё растут";
+  const { elements, markup, calls } = panel("activities", { unavailable: action => action.action === "harvest-berries" ? reason : null });
+  const buttons = elements.filter(element => element.type === "button");
+  assert.deepEqual(buttons.map(labelText), ["Полить куст", "Собрать ягоды", "Созреть ягодам · DEV", "Отменить занятие"]);
+  assert.equal(buttons[1].props.disabled, true);
+  assert.equal(labelText(elements.find(element => element.props.id === buttons[1].props["aria-describedby"])), reason);
+  buttons[1].props.onClick(); assert.deepEqual(calls.actions, [], "disabled control cannot dispatch through a programmatic callback");
+  buttons[2].props.onClick();
+  assert.deepEqual(calls.actions, [{ kind: "life", action: "grow-berries" }]);
+  assert.equal(buttons[3].props.disabled, false);
+  assert.match(markup, /отключают запись памяти аккаунта/);
+  assert.doesNotMatch(markup, /Поиграть с бабочкой|Размер ·|Выдача меняет баланс/);
+});
+
+test("garden buttons explain unavailable state without inventing ripe berries or bypassing navigation", () => {
+  const garden = { bushes: [{ id: "bush", growth: .5, moisture: .2, waterIn: 0 }], basket: { berries: 0, capacity: 12 }, activity: null,
+    cooldown: 0, waterReason: null, harvestReason: "Ягоды ещё растут" };
+  const reason = (action, patch = {}) => gardenDevActionUnavailable(action, garden, { ...WORLD_DEV_DEFAULTS, ...patch });
+  assert.equal(reason("water-bush"), null);
+  assert.equal(reason("harvest-berries"), garden.harvestReason);
+  assert.equal(reason("grow-berries"), null);
+  assert.match(reason("water-bush", { weather: "downpour" }), /сильного дождя/);
+  assert.match(reason("water-bush", { navigationMode: "routes" }), /Свободная полянка/);
+  assert.equal(reason("grow-berries", { weather: "downpour", navigationMode: "routes" }), null, "ripening preview requires no walk");
+  assert.match(gardenDevActionUnavailable("grow-berries", undefined, WORLD_DEV_DEFAULTS), /Дождитесь загрузки/);
+  assert.match(gardenDevActionUnavailable("grow-berries", { ...garden, bushes: [] }, WORLD_DEV_DEFAULTS), /Нет ягодного куста/);
+  assert.equal(gardenDevActionUnavailable("idle", undefined, WORLD_DEV_DEFAULTS), null);
 });
 
 test("all one-shot poses remain available and selecting a preview does not launch it", () => {

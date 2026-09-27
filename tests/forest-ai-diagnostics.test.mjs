@@ -8,7 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { ForestAiDiagnostics, createForestAiReport, decisionTime } = await vite.ssrLoadModule("/features/world/dev/forest-ai-diagnostics.tsx");
+const { ForestAiDiagnostics, ForestGardenDiagnostics, createForestAiReport, decisionTime } = await vite.ssrLoadModule("/features/world/dev/forest-ai-diagnostics.tsx");
 
 const observation = () => ({
   activity: "Идёт к грибу", detail: "Заметил находку и выбрал безопасный подход", mood: "Любопытствует",
@@ -69,6 +69,33 @@ test("hidden motives remain read-only and the report allowlists only bounded mot
   assert.doesNotMatch(JSON.stringify(report), /secret-motive-token/);
   snapshot.diagnostics.motives = { arousal: Infinity, saturation: -1, variety: 3 };
   assert.deepEqual(createForestAiReport(snapshot).diagnostics.motives, { arousal: 0, saturation: 0, variety: 1 });
+});
+
+test("garden diagnostics isolate plant progress from care needs and export only bounded, detached fields", () => {
+  const snapshot = observation();
+  snapshot.diagnostics.garden = {
+    bushes: [{ id: "clearing-bush", growth: .43, moisture: .75, waterIn: 70, accountId: "private-garden-account" }],
+    basket: { berries: 3, capacity: 12, position: { x: 300, y: 100 }, token: "secret-garden-token" },
+    activity: { kind: "harvest-berries", phase: "return-basket", carryingBasket: true },
+    cooldown: 0, waterReason: "Мохлик занят", harvestReason: "Мохлик занят",
+  };
+  const before = structuredClone(snapshot), { markup, elements } = render(snapshot);
+  assert.match(markup, /Ягодный куст и корзинка/);
+  assert.match(markup, /3 \/ 12 ягод/);
+  assert.match(markup, /Возвращает корзинку/);
+  assert.match(markup, /Созревание/);
+  assert.equal(elements.filter(element => element.type === "meter").length, 4, "the garden is a separate component from character needs");
+  assert.deepEqual(snapshot, before);
+  const report = createForestAiReport(snapshot);
+  assert.doesNotMatch(JSON.stringify(report), /private-garden-account|secret-garden-token|position/);
+  report.diagnostics.garden.bushes[0].growth = 1;
+  assert.equal(snapshot.diagnostics.garden.bushes[0].growth, .43);
+  snapshot.diagnostics.garden.bushes = Array.from({ length: 100 }, (_, i) => ({ id: `bush-${i}`, growth: Infinity, moisture: 2, waterIn: -5 }));
+  snapshot.diagnostics.garden.basket.berries = 1000;
+  const bounded = createForestAiReport(snapshot).diagnostics.garden;
+  assert.equal(bounded.bushes.length, 32); assert.equal(bounded.bushes[0].growth, 0);
+  assert.equal(bounded.bushes[0].moisture, 1); assert.equal(bounded.bushes[0].waterIn, 0); assert.equal(bounded.basket.berries, 12);
+  assert.match(renderToStaticMarkup(ForestGardenDiagnostics({})), /после загрузки сцены/);
 });
 
 test("DEV shows a harmless loading state, paused state and unavailable local memory", () => {

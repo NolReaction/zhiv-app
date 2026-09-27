@@ -19,7 +19,8 @@ export type ForestMemoryEnvironment = {
 };
 type MemoryState = Pick<ForestSessionState, "clearing" | "life">;
 type JsonObject = Record<string, unknown>;
-const VERSION = 1, MAX_BYTES = 32_768, SAVE_INTERVAL_MS = 10_000, MAX_TIMESTAMP = 8_640_000_000_000_000;
+// Keep the storage key stable so existing v1 memory can be upgraded in place.
+const STORAGE_VERSION = 1, SNAPSHOT_VERSION = 2, MAX_BYTES = 32_768, SAVE_INTERVAL_MS = 10_000, MAX_TIMESTAMP = 8_640_000_000_000_000;
 const fingerprints = new WeakMap<FixedWorldScene, string>();
 const object = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value);
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -28,7 +29,7 @@ const point = (value: unknown): value is WorldPoint => object(value) && finite(v
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 160;
 const samePoint = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y) < .001;
 
-export function forestMemoryKey(account: string) { return `zhiv:forest-memory:v${VERSION}:${encodeURIComponent(account)}`; }
+export function forestMemoryKey(account: string) { return `zhiv:forest-memory:v${STORAGE_VERSION}:${encodeURIComponent(account)}`; }
 
 /** A geometry edit invalidates feet and old landmarks, without resetting the pet's needs. */
 export function forestSceneFingerprint(scene: FixedWorldScene): string {
@@ -80,7 +81,7 @@ export function captureForestMemory(state: MemoryState, scene: FixedWorldScene):
   const clearing = state.clearing, mind = clearing.behavior.mind;
   const carrying = state.life.routine?.kind === "mushroom" && state.life.routine.picked && state.life.routine.elapsed < 4.1
     ? state.life.routine.mushroomId : null;
-  return { version: VERSION, sceneId: scene.id, fingerprint: forestSceneFingerprint(scene),
+  return { version: SNAPSHOT_VERSION, sceneId: scene.id, fingerprint: forestSceneFingerprint(scene),
     // Decisions, encounter tokens, path graphs and frame clocks are deliberately absent.
     mind: { elapsed: mind.elapsed, needs: { ...mind.needs },
       recent: mind.recent.filter(item => item.at <= mind.elapsed && mind.elapsed - item.at <= 300).slice(-16).map(item => ({ ...item })),
@@ -94,6 +95,11 @@ export function captureForestMemory(state: MemoryState, scene: FixedWorldScene):
       // An unbitten carried prop is put back; bitten food keeps its existing regrowth timer.
       growth: mushroom.id === carrying ? 1 : bounded(mushroom.growth, 0, 1),
       regrowIn: mushroom.id === carrying ? 0 : bounded(mushroom.regrowIn, 0, 22) })),
+    // Harvest is committed by the director only at deposit. An unfinished basket
+    // trip therefore cannot consume fruit or manufacture a second saved harvest.
+    garden: { bushes: state.life.garden.bushes.slice(0, 32).map(bush => ({ id: bush.id, position: { ...bush.position },
+      growth: bounded(bush.growth, 0, 1), moisture: bounded(bush.moisture, 0, 1), waterIn: bounded(bush.waterIn, 0, 600) })),
+      basketBerries: Math.floor(bounded(state.life.garden.basket?.berries ?? state.life.garden.unplacedBerries, 0, 12)) },
   };
 }
 
@@ -114,10 +120,11 @@ function restore(state: MemoryState, account: string, scene: FixedWorldScene, ra
   if (raw.length > MAX_BYTES + (remote ? 512 : 0)) return null;
   let data: unknown;
   try { data = JSON.parse(raw); } catch { return null; }
-  if (!object(data) || data.version !== VERSION || data.account !== account || !remote && data.sceneId !== scene.id
+  if (!object(data) || data.version !== 1 && data.version !== SNAPSHOT_VERSION || data.account !== account || !remote && data.sceneId !== scene.id
     || !text(data.fingerprint) || !finite(data.savedAt) || data.savedAt < 0 || data.savedAt > MAX_TIMESTAMP || !object(data.mind)
     || !object(data.mind.needs) || !object(data.hero) || !Array.isArray(data.mushrooms)
-    || data.mushrooms.length > 128) return null;
+    || data.mushrooms.length > 128
+    || data.version === SNAPSHOT_VERSION && (!object(data.garden) || !Array.isArray(data.garden.bushes) || data.garden.bushes.length > 32)) return null;
   const reconciled = data.sceneId !== scene.id || data.fingerprint !== forestSceneFingerprint(scene), clearing = state.clearing;
   clearing.behavior.mind = restoreForestMind(reconciled ? { needs: data.mind.needs } : data.mind);
   if (!reconciled) {
@@ -141,6 +148,24 @@ function restore(state: MemoryState, account: string, scene: FixedWorldScene, ra
     mushroom.growth = bounded(remembered.growth, 0, 1, mushroom.growth);
     mushroom.regrowIn = bounded(remembered.regrowIn, 0, 22);
   }
+  const garden = state.life.garden;
+  if (data.version === SNAPSHOT_VERSION && data.sceneId === scene.id && object(data.garden) && Array.isArray(data.garden.bushes)) {
+    const rememberedBushes = data.garden.bushes;
+    for (const bush of garden.bushes) {
+      const matches = rememberedBushes.filter(item => object(item) && item.id === bush.id);
+      const remembered = matches.length === 1 ? matches[0] : null;
+      if (!object(remembered) || !point(remembered.position) || !samePoint(remembered.position, bush.position)) continue;
+      bush.growth = bounded(remembered.growth, 0, 1, bush.growth);
+      bush.moisture = bounded(remembered.moisture, 0, 1, bush.moisture);
+      bush.waterIn = bounded(remembered.waterIn, 0, 600);
+    }
+    const berries = Math.floor(bounded(data.garden.basketBerries, 0, 12));
+    if (garden.basket) garden.basket.berries = berries;
+    else garden.unplacedBerries = berries;
+  }
+  // Only stable results survive reload. The basket and tools start at their
+  // current authored/validated place, rather than replaying a partially held prop.
+  garden.routine = null;
   // No clock catch-up or resumed encounter: absence never drains needs or grows rewards.
   clearing.behavior.mind.intention = null; clearing.behavior.mind.candidates = [];
   return { savedAt: data.savedAt, reconciled };

@@ -2,6 +2,15 @@ import { clearingActivityFrame } from "./clearing-activity";
 import { forestMindActionLabel, forestMindMood, forestMindMotives, type ForestMindMotives } from "./forest-mind";
 import type { ForestSessionState } from "./forest-session";
 import type { ForestMemorySyncStatus } from "./forest-memory-sync";
+import { FOREST_GARDEN_LIMITS, gardenEligibleBushes } from "./forest-garden";
+
+export type ForestGardenObservation = Readonly<{
+  bushes: ReadonlyArray<Readonly<{ id: string; growth: number; moisture: number; waterIn: number }>>;
+  basket: Readonly<{ berries: number; capacity: number }> | null;
+  activity: Readonly<{ kind: "water-bush" | "harvest-berries"; phase: string; carryingBasket: boolean }> | null;
+  cooldown: number;
+  waterReason: string | null; harvestReason: string | null;
+}>;
 
 export type ForestObservation = Readonly<{
   activity: string; detail: string; mood: string;
@@ -12,6 +21,7 @@ export type ForestObservation = Readonly<{
   diagnostics: Readonly<{
     reason: string;
     motives?: Readonly<ForestMindMotives>;
+    garden?: ForestGardenObservation;
     candidates: ReadonlyArray<Readonly<{ id: string; label: string; score: number; available: boolean; reason: string }>>;
     events: ReadonlyArray<Readonly<{ id: number; at: number; type: string; label: string; reason: string }>>;
   }>;
@@ -58,6 +68,21 @@ function currentActivity(state: ForestSessionState, options: Options) {
     return { label: "Отправляется домой", detail: "Собирается отдохнуть в домике." };
   if (clearing.stage.startsWith("bush-")) return { label: clearing.stage === "bush-hidden" ? "Прячется в кусте" : "Исследует куст",
     detail: "Возится среди листьев и ягод. Скоро выберется обратно." };
+  if (life.garden?.routine) {
+    const routine = life.garden.routine;
+    const phaseDetail: Record<string, string> = {
+      "approach-basket": "Идёт за корзинкой, чтобы собрать спелые ягоды.",
+      "take-basket": "Поднимает корзинку перед сбором ягод.",
+      "approach-bush": routine.kind === "water-bush" ? "Идёт к сухому кусту с лейкой." : "Несёт корзинку к спелым ягодам.",
+      water: "Осторожно поливает землю у корней. Влажная почва помогает ягодам расти.",
+      collect: "Аккуратно снимает спелые ягоды и складывает их в корзинку.",
+      "return-basket": "Возвращает корзинку с урожаем на её место.",
+      deposit: "Ставит собранные ягоды рядом с домом.",
+      settle: "Закончил заботиться о кусте и убирает инструмент.",
+    };
+    return { label: routine.kind === "water-bush" ? "Заботится о ягодном кусте" : "Собирает ягоды в корзинку",
+      detail: phaseDetail[routine.phase] ?? "Занимается ягодным кустом на полянке." };
+  }
   if (fauna.encounter) {
     const { kind, phase } = fauna.encounter;
     if (phase === "release" || phase === "interrupt") return { label: kind === "butterfly" ? "Провожает бабочку" : "Провожает светлячка",
@@ -82,6 +107,32 @@ function currentActivity(state: ForestSessionState, options: Options) {
   return { label: "Осматривает полянку", detail: "Немного присматривается и выбирает следующее занятие." };
 }
 const percent = (value: number) => Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100) / 100;
+const seconds = (value: number) => Math.ceil(Math.max(0, Math.min(3600, Number.isFinite(value) ? value : 0)));
+
+function gardenObservation(state: ForestSessionState): ForestGardenObservation | undefined {
+  const garden = state.life.garden;
+  if (!garden) return undefined;
+  const cooldown = seconds(garden.nextActionAt - garden.elapsed);
+  const commonReason = !garden.bushes.length ? "Нет ягодного куста с точкой подхода. Проверьте Bushes в Tiled."
+    : garden.routine ? "Мохлик уже занимается кустом. Можно отменить занятие."
+    : cooldown ? "Мохлик немного отдыхает между занятиями."
+    : !garden.bushes.some(bush => bush.workPosition) ? "Нет безопасной точки подхода к кусту. Проверьте свободное место рядом с контуром и WalkAreas в Tiled." : null;
+  const waterReason = commonReason ?? (gardenEligibleBushes(garden, "water-bush").length ? null
+    : "Полив пока не нужен: куст влажный, недавно полит или ягоды уже созрели.");
+  const harvestReason = commonReason ?? (!garden.basket ? "Для корзинки не найдено свободное место рядом с домом."
+    : garden.basket.berries + FOREST_GARDEN_LIMITS.harvest > garden.basket.capacity ? "Корзинка заполнена. Новый урожай пока остаётся на кусте."
+    : gardenEligibleBushes(garden, "harvest-berries").length ? null : "Ягоды ещё растут. Для проверки нажмите «Созреть ягодам · DEV».");
+  return Object.freeze({
+    bushes: Object.freeze(garden.bushes.slice(0, FOREST_GARDEN_LIMITS.maxBushes).map(bush => Object.freeze({
+      id: bush.id.slice(0, 128), growth: percent(bush.growth), moisture: percent(bush.moisture), waterIn: seconds(bush.waterIn),
+    }))),
+    basket: garden.basket ? Object.freeze({ berries: Math.round(Math.max(0, Math.min(FOREST_GARDEN_LIMITS.capacity,
+      Number.isFinite(garden.basket.berries) ? garden.basket.berries : 0))), capacity: FOREST_GARDEN_LIMITS.capacity }) : null,
+    activity: garden.routine ? Object.freeze({ kind: garden.routine.kind, phase: garden.routine.phase,
+      carryingBasket: Boolean(garden.routine.carryingBasket) }) : null,
+    cooldown, waterReason, harvestReason,
+  });
+}
 function eventId(value: string) {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
@@ -93,6 +144,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
   const mind = state.clearing.behavior.mind;
   const activity = currentActivity(state, options), mood = forestMindMood(mind);
   const motives = forestMindMotives(mind);
+  const garden = gardenObservation(state);
   const memory = state.memory;
   const status = memory?.mode === "unavailable" ? "unavailable" : !memory?.enabled || memory.mode === "ephemeral" ? "session"
     : memory.restored ? "restored" : memory.lastSavedAt !== null ? "saved" : "session";
@@ -104,8 +156,9 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
     paused: Boolean(options.paused) || memory?.sync?.mode === "other-device",
     memory: Object.freeze({ status, savedAt: memory?.lastSavedAt ?? null,
       ...(memory?.sync ? { sync: Object.freeze({ ...memory.sync }) } : {}) }),
-    diagnostics: Object.freeze({ reason: mind.intention?.reason ?? activity.detail,
+    diagnostics: Object.freeze({ reason: mind.intention?.reason ?? state.director.reason ?? activity.detail,
       motives: Object.freeze({ arousal: percent(motives.arousal), saturation: percent(motives.saturation), variety: percent(motives.variety) }),
+      ...(garden ? { garden } : {}),
       candidates: Object.freeze(mind.candidates.slice(0, 32).map(candidate => Object.freeze({ id: candidate.key,
         label: forestMindActionLabel(candidate.action), score: candidate.score ?? 0, available: candidate.available,
         reason: `${candidate.selected ? "Выбрано. " : ""}${candidate.reasons.join(". ")}` }))),
@@ -120,7 +173,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
 export function publishForestObservation(key: string | undefined, state: ForestSessionState, options: Options = {}) {
   if (!key) return;
   const now = options.now ?? Date.now(), previous = entries.get(key);
-  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.fauna.encounter?.phase}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}`;
+  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}`;
   if (!options.force && previous?.phase === phase && now < previous.nextAt) return;
   const snapshot = forestObservationFrame(state, options), signature = JSON.stringify(snapshot);
   if (previous?.signature === signature) { previous.nextAt = now + 500; previous.phase = phase; return; }

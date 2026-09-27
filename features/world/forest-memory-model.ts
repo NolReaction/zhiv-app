@@ -12,10 +12,20 @@ const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
 const point = z.object({ x: z.number().finite().min(0).max(1e7), y: z.number().finite().min(0).max(1e7) }).strict();
 const activity = z.enum(["look", "sniff", "groom", "rest"]);
-const action = z.enum(["look", "sniff", "groom", "rest", "bush", "home-sleep", "butterfly", "firefly", "mushroom", "leaf", "idle"]);
+const gardenActions = ["water-bush", "harvest-berries"] as const;
+const action = z.enum(["look", "sniff", "groom", "rest", "bush", "home-sleep", "butterfly", "firefly", "mushroom", "leaf", "idle", ...gardenActions]);
+
+const garden = z.object({
+  bushes: z.array(z.object({ id: text, position: point, growth: fraction, moisture: fraction,
+    waterIn: z.number().finite().min(0).max(600) }).strict()).max(32),
+  basketBerries: z.number().int().min(0).max(12),
+}).strict().superRefine((value, context) => {
+  if (new Set(value.bushes.map(item => item.id)).size !== value.bushes.length)
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Bush IDs must be unique" });
+});
 
 export const forestMemoryPayloadSchema = z.object({
-  version: z.literal(1), sceneId: text, fingerprint: text,
+  version: z.union([z.literal(1), z.literal(2)]), sceneId: text, fingerprint: text,
   mind: z.object({
     elapsed: clock, needs: z.object({ energy: fraction, curiosity: fraction, comfort: fraction, attention: fraction }).strict(),
     attentionUntil: clock,
@@ -31,7 +41,12 @@ export const forestMemoryPayloadSchema = z.object({
       age: z.number().finite().min(0).max(75) }).strict()).max(8) }).strict(),
   mushrooms: z.array(z.object({ id: text, position: point, growth: fraction,
     regrowIn: z.number().finite().min(0).max(22) }).strict()).max(128),
+  garden: garden.optional(),
 }).strict().superRefine((value, context) => {
+  if (value.version === 2 && value.garden === undefined)
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["garden"], message: "Version 2 requires garden memory" });
+  if (value.version === 1 && (value.garden !== undefined || value.mind.recent.some(item => gardenActions.some(action => action === item.action))))
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Garden memory and activities require version 2" });
   if (new TextEncoder().encode(JSON.stringify(value)).byteLength > FOREST_MEMORY_SNAPSHOT_BYTES)
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Forest memory is too large" });
   if (new Set(value.mushrooms.map(item => item.id)).size !== value.mushrooms.length)
@@ -60,6 +75,7 @@ export const forestMemoryViewSchema = z.object({
 export const forestMemoryResultSchema = z.object({ state: forestMemoryViewSchema, acceptedRevision: revision, replayed: z.boolean() }).strict();
 
 export type ForestMemoryPayload = z.infer<typeof forestMemoryPayloadSchema>;
+export type ForestMemoryGarden = z.infer<typeof garden>;
 export type ForestMemoryView = z.infer<typeof forestMemoryViewSchema>;
 export type ForestMemoryCommand = z.input<typeof forestMemoryCommandSchema>;
 export type ForestMemoryResult = z.infer<typeof forestMemoryResultSchema>;

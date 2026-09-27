@@ -141,3 +141,41 @@ test("ties are stable across frame order and only identified birds at real perch
   assert.equal(state.attention.size, 0, "expired visits leave no permanent registry entries");
   assert.deepEqual(applyBirdReactions(state, []), [], "attention never spawns a hidden or duplicate bird");
 });
+
+test("a resting visitor grows used to passing steps but still notices an abrupt rustle", () => {
+  const birds=[bird('visitor',100,100)],state=createBirdReactions(),event=sound(birds[0]);
+  advanceBirdReactions(state,birds,.02,event,bounds);
+  advanceBirdReactions(state,birds,.2);
+  const first=Math.abs(applyBirdReactions(state,birds)[0].headTurn);
+  // Frequent sounds teach familiarity without extending or restarting the first look.
+  for(let i=0;i<30;i++)advanceBirdReactions(state,birds,.25,event,bounds);
+  advanceBirdReactions(state,birds,1);
+  advanceBirdReactions(state,birds,.02,event,bounds);
+  advanceBirdReactions(state,birds,.2);
+  const familiar=Math.abs(applyBirdReactions(state,birds)[0].headTurn);
+  assert.ok(familiar<first*.8,'ordinary passing footsteps draw a softer glance');
+  advanceBirdReactions(state,birds,9);
+  advanceBirdReactions(state,birds,.02,sound(birds[0],'bush-rustle'),bounds);
+  advanceBirdReactions(state,birds,.2);
+  assert.ok(Math.abs(applyBirdReactions(state,birds)[0].headTurn)>first*.95,
+    'a different, sudden sound retains the full response');
+  assert.deepEqual(poseOnly(applyBirdReactions(state,birds)),poseOnly(birds));
+});
+
+test("bird familiarity recovers in quiet active time and expires with the individual visit", () => {
+  const birds=[bird('visitor',100,100)],state=createBirdReactions(),event=sound(birds[0]);
+  for(let i=0;i<10;i++)advanceBirdReactions(state,birds,1.6,event,bounds);
+  const learned=state.familiarity.get('visitor').footsteps;
+  assert.ok(learned>.5);
+  const frozen=structuredClone(state);
+  advanceBirdReactions(state,birds,0,event,bounds);applyBirdReactions(state,birds);
+  assert.deepEqual(state,frozen,'pause and rendering never teach or forget');
+  advanceBirdReactions(state,birds,150);
+  assert.ok(state.familiarity.get('visitor').footsteps<learned*.15);
+  advanceBirdReactions(state,[],13);
+  assert.equal(state.familiarity.size,0,'departed bird history cannot accumulate indefinitely');
+  const newcomer=[bird('newcomer',100,100)];
+  advanceBirdReactions(state,newcomer,.02,sound(newcomer[0]),bounds);
+  advanceBirdReactions(state,newcomer,.2);
+  assert.ok(Math.abs(applyBirdReactions(state,newcomer)[0].headTurn)>.95);
+});

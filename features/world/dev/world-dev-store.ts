@@ -4,7 +4,7 @@ import { initialPreviewLevels } from "../tiled/preview-state";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
 export type WorldDevCameraAction = "in" | "out" | "overview" | "pet";
-export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "idle";
+export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "water-bush" | "harvest-berries" | "grow-berries" | "idle";
 
 export const WORLD_DEV_POSES = Object.freeze([
   "idle", "walk", "blink", "sleep", "drowsy", "stretch", "crouch", "jump", "groom", "greet",
@@ -64,7 +64,7 @@ const enumValues = {
 const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
-const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "idle"].some(kind => kind === value);
+const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "idle"].some(kind => kind === value);
 
 /** Ephemeral visual overrides only; this store never touches player progress or storage. */
 export function createWorldDevStore(enabled: boolean) {

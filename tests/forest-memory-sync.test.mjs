@@ -177,6 +177,8 @@ test("DEV suspension snapshots synchronously and never writes later forced state
 test("server hydration resets a live route and reconciles changed geometry while sharing one circle/world writer", async () => {
   const env = clock(), original = structuredClone(TILED_WORLD), remembered = payload(.39, original);
   remembered.hero.position = { x: 665, y: 701 }; remembered.mushrooms[0].growth = .1;
+  remembered.garden.bushes[0].growth = .58; remembered.garden.bushes[0].moisture = .76;
+  remembered.garden.basketBerries = 6;
   remembered.mind.recent = [{ key: "old-place", action: "look", at: 0, duration: 1, outcome: "completed" }];
   const map = structuredClone(original); map.actor.spawn.x += 2; map.mushrooms[0].position.x += 5;
   const records = new Map(), storage = { getItem: key => records.get(key) ?? null, setItem: (key, value) => records.set(key, value), removeItem: key => records.delete(key) };
@@ -186,12 +188,18 @@ test("server hydration resets a live route and reconciles changed geometry while
   const b = connectForestSession(key, map, "world", 10, 0, () => {}, options);
   assert.equal(a.state, b.state);
   a.state.pendingLife = "mushroom"; a.state.reaction = 2; a.state.animation = { pose: "wave", elapsed: 1 };
+  a.state.life.garden.basket.berries = 12;
+  a.state.life.garden.routine = { kind: "harvest-berries", bushId: map.bushes[0].id, phase: "return-basket",
+    elapsed: 1, totalElapsed: 8, carryingBasket: true };
   a.configure("circle", true); b.configure("world", true); assert.equal(b.isOwner(), false); await env.advance();
   assert.equal(b.isOwner(), true); assert.equal(a.isOwner(), false);
   assert.equal(remote.calls.filter(command => command.action === "acquire").length, 1);
   assert.equal(a.state.memory.reconciled, true); assert.equal(a.state.clearing.behavior.mind.needs.energy, .39);
   assert.deepEqual(a.state.clearing.position, map.actor.spawn); assert.deepEqual(a.state.clearing.behavior.mind.recent, []);
   assert.equal(a.state.life.mushrooms[0].growth, 1); assert.equal(a.state.pendingLife, null); assert.equal(a.state.animation, null);
+  assert.equal(a.state.life.garden.basket.berries, 6); assert.equal(a.state.life.garden.routine, null);
+  assert.equal(a.state.life.garden.bushes[0].growth, .58); assert.equal(a.state.life.garden.bushes[0].moisture, .76);
+  assert.deepEqual(a.state.life.garden.basket.position, a.state.life.garden.basket.homePosition);
   assert.ok(records.has(forestMemoryKey(key)));
   a.release(); b.release(); await settle();
 });

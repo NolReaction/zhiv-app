@@ -2,6 +2,8 @@ package ru.zhiv.forest
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import ru.zhiv.auth.AuthFailure
@@ -20,8 +22,11 @@ val forestMemoryJson = Json { ignoreUnknownKeys = false; explicitNulls = true; e
 @Serializable data class ForestMemoryInterest(val id: String, val activity: String, val age: Double)
 @Serializable data class ForestMemoryHero(val position: ForestMemoryPoint, val sleepingHome: Boolean, val awakeFor: Double, val restFor: Double, val recent: List<ForestMemoryInterest>)
 @Serializable data class ForestMemoryMushroom(val id: String, val position: ForestMemoryPoint, val growth: Double, val regrowIn: Double)
+@Serializable data class ForestMemoryBush(val id: String, val position: ForestMemoryPoint, val growth: Double, val moisture: Double, val waterIn: Double)
+@Serializable data class ForestMemoryGarden(val bushes: List<ForestMemoryBush>, val basketBerries: Int)
 
 /** Cosmetic data only. No client-supplied account, inventory, currency, or rewards. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class ForestMemoryPayload(
     val version: Int,
     val sceneId: String,
@@ -29,6 +34,8 @@ val forestMemoryJson = Json { ignoreUnknownKeys = false; explicitNulls = true; e
     val mind: ForestMemoryMind,
     val hero: ForestMemoryHero,
     val mushrooms: List<ForestMemoryMushroom>,
+    // Keep v1 responses unchanged for older clients, including application-level encodeDefaults.
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val garden: ForestMemoryGarden? = null,
 )
 @Serializable data class ForestMemoryLease(val owned: Boolean, val expiresAt: String?, val token: String?)
 @Serializable data class ForestMemoryView(
@@ -81,10 +88,13 @@ fun decodeForestMemoryCommand(raw: JsonElement): ForestMemoryCommand {
 }
 
 fun validateForestMemoryPayload(value: ForestMemoryPayload) {
-    val actions = setOf("look", "sniff", "groom", "rest", "bush", "home-sleep", "butterfly", "firefly", "mushroom", "leaf", "idle")
+    val gardenActions = setOf("water-bush", "harvest-berries")
+    val actions = setOf("look", "sniff", "groom", "rest", "bush", "home-sleep", "butterfly", "firefly", "mushroom", "leaf", "idle") +
+        if (value.version == 2) gardenActions else emptySet()
     val mind = value.mind
     val hero = value.hero
-    if (value.version != 1 || !text(value.sceneId) || !text(value.fingerprint)
+    val garden = value.garden
+    if (value.version !in 1..2 || (value.version == 2) != (garden != null) || !text(value.sceneId) || !text(value.fingerprint)
         || !bounded(mind.elapsed, 1_000_000_000.0) || !bounded(mind.attentionUntil, minOf(1_000_000_000.0, mind.elapsed + 30))
         || !listOf(mind.needs.energy, mind.needs.curiosity, mind.needs.comfort, mind.needs.attention).all { bounded(it) }
         || mind.recent.size > 16 || mind.recent.any { !text(it.key) || it.action !in actions
@@ -94,6 +104,10 @@ fun validateForestMemoryPayload(value: ForestMemoryPayload) {
         || hero.recent.size > 8 || hero.recent.any { !text(it.id) || it.activity !in setOf("look", "sniff", "groom", "rest") || !bounded(it.age, 75.0) }
         || value.mushrooms.size > 128 || value.mushrooms.map { it.id }.toSet().size != value.mushrooms.size
         || value.mushrooms.any { !text(it.id) || !point(it.position) || !bounded(it.growth) || !bounded(it.regrowIn, 22.0) }) invalidForestMemory()
+    if (garden != null && (garden.basketBerries !in 0..12 || garden.bushes.size > 32
+        || garden.bushes.map { it.id }.toSet().size != garden.bushes.size
+        || garden.bushes.any { !text(it.id) || !point(it.position) || !bounded(it.growth)
+            || !bounded(it.moisture) || !bounded(it.waterIn, 600.0) })) invalidForestMemory()
     if (forestMemoryJson.encodeToString(value).toByteArray(Charsets.UTF_8).size > 32_768) invalidForestMemory()
 }
 

@@ -82,6 +82,32 @@ class JdbcForestMemoryRepositoryIntegrationTest {
         assertNull(memory.read(stranger.hash, stranger.publicId, client).snapshot)
     }
 
+    @Test fun `version 1 memory upgrades to garden and survives writer transfer without economy changes`() = runBlocking<Unit> {
+        val p = player(); val other = device(p); val a = acquire(p)
+        val world = JdbcWorldRepository(source); val economy = world.snapshot(p.hash)
+        val leased = memory.command(p.hash, a).state
+        val oldWrite = save(a, leased)
+        val old = memory.command(p.hash, oldWrite).state
+        assertEquals(memoryFixture(), JdbcForestMemoryRepository(source).read(p.hash, p.publicId, UUID.fromString(a.clientId)).snapshot)
+        val garden = gardenMemoryFixture()
+        val upgraded = memory.command(p.hash, save(a, old).copy(snapshot = garden)).state
+        assertEquals("2", scalar("SELECT snapshot->>'version' FROM forest_memory WHERE user_id=?", p.id))
+        assertEquals("3", scalar("SELECT snapshot->'garden'->>'basketBerries' FROM forest_memory WHERE user_id=?", p.id))
+        val restored = JdbcForestMemoryRepository(source).read(other, p.publicId, UUID.randomUUID())
+        assertEquals(garden, restored.snapshot); assertNull(restored.lease.token)
+        val b = acquire(p, revision = upgraded.revision, takeover = true)
+        val transferred = memory.command(other, b).state
+        assertEquals(garden, transferred.snapshot)
+        val replay = memory.command(p.hash, oldWrite)
+        assertTrue(replay.replayed); assertEquals(old.revision, replay.acceptedRevision)
+        assertEquals(garden, replay.state.snapshot); assertFalse(replay.state.lease.owned)
+        val harvested = garden.copy(garden = requireNotNull(garden.garden).copy(basketBerries = 6))
+        memory.command(other, save(b, transferred).copy(snapshot = harvested))
+        assertEquals(harvested, JdbcForestMemoryRepository(source).read(p.hash, p.publicId, UUID.fromString(a.clientId)).snapshot)
+        val after = world.snapshot(p.hash)
+        assertEquals(economy.revision, after.revision); assertEquals(economy.state, after.state)
+    }
+
     @Test fun `takeover fences prior device and replay only acknowledges original revision`() = runBlocking<Unit> {
         val p = player(); val other = device(p); val a = acquire(p)
         val leased = memory.command(p.hash, a)

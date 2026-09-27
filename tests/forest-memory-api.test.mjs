@@ -44,6 +44,16 @@ function payload(energy = 0.7) {
     mushrooms: [{ id: "mushroom:1", position: { x: 100, y: 200 }, growth: 0.5, regrowIn: 12 }],
   };
 }
+function gardenPayload() {
+  const snapshot = payload();
+  snapshot.version = 2;
+  snapshot.garden = { bushes: [{ id: "clearing-bush", position: { x: 140, y: 250 }, growth: 0.45, moisture: 0.7, waterIn: 180 }], basketBerries: 3 };
+  snapshot.mind.recent = [
+    { key: "water:clearing-bush", action: "water-bush", outcome: "completed", at: 120, duration: 8 },
+    { key: "harvest:clearing-bush", action: "harvest-berries", outcome: "completed", at: 140, duration: 10 },
+  ];
+  return snapshot;
+}
 const query = p => ({ expectedOwnerPublicId: p.me.user.publicId, clientId: p.clientId });
 const read = (p, time = now) => memory.readDevForestMemory(p.token, query(p), time);
 function command(p, action = "acquire", overrides = {}, time = now) {
@@ -83,6 +93,90 @@ test("account memory round trip is validated, immutable and independent of econo
   const released = issue(p, "release", { leaseToken: acquired.state.lease.token }, now + 20_000);
   assert.equal(released.state.revision, 3); assert.equal(released.state.lease.owned, false);
   assert.deepEqual(released.state.snapshot, payload());
+});
+
+test("version 1 round trips without new fields and version 2 preserves garden across devices", () => {
+  assert.deepEqual(model.forestMemoryPayloadSchema.parse(payload()), payload());
+  const p = player(), phone = player(p.key);
+  const acquired = issue(p);
+  const snapshot = gardenPayload();
+  const saved = issue(p, "save", { leaseToken: acquired.state.lease.token, snapshot });
+  assert.deepEqual(model.forestMemoryResultSchema.parse(saved).state.snapshot, gardenPayload());
+  snapshot.garden.bushes[0].growth = 0;
+  saved.state.snapshot.garden.basketBerries = 12;
+  const restored = read(phone);
+  assert.deepEqual(restored.snapshot, gardenPayload());
+  assert.equal(restored.lease.token, null);
+  const takeover = issue(phone, "acquire", { takeover: true });
+  assert.deepEqual(takeover.state.snapshot, gardenPayload());
+  const harvested = gardenPayload();
+  harvested.garden.bushes[0].growth = 0;
+  harvested.garden.basketBerries = 6;
+  issue(phone, "save", { leaseToken: takeover.state.lease.token, snapshot: harvested });
+  assert.deepEqual(read(p).snapshot, harvested);
+});
+
+test("garden contracts enforce versions, strict types, boundaries and unique stable IDs", () => {
+  const invalid = [];
+  const modify = mutation => { const value = gardenPayload(); mutation(value); invalid.push(value); };
+  modify(value => { delete value.garden; });
+  modify(value => { value.garden = null; });
+  modify(value => { value.version = 1; });
+  modify(value => { value.version = 3; });
+  modify(value => { value.garden.basketBerries = -1; });
+  modify(value => { value.garden.basketBerries = 13; });
+  modify(value => { value.garden.basketBerries = 1.5; });
+  modify(value => { value.garden.basketBerries = "3"; });
+  modify(value => { value.garden.resources = { berries: 100 }; });
+  modify(value => { value.garden.bushes[0].position.x = -1; });
+  modify(value => { value.garden.bushes[0].id = "bad\nkey"; });
+  modify(value => { value.garden.bushes[0].id = "a".repeat(161); });
+  modify(value => { value.garden.bushes[0].extra = true; });
+  modify(value => { value.garden.bushes[0].growth = Infinity; });
+  modify(value => { value.garden.bushes[0].moisture = NaN; });
+  modify(value => { value.garden.bushes[0].waterIn = 600.01; });
+  modify(value => { value.garden.bushes[0].waterIn = -1; });
+  modify(value => { value.garden.bushes.push(structuredClone(value.garden.bushes[0])); });
+  modify(value => { value.garden.bushes = Array.from({ length: 33 }, (_, i) => ({ ...value.garden.bushes[0], id: `bush-${i}` })); });
+  modify(value => {
+    value.mushrooms = Array.from({ length: 128 }, (_, i) => ({ ...value.mushrooms[0], id: `${i}${"я".repeat(150)}` }));
+  });
+  for (const action of ["water-bush", "harvest-berries"]) {
+    const old = payload();
+    old.mind.recent[0].action = action;
+    invalid.push(old);
+  }
+  const p = player(), acquired = issue(p);
+  for (const snapshot of invalid) {
+    assert.equal(model.forestMemoryPayloadSchema.safeParse(snapshot).success, false);
+    assert.throws(() => issue(p, "save", { leaseToken: acquired.state.lease.token, snapshot }), { code: "INVALID_FOREST_MEMORY" });
+    assert.equal(read(p).revision, acquired.state.revision);
+    assert.equal(read(p).snapshot, null);
+  }
+  for (const edge of [0, 1]) {
+    const valid = gardenPayload();
+    valid.garden.basketBerries = edge * 12;
+    valid.garden.bushes = Array.from({ length: 32 }, (_, i) => ({ ...valid.garden.bushes[0], id: `bush-${i}`, growth: edge, moisture: edge, waterIn: edge * 600 }));
+    assert.equal(model.forestMemoryPayloadSchema.safeParse(valid).success, true);
+  }
+  const empty = gardenPayload();
+  empty.garden.bushes = [];
+  assert.equal(model.forestMemoryPayloadSchema.safeParse(empty).success, true);
+});
+
+test("HTTP accepts and returns version 2 garden without granting inventory rewards", async () => {
+  const p = player();
+  globalThis.__forestMemoryTestToken = p.token;
+  const economy = getDevWorld(p.token, now);
+  const acquired = await (await POST(postRequest(command(p)))).json();
+  const save = command(p, "save", { leaseToken: acquired.state.lease.token, snapshot: gardenPayload() });
+  const response = await POST(postRequest(save));
+  assert.equal(response.status, 200);
+  const saved = await response.json();
+  assert.deepEqual(saved.state.snapshot, gardenPayload());
+  assert.ok(model.forestMemoryResultSchema.safeParse(saved).success);
+  assert.deepEqual((await (await GET(getRequest(p))).json()).snapshot, gardenPayload());
+  assert.deepEqual(getDevWorld(p.token, now), economy);
 });
 
 test("leases bind session and client, require explicit takeover and prevent old writes", () => {

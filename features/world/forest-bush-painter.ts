@@ -6,6 +6,7 @@ export type ForestBushFrame = {
   /** Encounter clock freezes with the actor, independent of the ambient scene clock. */
   elapsed?: number;
   bursts?: readonly ForestBushBurst[];
+  ripe?: boolean;
 };
 type TerrainSource = { image: HTMLImageElement; bounds: WorldBounds };
 type BushTexture = { leaves: HTMLCanvasElement | null; bounds: WorldBounds; sources: TerrainSource[] };
@@ -128,7 +129,7 @@ export function drawForestBush(
   if (!bush) return;
   const bounds = forestBushBounds(bush);
   if (!bounds) return;
-  const particles = forestBushParticles(bush, time, frame.bursts ?? []);
+  const particles = forestBushParticles(bush, time, frame.bursts ?? [], frame.ripe ?? true);
   if (!frame.occlude && !rustle && !particles.length) return;
   const padded = { x: bounds.x - 4, y: bounds.y - 4, width: bounds.width + 8, height: bounds.height + 8 };
   const sources: TerrainSource[] = [];

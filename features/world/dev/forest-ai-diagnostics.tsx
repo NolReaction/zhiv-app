@@ -1,5 +1,6 @@
 import type { ForestObservation } from "../use-forest-observation";
 import type { ForestMemorySyncStatus } from "../forest-memory-sync";
+import type { ForestGardenObservation } from "../forest-observer";
 import styles from "./world-dev-panel.module.css";
 
 const NEEDS = [
@@ -23,6 +24,44 @@ const SYNC_LABELS: Record<ForestMemorySyncStatus["mode"], string> = {
 const percent = (value: number) => Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100);
 const scoreText = (score: number) => Number.isFinite(score) ? score.toFixed(2) : "—";
 const text = (value: string) => value.slice(0, 512);
+const count = (value: number, max: number) => Math.floor(Math.max(0, Math.min(max, Number.isFinite(value) ? value : 0)));
+const GARDEN_PHASES: Record<string, string> = {
+  "approach-basket": "Идёт за корзинкой", "take-basket": "Берёт корзинку", "approach-bush": "Подходит к кусту",
+  water: "Поливает корни", collect: "Собирает ягоды", "return-basket": "Возвращает корзинку",
+  deposit: "Ставит корзинку", settle: "Завершает занятие",
+};
+
+function gardenReport(garden: ForestGardenObservation) {
+  return {
+    bushes: garden.bushes.slice(0, 32).map(bush => ({ id: text(bush.id), growth: percent(bush.growth) / 100,
+      moisture: percent(bush.moisture) / 100, waterIn: count(bush.waterIn, 3600) })),
+    basket: garden.basket ? { berries: count(garden.basket.berries, 12), capacity: count(garden.basket.capacity, 12) } : null,
+    activity: garden.activity ? { kind: text(garden.activity.kind), phase: text(garden.activity.phase), carryingBasket: Boolean(garden.activity.carryingBasket) } : null,
+    cooldown: count(garden.cooldown, 3600), waterReason: garden.waterReason ? text(garden.waterReason) : null,
+    harvestReason: garden.harvestReason ? text(garden.harvestReason) : null,
+  };
+}
+
+/** Garden progress is scenery state, separate from the character's needs. */
+export function ForestGardenDiagnostics({ garden }: { garden?: ForestGardenObservation }) {
+  if (!garden) return <p className={styles.hint}>Состояние ягодного куста появится после загрузки сцены.</p>;
+  const snapshot = gardenReport(garden);
+  return <div className={styles.gardenDiagnostics} aria-label="Ягодный куст и корзинка">
+    <dl className={styles.gardenSummary}>
+      <div><dt>Корзинка</dt><dd>{snapshot.basket ? `${snapshot.basket.berries} / ${snapshot.basket.capacity} ягод` : "Место не найдено"}</dd></div>
+      <div><dt>Занятие</dt><dd>{snapshot.activity ? GARDEN_PHASES[snapshot.activity.phase] ?? "Заботится о кусте" : "Свободен"}</dd></div>
+    </dl>
+    {snapshot.bushes.length ? <ul className={styles.gardenBushes}>
+      {snapshot.bushes.map(bush => <li key={bush.id}><strong>{bush.id}</strong><div className={styles.aiNeeds}>
+        {([["Созревание", bush.growth], ["Влажность почвы", bush.moisture]] as const).map(([label, value]) => <label key={label} className={styles.aiNeed}>
+          <span>{label}<b>{percent(value)}%</b></span>
+          <meter aria-label={`${label}: ${bush.id}`} min={0} max={100} value={percent(value)}>{percent(value)}%</meter>
+        </label>)}
+      </div>{bush.waterIn > 0 && <p className={styles.hint}>Отдых после полива: {Math.ceil(bush.waterIn / 60)} мин.</p>}</li>)}
+    </ul> : <p className={styles.hint}>На карте нет подходящих ягодных кустов.</p>}
+    <p className={styles.hint}>Ягоды растут во время жизни сцены. Дождь увлажняет почву; сухой куст растёт медленнее и не погибает. Корзинка пока хранит урожай без наград в инвентарь.</p>
+  </div>;
+}
 
 /** Session time, not the wall clock; pauses never age a decision. */
 export function decisionTime(seconds: number) {
@@ -48,6 +87,7 @@ export function createForestAiReport(observation: ForestObservation, exportedAt 
       reason: text(observation.diagnostics.reason),
       ...(observation.diagnostics.motives ? { motives: Object.fromEntries(MOTIVES.map(([key]) =>
         [key, percent(observation.diagnostics.motives![key]) / 100])) } : {}),
+      ...(observation.diagnostics.garden ? { garden: gardenReport(observation.diagnostics.garden) } : {}),
       candidates: observation.diagnostics.candidates.slice(0, 32).map(candidate => ({
         id: text(candidate.id), label: text(candidate.label), score: candidate.score,
         available: candidate.available, reason: text(candidate.reason),
@@ -102,6 +142,10 @@ export function ForestAiDiagnostics({ observation, onExport }: {
         })}
       </div>
       <p className={styles.hint}>Это кратковременное состояние и выводы из недавних занятий. Нулевое внимание к игроку означает, что Мохлик занят своими делами.</p>
+    </details>}
+    {observation.diagnostics.garden && <details className={styles.aiChoices}>
+      <summary>Ягодный куст и корзинка</summary>
+      <ForestGardenDiagnostics garden={observation.diagnostics.garden} />
     </details>}
     <div className={styles.aiMemory}>
       <strong>Память</strong><span>{MEMORY_LABELS[observation.memory.status]}</span>

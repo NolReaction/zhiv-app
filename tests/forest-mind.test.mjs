@@ -39,6 +39,101 @@ test("fatigue and curiosity change utility ranking rather than merely the status
   assert.ok(score(wet, "groom") > score(dry, "groom"));
 });
 
+test("useful garden care competes with idle but yields to fatigue, weather and recent player attention", () => {
+  const rested = createForestMind(), tired = createForestMind();
+  tired.needs.energy = .08;
+  const score = (mind, action, weather = {}) => scoreForestAction(mind, action, action, { rain: 0, dusk: 0, ...weather });
+  for (const action of ["water-bush", "harvest-berries"]) {
+    const ready = score(rested, action);
+    assert.ok(ready.score > score(rested, "idle").score);
+    assert.ok(score(tired, "home-sleep").score > score(tired, action).score + 2);
+    assert.ok(score(rested, action, { rain: 1 }).score < ready.score);
+    assert.ok(score(rested, action, { dusk: 1 }).score < ready.score);
+    const called = structuredClone(rested); called.needs.attention = 1;
+    assert.ok(score(called, action).score < ready.score);
+    assert.match(ready.reasons.join(" "), /Кусту|Ягоды/);
+  }
+});
+
+test("finishing garden care calms activation without granting energy, and failure grants no satisfaction", () => {
+  for (const action of ["water-bush", "harvest-berries"]) {
+    for (const outcome of ["completed", "interrupted", "failed"]) {
+      const mind = createForestMind(); mind.arousal = .8;
+      beginForestIntention(mind, action, `${action}:clearing-bush`, "Куст рядом", "director");
+      mind.elapsed = 14;
+      const needs = { ...mind.needs };
+      finishForestIntention(mind, outcome, "Закончил попытку");
+      assert.deepEqual(mind.needs, needs, "garden care must not create rest, food or grooming rewards");
+      assert.equal(forestMindMotives(mind).saturation, 0, "care is not a new wildlife impression");
+      if (outcome === "completed") assert.ok(mind.arousal < .8 && mind.arousal > .22);
+      else assert.equal(mind.arousal, .8);
+      const restored = restoreForestMind(mind);
+      assert.equal(restored.recent[0].action, action);
+      assert.equal(restored.recent[0].outcome, outcome);
+    }
+    const quiet = createForestMind(); quiet.arousal = .1;
+    beginForestIntention(quiet, action, action, "Куст рядом", "director");
+    finishForestIntention(quiet, "completed", "Закончил");
+    assert.equal(quiet.arousal, .1, "satisfaction must not excite an already calm resident");
+  }
+});
+
+test("needed recovery survives recent completed rests while failed and interrupted rest routes retain cooldown", () => {
+  for (const action of ["rest", "home-sleep"]) {
+    const tired = createForestMind(); tired.needs.energy = .08;
+    tired.recent = Array.from({ length: 3 }, (_, index) => ({ key: action, action, outcome: "completed", at: 0, duration: 6 + index }));
+    const score = (mind, candidate) => scoreForestAction(mind, candidate, candidate, { rain: 0, dusk: 0 });
+    const recovery = score(tired, action);
+    assert.ok(recovery.score > score(tired, "water-bush").score + 2);
+    assert.ok(recovery.score > score(tired, "leaf").score + 2);
+    assert.match(recovery.reasons.join(" "), /отдыха не хватило/);
+    for (const outcome of ["failed", "interrupted"]) {
+      const blocked = structuredClone(tired);
+      blocked.recent = blocked.recent.map(item => ({ ...item, outcome }));
+      assert.ok(score(blocked, action).score < recovery.score - 5, "do not repeatedly retry a broken rest route");
+    }
+    const rested = structuredClone(tired); rested.needs.energy = .82;
+    assert.ok(score(rested, action).score < score({ ...rested, recent: [] }, action).score - 5);
+  }
+});
+
+test("ten minutes of decisions mix available garden work with leisure and recovery without exhausting interest", () => {
+  for (const seed of [17, 82, 1337]) {
+    const mind = createForestMind(); mind.needs.energy = .43;
+    const counts = new Map(), lastCare = { "water-bush": -100, "harvest-berries": -180 };
+    let randomState = seed, next = 0, active = "idle", duration = 0;
+    const random = () => { randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0; return randomState / 4294967296; };
+    for (let frame = 0; frame < 6000; frame++) {
+      if (mind.elapsed + .001 >= next) {
+        if (mind.intention) {
+          finishForestIntention(mind, "completed", "Закончил занятие");
+          counts.set(active, (counts.get(active) ?? 0) + 1);
+          if (active in lastCare) lastCare[active] = mind.elapsed;
+        }
+        const available = ["look", "sniff", "leaf", "rest"];
+        if (mind.needs.energy > .4) {
+          if (mind.elapsed - lastCare["water-bush"] >= 90) available.push("water-bush");
+          if (mind.elapsed - lastCare["harvest-berries"] >= 180) available.push("harvest-berries");
+        }
+        const selected = available.map(action => scoreForestAction(mind, action, action, { rain: 0, dusk: 0, noise: random() * .3 }))
+          .sort((a, b) => b.score - a.score)[0];
+        active = selected.action;
+        duration = active === "rest" ? 15 : active === "harvest-berries" ? 20 : active === "water-bush" ? 14 : 10;
+        next = mind.elapsed + duration;
+        beginForestIntention(mind, active, active, selected.reasons[0], "director");
+      }
+      const moving = active !== "rest" && mind.elapsed - mind.intention.startedAt < 4;
+      advanceForestMind(mind, .1, { ...calm, moving, engaged: active !== "rest" && !moving, resting: active === "rest" });
+      assert.ok(mind.needs.energy > .1, `care must not drive exhaustion: seed=${seed}`);
+      assert.ok(mind.needs.curiosity > .15, `interest must remain responsive: seed=${seed}`);
+    }
+    for (const action of ["water-bush", "harvest-berries", "rest"]) assert.ok((counts.get(action) ?? 0) >= 2,
+      `expected recurring ${action}, got ${JSON.stringify([...counts])}, seed=${seed}`);
+    assert.ok(counts.size >= 5);
+    assert.ok(mind.needs.energy > .3 && mind.needs.curiosity > .2);
+  }
+});
+
 test("actual walking spends energy, sleep restores it and weather changes comfort within bounds", () => {
   const walking = createForestMind(), sleeping = createForestMind(), rainy = createForestMind();
   sleeping.needs.energy = .1;

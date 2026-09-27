@@ -261,3 +261,67 @@ test('firefly emission uses current dusk on static night frames and cannot be fo
   assert.ok(faunaRenderFrame(state,{dusk:.7}).fireflies.every(e=>e.glow===.7));
   assert.equal(faunaRenderFrame(state,{dusk:0,fireflies:'on'}).fireflies.length,0);
 });
+
+test('a long trip to a leaf does not consume the rest before the animal has landed',()=>{
+  const distant={...scene,width:900,habitats:[{id:'wide',species:'butterfly',capacity:1,
+    points:rectangle(0,0,900,300),anchors:[{id:'distant-leaf',kind:'rest',position:{x:800,y:150}}]}]};
+  const state=createForestFauna(distant),e=state.entities[0];
+  Object.assign(e,{x:80,y:150,vx:0,vy:0,nextRestAt:0});
+  advance(state,25);assert.equal(e.mode,'rest-seek');
+  let arrival=null;
+  advance(state,20,conditions,()=>{if(arrival===null&&e.mode==='rest')arrival=state.elapsed});
+  assert.ok(arrival>30,'flight lasts longer than the normal rest itself');
+  assert.equal(e.mode,'rest','distant leaf still provides a real pause after arrival');
+  assert.ok(e.restUntil-arrival>=12);
+  advance(state,10);assert.notEqual(e.mode,'rest','the individual eventually resumes its life');
+});
+
+test('completed rests alternate nearby free leaves without inventing a landing or sharing a seat',()=>{
+  const leaves={...scene,habitats:[{id:'nearby',species:'butterfly',capacity:1,
+    points:rectangle(100,100,100,100),anchors:[
+      {id:'left',kind:'rest',position:{x:145,y:145}},
+      {id:'right',kind:'rest',position:{x:155,y:145}},
+    ]}]};
+  const state=createForestFauna(leaves),e=state.entities[0],landings=[];
+  e.nextRestAt=0;let previousMode=e.mode;
+  advance(state,170,conditions,()=>{
+    if(e.mode==='rest'&&previousMode!=='rest')landings.push(e.anchorId);
+    previousMode=e.mode;
+  });
+  assert.ok(landings.length>=3);
+  for(let i=1;i<landings.length;i++)assert.notEqual(landings[i],landings[i-1]);
+});
+
+test('familiar footsteps cause a smaller startle, a sudden rustle still matters and calm returns',()=>{
+  const state=createForestFauna(scene);state.entities=state.entities.slice(0,1);
+  const e=state.entities[0],origin={x:150,y:145},event={x:145,y:145,kind:'movement',radius:30};
+  const response=kind=>{
+    Object.assign(e,{...origin,vx:0,vy:0,mode:'fly',nextRestAt:Infinity});
+    assert.equal(emitFaunaStimulus(state,{...event,kind}),1);
+    return Math.hypot(e.departure.x-origin.x,e.departure.y-origin.y);
+  };
+  const first=response('movement');let familiar;
+  for(let i=0;i<6;i++){advance(state,8);familiar=response('movement')}
+  assert.ok(familiar<first*.9,'the same local harmless event loses some urgency');
+  const alert=e.alertness;advance(state,8);const rustle=response('rustle');
+  assert.ok(rustle>familiar*1.1,'habituation to steps does not blunt an abrupt bush rustle');
+  advance(state,30);assert.ok(e.alertness<alert*.2,'alertness naturally recovers in active quiet time');
+  assert.ok(canRequestFaunaInteraction(state,'butterfly',actor,conditions,true),'a startled individual can meet the hero again');
+});
+
+test('silent, invalid and sheltered disturbances are ignored; affected neighbours do not depend on array order',()=>{
+  const state=createForestFauna(scene);
+  for(const event of [{strength:0},{strength:NaN},{radius:Infinity},{x:NaN},{x:-1}]){
+    const before=structuredClone(state);
+    assert.equal(emitFaunaStimulus(state,{x:150,y:145,kind:'rustle',...event}),0);
+    assert.deepEqual(state,before);
+  }
+  const reverse=structuredClone(state);reverse.entities.reverse();
+  for(const population of [state,reverse])emitFaunaStimulus(population,{x:150,y:145,kind:'rustle',radius:90});
+  assert.deepEqual(state.entities.filter(e=>e.mode==='depart').map(e=>e.id).sort(),
+    reverse.entities.filter(e=>e.mode==='depart').map(e=>e.id).sort());
+  advance(state,30,{...conditions,rain:1});
+  const before=structuredClone(state.entities);
+  assert.equal(emitFaunaStimulus(state,{x:115,y:115,kind:'rustle',radius:90}),0);
+  assert.deepEqual(state.entities,before,'sheltering from rain takes priority over nearby sounds');
+});
