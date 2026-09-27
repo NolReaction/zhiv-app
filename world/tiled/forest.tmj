@@ -7369,8 +7369,14 @@
                  "gid":7,
                  "height":80,
                  "id":180,
-                 "name":"",
+                 "name":"clearing-bush-image",
                  "opacity":1,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,

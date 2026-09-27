@@ -95,6 +95,11 @@ test("the hearth excludes puddles, authored walks and protected doorway transiti
   const home = scene.sites.find(site => site.id === "home");
   const blocked = { ...scene, campfires: [{ ...fire, position: { x: (home.entry.x + home.doorway.x) / 2, y: (home.entry.y + home.doorway.y) / 2 } }] };
   assert.equal(compileWorldInteractions(blocked).home, null, "a doorway cannot bypass fire collision");
-  const routeScene = { ...scene, paths: [{ id: "test-fire-walk", behavior: "clearing", activity: "look", points: [scene.actor.spawn, fire.position] }] };
+  // Isolate the route/fire collision from the artist's house and hearth placement.
+  const start = { x: scene.focus.x + scene.focus.width / 2, y: scene.focus.y + scene.focus.height / 2 };
+  const end = { x: start.x + 30, y: start.y };
+  const routeScene = { ...scene, sites: [], water: undefined, actor: { ...scene.actor, spawn: start },
+    campfires: [{ ...fire, position: end }],
+    paths: [{ id: "test-fire-walk", behavior: "clearing", activity: "look", points: [start, end] }] };
   assert.ok(clearingRouteDiagnostics(routeScene).some(item => item.reason === "campfire-collision"));
 });

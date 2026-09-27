@@ -1191,6 +1191,23 @@ test("CLI export validates the complete refreshed scene before writing either fi
   assert.deepEqual(await readFile(output), originalOutput);
 });
 
+test("terrain placements inherit tile roles without hiding empty overrides or missing names", async t => {
+  const { map, compile } = await fixture(t);
+  const expected = await compile();
+  delete map.layers[0].objects[0].properties;
+  const authored = clone(map);
+  assert.deepEqual(await compile(), expected);
+  assert.deepEqual(map, authored, "inherited roles must not mutate Tiled source");
+  map.layers[0].objects[0].properties = props({ role: "" });
+  await assert.rejects(compile(), /properties\[0\].value: expected a non-empty string/);
+  delete map.layers[0].objects[0].properties;
+  map.layers[0].objects[0].name = "";
+  await assert.rejects(compile(), /name: expected a non-empty string/);
+  map.layers[0].objects[0].name = "ground";
+  map.layers[0].objects[1].properties = props({ siteId: "kiln", initialLevel: 1 });
+  await assert.rejects(compile(), /properties.role: expected a non-empty string/, "siteState tiles still need a site placement role");
+});
+
 test("bush imageId can reference artwork placed later, and only the polygon accepts the reference", async t => {
   const { map, compile } = await fixture(t); addClearingProps(map);
   const bush = map.layers[3].objects[0];

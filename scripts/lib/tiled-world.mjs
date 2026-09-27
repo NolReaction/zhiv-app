@@ -434,6 +434,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       }
       const props = properties(object, at, { role: "string", siteId: "string", label: "string", level: "int", initialLevel: "int", size: "float",
         behavior: "string", activity: "string", pauseSeconds: "float", bushId: "string", imageId: "string", campfireId: "string", radius: "float" });
+      // Tiled omits inherited tile properties from placed objects in the saved map.
+      if (!own(props, "role") && tiles.get(object.gid)?.role === "terrain") props.role = "terrain";
       const role = string(props.role, `${at}.properties.role`);
       if (own(object, "gid")) {
         const gid = integer(object.gid, `${at}.gid`, 1);
