@@ -12048,7 +12048,7 @@
          "visible":true,
          "x":0,
          "y":0
-        },
+        }, 
         {
          "draworder":"index",
          "id":46,
@@ -12058,6 +12058,7 @@
                  "height":0,
                  "id":182,
                  "name":"berry-basket",
+                 "opacity":1,
                  "point":true,
                  "properties":[
                         {
