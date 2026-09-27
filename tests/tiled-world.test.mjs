@@ -226,6 +226,23 @@ test("authored mushrooms and bush contours retain exact positions and route link
   assert.deepEqual(emptied.bushes, [], "an intentionally empty layer removes all interactive bushes");
 });
 
+test("changing actor size preserves a valid authored bush jump, while excessive world distances remain invalid", async t => {
+  const { map, compile } = await fixture(t);
+  addClearingProps(map);
+  const actor = map.layers[1].objects[0], entry = map.layers[3].objects[1];
+  entry.x = 1; entry.y = 65; // The hiding point is 44 world units away.
+  let geometry;
+  for (const size of [24, 50, 56, 80]) {
+    setProp(actor, "size", size);
+    const scene = await compile();
+    geometry ??= scene.bushes;
+    assert.deepEqual(scene.bushes, geometry, `size ${size} must not move the authored markers`);
+    assert.equal(scene.actor.size, size);
+  }
+  entry.x = 0;
+  await assert.rejects(compile(), /entry and hide must be within 44\.8 world units/);
+});
+
 test("mushroom and bush authoring rejects broken markers, geometry and links", async t => {
   const { map, compile } = await fixture(t);
   addClearingProps(map);
@@ -251,7 +268,7 @@ test("mushroom and bush authoring rejects broken markers, geometry and links", a
     ["entry shape required", value => { delete entry(value).point; }, /shape: expected "point"/],
     ["point dimensions rejected", value => { hide(value).width = 5; }, /width: expected 0/],
     ["hide outside leaves", value => { hide(value).x = 55; }, /hide must be inside its leaf contour/],
-    ["entry too far from hide", value => { entry(value).x = 90; }, /entry and hide must be within one actor size/],
+    ["entry too far from hide", value => { entry(value).x = 90; }, /entry and hide must be within 44\.8 world units/],
     ["bush extra property", value => { bush(value).properties.push(...props({ siteId: "kiln" })); }, /bush objects only accept role and bushId/],
     ["route missing bushId", value => { route(value).properties = route(value).properties.filter(property => property.name !== "bushId"); }, /properties.bushId: expected a non-empty string/],
     ["route unknown bush", value => { setProp(route(value), "bushId", "missing"); }, /path references unknown bush missing/],

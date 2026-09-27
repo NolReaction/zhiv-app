@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createForestMind, advanceForestMind, scoreForestAction, beginForestIntention, finishForestIntention,
-  noticeForestMind, restoreForestMind, forestMindFrame, recordForestCandidates } = await vite.ssrLoadModule("/features/world/forest-mind.ts");
+  noticeForestMind, restoreForestMind, forestMindFrame, forestMindMotives, recordForestCandidates } = await vite.ssrLoadModule("/features/world/forest-mind.ts");
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
 const { advanceForestDirector, noticeForestDirector, requestForestDirective } = await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/forest-behavior.ts");
@@ -50,6 +50,88 @@ test("actual walking spends energy, sleep restores it and weather changes comfor
   assert.ok(walking.needs.energy < .66); assert.equal(sleeping.needs.energy, 1);
   assert.ok(rainy.needs.comfort < .4); assert.ok(sleeping.needs.comfort > .95);
   for (const mind of [walking, sleeping, rainy]) for (const need of Object.values(mind.needs)) assert.ok(need >= 0 && need <= 1);
+});
+
+test("interesting activity satisfies curiosity while grooming and walks revive it, including an old zero", () => {
+  const exploring = createForestMind(), grooming = createForestMind(), walking = createForestMind();
+  beginForestIntention(exploring, "sniff", "flowers", "Изучает цветы", "clearing");
+  beginForestIntention(grooming, "groom", "care", "Приводит себя в порядок", "clearing");
+  walking.needs.curiosity = 0;
+  for (let i = 0; i < 1200; i++) {
+    advanceForestMind(exploring, .1, { ...calm, engaged: true });
+    advanceForestMind(grooming, .1, { ...calm, engaged: true, grooming: true });
+    advanceForestMind(walking, .1, { ...calm, moving: true });
+  }
+  assert.ok(exploring.needs.curiosity > .2 && exploring.needs.curiosity < .4);
+  assert.ok(grooming.needs.curiosity > .7, "care poses must not masquerade as new impressions");
+  assert.ok(walking.needs.curiosity > .45, "a stored zero must recover through ordinary active life");
+});
+
+test("activation responds to actual movement, rain, quiet and taps and changes quiet versus lively choices", () => {
+  const walking = createForestMind(), quiet = createForestMind(), wet = createForestMind();
+  for (let i = 0; i < 400; i++) {
+    advanceForestMind(walking, .1, { ...calm, moving: true });
+    advanceForestMind(quiet, .1, { ...calm, resting: true, sheltered: true });
+    advanceForestMind(wet, .1, { ...calm, rain: 1 });
+  }
+  assert.ok(walking.arousal > wet.arousal && wet.arousal > quiet.arousal);
+  const mind = createForestMind(), score = action => scoreForestAction(mind, action, action, { rain: 0, dusk: 0 });
+  mind.arousal = .1; assert.ok(score("leaf").score > score("mushroom").score);
+  mind.arousal = .9; assert.ok(score("mushroom").score > score("leaf").score);
+  assert.match(score("mushroom").reasons.join(" "), /спокойному/);
+  mind.needs.energy = .05;
+  assert.ok(score("home-sleep").score > score("mushroom").score, "tempo cannot outweigh severe fatigue");
+  noticeForestMind(quiet); assert.ok(quiet.arousal >= .7);
+  assert.equal(scoreForestAction(quiet, "rest", "rest", { rain: 0, dusk: 0 }).available, false);
+});
+
+test("completed impressions favor quieter activities, while failed and interrupted attempts do not satisfy them", () => {
+  const completed = createForestMind(), failed = createForestMind();
+  const history = ["leaf", "sniff", "look"].map((action, index) => ({ key: `earlier-${index}`, action, at: 0, duration: 8, outcome: "completed" }));
+  completed.recent = history;
+  failed.recent = history.map((item, index) => ({ ...item, outcome: index % 2 ? "failed" : "interrupted" }));
+  assert.ok(forestMindMotives(completed).saturation > .7);
+  assert.equal(forestMindMotives(completed).variety, 0, "three different families are already varied");
+  assert.equal(forestMindMotives(failed).saturation, 0); assert.equal(forestMindMotives(failed).variety, 0);
+  const score = (mind, action) => scoreForestAction(mind, action, `new-${action}`, { rain: 0, dusk: 0 });
+  assert.ok(score(completed, "firefly").score > score(failed, "firefly").score);
+  assert.ok(score(completed, "butterfly").score < score(failed, "butterfly").score);
+  assert.match(score(completed, "firefly").reasons.join(" "), /впечатлений/);
+  const before = structuredClone(completed);
+  score(completed, "leaf"); forestMindMotives(completed);
+  assert.deepEqual(completed, before, "scoring and diagnostics are read-only");
+  completed.elapsed = 121;
+  assert.equal(forestMindMotives(completed).saturation, 0);
+});
+
+test("family repetition adds a wish for variety without suppressing necessary rest", () => {
+  const repeated = createForestMind(), failed = createForestMind();
+  repeated.recent = Array.from({ length: 4 }, (_, index) => ({ key: `care-${index}`, action: "groom", at: 0, duration: 5, outcome: "completed" }));
+  failed.recent = repeated.recent.map(item => ({ ...item, outcome: "failed" }));
+  assert.deepEqual(forestMindMotives(repeated), { arousal: .244, saturation: 0, variety: 1 });
+  const score = (mind, action) => scoreForestAction(mind, action, `new-${action}`, { rain: 0, dusk: 0 });
+  assert.ok(score(repeated, "groom").score < score(failed, "groom").score);
+  assert.ok(score(repeated, "sniff").score > score(failed, "sniff").score);
+  assert.match(score(repeated, "sniff").reasons.join(" "), /разнообразие/);
+  assert.equal(score(repeated, "rest").score, score(failed, "rest").score);
+  repeated.elapsed = 121; assert.equal(forestMindMotives(repeated).variety, 0);
+});
+
+test("derived motives survive old four-need snapshots and a missing or invalid transient activation", () => {
+  const original = createForestMind(); original.elapsed = 50; original.needs.attention = .7;
+  original.recent = ["leaf", "butterfly", "leaf"].map((action, index) => ({ key: `play-${index}`, action, at: 40 + index, duration: 4, outcome: "completed" }));
+  const saved = { elapsed: original.elapsed, needs: original.needs, recent: original.recent, attentionUntil: 70 };
+  const restored = restoreForestMind(saved), suppliedTransient = restoreForestMind({ ...saved, arousal: 999 });
+  assert.deepEqual(forestMindMotives(restored), forestMindMotives(suppliedTransient), "transient state is reconstructed, never trusted from storage");
+  assert.equal(forestMindMotives(restored).saturation, forestMindMotives(original).saturation);
+  assert.equal(forestMindMotives(restored).variety, forestMindMotives(original).variety);
+  delete restored.arousal;
+  const expected = forestMindMotives(restored);
+  restored.arousal = NaN; assert.deepEqual(forestMindMotives(restored), expected);
+  const view = forestMindMotives(restored); view.saturation = 0;
+  assert.ok(forestMindMotives(restored).saturation > .5);
+  advanceForestMind(restored, .1, calm);
+  for (const value of Object.values(forestMindMotives(restored))) assert.ok(Number.isFinite(value) && value >= 0 && value <= 1);
 });
 
 test("a tap interrupts an intention and prevents both outdoor and home sleep for the wake grace", () => {
@@ -115,9 +197,29 @@ test("the director owns one need clock through movement and pauses it with block
   const state = session(), mind = state.clearing.behavior.mind;
   advance(state, 8);
   assert.ok(mind.elapsed > 7.9 && mind.elapsed < 8.1); assert.ok(mind.intention);
-  const before = structuredClone({ elapsed: mind.elapsed, needs: mind.needs });
+  const before = structuredClone({ elapsed: mind.elapsed, needs: mind.needs, motives: forestMindMotives(mind) });
   for (const options of [{ ...conditions, blocked: true }, { ...conditions, reducedMotion: true }, { ...conditions, autoLife: false }]) {
-    advance(state, 3, options); assert.deepEqual({ elapsed: mind.elapsed, needs: mind.needs }, before);
+    advance(state, 3, options); assert.deepEqual({ elapsed: mind.elapsed, needs: mind.needs, motives: forestMindMotives(mind) }, before);
+  }
+});
+
+test("ten minutes of seeded autonomous life keeps interest responsive in dry and rainy scenes", () => {
+  for (const rain of [0, 1]) for (const seed of [17, 82, 1337]) {
+    const state = session(), mind = state.clearing.behavior.mind;
+    state.clearing.seed = seed; state.director.seed = seed;
+    const counts = new Map(); let nearZero = 0, last = null;
+    for (let frame = 0; frame < 6000; frame++) {
+      advanceForestDirector(state, .1, { ...conditions, rain });
+      if (mind.needs.curiosity < .01) nearZero++;
+      const recent = mind.recent.at(-1);
+      if (recent && recent !== last && recent.outcome === "completed") counts.set(recent.action, (counts.get(recent.action) ?? 0) + 1);
+      last = recent;
+    }
+    assert.ok(nearZero / 6000 < .05, `interest stuck near zero: rain=${rain}, seed=${seed}`);
+    assert.ok(counts.size >= 3, `too few distinct completed activities: rain=${rain}, seed=${seed}`);
+    assert.ok(mind.needs.curiosity > .2 && mind.needs.curiosity < .8);
+    assert.ok((counts.get(rain ? "groom" : "rest") ?? 0) > 0, "self-care remains available");
+    assert.ok(mind.recent.length <= 16 && mind.events.length <= 24);
   }
 });
 

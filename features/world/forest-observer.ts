@@ -1,5 +1,5 @@
 import { clearingActivityFrame } from "./clearing-activity";
-import { forestMindActionLabel, forestMindMood } from "./forest-mind";
+import { forestMindActionLabel, forestMindMood, forestMindMotives, type ForestMindMotives } from "./forest-mind";
 import type { ForestSessionState } from "./forest-session";
 import type { ForestMemorySyncStatus } from "./forest-memory-sync";
 
@@ -11,6 +11,7 @@ export type ForestObservation = Readonly<{
     sync?: ForestMemorySyncStatus }>;
   diagnostics: Readonly<{
     reason: string;
+    motives?: Readonly<ForestMindMotives>;
     candidates: ReadonlyArray<Readonly<{ id: string; label: string; score: number; available: boolean; reason: string }>>;
     events: ReadonlyArray<Readonly<{ id: number; at: number; type: string; label: string; reason: string }>>;
   }>;
@@ -91,6 +92,7 @@ function eventId(value: string) {
 export function forestObservationFrame(state: ForestSessionState, options: Options = {}): ForestObservation {
   const mind = state.clearing.behavior.mind;
   const activity = currentActivity(state, options), mood = forestMindMood(mind);
+  const motives = forestMindMotives(mind);
   const memory = state.memory;
   const status = memory?.mode === "unavailable" ? "unavailable" : !memory?.enabled || memory.mode === "ephemeral" ? "session"
     : memory.restored ? "restored" : memory.lastSavedAt !== null ? "saved" : "session";
@@ -103,6 +105,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
     memory: Object.freeze({ status, savedAt: memory?.lastSavedAt ?? null,
       ...(memory?.sync ? { sync: Object.freeze({ ...memory.sync }) } : {}) }),
     diagnostics: Object.freeze({ reason: mind.intention?.reason ?? activity.detail,
+      motives: Object.freeze({ arousal: percent(motives.arousal), saturation: percent(motives.saturation), variety: percent(motives.variety) }),
       candidates: Object.freeze(mind.candidates.slice(0, 32).map(candidate => Object.freeze({ id: candidate.key,
         label: forestMindActionLabel(candidate.action), score: candidate.score ?? 0, available: candidate.available,
         reason: `${candidate.selected ? "Выбрано. " : ""}${candidate.reasons.join(". ")}` }))),

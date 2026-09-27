@@ -2,7 +2,7 @@ import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite"
 import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
 import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./steering";
-import { compileWorldInteractions, findInteractionApproach, type WorldInteraction } from "./interaction-navigation";
+import { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS, type WorldInteraction } from "./interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
 import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
 
@@ -59,6 +59,7 @@ export const CLEARING_HOME_IDLE_SECONDS = 180;
 export const CLEARING_AWAKE_GRACE_SECONDS = 30;
 const DOOR_FADE_SECONDS = .8;
 const BUSH_PREPARE_SECONDS = 1.15, BUSH_ENTER_SECONDS = 1.25, BUSH_EXIT_SECONDS = 1.35, BUSH_LAND_SECONDS = 1.05;
+const BUSH_EXIT_ANTICIPATION_SECONDS = .18, BUSH_MAX_SPEED_RATIO = 1.1;
 const BUSH_PARTICLE_SECONDS = 3.2;
 const BUSH_TUCK_LIFT = .12;
 const bushStage = (stage: ClearingStage) => stage.startsWith("bush-");
@@ -113,8 +114,8 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
   if (bush && (!finitePoint(bush.entry) || !finitePoint(bush.hide) || bush.points.length < 3
     || bush.points.some(point => !finitePoint(point)) || !inside(bush.hide, bush.points))) return "invalid-bush";
   if (bush && distance(path.points.at(-1)!, bush.entry) > .001) return "bush-end-away-from-entry";
-  if (bush && (distance(bush.entry, bush.hide) < actor.size * .1 || distance(bush.entry, bush.hide) > actor.size * .8)) return "invalid-bush-corridor";
-  const radius = Math.min(focus.width * .3, actor.size * 1.6), clearance = actor.size * .1;
+  if (bush && (distance(bush.entry, bush.hide) < actor.size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump)) return "invalid-bush-corridor";
+  const radius = Math.min(focus.width * .3, WORLD_INTERACTION_LIMITS.localRouteRadius), clearance = actor.size * .1;
   const points = [{ ...actor.spawn }, ...path.points.slice(1)];
   let length = 0;
   for (let i = 0; i < points.length; i++) {
@@ -131,7 +132,7 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
       let end = point;
       if (site === homeSite && i === points.length - 1) {
         // Feet may brush the doorway edge on the last small approach, not cross the house.
-        const segmentLength = distance(previous, point), threshold = actor.size * .24;
+        const segmentLength = distance(previous, point), threshold = WORLD_INTERACTION_LIMITS.homeDock;
         if (segmentLength <= threshold) continue;
         const t = (segmentLength - threshold) / segmentLength;
         end = { x: previous.x + (point.x - previous.x) * t, y: previous.y + (point.y - previous.y) * t };
@@ -144,7 +145,7 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
   }
   if (homeSite?.doorway) {
     const doorway = homeSite.doorway, entry = homeSite.entry;
-    if (!finitePoint(doorway) || distance(entry, doorway) > actor.size * .6) return "invalid-doorway";
+    if (!finitePoint(doorway) || distance(entry, doorway) > WORLD_INTERACTION_LIMITS.homeThreshold) return "invalid-doorway";
     for (const dx of [-actor.size * .5, actor.size * .5]) for (const dy of [-actor.size, actor.size * .08]) {
       const x = doorway.x + dx, y = doorway.y + dy;
       if (x < 0 || y < 0 || x > scene.width || y > scene.height) return "outside-map";
@@ -445,6 +446,13 @@ function updateBushPosition(state: ClearingActivityState) {
   if (!bush) return;
   state.position = { x: bush.entry.x + (bush.hide.x - bush.entry.x) * state.bushProgress,
     y: bush.entry.y + (bush.hide.y - bush.entry.y) * state.bushProgress };
+}
+function bushJumpTiming(bush: ClearingBush, size: number) {
+  // Smoothstep's maximum derivative is 1.5. A smaller actor takes longer to
+  // cross the same authored jump, preserving the physical speed and pose timing.
+  const travelSeconds = distance(bush.entry, bush.hide) * 1.5 / (size * BUSH_MAX_SPEED_RATIO);
+  return { enter: Math.max(BUSH_ENTER_SECONDS, travelSeconds),
+    exit: BUSH_EXIT_ANTICIPATION_SECONDS + Math.max(BUSH_EXIT_SECONDS - BUSH_EXIT_ANTICIPATION_SECONDS, travelSeconds) };
 }
 function leaveBush(state: ClearingActivityState, wake = false, still = false) {
   state.bushWake ||= wake; state.bushLeaving = true; state.steps = []; state.speed = 0;
@@ -813,12 +821,13 @@ function burst(state: ClearingActivityState, slot: number, strength: number) {
 function advanceBush(state: ClearingActivityState) {
   const route = bushRoute(state), bush = route?.bush;
   if (!bush) { retrace(state); return; }
+  const timing = bushJumpTiming(bush, state.size);
   if (state.stage === "bush-prepare") {
     if (state.stageElapsed >= BUSH_PREPARE_SECONDS) { state.stage = "bush-enter"; state.stageElapsed = 0; }
   } else if (state.stage === "bush-enter") {
-    state.bushProgress = smooth(state.stageElapsed / BUSH_ENTER_SECONDS); updateBushPosition(state);
+    state.bushProgress = smooth(state.stageElapsed / timing.enter); updateBushPosition(state);
     if (state.bushProgress >= .5) burst(state, 0, .85);
-    if (state.stageElapsed >= BUSH_ENTER_SECONDS) {
+    if (state.stageElapsed >= timing.enter) {
       state.bushProgress = 1; updateBushPosition(state);
       state.stage = state.bushLeaving ? "bush-exit" : "bush-hidden"; state.stageElapsed = 0;
     }
@@ -828,11 +837,11 @@ function advanceBush(state: ClearingActivityState) {
     if (state.stageElapsed >= Math.max(1.25, duration * .58)) burst(state, 2, 1);
     if (state.stageElapsed >= duration) { state.stage = "bush-exit"; state.stageElapsed = 0; }
   } else if (state.stage === "bush-exit") {
-    const travel = clamp((state.stageElapsed - .18) / (BUSH_EXIT_SECONDS - .18));
+    const travel = clamp((state.stageElapsed - BUSH_EXIT_ANTICIPATION_SECONDS) / (timing.exit - BUSH_EXIT_ANTICIPATION_SECONDS));
     state.bushProgress = 1 - smooth(travel); updateBushPosition(state);
     state.direction = bushDirection(bush.hide, bush.entry);
     if (travel >= .07) burst(state, 3, .65);
-    if (state.stageElapsed >= BUSH_EXIT_SECONDS) {
+    if (state.stageElapsed >= timing.exit) {
       state.bushProgress = 0; updateBushPosition(state); state.stage = "bush-land"; state.stageElapsed = 0;
     }
   } else if (state.stageElapsed >= BUSH_LAND_SECONDS) {
@@ -858,13 +867,14 @@ function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame>
   const foliage = { id, rustle: clamp(rustle), occlude: Boolean(routeBush), occupied: bushStage(state.stage),
     elapsed: matchingEffect?.elapsed ?? 0, bursts: matchingEffect?.bursts ?? [] };
   if (!routeBush || !bushStage(state.stage)) return { bush: foliage };
+  const timing = bushJumpTiming(routeBush, state.size);
   const t = state.stageElapsed;
   let lift = 0, compression = 0, pose: PixelPose = "idle", frame = 0;
   if (state.stage === "bush-prepare") {
     compression = .28 * smooth((t - .45) / (BUSH_PREPARE_SECONDS - .45));
     pose = t < .45 ? "wonder" : "idle";
   } else if (state.stage === "bush-enter") {
-    const travel = clamp(t / BUSH_ENTER_SECONDS);
+    const travel = clamp(t / timing.enter);
     compression = .28 * (1 - smooth(travel / .22)) + smooth((travel - .25) / .75);
     lift = state.size * (.2 * Math.sin(travel * Math.PI) + BUSH_TUCK_LIFT * smooth((travel - .35) / .65));
     pose = "jump"; frame = Math.min(3, Math.floor(travel * 4));
@@ -872,7 +882,7 @@ function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame>
     compression = 1; lift = state.size * BUSH_TUCK_LIFT;
     pose = "jump"; frame = 3;
   } else if (state.stage === "bush-exit") {
-    const travel = clamp((t - .18) / (BUSH_EXIT_SECONDS - .18));
+    const travel = clamp((t - BUSH_EXIT_ANTICIPATION_SECONDS) / (timing.exit - BUSH_EXIT_ANTICIPATION_SECONDS));
     compression = 1 - smooth(travel);
     lift = state.size * (BUSH_TUCK_LIFT * (1 - smooth(travel)) + .18 * Math.sin(travel * Math.PI));
     pose = "jump"; frame = Math.min(3, Math.floor(travel * 4));

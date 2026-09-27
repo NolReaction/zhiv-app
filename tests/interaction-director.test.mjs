@@ -18,8 +18,9 @@ const quiet = { autoLife: false, blocked: false, homeAvailable: true, dusk: 0, r
 const dt = .025;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-function create() {
+function create(size = TILED_WORLD.actor.size) {
   const scene = structuredClone(TILED_WORLD);
+  scene.actor.size = size;
   scene.paths = [];
   scene.mushrooms = [{ id: "eastern-mushroom", position: { x: 670, y: 705 } }];
   const session = connectForestSession(undefined, scene, "circle", 0, 0, () => {});
@@ -113,14 +114,16 @@ test("an indoor insect request resolves after one local exit, preserving every e
 });
 
 test("explicit home and bush requests hand off both ways with autonomous life disabled", () => {
-  const { state } = create();
-  moveToEasternGrass(state);
-  for (const [kind, stage] of [["home-sleep", "home-sleep"], ["bush", "bush-hidden"], ["home-sleep", "home-sleep"]]) {
-    requestForestDirective(state, kind, quiet);
-    until(state, () => state.clearing.stage === stage, quiet, () => {
-      assert.ok(distance(state.clearing.position, state.clearing.home) > 8);
-    });
-    assert.equal(state.pendingLife, null);
+  for (const size of [24, 50, 56]) {
+    const { state } = create(size);
+    moveToEasternGrass(state);
+    for (const [kind, stage] of [["home-sleep", "home-sleep"], ["bush", "bush-hidden"], ["home-sleep", "home-sleep"]]) {
+      requestForestDirective(state, kind, quiet);
+      until(state, () => state.clearing.stage === stage, quiet, () => {
+        assert.ok(distance(state.clearing.position, state.clearing.home) > 8);
+      });
+      assert.equal(state.pendingLife, null);
+    }
   }
 });
 

@@ -47,7 +47,7 @@ test("only explicit clearing paths activate movement; unsafe paths have useful d
     ["start-away-from-spawn", s => { s.paths[0].points[0].x += 2; }],
     ["invalid-points", s => { s.paths[0].points[1].x = NaN; }],
     ["invalid-points", s => { s.paths[0].points.length = 1; }],
-    ["outside-clearing-radius", s => { s.paths[0].points[1].x = 270; }],
+    ["outside-clearing-radius", s => { s.paths[0].points[1].x = 295; }],
     ["outside-focus", s => { s.focus = { x: 140, y: 150, width: 120, height: 100 }; s.paths[0].points[1] = point(166, 210); }],
     ["invalid-length", s => { s.paths[0].points = [point(200, 210), point(200, 210)]; }],
     ["invalid-activity", s => { s.paths[0].activity = "fishing"; }],

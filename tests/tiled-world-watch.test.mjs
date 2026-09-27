@@ -233,9 +233,11 @@ test("the application output requires spawn before any export write and watch pr
   // The repository's live map and generated output are never changed by this test.
   const cli = path.join(directory, "scripts/tiled-world.mjs");
   await mkdir(path.join(directory, "scripts/lib"), { recursive: true });
+  await mkdir(path.join(directory, "features/world"), { recursive: true });
   await mkdir(path.join(directory, "public"));
   await copyFile(script, cli);
   await copyFile(path.join(root, "scripts/lib/tiled-world.mjs"), path.join(directory, "scripts/lib/tiled-world.mjs"));
+  await copyFile(path.join(root, "features/world/interaction-limits.json"), path.join(directory, "features/world/interaction-limits.json"));
   await rename(path.join(directory, "ground.webp"), path.join(directory, "public/ground.webp"));
   map.tilesets[0].tiles[0].image = "public/ground.webp";
   const spawnPoint = { id: 3, name: "mochlik-spawn", x: 40, y: 50, width: 0, height: 0, point: true, properties: [

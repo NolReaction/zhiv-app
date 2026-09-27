@@ -6,6 +6,9 @@ const NEEDS = [
   ["energy", "Энергия"], ["curiosity", "Любопытство"],
   ["comfort", "Комфорт"], ["attention", "Внимание к игроку"],
 ] as const;
+const MOTIVES = [
+  ["arousal", "Возбуждение"], ["saturation", "Насыщение впечатлениями"], ["variety", "Потребность в смене занятий"],
+] as const;
 const MEMORY_LABELS: Record<ForestObservation["memory"]["status"], string> = {
   session: "Память текущей сессии",
   saved: "Сохранено на этом устройстве",
@@ -43,6 +46,8 @@ export function createForestAiReport(observation: ForestObservation, exportedAt 
         revision: observation.memory.sync.revision, serverSavedAt: observation.memory.sync.serverSavedAt } } : {}) },
     diagnostics: {
       reason: text(observation.diagnostics.reason),
+      ...(observation.diagnostics.motives ? { motives: Object.fromEntries(MOTIVES.map(([key]) =>
+        [key, percent(observation.diagnostics.motives![key]) / 100])) } : {}),
       candidates: observation.diagnostics.candidates.slice(0, 32).map(candidate => ({
         id: text(candidate.id), label: text(candidate.label), score: candidate.score,
         available: candidate.available, reason: text(candidate.reason),
@@ -84,6 +89,20 @@ export function ForestAiDiagnostics({ observation, onExport }: {
       })}
     </div>
     <p className={styles.hint}>Внутренние мотивы влияют на выбор занятий. Эти показатели не требуют обязательного ухода.</p>
+    {observation.diagnostics.motives && <details className={styles.aiChoices}>
+      <summary>Скрытые мотивы</summary>
+      <p className={styles.hint}>Возбуждение меняет предпочтение активных и спокойных занятий. Впечатления насыщают интерес, а повторы побуждают попробовать другое.</p>
+      <div className={styles.aiNeeds} aria-label="Скрытые мотивы Мохлика">
+        {MOTIVES.map(([key, label]) => {
+          const value = percent(observation.diagnostics.motives![key]);
+          return <label key={key} className={styles.aiNeed}>
+            <span>{label}<b>{value}%</b></span>
+            <meter aria-label={label} min={0} max={100} value={value}>{value}%</meter>
+          </label>;
+        })}
+      </div>
+      <p className={styles.hint}>Это кратковременное состояние и выводы из недавних занятий. Нулевое внимание к игроку означает, что Мохлик занят своими делами.</p>
+    </details>}
     <div className={styles.aiMemory}>
       <strong>Память</strong><span>{MEMORY_LABELS[observation.memory.status]}</span>
       {observation.memory.sync && <span>{SYNC_LABELS[observation.memory.sync.mode]} · revision {observation.memory.sync.revision ?? "—"}</span>}

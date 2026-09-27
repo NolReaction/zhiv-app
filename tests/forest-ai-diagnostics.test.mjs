@@ -55,6 +55,22 @@ test("DEV explains blocked alternatives and chronological events without changin
   assert.deepEqual(snapshot, before, "render must not reorder the store snapshot");
 });
 
+test("hidden motives remain read-only and the report allowlists only bounded motive values", () => {
+  const snapshot = observation();
+  snapshot.diagnostics.motives = { arousal: .63, saturation: .4, variety: .82, token: "secret-motive-token" };
+  const before = structuredClone(snapshot), { markup, elements } = render(snapshot);
+  assert.match(markup, /Скрытые мотивы/);
+  assert.match(markup, /Насыщение впечатлениями/);
+  assert.match(markup, /Потребность в смене занятий/);
+  assert.equal(elements.filter(element => element.type === "meter").length, 7);
+  assert.deepEqual(snapshot, before);
+  const report = createForestAiReport(snapshot);
+  assert.deepEqual(report.diagnostics.motives, { arousal: .63, saturation: .4, variety: .82 });
+  assert.doesNotMatch(JSON.stringify(report), /secret-motive-token/);
+  snapshot.diagnostics.motives = { arousal: Infinity, saturation: -1, variety: 3 };
+  assert.deepEqual(createForestAiReport(snapshot).diagnostics.motives, { arousal: 0, saturation: 0, variety: 1 });
+});
+
 test("DEV shows a harmless loading state, paused state and unavailable local memory", () => {
   const empty = render(null, () => assert.fail("no export before a scene exists"));
   assert.match(empty.markup, /Данные появятся/);

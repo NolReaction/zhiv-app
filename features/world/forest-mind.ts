@@ -2,12 +2,16 @@
 export type ForestMindAction = "look" | "sniff" | "groom" | "rest" | "bush" | "home-sleep"
   | "butterfly" | "firefly" | "mushroom" | "leaf" | "idle";
 export type ForestMindNeeds = { energy: number; curiosity: number; comfort: number; attention: number };
+/** Internal decision signals, not additional care needs or persisted account fields. */
+export type ForestMindMotives = { arousal: number; saturation: number; variety: number };
 export type ForestMindOutcome = "completed" | "interrupted" | "failed";
 export type ForestMindCandidate = {
   key: string; action: ForestMindAction; score: number | null; available: boolean; reasons: string[]; selected: boolean;
 };
 export type ForestMindState = {
   elapsed: number; needs: ForestMindNeeds; attentionUntil: number;
+  /** Short-lived activation. Restoration estimates it from the existing needs and memory. */
+  arousal: number;
   intention: { key: string; action: ForestMindAction; reason: string; startedAt: number; source: "clearing" | "director" } | null;
   recent: { key: string; action: ForestMindAction; outcome: ForestMindOutcome; at: number; duration: number }[];
   candidates: ForestMindCandidate[];
@@ -22,10 +26,49 @@ const actionLabel: Record<ForestMindAction, string> = {
   bush: "Исследует куст", "home-sleep": "Отдыхает дома", butterfly: "Играет с бабочкой", firefly: "Наблюдает за светлячком",
   mushroom: "Рассматривает гриб", leaf: "Играет с листиком", idle: "Спокойно осматривается",
 };
+type ActionFamily = "observe" | "explore" | "play" | "care" | "rest" | "idle";
+const actionFamily: Record<ForestMindAction, ActionFamily> = {
+  look: "observe", sniff: "explore", groom: "care", rest: "rest", bush: "explore", "home-sleep": "rest",
+  butterfly: "play", firefly: "observe", mushroom: "observe", leaf: "play", idle: "idle",
+};
+// Positive values describe lively activities; negative values describe quieter ones.
+const stimulation: Record<ForestMindAction, number> = {
+  look: -.65, sniff: .2, groom: -.8, rest: -1, bush: .85, "home-sleep": -1,
+  butterfly: 1, firefly: -.55, mushroom: -.45, leaf: .9, idle: -.75,
+};
+function interesting(action: ForestMindAction | undefined) {
+  const family = action === undefined ? undefined : actionFamily[action];
+  return family === "observe" || family === "explore" || family === "play";
+}
+
+function completedExperience(mind: ForestMindState) {
+  const families: Record<ActionFamily, number> = { observe: 0, explore: 0, play: 0, care: 0, rest: 0, idle: 0 };
+  let impressions = 0, total = 0;
+  for (const previous of mind.recent) {
+    if (previous.outcome !== "completed") continue;
+    const family = actionFamily[previous.action], age = Math.max(0, mind.elapsed - previous.at);
+    const freshness = Math.max(0, 1 - age / 120);
+    // Walking time is included in intention.duration, so it cannot measure experience intensity.
+    if (family === "idle" || family === "rest") continue;
+    families[family] += freshness; total += freshness;
+    if (interesting(previous.action)) impressions += freshness * (family === "play" ? 1 : family === "explore" ? .7 : .45);
+  }
+  const peak = Math.max(...Object.values(families));
+  return { families, total, saturation: unit(impressions / 3), variety: total ? unit((peak - 1) / 3) * peak / total : 0 };
+}
+function restoredArousal(mind: ForestMindState, saturation: number) {
+  return unit(.22 + finite(mind.needs.attention, 0, 1) * .45
+    + (1 - finite(mind.needs.comfort, .85, 1)) * .16 + saturation * .3);
+}
+/** Pure, bounded diagnostic view. Reading it never advances a second simulation clock. */
+export function forestMindMotives(mind: ForestMindState): ForestMindMotives {
+  const { saturation, variety } = completedExperience(mind);
+  return { arousal: finite(mind.arousal, restoredArousal(mind, saturation), 1), saturation, variety };
+}
 export const forestMindActionLabel = (action: ForestMindAction) => actionLabel[action];
 export function createForestMind(): ForestMindState {
   return { elapsed: 0, needs: { energy: .82, curiosity: .58, comfort: .85, attention: 0 }, attentionUntil: 0,
-    intention: null, recent: [], candidates: [], events: [] };
+    arousal: .244, intention: null, recent: [], candidates: [], events: [] };
 }
 function event(mind: ForestMindState, type: ForestMindState["events"][number]["type"], action: ForestMindAction | null, reason: string) {
   mind.events.push({ at: mind.elapsed, type, action, reason });
@@ -41,16 +84,28 @@ export function advanceForestMind(mind: ForestMindState, delta: number, context:
   const dt = Math.min(delta, .1), needs = mind.needs;
   mind.elapsed += dt;
   needs.energy = unit(needs.energy + dt * (context.sleeping ? .009 : context.resting ? .007 : context.moving ? -.0015 : context.engaged ? -.0008 : -.00018));
-  needs.curiosity = unit(needs.curiosity + dt * (context.engaged ? -.008 : context.moving ? -.0008 : .002));
+  // Grooming also uses engaged poses, but it is not a new impression. Interest recovers
+  // on walks and in quiet moments; meaningful activity satisfies it without a zero trap.
+  const exploring = context.engaged && interesting(mind.intention?.action);
+  const curiosityTarget = exploring ? .22 : context.sleeping ? .72 : context.moving ? .7 : .8;
+  needs.curiosity = unit(needs.curiosity + (curiosityTarget - needs.curiosity) * (1 - Math.exp(-dt / (exploring ? 45 : 100))));
   const comfortTarget = context.sheltered ? .98 : 1 - unit(context.rain) * .7 - unit(context.dusk) * .06;
   needs.comfort = unit(needs.comfort + (comfortTarget - needs.comfort) * (1 - Math.exp(-dt / 35)) + (context.grooming ? dt * .003 : 0));
   needs.attention = unit(needs.attention - dt / 45);
+  const currentArousal = Number.isFinite(mind.arousal) ? unit(mind.arousal)
+    : restoredArousal(mind, completedExperience(mind).saturation);
+  const action = mind.intention?.action;
+  const activation = context.sleeping ? .08 : context.resting ? .12 : context.grooming ? .2
+    : context.moving ? .58 : exploring ? .38 + Math.max(0, stimulation[action!]) * .5 : .22;
+  const arousalTarget = unit(activation + (context.sheltered ? 0 : unit(context.rain) * .14) + needs.attention * .18);
+  mind.arousal = unit(currentArousal + (arousalTarget - currentArousal) * (1 - Math.exp(-dt / 14)));
 }
 
 /** Each evaluation combines current motives and recency; noise is bounded by callers. */
 export function scoreForestAction(mind: ForestMindState, action: ForestMindAction, key: string,
   context: { rain: number; dusk: number; cost?: number; noise?: number }): ForestMindCandidate {
   const n = mind.needs, tired = 1 - n.energy, curious = n.curiosity, discomfort = 1 - n.comfort;
+  const experience = completedExperience(mind), arousal = finite(mind.arousal, restoredArousal(mind, experience.saturation), 1);
   const reasons: string[] = [];
   let score = .7;
   if (action === "rest" || action === "home-sleep") {
@@ -73,6 +128,21 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
     score -= n.attention * .25;
     reasons.push(curious > .5 ? "Любопытно исследовать что-то новое" : "Рядом есть интересное занятие");
     if (n.energy < .35) reasons.push("Сил немного — активность менее привлекательна");
+  }
+  const tempo = (.45 - arousal) * stimulation[action] * 1.25;
+  const impressions = -experience.saturation * stimulation[action] * .65;
+  score += tempo + impressions;
+  if (arousal > .58 && Math.abs(tempo) > .12) reasons.push("После оживления тянется к спокойному занятию");
+  else if (arousal < .3 && tempo > .12) reasons.push("Отдохнул от суеты — готов немного оживиться");
+  if (experience.saturation > .35 && Math.abs(impressions) > .12) reasons.push("Набрался впечатлений — хочется спокойствия");
+  const family = actionFamily[action];
+  // Variety never makes necessary rest less attractive. Failed attempts already have
+  // their own recency penalty and must not count as satisfying experiences.
+  if (family !== "rest" && family !== "idle" && experience.total) {
+    const share = experience.families[family] / experience.total;
+    const variety = experience.variety * (.45 - share * 1.5);
+    score += variety;
+    if (Math.abs(variety) > .1) reasons.push(variety < 0 ? "Недавно занимался похожим — хочется разнообразия" : "Другое занятие внесёт разнообразие");
   }
   const repeat = mind.recent.reduce((sum, previous) => {
     const age = Math.max(0, mind.elapsed - previous.at);
@@ -100,7 +170,10 @@ export function finishForestIntention(mind: ForestMindState, outcome: ForestMind
   mind.recent.push({ key: intention.key, action: intention.action, outcome, at: mind.elapsed, duration: Math.max(0, mind.elapsed - intention.startedAt) });
   mind.recent = mind.recent.filter(item => mind.elapsed - item.at <= 300).slice(-16);
   if (outcome === "completed") {
-    if (["look", "sniff", "bush", "butterfly", "firefly", "mushroom", "leaf"].includes(intention.action)) mind.needs.curiosity = unit(mind.needs.curiosity - .08);
+    if (interesting(intention.action)) {
+      const experience = completedExperience(mind), familiar = unit(experience.families[actionFamily[intention.action]] / 3);
+      mind.needs.curiosity = unit(mind.needs.curiosity * (1 - .08 * (1 - familiar * .75)));
+    }
     if (intention.action === "groom") mind.needs.comfort = unit(mind.needs.comfort + .06);
   }
   event(mind, outcome, intention.action, reason); mind.intention = null;
@@ -110,6 +183,7 @@ export function noticeForestMind(mind: ForestMindState, options: { rested?: bool
   finishForestIntention(mind, wasSleeping ? "completed" : "interrupted", wasSleeping ? "Отдохнул и услышал игрока" : "Услышал игрока");
   const log = mind.needs.attention < .9 || mind.elapsed - (mind.events.at(-1)?.at ?? -10) >= 2;
   mind.needs.attention = 1; mind.attentionUntil = mind.elapsed + 30;
+  mind.arousal = Math.max(forestMindMotives(mind).arousal, .7);
   if (log) event(mind, "attention", null, "Игрок позвал — отвечает и некоторое время остаётся бодрым");
 }
 export function forestMindMood(mind: ForestMindState): { label: string; description: string } {
@@ -140,6 +214,8 @@ export function restoreForestMind(value: unknown): ForestMindState {
       || !Number.isFinite(entry.at) || entry.at < 0 || entry.at > mind.elapsed || mind.elapsed - entry.at > 300) continue;
     mind.recent.push({ key: entry.key, action: entry.action, outcome: entry.outcome, at: entry.at, duration: finite(entry.duration, 0, 3600) });
   }
+  // Ignore a saved transient value: the account contract contains only the four needs.
+  mind.arousal = restoredArousal(mind, completedExperience(mind).saturation);
   event(mind, "restored", null, "Вспомнил недавние занятия и вернулся в безопасное состояние");
   return mind;
 }

@@ -24,7 +24,7 @@ function context() {
     const gradient = { stops: [], addColorStop(...stop) { this.stops.push(stop); } };
     calls.push({ method: "gradient", args }); return gradient;
   };
-  for (const method of ["beginPath", "moveTo", "lineTo", "closePath", "clip", "fillRect", "drawImage"])
+  for (const method of ["beginPath", "moveTo", "lineTo", "closePath", "rect", "clip", "fillRect", "drawImage"])
     ctx[method] = (...args) => calls.push({ method, args, ...state() });
   return { ctx, calls, stack, state };
 }
@@ -63,7 +63,7 @@ test("chimney smoke is bounded and deterministic, freezes with time, and disappe
       assert.ok([x, y, width, height, globalAlpha].every(Number.isFinite));
       assert.ok(globalAlpha >= 0 && globalAlpha <= .13);
       assert.ok(x > 120 && x < 155 && y > 55 && y < 115);
-      assert.ok(width > 0 && width < 18 && height < 18);
+      assert.ok(width > 0 && width < 22 && height <= 27);
     }
   }
   for (const overrides of [{ reducedMotion: true }, { showBuildings: false }]) {
@@ -72,6 +72,43 @@ test("chimney smoke is bounded and deterministic, freezes with time, and disappe
   }
   const offscreen = context(); offscreen.ctx.getTransform = () => ({ a: 1, b: 0, c: 0, d: 1, e: 10000, f: 10000 });
   drawBuildingDetails(offscreen.ctx, scene(), options); assert.equal(offscreen.calls.length, 0);
+});
+
+test("the plume stays attached to its mouth, overlaps continuously and disperses upward without particle resets", () => {
+  const map = scene(); delete map.sites[0].window;
+  let previous;
+  for (let elapsed = 0; elapsed < 16; elapsed += .01) {
+    const paint = context(); drawBuildingDetails(paint.ctx, map, { ...options, elapsed });
+    const [{ args: [clipX, clipY, clipWidth, clipHeight] }] = paint.calls.filter(call => call.method === "rect");
+    assert.equal(clipY + clipHeight, map.sites[0].chimney.y, "soft plume tails never cover the pipe below its mouth");
+    assert.ok(clipX < map.sites[0].chimney.x && clipX + clipWidth > map.sites[0].chimney.x);
+    const segments = paint.calls.filter(call => call.method === "fillRect");
+    const first = segments[0], last = segments.at(-1);
+    assert.ok(first.globalAlpha > .04, "the narrow base never disappears between particles");
+    assert.equal(first.args[0] + first.args[2] / 2, map.sites[0].chimney.x);
+    assert.ok(first.args[1] < map.sites[0].chimney.y && first.args[1] + first.args[3] > map.sites[0].chimney.y);
+    assert.ok(last.globalAlpha < first.globalAlpha * .25, "the upper plume dissolves into the background");
+    assert.ok(last.args[2] > first.args[2] * 4, "smoke spreads as it rises");
+    for (let index = 1; index < segments.length; index++) {
+      const lower = segments[index - 1].args, upper = segments[index].args;
+      assert.ok(upper[1] + upper[3] > lower[1] + lower[3] * .3, "adjacent soft segments overlap without bead gaps");
+    }
+    if (previous) for (let index = 0; index < segments.length; index++) {
+      const before = previous[index], current = segments[index];
+      assert.ok(Math.abs(before.args[0] - current.args[0]) < .04, "shape remains continuous across the old particle reset times");
+      assert.ok(Math.abs(before.globalAlpha - current.globalAlpha) < .001);
+    }
+    previous = segments;
+  }
+});
+
+test("window and smoke respect incoming transparency and restore it after drawing", () => {
+  const opaque = context(), faded = context(); opaque.ctx.globalAlpha = 1; faded.ctx.globalAlpha = .25;
+  drawBuildingDetails(opaque.ctx, scene(), options); drawBuildingDetails(faded.ctx, scene(), options);
+  const full = opaque.calls.filter(call => call.method === "fillRect"), quarter = faded.calls.filter(call => call.method === "fillRect");
+  assert.equal(full.length, quarter.length);
+  for (let index = 0; index < full.length; index++) assert.equal(quarter[index].globalAlpha, full[index].globalAlpha * .25);
+  assert.equal(opaque.ctx.globalAlpha, 1); assert.equal(faded.ctx.globalAlpha, .25);
 });
 
 test("switching to an earlier building cannot retain the later chimney or window", () => {

@@ -2,6 +2,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import sharp from "sharp";
+import interactionLimits from "../../features/world/interaction-limits.json" with { type: "json" };
 
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const fail = (at, message) => { throw new Error(`${at}: ${message}`); };
@@ -576,9 +577,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     const geometry = bushMarkers.get(bush.id) ?? {};
     for (const role of ["entry", "hide"]) requireThat(own(geometry, role), "map", `bush ${bush.id} is missing ${role}`);
     requireThat(insidePolygon(geometry.hide, bush.points), "map", `bush ${bush.id} hide must be inside its leaf contour`);
-    const jumpLimit = world.actor?.size ?? Math.min(world.width, world.height) * 0.1;
+    const jumpLimit = interactionLimits.bushJump;
     requireThat(Math.hypot(geometry.entry.x - geometry.hide.x, geometry.entry.y - geometry.hide.y) <= jumpLimit,
-      "map", `bush ${bush.id} entry and hide must be within one actor size (${jumpLimit} world units)`);
+      "map", `bush ${bush.id} entry and hide must be within ${jumpLimit} world units`);
     return { ...bush, entry: geometry.entry, hide: geometry.hide };
   });
   world.sites = [...sites.values()].map(site => {

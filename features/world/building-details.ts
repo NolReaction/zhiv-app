@@ -10,15 +10,15 @@ export type BuildingDetailOptions = {
 
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 const TAU = Math.PI * 2;
-const PUFF_COUNT = 6;
-const SMOKE_PERIOD = 8;
+const SMOKE_SEGMENTS = 6;
 let smokeTexture: HTMLCanvasElement | undefined;
 
 function smokeGradient(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
   const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-  gradient.addColorStop(0, "rgba(208,211,198,.8)");
-  gradient.addColorStop(.4, "rgba(208,211,198,.4)");
-  gradient.addColorStop(1, "rgba(208,211,198,0)");
+  gradient.addColorStop(0, "rgba(196,204,190,.72)");
+  gradient.addColorStop(.35, "rgba(196,204,190,.46)");
+  gradient.addColorStop(.7, "rgba(196,204,190,.12)");
+  gradient.addColorStop(1, "rgba(196,204,190,0)");
   return gradient;
 }
 
@@ -26,7 +26,10 @@ function smokeSprite() {
   if (smokeTexture || typeof document === "undefined") return smokeTexture;
   const canvas = document.createElement("canvas"); canvas.width = canvas.height = 64;
   const ctx = canvas.getContext("2d"); if (!ctx) return undefined;
-  ctx.fillStyle = smokeGradient(ctx, 32, 32, 32); ctx.fillRect(0, 0, 64, 64);
+  // A slightly asymmetric density field avoids identical, circular particle cores.
+  ctx.fillStyle = smokeGradient(ctx, 29, 29, 29); ctx.fillRect(0, 0, 64, 64);
+  ctx.globalAlpha = .35;
+  ctx.fillStyle = smokeGradient(ctx, 39, 39, 22); ctx.fillRect(0, 0, 64, 64);
   smokeTexture = canvas; return canvas;
 }
 
@@ -51,20 +54,26 @@ function drawChimney(ctx: CanvasRenderingContext2D, site: FixedSite, elapsed: nu
   if (!visible(ctx, site.chimney, 65 * scale)) return;
   const sprite = smokeSprite(), phase = sitePhase(site.id);
   const time = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
+  const opacity = ctx.globalAlpha;
   ctx.save(); ctx.globalCompositeOperation = "source-over";
-  for (let index = 0; index < PUFF_COUNT; index++) {
-    const age = (time / SMOKE_PERIOD + index / PUFF_COUNT + phase) % 1;
-    // Zero opacity and zero opacity derivative at both ends avoid a visible loop reset.
-    const fade = Math.sin(age * Math.PI) ** 2;
-    const rise = age * 45 * scale, spread = age ** 1.3;
-    const x = site.chimney.x + spread * (8 + Math.sin(time * .65 + phase * TAU + index) * 4) * scale;
-    const y = site.chimney.y - rise;
-    const radius = (1.6 + age * 7) * scale;
-    ctx.globalAlpha = fade * (.13 - night * .045);
-    if (sprite) ctx.drawImage(sprite, x - radius, y - radius * 1.2, radius * 2, radius * 2.4);
+  // The overlapping plume begins at the mouth; none of its soft tail paints over the pipe.
+  ctx.beginPath(); ctx.rect(site.chimney.x - 30 * scale, site.chimney.y - 65 * scale, 65 * scale, 65 * scale); ctx.clip();
+  for (let index = 0; index < SMOKE_SEGMENTS; index++) {
+    const heightFraction = index / (SMOKE_SEGMENTS - 1);
+    const flow = time * .9 - heightFraction * 6.5 + phase * TAU;
+    const spread = heightFraction ** 1.3;
+    // Travelling waves carry density upward along one continuous column; there is no
+    // particle birth/reset and no gap between the chimney mouth and the first puff.
+    const bend = Math.sin(flow * .63) * 3.2 + Math.sin(flow * 1.17 + 1.2) * 1.1;
+    const x = site.chimney.x + spread * (7 + bend) * scale;
+    const y = site.chimney.y - (3.5 + heightFraction * 34) * scale;
+    const width = (3 + heightFraction * 14) * (1 + Math.sin(flow + .7) * .09) * scale;
+    const height = (15 + heightFraction * 12) * scale;
+    ctx.globalAlpha = opacity * (.11 - night * .03) * (1 - heightFraction * .88) * (.88 + Math.sin(flow) * .12);
+    if (sprite) ctx.drawImage(sprite, x - width / 2, y - height / 2, width, height);
     else {
-      ctx.fillStyle = smokeGradient(ctx, x, y, radius);
-      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+      ctx.fillStyle = smokeGradient(ctx, x, y, height / 2);
+      ctx.fillRect(x - width / 2, y - height / 2, width, height);
     }
   }
   ctx.restore();
@@ -82,7 +91,7 @@ function drawWindow(ctx: CanvasRenderingContext2D, points: WorldPoint[], night: 
   for (const point of points.slice(1)) ctx.lineTo(point.x, point.y);
   ctx.closePath(); ctx.clip();
   // Clipped, translucent screen lighting keeps the painted window mullions and grain visible.
-  ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = night;
+  ctx.globalCompositeOperation = "screen"; ctx.globalAlpha *= night;
   const glow = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, radius);
   glow.addColorStop(0, "rgba(255,191,99,.37)");
   glow.addColorStop(.55, "rgba(237,146,62,.23)");

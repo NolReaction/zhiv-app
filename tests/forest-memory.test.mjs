@@ -9,6 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
 const { forestMemoryKey, forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
+const { forestMindMotives } = await vite.ssrLoadModule("/features/world/forest-mind.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { requestClearingSleep, requestClearingBush, advanceClearingActivity, noticeClearingActivity, clearingActivityFrame } =
   await vite.ssrLoadModule("/features/world/clearing-activity.ts");
@@ -37,6 +38,7 @@ test("reload restores per-account motives, short memory and mushroom growth with
   Object.assign(first.state.clearing.behavior.mind, { elapsed: 80, attentionUntil: 103,
     recent: [{ key: "leaf", action: "leaf", outcome: "completed", at: 60, duration: 8 }] });
   first.state.clearing.behavior.mind.needs = { energy: .41, curiosity: .87, comfort: .31, attention: .68 };
+  const motives = forestMindMotives(first.state.clearing.behavior.mind);
   first.state.clearing.elapsed = 40; first.state.clearing.awakeUntil = 63;
   first.state.clearing.behavior.restUntil = 74;
   first.state.life.mushrooms[0].growth = .2; first.state.life.mushrooms[0].regrowIn = 12;
@@ -44,12 +46,17 @@ test("reload restores per-account motives, short memory and mushroom growth with
   first.release();
   const written = JSON.parse(env.records.get(forestMemoryKey("memory-reload")));
   assert.equal(written.version, 1); assert.equal(written.life, undefined); assert.equal(written.paths, undefined);
+  assert.deepEqual(Object.keys(written.mind.needs).sort(), ["attention", "comfort", "curiosity", "energy"]);
+  assert.equal(written.mind.arousal, undefined); assert.equal(written.mind.motives, undefined);
   env.addTime(30 * 24 * 3600 * 1000);
   const next = connect("memory-reload", map, env);
   try {
     assert.equal(next.state.memory.restored, true); assert.equal(next.state.memory.reconciled, false);
     assert.deepEqual(next.state.clearing.behavior.mind.needs, { energy: .41, curiosity: .87, comfort: .31, attention: .68 });
     assert.equal(next.state.clearing.behavior.mind.recent[0].key, "leaf");
+    const recovered = forestMindMotives(next.state.clearing.behavior.mind);
+    assert.equal(recovered.saturation, motives.saturation); assert.equal(recovered.variety, motives.variety);
+    assert.ok(recovered.arousal > .5 && recovered.arousal <= 1, "activation is reconstructed from existing attention and impressions");
     assert.deepEqual(next.state.clearing.position, { x: 665, y: 701 });
     assert.equal(next.state.clearing.stage, "clearing"); assert.equal(next.state.clearing.awakeUntil, 23);
     assert.equal(next.state.clearing.behavior.restUntil, 34);

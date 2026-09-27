@@ -22,12 +22,16 @@ test("observations are isolated, bounded and detached; last renderer removes an 
   try {
     assert.equal(getServerForestObservation(), null); assert.equal(getForestObservation(undefined), null);
     a.state.clearing.behavior.mind.needs.energy = .23;
+    a.state.clearing.behavior.mind.arousal = .63;
     publishForestObservation("observer-a", a.state, { now: 0 });
     publishForestObservation("observer-b", b.state, { now: 0 });
     const snapshot = getForestObservation("observer-a");
     a.state.clearing.behavior.mind.needs.energy = .9;
+    a.state.clearing.behavior.mind.arousal = .1;
     assert.equal(snapshot.needs.energy, .23);
     assert.ok(Object.isFrozen(snapshot.needs)); assert.ok(Object.isFrozen(snapshot.diagnostics.events));
+    assert.equal(snapshot.diagnostics.motives.arousal, .63);
+    assert.ok(Object.isFrozen(snapshot.diagnostics.motives));
     assert.notEqual(getForestObservation("observer-b").needs.energy, .23);
     await Promise.resolve(); assert.equal(notifications, 1);
     a.release(); assert.equal(getForestObservation("observer-a"), snapshot);

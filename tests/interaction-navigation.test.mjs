@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { compileWorldInteractions, findInteractionApproach } = await vite.ssrLoadModule("/features/world/interaction-navigation.ts");
+const { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS } = await vite.ssrLoadModule("/features/world/interaction-navigation.ts");
 const { createWorldNavigation, canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
@@ -23,7 +23,7 @@ test("real map markers work without Routes, including the doorway outside WalkAr
   const home = compiled.home;
   assert.equal(isWalkable(nav, home.entry), false, "regression: authored entry needs its short threshold connector");
   assert.equal(isWalkable(nav, home.dock), true);
-  assert.ok(distance(home.entry, home.dock) > 0 && distance(home.entry, home.dock) <= map.actor.size * .24);
+  assert.ok(distance(home.entry, home.dock) > 0 && distance(home.entry, home.dock) <= WORLD_INTERACTION_LIMITS.homeDock);
   for (const interaction of [home, ...compiled.bushes]) {
     const approach = findInteractionApproach(nav, map.actor.spawn, interaction);
     assert.ok(approach); assert.deepEqual(approach.points[0], map.actor.spawn);
@@ -80,11 +80,13 @@ test("disconnected grass cannot reach otherwise valid interactions", () => {
   assert.equal(findInteractionApproach(nav, start, compiled.bushes[0]), null);
 });
 
-test("all five authored homes are reachable from the clearing and their docks can leave for every interest", () => {
-  for (const level of [1, 2, 3, 4, 5]) {
-    const map = previewWorldScene(TILED_WORLD, { home: level }), nav = createWorldNavigation(map);
+test("all five authored homes retain reachable entrances when the actor changes from size 56 to 50", () => {
+  for (const size of [50, 56]) for (const level of [1, 2, 3, 4, 5]) {
+    const map = structuredClone(previewWorldScene(TILED_WORLD, { home: level }));
+    map.actor.size = size;
+    const nav = createWorldNavigation(map);
     const { home, diagnostics } = compileWorldInteractions(map);
-    assert.ok(home, `level ${level}: ${JSON.stringify(diagnostics)}`);
+    assert.ok(home, `size ${size}, level ${level}: ${JSON.stringify(diagnostics)}`);
     const origins = [map.actor.spawn, ...map.navigation.interests.map(interest => interest.position)];
     // Include both sides of the clearing and off-centre positions near its rocks.
     for (let id = 0; id < nav.grid.walkable.length; id += 7) {
@@ -102,5 +104,38 @@ test("all five authored homes are reachable from the clearing and their docks ca
       assert.ok(departure, `level ${level} must leave its own porch`);
       for (let index = 1; index < departure.length; index++) assert.ok(canTraverse(nav, departure[index - 1], departure[index]));
     }
+  }
+});
+
+test("smaller sprites preserve authored bush jumps while larger sprites retain their full clearance", () => {
+  for (const size of [24, 50, 56]) {
+    const map = scene(); map.actor.size = size;
+    const nav = createWorldNavigation(map), compiled = compileWorldInteractions(map);
+    assert.equal(nav.radius, size * .1);
+    assert.ok(compiled.bushes.length, `size ${size}: ${JSON.stringify(compiled.diagnostics)}`);
+    assert.ok(findInteractionApproach(nav, map.actor.spawn, compiled.bushes[0]));
+  }
+  const map = scene(), entry = map.bushes[0].entry;
+  // The obstacle sits six units from the standing point: a small support fits,
+  // but an eight-unit support cannot use the same approach.
+  map.navigation.obstacles.push({ id: "close-to-entry", points: rect(entry.x + 6, entry.y - 1, 1, 2) });
+  map.actor.size = 24;
+  assert.equal(isWalkable(createWorldNavigation(map), entry), true);
+  const enlarged = structuredClone(map); enlarged.actor.size = 80;
+  assert.equal(isWalkable(createWorldNavigation(enlarged), entry), false);
+  assert.equal(compileWorldInteractions(enlarged).diagnostics.find(item => item.id === "clearing-bush").reason, "unreachable-bush-entry");
+});
+
+test("authored transition lengths stay bounded in world units regardless of actor size", () => {
+  for (const size of [24, 50, 56, 80]) {
+    const map = scene(); map.actor.size = size;
+    const home = map.sites.find(site => site.id === "home");
+    home.doorway = { x: home.entry.x, y: home.entry.y - WORLD_INTERACTION_LIMITS.homeThreshold - .01 };
+    assert.equal(compileWorldInteractions(map).diagnostics.find(item => item.id === "home").reason, "invalid-doorway");
+    const bushMap = scene(); bushMap.actor.size = size;
+    const bush = bushMap.bushes[0];
+    bush.hide = { x: bush.entry.x - WORLD_INTERACTION_LIMITS.bushJump - .01, y: bush.entry.y };
+    bush.points = rect(bush.hide.x - 1, bush.hide.y - 1, 2, 2);
+    assert.equal(compileWorldInteractions(bushMap).diagnostics.find(item => item.id === "clearing-bush").reason, "invalid-bush-corridor");
   }
 });
