@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -33,7 +34,7 @@ const fixture = {
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: false };
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function create(override) {
-  const session = connectForestSession(undefined, { ...structuredClone(fixture), ...override }, "circle", 0, 0, () => {});
+  const session = connectForestSession(undefined, withPlacedBushArtwork({ ...structuredClone(fixture), ...override }), "circle", 0, 0, () => {});
   session.release(); return session.state;
 }
 function advance(state, seconds, options = calm, inspect) {

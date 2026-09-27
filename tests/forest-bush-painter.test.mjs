@@ -110,3 +110,15 @@ test('berries settle after departure without masking the actor and disappear whe
   drawForestBush(expired.ctx, scene, images, { ...frame, elapsed: 3 });
   assert.deepEqual(expired.calls, []);
 });
+
+test('an explicitly unplaced shrub does not cover the hero with plain ground or emit leaves', () => {
+  const { scene, bush, images } = fixture(); bush.imageId = 'independent-shrub';
+  const frame = { id: bush.id, rustle: 1, occlude: true, elapsed: .72, bursts: [{ at: .2, strength: .9, seed: 183 }] };
+  const pending = context(); drawForestBush(pending.ctx, scene, images, frame);
+  assert.deepEqual(pending.calls, []);
+  scene.terrain.push({ id: bush.imageId, image: '/shrub.png', bounds: { x: 0, y: 0, width: 100, height: 100 } });
+  images.set('/shrub.png', { naturalWidth: 100, naturalHeight: 100 });
+  const placed = context(); drawForestBush(placed.ctx, scene, images, frame);
+  assert.equal(placed.calls.filter(call => call.method === 'drawImage').length, 2);
+  assert.ok(placed.calls.some(call => call.method === 'clip'));
+});

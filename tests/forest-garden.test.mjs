@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -18,7 +19,7 @@ const { isWalkable, createWorldNavigation } = await vite.ssrLoadModule("/feature
 const { isForestGroundClear } = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: true };
 function scene(level = 1, size = 50) {
-  const map = structuredClone(previewWorldScene(TILED_WORLD, { home: level })); map.actor.size = size; return map;
+  const map = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: level })); map.actor.size = size; return map;
 }
 function create(level = 1, size = 50) {
   const session = connectForestSession(undefined, scene(level, size), "circle", 0, 0, () => {});

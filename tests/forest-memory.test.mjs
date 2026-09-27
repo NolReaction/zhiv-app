@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -17,7 +18,7 @@ const { requestClearingSleep, requestClearingBush, advanceClearingActivity, noti
   await vite.ssrLoadModule("/features/world/clearing-activity.ts");
 const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const conditions = { enabled: true, blocked: false, homeAvailable: true, dusk: 0, rain: 0 };
-const scene = () => ({ ...structuredClone(TILED_WORLD), paths: [] });
+const scene = () => ({ ...withPlacedBushArtwork(TILED_WORLD), paths: [] });
 function environment() {
   const records = new Map(), hooks = new Set();
   let now = 1000, reads = 0, writes = 0, removed = 0;
@@ -329,4 +330,25 @@ test("a temporarily unplaceable basket retains its deposited fruit until a safe 
   assert.equal(JSON.parse(env.records.get(forestMemoryKey("garden-unplaced"))).garden.basketBerries, 6);
   const restored = connect("garden-unplaced", map, env);
   assert.equal(restored.state.life.garden.basket.berries, 6); restored.release();
+});
+
+test("pending shrub artwork preserves growth and delivered fruit across saves until placement resumes", () => {
+  const env = environment(), pending = structuredClone(TILED_WORLD);
+  pending.bushes[0].imageId = "memory-independent-shrub";
+  const placed = withPlacedBushArtwork(pending), first = connect("garden-staged-art", placed, env);
+  Object.assign(first.state.life.garden.bushes[0], { growth: .83, moisture: .47, waterIn: 215 });
+  first.state.life.garden.basket.berries = 6; first.release();
+  const staged = connect("garden-staged-art", pending, env);
+  assert.equal(staged.state.life.garden.bushes[0].workPosition, null);
+  assert.equal(staged.state.life.garden.bushes[0].growth, .83);
+  assert.equal(staged.state.life.garden.bushes[0].moisture, .47);
+  assert.equal(staged.state.life.garden.bushes[0].waterIn, 215);
+  assert.equal(requestClearingBush(staged.state.clearing), false);
+  staged.release();
+  const saved = JSON.parse(env.records.get(forestMemoryKey("garden-staged-art")));
+  assert.equal(saved.garden.bushes.length, 1); assert.equal(saved.garden.basketBerries, 6);
+  const resumed = connect("garden-staged-art", placed, env);
+  assert.ok(resumed.state.life.garden.bushes[0].workPosition);
+  assert.equal(resumed.state.life.garden.bushes[0].growth, .83);
+  assert.equal(resumed.state.life.garden.basket.berries, 6); resumed.release();
 });

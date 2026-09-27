@@ -62,6 +62,8 @@ export type WorldHabitat = {
 export type WorldMushroom = { id: string; position: WorldPoint };
 export type WorldBush = {
   id: string;
+  /** Optional terrain-object ID; absent means foliage baked into the background. */
+  imageId?: string;
   /** Contour of the existing bush artwork used for foreground leaves. */
   points: WorldPoint[];
   /** Foot positions outside the leaves and while hiding inside them. */

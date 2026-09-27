@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -13,7 +14,7 @@ const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.t
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const rect = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
-const scene = () => ({ ...structuredClone(TILED_WORLD), paths: [] });
+const scene = () => ({ ...withPlacedBushArtwork(TILED_WORLD), paths: [] });
 
 test("real map markers work without Routes, including the doorway outside WalkAreas", () => {
   const map = scene(), nav = createWorldNavigation(map), compiled = compileWorldInteractions(map);

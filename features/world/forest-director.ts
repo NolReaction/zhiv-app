@@ -120,6 +120,7 @@ function interactionFailureReason(state: ForestSessionState, kind: "bush" | "hom
       "blocked-doorway": "Подход к порогу пересекает препятствие",
       "unreachable-door-entry": "Перед входом не хватает доступной земли для опоры Мохлика",
       "invalid-bush": "Проверьте контур куста и точку hide",
+      "missing-bush-artwork": "Сначала разместите картинку куста в Tiled поверх его контура",
       "invalid-bush-corridor": "Проверьте расстояние между entry и hide куста",
       "unreachable-bush-entry": "Перед кустом не хватает доступной земли для опоры Мохлика",
       "blocked-bush-corridor": "Прыжок в куст пересекает препятствие",

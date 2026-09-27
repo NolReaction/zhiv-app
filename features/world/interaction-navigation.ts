@@ -1,6 +1,7 @@
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
 import interactionLimits from "./interaction-limits.json";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 
 type InteractionAccess = {
   id: string; entry: WorldPoint;
@@ -110,6 +111,7 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
     if (!finite(bush.entry) || !finite(bush.hide) || bush.points.length < 3 || !bush.points.every(finite)
       || !inside(bush.hide, bush.points)) reason = "invalid-bush";
     else if (distance(bush.entry, bush.hide) < size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump) reason = "invalid-bush-corridor";
+    else if (!forestBushArtworkAvailable(scene, bush)) reason = "missing-bush-artwork";
     else if (!isWalkable(nav, bush.entry)) reason = "unreachable-bush-entry";
     else if (!corridorClear(scene, bush.entry, bush.hide, nav.radius)) reason = "blocked-bush-corridor";
     else for (let sample = 0; sample <= 16; sample++) {

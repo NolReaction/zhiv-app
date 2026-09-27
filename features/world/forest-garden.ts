@@ -1,6 +1,7 @@
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { createWorldNavigation, findWorldPath, isWalkable } from "./navigation";
 import { isForestGroundClear } from "./forest-ground-weather";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 
 export type ForestGardenAction = "water-bush" | "harvest-berries";
 export type ForestGardenPhase = "approach-basket" | "take-basket" | "approach-bush" | "water" | "collect"
@@ -34,6 +35,8 @@ export function createForestGarden(scene: FixedWorldScene): ForestGardenState {
   }));
   if (!actor || !nav) return state;
   for (const bush of state.bushes) {
+    const authored = scene.bushes?.find(item => item.id === bush.id);
+    if (!authored || !forestBushArtworkAvailable(scene, authored)) continue;
     const edge = bush.points.reduce((nearest, current) => Math.hypot(current.x - bush.position.x, current.y - bush.position.y)
       < Math.hypot(nearest.x - bush.position.x, nearest.y - bush.position.y) ? current : nearest);
     const length = Math.hypot(bush.position.x - edge.x, bush.position.y - edge.y);

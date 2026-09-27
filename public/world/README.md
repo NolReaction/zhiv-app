@@ -6,12 +6,13 @@
 | --- | --- |
 | `prototype/forest-ground.webp` | Единая новая карта для основной игры, круглой камеры и `/prototype/tiled-world`; 2560 × 2560, WebP без потерь |
 | `prototype/home-level-1.png` | Отдельное изображение текущего дома; положение и масштаб задаёт Tiled |
+| `prototype/bushv1.png` | Прозрачный куст, тайл подготовлен; размещение в Tiled выполняет автор карты |
 | `runtime/boat-wreck-lowquality.webp` | Сохранённая графика лодки; на чистой карте не отображается |
 | `routes/trail.webp` | Иллюстрация лесной прогулки |
 
 ## Обновление карты
 
-Редактировать `art/world/prototype/forest-ground.png`, затем выполнить:
+Редактировать `art/world/prototype/forest-ground.jpg`, затем выполнить:
 
 ```bash
 node scripts/prepare-world-assets.mjs

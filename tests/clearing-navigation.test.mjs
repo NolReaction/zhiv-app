@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -393,7 +394,7 @@ test("all five authored homes support sleep and exit with both 50 and 56 unit ac
   const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
   for (const size of [50, 56]) for (const level of [1, 2, 3, 4, 5]) {
-    const map = structuredClone(previewWorldScene(TILED_WORLD, { home: level })); map.actor.size = size;
+    const map = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: level })); map.actor.size = size;
     const state = createClearingActivity(map, 57);
     const destination = map.navigation.interests.find(interest => interest.activity === "groom").position;
     assert.ok(requestClearingPoint(state, destination));

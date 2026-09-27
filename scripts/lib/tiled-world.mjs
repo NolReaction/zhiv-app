@@ -432,7 +432,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         continue;
       }
       const props = properties(object, at, { role: "string", siteId: "string", label: "string", level: "int", initialLevel: "int", size: "float",
-        behavior: "string", activity: "string", pauseSeconds: "float", bushId: "string" });
+        behavior: "string", activity: "string", pauseSeconds: "float", bushId: "string", imageId: "string" });
       const role = string(props.role, `${at}.properties.role`);
       if (own(object, "gid")) {
         const gid = integer(object.gid, `${at}.gid`, 1);
@@ -491,12 +491,13 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         world.mushrooms ??= [];
         world.mushrooms.push({ id, position: point(object, at, world) });
       } else if (["bush", "bush-entry", "bush-hide"].includes(role)) {
-        requireThat(Object.keys(props).every(key => ["role", "bushId"].includes(key)), at, "bush objects only accept role and bushId properties");
+        requireThat(Object.keys(props).every(key => ["role", "bushId", ...(role === "bush" ? ["imageId"] : [])].includes(key)), at, "bush objects only accept role and bushId properties; the polygon also accepts imageId");
         const id = identifier(props.bushId, `${at}.properties.bushId`);
         if (role === "bush") {
           exact(shape, "polygon", `${at} shape`);
           requireThat(!bushes.has(id), at, `duplicate bush ID ${id}`);
-          bushes.set(id, { id, points: vertices(object, "polygon", at, world) });
+          bushes.set(id, { id, points: vertices(object, "polygon", at, world),
+            ...(own(props, "imageId") ? { imageId: identifier(props.imageId, `${at}.properties.imageId`) } : {}) });
         } else {
           exact(shape, "point", `${at} shape`);
           exact(object.point, true, `${at}.point`);

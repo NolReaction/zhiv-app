@@ -1,4 +1,5 @@
 import type { FixedWorldScene, WorldBounds, WorldBush, WorldPoint } from "./tiled/types";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { forestBushBounds, forestBushParticles, type ForestBushBurst, type ForestBushParticle } from "./forest-bush-particles";
 
 export type ForestBushFrame = {
@@ -126,7 +127,7 @@ export function drawForestBush(
   const rustle = still && !hasClock ? 0 : clamp(frame.rustle);
   const time = hasClock ? frame.elapsed! : Number.isFinite(elapsed) ? elapsed : 0;
   const bush = scene.bushes?.find(item => item.id === frame.id);
-  if (!bush) return;
+  if (!bush || !forestBushArtworkAvailable(scene, bush)) return;
   const bounds = forestBushBounds(bush);
   if (!bounds) return;
   const particles = forestBushParticles(bush, time, frame.bursts ?? [], frame.ripe ?? true);

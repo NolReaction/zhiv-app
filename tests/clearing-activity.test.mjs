@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -30,7 +31,7 @@ const onRoute = p => Math.abs(p.y - 210) < 1e-7 && p.x >= 185 - 1e-7 && p.x <= 2
   || Math.abs((p.x - 185) * 20 - (p.y - 210) * 5) < 1e-7 && p.y >= 190 - 1e-7 && p.y <= 210 + 1e-7;
 
 test("the authored clearing routes are safe, copied and start exactly at the feet", () => {
-  const state = createClearingActivity(TILED_WORLD, 1);
+  const state = createClearingActivity(withPlacedBushArtwork(TILED_WORLD), 1);
   assert.ok(state.routes.length >= 3, "the shipped forest must have real local routes");
   assert.ok(state.diagnostics.every(item => item.valid), JSON.stringify(state.diagnostics));
   assert.deepEqual(state.position, TILED_WORLD.actor.spawn);

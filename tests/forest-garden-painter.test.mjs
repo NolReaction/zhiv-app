@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
@@ -11,7 +12,8 @@ const { forestGardenBerries, forestGardenVisualFrame, drawForestGardenPlants, dr
   drawForestGardenProps } = await vite.ssrLoadModule('/features/world/forest-garden-painter.ts');
 const { previewPointInPolygon } = await vite.ssrLoadModule('/features/world/tiled/preview-state.ts');
 const { createForestGarden, cancelForestGarden } = await vite.ssrLoadModule('/features/world/forest-garden.ts');
-const { default: scene } = await vite.ssrLoadModule('/features/world/tiled/forest.generated.json');
+const { default: sourceScene } = await vite.ssrLoadModule('/features/world/tiled/forest.generated.json');
+const scene = withPlacedBushArtwork(sourceScene);
 const motion = { pose: 'walk', frame: 1, direction: 'right' };
 
 function context() {
@@ -206,4 +208,14 @@ test('a deposited empty or filled basket keeps the same transform and foreground
     const far = context(); drawForestGardenGround(far.ctx, garden, actor.size, null, { x: 0, y: 0 }, 'behind');
     assert.ok(far.calls.length, 'distant parked props keep their ordinary ground pass');
   }
+});
+
+test('referenced shrub artwork must be placed over the contour before fruit overlays appear', () => {
+  const pending = structuredClone(scene); pending.bushes[0].imageId = 'future-shrub';
+  const garden = createForestGarden(pending); garden.bushes[0].growth = 1;
+  assert.deepEqual(forestGardenBerries(pending, garden), []);
+  const placed = withPlacedBushArtwork(pending);
+  assert.ok(forestGardenBerries(placed, garden).length > 0);
+  placed.terrain.find(item => item.id === 'future-shrub').bounds.x += 500;
+  assert.deepEqual(forestGardenBerries(placed, garden), [], 'an image elsewhere does not turn empty grass into a fruit bush');
 });

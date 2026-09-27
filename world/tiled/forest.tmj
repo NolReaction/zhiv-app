@@ -7650,6 +7650,11 @@
                          "value":"clearing-bush"
                         }, 
                         {
+                         "name":"imageId",
+                         "type":"string",
+                         "value":"clearing-bush-image"
+                        },
+                        {
                          "name":"role",
                          "type":"string",
                          "value":"bush"
@@ -12087,7 +12092,7 @@
          "name":"Forest image collection",
          "objectalignment":"topleft",
          "spacing":0,
-         "tilecount":6,
+         "tilecount":7,
          "tileheight":2560,
          "tiles":[
                 {
@@ -12235,6 +12240,18 @@
                          "name":"siteId",
                          "type":"string",
                          "value":"home"
+                        }]
+                },
+                {
+                 "id":6,
+                 "image":"../../public/world/prototype/bushv1.png",
+                 "imageheight":1254,
+                 "imagewidth":1254,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
                         }]
                 }],
          "tilewidth":2560

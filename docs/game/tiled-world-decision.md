@@ -57,7 +57,7 @@ npm run dev:local
 
 ## Редактирование изображений и разметки
 
-Источник карты — `art/world/prototype/forest-ground.png`. Полный экспорт без потерь — `public/world/prototype/forest-ground.webp`. Отдельных уменьшенных карт и детальных полян нет. Размеры и порядок работы описаны в [каталоге изображений](../../art/README.md).
+Источник карты — `art/world/prototype/forest-ground.jpg`. Полный экспорт без потерь — `public/world/prototype/forest-ground.webp`. Отдельных уменьшенных карт и детальных полян нет. Размеры и порядок работы описаны в [каталоге изображений](../../art/README.md).
 
 ```bash
 # После изменения PNG — полный экспорт без потерь:

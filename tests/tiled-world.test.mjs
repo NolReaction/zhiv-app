@@ -1104,6 +1104,7 @@ test("committed authoring exports identically and --check refuses stale output w
     const id = property(object, "bushId");
     const marker = role => withRole(role).find(candidate => property(candidate, "bushId") === id);
     return { id, points: object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
+      ...(property(object, "imageId") !== undefined ? { imageId: property(object, "imageId") } : {}),
       entry: { x: marker("bush-entry").x, y: marker("bush-entry").y },
       hide: { x: marker("bush-hide").x, y: marker("bush-hide").y } };
   }));
@@ -1188,4 +1189,25 @@ test("CLI export validates the complete refreshed scene before writing either fi
   await assert.rejects(run(process.execPath, command), error => error.code === 1 && /only PNG, WebP and JPEG/.test(error.stderr));
   assert.deepEqual(await readFile(options.mapPath), originalMap);
   assert.deepEqual(await readFile(output), originalOutput);
+});
+
+test("bush imageId can reference artwork placed later, and only the polygon accepts the reference", async t => {
+  const { map, compile } = await fixture(t); addClearingProps(map);
+  const bush = map.layers[3].objects[0];
+  bush.properties.push(...props({ imageId: "independent-shrub" }));
+  const pending = await compile();
+  assert.equal(pending.bushes[0].imageId, "independent-shrub");
+  assert.equal(pending.terrain.some(image => image.id === "independent-shrub"), false, "pending authoring does not fabricate placement");
+  map.layers[0].objects.splice(1, 0, { ...clone(map.layers[0].objects[0]), id: 40, name: "independent-shrub" });
+  const placed = await compile();
+  assert.equal(placed.terrain[1].id, "independent-shrub");
+  assert.deepEqual(placed.bushes, pending.bushes, "placement does not move interactive markers");
+  for (const value of ["", "name with spaces"]) {
+    const invalid = clone(map); setProp(invalid.layers[3].objects[0], "imageId", value);
+    await assert.rejects(compile(invalid), value ? /imageId/ : /expected a non-empty string/);
+  }
+  for (const index of [1, 2]) {
+    const invalid = clone(map); invalid.layers[3].objects[index].properties.push(...props({ imageId: "independent-shrub" }));
+    await assert.rejects(compile(invalid), /bush objects only accept/);
+  }
 });

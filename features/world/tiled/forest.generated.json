@@ -6,7 +6,7 @@
   "terrain": [
     {
       "id": "forest-ground",
-      "image": "/world/prototype/forest-ground.webp?v=fedcfbd622df",
+      "image": "/world/prototype/forest-ground.webp?v=f3cb47cffa84",
       "bounds": {
         "x": 0,
         "y": 0,
@@ -9271,6 +9271,7 @@
           "y": 564.1726414424643
         }
       ],
+      "imageId": "clearing-bush-image",
       "entry": {
         "x": 582,
         "y": 650

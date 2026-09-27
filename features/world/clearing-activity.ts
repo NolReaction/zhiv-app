@@ -1,4 +1,5 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
 import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./steering";
@@ -111,6 +112,7 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
   if (homeSite && distance(path.points.at(-1)!, homeSite.entry) > .001) return "home-end-away-from-entry";
   const bush = path.activity === "bush" ? scene.bushes?.find(item => item.id === path.bushId) : undefined;
   if (path.activity === "bush" && (path.behavior !== "clearing" || !bush)) return "missing-bush";
+  if (bush && !forestBushArtworkAvailable(scene, bush)) return "missing-bush-artwork";
   if (bush && (!finitePoint(bush.entry) || !finitePoint(bush.hide) || bush.points.length < 3
     || bush.points.some(point => !finitePoint(point)) || !inside(bush.hide, bush.points))) return "invalid-bush";
   if (bush && distance(path.points.at(-1)!, bush.entry) > .001) return "bush-end-away-from-entry";

@@ -5,7 +5,7 @@ export const FOREST_BIRD_FLIGHT_DURATION = 34;
 export const FOREST_BIRD_LIMIT = 5;
 const BIRD_PERIOD = 158;
 const TAU = Math.PI * 2;
-const VERIFIED_TERRAIN = "/world/prototype/forest-ground.webp?v=fedcfbd622df";
+const VERIFIED_TERRAIN = "/world/prototype/forest-ground.webp?v=f3cb47cffa84";
 
 export type ForestBirdPerch = WorldPoint & { id: string; facing: -1 | 1 };
 export type ForestBirdOptions = {
@@ -27,7 +27,7 @@ const PERCHES: readonly ForestBirdPerch[] = [
   { id: "clearing-west-tree", x: 491, y: 657, facing: 1 },
   { id: "clearing-south-tree", x: 544, y: 697, facing: 1 },
   { id: "northwest-tree", x: 266, y: 107, facing: 1 },
-  { id: "northeast-tree", x: 1093, y: 268, facing: -1 },
+  { id: "northeast-tree", x: 1091, y: 278, facing: -1 },
   { id: "west-tree", x: 156, y: 396, facing: 1 },
   { id: "east-tree", x: 1008, y: 406, facing: -1 },
   { id: "southwest-tree", x: 130, y: 955, facing: 1 },

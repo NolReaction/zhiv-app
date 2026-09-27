@@ -72,6 +72,8 @@ test("rain stops immediately, reduced motion removes impacts, changed terrain ca
   assert.deepEqual(forestGroundImpactFrame({ ...scene, terrain: [] }, options), []);
   const changed = { ...scene, terrain: scene.terrain.map(item => ({ ...item, image: `${item.image}new` })) };
   assert.deepEqual(forestGroundImpactFrame(changed, options), []);
+  const previous = { ...scene, terrain: scene.terrain.map(item => ({ ...item, image: "/world/prototype/forest-ground.webp?v=fedcfbd622df" })) };
+  assert.deepEqual(forestGroundImpactFrame(previous, options), []);
   assert.deepEqual(forestGroundImpactFrame(scene, { ...options, elapsed: Infinity }),
     forestGroundImpactFrame(scene, { ...options, elapsed: 0 }));
 });
@@ -101,4 +103,14 @@ test("ground hit has a short splash and filled fleck, restores context, and cull
   offscreen.ctx.getTransform = () => ({ a: 2, b: 0, c: 0, d: 2, e: 10000, f: 10000 });
   drawForestGroundImpacts(offscreen.ctx, scene, options);
   assert.equal(offscreen.calls.length, 0);
+});
+
+test("placed shrubs exclude ground splashes while pending image references leave the grass available", () => {
+  const point = forestGroundImpactFrame(scene, options)[0];
+  const bounds = { x: point.x - 12, y: point.y - 12, width: 24, height: 24 };
+  const bush = { id: "new-shrub", imageId: "new-shrub-image", points: rectangle(bounds), entry: point, hide: point };
+  const pending = { ...scene, bushes: [bush] };
+  assert.equal(isForestRainGround(pending, point), true);
+  const placed = { ...pending, terrain: [...pending.terrain, { id: bush.imageId, image: "/new-shrub.png", bounds }] };
+  assert.equal(isForestRainGround(placed, point), false);
 });

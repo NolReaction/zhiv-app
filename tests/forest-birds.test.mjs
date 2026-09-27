@@ -82,6 +82,7 @@ test("unknown, changed, resized or obscured terrain never receives a guessed per
     { ...scene, terrain: [] },
     { ...scene, width: scene.width + 1 },
     { ...scene, terrain: [{ ...terrain, image: terrain.image + "-new" }] },
+    { ...scene, terrain: [{ ...terrain, image: "/world/prototype/forest-ground.webp?v=fedcfbd622df" }] },
     { ...scene, terrain: [{ ...terrain, bounds: { ...terrain.bounds, x: 3 } }] },
   ];
   for (const edited of changedScenes) {

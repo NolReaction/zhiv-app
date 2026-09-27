@@ -3,6 +3,7 @@ import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { FOREST_GARDEN_LIMITS, type ForestGardenState } from "./forest-garden";
 import { heroSourceAnchor, type FaunaActor, type HeroAnchorPose } from "./hero-anchors";
 import { previewPointInPolygon } from "./tiled/preview-state";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 
 const TAU = Math.PI * 2;
 const unit = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -73,7 +74,7 @@ export function forestGardenBerries(scene: FixedWorldScene, garden: ForestGarden
   const result: GardenBerry[] = [], harvest = harvestProgress(garden);
   for (const plant of garden.bushes) {
     const bush = scene.bushes?.find(item => item.id === plant.id), growth = unit(plant.growth);
-    if (!bush || growth <= .01) continue;
+    if (!bush || !forestBushArtworkAvailable(scene, bush) || growth <= .01) continue;
     const selected = garden.routine?.bushId === plant.id;
     berryLayout(bush, bush.entry).forEach((berry, index) => result.push({ ...berry, growth,
       picked: selected && index === 0 ? harvest.picked : 0,
