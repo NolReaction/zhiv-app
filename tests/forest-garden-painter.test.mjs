@@ -12,6 +12,7 @@ const { forestGardenBerries, forestGardenVisualFrame, drawForestGardenPlants, dr
   drawForestGardenProps } = await vite.ssrLoadModule('/features/world/forest-garden-painter.ts');
 const { previewPointInPolygon } = await vite.ssrLoadModule('/features/world/tiled/preview-state.ts');
 const { createForestGarden, cancelForestGarden } = await vite.ssrLoadModule('/features/world/forest-garden.ts');
+const { forestFruitVisual, FOREST_FRUIT_APPEARANCES } = await vite.ssrLoadModule('/features/world/forest-fruit-appearance.ts');
 const { default: sourceScene } = await vite.ssrLoadModule('/features/world/tiled/forest.generated.json');
 const scene = withPlacedBushArtwork(sourceScene);
 const motion = { pose: 'walk', frame: 1, direction: 'right' };
@@ -125,6 +126,69 @@ test('berries grow as detailed warm clusters without any flower glyphs', () => {
     samples.push(fruit[0].args[2]);
   }
   assert.ok(samples.every((size, index) => !index || size > samples[index - 1]), 'berry size increases smoothly with growth');
+});
+
+test('fruit ripens at slightly different rates and every cluster is ripe at the existing harvest threshold', () => {
+  const definition = structuredClone(FOREST_FRUIT_APPEARANCES.woodlandBerry);
+  for (let cluster = 0; cluster < 7; cluster++) for (let fruit = 0; fruit < 3; fruit++) {
+    let previous = forestFruitVisual(0, cluster, fruit);
+    assert.equal(previous.opacity, 0);
+    for (let step = 1; step <= 100; step++) {
+      const next = forestFruitVisual(step / 100, cluster, fruit);
+      for (const field of ['size', 'opacity', 'maturity', 'ripeness']) {
+        assert.ok(Number.isFinite(next[field]));
+        assert.ok(next[field] >= previous[field], `${field} never jumps backward`);
+      }
+      previous = next;
+    }
+    const ripe = forestFruitVisual(.98, cluster, fruit);
+    assert.equal(ripe.maturity, 1); assert.equal(ripe.size, 1); assert.equal(ripe.ripeness, 1);
+    assert.deepEqual(ripe, forestFruitVisual(1, cluster, fruit), 'visual harvest readiness matches game readiness');
+  }
+  const first = forestFruitVisual(.55, 0, 0), late = forestFruitVisual(.55, 6, 2);
+  assert.ok(first.size > late.size && first.maturity > late.maturity, 'clusters do not grow in lockstep');
+  assert.deepEqual(forestFruitVisual(NaN, Infinity, -3), forestFruitVisual(0));
+  assert.deepEqual(FOREST_FRUIT_APPEARANCES.woodlandBerry, definition, 'sampling never changes the appearance catalogue');
+});
+
+test('individual fruit centers remain fixed throughout growth and both cameras read the same stage', () => {
+  const { garden } = setup();
+  const bodies = calls => calls.filter(call => call.method === 'ellipse' && Math.abs(call.args[3] - call.args[2] * 1.08) < 1e-10);
+  let centers;
+  for (const growth of [.2, .4, .7, .98, 1]) {
+    garden.bushes[0].growth = growth;
+    const normal = context(), frozen = context(), original = structuredClone(garden);
+    drawForestGardenPlants(normal.ctx, scene, garden);
+    garden.elapsed += 1000;
+    drawForestGardenPlants(frozen.ctx, scene, garden);
+    garden.elapsed = original.elapsed;
+    assert.deepEqual(normal.calls, frozen.calls, 'only saved growth affects fruit appearance, not the render clock');
+    const positions = bodies(normal.calls).map(call => call.args.slice(0, 2));
+    assert.equal(positions.length, forestGardenBerries(scene, garden).length * 3);
+    if (centers) assert.deepEqual(positions, centers, 'filling fruit does not slide along the leaves');
+    centers = positions;
+    assert.deepEqual(garden, original);
+  }
+});
+
+test('the three harvested fruits start exactly at their visible centers even at 98 percent growth', () => {
+  const { garden, actor } = setup('collect');
+  garden.bushes[0].growth = .98;
+  for (let index = 0; index < 3; index++) {
+    const graspAt = .85 + index + .3;
+    garden.routine.elapsed = graspAt - 1e-6;
+    const surface = context(); drawForestGardenPlants(surface.ctx, scene, garden);
+    const fruits = surface.calls.filter(call => call.method === 'ellipse' && Math.abs(call.args[3] - call.args[2] * 1.08) < 1e-10);
+    garden.routine.elapsed = graspAt + 1e-6;
+    const frame = forestGardenVisualFrame(garden, actor, motion);
+    assert.ok(frame.pickedBerry);
+    assert.ok(fruits.some(({ args }) => Math.hypot(args[0] - frame.pickedBerry.x, args[1] - frame.pickedBerry.y) < 1e-10),
+      'the paw takes an existing berry rather than an offset copy');
+    const held = context(); drawForestGardenProps(held.ctx, frame, 'front');
+    assert.ok(held.calls.some(call => call.method === 'ellipse'
+      && Math.abs(call.args[0] - frame.pickedBerry.x) < 1e-10 && Math.abs(call.args[1] - frame.pickedBerry.y) < 1e-10
+      && Math.abs(call.args[2] - frame.pickedBerry.size) < 1e-10), 'carried fruit retains the ripe size');
+  }
 });
 
 test('harvest basket has matching endpoints at every phase and stays visible beside the feet', () => {

@@ -198,8 +198,13 @@ test("unreachable ripe bushes explain the missing work position instead of recom
 });
 
 test("the unplaced shrub explains missing artwork rather than directing the author to change navigation", () => {
-  const session = connect("observer-garden-pending");
+  const scene = withPlacedBushArtwork(TILED_WORLD);
+  const artworkIds = new Set(scene.bushes.map(bush => bush.imageId));
+  scene.terrain = scene.terrain.filter(image => !artworkIds.has(image.id));
+  const session = connect("observer-garden-pending", "circle", scene);
   try {
+    assert.ok(session.state.life.garden.bushes.length);
+    assert.ok(session.state.life.garden.bushes.every(bush => bush.artworkPending));
     const before = structuredClone(session.state.life.garden), garden = forestObservationFrame(session.state).diagnostics.garden;
     assert.match(garden.waterReason, /Разместите картинку куста/);
     assert.equal(garden.waterReason, garden.harvestReason);

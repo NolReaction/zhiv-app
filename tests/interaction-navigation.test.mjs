@@ -89,10 +89,17 @@ test("all five authored homes retain reachable entrances when the actor changes 
     const { home, diagnostics } = compileWorldInteractions(map);
     assert.ok(home, `size ${size}, level ${level}: ${JSON.stringify(diagnostics)}`);
     const origins = [map.actor.spawn, ...map.navigation.interests.map(interest => interest.position)];
-    // Include both sides of the clearing and off-centre positions near its rocks.
+    // Include both sides of the accessible clearing and positions near its rocks.
+    // Authored props can leave isolated walkable pockets which the actor cannot enter.
     for (let id = 0; id < nav.grid.walkable.length; id += 7) {
-      if (nav.grid.walkable[id]) origins.push({ x: nav.grid.origin.x + id % nav.grid.columns * nav.cellSize,
-        y: nav.grid.origin.y + Math.floor(id / nav.grid.columns) * nav.cellSize });
+      if (!nav.grid.walkable[id]) continue;
+      const origin = { x: nav.grid.origin.x + id % nav.grid.columns * nav.cellSize,
+        y: nav.grid.origin.y + Math.floor(id / nav.grid.columns) * nav.cellSize };
+      if (findWorldPath(nav, map.actor.spawn, origin)) origins.push(origin);
+      else {
+        assert.equal(findInteractionApproach(nav, origin, home), null, "the doorway must not connect isolated ground");
+        assert.equal(findWorldPath(nav, home.dock, origin), null, "departure must not cross blockers into an isolated pocket");
+      }
     }
     for (const origin of origins) {
       const approach = findInteractionApproach(nav, origin, home);

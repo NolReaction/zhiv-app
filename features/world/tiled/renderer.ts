@@ -1,4 +1,5 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
+import { drawForestBushGrounding } from "../forest-bush-grounding";
 import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
 import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
 import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
@@ -64,7 +65,10 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
   for (const terrain of scene.terrain) {
     const image = frame.images.get(terrain.image), bounds = terrain.bounds;
-    if (image) ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+    if (image) {
+      drawForestBushGrounding(ctx, scene, terrain, image, frame.dusk ?? Number(frame.options.night));
+      ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+    }
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
   if (frame.paintGround) { ctx.save(); frame.paintGround(ctx); ctx.restore(); }

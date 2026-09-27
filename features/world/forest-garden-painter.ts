@@ -4,11 +4,13 @@ import { FOREST_GARDEN_LIMITS, type ForestGardenState } from "./forest-garden";
 import { heroSourceAnchor, type FaunaActor, type HeroAnchorPose } from "./hero-anchors";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
+import { forestFruitVisual } from "./forest-fruit-appearance";
 
 const TAU = Math.PI * 2;
 const unit = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 const blend = (a: WorldPoint, b: WorldPoint, t: number) => ({ x: a.x + (b.x - a.x) * unit(t), y: a.y + (b.y - a.y) * unit(t) });
-type GardenBerry = WorldPoint & { radius: number; growth: number; picked: number; opacity: number };
+type GardenBerry = WorldPoint & { radius: number; growth: number; picked: number; opacity: number;
+  clusterIndex: number; foliage: readonly WorldPoint[] };
 type BerryLayout = WorldPoint & { radius: number };
 const berryLayouts = new WeakMap<readonly WorldPoint[], BerryLayout[]>();
 const smooth = (value: number) => { const t = unit(value); return t * t * (3 - 2 * t); };
@@ -33,7 +35,7 @@ function berryLayout(plant: { id: string; points: WorldPoint[] }, entry: WorldPo
   const xs = plant.points.map(p => p.x), ys = plant.points.map(p => p.y);
   const left = Math.min(...xs), top = Math.min(...ys), width = Math.max(...xs) - left, height = Math.max(...ys) - top;
   if (![left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return [];
-  const radius = Math.min(1.45, Math.min(width, height) * .025);
+  const radius = Math.min(1.6, Math.min(width, height) * .028);
   const accepted: BerryLayout[] = [];
   const add = (point: WorldPoint) => {
     if (![[0, 0], [-radius * 1.8, 0], [radius * 1.8, 0], [0, -radius * 1.8], [0, radius * 1.8]].every(([dx, dy]) =>
@@ -76,33 +78,33 @@ export function forestGardenBerries(scene: FixedWorldScene, garden: ForestGarden
     const bush = scene.bushes?.find(item => item.id === plant.id), growth = unit(plant.growth);
     if (!bush || !forestBushArtworkAvailable(scene, bush) || growth <= .01) continue;
     const selected = garden.routine?.bushId === plant.id;
-    berryLayout(bush, bush.entry).forEach((berry, index) => result.push({ ...berry, growth,
+    berryLayout(bush, bush.entry).forEach((berry, index) => result.push({ ...berry, growth, clusterIndex: index, foliage: bush.points,
       picked: selected && index === 0 ? harvest.picked : 0,
-      opacity: smooth(growth / .12) * (selected && index !== 0 ? 1 - harvest.fade : 1) }));
+      opacity: selected && index !== 0 ? 1 - harvest.fade : 1 }));
   }
   return result;
 }
 
-function colorBetween(from: string, to: string, progress: number) {
-  const t = unit(progress), channels = [1, 3, 5].map(index => Math.round(parseInt(from.slice(index, index + 2), 16)
-    * (1 - t) + parseInt(to.slice(index, index + 2), 16) * t));
-  return `rgb(${channels.join(",")})`;
-}
-function drawBerry(ctx: CanvasRenderingContext2D, point: WorldPoint, radius: number, growth: number) {
-  const ripe = smooth((growth - .56) / .42);
-  // Colored shade and a small uneven highlight replace the dark button outline.
-  ctx.fillStyle = colorBetween("#526932", "#935025", ripe);
+function drawBerry(ctx: CanvasRenderingContext2D, point: WorldPoint, radius: number, growth: number, clusterIndex = 0, fruitIndex = 0) {
+  const visual = forestFruitVisual(growth, clusterIndex, fruitIndex), { palette } = visual;
+  radius *= visual.size;
+  if (visual.opacity <= 0) return;
+  ctx.save(); ctx.globalAlpha *= visual.opacity;
+  // Uneven warm facets keep a tiny fruit readable without a black outline or white shine.
+  ctx.fillStyle = palette.shade;
   ctx.beginPath(); ctx.ellipse(point.x, point.y, radius, radius * 1.08, -.16, 0, TAU); ctx.fill();
-  ctx.fillStyle = colorBetween("#8aa646", "#cd7d35", ripe);
+  ctx.fillStyle = palette.body;
   ctx.beginPath(); ctx.ellipse(point.x - radius * .12, point.y - radius * .13, radius * .82, radius * .85, -.16, 0, TAU); ctx.fill();
-  ctx.fillStyle = colorBetween("#adc262", "#e7ab58", ripe);
+  ctx.fillStyle = palette.light;
   ctx.beginPath(); ctx.ellipse(point.x - radius * .32, point.y - radius * .35, radius * .3, radius * .2, -.6, 0, TAU); ctx.fill();
-  ctx.fillStyle = colorBetween("#789143", "#b5672b", ripe);
+  ctx.fillStyle = palette.detail;
   ctx.beginPath(); ctx.ellipse(point.x + radius * .32, point.y + radius * .28, radius * .12, radius * .11, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = "#677f39";
+  ctx.beginPath(); ctx.ellipse(point.x - radius * .25, point.y + radius * .5, radius * .09, radius * .08, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = palette.stem;
   ctx.beginPath(); ctx.moveTo(point.x - radius * .36, point.y - radius * .85);
   ctx.lineTo(point.x, point.y - radius * .64); ctx.lineTo(point.x + radius * .34, point.y - radius * .91);
   ctx.lineTo(point.x, point.y - radius * 1.12); ctx.closePath(); ctx.fill();
+  ctx.restore();
 }
 function clusterFruit(cluster: BerryLayout, index: number) {
   const offsets = [[-.48, -.08], [.48, .06], [0, .75]];
@@ -116,15 +118,25 @@ export function drawForestGardenPlants(ctx: CanvasRenderingContext2D, scene: Fix
   ctx.save(); const alpha = ctx.globalAlpha;
   for (const berry of berries) {
     if (berry.opacity <= 0 || berry.picked >= 3) continue;
-    const scale = .22 + Math.sqrt(berry.growth) * .78, r = berry.radius * scale;
-    ctx.globalAlpha = alpha * berry.opacity;
-    ctx.strokeStyle = "#667a36"; ctx.lineWidth = r * .23; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(berry.x - r * .12, berry.y - r * 1.15);
-    ctx.quadraticCurveTo(berry.x + r * .1, berry.y - r * .58, berry.x, berry.y + r * .6); ctx.stroke();
+    ctx.save();
+    // Concave authored contours can have leaf gaps: even stems and cast shadows stay inside.
+    ctx.beginPath(); berry.foliage.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+    ctx.closePath(); ctx.clip();
     for (let index = berry.picked; index < 3; index++) {
-      const fruit = clusterFruit({ ...berry, radius: r }, index);
-      drawBerry(ctx, fruit, fruit.size, berry.growth);
+      const fruit = clusterFruit(berry, index), visual = forestFruitVisual(berry.growth, berry.clusterIndex, index);
+      if (visual.opacity <= 0) continue;
+      const r = fruit.size * visual.size;
+      ctx.globalAlpha = alpha * berry.opacity * visual.opacity * .2;
+      ctx.fillStyle = "#263c1c";
+      ctx.beginPath(); ctx.ellipse(fruit.x + r * .4, fruit.y + r * .45, r * 1.15, r * .78, -.2, 0, TAU); ctx.fill();
+      ctx.globalAlpha = alpha * berry.opacity * visual.opacity;
+      ctx.strokeStyle = visual.palette.stem; ctx.lineWidth = berry.radius * .14; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(berry.x - berry.radius * .1, berry.y - berry.radius * 1.08);
+      ctx.quadraticCurveTo(fruit.x - r * .24, fruit.y - r * 1.6, fruit.x, fruit.y - r * .86); ctx.stroke();
+      ctx.globalAlpha = alpha * berry.opacity;
+      drawBerry(ctx, fruit, fruit.size, berry.growth, berry.clusterIndex, index);
     }
+    ctx.restore();
   }
   ctx.restore();
 }

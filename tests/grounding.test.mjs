@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { pixelSprite } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
 const { drawGroundedHero, heroSpriteContact, siteContactArea, drawSiteGrounding } = await vite.ssrLoadModule("/features/world/grounding.ts");
+const { drawForestBushGrounding } = await vite.ssrLoadModule("/features/world/forest-bush-grounding.ts");
 const { paintFixedWorld } = await vite.ssrLoadModule("/features/world/tiled/renderer.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 
@@ -206,6 +207,63 @@ function fixture() {
   for (let y = 70; y < 85; y++) for (let x = 45; x < 55; x++) image.pixels.delete(`${x}:${y}`);
   return { site, image };
 }
+
+function bushFixture() {
+  const image = rasterCanvas(); image.width = image.naturalWidth = 100; image.height = image.naturalHeight = 100;
+  image.getContext("2d").fillRect(15, 15, 70, 70);
+  for (let y = 15; y < 85; y++) for (let x = 44; x < 56; x++) image.pixels.delete(`${x}:${y}`);
+  const terrain = { id: "shrub", image: "shrub.png", bounds: { x: 100, y: 200, width: 100, height: 100 } };
+  const bush = { id: "bush", imageId: "shrub", points: [{ x: 115, y: 215 }, { x: 185, y: 215 },
+    { x: 180, y: 285 }, { x: 120, y: 285 }], entry: { x: 150, y: 310 }, hide: { x: 150, y: 275 } };
+  return { image, terrain, bush, scene: { width: 500, height: 500, terrain: [terrain], bushes: [bush], sites: [], paths: [] } };
+}
+
+test("shrub shadows preserve cutout holes, remain under the crown and reuse bounded cached layers", () => {
+  const { scene, image, terrain, bush } = bushFixture(), original = new Map(image.pixels);
+  const day = recordingContext(), night = recordingContext(); day.globalAlpha = .6; night.globalAlpha = .6;
+  drawForestBushGrounding(day, scene, terrain, image, 0);
+  drawForestBushGrounding(night, scene, terrain, image, 1);
+  assert.equal(day.draws.length, 2);
+  for (const draw of day.draws) {
+    const [layer, x, y, width, height] = draw.args;
+    assert.ok(layer.width <= 384 && layer.height <= 384);
+    assert.ok(layer.pixels.size > 0);
+    const footprint = [...layer.pixels.keys()].map(key => key.split(":").map(Number));
+    assert.ok(footprint.every(([, row]) => y + (row + .5) / layer.height * height > 265), "shadow is flattened below the crown");
+    const mask = layer.getContext("2d").draws[0][0];
+    for (const key of mask.pixels.keys()) {
+      const [column, row] = key.split(":").map(Number);
+      const wx = x + (column + .5) / 3, wy = y + (row + .5) / 3;
+      assert.ok(insidePolygon(wx, wy, bush.points));
+      assert.ok(wx < 144 || wx >= 156, "transparent gap never becomes a solid rectangular shadow");
+    }
+    assert.ok(width > 70); assert.equal(draw.filter, "none", "blur is baked once, not per frame");
+  }
+  assert.equal(day.draws[0].args[0], night.draws[0].args[0]);
+  assert.equal(day.draws[1].args[0], night.draws[1].args[0]);
+  assert.ok(night.draws[0].alpha < day.draws[0].alpha * .4);
+  assert.ok(night.draws[1].alpha > day.draws[1].alpha * .8);
+  assert.equal(day.globalAlpha, .6); assert.equal(night.globalAlpha, .6);
+  assert.deepEqual(image.pixels, original); assert.equal(image.reads, 0);
+});
+
+test("shrub shadow refreshes for replacement artwork and never shadows baked or misplaced foliage", () => {
+  const { scene, image, terrain, bush } = bushFixture(), ctx = recordingContext();
+  drawForestBushGrounding(ctx, scene, terrain, image);
+  const blank = rasterCanvas(); blank.width = blank.naturalWidth = 100; blank.height = blank.naturalHeight = 100;
+  drawForestBushGrounding(ctx, scene, terrain, blank);
+  assert.notEqual(ctx.draws[2].args[0], ctx.draws[0].args[0]);
+  assert.equal(ctx.draws[2].args[0].pixels.size, 0); assert.equal(ctx.draws[3].args[0].pixels.size, 0);
+  const missing = recordingContext();
+  drawForestBushGrounding(missing, { ...scene, bushes: [{ ...bush, imageId: undefined }] }, terrain, image);
+  drawForestBushGrounding(missing, { ...scene, terrain: [{ ...terrain, bounds: { ...terrain.bounds, x: 400 } }] }, terrain, image);
+  assert.equal(missing.draws.length, 0);
+  const compositor = recordingContext();
+  paintFixedWorld(compositor, scene, { images: new Map([[terrain.image, image]]), visuals: {}, actor: null,
+    options: { night: false, selectedSiteId: null, debug: false } });
+  assert.equal(compositor.draws.length, 3);
+  assert.equal(compositor.draws[2].args[0], image, "cutout covers its own shadow in the shared compositor");
+});
 
 test("site contact follows authored collision and intersects the image bounds", () => {
   const { site } = fixture();
