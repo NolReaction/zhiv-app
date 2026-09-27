@@ -1,4 +1,4 @@
-import { pixelSprite, type PixelDirection, type PixelPose } from "@/features/mochlik/pixel-sprite";
+import { pixelSprite, type PixelDirection, type PixelPose, type PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedSite, WorldBounds } from "./tiled/types";
 
 export const HERO_SOURCE_SIZE = 48;
@@ -42,9 +42,10 @@ export function heroSpriteContact(sprite: HTMLCanvasElement, pose: PixelPose, fr
 export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
   x: number; y: number; size: number; pose: PixelPose; direction: PixelDirection; frame: number;
   appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number; shadow?: boolean; lift?: number; compression?: number;
+  rig?: PixelRigOptions;
 }) {
   if (![actor.x, actor.y, actor.size].every(Number.isFinite) || actor.size <= 0) return;
-  const sprite = pixelSprite(actor.pose, actor.direction, actor.frame, actor.appearance);
+  const sprite = pixelSprite(actor.pose, actor.direction, actor.frame, actor.appearance, actor.rig);
   const compression = Number.isFinite(actor.compression) ? Math.max(0, Math.min(1, actor.compression!)) : 0;
   const width = actor.size * (1 - .14 * compression);
   const contact = heroSpriteContact(sprite, actor.pose, actor.frame), scale = width / HERO_SOURCE_SIZE;

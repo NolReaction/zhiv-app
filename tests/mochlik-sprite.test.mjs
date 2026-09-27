@@ -94,3 +94,17 @@ test("sleep stays rounded and breathing keeps the face and paws grounded", () =>
   }
   assert.notDeepEqual(pixelSprite("sleep", "front", 1).pixels, base, "only the curled back expands");
 });
+
+test('the garden rig keeps a calm cached body and fixed feet while external arms own the action', () => {
+  const normal = pixelSprite('idle', 'left', 0), garden = pixelSprite('idle', 'left', 0, undefined, { gardening: true });
+  assert.notEqual(normal, garden);
+  assert.equal(pixelSprite('idle', 'left', 0, undefined, { gardening: true }), garden);
+  assert.equal(pixelSprite('idle', 'left', 0), normal, 'garden overrides cannot poison the ordinary pose cache');
+  const feet = sprite => [...sprite.pixels].filter(([point]) => Number(point.split(':')[1]) >= 40);
+  assert.deepEqual(feet(garden), feet(normal));
+  const eyes = sprite => [...sprite.pixels].filter(([point, color]) => color === '#30291d'
+    && Number(point.split(':')[1]) <= 24).length;
+  assert.ok(eyes(garden) < eyes(normal), 'gardening uses a small focused gaze instead of the wide reach expression');
+  assert.equal(normal.pixels.get('11:32'), '#d8bf83');
+  assert.equal(garden.pixels.get('11:32'), '#f4e4ae', 'external arm replaces the cached arm, exposing the original cream torso');
+});

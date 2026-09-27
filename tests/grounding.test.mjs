@@ -337,3 +337,11 @@ test("ground effects paint over terrain, below buildings, without leaking canvas
   assert.equal(ctx.draws[2].filter, "none");
   assert.equal(ctx.filter, "none");
 });
+
+test('a continuous gardening rig reaches the renderer without changing the opaque sole', () => {
+  const ctx = recordingContext(), rig = { gardening: true };
+  drawGroundedHero(ctx, { x: 100, y: 200, size: 50, pose: 'idle', direction: 'left', frame: 0, rig });
+  const [sprite, , y, , height] = ctx.draws[0].args;
+  assert.equal(sprite, pixelSprite('idle', 'left', 0, undefined, rig));
+  assert.equal(y + heroSpriteContact(sprite, 'idle', 0).bottom / 48 * height, 200);
+});

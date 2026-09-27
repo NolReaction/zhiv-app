@@ -142,18 +142,20 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     options: { levels: selectedLevels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
   drawForestGardenPlants(context, world, life?.garden);
-  drawForestGardenGround(context, life?.garden, actor.size, garden);
+  drawForestGardenGround(context, life?.garden, actor.size, garden, dev?.showHero === false ? undefined : actor);
   if (dev?.showHero !== false && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     drawForestGardenProps(context, garden, "behind");
     drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
       ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
-      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression });
+      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
+      rig: garden?.rig });
     if (routine) drawForestLifePartner(context, routine, elapsed);
     drawForestGardenProps(context, garden, "front");
     context.restore();
   }
+  drawForestGardenGround(context, life?.garden, actor.size, garden, dev?.showHero === false ? undefined : actor, "front");
   if (walking?.bush && dev?.showHero !== false) {
     const growth = life?.garden?.bushes.find(bush => bush.id === walking.bush!.id)?.growth;
     drawForestBush(context, world, images, { ...walking.bush, ripe: growth === undefined || growth >= .98 }, elapsed, still);

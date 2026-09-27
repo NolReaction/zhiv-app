@@ -38,15 +38,15 @@ function setup(phase = 'water', elapsed = 2) {
 test('growth overlays stay inside the exact authored foliage and use the same positions at every stage', () => {
   const { garden } = setup();
   garden.bushes[0].growth = .2;
-  const flowers = forestGardenBerries(scene, garden);
-  assert.ok(flowers.length >= 5 && flowers.length <= 11);
-  for (const item of flowers) assert.ok(previewPointInPolygon(item, scene.bushes[0].points));
+  const buds = forestGardenBerries(scene, garden);
+  assert.ok(buds.length >= 5 && buds.length <= 11);
+  for (const item of buds) assert.ok(previewPointInPolygon(item, scene.bushes[0].points));
   garden.bushes[0].growth = .65;
   const green = forestGardenBerries(scene, garden);
   garden.bushes[0].growth = 1;
   const ripe = forestGardenBerries(scene, garden);
-  assert.deepEqual(green.map(({ x, y }) => [x, y]), flowers.map(({ x, y }) => [x, y]));
-  assert.deepEqual(ripe.map(({ x, y }) => [x, y]), flowers.map(({ x, y }) => [x, y]));
+  assert.deepEqual(green.map(({ x, y }) => [x, y]), buds.map(({ x, y }) => [x, y]));
+  assert.deepEqual(ripe.map(({ x, y }) => [x, y]), buds.map(({ x, y }) => [x, y]));
   garden.bushes[0].growth = 0;
   assert.deepEqual(forestGardenBerries(scene, garden), []);
   garden.bushes[0].growth = NaN;
@@ -109,4 +109,101 @@ test('a carried basket uses actor depth and cancellation leaves a grounded baske
   assert.deepEqual(parked.calls.find(call => call.method === 'translate').args, [foot.x, foot.y]);
   assert.equal(garden.basket.berries, 3, 'visual pending fruit does not become harvested loot');
   assert.ok(parked.calls.some(call => call.method === 'ellipse' && call.fill === '#253719'), 'the basket contacts the ground');
+});
+
+test('berries grow as detailed warm clusters without any flower glyphs', () => {
+  const { garden } = setup();
+  const samples = [];
+  for (const growth of [.08, .2, .4, .8, 1]) {
+    garden.bushes[0].growth = growth;
+    const surface = context(); drawForestGardenPlants(surface.ctx, scene, garden);
+    const fruit = surface.calls.filter(call => call.method === 'ellipse');
+    assert.ok(fruit.length > 20, 'cluster fruit has colored body, highlight and surface detail');
+    assert.ok(!surface.calls.some(call => ['#e3dec0', '#c8b45c', '#fff8e8'].includes(call.fill)), 'no pale cross/petals in the crop');
+    samples.push(fruit[0].args[2]);
+  }
+  assert.ok(samples.every((size, index) => !index || size > samples[index - 1]), 'berry size increases smoothly with growth');
+});
+
+test('harvest basket has matching endpoints at every phase and stays visible beside the feet', () => {
+  const { garden, actor } = setup('collect', 0), original = structuredClone(garden);
+  const at = (phase, elapsed, position = actor) => {
+    garden.routine.phase = phase; garden.routine.elapsed = elapsed;
+    garden.routine.carryingBasket = !['take-basket', 'settle'].includes(phase);
+    return forestGardenVisualFrame(garden, position, motion);
+  };
+  const home = { ...garden.basket.homeApproach, size: actor.size };
+  for (const [before, after] of [
+    [at('take-basket', 1, home), at('approach-bush', 0, home)],
+    [at('approach-bush', 10), at('collect', 0)],
+    [at('collect', 5), at('return-basket', 0)],
+    [at('return-basket', 10, home), at('deposit', 0, home)],
+  ]) assert.ok(Math.hypot(before.basket.x - after.basket.x, before.basket.y - after.basket.y) < 1e-8);
+  const lowered = at('collect', 2);
+  assert.equal(lowered.basket.grounded, true);
+  assert.ok(Math.abs(lowered.basket.x - actor.x) >= actor.size * .35, 'basket is outside the torso');
+  const behind = context(), front = context();
+  drawForestGardenGround(behind.ctx, garden, actor.size, lowered, actor);
+  drawForestGardenProps(front.ctx, lowered, 'front');
+  assert.equal(behind.calls.length, 0, 'active basket cannot be covered by the hero pass');
+  assert.ok(front.calls.some(call => call.method === 'translate' && call.args[0] === lowered.basket.x));
+  assert.equal(original.basket.berries, garden.basket.berries, 'sampling does not deposit a reward');
+  const lifted = at('take-basket', 1, home);
+  assert.ok(lifted.basket.y < garden.basket.position.y - 2, 'pickup visibly lifts the basket above its parking spot');
+});
+
+test('one real fruit travels from foliage via the two paws into the basket without blinking', () => {
+  const { garden, actor } = setup('collect', 0);
+  garden.bushes[0].growth = 1;
+  const at = time => {
+    garden.routine.elapsed = time;
+    return forestGardenVisualFrame(garden, actor, motion);
+  };
+  let previous;
+  for (let t = 0; t <= 5; t += 1 / 120) {
+    const frame = at(t);
+    assert.equal(frame.pose, 'idle', 'gathering keeps the body and feet still');
+    assert.equal(frame.frame, 0);
+    assert.equal(frame.rig.gardening, true);
+    if (previous) frame.arms.forEach((arm, index) => {
+      const prior = previous.arms[index].hand;
+      assert.ok(Math.hypot(arm.hand.x - prior.x, arm.hand.y - prior.y) < 3, `hand moves continuously at ${t}`);
+    });
+    previous = frame;
+  }
+  for (let cycle = 0; cycle < 3; cycle++) {
+    const start = .85 + cycle;
+    const grasp = at(start + .300001);
+    assert.ok(grasp.pickedBerry && previewPointInPolygon(grasp.pickedBerry, scene.bushes[0].points), 'fruit starts at its actual cluster');
+    assert.ok(grasp.pickedBerry.x < actor.x - actor.size * .46, 'worked fruit remains outside the near cheek/ear silhouette');
+    assert.equal(forestGardenBerries(scene, garden)[0].picked, cycle + 1, 'the plucked fruit is removed from that cluster');
+    let last = grasp.pickedBerry;
+    for (let phase = .31; phase < .8; phase += .01) {
+      const next = at(start + phase).pickedBerry;
+      assert.ok(next, 'fruit remains attached until the deposit');
+      assert.ok(Math.hypot(next.x - last.x, next.y - last.y) < 2);
+      last = next;
+    }
+    const deposited = at(start + .800001);
+    assert.equal(deposited.pickedBerry, null);
+    assert.equal(deposited.basket.berries, cycle + 1, 'contents change when the paw reaches the rim');
+  }
+});
+
+test('a deposited empty or filled basket keeps the same transform and foreground depth near the hero', () => {
+  for (const berries of [0, 6]) {
+    const { garden, actor } = setup('deposit', 1.5);
+    garden.basket.berries = berries;
+    const home = { ...garden.basket.homeApproach, size: actor.size };
+    const frame = forestGardenVisualFrame(garden, home, motion);
+    assert.deepEqual([frame.basket.x, frame.basket.y], [garden.basket.homePosition.x, garden.basket.homePosition.y]);
+    garden.routine = null;
+    const behind = context(), front = context();
+    drawForestGardenGround(behind.ctx, garden, actor.size, null, home, 'behind');
+    drawForestGardenGround(front.ctx, garden, actor.size, null, home, 'front');
+    assert.equal(behind.calls.length, 0);
+    assert.deepEqual(front.calls.find(call => call.method === 'translate').args, [frame.basket.x, frame.basket.y]);
+    const far = context(); drawForestGardenGround(far.ctx, garden, actor.size, null, { x: 0, y: 0 }, 'behind');
+    assert.ok(far.calls.length, 'distant parked props keep their ordinary ground pass');
+  }
 });

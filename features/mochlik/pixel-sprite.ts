@@ -2,6 +2,8 @@
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
   | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
+/** Gardening owns continuous arms outside the cached body sprite. */
+export type PixelRigOptions = { gardening?: boolean };
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
   moss: "#7c8845", mossLight: "#a5ad58", mossDark: "#58683b", eye: "#30291d",
@@ -9,9 +11,9 @@ const colors = {
 const cache = new Map<string, HTMLCanvasElement>();
 const CACHE_LIMIT = 384;
 
-export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }): HTMLCanvasElement {
+export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }, rig?: PixelRigOptions): HTMLCanvasElement {
   frame = Number.isFinite(frame) ? ((Math.trunc(frame) % 4) + 4) % 4 : 0;
-  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}`;
+  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}`;
   const existing = cache.get(key);
   if (existing) { cache.delete(key); cache.set(key, existing); return existing; }
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
@@ -87,7 +89,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       rect(21, faceY - 13, 3, 2, c.mossLight); rect(24, faceY - 8, 3, 2, c.moss);
       const look = direction === "left" ? -3 : direction === "right" ? 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
       for (const x of [19 + look, 29 + look]) {
-        if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
+        if (rig?.gardening) { oval(x, faceY + 1, 1, 2, c.eye); rect(x, faceY, 1, 1, "#fff8e8"); }
+        else if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
         else { oval(x, faceY, 2, pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
       }
       rect(23 + look, faceY + 3, 3, 2, c.outline); rect(24 + look, faceY + 5, 1, 2, c.outline);
@@ -119,9 +122,9 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     const swing = pose === "walk" ? step : 0;
     const armShade = direction === "back" ? c.mossDark : c.shade;
     const armLight = direction === "back" ? c.moss : c.cream;
-    oval(leftHand, armY - swing, 3, 5, armShade); oval(leftHand, armY - 1 - swing, 2, 4, armLight);
+    if (!rig?.gardening) { oval(leftHand, armY - swing, 3, 5, armShade); oval(leftHand, armY - 1 - swing, 2, 4, armLight); }
     const wave = pose === "greet" ? -5 + (frame % 2) * 2 : pose === "scratch" ? -17 + (frame % 2) * 3 : 0;
-    oval(rightHand, armY + wave + swing, 3, 5, armShade); oval(rightHand, armY - 1 + wave + swing, 2, 4, armLight);
+    if (!rig?.gardening) { oval(rightHand, armY + wave + swing, 3, 5, armShade); oval(rightHand, armY - 1 + wave + swing, 2, 4, armLight); }
   }
   // Wearables share the rig's pose anchors and depth rules in every direction.
   if (appearance && pose !== "sleep" && pose !== "drowsy") {
