@@ -21,6 +21,7 @@ import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity 
 import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, type ForestDirectorOptions } from "./forest-director";
 import { faunaInteractionFrame, faunaRenderFrame, type ForestFaunaState } from "./forest-fauna";
 import { forestBirdFrame } from "./forest-birds";
+import { forestBirdwatchFrame, type ForestBirdwatch } from "./forest-birdwatching";
 import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reactions";
 import type { ForestBird } from "./forest-wildlife";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
@@ -76,6 +77,7 @@ export type NewMapPaintPreview = {
   wetness?: number;
   fauna?: ForestFaunaState;
   birdFrame?: ForestBird[];
+  birdwatch?: ForestBirdwatch | null;
   livingDebug?: LivingWorldDebugSnapshot;
 };
 
@@ -127,6 +129,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     ? forestLifeFrame(life, actor, elapsed) : null;
   const encounter = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
     ? faunaInteractionFrame(preview.fauna) : null;
+  const birdwatch = automatic && !still && preview?.birdwatch ? forestBirdwatchFrame(preview.birdwatch, actor) : null;
   context.save();
   context.beginPath(); context.rect(0, 0, world.width, world.height); context.clip();
   paintFixedWorld(context, world, { images, visuals: selectedVisuals, actor: null, dusk: Number(atmosphere.dusk),
@@ -147,8 +150,8 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     drawForestGardenProps(context, garden, "behind");
-    drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
-      ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
+    drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
+      ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? birdwatch ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
       appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
       rig: garden?.rig });
     if (routine) drawForestLifePartner(context, routine, elapsed);
@@ -205,7 +208,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length)
+    return Boolean(state.pendingLife || state.director.birdwatch || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length)
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -219,12 +222,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
     return { autoLife: dev?.autoLife !== false, blocked, dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
-      reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale };
+      reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: birdBase() };
   }
   function preview(): NewMapPaintPreview {
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
     return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
-      fauna: state.fauna, birdFrame: applyBirdReactions(state.birdReactions, birdBase()),
+      fauna: state.fauna, birdFrame: applyBirdReactions(state.birdReactions, birdBase()), birdwatch: state.director.birdwatch,
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
         position: state.clearing.position, path: path?.path, target: path?.target, activity: path?.activity,

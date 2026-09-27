@@ -8,6 +8,8 @@ export type ForestGardenPhase = "approach-basket" | "take-basket" | "approach-bu
   | "return-basket" | "deposit" | "settle";
 export type ForestBerryBush = {
   id: string; position: WorldPoint; points: WorldPoint[]; workPosition: WorldPoint | null;
+  /** Temporary authoring state; crop persistence contains no artwork flags. */
+  artworkPending?: boolean;
   growth: number; moisture: number; waterIn: number;
 };
 export type ForestGardenRoutine = {
@@ -31,7 +33,8 @@ export function createForestGarden(scene: FixedWorldScene): ForestGardenState {
   const actor = scene.actor, nav = actor ? createWorldNavigation(scene) : null;
   state.bushes = (scene.bushes ?? []).filter(bush => finitePoint(bush.entry) && bush.points.length >= 3
     && bush.points.every(finitePoint)).slice(0, FOREST_GARDEN_LIMITS.maxBushes).map(bush => ({
-    id: bush.id, position: point(bush.entry), points: bush.points.map(point), workPosition: null, growth: .2, moisture: .32, waterIn: 0,
+    id: bush.id, position: point(bush.entry), points: bush.points.map(point), workPosition: null,
+    artworkPending: !forestBushArtworkAvailable(scene, bush), growth: .2, moisture: .32, waterIn: 0,
   }));
   if (!actor || !nav) return state;
   for (const bush of state.bushes) {

@@ -90,6 +90,17 @@
 .footer { flex-shrink: 0; display: grid; gap: 6px; max-height: 104px; overflow: auto; padding: 7px 12px; border-top: 1px solid var(--dev-line); background: #132218; scrollbar-width: thin; }
 .footer p { min-height: 17px; margin: 0; color: #d2e6b8; font-size: 11px; overflow-wrap: anywhere; }
 .aiDiagnostics { display: grid; gap: 14px; min-width: 0; }
+.aiInspectorControls { display: grid; gap: 7px; min-width: 0; padding: 10px; border: 1px solid var(--dev-line); border-radius: 10px; background: #203326; }
+.aiInspectorActions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.root .aiInspectorActions button { min-width: 0; padding: 8px 6px; font-size: 12px; line-height: 1.35; }
+.aiJournal { display: grid; gap: 8px; min-width: 0; }
+.aiJournal .aiList { margin-top: 0; }
+.aiEventMeta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.aiEventKind { min-width: 0; color: #c0d0bc; font-size: 10px; }
+.aiEventKind[data-kind='completed'] { color: #c4dea0; }
+.aiEventKind[data-kind='interrupted'] { color: #edce96; }
+.aiEventKind[data-kind='failed'] { color: #ffbdab; }
+.aiEmpty { margin: 0; padding: 10px; border: 1px dashed var(--dev-line); border-radius: 8px; color: var(--dev-muted); font-size: 12px; line-height: 1.5; }
 .gardenDiagnostics { display: grid; gap: 10px; min-width: 0; }
 .gardenSummary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 0; }
 .gardenSummary > div { min-width: 0; padding: 8px; background: #23372a; border: 1px solid var(--dev-line); border-radius: 8px; }

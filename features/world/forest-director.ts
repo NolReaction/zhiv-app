@@ -1,6 +1,8 @@
 import type { ForestSessionState } from "./forest-session";
 import type { WorldPoint } from "./tiled/types";
 import type { ForestLifeAction } from "./forest-life";
+import type { ForestBird } from "./forest-wildlife";
+import { advanceForestBirdwatch, chooseForestBirdwatchTarget, createForestBirdwatch, type ForestBirdwatch } from "./forest-birdwatching";
 import { advanceForestLife, cancelForestLife, interruptForestLife, triggerForestLife } from "./forest-life";
 import { advanceClearingActivity, canStartClearingInteraction, canStartClearingLife, canVisitClearingBush, clearingActivityFrame,
   isClearingAtHome, isClearingAtPoint, noticeClearingActivity, releaseClearingPoint,
@@ -14,22 +16,25 @@ import { advanceForestGarden, cancelForestGarden, gardenActionAvailable, gardenE
 import { advanceForestMind, beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates,
   scoreForestAction, type ForestMindAction, type ForestMindCandidate } from "./forest-mind";
 
-export type ForestDirective = ForestLifeAction | ForestGardenAction | "grow-berries" | "bush" | "home-sleep" | "wake";
+export type ForestDirective = ForestLifeAction | ForestGardenAction | "grow-berries" | "bush" | "home-sleep" | "wake" | "watch-birds";
 export type ForestDirectorOptions = {
   autoLife: boolean; blocked: boolean; dusk: number; rain: number; homeAvailable: boolean;
   butterflies?: "auto" | "on" | "off"; fireflies?: "auto" | "on" | "off";
   heroScale?: number; reducedMotion?: boolean; navigationMode?: "auto" | "routes";
+  /** Actual birds from the shared scene clock, never fabricated by the actor. */
+  birds?: readonly ForestBird[];
 };
 export type ForestDirectorState = {
   elapsed: number; nextDecisionAt: number; seed: number; reason: string;
   pendingSince: number; waitingForExit: boolean; objectId: string | null; target: WorldPoint | null; explicit: boolean;
   activeKey: string | null; recent: { key: string; at: number }[];
+  birdwatch: ForestBirdwatch | null;
   lastFootstep: WorldPoint | null; lastFootstepAt: number; lastBurst: string | null;
   stimulus: { id: number; kind: "movement" | "rustle"; x: number; y: number; strength: number } | null;
 };
 export function createForestDirector(seed = 8128): ForestDirectorState {
   return { elapsed: 0, nextDecisionAt: 4, seed, reason: "Осматривает полянку", pendingSince: 0, waitingForExit: false,
-    objectId: null, target: null, explicit: false, activeKey: null, recent: [],
+    objectId: null, target: null, explicit: false, activeKey: null, recent: [], birdwatch: null,
     lastFootstep: null, lastFootstepAt: 0, lastBurst: null, stimulus: null };
 }
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -46,7 +51,7 @@ function clearRequest(state: ForestSessionState) {
 }
 function finishAction(state: ForestSessionState) {
   const director = state.director;
-  if (!director.activeKey || state.life.routine || state.life.garden.routine || state.fauna.encounter) return;
+  if (!director.activeKey || director.birdwatch || state.life.routine || state.life.garden.routine || state.fauna.encounter) return;
   if (!state.pendingLife && !state.pendingAttention && state.clearing.behavior.mind.intention?.source === "director"
     && state.clearing.behavior.mind.intention.action === director.activeKey.split(":")[0])
     finishForestIntention(state.clearing.behavior.mind, "completed", "Встреча закончилась — можно выбрать новое занятие");
@@ -59,6 +64,7 @@ function finishAction(state: ForestSessionState) {
 /** A DEV pose is a deliberate interruption, never a second owner of a seated insect. */
 export function cancelForestDirector(state: ForestSessionState) {
   finishForestIntention(state.clearing.behavior.mind, "interrupted", "Занятие остановлено в DEV");
+  state.director.birdwatch = null;
   cancelForestLife(state.life); cancelFaunaInteraction(state.fauna);
   cancelForestGarden(state.life.garden, state.clearing.position);
   clearRequest(state); state.pendingAttention = false; state.director.activeKey = null;
@@ -67,6 +73,7 @@ export function cancelForestDirector(state: ForestSessionState) {
 }
 export function noticeForestDirector(state: ForestSessionState, still = false) {
   noticeForestMind(state.clearing.behavior.mind, { rested: state.clearing.stage === "home-sleep" && state.clearing.stageElapsed >= 5 });
+  state.director.birdwatch = null;
   clearRequest(state); state.director.nextDecisionAt = state.director.elapsed + 12;
   if (still) {
     cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true, mindNoticed: true }); return;
@@ -91,7 +98,10 @@ export function requestForestDirective(state: ForestSessionState, kind: ForestDi
   }
   if (options.reducedMotion) { state.director.reason = "Перелёты и прогулки при уменьшенном движении остановлены"; return; }
   finishForestIntention(state.clearing.behavior.mind, "interrupted", "Выбрано занятие через DEV");
-  beginForestIntention(state.clearing.behavior.mind, kind, kind, "Занятие выбрано через DEV", "director");
+  beginForestIntention(state.clearing.behavior.mind, kind === "watch-birds" ? "look" : kind, kind, "Занятие выбрано через DEV", "director");
+  if (state.director.birdwatch) {
+    state.director.birdwatch = null; state.director.activeKey = null; releaseClearingPoint(state.clearing);
+  }
   interruptForestLife(state.life); interruptFaunaInteraction(state.fauna);
   if (state.life.garden.routine) state.director.activeKey = null;
   cancelForestGarden(state.life.garden, state.clearing.position);
@@ -232,9 +242,26 @@ function advanceGardenRoutine(state: ForestSessionState, delta: number, options:
 
 function processRequest(state: ForestSessionState, options: ForestDirectorOptions) {
   const kind = state.pendingLife;
-  if (!kind || state.pendingAttention || state.life.routine || state.life.garden.routine || state.fauna.encounter) return;
+  if (!kind || state.pendingAttention || state.director.birdwatch || state.life.routine || state.life.garden.routine || state.fauna.encounter) return;
   const { clearing, director } = state;
   if (director.elapsed - director.pendingSince > 35) { failRequest(state, "Цель недоступна — выберет другое занятие"); return; }
+  if (kind === "watch-birds") {
+    if (options.rain > .35 || options.dusk > .6) { failRequest(state, "Птиц лучше наблюдать в сухую светлую погоду"); return; }
+    const bird = chooseForestBirdwatchTarget(options.birds ?? [], actor(state, options));
+    if (!bird) { failRequest(state, "Рядом пока нет сидящей птицы — дождитесь её посадки"); return; }
+    // A manual request can stop an ordinary walk, but never skips a doorway or jump.
+    if (!canStartClearingInteraction(clearing)) {
+      if (!requestClearingPoint(clearing, clearing.position)) {
+        failRequest(state, "Сначала нужно закончить выход или прыжок"); return;
+      }
+    }
+    if (!canStartClearingInteraction(clearing) || clearing.navigationEnabled && !requestClearingPoint(clearing, clearing.position)) {
+      failRequest(state, "Сейчас нельзя спокойно остановиться для наблюдения"); return;
+    }
+    director.birdwatch = createForestBirdwatch(bird, 6 + random(director) * 2);
+    director.activeKey = "watch-birds"; director.reason = "Остановился и наблюдает за птицей на ветке";
+    clearRequest(state); return;
+  }
   if (kind === "bush" || kind === "home-sleep") {
     if (kind === "home-sleep" && !options.homeAvailable) { failRequest(state, "Домик сейчас недоступен"); return; }
     releaseClearingPoint(clearing);
@@ -322,7 +349,7 @@ function processRequest(state: ForestSessionState, options: ForestDirectorOption
 function chooseAction(state: ForestSessionState, options: ForestDirectorOptions) {
   const { director, clearing } = state, mind = clearing.behavior.mind;
   // A chosen journey/action owns its intention until completion or an explicit interruption.
-  if (!options.autoLife || state.pendingLife || state.pendingAttention || state.life.routine || state.life.garden.routine || state.fauna.encounter
+  if (!options.autoLife || state.pendingLife || state.pendingAttention || director.birdwatch || state.life.routine || state.life.garden.routine || state.fauna.encounter
     || mind.intention || !canStartClearingLife(clearing) || director.elapsed < director.nextDecisionAt) return;
   director.nextDecisionAt = director.elapsed + .6;
   const visitor = options.dusk > .5 ? "firefly" : "butterfly";
@@ -335,6 +362,18 @@ function chooseAction(state: ForestSessionState, options: ForestDirectorOptions)
     candidates.push(item);
   };
   candidate("idle", true, "");
+  const bird = options.rain <= .35 && options.dusk <= .6
+    ? chooseForestBirdwatchTarget(options.birds ?? [], actor(state, options)) : null;
+  const watching = scoreForestAction(mind, "look", "watch-birds", { rain: options.rain, dusk: options.dusk, noise: bird ? random(director) * .6 : 0 });
+  if (bird) {
+    // This short-lived visitor is more novel than another generic look at the grass.
+    // Keep the existing fatigue and repeated-watch penalties: it is an opportunity,
+    // not an instruction to abandon rest or an activity already under way.
+    if (watching.score !== null) watching.score += 1.2;
+    watching.reasons.unshift("На ветке рядом устроилась птица — можно тихо понаблюдать");
+  }
+  else Object.assign(watching, { available: false, score: null, reasons: ["Рядом нет сидящей птицы в подходящую погоду"] });
+  candidates.push(watching);
   candidate(visitor, canStartClearingInteraction(clearing) && canRequestFaunaInteraction(state.fauna, visitor, actor(state, options), options),
     options.rain > .35 ? "Обитатели укрываются от дождя" : "Рядом нет свободного обитателя подходящего вида");
   candidate("mushroom", nearby.length > 0, "Рядом нет выросшего гриба");
@@ -355,7 +394,7 @@ function chooseAction(state: ForestSessionState, options: ForestDirectorOptions)
   if (!selected || selected.action === "idle") {
     director.reason = "Спокойно осматривается"; director.nextDecisionAt = director.elapsed + 6 + random(director) * 7; return;
   }
-  const kind = selected.action as ForestDirective;
+  const kind = selected.key === "watch-birds" ? "watch-birds" : selected.action as ForestDirective;
   beginForestIntention(mind, selected.action, selected.key, selected.reasons[0], "director");
   state.pendingLife = kind; director.pendingSince = director.elapsed; director.explicit = false;
 }
@@ -389,7 +428,7 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
       moving: frame.pose === "walk", resting: pose === "sleep" || pose === "drowsy",
       sleeping: frame.homeSleeping, sheltered: frame.residing,
       rain: options.rain, dusk: options.dusk,
-      engaged: Boolean(state.life.routine || state.life.garden.routine || state.fauna.encounter) || state.clearing.stage === "bush-hidden"
+      engaged: Boolean(director.birdwatch || state.life.routine || state.life.garden.routine || state.fauna.encounter) || state.clearing.stage === "bush-hidden"
         || state.clearing.stage === "activity" && !["sleep", "drowsy", "yawn"].includes(pose),
       grooming: ["groom", "shake", "scratch"].includes(pose),
     });
@@ -403,6 +442,14 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     dusk: options.dusk, rain: options.rain, butterflies: options.butterflies, fireflies: options.fireflies });
   advanceForestGarden(state.life.garden, dt, { rain: options.rain });
   if (!options.blocked) advanceGardenRoutine(state, dt, options);
+  if (!options.blocked && director.birdwatch) {
+    const weatherChanged = options.rain > .35 || options.dusk > .6;
+    if (weatherChanged || advanceForestBirdwatch(director.birdwatch, options.birds ?? [], dt) === "finished") {
+      director.birdwatch = null;
+      director.reason = weatherChanged ? "Погода изменилась — заканчивает наблюдение" : "Проводил птицу взглядом и возвращается к своим делам";
+      finishForestIntention(state.clearing.behavior.mind, weatherChanged ? "interrupted" : "completed", director.reason);
+    }
+  }
   finishAction(state);
   if (!options.blocked) {
     if (state.pendingAttention && !state.life.routine && !state.life.garden.routine && !state.fauna.encounter) {
@@ -416,8 +463,8 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     enabled: options.autoLife || state.clearing.retiring || Boolean(state.pendingLife || state.life.garden.routine || state.clearing.bushEffect?.bursts.length)
       || state.clearing.freePurpose === "interaction-exit"
       || frame.attention || !options.homeAvailable && frame.residing,
-    blocked: options.blocked || Boolean(state.life.routine || state.fauna.encounter) || gardenRoutineStationary(state.life.garden.routine),
-    idleEligible: !options.blocked && !state.pendingLife && !state.pendingAttention && !state.life.garden.routine,
+    blocked: options.blocked || Boolean(director.birdwatch || state.life.routine || state.fauna.encounter) || gardenRoutineStationary(state.life.garden.routine),
+    idleEligible: !options.blocked && !director.birdwatch && !state.pendingLife && !state.pendingAttention && !state.life.garden.routine,
     homeAvailable: options.homeAvailable, dusk: options.dusk, rain: options.rain, navigationMode: options.navigationMode,
   });
   const intention = state.clearing.behavior.mind.intention;

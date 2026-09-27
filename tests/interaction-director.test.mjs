@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -19,7 +20,7 @@ const dt = .025;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function create(size = TILED_WORLD.actor.size) {
-  const scene = structuredClone(TILED_WORLD);
+  const scene = withPlacedBushArtwork(TILED_WORLD);
   scene.actor.size = size;
   scene.paths = [];
   scene.mushrooms = [{ id: "eastern-mushroom", position: { x: 670, y: 705 } }];

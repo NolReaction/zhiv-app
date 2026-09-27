@@ -64,7 +64,7 @@ const DIRECTIONS = [["front", "Лицом"], ["back", "Спиной"], ["left", 
 const LIFE_ACTIONS = [
   ["butterfly", "Поиграть с бабочкой"], ["firefly", "Поиграть со светлячком"],
   ["mushroom", "Съесть гриб"], ["leaf", "Рассмотреть листик"],
-  ["bush", "Спрятаться в кусте"],
+  ["bush", "Спрятаться в кусте"], ["watch-birds", "Понаблюдать за птицей"],
   ["home-sleep", "Отправиться спать домой"], ["wake", "Разбудить Мохлика"], ["grow-mushrooms", "Вырастить грибы"], ["idle", "Отменить сценку"],
 ] as const satisfies readonly (readonly [WorldDevLifeAction, string])[];
 const GARDEN_ACTIONS = [["water-bush", "Полить куст"], ["harvest-berries", "Собрать ягоды"],
@@ -202,6 +202,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
     if (action.action === "bush" && !TILED_WORLD.bushes?.length) return "Добавьте куст и точки входа в Tiled.";
     if (action.action === "home-sleep" && !state.showBuildings) return "Дом скрыт. Включите «Показывать здания».";
     if (action.action === "butterfly" && state.butterflies === "off") return "Бабочки выключены. Выберите «Авто» или «Включить».";
+    if (action.action === "watch-birds") return birdsUnavailable ?? (state.timeOfDay === "night" ? "Дождитесь дня и посадки птицы рядом." : null);
     if (action.action === "firefly" && state.fireflies === "off") return "Светлячки выключены. Выберите «Авто» или «Включить».";
     return null;
   }
@@ -225,6 +226,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
       worldDevStore.triggerLife(action.action);
       setFeedback(action.action === "idle" ? "Сценка отменена. Автоматические сценки выключены."
         : action.action === "butterfly" || action.action === "firefly" ? "Запрошена встреча с доступной особью. Если подходящей рядом нет, сценка не начнётся."
+        : action.action === "watch-birds" ? "Наблюдает только за сидящей рядом птицей. Можно запустить сценарий с птицами и дождаться посадки."
         : action.action === "grow-berries" ? "Созревание ускорено в DEV. Память аккаунта отключена для этой проверки."
         : `Запрошено занятие: ${lifeActionLabel(action.action).toLowerCase()}`);
     } else {

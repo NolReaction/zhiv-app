@@ -12,9 +12,10 @@ export type ForestFaunaEntity = WorldPoint & {
   id: string; species: FaunaSpecies; habitatId: string; size: number; phase: number;
   vx: number; vy: number; angle: number; mode: FaunaMode; modeElapsed: number;
   target: WorldPoint | null; anchorId: string | null; anchorOffset: WorldPoint; cooldownUntil: number;
-  /** Kept after hero release, until this individual has physically returned. */
+  /** Kept after hero release, until this individual reaches its orbit or shelter. */
   interactionToken: number | null;
   stimulusCooldownUntil: number; nextRestAt: number; restUntil: number;
+  shelterReadyAt: number | null;
   /** Short-lived individual memory; it advances only with the shared world clock. */
   alertness: number; familiarity: number; lastMovementAt: number; lastRestAnchorId: string | null;
   orbit: Orbit; opacity: number; departure: WorldPoint | null;
@@ -136,7 +137,7 @@ function entity(habitat: WorldHabitat, seed: number, index: number, scale: numbe
       : 1.35 + noise(seed, n * 7 + 6) * .25), phase,
     x: 0, y: 0, vx: 0, vy: 0, angle: 0, orbit, mode: "fly", modeElapsed: 0,
     target: null, anchorId: null, anchorOffset: { x: 0, y: 0 }, cooldownUntil: 0, interactionToken: null, stimulusCooldownUntil: 0,
-    nextRestAt: 13 + noise(seed, n + 90) * 25, restUntil: 0,
+    nextRestAt: 13 + noise(seed, n + 90) * 25, restUntil: 0, shelterReadyAt: null,
     alertness: 0, familiarity: 0, lastMovementAt: -10, lastRestAnchorId: null,
     departure: null, opacity: butterfly ? .85 : .9 };
   const initial = orbitSample(e, 0);
@@ -187,7 +188,7 @@ function candidate(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActo
   let best: ForestFaunaEntity | null = null, nearest = reach;
   for (const e of state.entities) {
     if (e.species !== kind || e.interactionToken !== null || e.cooldownUntil > state.elapsed || e.alertness > .4
-      || !["fly", "rest", "rest-seek", "refuge"].includes(e.mode)) continue;
+      || !["fly", "rest", "rest-seek"].includes(e.mode)) continue;
     const habitat = state.habitats.find(h => h.id === e.habitatId);
     // Forest residents cannot be invited through the excluded home clearing.
     if (habitat?.exclusions?.length && !habitatContains(habitat, heroHandAnchor(actor, { pose: "greet", frame: 0, direction: "front" }), 2.1)) continue;
@@ -294,7 +295,14 @@ function setAnchor(state: ForestFaunaState, e: ForestFaunaEntity, anchor: WorldH
     habitat.exclusions?.length ? 2.1 : 0)) e.anchorOffset = offset;
 }
 function shelterNeeded(e: ForestFaunaEntity, options: ForestFaunaConditions) {
-  return options.rain >= .35 || !isFaunaActiveAtTime(e.species, options.dusk);
+  // Once sheltered, wait for a genuine clearing rather than turning around at
+  // every small fluctuation near the threshold that interrupted the flight.
+  return options.rain >= (e.mode === "refuge" ? .23 : .35) || !isFaunaActiveAtTime(e.species, options.dusk);
+}
+function releaseAnimalReservation(state: ForestFaunaState, e: ForestFaunaEntity) {
+  if (e.interactionToken === null) return;
+  e.cooldownUntil = Math.max(e.cooldownUntil, state.elapsed + 14);
+  e.interactionToken = null;
 }
 
 /** A bounded impulse is integrated, never a position change. Reserved partners ignore disturbances. */
@@ -406,6 +414,14 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
     return;
   }
   if (["approach", "perch"].includes(e.mode)) depart(state, e);
+  const refuge = shelterNeeded(e, options);
+  // Finishing the small departure first clears the hero's hand. Afterwards a
+  // nearby authored shelter takes priority over a detour to the old orbit.
+  if (refuge && e.mode !== "refuge" && e.mode !== "depart") {
+    const anchor = anchorFor(state, e, "shelter") ?? anchorFor(state, e, "rest");
+    // Legacy scenes without anchors keep their subdued orbit; never invent foliage.
+    if (anchor) { setMode(e, "refuge"); setAnchor(state, e, anchor); e.shelterReadyAt = null; }
+  }
   if (e.mode === "depart") {
     steer(state, e, e.departure ?? orbitSample(e, state.elapsed), dt, undefined, options.wind);
     if (e.modeElapsed > 1.5) { setMode(e, "return"); e.departure = null; }
@@ -416,18 +432,9 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
     steer(state, e, live, dt, { x: live.vx, y: live.vy }, options.wind);
     if (distance(e, live) < 2.5 && Math.hypot(e.vx - live.vx, e.vy - live.vy) < 3) {
       setMode(e, "fly");
-      if (e.interactionToken !== null) e.cooldownUntil = Math.max(e.cooldownUntil, state.elapsed + 14);
-      e.interactionToken = null;
+      releaseAnimalReservation(state, e);
     }
     return;
-  }
-  const refuge = shelterNeeded(e, options);
-  if (refuge && e.mode !== "refuge") {
-    const anchor = anchorFor(state, e, "shelter") ?? anchorFor(state, e, "rest");
-    // No invented plant: legacy scenes without anchors simply keep their subdued orbit.
-    if (anchor) { setMode(e, "refuge"); setAnchor(state, e, anchor); }
-  } else if (!refuge && e.mode === "refuge") {
-    e.anchorId = null; setMode(e, "return");
   }
   if (e.mode === "fly" && !refuge && state.elapsed >= e.nextRestAt) {
     const anchor = anchorFor(state, e, "rest");
@@ -436,10 +443,24 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
   }
   if (["rest-seek", "rest", "refuge"].includes(e.mode)) {
     const anchor = state.habitats.find(h => h.id === e.habitatId)?.anchors.find(a => a.id === e.anchorId);
-    if (!anchor) { setMode(e, "return"); e.anchorId = null; return; }
+    if (!anchor) { setMode(e, "return"); e.anchorId = null; e.shelterReadyAt = null; return; }
     const target = { x: anchor.position.x + e.anchorOffset.x, y: anchor.position.y + e.anchorOffset.y };
     steer(state, e, target, dt);
-    if (e.mode === "rest-seek" && distance(e, target) < .65 && Math.hypot(e.vx, e.vy) < 1.6) {
+    const settled = distance(e, target) < .65 && Math.hypot(e.vx, e.vy) < 1.6;
+    if (e.mode === "refuge") {
+      if (settled) releaseAnimalReservation(state, e);
+      if (refuge || !settled) e.shelterReadyAt = null;
+      else {
+        // Small individual pauses spread departures across several seconds.
+        // The same resident keeps its rhythm after rain or a night in the foliage.
+        e.shelterReadyAt ??= state.elapsed + .8 + noise(hash(e.id), 19) * 4.4;
+        if (state.elapsed >= e.shelterReadyAt) {
+          setMode(e, "return"); e.anchorId = null; e.shelterReadyAt = null;
+          e.nextRestAt = state.elapsed + 25 + e.phase * 3;
+        }
+      }
+    }
+    if (e.mode === "rest-seek" && settled) {
       setMode(e, "rest"); e.restUntil = state.elapsed + 12 + e.phase;
       e.lastRestAnchorId = anchor.id;
     }

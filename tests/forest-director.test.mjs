@@ -32,6 +32,8 @@ const fixture = {
   ],
 };
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: false };
+const seatedBird = { id: "bird-visit", perchId: "nearby-tree", x: 120, y: 110, size: 1.3,
+  angle: 0, opacity: 1, phase: 0, state: "perched" };
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function create(override) {
   const session = connectForestSession(undefined, withPlacedBushArtwork({ ...structuredClone(fixture), ...override }), "circle", 0, 0, () => {});
@@ -46,6 +48,59 @@ function until(state, predicate, seconds = 20, options = calm) {
   for (let elapsed = 0; elapsed < seconds && !predicate(state); elapsed += .025) advanceForestDirector(state, .025, options);
   assert.ok(predicate(state), `condition not reached: ${state.director.reason}, ${state.clearing.stage}`);
 }
+
+test("birdwatching observes one actual bird without moving feet, then records a compatible look outcome", () => {
+  const state = create(), options = { ...calm, birds: [seatedBird] }, origin = { ...state.clearing.position };
+  requestForestDirective(state, "watch-birds", options); advance(state, .025, options);
+  assert.equal(state.director.birdwatch?.birdId, seatedBird.id);
+  assert.equal(state.clearing.behavior.mind.intention.action, "look");
+  advance(state, 2, options, () => assert.deepEqual(state.clearing.position, origin));
+  advance(state, 1, { ...options, birds: [{ ...seatedBird, state: "takeoff" }] });
+  assert.equal(state.director.birdwatch, null); assert.equal(state.director.activeKey, null);
+  assert.equal(state.clearing.requestedPoint, null); assert.deepEqual(state.clearing.position, origin);
+  assert.ok(state.clearing.behavior.mind.recent.some(item => item.key === "watch-birds"
+    && item.action === "look" && item.outcome === "completed"));
+  assert.equal(state.fauna.encounter, null); assert.equal(state.life.routine, null);
+});
+
+test("watching never invents a bird and respects manual blocking, reduced motion, weather, and taps", () => {
+  for (const birds of [[], [{ ...seatedBird, state: "glide" }], [{ ...seatedBird, x: 1000 }]]) {
+    const state = create(); requestForestDirective(state, "watch-birds", { ...calm, birds });
+    advance(state, .1, { ...calm, birds });
+    assert.equal(state.director.birdwatch, null); assert.equal(state.pendingLife, null);
+    assert.match(state.director.reason, /нет сидящей птицы/);
+  }
+  const options = { ...calm, birds: [seatedBird] }, state = create();
+  requestForestDirective(state, "watch-birds", options); advance(state, .1, options);
+  const elapsed = state.director.birdwatch.elapsed, origin = { ...state.clearing.position };
+  advance(state, 2, { ...options, blocked: true });
+  advance(state, 2, { ...options, reducedMotion: true });
+  assert.equal(state.director.birdwatch.elapsed, elapsed); assert.deepEqual(state.clearing.position, origin);
+  noticeForestDirector(state); advance(state, .1, options);
+  assert.equal(state.director.birdwatch, null); assert.equal(state.clearing.stage, "attention");
+  assert.ok(state.clearing.behavior.mind.recent.some(item => item.key === "watch-birds" && item.outcome === "interrupted"));
+  for (const change of [{ rain: .8 }, { dusk: 1 }]) {
+    const fresh = create(); requestForestDirective(fresh, "watch-birds", options); advance(fresh, .1, options);
+    advance(fresh, .1, { ...options, ...change });
+    assert.equal(fresh.director.birdwatch, null); assert.equal(fresh.clearing.requestedPoint, null);
+    assert.equal(fresh.clearing.behavior.mind.recent.at(-1).outcome, "interrupted");
+  }
+});
+
+test("a new explicit task releases birdwatch ownership, while autonomous watching waits for a free intention", () => {
+  const options = { ...calm, birds: [seatedBird] }, state = create();
+  requestForestDirective(state, "watch-birds", options); advance(state, .1, options);
+  requestForestDirective(state, "leaf", options);
+  assert.equal(state.director.birdwatch, null); assert.equal(state.director.activeKey, null);
+  assert.equal(state.pendingLife, "leaf");
+  const idle = create({ mushrooms: [], habitats: [] }); idle.life.leaf = null; idle.clearing.waitSeconds = 30;
+  advance(idle, 4.05, { ...options, autoLife: true });
+  assert.equal(idle.director.birdwatch?.birdId, seatedBird.id);
+  const busy = create();
+  busy.clearing.behavior.mind.intention = { key: "look-at-grass", action: "look", reason: "Busy", source: "clearing", startedAt: 0 };
+  advance(busy, 4.05, { ...options, autoLife: true });
+  assert.equal(busy.director.birdwatch, null);
+});
 
 test("explicit butterfly and firefly requests reserve existing bodies and never create a legacy insect routine", () => {
   for (const species of ["butterfly", "firefly"]) {

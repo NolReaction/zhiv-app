@@ -151,7 +151,7 @@ test("blocked scenes and animations retain explanatory labels, while cancellatio
   const reason = "Сцена на паузе. Снимите паузу для проигрывания событий.";
   const { elements } = panel("scenes", { unavailable: action => action.action === "idle" ? null : reason });
   const buttons = elements.filter(element => element.type === "button");
-  assert.equal(buttons.length, 9);
+  assert.equal(buttons.length, 10);
   assert.equal(elements.filter(element => element.type === "p" && labelText(element) === reason).length, 1,
     "a paused scene needs one shared explanation, not eight paragraphs to scroll past");
   for (const button of buttons) {

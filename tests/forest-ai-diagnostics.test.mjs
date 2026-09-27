@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { ForestAiDiagnostics, ForestGardenDiagnostics, createForestAiReport, decisionTime } = await vite.ssrLoadModule("/features/world/dev/forest-ai-diagnostics.tsx");
+const { WorldAiDiagnostics, ForestAiInspectorControls, forestAiInspectorReducer } = await vite.ssrLoadModule("/features/world/dev/world-ai-diagnostics.tsx");
 
 const observation = () => ({
   activity: "Идёт к грибу", detail: "Заметил находку и выбрал безопасный подход", mood: "Любопытствует",
@@ -28,17 +29,17 @@ const observation = () => ({
   },
 });
 
-function render(observation, onExport) {
+function inspect(element) {
   const elements = [];
   function capture(element) {
     if (!isValidElement(element)) return;
     elements.push(element);
     Children.forEach(element.props.children, capture);
   }
-  const element = ForestAiDiagnostics({ observation, onExport });
   capture(element);
   return { markup: renderToStaticMarkup(element), elements };
 }
+const render = (observation, onExport, options = {}) => inspect(ForestAiDiagnostics({ observation, onExport, ...options }));
 
 test("DEV explains blocked alternatives and chronological events without changing the observation", () => {
   const snapshot = observation(), before = structuredClone(snapshot);
@@ -153,4 +154,94 @@ test("JSON report is a bounded allowlisted snapshot, never an account or full se
   assert.match(report.note, /Не содержит записи для воспроизведения/);
   report.diagnostics.events[0].label = "Modified export";
   assert.equal(snapshot.diagnostics.events[46].label, "New goal");
+});
+
+test("journal distinguishes outcomes and filters only the displayed recent window without rewriting history", () => {
+  const snapshot = observation();
+  snapshot.diagnostics.events = [
+    { id: 1, at: 10, type: "selected", label: "Отдыхает дома", reason: "Выбрал сон" },
+    { id: 2, at: 20, type: "completed", label: "Отдыхает дома", reason: "Выспался" },
+    { id: 3, at: 30, type: "interrupted", label: "Играет с листиком", reason: "Игрок позвал" },
+    { id: 4, at: 40, type: "failed", label: "Исследует куст", reason: "Не нашёл путь" },
+    { id: 5, at: 50, type: "attention", label: "Внимание игрока", reason: "Ответил на зов" },
+    { id: 6, at: 60, type: "restored", label: "Память восстановлена", reason: "Вернулся на полянку" },
+    { id: 7, at: 70, type: "future-event", label: "Новое занятие", reason: "Неизвестный тип остаётся видимым" },
+  ];
+  const before = structuredClone(snapshot), changes = [];
+  const all = render(snapshot);
+  for (const label of ["Выбор занятия", "Завершено", "Прервано", "Не удалось", "Отклик на игрока", "Восстановление памяти", "Событие"])
+    assert.match(all.markup, new RegExp(label));
+  const issues = render(snapshot, undefined, { eventFilter: "issues", onEventFilterChange: value => changes.push(value) });
+  assert.match(issues.markup, /Последние события · 2 из 7/);
+  assert.ok(issues.markup.indexOf("Не нашёл путь") < issues.markup.indexOf("Игрок позвал"));
+  assert.doesNotMatch(issues.markup, /Выспался|Выбрал сон|Вернулся на полянку|Неизвестный тип остаётся/);
+  assert.match(issues.markup, /Прерывание бывает обычной реакцией/);
+  const selector = issues.elements.find(element => element.type === "select");
+  assert.equal(selector.props.value, "issues");
+  selector.props.onChange({ target: { value: "completed" } });
+  assert.deepEqual(changes, ["completed"]);
+  assert.deepEqual(snapshot, before);
+  assert.equal(createForestAiReport(snapshot).diagnostics.events.length, 7, "filters never trim the downloadable report");
+});
+
+test("an empty journal filter explains its scope, does not claim the absence of older failures, and preserves unknown events", () => {
+  const snapshot = observation();
+  snapshot.diagnostics.events = [
+    { id: 0, at: 1, type: "failed", label: "Старый отказ", reason: "Вышел за пределы последних событий" },
+    ...Array.from({ length: 24 }, (_, index) => ({ id: index + 1, at: index + 2, type: "completed", label: "Осматривает полянку", reason: "Занятие завершено" })),
+  ];
+  const { markup, elements } = render(snapshot, undefined, { eventFilter: "issues", onEventFilterChange() {} });
+  assert.match(markup, /0 из 24/);
+  assert.match(markup, /В последних событиях нет прерываний или отказов/);
+  assert.match(markup, /Все события/);
+  assert.doesNotMatch(markup, /Старый отказ|Вышел за пределы/);
+  assert.equal(elements.filter(element => element.type === "ol" && element.props["aria-label"] === "Журнал решений").length, 0);
+  snapshot.diagnostics.events = [];
+  assert.match(render(snapshot, undefined, { eventFilter: "completed" }).markup, /События появятся по мере жизни леса/);
+});
+
+test("holding diagnostics retains a detached observation, respects simulation pause and exports capture time separately", () => {
+  const current = observation(), before = structuredClone(current);
+  const initial = { held: null, eventFilter: "all" };
+  const capturedAt = Date.UTC(2026, 8, 27, 10, 5, 0), exportedAt = capturedAt + 60_000;
+  const held = forestAiInspectorReducer(initial, { type: "hold", observation: current, capturedAt });
+  const filtered = forestAiInspectorReducer(held, { type: "filter", value: "issues" });
+  const later = { ...observation(), activity: "Уже отдыхает", paused: true };
+  const displayed = filtered.held?.observation ?? later;
+  assert.equal(displayed.activity, current.activity);
+  assert.equal(displayed.paused, false, "holding does not pretend that the simulation was paused");
+  const report = createForestAiReport(displayed, exportedAt, filtered.held?.capturedAt);
+  assert.equal(report.capturedAt, "2026-09-27T10:05:00.000Z");
+  assert.equal(report.exportedAt, "2026-09-27T10:06:00.000Z");
+  assert.equal(report.diagnostics.events.length, current.diagnostics.events.length);
+  assert.deepEqual(current, before);
+  assert.deepEqual(initial, { held: null, eventFilter: "all" });
+  const live = forestAiInspectorReducer(filtered, { type: "live" });
+  assert.equal(live.held, null);
+  assert.equal(live.eventFilter, "issues", "resuming data keeps the chosen investigation filter");
+  assert.equal((live.held?.observation ?? later).activity, "Уже отдыхает");
+  assert.equal(forestAiInspectorReducer(initial, { type: "hold", observation: null, capturedAt }), initial);
+  assert.equal(createForestAiReport(current, exportedAt, NaN).capturedAt, undefined);
+});
+
+test("snapshot controls are explicit, labelled, safe before loading, and reset ownership on account changes", () => {
+  const calls = [];
+  const handlers = { onHold: () => calls.push("hold"), onResume: () => calls.push("resume"), onExport: () => calls.push("export") };
+  const controls = options => inspect(ForestAiInspectorControls({ ready: true, capturedAt: null, ...handlers, ...options }));
+  const pending = controls({ ready: false });
+  assert.equal(pending.elements.filter(element => element.type === "button" && element.props.disabled).length, 2);
+  const live = controls({});
+  assert.match(live.markup, /Зафиксировать снимок/);
+  assert.match(live.markup, /не ставит лес на паузу/);
+  live.elements.find(element => element.type === "button").props.onClick();
+  const frozen = controls({ capturedAt: Date.UTC(2026, 8, 27, 10, 5, 0) });
+  assert.match(frozen.markup, /Обновлять данные/);
+  assert.match(frozen.markup, /Снимок зафиксирован/);
+  assert.match(frozen.markup, /dateTime="2026-09-27T10:05:00\.000Z"/i);
+  const buttons = frozen.elements.filter(element => element.type === "button");
+  buttons[0].props.onClick(); buttons[1].props.onClick();
+  assert.deepEqual(calls, ["hold", "resume", "export"]);
+  assert.notEqual(WorldAiDiagnostics({ presenceKey: "first-account" }).key, WorldAiDiagnostics({ presenceKey: "second-account" }).key);
+  assert.notEqual(WorldAiDiagnostics({ presenceKey: "first-account" }).key, WorldAiDiagnostics({}).key,
+    "held data must disappear synchronously when account identity disappears");
 });

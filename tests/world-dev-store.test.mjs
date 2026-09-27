@@ -203,7 +203,7 @@ test("every supported pixel pose can be held and triggered", () => {
 test("life events are immutable, validated and repeat with new IDs across resets", () => {
   const store = createWorldDevStore(true);
   let previousId = 0;
-  for (const kind of ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "idle", "idle"]) {
+  for (const kind of ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "watch-birds", "idle", "idle"]) {
     const before = store.getSnapshot();
     store.triggerLife(kind);
     const after = store.getSnapshot();

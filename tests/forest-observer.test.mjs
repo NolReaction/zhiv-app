@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -13,7 +14,7 @@ const { forestObservationFrame, getForestObservation, getServerForestObservation
 const { forestPersistenceOverridden } = await vite.ssrLoadModule("/features/world/forest-dev-memory.ts");
 const { WORLD_DEV_DEFAULTS } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const connect = (key, view = "circle") => connectForestSession(key, TILED_WORLD, view, 0, 0, () => {}, { persistence: false });
+const connect = (key, view = "circle", scene = TILED_WORLD) => connectForestSession(key, scene, view, 0, 0, () => {}, { persistence: false });
 
 test("observations are isolated, bounded and detached; last renderer removes an account's snapshot", async () => {
   const a = connect("observer-a"), b = connect("observer-b"), world = connect("observer-a", "world");
@@ -163,7 +164,7 @@ test("garden observation is bounded and detached, while phases keep a stable pur
 });
 
 test("garden availability explains ripe, watered, full and missing basket states without changing progress", () => {
-  const session = connect("observer-garden-availability"), state = session.state, garden = state.life.garden;
+  const session = connect("observer-garden-availability", "circle", withPlacedBushArtwork(TILED_WORLD)), state = session.state, garden = state.life.garden;
   try {
     const read = () => forestObservationFrame(state).diagnostics.garden;
     const before = structuredClone(garden);
@@ -183,7 +184,7 @@ test("garden availability explains ripe, watered, full and missing basket states
 });
 
 test("unreachable ripe bushes explain the missing work position instead of recommending more growth", () => {
-  const session = connect("observer-garden-unreachable"), state = session.state, garden = state.life.garden;
+  const session = connect("observer-garden-unreachable", "circle", withPlacedBushArtwork(TILED_WORLD)), state = session.state, garden = state.life.garden;
   try {
     assert.ok(garden.bushes.length);
     for (const bush of garden.bushes) { bush.growth = 1; bush.workPosition = null; }
@@ -193,5 +194,29 @@ test("unreachable ripe bushes explain the missing work position instead of recom
       assert.doesNotMatch(reason, /ещё растут|влажный|уже созрели|Созреть ягодам/);
     }
     assert.deepEqual(garden, before, "diagnostics cannot create a work position or change ripe fruit");
+  } finally { session.release(); }
+});
+
+test("the unplaced shrub explains missing artwork rather than directing the author to change navigation", () => {
+  const session = connect("observer-garden-pending");
+  try {
+    const before = structuredClone(session.state.life.garden), garden = forestObservationFrame(session.state).diagnostics.garden;
+    assert.match(garden.waterReason, /Разместите картинку куста/);
+    assert.equal(garden.waterReason, garden.harvestReason);
+    assert.deepEqual(session.state.life.garden, before);
+  } finally { session.release(); }
+});
+
+test("birdwatch transitions publish immediately and do not claim an insect encounter", async () => {
+  const session = connect("observer-birdwatch"), state = session.state;
+  try {
+    publishForestObservation("observer-birdwatch", state, { now: 0 });
+    state.director.birdwatch = { birdId: "branch-bird", target: { x: 500, y: 600 }, lookTarget: { x: 500, y: 600 }, elapsed: 1, duration: 6, missingSeconds: 0 };
+    publishForestObservation("observer-birdwatch", state, { now: 1 });
+    assert.equal(getForestObservation("observer-birdwatch").activity, "Наблюдает за птицей");
+    assert.equal(state.fauna.encounter, null);
+    state.director.birdwatch = null;
+    publishForestObservation("observer-birdwatch", state, { now: 2 });
+    assert.notEqual(getForestObservation("observer-birdwatch").activity, "Наблюдает за птицей");
   } finally { session.release(); }
 });

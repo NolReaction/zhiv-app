@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -17,7 +18,7 @@ const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable:
 
 test("a real harvest preserves basket position through pickup, walking, collecting and parking", () => {
   for (const [level, size] of [[1, 50], [5, 56]]) {
-    const scene = structuredClone(previewWorldScene(TILED_WORLD, { home: level }));
+    const scene = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: level }));
     scene.actor.size = size;
     const session = connectForestSession(undefined, scene, "circle", 0, 0, () => {}), state = session.state;
     session.release();

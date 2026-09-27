@@ -30,6 +30,22 @@ const GARDEN_PHASES: Record<string, string> = {
   water: "Поливает корни", collect: "Собирает ягоды", "return-basket": "Возвращает корзинку",
   deposit: "Ставит корзинку", settle: "Завершает занятие",
 };
+export type ForestAiEventFilter = "all" | "selected" | "completed" | "issues" | "context";
+const EVENT_FILTERS = [
+  ["all", "Все события"], ["selected", "Выбор занятия"], ["completed", "Завершённые занятия"],
+  ["issues", "Прерывания и отказы"], ["context", "Внимание и память"],
+] as const satisfies readonly (readonly [ForestAiEventFilter, string])[];
+const EVENT_KINDS: Record<string, { label: string; group: ForestAiEventFilter }> = {
+  selected: { label: "Выбор занятия", group: "selected" }, completed: { label: "Завершено", group: "completed" },
+  interrupted: { label: "Прервано", group: "issues" }, failed: { label: "Не удалось", group: "issues" },
+  attention: { label: "Отклик на игрока", group: "context" }, restored: { label: "Восстановление памяти", group: "context" },
+};
+const EVENT_EMPTY: Record<ForestAiEventFilter, string> = {
+  all: "События появятся по мере жизни леса.", selected: "В последних событиях нет нового выбора занятия.",
+  completed: "В последних событиях нет завершённых занятий.", issues: "В последних событиях нет прерываний или отказов.",
+  context: "В последних событиях нет отклика на игрока или восстановления памяти.",
+};
+const eventKind = (type: string) => EVENT_KINDS[type] ?? { label: "Событие", group: "all" as const };
 
 function gardenReport(garden: ForestGardenObservation) {
   return {
@@ -71,11 +87,13 @@ export function decisionTime(seconds: number) {
 }
 
 /** Explicit allowlist: a debug report never copies account/session identifiers or credentials. */
-export function createForestAiReport(observation: ForestObservation, exportedAt = Date.now()) {
+export function createForestAiReport(observation: ForestObservation, exportedAt = Date.now(), capturedAt?: number) {
   return {
     schemaVersion: 1,
     kind: "forest-ai-observation",
     exportedAt: new Date(exportedAt).toISOString(),
+    ...(capturedAt !== undefined && Number.isFinite(capturedAt) && Number.isFinite(new Date(capturedAt).getTime())
+      ? { capturedAt: new Date(capturedAt).toISOString() } : {}),
     note: "Снимок состояния и последних решений. Не содержит записи для воспроизведения сцены.",
     activity: text(observation.activity), detail: text(observation.detail), mood: text(observation.mood),
     sleeping: observation.sleeping, paused: observation.paused,
@@ -100,14 +118,17 @@ export function createForestAiReport(observation: ForestObservation, exportedAt 
 }
 
 /** Pure view: reading diagnostics cannot advance or interrupt the simulation. */
-export function ForestAiDiagnostics({ observation, onExport }: {
+export function ForestAiDiagnostics({ observation, onExport, eventFilter = "all", onEventFilterChange }: {
   observation: ForestObservation | null;
   onExport?: () => void;
+  eventFilter?: ForestAiEventFilter;
+  onEventFilterChange?: (filter: ForestAiEventFilter) => void;
 }) {
   if (!observation) return <p className={styles.hint}>Данные появятся, когда сцена леса будет готова.</p>;
   const candidates = observation.diagnostics.candidates.slice(0, 32)
     .sort((a, b) => Number(b.available) - Number(a.available) || b.score - a.score);
-  const events = observation.diagnostics.events.slice(-24).reverse();
+  const recentEvents = observation.diagnostics.events.slice(-24);
+  const events = recentEvents.filter(event => eventFilter === "all" || eventKind(event.type).group === eventFilter).reverse();
   const savedAt = observation.memory.sync ? observation.memory.sync.serverSavedAt : observation.memory.savedAt;
   const savedDate = savedAt !== null && Number.isFinite(savedAt) ? new Date(savedAt) : null;
   const validSavedDate = savedDate && Number.isFinite(savedDate.getTime()) ? savedDate : null;
@@ -166,15 +187,25 @@ export function ForestAiDiagnostics({ observation, onExport }: {
       </ol> : <p className={styles.hint}>Мохлик ещё не выбирал новое занятие.</p>}
     </div>
     <div className={styles.aiJournal}>
-      <h3>Последние события · {events.length}</h3>
+      <h3>Последние события · {eventFilter === "all" ? events.length : `${events.length} из ${recentEvents.length}`}</h3>
       <p className={styles.hint}>Новые — сверху. Время указано от начала симуляции; пауза его останавливает.</p>
+      {onEventFilterChange && <label className={styles.field}>
+        <span>Показать в журнале</span>
+        <select value={eventFilter} onChange={event => onEventFilterChange(event.target.value as ForestAiEventFilter)}>
+          {EVENT_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>}
       {events.length ? <ol className={styles.aiList} tabIndex={0} aria-label="Журнал решений">
         {events.map((event, index) => <li key={`${event.id}:${index}`}>
-          <div className={styles.aiHeadline}><strong>{event.label}</strong>
+          <div className={styles.aiEventMeta}>
+            <span className={styles.aiEventKind} data-kind={event.type}>{eventKind(event.type).label}</span>
             <span className={styles.aiTime} aria-label={`${decisionTime(event.at)} от начала симуляции`}>{decisionTime(event.at)}</span></div>
+          <strong>{event.label}</strong>
           {event.reason && <p>{event.reason}</p>}
         </li>)}
-      </ol> : <p className={styles.hint}>События появятся по мере жизни леса.</p>}
+      </ol> : <p className={styles.aiEmpty}>{recentEvents.length ? EVENT_EMPTY[eventFilter] : EVENT_EMPTY.all}
+        {recentEvents.length > 0 && eventFilter !== "all" && " Выберите «Все события», чтобы увидеть остальные записи."}</p>}
+      {eventFilter === "issues" && events.length > 0 && <p className={styles.hint}>Прерывание бывает обычной реакцией на игрока или смену условий. Причина указана под занятием.</p>}
     </div>
     {onExport && <div className={styles.aiExport}>
       <button type="button" onClick={onExport}>Скачать диагностику JSON</button>
