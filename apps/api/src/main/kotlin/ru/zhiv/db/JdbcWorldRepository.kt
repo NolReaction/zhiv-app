@@ -113,7 +113,7 @@ class JdbcWorldRepository(private val source: DataSource): WorldRepository {
             if(receipt.first!=signature) throw AuthFailure("WORLD_COMMAND_CONFLICT","Этот запрос уже использован для другого действия",409)
             return@transaction WorldResult(snapshot(c,actor,now),receipt.second,true)
         }
-        if (command.action !in setOf("equip", "set_decoration", "claim_journey", "recall_journey"))
+        if (command.action in setOf("upgrade_house", "build_workshop", "upgrade_workshop", "craft", "start_journey"))
             throw AuthFailure("WORLD_ECONOMY_MOVED", "Это действие перенесено в хозяйство. Обновите приложение и откройте раздел хозяйства.", 409)
         val before=checkNotNull(c.worldRow(actor.id))
         if(before.revision!=command.expectedRevision) throw AuthFailure("WORLD_REVISION_CONFLICT","Мир уже изменился. Обновите его и повторите действие.",409)

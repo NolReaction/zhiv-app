@@ -99,6 +99,19 @@ class JdbcWorldRepositoryIntegrationTest {
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"legacy-journey:${journey.id}"))
         assertEquals(0L,identities.findBySession(p.hash)!!.checkInCount)
     }
+    @Test fun `unknown world actions remain bad requests rather than retired economic operations`() = runBlocking<Unit> {
+        val p=player(); val initial=world.snapshot(p.hash)
+        for (action in listOf("dev_grant_resources", "unknown_action")) {
+            val error=assertFailsWith<AuthFailure> {
+                world.command(p.hash,WorldCommand(UUID.randomUUID().toString(),p.publicId,initial.revision,action))
+            }
+            assertEquals("INVALID_WORLD_COMMAND",error.code)
+            assertEquals(400,error.status)
+        }
+        val after=world.snapshot(p.hash)
+        assertEquals(initial.revision,after.revision)
+        assertEquals(initial.state,after.state)
+    }
     @Test fun `old savings convert once with bounded grants and keep possessions`() = runBlocking<Unit> {
         val p=player()
         val saved=WorldState(resources=WorldResources(1_000_000,100_000,100_000),houseLevel=5,workshop=true,workshopLevel=3,
