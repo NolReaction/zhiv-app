@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { economyResultSchema, economyViewSchema, marketViewSchema, type EconomyCommand, type MarketCommand } from "./model";
 
-async function request<T>(path: string, schema: z.ZodType<T>, command?: EconomyCommand | MarketCommand, signal?: AbortSignal): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, command?: EconomyCommand | MarketCommand, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });

@@ -13,6 +13,8 @@ type ReadyEconomy = EconomyController & { snapshot: EconomyView };
 type Recipe = EconomyView["catalog"]["recipes"][number];
 type Item = EconomyView["catalog"]["items"][number];
 type Building = EconomyView["catalog"]["buildings"][number];
+type Navigate = (tab: EconomyTab, focusId?: string) => void;
+type Requirements = { requiredHomeLevel: number; requiredBuildings: Record<string, number> };
 const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "overview", label: "Обзор", Icon: Sprout },
   { id: "buildings", label: "Постройки", Icon: House },
@@ -22,7 +24,8 @@ const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "inventory", label: "Склад", Icon: Package },
 ];
 const itemIcons: Record<string, LucideIcon> = { berries: Sprout, wood: Trees, stone: Mountain, ore: Gem, fiber: Wheat, fish: Fish, planks: Trees, rope: Wheat, metal_parts: Hammer, dried_berries: Leaf, smoked_fish: Fish };
-const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame };
+const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame };
+const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы" };
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
 const buildingName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const number = (value: number) => value.toLocaleString("ru-RU");
@@ -32,7 +35,39 @@ export function economyDuration(seconds: number) {
   const minutes = Math.max(1, Math.ceil(seconds / 60));
   if (minutes < 60) return `${minutes} мин`;
   const hours = Math.floor(minutes / 60), rest = minutes % 60;
+  if (hours >= 24) return `${Math.floor(hours / 24)} д${hours % 24 ? ` ${hours % 24} ч` : ""}${rest ? ` ${rest} мин` : ""}`;
   return `${hours} ч${rest ? ` ${rest} мин` : ""}`;
+}
+
+function requirements(value: Requirements, station?: { buildingId: string; buildingLevel: number }) {
+  const result: Record<string, number> = { ...value.requiredBuildings, home: Math.max(value.requiredHomeLevel, value.requiredBuildings?.home ?? 0) };
+  if (station) result[station.buildingId] = Math.max(result[station.buildingId] ?? 0, station.buildingLevel);
+  return result;
+}
+
+function unmetRequirement(state: EconomyView, required: Record<string, number>) {
+  const missing = Object.entries(required).find(([id, level]) => (state.buildings[id] ?? 0) < level);
+  return missing ? `${buildingName(state, missing[0])}: нужен уровень ${missing[1]}` : null;
+}
+
+function RequirementList({ state, required, navigate }: { state: EconomyView; required: Record<string, number>; navigate: Navigate }) {
+  return <ul className={styles.requirements} aria-label="Условия открытия">{Object.entries(required).map(([id, level]) => {
+    const current = state.buildings[id] ?? 0, complete = current >= level;
+    return <li key={id} data-complete={complete}>{complete ? <Check size={14} aria-hidden /> : <LockKeyhole size={14} aria-hidden />}
+      {complete ? <span>{buildingName(state, id)}: {current} / {level} ур.</span> : <button className={styles.textButton} onClick={() => navigate("buildings", id)}>{buildingName(state, id)}: {current} / {level} ур.<ChevronRight size={14} aria-hidden /></button>}
+    </li>;
+  })}</ul>;
+}
+
+function StorageStatus({ state, navigate, compact = false }: { state: EconomyView; navigate: Navigate; compact?: boolean }) {
+  const { capacity, used, reserved, available, overflow } = state.storage;
+  return <div className={styles.storage} data-full={available === 0}>
+    <div className={styles.actions}><strong><Package size={16} aria-hidden />Склад · ур. {state.buildings.warehouse ?? 1}</strong><span>{number(used + reserved)} / {number(capacity)}</span></div>
+    <progress className={styles.progress} value={Math.min(capacity, used + reserved)} max={capacity} aria-label={`Склад: занято ${used + reserved} из ${capacity}`} />
+    <p className={styles.muted}>В запасах: {number(used)} · На прилавках: {number(reserved)} · Свободно: {number(available)}</p>
+    {overflow > 0 && <p className={styles.hint}>Прежние запасы сохранены. Сверх вместимости: {number(overflow)}. Используйте или продайте часть вещей, либо расширьте склад.</p>}
+    {!compact && <><p className={styles.muted}>Каждая единица товара занимает одно место. Место для выставленных лотов зарезервировано до продажи — отмена всегда вернёт вещи.</p><button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button></>}
+  </div>;
 }
 
 function integer(value: string, maximum: number) {
@@ -73,32 +108,34 @@ function jobTitle(state: EconomyView, job: EconomyJob) {
   return state.catalog.recipes.find(entry => entry.id === job.recipeId)?.name ?? "Производство";
 }
 
-function JobCard({ economy, job }: { economy: ReadyEconomy; job: EconomyJob }) {
+function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: EconomyJob; navigate: Navigate }) {
   const { snapshot: state, now, busy, uncertain } = economy;
   const start = Date.parse(job.startedAt), end = Date.parse(job.finishesAt), ready = now >= end;
   const progress = Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
   const Icon = job.kind === "construction" ? Hammer : job.kind === "exploration" ? Compass : Sprout;
   const caption = job.kind === "construction" ? "Строительство" : job.kind === "exploration" ? "Мохлик в пути" : buildingName(state, job.targetId);
+  const rewardCount = Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0);
+  const storageBlocked = job.kind !== "construction" && rewardCount > state.storage.available;
   return <article className={styles.card} data-ready={ready}>
     <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={21} aria-hidden /></span><div><span className={styles.eyebrow}>{ready ? "Готово" : caption}</span><h3>{jobTitle(state, job)}</h3></div></div>
     {Object.keys(job.rewards).length > 0 && <Rewards state={state} value={job.rewards} />}
     {!ready && <progress className={styles.progress} value={progress} max={1} aria-label={`${jobTitle(state, job)}: выполнено ${Math.floor(progress * 100)}%`} />}
     <div className={styles.jobFooter}>
       <span className={styles.duration}>{ready ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? "Можно забрать" : `Ещё ${economyDuration((end - now) / 1000)}`}</span>
-      <button className={ready ? styles.primary : undefined} disabled={!ready || busy || uncertain} onClick={() => void economy.act("claim_job", job.id)}>
+      <button className={ready ? styles.primary : undefined} disabled={!ready || storageBlocked || busy || uncertain} onClick={() => void economy.act("claim_job", job.id)}>
         {job.kind === "construction" ? "Завершить" : "Забрать"}<span className={styles.sr}>: {jobTitle(state, job)}</span>
       </button>
     </div>
     {job.kind === "construction" && !ready && <p className={styles.muted}>Материалы уже внесены. Прежний уровень продолжает действовать.</p>}
+    {ready && storageBlocked && <div className={styles.notice}><Package size={18} aria-hidden /><div><p>Для результата нужно {number(rewardCount)} мест, свободно {number(state.storage.available)}. Готовые вещи ждут и не портятся.</p><button onClick={() => navigate(rewardCount > state.storage.capacity ? "buildings" : "inventory", rewardCount > state.storage.capacity ? "warehouse" : undefined)}>{rewardCount > state.storage.capacity ? "Расширить склад" : "Освободить место"}<ArrowRight size={15} aria-hidden /></button></div></div>}
   </article>;
 }
 
-function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: (tab: EconomyTab) => void }) {
+function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: Navigate }) {
   const { snapshot: state, now } = economy;
   const ready = state.jobs.filter(job => Date.parse(job.finishesAt) <= now).length;
   const jobs = [...state.jobs].sort((a, b) => Date.parse(a.finishesAt) - Date.parse(b.finishesAt));
   const owned = Object.values(state.buildings).filter(level => level > 0).length;
-  const stock = Object.values(state.inventory).reduce((sum, amount) => sum + amount, 0);
   const migration = state.migration;
   return <div className={styles.stack}>
     <div className={styles.heading}><div><span className={styles.eyebrow}>Своя жизнь в лесу</span><h2>{ready ? "Пора забрать результаты" : "Хозяйство Мохлика"}</h2><p className={styles.muted}>Постройки работают параллельно. Мохлик отправляется в одну вылазку за раз.</p></div></div>
@@ -106,9 +143,10 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: (tab
       <button onClick={() => navigate("production")}><Sprout size={22} aria-hidden /><span><strong>Производство</strong><small>Урожай и материалы</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("exploration")}><Compass size={22} aria-hidden /><span><strong>Вылазки</strong><small>{state.jobs.some(job => job.kind === "exploration") ? "Мохлик занят" : "Можно отправляться"}</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("buildings")}><House size={22} aria-hidden /><span><strong>Постройки</strong><small>Обустроено: {owned}</small></span><ChevronRight size={14} aria-hidden /></button>
-      <button onClick={() => navigate("inventory")}><Package size={22} aria-hidden /><span><strong>Склад</strong><small>Предметов: {number(stock)}</small></span><ChevronRight size={14} aria-hidden /></button>
+      <button onClick={() => navigate("inventory")}><Package size={22} aria-hidden /><span><strong>Склад</strong><small>Свободно: {number(state.storage.available)}</small></span><ChevronRight size={14} aria-hidden /></button>
     </div>
-    {jobs.length ? <div className={styles.stack} aria-label="Текущие дела">{jobs.map(job => <JobCard key={job.id} economy={economy} job={job} />)}</div>
+    <StorageStatus state={state} navigate={navigate} compact />
+    {jobs.length ? <div className={styles.stack} aria-label="Текущие дела">{jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}</div>
       : <div className={styles.empty}><Sprout size={32} aria-hidden /><h3>Начните с маленького урожая</h3><p className={styles.muted}>Вырастите ягоды в саду и отправьте Мохлика за материалами. Монеты можно получить за товары на складе.</p><button className={styles.primary} onClick={() => navigate("production")}>Открыть производство<ArrowRight size={16} aria-hidden /></button></div>}
     <p className={styles.hint}><Clock3 size={15} aria-hidden />Дела продолжаются после выхода. Готовые результаты ждут вас и не портятся.</p>
     {(migration.coinsGranted > 0 || migration.woodGranted > 0 || migration.stoneGranted > 0) && <details className={styles.details}><summary>Прежние запасы перенесены</summary><p>Однократно получено: {number(migration.coinsGranted)} монет, {number(migration.woodGranted)} древесины и {number(migration.stoneGranted)} камня. Уже полученные улучшения сохранены.</p></details>}
@@ -116,77 +154,129 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: (tab
   </div>;
 }
 
-function BuildingCard({ economy, building }: { economy: ReadyEconomy; building: Building }) {
+function Unlocks({ state, building, level, navigate }: { state: EconomyView; building: Building; level: Building["levels"][number]; navigate: Navigate }) {
+  const usesLevel = (value: Requirements, station?: { buildingId: string; buildingLevel: number }) => requirements(value, station)[building.id] === level.level;
+  const recipes = state.catalog.recipes.filter(recipe => usesLevel(recipe, recipe));
+  const routes = state.catalog.explorations.filter(route => usesLevel(route));
+  const upgrades = state.catalog.buildings.flatMap(other => other.id === building.id ? [] : other.levels.filter(target => usesLevel(target)).map(target => ({ building: other, level: target.level })));
+  return <div className={styles.stack}>
+    <span className={styles.sectionLabel}>Что даёт этот уровень</span>
+    {level.warehouseCapacity && <p className={styles.hint}><Package size={15} aria-hidden />Вместимость склада: {number(level.warehouseCapacity)} предметов.</p>}
+    <ul className={styles.unlocks}>
+      {recipes.map(recipe => <li key={`recipe:${recipe.id}`}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {routes.map(route => <li key={`route:${route.id}`}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />{route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {upgrades.map(target => <li key={`building:${target.building.id}:${target.level}`}><button className={styles.textButton} onClick={() => navigate("buildings", target.building.id)}><House size={15} aria-hidden />{target.building.name} · ур. {target.level}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {building.id === "home" && level.level === state.catalog.market.requiredHomeLevel && <li><button className={styles.textButton} onClick={() => navigate("market")}><Store size={15} aria-hidden />Торговля с игроками<ChevronRight size={14} aria-hidden /></button></li>}
+    </ul>
+    {(recipes.length + routes.length + upgrades.length > 0) && <p className={styles.muted}>Откроется, когда выполнены и остальные условия. Нажмите на цель, чтобы посмотреть их.</p>}
+    {building.id === "home" && <p className={styles.muted}>Обновляет облик дома на поляне.</p>}
+  </div>;
+}
+
+function BuildingCard({ economy, building, navigate }: { economy: ReadyEconomy; building: Building; navigate: Navigate }) {
   const { snapshot: state, busy, uncertain } = economy;
   const level = state.buildings[building.id] ?? 0, next = building.levels.find(entry => entry.level === level + 1);
+  const [preview, setPreview] = useState<number | null>(null);
+  const target = building.levels.find(entry => entry.level === preview) ?? next ?? building.levels.at(-1);
   const ownJob = state.jobs.find(job => job.kind === "construction" && job.targetId === building.id);
   const construction = state.jobs.some(job => job.kind === "construction");
   const production = state.jobs.some(job => job.kind === "production" && job.targetId === building.id);
-  const homeLevel = state.buildings.home ?? 1;
-  const reason = !next ? "Доступные улучшения завершены" : homeLevel < next.requiredHomeLevel ? `Нужен дом уровня ${next.requiredHomeLevel}`
-    : construction ? "Сначала завершите текущую стройку" : production ? "Сначала заберите готовую продукцию" : !canAffordEconomy(state, next.cost) ? "Не хватает монет или материалов" : null;
+  const required = target ? requirements(target) : {};
+  const reason = !target || target.level <= level ? "Этот уровень уже получен" : target.level !== level + 1 ? `Сначала получите уровень ${target.level - 1}`
+    : unmetRequirement(state, required) ?? (construction ? "Сначала завершите текущую стройку" : production ? "Сначала заберите готовую продукцию" : !canAffordEconomy(state, target.cost) ? "Не хватает монет или материалов" : null);
   const Icon = buildingIcons[building.id] ?? House;
-  if (ownJob) return <JobCard economy={economy} job={ownJob} />;
-  return <article className={styles.card}>
-    <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{building.name}</h3><p className={styles.muted}>{building.description}</p></div><span className={styles.level}>{level ? `Ур. ${level}` : "Проект"}</span></div>
-    {next && <Cost state={state} cost={next.cost} />}
-    <div className={styles.actions}>{next && <span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(next.seconds)}</span>}
-      <button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_construction", building.id)}>{next ? level ? `Улучшить до ур. ${next.level}` : "Построить" : "Всё улучшено"}<span className={styles.sr}>: {building.name}</span></button>
-    </div>
-    {reason && <p className={styles.hint}>{!next ? <Check size={14} aria-hidden /> : <LockKeyhole size={14} aria-hidden />}{reason}</p>}
-  </article>;
-}
-
-function Buildings({ economy }: { economy: ReadyEconomy }) {
-  return <div className={styles.stack}><div className={styles.heading}><div><h2>Обустроить поляну</h2><p className={styles.muted}>Монеты, материалы и немного времени. Одновременно идёт одна стройка.</p></div></div>
-    {economy.snapshot.catalog.buildings.map(building => <BuildingCard key={building.id} economy={economy} building={building} />)}
+  return <div className={styles.stack}>
+    {ownJob && <JobCard economy={economy} job={ownJob} navigate={navigate} />}
+    <article className={styles.card}>
+      <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{building.name}</h3><p className={styles.muted}>{building.description}</p></div><span className={styles.level}>{level ? `Ур. ${level}` : "Проект"}</span></div>
+      <nav className={styles.tiers} aria-label={`Уровни: ${building.name}`}>{building.levels.map(tier => <button key={tier.level} aria-pressed={target?.level === tier.level} onClick={() => setPreview(tier.level)}>{tier.level <= level && <Check size={12} aria-hidden />}Ур. {tier.level}</button>)}</nav>
+      {target && <>
+        <h3>{target.level <= level ? "Уже обустроено" : target.level === level + 1 ? "Следующий шаг" : "Будущий уровень"} · ур. {target.level}</h3>
+        {target.level > level && <><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={target.cost} /></>}
+        <Unlocks state={state} building={building} level={target} navigate={navigate} />
+        {target.level > level && <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(target.seconds)}</span>
+          <button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_construction", building.id)}>{level ? `Улучшить до ур. ${target.level}` : "Построить"}<span className={styles.sr}>: {building.name}</span></button>
+        </div>}
+      </>}
+      {reason && <p className={styles.hint}>{target && target.level <= level ? <Check size={14} aria-hidden /> : <LockKeyhole size={14} aria-hidden />}{reason}</p>}
+      {target && target.level > level + 1 && <button className={styles.textButton} onClick={() => setPreview(null)}>К ближайшему улучшению<ArrowRight size={15} aria-hidden /></button>}
+      {production && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>К текущему заказу<ArrowRight size={15} aria-hidden /></button>}
+      {target && target.level > level && Object.entries(target.cost.items).some(([id, amount]) => (state.inventory[id] ?? 0) < amount) && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(target.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount)?.[0])}>Где взять недостающие материалы?<ArrowRight size={15} aria-hidden /></button>}
+    </article>
   </div>;
 }
 
-function RecipeCard({ economy, recipe }: { economy: ReadyEconomy; recipe: Recipe }) {
+function Buildings({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
+  const { snapshot: state } = economy;
+  const building = state.catalog.buildings.find(entry => entry.id === focusId) ?? state.catalog.buildings[0];
+  return <div className={styles.stack}><div className={styles.heading}><div><h2>Развитие хозяйства</h2><p className={styles.muted}>Выберите постройку и посмотрите её следующий шаг. Одна стройка за раз; остальные здания продолжают работать.</p></div></div>
+    <div className={styles.buildingGrid} aria-label="Выбрать постройку">{state.catalog.buildings.map(entry => {
+      const Icon = buildingIcons[entry.id] ?? House, level = state.buildings[entry.id] ?? 0;
+      return <button key={entry.id} aria-pressed={entry.id === building?.id} onClick={() => navigate("buildings", entry.id)}><Icon size={19} aria-hidden /><span><strong>{entry.name}</strong><small>{level ? `Ур. ${level} / ${entry.levels.length}` : "Не построено"}</small></span></button>;
+    })}</div>
+    {building && <BuildingCard key={building.id} economy={economy} building={building} navigate={navigate} />}
+  </div>;
+}
+
+function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; recipe: Recipe; navigate: Navigate }) {
   const { snapshot: state, busy, uncertain } = economy;
-  const [quantity, setQuantity] = useState(1);
+  const [requestedQuantity, setQuantity] = useState(1);
   const inputId = useId();
-  const homeLevel = state.buildings.home ?? 1, level = state.buildings[recipe.buildingId] ?? 0;
+  const rewardCount = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0);
+  const maximum = Math.min(state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, rewardCount)));
+  const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
+  const required = requirements(recipe, recipe);
   const occupied = state.jobs.some(job => (job.kind === "production" || job.kind === "construction") && job.targetId === recipe.buildingId);
-  const reason = level < recipe.buildingLevel ? `${buildingName(state, recipe.buildingId)}: нужен уровень ${recipe.buildingLevel}`
-    : homeLevel < recipe.requiredHomeLevel ? `Нужен дом уровня ${recipe.requiredHomeLevel}` : occupied ? "Здание занято текущим заказом" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null;
-  const choices = [...new Set([1, 3, 5, state.catalog.maxBatch])].filter(count => count <= state.catalog.maxBatch).sort((a, b) => a - b);
+  const reason = unmetRequirement(state, required) ?? (maximum < 1 ? "Для этого заказа нужно расширить склад" : occupied ? "Здание занято текущим заказом" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null);
+  const choices = Array.from({ length: maximum }, (_, index) => index + 1);
   return <article className={styles.card}><h3>{recipe.name}</h3>
     <Rewards state={state} value={recipe.rewards} quantity={quantity} />
+    <RequirementList state={state} required={required} navigate={navigate} />
     <Cost state={state} cost={recipe.cost} quantity={quantity} />
-    <label className={styles.field} htmlFor={inputId}>Размер заказа<select id={inputId} value={quantity} disabled={busy || uncertain} onChange={event => setQuantity(Number(event.target.value))}>{choices.map(count => <option key={count} value={count}>{count} {count === 1 ? "партия" : count < 5 ? "партии" : "партий"} · {economyDuration(recipe.seconds * count)}</option>)}</select></label>
+    <label className={styles.field} htmlFor={inputId}>Размер заказа<select id={inputId} value={quantity} disabled={busy || uncertain || maximum < 1} onChange={event => setQuantity(Number(event.target.value))}>{choices.map(count => <option key={count} value={count}>{count} {count === 1 ? "партия" : count < 5 ? "партии" : "партий"} · {economyDuration(recipe.seconds * count)}</option>)}</select></label>
+    <p className={styles.muted}>Результат займёт {number(rewardCount * quantity)} мест. Сейчас свободно {number(state.storage.available)}; место понадобится при получении.</p>
     <button className={`${styles.primary} ${styles.wide}`} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_production", recipe.id, quantity)}>Начать · {economyDuration(recipe.seconds * quantity)}<span className={styles.sr}>: {recipe.name}</span></button>
     {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
+    {maximum < 1 && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
+    {Object.keys(recipe.cost.items).length > 0 && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(recipe.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount * quantity)?.[0] ?? Object.keys(recipe.cost.items)[0])}>Откуда брать ингредиенты?<ChevronRight size={14} aria-hidden /></button>}
   </article>;
 }
 
-function Production({ economy, navigate }: { economy: ReadyEconomy; navigate: (tab: EconomyTab) => void }) {
+function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
   const { snapshot: state } = economy;
   const stations = state.catalog.buildings.filter(building => state.catalog.recipes.some(recipe => recipe.buildingId === building.id));
-  const [station, setStation] = useState(() => stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "");
+  const station = stations.find(building => building.id === focusId)?.id ?? stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "";
   const selectId = useId();
   const job = state.jobs.find(entry => entry.kind === "production" && entry.targetId === station);
+  const recipes = state.catalog.recipes.filter(recipe => recipe.buildingId === station);
+  const open = recipes.filter(recipe => !unmetRequirement(state, requirements(recipe, recipe)));
+  const locked = recipes.filter(recipe => unmetRequirement(state, requirements(recipe, recipe)));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>У каждого здания свой заказ. Все партии забираются вместе после его завершения.</p></div></div>
-    <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => setStation(event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
-    {job && <JobCard economy={economy} job={job} />}
-    {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings")}>К постройкам<ArrowRight size={15} aria-hidden /></button></div></div>}
-    {state.catalog.recipes.filter(recipe => recipe.buildingId === station).map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} />)}
+    <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
+    {job && <JobCard economy={economy} job={job} navigate={navigate} />}
+    {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings", station)}>К постройке<ArrowRight size={15} aria-hidden /></button></div></div>}
+    {open.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}
+    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.stack}>{locked.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}</div></details>}
   </div>;
 }
 
-function Exploration({ economy }: { economy: ReadyEconomy }) {
+function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
   const { snapshot: state, busy, uncertain } = economy;
   const job = state.jobs.find(entry => entry.kind === "exploration");
+  const routes = [...state.catalog.explorations].sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Мохлик-исследователь</h2><p className={styles.muted}>Выберите цель вылазки. Производство продолжится, пока Мохлик в пути.</p></div></div>
-    {job && <JobCard economy={economy} job={job} />}
-    {state.catalog.explorations.map(exploration => {
-      const reason = (state.buildings.home ?? 1) < exploration.requiredHomeLevel ? `Нужен дом уровня ${exploration.requiredHomeLevel}` : job ? "Сначала завершите текущую вылазку" : !canAffordEconomy(state, exploration.cost) ? "Не хватает припасов" : null;
+    {job && <JobCard economy={economy} job={job} navigate={navigate} />}
+    {routes.map(exploration => {
+      const required = requirements(exploration), rewardCount = Object.values(exploration.rewards).reduce((sum, amount) => sum + amount, 0);
+      const tooLarge = rewardCount > state.storage.capacity;
+      const reason = unmetRequirement(state, required) ?? (tooLarge ? "Для этих находок нужно расширить склад" : job ? "Сначала завершите текущую вылазку" : !canAffordEconomy(state, exploration.cost) ? "Не хватает припасов" : null);
       const Icon = exploration.id.includes("cave") ? Mountain : exploration.id === "shore" ? Fish : Compass;
       return <article key={exploration.id} className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{exploration.name}</h3><p className={styles.muted}>{exploration.description}</p></div></div>
-        <Rewards state={state} value={exploration.rewards} /><Cost state={state} cost={exploration.cost} />
+        <Rewards state={state} value={exploration.rewards} /><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={exploration.cost} />
+        <p className={styles.muted}>Находки займут {number(rewardCount)} мест на складе.</p>
         <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(exploration.seconds)}</span><button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_exploration", exploration.id)}>Отправиться<span className={styles.sr}>: {exploration.name}</span></button></div>
         {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
+        {tooLarge && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
       </article>;
     })}
   </div>;
@@ -203,30 +293,62 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   </div>;
 }
 
-function Inventory({ economy, navigate }: { economy: ReadyEconomy; navigate: (tab: EconomyTab) => void }) {
+function ItemGuide({ economy, item, navigate }: { economy: ReadyEconomy; item: Item; navigate: Navigate }) {
   const { snapshot: state } = economy;
-  const [selected, setSelected] = useState<string | null>(null);
-  const items = state.catalog.items.filter(item => (state.inventory[item.id] ?? 0) > 0);
-  const item = items.find(entry => entry.id === selected);
-  return <div className={styles.stack}><div className={styles.heading}><div><h2>Ваши запасы</h2><p className={styles.muted}>Материалы пригодятся для строительства и производства. Излишки можно продать.</p></div></div>
+  const recipes = state.catalog.recipes.filter(recipe => recipe.rewards[item.id] > 0);
+  const routes = state.catalog.explorations.filter(route => route.rewards[item.id] > 0);
+  const ingredients = state.catalog.recipes.filter(recipe => recipe.cost.items[item.id] > 0);
+  const buildings = state.catalog.buildings.filter(building => building.levels.some(level => level.level > (state.buildings[building.id] ?? 0) && level.cost.items[item.id] > 0));
+  const provisions = state.catalog.explorations.filter(route => route.cost.items[item.id] > 0);
+  return <div className={styles.card}><h3>{item.name} · на складе {number(state.inventory[item.id] ?? 0)}</h3>
+    <div><span className={styles.sectionLabel}>Где получить</span><ul className={styles.unlocks}>
+      {recipes.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name} · {buildingName(state, recipe.buildingId)}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {routes.map(route => <li key={route.id}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />{route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {item.tradable && <li><button className={styles.textButton} onClick={() => navigate("market")}><Store size={15} aria-hidden />Предложения игроков<ChevronRight size={14} aria-hidden /></button></li>}
+    </ul></div>
+    <div><span className={styles.sectionLabel}>Для чего пригодится</span><ul className={styles.unlocks}>
+      {ingredients.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name} · нужно {number(recipe.cost.items[item.id])}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {buildings.map(building => <li key={building.id}><button className={styles.textButton} onClick={() => navigate("buildings", building.id)}><House size={15} aria-hidden />Стройка: {building.name}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {provisions.map(route => <li key={route.id}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />Припасы: {route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
+    </ul>{item.tradable && <p className={styles.muted}>Можно продать торговцу по {number(item.baseSellPrice)} монет за штуку или предложить другим игрокам.</p>}</div>
+  </div>;
+}
+
+function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
+  const { snapshot: state } = economy;
+  const [selected, setSelected] = useState<string | null>(focusId ?? null);
+  const [all, setAll] = useState(Boolean(focusId));
+  const [category, setCategory] = useState("all");
+  const categoryId = useId();
+  const categories = [...new Set(state.catalog.items.map(item => item.category))];
+  const owned = state.catalog.items.filter(item => (state.inventory[item.id] ?? 0) > 0);
+  const items = (all ? state.catalog.items : owned).filter(item => category === "all" || category === item.category);
+  const item = state.catalog.items.find(entry => entry.id === selected);
+  return <div className={styles.stack}><div className={styles.heading}><div><h2>Ваши запасы</h2><p className={styles.muted}>Материалы пригодятся для строительства и производства. Выберите товар, чтобы увидеть, где его добывать и использовать.</p></div></div>
+    <StorageStatus state={state} navigate={navigate} />
+    <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {state.catalog.items.length}</button></div>
+    <label className={styles.field} htmlFor={categoryId}>Категория<select id={categoryId} value={category} onChange={event => setCategory(event.target.value)}><option value="all">Все категории</option>{categories.map(value => <option key={value} value={value}>{categoryNames[value] ?? value}</option>)}</select></label>
     {items.length ? <div className={styles.stockGrid}>{items.map(entry => {
       const Icon = itemIcons[entry.id] ?? Package;
-      return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><Icon size={23} aria-hidden /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id])}</small></span></button>;
-    })}</div> : <div className={styles.empty}><Package size={32} aria-hidden /><h3>Здесь будут ваши находки</h3><p className={styles.muted}>Вырастите первый урожай или отправьте Мохлика в бесплатную лесную разведку.</p><button onClick={() => navigate("exploration")}>Выбрать вылазку<ArrowRight size={16} aria-hidden /></button></div>}
-    {item ? <SellForm key={item.id} economy={economy} item={item} /> : items.length > 0 && <p className={styles.hint}><CircleHelp size={15} aria-hidden />Выберите предмет, чтобы продать его торговцу.</p>}
+      return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><Icon size={23} aria-hidden /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id] ?? 0)}</small></span></button>;
+    })}</div> : <div className={styles.empty}><Package size={32} aria-hidden /><h3>{owned.length ? "В этой категории пока пусто" : "Здесь будут ваши находки"}</h3><p className={styles.muted}>Вырастите урожай, отправьте Мохлика за сырьём или посмотрите источники товаров в каталоге.</p><button onClick={() => navigate("exploration")}>Выбрать вылазку<ArrowRight size={16} aria-hidden /></button><button onClick={() => { setAll(true); setCategory("all"); }}>Посмотреть все товары</button></div>}
+    {item && <ItemGuide economy={economy} item={item} navigate={navigate} />}
+    {item && item.tradable && (state.inventory[item.id] ?? 0) > 0 && <SellForm key={item.id} economy={economy} item={item} />}
+    {item && !item.tradable && <p className={styles.hint}><LockKeyhole size={15} aria-hidden />Этот предмет нельзя продавать.</p>}
     <button className={styles.textButton} onClick={() => navigate("market")}><Store size={16} aria-hidden />Открыть рынок игроков<ArrowRight size={15} aria-hidden /></button>
   </div>;
 }
 
-function OfferCard({ economy, offer, owned }: { economy: ReadyEconomy; offer: EconomyMarketListing; owned?: boolean }) {
+function OfferCard({ economy, offer, owned, navigate }: { economy: ReadyEconomy; offer: EconomyMarketListing; owned?: boolean; navigate: Navigate }) {
   const { snapshot: state, busy, uncertain } = economy;
   const [confirm, setConfirm] = useState(false);
-  const Icon = itemIcons[offer.itemId] ?? Package, enough = state.wallet.coins >= offer.totalPrice, unlocked = canTrade(state);
+  const Icon = itemIcons[offer.itemId] ?? Package, enough = state.wallet.coins >= offer.totalPrice, unlocked = canTrade(state), room = offer.quantity <= state.storage.available;
   return <article className={styles.card}>
     <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{itemName(state, offer.itemId)} × {number(offer.quantity)}</h3><p className={styles.muted}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
     <div className={styles.offerMeta}><span className={styles.offerPrice}><Coins size={18} aria-hidden />{number(offer.totalPrice)}<span className={styles.sr}>монет за весь лот</span></span><span className={styles.muted}>за весь лот</span></div>
-    {confirm ? <div className={styles.confirmation}><p>{owned ? "Снять предложение и вернуть все предметы на склад?" : `Получите ${number(offer.quantity)} шт. за ${number(offer.totalPrice)} монет. Покупается весь лот.`}</p><div className={styles.actions}><button disabled={busy || uncertain} onClick={() => setConfirm(false)}>Назад</button><button className={styles.primary} disabled={busy || uncertain || (!owned && (!enough || !unlocked))} onClick={() => { if (owned) economy.actMarket("cancel_listing", offer.id); else economy.actMarket("buy_listing", offer.id, offer.quantity, offer.totalPrice); }}>{owned ? "Снять с продажи" : "Подтвердить покупку"}</button></div></div>
-      : <button disabled={busy || uncertain || (!owned && (!enough || !unlocked))} onClick={() => setConfirm(true)}>{owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : enough ? "Купить весь лот" : "Не хватает монет"}</button>}
+    {confirm ? <div className={styles.confirmation}><p>{owned ? "Снять предложение и вернуть все предметы на склад?" : `Получите ${number(offer.quantity)} шт. за ${number(offer.totalPrice)} монет. Покупается весь лот.`}</p><div className={styles.actions}><button disabled={busy || uncertain} onClick={() => setConfirm(false)}>Назад</button><button className={styles.primary} disabled={busy || uncertain || (!owned && (!enough || !unlocked || !room))} onClick={() => { if (owned) economy.actMarket("cancel_listing", offer.id); else economy.actMarket("buy_listing", offer.id, offer.quantity, offer.totalPrice); }}>{owned ? "Снять с продажи" : "Подтвердить покупку"}</button></div></div>
+      : <button disabled={busy || uncertain || (!owned && (!enough || !unlocked || !room))} onClick={() => setConfirm(true)}>{owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет"}</button>}
+    {!owned && !room && <div className={styles.hint}><Package size={15} aria-hidden /><div>Лот занимает {number(offer.quantity)} мест, свободно {number(state.storage.available)}.<br /><button className={styles.textButton} onClick={() => navigate("inventory")}>Освободить место<ArrowRight size={15} aria-hidden /></button></div></div>}
   </article>;
 }
 
@@ -258,39 +380,42 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
       <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={quantity ?? 1} max={maximum || undefined} step={1} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
     </div>
     <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(quantity)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${limits.maxLotQuantity} предметов в одном предложении.`}</p>
-    <p className={styles.hint}><Package size={15} aria-hidden />Выставленные предметы хранятся на прилавке. Их можно вернуть, пока лот не купили.</p>
+    <p className={styles.hint}><Package size={15} aria-hidden />Выставленные предметы сохраняют место на складе до продажи. Отмена вернёт их; выставление лота само по себе не освобождает склад.</p>
     <button className={styles.primary} disabled={!valid || full || busy || uncertain || !canTrade(state)} onClick={() => { if (quantity && totalPrice) void economy.actMarket("create_listing", item.id, quantity, totalPrice); }}><Store size={17} aria-hidden />{full ? `Все ${limits.maxListings} мест заняты` : `Выставить за ${valid ? number(totalPrice!) : "—"} монет`}</button>
   </div>;
 }
 
-function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: (tab: EconomyTab) => void }) {
+function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Navigate }) {
   const [section, setSection] = useState<"browse" | "sell" | "mine">("browse");
   const { snapshot: state, market, marketError, busy, uncertain } = economy;
   const unlocked = canTrade(state), limits = state.catalog.market;
   const refreshMarket = economy.refreshMarket;
   useEffect(() => { void refreshMarket(); }, [refreshMarket]);
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесной рынок</h2><p className={styles.muted}>Покупайте у других игроков и выставляйте свои товары за монеты.</p></div><button aria-label="Обновить прилавки" disabled={busy || uncertain} onClick={() => void refreshMarket()}><RefreshCw size={17} aria-hidden /></button></div>
+    <StorageStatus state={state} navigate={navigate} compact />
     <nav className={styles.subnav} aria-label="Раздел рынка"><button aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
     {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Торговля с игроками откроется после обустройства дома и первой разведки.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур. · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</p><button onClick={() => navigate((state.buildings.home ?? 1) < limits.requiredHomeLevel ? "buildings" : "exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Местный торговец уже покупает товары в разделе «Склад».</p></div></div>}
     {marketError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
     {!market && !marketError && <p className={styles.muted} role="status">Открываем прилавки…</p>}
-    {market && section === "browse" && (market.listings.length ? <div className={styles.stack}>{market.listings.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} />)}{market.nextCursor && <button disabled={busy || uncertain} onClick={() => void refreshMarket(market.nextCursor!)}>Показать ещё</button>}</div>
+    {market && section === "browse" && (market.listings.length ? <div className={styles.stack}>{market.listings.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} />)}{market.nextCursor && <button disabled={busy || uncertain} onClick={() => void refreshMarket(market.nextCursor!)}>Показать ещё</button>}</div>
       : <div className={styles.empty}><Store size={32} aria-hidden /><h3>Прилавки пока свободны</h3><p className={styles.muted}>Здесь появятся предложения других игроков. Вы можете первым выставить свои запасы.</p><button onClick={() => setSection("sell")}>Выставить товар</button></div>)}
     {market && section === "sell" && unlocked && <ListingForm economy={economy} />}
-    {market && section === "mine" && (market.mine.length ? <div className={styles.stack}>{market.mine.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} owned />)}</div>
+    {market && section === "mine" && (market.mine.length ? <div className={styles.stack}>{market.mine.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} owned />)}</div>
       : <div className={styles.empty}><ShoppingBasket size={32} aria-hidden /><h3>У вас ещё нет предложений</h3><p className={styles.muted}>Выберите товар и цену. После покупки монеты поступят в кошелёк.</p><button onClick={() => setSection("sell")}>Выставить товар</button></div>)}
   </div>;
 }
 
 /** Account-owned controller survives closing this body; the caller owns the accessible dialog. */
-export function EconomyPanel({ economy, initialTab = "overview" }: { economy: EconomyController; initialTab?: EconomyTab }) {
+export function EconomyPanel({ economy, initialTab = "overview", initialFocusId }: { economy: EconomyController; initialTab?: EconomyTab; initialFocusId?: string }) {
   const [tab, setTab] = useState<EconomyTab>(initialTab);
+  const [focusId, setFocusId] = useState<string | undefined>(initialFocusId);
   const panel = useRef<HTMLElement>(null);
   const { snapshot, error, notice, busy, uncertain, now, retryAt } = economy;
   const cooldown = Math.max(0, Math.ceil((retryAt - now) / 1000));
   const controller = snapshot ? { ...economy, snapshot, busy: busy || cooldown > 0 } : null;
-  const navigate = (next: EconomyTab) => {
+  const navigate: Navigate = (next, target) => {
     setTab(next);
+    setFocusId(target);
     // The dialog supplies the scrolling body; a new section starts at its top.
     const scrollBody = panel.current?.parentElement;
     if (scrollBody && scrollBody.scrollHeight > scrollBody.clientHeight) scrollBody.scrollTop = 0;
@@ -303,10 +428,10 @@ export function EconomyPanel({ economy, initialTab = "overview" }: { economy: Ec
     {!controller ? !error && <div className={styles.stack} role="status"><p className={styles.muted}>Открываем ваше хозяйство…</p><div className={styles.skeleton} aria-hidden /><div className={styles.skeleton} aria-hidden /></div>
       : <div className={styles.stack} key={tab}>
         {tab === "overview" && <Overview economy={controller} navigate={navigate} />}
-        {tab === "buildings" && <Buildings economy={controller} />}
-        {tab === "production" && <Production economy={controller} navigate={navigate} />}
-        {tab === "exploration" && <Exploration economy={controller} />}
-        {tab === "inventory" && <Inventory economy={controller} navigate={navigate} />}
+        {tab === "buildings" && <Buildings economy={controller} navigate={navigate} focusId={focusId} />}
+        {tab === "production" && <Production economy={controller} navigate={navigate} focusId={focusId} />}
+        {tab === "exploration" && <Exploration economy={controller} navigate={navigate} focusId={focusId} />}
+        {tab === "inventory" && <Inventory economy={controller} navigate={navigate} focusId={focusId} />}
         {tab === "market" && <Market economy={controller} navigate={navigate} />}
       </div>}
   </section>;

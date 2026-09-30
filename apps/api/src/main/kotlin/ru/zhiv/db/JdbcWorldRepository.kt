@@ -46,8 +46,9 @@ private fun creditLegacyJourney(c: Connection, user: UUID, journey: WorldJourney
     val inventory = before.inventory.toMutableMap()
     if (converted.woodGranted > 0) inventory["wood"] = add(inventory["wood"] ?: 0, converted.woodGranted)
     if (converted.stoneGranted > 0) inventory["stone"] = add(inventory["stone"] ?: 0, converted.stoneGranted)
-    assertEconomyMarketCapacity(c, user, inventory)
-    saveEconomyProfile(c, user, before.copy(wallet=before.wallet.copy(coins=add(before.wallet.coins, converted.coinsGranted)), inventory=inventory))
+    val next = before.copy(wallet=before.wallet.copy(coins=add(before.wallet.coins, converted.coinsGranted)), inventory=inventory)
+    assertEconomyMarketCapacity(c, user, before, next)
+    saveEconomyProfile(c, user, next)
     c.worldUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,items) VALUES (?,?,'legacy_journey',?,?::jsonb)",
         user, key, converted.coinsGranted, "{\"wood\":${converted.woodGranted},\"stone\":${converted.stoneGranted}}")
 }

@@ -78,7 +78,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("33", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("34", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -139,7 +139,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("33", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("34", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -169,4 +169,53 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(9L, replay.snapshot.revision)
         }
     }
+
+    @Test fun `V34 preserves overfull inventories old jobs and escrow and initializes storage only once`() = runBlocking<Unit> {
+        val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
+        DatabaseFactory.create(config).use { source ->
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("33").cleanDisabled(true).load().migrate()
+            val tokens = TokenCodec()
+            val token = tokens.issue()
+            val identities = JdbcZhivRepository(source)
+            val player = identities.bootstrap("Хранитель склада", tokens.issue().hash, token.hash, 365)
+            val oldJob = EconomyJob(UUID.randomUUID().toString(), "production", "workshop", "make_planks",
+                startedAt = "2026-09-30T01:00:00Z", finishesAt = "2026-10-30T01:00:00Z",
+                rewards = mapOf("planks" to 7L), cost = EconomyCost(3, mapOf("wood" to 9L)), catalogVersion = 1)
+            val state = EconomyState(wallet = EconomyWallet(321, 0), inventory = mapOf("wood" to 600L, "planks" to 120L),
+                buildings = mapOf("home" to 5, "garden" to 3, "woodlot" to 3, "quarry" to 2, "workshop" to 3, "dryer" to 2),
+                jobs = listOf(oldJob), migration = EconomyMigration(coinsGranted = 321, woodGranted = 20, stoneGranted = 15), completedExplorations = 23)
+            source.connection.use { c ->
+                c.economyUpdate("INSERT INTO economy_profiles(user_id,state,revision) VALUES (?,?::jsonb,19)", player.id, economyJson.encodeToString(state))
+                c.economyUpdate("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?, 'berries',30,90)", UUID.randomUUID(), player.id)
+                c.economyUpdate("INSERT INTO economy_conversion_audit(user_id,legacy_sparks,legacy_wood,legacy_stone,coins_granted,wood_granted,stone_granted) VALUES (?,10000,400,225,321,20,15)", player.id)
+                c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins) VALUES (?,'conversion:v1','legacy_conversion',321)", player.id)
+                c.commit()
+            }
+            val unchangedTables = listOf("economy_market_listings", "economy_market_receipts", "economy_conversion_audit", "economy_ledger", "economy_commands")
+            val before = legacyData(source, unchangedTables)
+            DatabaseFactory.migrate(source)
+            val expected = state.copy(buildings = state.buildings + ("warehouse" to 1) + ("kiln" to 0))
+            source.connection.use { c ->
+                val row = readEconomyProfile(c, player.id)
+                assertEquals(20L, row.revision)
+                assertEquals(expected, row.state)
+            }
+            val view = JdbcEconomyRepository(source).snapshot(token.hash)
+            assertEquals(EconomyStorage(200, 720, 30, 0, 550), view.storage)
+            assertEquals(listOf(oldJob), view.jobs)
+            assertEquals(before, legacyData(source, unchangedTables))
+            DatabaseFactory.migrate(source)
+            assertEquals(20L, JdbcEconomyRepository(source).snapshot(token.hash).revision)
+            assertEquals(before, legacyData(source, unchangedTables))
+            // The new wrapper preserves the original conversion and adds no second grant.
+            val legacy = WorldState(resources = WorldResources(100, 81, 49), houseLevel = 4, workshop = true, workshopLevel = 2)
+            source.connection.use { c ->
+                val initialized = c.economyRows("SELECT economy_v2_initial_state(?::jsonb)", worldJson.encodeToString(legacy)) {
+                    economyJson.decodeFromString<EconomyState>(it.getString(1))
+                }.single()
+                assertEquals(EconomyRules.initial(100, 81, 49, 4, 2), initialized)
+            }
+        }
+    }
+
 }

@@ -32,7 +32,7 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
     if (c.economyRows("SELECT 1 FROM economy_profiles WHERE user_id=?", user) { true }.isNotEmpty()) return
     c.economyUpdate("""
         INSERT INTO economy_profiles(user_id,state)
-        SELECT ?,economy_v1_initial_state(CASE WHEN EXISTS(SELECT 1 FROM economy_conversion_audit WHERE user_id=?)
+        SELECT ?,economy_v2_initial_state(CASE WHEN EXISTS(SELECT 1 FROM economy_conversion_audit WHERE user_id=?)
             THEN jsonb_set(coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb),'{resources}','{"sparks":0,"wood":0,"stone":0}'::jsonb)
             ELSE coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb) END)
         ON CONFLICT DO NOTHING
@@ -62,7 +62,8 @@ internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState) 
 internal fun economyView(c: Connection, user: UUID, publicId: String, now: Instant): EconomyView {
     val row = readEconomyProfile(c, user)
     val s = row.state
-    return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs, s.migration, EconomyRules.catalog, s.completedExplorations)
+    return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs, s.migration,
+        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations)
 }
 
 class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository {
@@ -117,7 +118,7 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
             ) { it.getBoolean(1) }.firstOrNull() == true)
                 economyFailure("ECONOMY_EXPLORER_BUSY", "Сначала завершите прежнее путешествие Мохлика")
             val (next, message) = EconomyRules.apply(before.state, command, now)
-            assertEconomyMarketCapacity(c, actor.id, next.inventory)
+            assertEconomyMarketCapacity(c, actor.id, before.state, next)
             saveEconomyProfile(c, actor.id, next)
             if (next.buildings != before.state.buildings) {
                 // The existing renderer consumes WorldState. Update the same transaction;

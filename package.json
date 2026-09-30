@@ -23,7 +23,8 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "world:export": "node scripts/tiled-world.mjs",
     "world:watch": "node scripts/tiled-world.mjs --watch",
-    "world:check": "node scripts/tiled-world.mjs --check"
+    "world:check": "node scripts/tiled-world.mjs --check",
+    "economy:check": "node scripts/audit-economy-progression.mjs"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",

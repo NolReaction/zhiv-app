@@ -38,7 +38,7 @@ object EconomyRules {
         checkNotNull(EconomyRules::class.java.getResourceAsStream("/world/economy-catalog.json")).bufferedReader().use { it.readText() })
 
     init {
-        require(catalog.version == 1 && catalog.maxBatch in 1..10)
+        require(catalog.version == 2 && catalog.maxBatch in 1..10)
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
             catalog.market.maxPriceMultiplier in 1L..5L && catalog.market.feeBps == 0)
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
@@ -57,7 +57,34 @@ object EconomyRules {
         val grant = legacyConversion(sparks, wood, stone)
         return EconomyState(wallet = EconomyWallet(grant.coinsGranted), inventory = mapOf("wood" to grant.woodGranted, "stone" to grant.stoneGranted).filterValues { it > 0 },
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
-                "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0), migration = grant)
+                "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0), migration = grant)
+    }
+
+    /** Escrow keeps its space until sold, so putting goods on the market cannot expand the warehouse. */
+    fun storage(state: EconomyState, reservedItems: Map<String, Long> = emptyMap()): EconomyStorage {
+        val warehouseLevel = state.buildings["warehouse"] ?: 1
+        val capacity = checkNotNull(catalog.buildings.single { it.id == "warehouse" }.levels
+            .single { it.level == warehouseLevel }.warehouseCapacity)
+        val used = state.inventory.values.sum()
+        val reserved = reservedItems.values.sum()
+        val total = used + reserved
+        return EconomyStorage(capacity, used, reserved, maxOf(0L, capacity - total), maxOf(0L, total - capacity))
+    }
+
+    /** Imported overfull stocks are preserved. Spending or returning an existing escrow is always possible. */
+    fun assertStorageTransition(
+        before: EconomyState, next: EconomyState,
+        reservedBefore: Map<String, Long> = emptyMap(), reservedAfter: Map<String, Long> = reservedBefore,
+    ) {
+        val previous = storage(before, reservedBefore)
+        val result = storage(next, reservedAfter)
+        if (result.overflow > 0 && result.used + result.reserved > previous.used + previous.reserved)
+            economyFailure("ECONOMY_STORAGE_FULL", "На складе недостаточно места. Продайте припасы или расширьте склад; готовая работа дождётся вас.")
+    }
+
+    private fun requireRewardCapacity(state: EconomyState, rewards: Map<String, Long>) {
+        if (rewards.values.sum() > storage(state).capacity)
+            economyFailure("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или сначала расширьте склад.")
     }
 
     fun addItems(inventory: Map<String, Long>, amounts: Map<String, Long>): Map<String, Long> {
@@ -82,6 +109,16 @@ object EconomyRules {
         if ((state.buildings["home"] ?: 1) < level) economyFailure("ECONOMY_HOME_REQUIRED", "Сначала улучшите дом до уровня $level")
     }
 
+    private fun requireBuildings(state: EconomyState, requiredBuildings: Map<String, Int>) {
+        val unmet = requiredBuildings.filter { (id, level) -> (state.buildings[id] ?: 0) < level }
+        if (unmet.isNotEmpty()) {
+            val description = unmet.entries.joinToString(", ") { (id, level) ->
+                "${catalog.buildings.single { it.id == id }.name}: уровень $level"
+            }
+            economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала завершите улучшения: $description")
+        }
+    }
+
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.totalPrice != 0L) invalidEconomy()
@@ -93,20 +130,24 @@ object EconomyRules {
                 if ((state.buildings[recipe.buildingId] ?: 0) < recipe.buildingLevel)
                     economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание")
                 requireHome(state, recipe.requiredHomeLevel)
+                requireBuildings(state, recipe.requiredBuildings)
                 if (state.jobs.any { it.targetId == recipe.buildingId && it.kind in setOf("production", "construction") })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Здание занято. Получите готовый результат или дождитесь окончания работ.")
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(recipe.seconds * command.quantity).toString(),
                     rewards = recipe.rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version)
+                requireRewardCapacity(state, job.rewards)
                 spend(state, cost).copy(jobs = state.jobs + job) to "Производство началось. Результат дождётся вас."
             }
             "start_exploration" -> {
                 val exploration = catalog.explorations.find { it.id == command.targetId } ?: economyFailure("ECONOMY_EXPLORATION", "Место исследования не найдено")
                 requireHome(state, exploration.requiredHomeLevel)
+                requireBuildings(state, exploration.requiredBuildings)
                 if (state.jobs.any { it.kind == "exploration" }) economyFailure("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Сначала получите результат вылазки.")
                 val job = EconomyJob(command.requestId, "exploration", exploration.id, startedAt = now.toString(),
                     finishesAt = now.plusSeconds(exploration.seconds).toString(), rewards = exploration.rewards, cost = exploration.cost, catalogVersion = catalog.version)
+                requireRewardCapacity(state, job.rewards)
                 spend(state, exploration.cost).copy(jobs = state.jobs + job) to "Мохлик отправился на исследование"
             }
             "start_construction" -> {
@@ -114,6 +155,7 @@ object EconomyRules {
                 val next = (state.buildings[building.id] ?: 0) + 1
                 val upgrade = building.levels.find { it.level == next } ?: economyFailure("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены")
                 requireHome(state, upgrade.requiredHomeLevel)
+                requireBuildings(state, upgrade.requiredBuildings)
                 if (state.jobs.any { it.kind == "construction" }) economyFailure("ECONOMY_CONSTRUCTION_BUSY", "Сначала завершите текущую стройку")
                 if (state.jobs.any { it.kind == "production" && it.targetId == building.id }) economyFailure("ECONOMY_BUILDING_BUSY", "Получите результат производства перед улучшением")
                 val job = EconomyJob(command.requestId, "construction", building.id, targetLevel = next,
@@ -124,8 +166,10 @@ object EconomyRules {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
                 if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Работа ещё не завершена")
                 val buildings = if (job.kind == "construction") state.buildings + (job.targetId to checkNotNull(job.targetLevel)) else state.buildings
-                state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
-                    completedExplorations = if (job.kind == "exploration") minOf(ECONOMY_MAX_BALANCE, state.completedExplorations + 1) else state.completedExplorations) to
+                val next = state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
+                    completedExplorations = if (job.kind == "exploration") minOf(ECONOMY_MAX_BALANCE, state.completedExplorations + 1) else state.completedExplorations)
+                assertStorageTransition(state, next)
+                next to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"
             }
             "sell" -> {

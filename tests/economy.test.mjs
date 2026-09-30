@@ -20,10 +20,11 @@ const command = (p, action, targetId, quantity = 1, totalPrice = 0, time = now) 
 const issue = (p, action, targetId, quantity = 1, time = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity, 0, time), time);
 const trade = (p, action, targetId, quantity = 1, totalPrice = 0, time = now) => economy.commandDevEconomyMarket(p.token, command(p, action, targetId, quantity, totalPrice, time), time);
 // Test fixture only: production routes deliberately have no balance or item grant command.
-function fixture(p, { coins = 500, items = { wood: 30, stone: 30, berries: 30 }, home = 2, completedExplorations = 1 } = {}) {
+function fixture(p, { coins = 500, items = { wood: 30, stone: 30, berries: 30 }, home = 2, completedExplorations = 1, buildings = {} } = {}) {
   read(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.wallet.coins = coins; row.state.inventory = { ...items }; row.state.buildings.home = home; row.state.completedExplorations = completedExplorations;
+  Object.assign(row.state.buildings, buildings);
   return row;
 }
 
@@ -32,14 +33,18 @@ test("fresh account starts empty with free garden and exploration, cosmetic memo
   assert.equal(model.economyViewSchema.safeParse(state).success, true);
   assert.deepEqual(state.wallet, { coins: 0, pearls: 0 }); assert.deepEqual(state.inventory, {});
   assert.equal(state.buildings.home, 1); assert.equal(state.buildings.garden, 1);
+  assert.equal(state.buildings.warehouse, 1); assert.equal(state.buildings.kiln, 0);
+  assert.deepEqual(state.storage, { capacity: 200, used: 0, reserved: 0, available: 200, overflow: 0 });
   const grown = issue(p, "start_production", "grow_berries").state.jobs[0];
   const walking = issue(p, "start_exploration", "forest").state.jobs.find(job => job.kind === "exploration");
   assert.deepEqual(read(p).inventory, {});
   issue(p, "claim_job", grown.id, 1, Date.parse(grown.finishesAt));
   const collected = issue(p, "claim_job", walking.id, 1, Date.parse(walking.finishesAt)).state;
-  assert.deepEqual(collected.inventory, { berries: 6, wood: 5, stone: 3, fiber: 4 });
+  const expected = { ...grown.rewards };
+  for (const [item, amount] of Object.entries(walking.rewards)) expected[item] = (expected[item] ?? 0) + amount;
+  assert.deepEqual(collected.inventory, expected);
   assert.equal(collected.completedExplorations, 1);
-  assert.deepEqual(issue(p, "sell", "berries", 6).state.wallet, { coins: 18, pearls: 0 });
+  assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: expected.berries * model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, pearls: 0 });
 });
 
 test("legacy conversion is modest, monotonic and capped for safe-integer beta balances", () => {
@@ -52,13 +57,31 @@ test("legacy conversion is modest, monotonic and capped for safe-integer beta ba
   assert.equal(initial.wallet.pearls, 0);
 });
 
+test("the browser accepts explicit nullable Kotlin catalog fields and validates warehouse capacity", () => {
+  const response = read(player());
+  for (const building of response.catalog.buildings) for (const level of building.levels) {
+    level.warehouseCapacity ??= null;
+    level.requiredBuildings ??= {};
+  }
+  for (const definition of [...response.catalog.recipes, ...response.catalog.explorations]) definition.requiredBuildings ??= {};
+  assert.equal(model.economyViewSchema.safeParse(response).success, true, "Kotlin encodeDefaults/explicitNulls includes null capacity outside warehouses");
+  const warehouseLevel = response.catalog.buildings.find(building => building.id === "warehouse").levels[0];
+  for (const invalidCapacity of [-1, 0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    warehouseLevel.warehouseCapacity = invalidCapacity;
+    assert.equal(model.economyViewSchema.safeParse(response).success, false);
+  }
+});
+
 test("production batch snapshots ingredients, duration and output; another slot still works", () => {
   const p = player(), row = fixture(p);
   row.state.buildings.workshop = 1;
+  const recipe = model.economyCatalog.recipes.find(item => item.id === "make_planks");
+  Object.assign(row.state.buildings, recipe.requiredBuildings);
   const started = issue(p, "start_production", "make_planks", 3).state;
   const job = started.jobs[0];
-  assert.equal(started.inventory.wood, 24); assert.deepEqual(job.cost.items, { wood: 6 });
-  assert.equal(Date.parse(job.finishesAt) - now, 900 * 3 * 1000); assert.deepEqual(job.rewards, { planks: 3 });
+  assert.equal(started.inventory.wood, 30 - recipe.cost.items.wood * 3); assert.deepEqual(job.cost, rules.scaledEconomyCost(recipe.cost, 3));
+  assert.equal(Date.parse(job.finishesAt) - now, recipe.seconds * 3 * 1000); assert.deepEqual(job.rewards, { planks: recipe.rewards.planks * 3 });
+  assert.equal(job.catalogVersion, 2);
   assert.throws(() => issue(p, "start_production", "make_rope"), { code: "ECONOMY_BUILDING_BUSY" });
   assert.equal(issue(p, "start_production", "grow_berries").state.jobs.length, 2);
   assert.throws(() => issue(p, "start_production", "grow_berries", 11), { code: "INVALID_ECONOMY_COMMAND" });
@@ -67,38 +90,42 @@ test("production batch snapshots ingredients, duration and output; another slot 
 });
 
 test("construction consumes coins and materials once, retains old level and completes only after due time", () => {
-  const p = player(); fixture(p, { home: 1 });
+  const p = player(), target = model.economyCatalog.buildings.find(building => building.id === "home").levels[1];
+  fixture(p, { home: 1, coins: target.cost.coins + 100, items: { ...target.cost.items }, buildings: target.requiredBuildings });
   const cmd = command(p, "start_construction", "home"), before = read(p);
   const started = economy.commandDevEconomy(p.token, cmd, now), job = started.state.jobs[0];
-  assert.equal(started.state.buildings.home, 1); assert.equal(started.state.wallet.coins, before.wallet.coins - 100);
-  assert.equal(started.state.inventory.wood, before.inventory.wood - 12); assert.equal(started.state.inventory.stone, before.inventory.stone - 8);
+  assert.equal(started.state.buildings.home, 1); assert.equal(started.state.wallet.coins, before.wallet.coins - target.cost.coins);
+  assert.equal(started.state.inventory.wood, before.inventory.wood - target.cost.items.wood || undefined); assert.equal(started.state.inventory.stone, before.inventory.stone - target.cost.items.stone || undefined);
   assert.equal(economy.commandDevEconomy(p.token, cmd, now).replayed, true);
   assert.equal(read(p).jobs.length, 1);
-  assert.throws(() => issue(p, "start_construction", "woodlot"), { code: "ECONOMY_CONSTRUCTION_BUSY" });
-  assert.throws(() => issue(p, "claim_job", job.id, 1, now + 1799999), { code: "ECONOMY_JOB_NOT_READY" });
-  assert.equal(issue(p, "claim_job", job.id, 1, now + 1800000).state.buildings.home, 2);
-  assert.throws(() => issue(p, "claim_job", job.id, 1, now + 1800001), { code: "ECONOMY_JOB_GONE" });
+  assert.throws(() => issue(p, "start_construction", "home"), { code: "ECONOMY_CONSTRUCTION_BUSY" });
+  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt) - 1), { code: "ECONOMY_JOB_NOT_READY" });
+  assert.equal(issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)).state.buildings.home, 2);
+  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt) + 1), { code: "ECONOMY_JOB_GONE" });
 });
 
 test("failed spending is atomic and new house unlocks only follow completed construction", () => {
-  const p = player(), before = read(p);
+  const p = player(), target = model.economyCatalog.buildings.find(building => building.id === "home").levels[1];
+  fixture(p, { coins: 0, items: {}, home: 1, completedExplorations: 0, buildings: target.requiredBuildings });
+  const before = read(p);
   assert.throws(() => issue(p, "start_construction", "home"), { code: "ECONOMY_RESOURCES" });
   assert.deepEqual(read(p), before);
   assert.throws(() => issue(p, "start_exploration", "cave"), { code: "ECONOMY_HOME_REQUIRED" });
-  assert.throws(() => issue(p, "start_production", "make_planks"), { code: "ECONOMY_BUILDING_REQUIRED" });
+  assert.throws(() => issue(player(), "start_production", "make_planks"), { code: "ECONOMY_BUILDING_REQUIRED" });
 });
 
 test("one explorer, receipts, stale revisions and foreign owners cannot duplicate rewards", () => {
   const p = player(), other = player(), cmd = command(p, "start_exploration", "forest");
   const result = economy.commandDevEconomy(p.token, cmd, now);
   assert.equal(result.state.jobs[0].id, cmd.requestId);
-  assert.throws(() => issue(p, "start_exploration", "shore"), { code: "ECONOMY_EXPLORER_BUSY" });
+  assert.throws(() => issue(p, "start_exploration", "forest"), { code: "ECONOMY_EXPLORER_BUSY" });
   assert.throws(() => economy.commandDevEconomy(other.token, cmd, now), { code: "ECONOMY_OWNER_CHANGED" });
   assert.throws(() => economy.commandDevEconomy(p.token, { ...cmd, targetId: "shore" }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
   assert.throws(() => economy.commandDevEconomy(p.token, { ...cmd, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
   const claim = command(p, "claim_job", result.state.jobs[0].id);
-  const claimed = economy.commandDevEconomy(p.token, claim, now + 1800000);
-  assert.equal(economy.commandDevEconomy(p.token, claim, now + 1900000).acceptedRevision, claimed.acceptedRevision);
+  const dueAt = Date.parse(result.state.jobs[0].finishesAt);
+  const claimed = economy.commandDevEconomy(p.token, claim, dueAt);
+  assert.equal(economy.commandDevEconomy(p.token, claim, dueAt + 100000).acceptedRevision, claimed.acceptedRevision);
   assert.equal(read(p).completedExplorations, 1);
 });
 
@@ -190,4 +217,128 @@ test("one request identifier cannot be repurposed across market and economy endp
   economy.commandDevEconomy(p.token, sell, now);
   assert.throws(() => economy.commandDevEconomyMarket(p.token, { ...sell, expectedRevision: read(p).revision, action: "create_listing", totalPrice: 3 }, now),
     { code: "ECONOMY_REQUEST_CONFLICT" });
+});
+
+test("warehouse counts mixed goods and an unsuccessful harvest keeps the ready job and revision", () => {
+  const p = player(); fixture(p, { items: { wood: 100, stone: 99 } });
+  const job = issue(p, "start_production", "grow_berries").state.jobs[0];
+  assert.deepEqual(read(p).storage, { capacity: 200, used: 199, reserved: 0, available: 1, overflow: 0 });
+  const before = read(p);
+  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_STORAGE_FULL" });
+  assert.deepEqual(read(p), before);
+  issue(p, "sell", "wood", Object.values(job.rewards).reduce((a, b) => a + b, 0));
+  const claimed = issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)).state;
+  assert.equal(claimed.jobs.length, 0); assert.equal(claimed.storage.used, 199);
+});
+
+test("market escrow occupies shared storage across item types and cancellation never needs extra room", () => {
+  const p = player(); fixture(p, { items: { wood: 100, stone: 100 } });
+  const lot = trade(p, "create_listing", "wood", 50, 200).listing;
+  assert.deepEqual(read(p).storage, { capacity: 200, used: 150, reserved: 50, available: 0, overflow: 0 });
+  const job = issue(p, "start_production", "grow_berries").state.jobs[0];
+  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_STORAGE_FULL" });
+  const cancelled = trade(p, "cancel_listing", lot.id).state;
+  assert.deepEqual(cancelled.storage, { capacity: 200, used: 200, reserved: 0, available: 0, overflow: 0 });
+  assert.equal(cancelled.inventory.wood, 100); assert.equal(cancelled.jobs.length, 1);
+});
+
+test("a purchase checks mixed inventory and own escrow before transferring money or closing the lot", () => {
+  const seller = player(), buyer = player(); fixture(seller); fixture(buyer, { coins: 100, items: { wood: 100, stone: 96 } });
+  const reserved = trade(buyer, "create_listing", "wood", 50, 200).listing;
+  const lot = trade(seller, "create_listing", "berries", 6, 30).listing;
+  const beforeBuyer = read(buyer), beforeSeller = read(seller);
+  assert.throws(() => trade(buyer, "buy_listing", lot.id, 6, 30), { code: "ECONOMY_STORAGE_FULL" });
+  assert.deepEqual(read(buyer), beforeBuyer); assert.deepEqual(read(seller), beforeSeller);
+  assert.equal(economy.getDevEconomyMarket(buyer.token, {}, now).listings[0].status, "active");
+  issue(buyer, "sell", "stone", 2);
+  const bought = trade(buyer, "buy_listing", lot.id, 6, 30).state;
+  assert.equal(bought.storage.used + bought.storage.reserved, 200);
+  assert.equal(bought.storage.reserved, 50);
+  assert.equal(trade(buyer, "cancel_listing", reserved.id).state.storage.used, 200);
+});
+
+test("grandfathered inventory survives overflow and still permits selling, spending, listing and cancellation", () => {
+  const p = player(), row = fixture(p, { items: { berries: 150, wood: 160 } });
+  assert.equal(read(p).storage.overflow, 110);
+  const lot = trade(p, "create_listing", "berries", 20, 60).listing;
+  assert.equal(read(p).storage.overflow, 110);
+  assert.equal(trade(p, "cancel_listing", lot.id).state.inventory.berries, 150);
+  assert.equal(issue(p, "sell", "berries", 10).state.storage.overflow, 100);
+  row.state.buildings.workshop = 1;
+  const recipe = model.economyCatalog.recipes.find(item => item.id === "make_planks");
+  Object.assign(row.state.buildings, recipe.requiredBuildings);
+  const job = issue(p, "start_production", "make_planks").state.jobs[0];
+  assert.equal(read(p).storage.overflow, 100 - Object.values(recipe.cost.items).reduce((a, b) => a + b, 0));
+  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_STORAGE_FULL" });
+  assert.equal(row.state.jobs.length, 1);
+});
+
+test("warehouse construction uses its old capacity until claimed and can complete during legacy overflow", () => {
+  const p = player(), target = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels[1];
+  fixture(p, { coins: target.cost.coins, items: { ...target.cost.items, berries: 1200 }, home: 5,
+    buildings: { ...target.requiredBuildings, warehouse: 1 } });
+  const started = issue(p, "start_construction", "warehouse").state, job = started.jobs[0];
+  assert.equal(started.storage.capacity, 200); assert.equal(started.storage.overflow, 1000);
+  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt) - 1), { code: "ECONOMY_JOB_NOT_READY" });
+  const claimed = issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)).state;
+  assert.equal(claimed.buildings.warehouse, 2); assert.equal(claimed.storage.capacity, target.warehouseCapacity);
+  assert.equal(claimed.storage.used, 1200); assert.equal(claimed.storage.overflow, 1200 - target.warehouseCapacity);
+});
+
+test("cross-building dependencies require completed levels for construction, recipes and exploration", () => {
+  const catalog = model.economyCatalog;
+  const building = catalog.buildings.find(building => building.id !== "home" && building.levels.some(level => Object.keys(level.requiredBuildings).length));
+  const level = building.levels.find(level => Object.keys(level.requiredBuildings).length);
+  const recipe = catalog.recipes.find(recipe => Object.entries(recipe.requiredBuildings).some(([id]) => id !== recipe.buildingId));
+  const route = catalog.explorations.find(route => Object.keys(route.requiredBuildings).length);
+  assert.ok(building && level && recipe && route, "all three action families have explicit progression dependencies");
+  for (const [action, targetId, definition, constructingLevel] of [
+    ["start_construction", building.id, level, level.level], ["start_production", recipe.id, recipe], ["start_exploration", route.id, route],
+  ]) {
+    const p = player(), buildings = Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level]));
+    if (constructingLevel) buildings[targetId] = constructingLevel - 1;
+    const [missingId, neededLevel] = Object.entries(definition.requiredBuildings).find(([id]) => id !== (action === "start_production" ? definition.buildingId : targetId));
+    buildings[missingId] = neededLevel - 1;
+    const row = fixture(p, { coins: definition.cost.coins, items: definition.cost.items, home: 5, buildings });
+    const pending = { id: crypto.randomUUID(), kind: "construction", targetId: missingId, targetLevel: neededLevel, recipeId: null,
+      startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now).toISOString(), cost: { coins: 0, items: {} }, rewards: {}, catalogVersion: 1 };
+    row.state.jobs.push(pending);
+    const before = read(p);
+    assert.throws(() => issue(p, action, targetId), { code: "ECONOMY_BUILDING_REQUIRED" });
+    assert.deepEqual(read(p), before, "a finished but unclaimed prerequisite does not unlock dependent work");
+    assert.deepEqual(rules.unmetEconomyBuildings(row.state, definition.requiredBuildings), [{ buildingId: missingId, requiredLevel: neededLevel, currentLevel: neededLevel - 1 }]);
+    issue(p, "claim_job", pending.id);
+    assert.equal(issue(p, action, targetId).state.jobs.length, 1);
+  }
+});
+
+test("oversized output batches are rejected before spending, while a full warehouse may start a fitting batch", () => {
+  const p = player(), row = fixture(p, { items: { berries: 200 }, home: 5,
+    buildings: Object.fromEntries(model.economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])) });
+  row.state.buildings.warehouse = 1;
+  const recipe = model.economyCatalog.recipes.find(recipe => Object.values(recipe.rewards).reduce((a, b) => a + b, 0) * model.economyCatalog.maxBatch > 200);
+  assert.ok(recipe, "late producers supply batches larger than the initial warehouse");
+  Object.assign(row.state.inventory, rules.scaledEconomyCost(recipe.cost, model.economyCatalog.maxBatch).items);
+  row.state.wallet.coins = recipe.cost.coins * model.economyCatalog.maxBatch;
+  const before = read(p);
+  assert.throws(() => issue(p, "start_production", recipe.id, model.economyCatalog.maxBatch), { code: "ECONOMY_STORAGE_FULL" });
+  assert.deepEqual(read(p), before);
+  assert.equal(issue(p, "start_production", "grow_berries").state.jobs.length, 1);
+});
+
+test("catalog v1 jobs retain their original reward and deadline across the warehouse update", () => {
+  const p = player(), row = fixture(p, { items: {}, home: 1, coins: 0 });
+  const oldJob = { id: crypto.randomUUID(), kind: "production", targetId: "garden", recipeId: "grow_berries", targetLevel: null,
+    startedAt: new Date(now - 5000).toISOString(), finishesAt: new Date(now + 1000).toISOString(),
+    cost: { coins: 7, items: { wood: 3 } }, rewards: { berries: 230 }, catalogVersion: 1 };
+  row.state.jobs.push(oldJob);
+  delete row.state.buildings.warehouse; delete row.state.buildings.kiln;
+  assert.equal(model.economyViewSchema.safeParse(read(p)).success, true);
+  assert.equal(read(p).buildings.warehouse, 1); assert.equal(read(p).buildings.kiln, 0);
+  assert.throws(() => issue(p, "claim_job", oldJob.id, 1, now), { code: "ECONOMY_JOB_NOT_READY" });
+  assert.throws(() => issue(p, "claim_job", oldJob.id, 1, now + 1000), { code: "ECONOMY_STORAGE_FULL" });
+  assert.deepEqual(row.state.jobs[0], oldJob);
+  row.state.buildings.warehouse = 2;
+  const result = issue(p, "claim_job", oldJob.id, 1, now + 1000).state;
+  assert.equal(result.inventory.berries, 230); assert.equal(result.wallet.coins, 0); assert.equal(result.jobs.length, 0);
 });

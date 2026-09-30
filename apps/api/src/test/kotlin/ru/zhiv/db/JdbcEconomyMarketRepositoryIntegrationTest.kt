@@ -65,6 +65,13 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         }
         return Player(user.id, user.publicId, token.hash, token.raw)
     }
+    private fun editState(player: Player, change: (EconomyState) -> EconomyState) {
+        source.connection.use { c ->
+            val row = readEconomyProfile(c, player.id)
+            c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(change(row.state)), player.id)
+            c.commit()
+        }
+    }
     private suspend fun command(player: Player, action: String, target: String = "berries", quantity: Long = 1, price: Long = 0) =
         EconomyCommand(UUID.randomUUID().toString(), player.publicId, economy.snapshot(player.hash).revision, action, target, quantity, price)
     private suspend fun offer(player: Player, quantity: Long = 2, price: Long = 6): EconomyMarketListing {
@@ -193,7 +200,10 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         offer(seller, 99, 297)
         source.connection.use { c ->
             c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", seller.id) { true }
-            assertFailsWith<AuthFailure> { assertEconomyMarketCapacity(c, seller.id, mapOf("berries" to ECONOMY_MAX_BALANCE - 98)) }
+            val before = readEconomyProfile(c, seller.id).state
+            assertFailsWith<AuthFailure> {
+                assertEconomyMarketCapacity(c, seller.id, before, before.copy(inventory=mapOf("berries" to ECONOMY_MAX_BALANCE - 98)))
+            }
             cancelEconomyMarketListings(c, seller.id)
             cancelEconomyMarketListings(c, seller.id)
             c.commit()
@@ -201,6 +211,111 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(ECONOMY_MAX_BALANCE, economy.snapshot(seller.hash).inventory["berries"])
         assertTrue(market.market(seller.hash).mine.isEmpty())
         assertEquals(1L, scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='market_cancel'", seller.id))
+    }
+
+
+    @Test fun `mixed warehouse stock plus escrow blocks purchase atomically until space is released`() = runBlocking<Unit> {
+        val seller = player()
+        val buyer = player(berries = 100)
+        editState(buyer) { it.copy(inventory=mapOf("berries" to 100L, "wood" to 100L)) }
+        val ownLot = offer(buyer, 2, 6)
+        val lot = offer(seller, 2, 6)
+        val before = economy.snapshot(buyer.hash)
+        assertEquals(200L, before.storage.capacity)
+        assertEquals(198L, before.storage.used)
+        assertEquals(2L, before.storage.reserved)
+        assertEquals(0L, before.storage.available)
+        val buy = purchase(buyer, lot)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { market.command(buyer.hash, buy) }.code)
+        val after = economy.snapshot(buyer.hash)
+        assertEquals(before.revision, after.revision)
+        assertEquals(before.inventory, after.inventory)
+        assertEquals(before.wallet, after.wallet)
+        assertEquals(100L, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(1, market.market(seller.hash).mine.size)
+        assertEquals(0L, scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?", buyer.id, UUID.fromString(buy.requestId)))
+        market.command(buyer.hash, command(buyer, "cancel_listing", ownLot.id))
+        assertEquals(200L, economy.snapshot(buyer.hash).storage.used)
+        economy.command(buyer.hash, command(buyer, "sell", quantity=2))
+        val retry = buy.copy(expectedRevision=economy.snapshot(buyer.hash).revision)
+        val purchased = market.command(buyer.hash, retry)
+        assertEquals(200L, purchased.state.storage.used)
+        assertEquals(0L, purchased.state.storage.overflow)
+        assertTrue(market.command(buyer.hash, retry).replayed)
+    }
+
+
+    @Test fun `purchase and harvest racing for the last warehouse slots serialize on the same account`() = runBlocking<Unit> {
+        val seller = player()
+        val buyer = player(berries = 98)
+        val job = EconomyJob(UUID.randomUUID().toString(), "production", "garden", "berries",
+            startedAt="2000-01-01T00:00:00Z", finishesAt="2000-01-01T00:01:00Z", rewards=mapOf("berries" to 2L))
+        editState(buyer) { it.copy(inventory=mapOf("berries" to 98L, "wood" to 100L), jobs=listOf(job)) }
+        val lot = offer(seller, 2, 6)
+        val buy = purchase(buyer, lot)
+        val claim = command(buyer, "claim_job", job.id)
+        val results = coroutineScope { listOf(
+            async(Dispatchers.IO) { runCatching { market.command(buyer.hash, buy) } },
+            async(Dispatchers.IO) { runCatching { economy.command(buyer.hash, claim) } },
+        ).awaitAll() }
+        assertEquals(1, results.count { it.isSuccess })
+        assertEquals("ECONOMY_REVISION_CONFLICT", (results.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
+        val settled = economy.snapshot(buyer.hash)
+        assertEquals(200L, settled.storage.used)
+        assertEquals(0L, settled.storage.overflow)
+        val loser = if (results.first().isFailure) buy else claim
+        val retry = loser.copy(expectedRevision=settled.revision)
+        val error = assertFailsWith<AuthFailure> {
+            if (retry.action == "buy_listing") market.command(buyer.hash, retry) else economy.command(buyer.hash, retry)
+        }
+        assertEquals("ECONOMY_STORAGE_FULL", error.code)
+        assertEquals(settled.revision, economy.snapshot(buyer.hash).revision)
+        assertEquals(settled.inventory, economy.snapshot(buyer.hash).inventory)
+    }
+
+    @Test fun `preserved old overflow allows listing cancellation and selling without discarding goods`() = runBlocking<Unit> {
+        val seller = player(berries = 260)
+        editState(seller) { it.copy(inventory=it.inventory + ("stone" to 40L)) }
+        val original = economy.snapshot(seller.hash)
+        assertEquals(100L, original.storage.overflow)
+        val lot = offer(seller, 10, 30)
+        val listed = economy.snapshot(seller.hash)
+        assertEquals(290L, listed.storage.used)
+        assertEquals(10L, listed.storage.reserved)
+        assertEquals(100L, listed.storage.overflow)
+        market.command(seller.hash, command(seller, "cancel_listing", lot.id))
+        assertEquals(original.inventory, economy.snapshot(seller.hash).inventory)
+        val soldLot = offer(seller, 10, 30)
+        val buyer = player(berries = 0)
+        market.command(buyer.hash, purchase(buyer, soldLot))
+        val sold = economy.snapshot(seller.hash)
+        assertEquals(90L, sold.storage.overflow)
+        assertEquals(0L, sold.storage.reserved)
+        assertEquals(130L, sold.wallet.coins)
+        economy.command(seller.hash, command(seller, "sell", quantity=10))
+        assertEquals(80L, economy.snapshot(seller.hash).storage.overflow)
+    }
+
+    @Test fun `items in escrow cannot create spare warehouse space for a ready harvest`() = runBlocking<Unit> {
+        val p = player(berries = 200)
+        offer(p, 40, 120)
+        val job = EconomyJob(UUID.randomUUID().toString(), "production", "garden", "berries",
+            startedAt="2000-01-01T00:00:00Z", finishesAt="2000-01-01T00:01:00Z", rewards=mapOf("berries" to 1L))
+        editState(p) { it.copy(jobs=listOf(job)) }
+        val before = economy.snapshot(p.hash)
+        val claim = command(p, "claim_job", job.id)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, claim) }.code)
+        val failed = economy.snapshot(p.hash)
+        assertEquals(before.revision, failed.revision)
+        assertEquals(before.jobs, failed.jobs)
+        assertEquals(before.inventory, failed.inventory)
+        assertEquals(0L, scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(claim.requestId)))
+        economy.command(p.hash, command(p, "sell", quantity=1))
+        val result = economy.command(p.hash, claim.copy(expectedRevision=economy.snapshot(p.hash).revision))
+        assertTrue(result.state.jobs.isEmpty())
+        assertEquals(160L, result.state.storage.used)
+        assertEquals(40L, result.state.storage.reserved)
+        assertEquals(0L, result.state.storage.available)
     }
 
     @Test fun `feed is bounded paginated and hides banned sellers`() = runBlocking<Unit> {

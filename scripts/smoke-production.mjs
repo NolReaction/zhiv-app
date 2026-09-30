@@ -224,12 +224,17 @@ const worldEarned = await api("GET", "/api/v1/world", { cookie: owner.cookie });
 assert.equal(worldEarned.data.state.resources.sparks, 0);
 const travel = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldEarned.data.revision, action: "start_journey", target: "first_path" };
 await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel, expected: 409 });
-// V32/V33 must work under the restricted runtime role, including immutable command receipts.
+// V32–V34 must work under the restricted runtime role, including immutable command receipts.
 await api("GET", "/api/v1/economy", { expected: 401 });
 const economyBefore = await api("GET", "/api/v1/economy", { cookie: owner.cookie });
 assert.equal(economyBefore.headers["cache-control"], "no-store");
 assert.deepEqual(economyBefore.data.wallet, { coins: 0, pearls: 0 });
 assert.equal(economyBefore.data.buildings.garden, 1);
+assert.equal(economyBefore.data.buildings.warehouse, 1);
+assert.equal(economyBefore.data.buildings.kiln, 0);
+assert.equal(economyBefore.data.catalog.version, 2);
+const warehouse = economyBefore.data.catalog.buildings.find(building => building.id === "warehouse");
+assert.deepEqual(economyBefore.data.storage, { capacity: warehouse.levels[0].warehouseCapacity, used: 0, reserved: 0, available: warehouse.levels[0].warehouseCapacity, overflow: 0 });
 const expedition = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId,
   expectedRevision: economyBefore.data.revision, action: "start_exploration", targetId: "forest", quantity: 1, totalPrice: 0 };
 const exploring = await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition });

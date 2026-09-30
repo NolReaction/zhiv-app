@@ -520,6 +520,56 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals(499_999_998L,economy.snapshot(b.session).inventory["berries"])
     }
 
+
+    @Test fun `merge uses the larger warehouse and returns escrow without losing mixed stock`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        economy.snapshot(a.session);economy.snapshot(b.session)
+        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 180L),completedExplorations=1)
+        val sourceState=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 280L,"stone" to 40L),
+            buildings=EconomyRules.initial(homeLevel=2).buildings + ("warehouse" to 2),completedExplorations=1)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(sourceState),b.id)
+        val before=economy.snapshot(b.session)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",20,60)
+        market.command(b.session,listing)
+        val listingId=UUID.fromString(market.market(b.session).mine.single().id)
+        val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
+        val merged=economy.snapshot(a.session)
+        assertEquals(2,merged.buildings["warehouse"])
+        assertEquals(500L,merged.storage.capacity)
+        assertEquals(500L,merged.storage.used)
+        assertEquals(0L,merged.storage.reserved)
+        assertEquals(mapOf("wood" to 180L,"berries" to 280L,"stone" to 40L),merged.inventory)
+        assertEquals("cancelled",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(merged.inventory,economy.snapshot(a.session).inventory)
+    }
+
+    @Test fun `merge blocks aggregate mixed stock and escrow above warehouse capacity without mutations`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        economy.snapshot(a.session);economy.snapshot(b.session)
+        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 120L),completedExplorations=1)
+        val other=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 50L,"stone" to 50L),completedExplorations=1)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(other),b.id)
+        val snapshot=economy.snapshot(b.session)
+        market.command(b.session,EconomyCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"create_listing","berries",20,60))
+        val beforeA=economy.snapshot(a.session);val beforeB=economy.snapshot(b.session)
+        prove(a,browser,"merge");prove(a,browser,"merge","other",b)
+        val key=tokens.issue().hash
+        val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),key)
+        assertTrue(preview.conflicts.any { it.contains("вместимость склада") })
+        assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,key) }
+        assertEquals(beforeA.inventory,economy.snapshot(a.session).inventory)
+        assertEquals(beforeB.inventory,economy.snapshot(b.session).inventory)
+        assertEquals(beforeA.revision,economy.snapshot(a.session).revision)
+        assertEquals(beforeB.revision,economy.snapshot(b.session).revision)
+        assertEquals(1,market.market(b.session).mine.size)
+        assertEquals("0",scalar("SELECT count(*) FROM account_merge_sources WHERE source_user_id=?",b.id))
+    }
+
     @Test fun `forest memory merge keeps target or adopts source and invalidates leases then deletion erases snapshots`() = runBlocking<Unit> {
         val memory = JdbcForestMemoryRepository(source)
         suspend fun saved(account: Account, energy: Double): Pair<ForestMemoryCommand, ForestMemoryView> {

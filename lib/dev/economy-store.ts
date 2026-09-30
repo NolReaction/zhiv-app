@@ -3,7 +3,7 @@ import { getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
 import { consumeDevLegacyEconomy, hasDevLegacyJourney } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
-import { applyEconomyCommand, convertLegacyEconomy, creditEconomyItems, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
+import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number };
 type Profile = { revision: number; state: EconomyState; receipts: Map<string, Receipt>; legacyJourneys: Set<string> };
@@ -24,10 +24,13 @@ function profile(token: string | undefined, now: number) {
     value = { revision: 0, state: newEconomyState(legacy), receipts: new Map(), legacyJourneys: new Set() };
     store().profiles.set(owner, value);
   }
+  value.state.buildings.warehouse ??= 1;
+  value.state.buildings.kiln ??= 0;
   return { owner, value };
 }
 function view(owner: string, value: Profile, now: number): EconomyView {
-  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...structuredClone(value.state), catalog: structuredClone(economyCatalog) };
+  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...structuredClone(value.state),
+    storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
@@ -48,13 +51,13 @@ function receipt(value: Profile, owner: string, command: EconomyCommand | Market
 function receiptKey(command: EconomyCommand | MarketCommand) {
   return command.requestId.toLowerCase();
 }
-function assertEscrowCapacity(owner: string, inventory: Record<string, number>, excluding?: string) {
-  const totals = { ...inventory };
+function escrowItems(owner: string, excluding?: string): Record<string, number> {
+  const totals: Record<string, number> = {};
   for (const listing of store().listings.values()) {
     if (listing.id !== excluding && listing.status === "active" && listing.sellerPublicId === owner)
       totals[listing.itemId] = (totals[listing.itemId] ?? 0) + listing.quantity;
   }
-  if (Object.values(totals).some(amount => amount > ECONOMY_MAX_BALANCE)) fail("ECONOMY_CAPACITY", "Освободите место для предметов");
+  return totals;
 }
 function commit(owner: string, value: Profile, next: EconomyState, command: EconomyCommand | MarketCommand, message: string, now: number): EconomyResult {
   value.state = next; bump(value);
@@ -78,8 +81,9 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   if (replay) return replay;
   if (command.action === "start_exploration" && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
   const next = structuredClone(value.state);
-  const message = applyEconomyCommand(next, command, now, () => command.requestId);
-  assertEscrowCapacity(owner, next.inventory);
+  const reserved = escrowItems(owner);
+  const message = applyEconomyCommand(next, command, now, () => command.requestId, reserved);
+  assertEconomyStorageTransition(value.state, next, reserved);
   return commit(owner, value, next, command, message, now);
 }
 export function getDevEconomyBuildingLevels(token: string | undefined, now = Date.now()): { home: number; workshop: number } {
@@ -92,7 +96,7 @@ export function creditDevLegacyJourney(token: string | undefined, journey: { id:
   const converted = convertLegacyEconomy(journey.rewards), next = structuredClone(value.state);
   if (next.wallet.coins + converted.coinsGranted > ECONOMY_MAX_BALANCE) fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
   creditEconomyItems(next, { wood: converted.woodGranted, stone: converted.stoneGranted });
-  assertEscrowCapacity(owner, next.inventory);
+  assertEconomyStorageTransition(value.state, next, escrowItems(owner));
   next.wallet.coins += converted.coinsGranted;
   bump(value); value.state = next; value.legacyJourneys.add(journey.id);
 }
@@ -152,6 +156,9 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
     if ([...store().listings.values()].filter(item => item.sellerPublicId === owner && item.status === "active").length >= economyCatalog.market.maxListings) return fail("ECONOMY_MARKET_LIMIT", "На прилавке уже 10 лотов");
     if ((next.inventory[item.id] ?? 0) < command.quantity) return fail("ECONOMY_RESOURCES", "Не хватает предметов для лота");
     next.inventory[item.id] -= command.quantity;
+    if (!next.inventory[item.id]) delete next.inventory[item.id];
+    const reserved = escrowItems(owner);
+    assertEconomyStorageTransition(value.state, next, reserved, { ...reserved, [item.id]: (reserved[item.id] ?? 0) + command.quantity });
     const listing: Listing = { id: crypto.randomUUID(), sellerPublicId: owner, itemId: item.id, quantity: command.quantity,
       totalPrice: command.totalPrice, status: "active", createdAt: new Date(now).toISOString(), closedAt: null };
     store().listings.set(listing.id, listing);
@@ -163,7 +170,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (command.action === "cancel_listing") {
     if (listing.sellerPublicId !== owner) return fail("ECONOMY_MARKET_OWNER", "Это прилавок другого игрока", 403);
     creditEconomyItems(next, { [listing.itemId]: listing.quantity });
-    assertEscrowCapacity(owner, next.inventory, listing.id);
+    assertEconomyStorageTransition(value.state, next, escrowItems(owner), escrowItems(owner, listing.id));
     listing.status = "cancelled"; listing.closedAt = new Date(now).toISOString();
     return { ...commit(owner, value, next, command, "Лот снят, предметы возвращены", now), listing: publicListing(listing, owner, token) };
   }
@@ -174,7 +181,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (next.wallet.coins < listing.totalPrice) return fail("ECONOMY_RESOURCES", "Не хватает монет");
   if (seller.state.wallet.coins + listing.totalPrice > ECONOMY_MAX_BALANCE || seller.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Продавец пока не может принять оплату");
   creditEconomyItems(next, { [listing.itemId]: listing.quantity });
-  assertEscrowCapacity(owner, next.inventory);
+  assertEconomyStorageTransition(value.state, next, escrowItems(owner));
   next.wallet.coins -= listing.totalPrice;
   seller.state.wallet.coins += listing.totalPrice; bump(seller);
   listing.status = "sold"; listing.closedAt = new Date(now).toISOString();

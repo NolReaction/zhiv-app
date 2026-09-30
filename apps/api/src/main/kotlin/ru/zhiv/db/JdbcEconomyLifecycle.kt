@@ -42,11 +42,18 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
         statement.setObject(1,target); statement.setObject(2,source)
         statement.executeQuery().use { rows -> buildMap<String, Long> { while (rows.next()) put(rows.getString(1),rows.getLong(2)) } }
     }
+    val combinedInventory = (states.flatMap { it.inventory.keys } + escrow.keys).distinct().associateWith { item ->
+        states.sumOf { it.inventory[item] ?: 0L } + (escrow[item] ?: 0L)
+    }
+    val combinedBuildings = states.flatMap { it.buildings.keys }.distinct().associateWith { building ->
+        states.maxOf { it.buildings[building] ?: 0 }
+    }
+    val mergedStorage = EconomyRules.storage(states.first().copy(inventory=combinedInventory, buildings=combinedBuildings))
     return buildList {
         if (states.any { it.jobs.isNotEmpty() }) add("Сначала получите результаты производства, строительства и исследований в обоих профилях. Затем повторите объединение.")
         if (states.sumOf { it.wallet.coins } > ECONOMY_MAX_BALANCE || states.sumOf { it.wallet.pearls } > ECONOMY_MAX_BALANCE ||
-            (states.flatMap { it.inventory.keys } + escrow.keys).distinct().any { item -> states.sumOf { it.inventory[item] ?: 0 } + (escrow[item] ?: 0) > ECONOMY_MAX_BALANCE })
-            add("Общий запас превышает вместимость экономики. Уменьшите запасы перед объединением; предметы не будут потеряны.")
+            combinedInventory.values.any { it > ECONOMY_MAX_BALANCE } || mergedStorage.overflow > 0)
+            add("Общий запас превышает вместимость склада. Расширьте склад или уменьшите запасы перед объединением; предметы не будут потеряны.")
     }
 }
 

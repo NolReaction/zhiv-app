@@ -76,18 +76,24 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(1, results.count { it.isSuccess })
         assertEquals("ECONOMY_REVISION_CONFLICT", (results.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
         val current = economy.snapshot(p.hash)
-        assertEquals(6L, current.inventory["berries"])
-        val sold = economy.command(p.hash, command(p, current, "sell", "berries", 6)).state
+        val berryCount = started.state.jobs.single().rewards.getValue("berries")
+        assertEquals(berryCount, current.inventory["berries"])
+        val sold = economy.command(p.hash, command(p, current, "sell", "berries", berryCount)).state
         val acknowledged = economy.command(p.hash, start)
         assertTrue(acknowledged.replayed)
         assertEquals(1L, acknowledged.acceptedRevision)
         assertEquals(sold.revision, acknowledged.state.revision)
-        assertEquals(18L, acknowledged.state.wallet.coins)
+        assertEquals(berryCount * EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, acknowledged.state.wallet.coins)
         assertEquals("3", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key LIKE 'command:%'", p.id))
     }
 
     @Test fun `failed costs and premature claims roll back and keep revision and escrow inputs`() = runBlocking<Unit> {
         val p = player()
+        val initialRaw = economy.snapshot(p.hash)
+        val homeUpgrade = EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 2 }
+        val stored = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stored.copy(
+            buildings = initialRaw.buildings + homeUpgrade.requiredBuildings + ("home" to homeUpgrade.requiredHomeLevel))), p.id)
         val initial = economy.snapshot(p.hash)
         assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { economy.command(p.hash, command(p, initial, "start_construction", "home")) }.code)
         assertEquals(initial.revision, economy.snapshot(p.hash).revision)
@@ -107,6 +113,9 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(mapOf("wood" to 9L, "stone" to 7L), result.inventory)
         assertEquals(4, result.buildings["home"])
         assertEquals(2, result.buildings["workshop"])
+        assertEquals(1, result.buildings["warehouse"])
+        assertEquals(0, result.buildings["kiln"])
+        assertEquals(EconomyStorage(200, 16, 0, 184, 0), result.storage)
         assertEquals("900", scalar("SELECT legacy_sparks FROM economy_conversion_audit WHERE user_id=?", p.id))
         assertEquals("0", scalar("SELECT state->'resources'->>'sparks' FROM world_profiles WHERE user_id=?", p.id))
         assertEquals(legacy.inventory, JdbcWorldRepository(source).snapshot(p.hash).state.inventory)
@@ -120,6 +129,12 @@ class JdbcEconomyRepositoryIntegrationTest {
     @Test fun `claimed construction updates legacy renderer levels in the same transaction`() = runBlocking<Unit> {
         val p = player()
         execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)", p.id, worldJson.encodeToString(WorldState(resources = WorldResources(1_000_000, 100_000, 100_000))))
+        economy.snapshot(p.hash)
+        val homeUpgrade = EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 2 }
+        val stored = source.connection.use { readEconomyProfile(it, p.id).state }
+        val supplied = stored.copy(wallet = EconomyWallet(10_000), inventory = homeUpgrade.cost.items,
+            buildings = stored.buildings + homeUpgrade.requiredBuildings + ("home" to 1))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(supplied), p.id)
         val initial = economy.snapshot(p.hash)
         val started = economy.command(p.hash, command(p, initial, "start_construction", "home")).state
         assertEquals("1", scalar("SELECT state->>'houseLevel' FROM world_profiles WHERE user_id=?", p.id))
@@ -127,7 +142,26 @@ class JdbcEconomyRepositoryIntegrationTest {
         val completed = economy.command(p.hash, command(p, started, "claim_job", started.jobs.single().id)).state
         assertEquals(2, completed.buildings["home"])
         assertEquals("2", scalar("SELECT state->>'houseLevel' FROM world_profiles WHERE user_id=?", p.id))
-        assertEquals(400L, completed.wallet.coins)
+        assertEquals(10_000 - homeUpgrade.cost.coins, completed.wallet.coins)
+    }
+
+    @Test fun `warehouse rejection rolls back claim while a sale makes the same pending result deliverable`() = runBlocking<Unit> {
+        val p = player()
+        val initial = economy.snapshot(p.hash)
+        val started = economy.command(p.hash, command(p, initial, "start_production", "grow_berries")).state
+        finish(p, started)
+        val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(inventory = mapOf("wood" to 200L))), p.id)
+        val full = economy.snapshot(p.hash)
+        val claim = command(p, full, "claim_job", full.jobs.single().id)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, claim) }.code)
+        assertEquals(full, economy.snapshot(p.hash).copy(serverTime = full.serverTime))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(claim.requestId)))
+        val quantity = full.jobs.single().rewards.values.sum()
+        val sold = economy.command(p.hash, command(p, full, "sell", "wood", quantity)).state
+        val claimed = economy.command(p.hash, command(p, sold, "claim_job", claim.targetId)).state
+        assertTrue(claimed.jobs.isEmpty())
+        assertEquals(EconomyStorage(200, 200, 0, 0, 0), claimed.storage)
     }
 
     @Test fun `owner fences banned accounts and old journeys cannot be bypassed`() = runBlocking<Unit> {

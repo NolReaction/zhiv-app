@@ -1,4 +1,4 @@
-import { ECONOMY_MAX_BALANCE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState } from "./model";
+import { ECONOMY_MAX_BALANCE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 
 export class EconomyRuleError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
@@ -9,6 +9,27 @@ export function canAffordEconomy(state: Pick<EconomyState, "wallet" | "inventory
 }
 export function scaledEconomyCost(cost: EconomyCost, quantity: number): EconomyCost {
   return { coins: cost.coins * quantity, items: Object.fromEntries(Object.entries(cost.items).map(([item, amount]) => [item, amount * quantity])) };
+}
+export function unmetEconomyBuildings(state: Pick<EconomyState, "buildings">, requiredBuildings: Record<string, number> = {}) {
+  return Object.entries(requiredBuildings).filter(([buildingId, level]) => (state.buildings[buildingId] ?? 0) < level)
+    .map(([buildingId, requiredLevel]) => ({ buildingId, requiredLevel, currentLevel: state.buildings[buildingId] ?? 0 }));
+}
+export function economyStorage(state: Pick<EconomyState, "buildings" | "inventory">, reservedItems: Record<string, number> = {}): EconomyStorage {
+  const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
+  const capacity = warehouse?.levels.find(level => level.level === (state.buildings.warehouse ?? 1))?.warehouseCapacity ?? 0;
+  const used = Object.values(state.inventory).reduce((total, quantity) => total + quantity, 0);
+  const reserved = Object.values(reservedItems).reduce((total, quantity) => total + quantity, 0);
+  return { capacity, used, reserved, available: Math.max(0, capacity - used - reserved), overflow: Math.max(0, used + reserved - capacity) };
+}
+/** Escrow occupies storage too. Existing over-capacity inventories can shrink or move, never grow. */
+export function assertEconomyStorageTransition(previous: Pick<EconomyState, "buildings" | "inventory">, next: Pick<EconomyState, "buildings" | "inventory">,
+  previousReserved: Record<string, number> = {}, nextReserved: Record<string, number> = previousReserved) {
+  const totals = { ...next.inventory };
+  for (const [item, quantity] of Object.entries(nextReserved)) totals[item] = (totals[item] ?? 0) + quantity;
+  if (Object.values(totals).some(quantity => quantity > ECONOMY_MAX_BALANCE)) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
+  const before = economyStorage(previous, previousReserved), after = economyStorage(next, nextReserved);
+  if (after.used + after.reserved > after.capacity && after.used + after.reserved > before.used + before.reserved)
+    fail("ECONOMY_STORAGE_FULL", "Склад заполнен. Продайте лишнее, используйте материалы или расширьте склад");
 }
 export function marketUnlocked(state: Pick<EconomyState, "buildings" | "completedExplorations">) {
   return (state.buildings.home ?? 1) >= economyCatalog.market.requiredHomeLevel && state.completedExplorations >= economyCatalog.market.requiredExplorations;
@@ -24,7 +45,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
   return { wallet: { coins: migration.coinsGranted, pearls: 0 },
     inventory: { ...(migration.woodGranted ? { wood: migration.woodGranted } : {}), ...(migration.stoneGranted ? { stone: migration.stoneGranted } : {}) },
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
-      : building.id === "garden" ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
+      : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
     jobs: [], migration, completedExplorations: 0 };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
@@ -47,10 +68,16 @@ export function creditEconomyItems(state: EconomyState, rewards: Record<string, 
 function requireHome(state: EconomyState, level: number) {
   if ((state.buildings.home ?? 1) < level) fail("ECONOMY_HOME_REQUIRED", `Нужен дом уровня ${level}`);
 }
+function requireBuildings(state: EconomyState, required: Record<string, number>) {
+  const missing = unmetEconomyBuildings(state, required);
+  if (missing.length) fail("ECONOMY_BUILDING_REQUIRED", `Нужны постройки: ${missing.map(item => `${economyCatalog.buildings.find(building => building.id === item.buildingId)?.name ?? item.buildingId} ${item.requiredLevel}`).join(", ")}`);
+}
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
-export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string): string {
+export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}): string {
   if (command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards">, seconds: number, cost: EconomyCost) => {
+    if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
+      fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
     debit(state, cost);
     state.jobs.push({ ...job, id: jobId(), startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost, catalogVersion: economyCatalog.version });
   };
@@ -62,6 +89,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (!recipe) return fail("ECONOMY_RECIPE", "Рецепт не найден");
       if ((state.buildings[recipe.buildingId] ?? 0) < recipe.buildingLevel) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
       requireHome(state, recipe.requiredHomeLevel);
+      requireBuildings(state, recipe.requiredBuildings);
       if (state.jobs.some(job => job.targetId === recipe.buildingId && ["production", "construction"].includes(job.kind))) fail("ECONOMY_BUILDING_BUSY", "Здание уже занято. Заберите готовый результат");
       createJob({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
         rewards: Object.fromEntries(Object.entries(recipe.rewards).map(([item, amount]) => [item, amount * command.quantity])) },
@@ -72,6 +100,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       const route = economyCatalog.explorations.find(item => item.id === command.targetId);
       if (!route) return fail("ECONOMY_EXPLORATION", "Место исследования не найдено");
       requireHome(state, route.requiredHomeLevel);
+      requireBuildings(state, route.requiredBuildings);
       if (state.jobs.some(job => job.kind === "exploration")) fail("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Заберите его находки");
       createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards: { ...route.rewards } }, route.seconds, route.cost);
       return "Мохлик отправился исследовать мир";
@@ -82,6 +111,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       const target = building.levels.find(level => level.level === (state.buildings[building.id] ?? 0) + 1);
       if (!target) return fail("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены");
       requireHome(state, target.requiredHomeLevel);
+      requireBuildings(state, target.requiredBuildings);
       if (state.jobs.some(job => job.kind === "construction")) fail("ECONOMY_CONSTRUCTION_BUSY", "Сначала завершите текущую стройку");
       if (state.jobs.some(job => job.kind === "production" && job.targetId === building.id)) fail("ECONOMY_BUILDING_BUSY", "Перед улучшением заберите результат производства");
       createJob({ kind: "construction", targetId: building.id, recipeId: null, targetLevel: target.level, rewards: {} }, target.seconds, target.cost);
@@ -92,7 +122,12 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
       if (now < Date.parse(job.finishesAt)) fail("ECONOMY_JOB_NOT_READY", "Работа ещё не закончена");
       if (job.kind === "construction") state.buildings[job.targetId] = job.targetLevel!;
-      else creditEconomyItems(state, job.rewards);
+      else {
+        const inventory = { ...state.inventory };
+        for (const [item, quantity] of Object.entries(job.rewards)) inventory[item] = (inventory[item] ?? 0) + quantity;
+        assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+        creditEconomyItems(state, job.rewards);
+      }
       if (job.kind === "exploration") state.completedExplorations = Math.min(ECONOMY_MAX_BALANCE, state.completedExplorations + 1);
       state.jobs = state.jobs.filter(item => item.id !== job.id);
       return job.kind === "construction" ? "Постройка готова" : "Результат получен";

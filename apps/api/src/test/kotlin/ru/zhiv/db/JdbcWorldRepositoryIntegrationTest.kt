@@ -99,6 +99,40 @@ class JdbcWorldRepositoryIntegrationTest {
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"legacy-journey:${journey.id}"))
         assertEquals(0L,identities.findBySession(p.hash)!!.checkInCount)
     }
+
+    @Test fun `legacy reward respects mixed warehouse stock and escrow without consuming a blocked return`() = runBlocking<Unit> {
+        val p=player();val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        val journey=WorldJourney(UUID.randomUUID().toString(),"first_path","2000-01-01T00:00:00Z","2000-01-01T00:01:00Z",WorldResources(12,8,4),listOf("acorn"),true,3)
+        execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)",p.id,worldJson.encodeToString(WorldState(houseLevel=2,journeys=listOf(journey))))
+        world.snapshot(p.hash)
+        val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 100L,"fiber" to 100L),completedExplorations=1)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),p.id)
+        val balance=economy.snapshot(p.hash)
+        market.command(p.hash,EconomyCommand(UUID.randomUUID().toString(),p.publicId,balance.revision,"create_listing","berries",20,60))
+        val initial=world.snapshot(p.hash)
+        val before=economy.snapshot(p.hash)
+        val claim=WorldCommand(UUID.randomUUID().toString(),p.publicId,initial.revision,"claim_journey",journey.id)
+        assertEquals("ECONOMY_STORAGE_FULL",assertFailsWith<AuthFailure> { world.command(p.hash,claim) }.code)
+        assertEquals(initial.state,world.snapshot(p.hash).state)
+        assertEquals(before.inventory,economy.snapshot(p.hash).inventory)
+        assertEquals(before.wallet,economy.snapshot(p.hash).wallet)
+        assertEquals(before.revision,economy.snapshot(p.hash).revision)
+        assertEquals("0",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"legacy-journey:${journey.id}"))
+        assertEquals("0",scalar("SELECT count(*) FROM world_commands WHERE user_id=? AND request_id=?",p.id,UUID.fromString(claim.requestId)))
+        val conversion=EconomyRules.legacyConversion(12,8,4)
+        val spaceNeeded=conversion.woodGranted+conversion.stoneGranted
+        economy.command(p.hash,EconomyCommand(UUID.randomUUID().toString(),p.publicId,before.revision,"sell","berries",spaceNeeded))
+        val result=world.command(p.hash,claim)
+        assertTrue(result.snapshot.state.journeys.isEmpty())
+        val paid=economy.snapshot(p.hash)
+        assertEquals(200L,paid.storage.used+paid.storage.reserved)
+        assertEquals(20L,paid.storage.reserved)
+        assertEquals(conversion.woodGranted,paid.inventory["wood"])
+        assertEquals(conversion.stoneGranted,paid.inventory["stone"])
+        assertTrue(world.command(p.hash,claim).replayed)
+        assertEquals(paid.wallet,economy.snapshot(p.hash).wallet)
+    }
+
     @Test fun `unknown world actions remain bad requests rather than retired economic operations`() = runBlocking<Unit> {
         val p=player(); val initial=world.snapshot(p.hash)
         for (action in listOf("dev_grant_resources", "unknown_action")) {

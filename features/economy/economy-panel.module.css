@@ -47,6 +47,33 @@
 .panel .primary:hover:not(:disabled) { background: #dfebc9; }
 .panel .wide { width: 100%; }
 .panel .textButton { min-height: 36px; padding: 6px 3px; border: 0; background: transparent; color: #d5e7b9; font-size: .8rem; }
+.panel .textButton { justify-content: flex-start; text-align: left; line-height: 1.4; }
+.textButton > svg { flex-shrink: 0; }
+.storage { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--economy-line); border-radius: 13px; background: #0c1a1080; font-size: .8rem; }
+.storage strong { display: inline-flex; align-items: center; gap: 7px; }
+.storage[data-full='true'] { border-color: #e1ad6150; }
+.storage[data-full='true'] .progress { accent-color: #e1ba79; }
+.storage[data-full='true'] .progress::-webkit-progress-value { background: #e1ba79; }
+.storage[data-full='true'] .progress::-moz-progress-bar { background: #e1ba79; }
+.buildingGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.buildingGrid button { min-width: 0; justify-content: flex-start; text-align: left; padding: 10px 8px; gap: 7px; }
+.buildingGrid button > svg { flex-shrink: 0; color: #c5d9a7; }
+.buildingGrid button > span { display: grid; gap: 4px; min-width: 0; }
+.buildingGrid strong { font-size: .76rem; line-height: 1.35; font-weight: 550; }
+.buildingGrid small { color: var(--economy-muted); font-size: .68rem; }
+.buildingGrid button[aria-pressed='true'] { border-color: #d4e8a78c; background: #3b4c2b77; }
+.tiers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.tiers button { min-width: 0; gap: 3px; padding: 8px 2px; font-size: .72rem; }
+.tiers button[aria-pressed='true'] { background: #c6d9a8; color: #23301c; border-color: #d9e9b7; }
+.requirements, .unlocks { list-style: none; padding: 0; margin: 0; display: grid; gap: 3px; }
+.requirements { font-size: .77rem; }
+.requirements li { display: flex; align-items: center; gap: 7px; color: #efc6a2; min-height: 26px; }
+.requirements li > svg { flex-shrink: 0; }
+.requirements li[data-complete='true'] { color: #b9cda0; }
+.requirements .textButton { color: #efc6a2; font-size: .77rem; }
+.unlocks li { min-width: 0; }
+.unlocks .textButton { width: 100%; }
+.panel h3, .buildingGrid strong, .stockGrid strong, .unlocks button { overflow-wrap: anywhere; }
 .duration { display: inline-flex; align-items: center; gap: 5px; color: var(--economy-muted); font-size: .77rem; white-space: nowrap; }
 .progress { display: block; width: 100%; height: 5px; overflow: hidden; border: 0; border-radius: 5px; background: #0e180c; accent-color: #b9d58b; }
 .progress::-webkit-progress-bar { background: #0e180c; border-radius: 5px; }

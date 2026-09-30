@@ -10,7 +10,8 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts"
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", now = Date.now();
 const state = (revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revision, serverTime: new Date(now).toISOString(), wallet: { coins: 100, pearls: 0 }, inventory: {},
-  buildings: { home: 1, garden: 1 }, jobs: [], migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: economyCatalog, completedExplorations: 0 });
+  buildings: { home: 1, garden: 1, warehouse: 1, kiln: 0 }, storage: { capacity: 200, used: 0, reserved: 0, available: 200, overflow: 0 },
+  jobs: [], migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: economyCatalog, completedExplorations: 0 });
 const market = () => ({ listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() });
 const result = snapshot => ({ state: snapshot, message: "Готово", acceptedRevision: snapshot.revision, replayed: false });
 const transport = overrides => ({ get: async () => state(), send: async () => result(state(1)), market: async () => market(), trade: async () => result(state(1)), ...overrides });

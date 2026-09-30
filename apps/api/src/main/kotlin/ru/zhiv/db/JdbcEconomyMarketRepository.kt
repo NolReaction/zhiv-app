@@ -13,15 +13,26 @@ import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
-/** Escrow reserves capacity too: users can always take an unsold lot back. */
-internal fun assertEconomyMarketCapacity(c: Connection, user: UUID, inventory: Map<String, Long>) {
-    val reserved = c.economyRows("""SELECT item_id,sum(quantity) FROM economy_market_listings
+/** Callers hold the common account lock, shared by production, market and lifecycle writes. */
+internal fun reservedEconomyMarketItems(c: Connection, user: UUID): Map<String, Long> =
+    c.economyRows("""SELECT item_id,sum(quantity) FROM economy_market_listings
         WHERE seller_id=? AND status='active' GROUP BY item_id""", user) { it.getString(1) to it.getLong(2) }.toMap()
-    if ((inventory.keys + reserved.keys).any { item ->
-        val amount = inventory[item] ?: 0L
-        val held = reserved[item] ?: 0L
-        amount < 0L || amount > ECONOMY_MAX_BALANCE - held
+
+/** Escrow occupies warehouse space; returning it must also work for preserved old overflow. */
+internal fun assertEconomyMarketCapacity(
+    c: Connection,
+    user: UUID,
+    before: EconomyState,
+    next: EconomyState,
+    reservedBefore: Map<String, Long> = reservedEconomyMarketItems(c, user),
+) {
+    val reservedAfter = reservedEconomyMarketItems(c, user)
+    if ((next.inventory.keys + reservedAfter.keys).any { item ->
+        val amount = next.inventory[item] ?: 0L
+        val held = reservedAfter[item] ?: 0L
+        amount < 0L || held < 0L || held > ECONOMY_MAX_BALANCE || amount > ECONOMY_MAX_BALANCE - held
     }) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для предметов", 409)
+    EconomyRules.assertStorageTransition(before, next, reservedBefore, reservedAfter)
 }
 
 /** Lifecycle callers already hold the common user lock. Cancel before merging or resetting profiles. */
@@ -34,14 +45,16 @@ internal fun cancelEconomyMarketListings(c: Connection, user: UUID) {
     ensureEconomyProfile(c, user)
     val row = readEconomyProfile(c, user)
     val inventory = row.state.inventory.toMutableMap()
+    val reservedBefore = reservedEconomyMarketItems(c, user)
     for ((id, item, quantity) in lots) {
         inventory[item] = Math.addExact(inventory[item] ?: 0L, quantity)
         c.economyUpdate("UPDATE economy_market_listings SET status='cancelled',closed_at=clock_timestamp() WHERE id=?", id)
         c.economyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,items)
             VALUES (?,?,'market_cancel',0,?::jsonb)""", user, "market:cancel:$id", economyJson.encodeToString(mapOf(item to quantity)))
     }
-    assertEconomyMarketCapacity(c, user, inventory)
-    saveEconomyProfile(c, user, row.state.copy(inventory = inventory))
+    val next = row.state.copy(inventory = inventory)
+    assertEconomyMarketCapacity(c, user, row.state, next, reservedBefore)
+    saveEconomyProfile(c, user, next)
 }
 
 internal fun mergeEconomyMarketReceipts(c: Connection, target: UUID, source: UUID) {
@@ -185,10 +198,12 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         if (available < command.quantity) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно предметов для этой партии", 409)
         val inventory = state.inventory + (item.id to available - command.quantity)
         val id = UUID.randomUUID()
+        val reservedBefore = reservedEconomyMarketItems(c, user)
         c.economyUpdate("""INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price)
             VALUES (?,?,?,?,?)""", id, user, item.id, command.quantity, command.totalPrice)
-        assertEconomyMarketCapacity(c, user, inventory)
-        saveEconomyProfile(c, user, state.copy(inventory = inventory))
+        val next = state.copy(inventory = inventory)
+        assertEconomyMarketCapacity(c, user, state, next, reservedBefore)
+        saveEconomyProfile(c, user, next)
         ledger(c, user, "market:create:$id", "market_create", 0L, item.id, -command.quantity)
         return "Партия выставлена на рынок"
     }
@@ -209,9 +224,10 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         if (amount > ECONOMY_MAX_BALANCE - lot.quantity)
             throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для предметов", 409)
         val inventory = state.inventory + (lot.itemId to amount + lot.quantity)
-        assertEconomyMarketCapacity(c, user, inventory)
+        val next = state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - lot.totalPrice), inventory = inventory)
+        assertEconomyMarketCapacity(c, user, state, next)
         c.economyUpdate("UPDATE economy_market_listings SET status='sold',buyer_id=?,closed_at=clock_timestamp() WHERE id=?", user, UUID.fromString(lot.id))
-        saveEconomyProfile(c, user, state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - lot.totalPrice), inventory = inventory))
+        saveEconomyProfile(c, user, next)
         saveEconomyProfile(c, row.seller, seller.copy(wallet = seller.wallet.copy(coins = seller.wallet.coins + lot.totalPrice)))
         ledger(c, user, "market:buy:${lot.id}", "market_buy", -lot.totalPrice, lot.itemId, lot.quantity)
         ledger(c, row.seller, "market:sell:${lot.id}", "market_sell", lot.totalPrice, lot.itemId, 0L)
@@ -222,9 +238,11 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         if (row.seller != user) throw AuthFailure("ECONOMY_MARKET_OWNER", "Отменить объявление может только продавец", 403)
         val lot = row.listing
         val inventory = state.inventory + (lot.itemId to Math.addExact(state.inventory[lot.itemId] ?: 0L, lot.quantity))
+        val reservedBefore = reservedEconomyMarketItems(c, user)
         c.economyUpdate("UPDATE economy_market_listings SET status='cancelled',closed_at=clock_timestamp() WHERE id=?", UUID.fromString(lot.id))
-        assertEconomyMarketCapacity(c, user, inventory)
-        saveEconomyProfile(c, user, state.copy(inventory = inventory))
+        val next = state.copy(inventory = inventory)
+        assertEconomyMarketCapacity(c, user, state, next, reservedBefore)
+        saveEconomyProfile(c, user, next)
         ledger(c, user, "market:cancel:${lot.id}", "market_cancel", 0L, lot.itemId, lot.quantity)
         return "Объявление снято, предметы возвращены"
     }

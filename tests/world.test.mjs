@@ -168,7 +168,22 @@ test("legacy savings convert once and all five homes plus workshops remain reada
     assert.equal(model.worldStateSchema.parse(migrated.state).houseLevel, level);
   }
   assert.equal(model.workshopLevel({ workshop: true }), 1);
-  assert.equal(model.worldStateSchema.safeParse({ ...model.newWorldState(), workshopLevel: 4 }).success, false);
+  assert.equal(model.worldStateSchema.safeParse({ ...model.newWorldState(), workshop: true, workshopLevel: 5 }).success, true);
+  assert.equal(model.workshopLevel({ workshop: true, workshopLevel: 5 }), 5);
+  assert.equal(model.worldStateSchema.safeParse({ ...model.newWorldState(), workshopLevel: 6 }).success, false);
+});
+
+test("economy workshop levels four and five round-trip through the world without revision churn", () => {
+  const p = player();
+  economy.getDevEconomy(p.token, now);
+  const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  for (const level of [4, 5]) {
+    profile.state.buildings.workshop = level;
+    const snapshot = world.getDevWorld(p.token, now);
+    assert.equal(model.worldSnapshotSchema.parse(snapshot).state.workshopLevel, level);
+    assert.equal(model.workshopLevel(snapshot.state), level);
+    assert.equal(world.getDevWorld(p.token, now + 1).revision, snapshot.revision);
+  }
 });
 
 test("every saved fishing duration needs an explicit idempotent converted claim", () => {

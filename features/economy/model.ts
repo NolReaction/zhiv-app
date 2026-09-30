@@ -6,32 +6,35 @@ const count = z.number().int().nonnegative().safe();
 const balance = count.max(ECONOMY_MAX_BALANCE);
 const id = z.string().min(1).max(80);
 const quantities = z.record(id, balance);
+const requiredBuildings = z.record(id, count.positive().max(100)).default({});
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 export const economyCostSchema = z.object({ coins: balance, items: quantities });
 export const economyCatalogSchema = z.object({
-  version: z.literal(1), maxBatch: z.number().int().min(1).max(100),
+  version: z.literal(2), maxBatch: z.number().int().min(1).max(100),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000) }),
   items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance.positive(), tradable: z.boolean() })).max(1000),
   buildings: z.array(z.object({ id, name: z.string(), description: z.string(), levels: z.array(z.object({
     level: z.number().int().min(1).max(100), seconds: count, cost: economyCostSchema, requiredHomeLevel: z.number().int().min(1).max(5),
+    requiredBuildings, warehouseCapacity: count.positive().nullish(),
   })).max(100) })).max(100),
   recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), requiredHomeLevel: count.positive(),
-    seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
+    requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
   explorations: z.array(z.object({ id, name: z.string(), description: z.string(), requiredHomeLevel: count.positive(),
-    seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
+    requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
 });
 export const economyCatalog = economyCatalogSchema.parse(catalogJson);
 export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGranted: count.max(500), woodGranted: count.max(30), stoneGranted: count.max(30) });
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
-  rewards: quantities, cost: economyCostSchema, catalogVersion: z.literal(1),
+  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2)]),
 });
+export const economyStorageSchema = z.object({ capacity: count, used: count, reserved: count, available: count, overflow: count });
 export const economyViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40), revision: count, serverTime: z.string().datetime(),
   wallet: z.object({ coins: balance, pearls: balance }), inventory: quantities, buildings: z.record(id, count.max(100)),
   jobs: z.array(economyJobSchema).max(100), migration: economyMigrationSchema, catalog: economyCatalogSchema,
-  completedExplorations: count,
+  completedExplorations: count, storage: economyStorageSchema,
 });
 const commandBase = {
   requestId: uuid, ownerPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/), expectedRevision: count.max(Number.MAX_SAFE_INTEGER - 1), targetId: id,
@@ -56,6 +59,7 @@ export const economyResultSchema = z.object({
   state: economyViewSchema, message: z.string(), acceptedRevision: count, replayed: z.boolean(), listing: economyMarketListingSchema.optional().nullable(),
 });
 export type EconomyCost = z.infer<typeof economyCostSchema>;
+export type EconomyStorage = z.infer<typeof economyStorageSchema>;
 export type EconomyCatalog = z.infer<typeof economyCatalogSchema>;
 export type EconomyView = z.infer<typeof economyViewSchema>;
 export type EconomyJob = z.infer<typeof economyJobSchema>;
