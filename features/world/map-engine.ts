@@ -177,6 +177,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       const world = screenToWorld(p, camera, view);
       if (rebuilding) {
         if (habitat.hitPet((world.x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width, (world.y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) habitat.notice();
+        else if (habitat.hitSite?.(world) === "home") onPlace("house");
       } else {
         const { x, y } = worldToHome(world);
         const place = mapPlaceAt(world);

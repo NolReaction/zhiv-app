@@ -45,8 +45,8 @@
 .bottomHud button { pointer-events: auto; }
 .bottomHud .goalChip { min-height: 40px; padding: 7px 13px; border-radius: 12px; background: #172316e8; font-size: .875rem; box-shadow: 0 3px 12px #06100755; }
 .goalChip > svg:first-child { color: #d0dea2; }
-.gameDock { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: min(360px, 100%); gap: 8px; }
-.gameDock button { display: grid; justify-items: center; gap: 5px; min-height: 65px; padding: 9px 12px; border-radius: 16px; background: #1b2b1cec; box-shadow: inset 0 1px #f1f9ce17, 0 4px 14px #07110655; font-size: .875rem; }
+.gameDock { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: min(420px, 100%); gap: 6px; }
+.gameDock button { display: grid; justify-items: center; gap: 5px; min-height: 65px; min-width: 0; padding: 9px 4px; border-radius: 16px; background: #1b2b1cec; box-shadow: inset 0 1px #f1f9ce17, 0 4px 14px #07110655; font-size: clamp(.68rem, 2.8vw, .82rem); overflow-wrap: anywhere; }
 .gameDock svg { color: #d2dfaa; }
 .feedback { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(148px + env(safe-area-inset-bottom)); width: min(440px, calc(100% - 100px)); pointer-events: none; z-index: 4; font-size: .875rem; }
 .feedback > p { margin: 0; border-radius: 12px; padding: 10px 13px; border: 1px solid #dae4b134; background: #142319ed; text-align: center; line-height: 1.5; }

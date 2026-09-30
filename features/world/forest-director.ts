@@ -21,7 +21,7 @@ import { advanceForestMind, beginForestIntention, finishForestIntention, noticeF
 
 export type ForestDirective = ForestLifeAction | ForestGardenAction | "grow-berries" | "bush" | "home-sleep" | "wake" | "watch-birds" | "campfire";
 export type ForestDirectorOptions = {
-  autoLife: boolean; blocked: boolean; dusk: number; rain: number; homeAvailable: boolean;
+  autoLife: boolean; blocked: boolean; dusk: number; rain: number; homeAvailable: boolean; actorAway?: boolean;
   butterflies?: "auto" | "on" | "off"; fireflies?: "auto" | "on" | "off";
   heroScale?: number; reducedMotion?: boolean; navigationMode?: "auto" | "routes";
   /** Actual birds from the shared scene clock, never fabricated by the actor. */
@@ -73,8 +73,8 @@ function finishAction(state: ForestSessionState) {
 }
 
 /** A DEV pose is a deliberate interruption, never a second owner of a seated insect. */
-export function cancelForestDirector(state: ForestSessionState) {
-  finishForestIntention(state.clearing.behavior.mind, "interrupted", "Занятие остановлено в DEV");
+export function cancelForestDirector(state: ForestSessionState, reason = "Занятие остановлено в DEV") {
+  finishForestIntention(state.clearing.behavior.mind, "interrupted", reason);
   state.director.birdwatch = null; state.director.campfireVisit = null;
   cancelForestLife(state.life); cancelFaunaInteraction(state.fauna);
   cancelGarden(state);
@@ -504,7 +504,7 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     });
   }
   const previousEncounter = state.fauna.encounter;
-  advanceForestFauna(state.fauna, dt, { ...options, actor: actor(state, options) });
+  advanceForestFauna(state.fauna, dt, { ...options, actor: options.actorAway ? undefined : actor(state, options) });
   const encounter = state.fauna.encounter ?? previousEncounter;
   if (encounter?.phase === "interrupt" && state.clearing.behavior.mind.intention?.action === encounter.kind)
     finishForestIntention(state.clearing.behavior.mind, "interrupted", "Встреча закончилась раньше — обитатель возвращается в лес");

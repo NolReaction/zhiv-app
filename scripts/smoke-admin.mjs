@@ -223,11 +223,10 @@ const management = (action, extra = {}) => ({ requestId: randomUUID(), confirmat
 const resourceGrant = management("grant_resource", { target: "wood", amount: 25 });
 await api("POST", managePath, { cookie: ordinary.cookie, body: resourceGrant, expected: 403 });
 await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant, source: "https://untrusted.invalid", expected: 403 });
-const resourceReceipt = await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant });
-assert.equal(resourceReceipt.data.changed, true);
-assert.deepEqual((await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant })).data, resourceReceipt.data);
+const resourceDenied = await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant, expected: 409 });
+assert.equal(resourceDenied.data.code, "ADMIN_RESOURCE_RETIRED");
 assert.equal((await api("GET", "/api/v1/world", { cookie: freshCookie })).data.state.resources.wood,
-  beforeManagement.data.world.resources.wood + 25);
+  beforeManagement.data.world.resources.wood);
 const tag = { text: "Tester", color: "blue" };
 await api("POST", managePath, { cookie: admin.cookie, body: management("set_tag", { tag }) });
 assert.deepEqual((await api("GET", "/api/v1/me", { cookie: freshCookie })).data.user.tag, tag);

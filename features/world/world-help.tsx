@@ -20,13 +20,13 @@ export function WorldHelp() {
       <div><h3>Путеводитель по лесу</h3><p>Выберите тему или найдите ответ по слову.</p></div>
     </div>
     {WORLD_PRESENTATION.rebuilding && <aside className={styles.status} aria-label="Состояние игры">
-      <Sprout size={19} aria-hidden="true" /><div><strong>Лес обновляется</strong><p>Карта, гардероб и коллекции доступны. Новые путешествия и строительство вернутся позже; полученный прогресс сохраняется.</p></div>
+      <Sprout size={19} aria-hidden="true" /><div><strong>Лес обновляется</strong><p>Хозяйство, исследования и рынок уже доступны. Новые здания появятся на карте по мере её обустройства; полученный прогресс сохраняется.</p></div>
     </aside>}
     <div className={styles.search} role="search" aria-label="Поиск по справке">
       <label htmlFor={searchId}>Что хотите узнать?</label>
       <div className={styles.searchField}>
         <Search size={18} aria-hidden="true" />
-        <input id={searchId} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Например, искры или ночь" autoComplete="off" maxLength={100} />
+        <input id={searchId} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Например, монеты или ночь" autoComplete="off" maxLength={100} />
         {query && <button type="button" aria-label="Очистить поиск" onClick={() => { setQuery(""); document.getElementById(searchId)?.focus(); }}><X size={18} aria-hidden="true" /></button>}
       </div>
     </div>

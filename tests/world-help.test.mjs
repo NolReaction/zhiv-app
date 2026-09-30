@@ -26,18 +26,19 @@ test("help search handles Russian spelling, word order, whitespace and missing r
 test("help uses current catalog rules and marks unavailable mechanics while rebuilding", () => {
   const topics = worldHelpTopics(true), get = id => topics.find(topic => topic.id === id);
   const resources = get("resources").paragraphs.join(" ");
-  assert.ok(resources.includes(`Каждые ${worldCatalog.tapsPerSpark} засчитанных`));
-  assert.ok(resources.includes(`до ${worldCatalog.dailySparkLimit} искр`));
-  assert.match(resources, /00:00 UTC/);
+  assert.match(resources, /не более 500 монет, 30 древесины и 30 камня/);
+  assert.match(resources, /больше не создают валюту/);
+  assert.match(resources, /Покупки за реальные деньги.*не подключены/);
   assert.ok(get("check-in").paragraphs.join(" ").includes(`${CLICKER_IDLE_RESET_MS / 1000} секунд`));
   assert.ok(get("level").paragraphs.join(" ").includes(`уровней ${CLICKER_LEVELS.length}`));
   for (const id of ["explorer_cap", "willow_rod"]) {
     assert.ok(get("collection").paragraphs.join(" ").includes(worldCatalog.items.find(item => item.id === id).name));
   }
-  assert.match(get("journeys").paragraphs[0], /Новые прогулки, рыбалка, строительство, улучшения и изготовление вещей временно недоступны/);
-  assert.match(get("journeys").paragraphs[1], /раньше.*В пути.*Подтвердить возвращение/);
+  assert.match(get("journeys").paragraphs[0], /Стоимость улучшения включает монеты и материалы/);
+  assert.match(get("journeys").paragraphs[1], /Одновременно идёт одно исследование/);
+  assert.match(get("market").paragraphs[1], /Свой лот купить нельзя/);
   assert.match(get("wardrobe").note, /пока нельзя изготовить.*полученные вещи можно менять/);
-  assert.match(get("collection").note, /новые выходы пока закрыты/);
+  assert.match(get("collection").note, /Новые исследования дают товары на склад/);
   assert.doesNotMatch(worldHelpTopics(false).find(topic => topic.id === "journeys").paragraphs.join(" "), /временно недоступны|началось раньше/);
 });
 
@@ -57,7 +58,7 @@ test("help has a labelled search, native keyboard-operable topics and current st
 test("world HUD places the labelled info action directly after collections", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const world = { snapshot: { state: newWorldState(), gifts: [] }, now: Date.parse("2026-09-23T12:00:00Z"), act() {} };
-  const markup = renderToStaticMarkup(createElement(WorldView, { world, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
+  const markup = renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
   assert.match(markup, /aria-label="Открыть коллекции"[^]*?<\/button><button[^>]*aria-label="Справка по игре"/);
   assert.match(markup, /lucide-info/);
 });

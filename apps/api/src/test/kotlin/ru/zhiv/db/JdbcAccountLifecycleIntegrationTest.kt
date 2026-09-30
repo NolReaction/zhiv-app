@@ -8,6 +8,7 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import kotlinx.serialization.encodeToString
 import ru.zhiv.world.*
+import ru.zhiv.economy.*
 import ru.zhiv.forest.*
 import ru.zhiv.installZhivApi
 import kotlinx.coroutines.*
@@ -418,41 +419,105 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("0",scalar("SELECT count(*) FROM game_items WHERE user_id IN (?,?)",a.id,b.id))
     }
 
-    @Test fun `world merge retains trips possessions and colliding ledger keys then deletion clears data`() = runBlocking<Unit> {
+    @Test fun `world and economy merge preserve assets trips receipts and clear deleted profiles`() = runBlocking<Unit> {
         val a=account();val b=account();val browser=tokens.issue().hash;val world=JdbcWorldRepository(source)
-        world.snapshot(a.session);world.snapshot(b.session)
         val finds=WorldRules.catalog.finds.map { it.id }
-        execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=20 WHERE user_id=?",
-            worldJson.encodeToString(WorldState(resources=WorldResources(20,8,4),collection=finds.take(3),equipment=WorldEquipment(neck="amber_scarf"))),a.id)
-        execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=50 WHERE user_id=?",
-            worldJson.encodeToString(WorldState(resources=WorldResources(50,20,10),workshop=true,collection=finds.drop(3))),b.id)
-        val sharedKey=UUID.randomUUID().toString()
-        suspend fun upgrade(account: Account) {
-            val snapshot=world.snapshot(account.session)
-            world.command(account.session,WorldCommand(sharedKey,snapshot.ownerPublicId,snapshot.revision,"upgrade_house"))
-        }
-        suspend fun travel(account: Account): WorldJourney {
-            val snapshot=world.snapshot(account.session)
-            return world.command(account.session,WorldCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"start_journey","first_path")).snapshot.state.journeys.single()
-        }
-        upgrade(a);upgrade(b)
-        // Existing level-three homes survive the new beta cap; do not buy a disabled upgrade.
-        execute("UPDATE world_profiles SET state=jsonb_set(state,'{houseLevel}','3'::jsonb) WHERE user_id=?",b.id)
-        val tripA=travel(a)
-        val stale=readyMerge(a,b,browser);val tripB=travel(b)
+        fun legacyTrip()=WorldJourney(UUID.randomUUID().toString(),"first_path","2000-01-01T00:00:00Z","2000-01-01T00:01:00Z",WorldResources(12,8,4),listOf("acorn"),true,3)
+        val tripA=legacyTrip();val tripB=legacyTrip()
+        execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)",a.id,
+            worldJson.encodeToString(WorldState(resources=WorldResources(20,8,4),collection=finds.take(3),journeys=listOf(tripA),equipment=WorldEquipment(neck="amber_scarf"))))
+        execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)",b.id,
+            worldJson.encodeToString(WorldState(resources=WorldResources(50,20,10),houseLevel=3,workshop=true,collection=finds.drop(3),journeys=listOf(tripB))))
+        val initialA=world.snapshot(a.session);world.snapshot(b.session)
+        val shared=UUID.randomUUID()
+        for(owner in listOf(a,b)) execute("INSERT INTO world_ledger(user_id,source_key,kind,sparks) VALUES (?,?,'old_upgrade',-10)",owner.id,"command:$shared")
+        val sourceCommand=WorldCommand(UUID.randomUUID().toString(),people.findBySession(b.session)!!.publicId,world.snapshot(b.session).revision,"equip","moss")
+        world.command(b.session,sourceCommand)
+        val stale=readyMerge(a,b,browser)
+        execute("UPDATE economy_profiles SET state=jsonb_set(state,'{wallet,coins}',to_jsonb((state->'wallet'->>'coins')::bigint+1)),revision=revision+1 WHERE user_id=?",b.id)
         assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,stale) }.code)
+        val beforeA=JdbcEconomyRepository(source).snapshot(a.session);val beforeB=JdbcEconomyRepository(source).snapshot(b.session)
         val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
-        val merged=JdbcWorldRepository(source).snapshot(a.session)
-        assertEquals(WorldResources(50,16,10),merged.state.resources);assertEquals(3,merged.state.houseLevel);assertTrue(merged.state.workshop)
+        val merged=world.snapshot(a.session);val economy=JdbcEconomyRepository(source).snapshot(a.session)
+        assertEquals(WorldResources(),merged.state.resources);assertEquals(3,merged.state.houseLevel);assertTrue(merged.state.workshop)
+        assertEquals(beforeA.wallet.coins+beforeB.wallet.coins,economy.wallet.coins)
+        assertEquals((beforeA.inventory["wood"] ?: 0)+(beforeB.inventory["wood"] ?: 0),economy.inventory["wood"])
         assertEquals("amber_scarf",merged.state.equipment.neck);assertEquals(finds.toSet(),merged.state.collection.toSet())
         assertTrue("explorer_cap" in merged.state.inventory)
-        assertEquals(setOf(tripA.id,tripB.id),merged.state.journeys.map { it.id }.toSet());assertEquals(60,merged.dailySparksEarned)
-        assertEquals("2",scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND kind='upgrade_house'",a.id))
-        auth.confirmMerge(a.session,browser,key);assertEquals(merged.state,world.snapshot(a.session).state)
-        for(table in listOf("world_profiles","world_commands","world_ledger")) assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id=?",b.id))
+        assertEquals(setOf(tripA.id,tripB.id),merged.state.journeys.map { it.id }.toSet());assertEquals(0,merged.dailySparksEarned)
+        assertEquals("2",scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND kind='old_upgrade'",a.id))
+        assertEquals("WORLD_COMMAND_CONFLICT",assertFailsWith<AuthFailure> { world.command(a.session,sourceCommand.copy(ownerPublicId=initialA.ownerPublicId,expectedRevision=merged.revision)) }.code)
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(economy.wallet,JdbcEconomyRepository(source).snapshot(a.session).wallet)
+        for(table in listOf("world_profiles","world_commands","world_ledger","economy_profiles","economy_commands","economy_ledger"))
+            assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id=?",b.id))
         prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
-        for(table in listOf("world_profiles","world_commands","world_ledger")) assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id IN (?,?)",a.id,b.id))
+        for(table in listOf("world_profiles","world_commands","world_ledger","economy_profiles","economy_commands","economy_ledger"))
+            assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id IN (?,?)",a.id,b.id))
+        assertEquals("2",scalar("SELECT count(*) FROM economy_conversion_audit WHERE user_id IN (?,?)",a.id,b.id))
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { world.snapshot(a.session) }.code)
+    }
+
+    @Test fun `merge review blocks pending economy work and never consumes its materials`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val repo=JdbcEconomyRepository(source);val state=repo.snapshot(a.session)
+        val production=EconomyCommand(UUID.randomUUID().toString(),state.ownerPublicId,state.revision,"start_production","berries")
+        // Seed a real in-flight job through the public production command.
+        val recipe=EconomyRules.catalog.recipes.first { it.buildingId=="garden" && it.buildingLevel==1 }
+        repo.command(a.session,production.copy(targetId=recipe.id))
+        prove(a,browser,"merge");prove(a,browser,"merge","other",b)
+        val before=repo.snapshot(a.session)
+        val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),tokens.issue().hash)
+        assertTrue(preview.conflicts.any { it.contains("производства") })
+        assertEquals(before.jobs,repo.snapshot(a.session).jobs)
+        assertEquals(before.inventory,repo.snapshot(a.session).inventory)
+    }
+
+    @Test fun `merge cancels escrow once and consumed source market requests cannot replay`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        fun prepare(owner: Account, amount: Long) {
+            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to amount),completedExplorations=1)
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
+        }
+        economy.snapshot(a.session);economy.snapshot(b.session);prepare(a,5);prepare(b,8)
+        val before=economy.snapshot(b.session)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,9)
+        market.command(b.session,listing)
+        val listingId=UUID.fromString(market.market(b.session).mine.single().id)
+        assertEquals(5L,economy.snapshot(b.session).inventory["berries"])
+        val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
+        val merged=economy.snapshot(a.session)
+        assertEquals(13L,merged.inventory["berries"])
+        assertEquals("cancelled",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
+        assertEquals("1",scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?",a.id,UUID.fromString(listing.requestId)))
+        assertFailsWith<AuthFailure> { market.command(a.session,listing.copy(ownerPublicId=merged.ownerPublicId,expectedRevision=merged.revision)) }
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(13L,economy.snapshot(a.session).inventory["berries"])
+        val active=EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"create_listing","berries",2,6)
+        market.command(a.session,active)
+        prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_profiles WHERE user_id=?",a.id))
+    }
+
+    @Test fun `merge capacity review includes stock held in active listings`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        economy.snapshot(a.session);economy.snapshot(b.session)
+        for(owner in listOf(a,b)) {
+            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 500_000_001L),completedExplorations=1)
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
+        }
+        val before=economy.snapshot(b.session)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,9)
+        market.command(b.session,listing)
+        val listingId=UUID.fromString(market.market(b.session).mine.single().id)
+        prove(a,browser,"merge");prove(a,browser,"merge","other",b)
+        val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),tokens.issue().hash)
+        assertTrue(preview.conflicts.any { it.contains("вместимость") })
+        assertEquals("active",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
+        assertEquals(499_999_998L,economy.snapshot(b.session).inventory["berries"])
     }
 
     @Test fun `forest memory merge keeps target or adopts source and invalidates leases then deletion erases snapshots`() = runBlocking<Unit> {

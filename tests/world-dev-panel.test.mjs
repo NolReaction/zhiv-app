@@ -169,14 +169,14 @@ test("blocked scenes and animations retain explanatory labels, while cancellatio
 test("returning to building controls uses the selected level and changing one building preserves the rest", () => {
   const home = TILED_WORLD.sites.find(site => site.id === "home");
   const levels = { ...WORLD_DEV_DEFAULTS.levels, home: home.states.at(-1).level };
-  const state = { ...WORLD_DEV_DEFAULTS, levels, weather: "rain", paused: true };
+  const state = { ...WORLD_DEV_DEFAULTS, levels, previewBuildings: true, weather: "rain", paused: true };
   panel("world", { state });
   const { elements, calls } = panel("buildings", { state });
   const field = elements.find(element => element.props.label === home.label);
   const select = field.props.children;
   assert.equal(select.props.value, home.states.at(-1).level);
   select.props.onChange({ target: { value: String(home.states[0].level) } });
-  assert.deepEqual(calls.patches, [{ levels: { ...levels, home: home.states[0].level } }]);
+  assert.deepEqual(calls.patches, [{ previewBuildings: true, levels: { ...levels, home: home.states[0].level } }]);
   assert.equal(state.levels.home, home.states.at(-1).level);
   assert.equal(state.weather, "rain");
   assert.equal(state.paused, true);

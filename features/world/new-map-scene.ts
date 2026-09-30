@@ -3,7 +3,7 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/mochlik/scene";
 import { NEW_MAP_FOCUS, NEW_MAP_PET_SIZE as PET_SIZE, NEW_MAP_SPAWN, TILED_WORLD } from "./presentation";
 import { paintFixedWorld } from "./tiled/renderer";
-import { initialPreviewLevels, previewSiteVisual, previewWorldScene } from "./tiled/preview-state";
+import { initialPreviewLevels, previewSiteAt, previewSiteVisual, previewWorldScene } from "./tiled/preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldPoint } from "./tiled/types";
 import { drawGroundedHero } from "./grounding";
 import { drawBuildingDetails } from "./building-details";
@@ -34,11 +34,11 @@ import { forestSceneFingerprint } from "./forest-memory";
 import { applyForestDevScenario } from "./dev/forest-dev-scenarios";
 import { forestPersistenceOverridden } from "./forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
+import { accountSceneLevels, economyJourneyAway } from "./economy-scene-state";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
-const initialVisuals = visualsFor(levels);
 const artworkUrls = (visuals: Record<string, SiteVisual>) => [...new Set([
   ...TILED_WORLD.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
 ])];
@@ -84,6 +84,7 @@ export type NewMapPaintPreview = {
   birdwatch?: ForestBirdwatch | null;
   campfireVisit?: CampfireVisit | null;
   livingDebug?: LivingWorldDebugSnapshot;
+  actorAway?: boolean;
 };
 
 function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
@@ -118,9 +119,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   options: SceneOptions, elapsed: number, reacting: boolean, timestamp = options.serverNow ?? 0,
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
-  const world = preview?.scene ?? previewWorldScene(TILED_WORLD, dev?.levels ?? levels);
+  const currentLevels = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev);
+  const world = preview?.scene ?? previewWorldScene(TILED_WORLD, currentLevels);
   const home = world.sites.find(site => site.id === "home");
-  const selectedVisuals = preview?.visuals ?? visualsFor(dev?.levels ?? levels);
+  const selectedVisuals = preview?.visuals ?? visualsFor(currentLevels);
   const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
   const walking = preview?.clearing;
   const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
@@ -129,21 +131,22 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   atmosphere.birdFrame = birds;
   const groundBirds = birds.filter(bird => bird.groundY !== undefined).sort((a, b) => a.groundY! - b.groundY!);
   const life = preview?.life;
-  const automatic = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+  const heroVisible = dev?.showHero !== false && !(preview?.actorAway ?? economyJourneyAway(options.economyJourney, timestamp));
+  const automatic = heroVisible && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
   const motion = automatic && walking ? walking : null;
   // A cancelled carry may wait for clear ground; attention cannot hide its basket.
   const garden = automatic || life?.garden.basket?.held ? forestGardenVisualFrame(life?.garden, actor,
     { pose: motion?.pose ?? "idle", frame: motion?.frame ?? 0, direction: motion?.direction ?? "front" }, still) : null;
-  const routine = life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
+  const routine = heroVisible && life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, { ...actor, propSize: PET_SIZE }, elapsed) : null;
-  const encounter = !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
+  const encounter = heroVisible && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
     ? faunaInteractionFrame(preview.fauna) : null;
   const birdwatch = automatic && !still && preview?.birdwatch ? forestBirdwatchFrame(preview.birdwatch, actor) : null;
   const fire = life?.campfires.find(item => item.id === preview?.campfireVisit?.id);
   const warming = automatic && fire && preview?.campfireVisit ? campfireVisitFrame(preview.campfireVisit, fire, actor, still) : null;
   const behindFires = (life?.campfires ?? []).filter(item => item.position.y < actor.y);
   const frontFires = (life?.campfires ?? []).filter(item => item.position.y >= actor.y);
-  const foregroundBush = dev?.showHero !== false && walking?.bush && forestBushForegroundActive(walking.bush, still)
+  const foregroundBush = heroVisible && walking?.bush && forestBushForegroundActive(walking.bush, still)
     ? world.bushes?.find(bush => bush.id === walking.bush!.id) : undefined;
   const foregroundTerrain = foregroundBush?.imageId && forestBushArtworkAvailable(world, foregroundBush)
     ? world.terrain.find(terrain => terrain.id === foregroundBush.imageId) : undefined;
@@ -166,9 +169,9 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
   drawForestCampfires(context, behindFires, elapsed, still);
   drawForestGardenPlants(context, world, life?.garden);
-  drawForestGardenGround(context, life?.garden, actor.size, garden, dev?.showHero === false ? undefined : actor);
+  drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined);
   for (const bird of groundBirds) if (bird.groundY! < actor.y) drawForestBird(context, bird);
-  if (dev?.showHero !== false && (walking?.opacity ?? 1) > 0) {
+  if (heroVisible && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     drawForestGardenProps(context, garden, "behind");
@@ -180,21 +183,21 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     drawForestGardenProps(context, garden, "front");
     context.restore();
   }
-  drawForestGardenGround(context, life?.garden, actor.size, garden, dev?.showHero === false ? undefined : actor, "front");
+  drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined, "front");
   for (const bird of groundBirds) if (bird.groundY! >= actor.y) drawForestBird(context, bird);
-  if (walking?.bush && dev?.showHero !== false) {
+  if (walking?.bush && heroVisible) {
     const growth = life?.garden?.bushes.find(bush => bush.id === walking.bush!.id)?.growth;
     drawForestBush(context, world, images, { ...walking.bush, ripe: growth === undefined || growth >= .98 }, elapsed, still);
     if (walking.bush.occlude || walking.bush.rustle > 0) drawForestGardenPlants(context, world, life?.garden);
   }
-  if (walking?.homeSleeping && home && dev?.showHero !== false && dev?.showBuildings !== false) {
+  if (walking?.homeSleeping && home && heroVisible && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
   drawForestCampfires(context, frontFires, elapsed, still);
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
     showBuildings: dev?.showBuildings, levels: selectedLevels };
   drawForestAtmosphere(context, world, { ...atmosphere, groundBirdsPainted: true }, () => { drawForestLighting(context, world, lighting);
-    drawForestCampfireGlow(context, life?.campfires ?? [], elapsed, still, lighting.night, dev?.showHero === false ? undefined : actor); });
+    drawForestCampfireGlow(context, life?.campfires ?? [], elapsed, still, lighting.night, heroVisible ? actor : undefined); });
   drawForestLightEmitters(context, world, lighting);
   drawBuildingDetails(context, world, lighting);
   if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, world);
@@ -209,16 +212,38 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const ctx = context;
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
-  let world = previewWorldScene(TILED_WORLD, dev?.levels ?? levels);
-  let visuals = initialVisuals, requestedKey: string | null = null, artworkVersion = 0;
+  let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev));
+  let visuals = visualsFor(accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev)), requestedKey: string | null = null, artworkVersion = 0;
   let unsubscribe = () => {};
   let frame = 0, previous = 0;
   let configuredTimestamp = Number.isFinite(initial.serverNow) ? initial.serverNow! : null;
+  // Economic deadlines use server wall time. Unlike the cosmetic simulation,
+  // this clock must accept an earlier authoritative sample after client drift.
+  let economicTimestamp = configuredTimestamp ?? Date.now(), economicReceivedAt = performance.now();
   let pendingTimestamp: number | null = null;
   let reactionTimer: ReturnType<typeof setTimeout> | null = null;
   let lastActivity: "idle" | "greet" | null = null;
   let session = connect();
   let state = session.state;
+
+  const explorationNow = () => economicTimestamp + Math.max(0, performance.now() - economicReceivedAt);
+  function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
+  const exploring = () => economyJourneyAway(options.economyJourney, explorationNow());
+  function syncExploration() {
+    if (!session.isOwner()) return;
+    const id = exploring() ? options.economyJourney!.id : null;
+    if (id === (state.explorationId ?? null)) return;
+    state.explorationId = id;
+    if (id) {
+      cancelForestDirector(state, "Отправился исследовать окрестности");
+      state.reaction = 0; state.animation = null; state.director.stimulus = null;
+      state.director.reason = options.economyJourney?.label || "Исследует окрестности";
+    } else {
+      state.clearing.idleSeconds = 0;
+      state.director.reason = "Вернулся из исследования";
+      state.director.nextDecisionAt = state.director.elapsed + 7;
+    }
+  }
 
   function connect(timestamp = Number.isFinite(options.serverNow) ? options.serverNow! : Date.now(), allowPersistence = true) {
     const connected = connectForestSession(options.presenceKey, world, options.view ?? "circle",
@@ -248,13 +273,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function directorOptions(blocked = false): ForestDirectorOptions {
     const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
-    return { autoLife: dev?.autoLife !== false, blocked, dusk: environment.dusk, rain: environment.rain,
+    return { autoLife: dev?.autoLife !== false, blocked: blocked || exploring(), actorAway: exploring(), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
       reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds() };
   }
   function preview(): NewMapPaintPreview {
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
-    return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness,
+    return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: exploring(),
       fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit,
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
@@ -277,7 +302,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       ctx.translate(-NEW_MAP_FOCUS.x, -NEW_MAP_FOCUS.y);
       paintWorld(ctx);
     }
-    const activity = state.reaction > 0 || state.pendingAttention || clearingActivityFrame(state.clearing).attention ? "greet" : "idle";
+    const activity = !exploring() && (state.reaction > 0 || state.pendingAttention || clearingActivityFrame(state.clearing).attention) ? "greet" : "idle";
     if (lastActivity !== activity) { lastActivity = activity; callbacks.activity(activity); }
     callbacks.rendered?.();
   }
@@ -286,10 +311,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function updateObservation(force = false) {
     if (!art || !session.isObservationOwner()) return;
     publishForestObservation(options.presenceKey, state, { force,
+      exploration: exploring() ? options.economyJourney?.label || "Мохлик исследует окрестности и вернётся после завершения поручения." : null,
       paused: !active() || !session.isSimulationAllowed() || reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue(),
       manual: Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false) });
   }
-  function syncOwner() { session.configure(options.view ?? "circle", active()); updateObservation(true); }
+  function syncOwner() { session.configure(options.view ?? "circle", active()); syncExploration(); updateObservation(true); }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
   }
@@ -308,11 +334,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
+      syncExploration();
       advanceForestDirector(state, step, directorOptions(manual));
       const stimulus = state.director.stimulus;
       advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
         ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength }
-        : undefined, world, dev?.showHero === false || clearingActivityFrame(state.clearing).residing ? undefined
+        : undefined, world, exploring() || dev?.showHero === false || clearingActivityFrame(state.clearing).residing ? undefined
           : { ...state.clearing.position, size: state.clearing.size * (dev?.heroScale ?? 1), moving: clearingActivityFrame(state.clearing).pose === "walk" },
         { rain: environment.rain, dusk: environment.dusk, forced: state.birdStarted !== null || dev?.birds === "on" });
       if (stimulus) state.lastBirdStimulus = stimulus.id;
@@ -352,8 +379,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     document.removeEventListener("visibilitychange", visibilityChanged); session.release();
   }
   function prepareArtwork() {
-    const next = visualsFor(dev?.levels ?? levels), urls = artworkUrls(next);
-    const nextWorld = previewWorldScene(TILED_WORLD, dev?.levels ?? levels);
+    const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev);
+    const next = visualsFor(selected), urls = artworkUrls(next);
+    const nextWorld = previewWorldScene(TILED_WORLD, selected);
     const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
     if (key === requestedKey) return;
     requestedKey = key;
@@ -372,8 +400,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         world = nextWorld;
         if (changed) {
           const timestamp = state.timestamp;
-          stop(); session.suspendPersistence(); session.release();
-          session = connect(timestamp, false); state = session.state;
+          const persistence = !forestPersistenceOverridden(dev, levels);
+          stop();
+          if (persistence) session.saveMemory(); else session.suspendPersistence();
+          session.release();
+          session = connect(timestamp, persistence); state = session.state;
         }
       }
       art = new Map(images); visuals = next; syncOwner();
@@ -390,6 +421,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     });
   }
   function requestLife(kind: WorldDevLifeAction) {
+    if (exploring()) return;
     state.reaction = 0;
     requestForestDirective(state, kind, directorOptions());
   }
@@ -431,7 +463,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (reducedMotion(options, dev)) state.dusk = Number(options.dusk);
     if (active()) applyPendingTime();
     if (visible()) draw();
-    if (dev.levels !== before.levels) prepareArtwork();
+    if (dev.levels !== before.levels || dev.previewBuildings !== before.previewBuildings) prepareArtwork();
     resume();
   });
   prepareArtwork();
@@ -444,6 +476,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (disposed) return;
       const identityChanged = next.presenceKey !== options.presenceKey;
       options = { ...next }; stop();
+      if (Number.isFinite(next.serverNow) && (identityChanged || next.serverNow !== configuredTimestamp)) setEconomicTime(next.serverNow!);
       if (identityChanged) { session.release(); session = connect(); state = session.state; pendingTimestamp = null; }
       syncOwner();
       if (reducedMotion(options, dev)) state.dusk = Number(options.dusk);
@@ -452,10 +485,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         configuredTimestamp = next.serverNow!; pendingTimestamp = configuredTimestamp;
       }
       if (active()) applyPendingTime();
-      resize(); if (active()) draw(); resume();
+      prepareArtwork(); resize(); if (active()) draw(); resume();
     },
     notice() {
-      if (disposed || !session.isSimulationAllowed()) return;
+      if (disposed || exploring() || !session.isSimulationAllowed()) return;
       const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
       noticeForestDirector(state, still || manualPose);
       // Static accessibility / explicit DEV poses use a bounded feedback timer.
@@ -466,7 +499,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
       const size = PET_SIZE * (dev?.heroScale ?? 1);
       const actor = clearingActivityFrame(state.clearing);
-      if (disposed || dev?.showHero === false) return false;
+      if (disposed || exploring() || dev?.showHero === false) return false;
       const home = world.sites.find(site => site.id === "home");
       if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
       const bush = actor.bush?.occupied && world.bushes?.find(item => item.id === actor.bush!.id);
@@ -475,9 +508,17 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
         && point.y > feetY - size && point.y < feetY;
     },
+    hitSite(point) {
+      if (disposed || !art || dev?.showBuildings === false) return null;
+      return previewSiteAt(world, point)?.id ?? null;
+    },
     setTime(now) {
       if (disposed || !Number.isFinite(now)) return;
+      const wasExploring = exploring();
+      setEconomicTime(now);
       pendingTimestamp = now; if (active()) applyPendingTime();
+      syncExploration();
+      if (wasExploring !== exploring() && visible()) draw();
     },
     invite() {}, moveTo() {},
     ambience: () => {

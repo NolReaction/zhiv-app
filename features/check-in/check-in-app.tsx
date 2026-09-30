@@ -78,6 +78,8 @@ import { CheckInReceipt } from "./check-in-receipt";
 import { useSimpleView } from "@/features/check-in/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useWorld } from "@/features/world/use-world";
+import { useEconomy } from "@/features/economy/use-economy";
+import { economySceneJourney, economyWorldState } from "@/features/economy/world-adapter";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
 import styles from "./check-in-app.module.css";
@@ -580,6 +582,9 @@ export function CheckInApp() {
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const economy = useEconomy(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const renderedWorldState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
+  const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
   const worldEntryButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -1439,8 +1444,8 @@ export function CheckInApp() {
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
               <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
-                wakeSignal={mochlikWakeSignal} nowMs={world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={world.snapshot?.state} worldGifts={world.snapshot?.gifts} />
+                wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} />
             </div>}
             <button
               type="button"
@@ -1654,7 +1659,7 @@ export function CheckInApp() {
         onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}
         onOpenGame={() => setGameOpen(true)} />}
       {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
-        origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world}
+        origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world} economy={economy}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}

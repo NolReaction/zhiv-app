@@ -221,11 +221,26 @@ const gameReplay = await api("POST", "/api/v1/game/batches", { cookie: owner.coo
 assert.equal(gameReplay.data.replayed, true);
 assert.equal(gameReplay.data.runTaps, 7);
 const worldEarned = await api("GET", "/api/v1/world", { cookie: owner.cookie });
-assert.equal(worldEarned.data.state.resources.sparks, 1);
+assert.equal(worldEarned.data.state.resources.sparks, 0);
 const travel = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldEarned.data.revision, action: "start_journey", target: "first_path" };
-const travelling = await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel });
-assert.equal(travelling.data.snapshot.state.journeys.length, 1);
-assert.equal((await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel })).data.replayed, true);
+await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel, expected: 409 });
+// V32/V33 must work under the restricted runtime role, including immutable command receipts.
+await api("GET", "/api/v1/economy", { expected: 401 });
+const economyBefore = await api("GET", "/api/v1/economy", { cookie: owner.cookie });
+assert.equal(economyBefore.headers["cache-control"], "no-store");
+assert.deepEqual(economyBefore.data.wallet, { coins: 0, pearls: 0 });
+assert.equal(economyBefore.data.buildings.garden, 1);
+const expedition = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId,
+  expectedRevision: economyBefore.data.revision, action: "start_exploration", targetId: "forest", quantity: 1, totalPrice: 0 };
+const exploring = await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition });
+assert.equal(exploring.data.state.jobs.length, 1);
+assert.equal(exploring.data.state.jobs[0].kind, "exploration");
+assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition })).data.replayed, true);
+await api("POST", "/api/v1/economy/commands", { cookie: friend.cookie, body: expedition, expected: 409 });
+await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: { ...expedition, requestId: randomUUID() }, source: "https://untrusted.example", expected: 403 });
+const market = await api("GET", "/api/v1/economy/market", { cookie: owner.cookie });
+assert.equal(market.headers["cache-control"], "no-store");
+assert.deepEqual(market.data.listings, []);
 assert.equal(gameReplay.data.progress.lifetimeTaps, 7);
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, tapCount: 8 }, expected: 409 });
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, sequence: 2, lifetimeTaps: 999999 }, expected: 400 });

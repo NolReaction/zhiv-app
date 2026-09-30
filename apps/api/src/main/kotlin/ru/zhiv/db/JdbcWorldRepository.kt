@@ -4,12 +4,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.economy.EconomyRules
+import ru.zhiv.economy.ECONOMY_MAX_BALANCE
 import ru.zhiv.world.*
 import java.sql.Connection
 import java.sql.ResultSet
 import java.time.OffsetDateTime
 import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -28,19 +29,27 @@ private fun Connection.worldSave(user: UUID, state: WorldState) {
     worldUpdate("UPDATE world_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp() WHERE user_id=?",worldJson.encodeToString(state),user)
 }
 
-/** Called only inside an accepted clicker batch transaction, after the common
- * user lock. The original game receipt guards replays; ledger keys guard effects. */
-internal fun creditWorldTaps(c: Connection, user: UUID, sourceKey: String, taps: Int, now: OffsetDateTime) {
-    if(taps<=0) return
-    val row=c.worldRow(user) ?: return // Enrollment is explicit: first open of World.
-    val day=now.withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()
-    val earned=if(row.day==day) row.earned else 0
-    if(earned>=WorldRules.catalog.dailySparkLimit) return
-    val total=(if(row.day==day) row.remainder else 0)+taps
-    val credit=minOf(WorldRules.catalog.dailySparkLimit-earned,total/WorldRules.catalog.tapsPerSpark)
-    if(c.worldUpdate("INSERT INTO world_ledger(user_id,source_key,kind,sparks) VALUES (?,?,'taps',?) ON CONFLICT DO NOTHING",user,sourceKey,credit)==0) return
-    c.worldUpdate("UPDATE world_profiles SET tap_day=?,tap_sparks=?,tap_remainder=? WHERE user_id=?",day,earned+credit,total%WorldRules.catalog.tapsPerSpark,user)
-    if(credit>0) c.worldSave(user,row.state.copy(resources=row.state.resources.copy(sparks=row.state.resources.sparks+credit)))
+/** Game taps still count for records and achievements. They do not mint economy currency. */
+@Suppress("UNUSED_PARAMETER")
+internal fun creditWorldTaps(c: Connection, user: UUID, sourceKey: String, taps: Int, now: OffsetDateTime) = Unit
+
+/** Preserve an already-issued old journey once without reintroducing retired balances. */
+private fun creditLegacyJourney(c: Connection, user: UUID, journey: WorldJourney) {
+    val key = "legacy-journey:${journey.id}"
+    if (c.worldRows("SELECT 1 FROM economy_ledger WHERE user_id=? AND source_key=?", user, key) { true }.isNotEmpty()) return
+    val converted = EconomyRules.legacyConversion(journey.rewards.sparks, journey.rewards.wood, journey.rewards.stone)
+    val before = readEconomyProfile(c, user).state
+    fun add(a: Long, b: Long): Long {
+        if (a > ECONOMY_MAX_BALANCE - b) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для награды перед возвращением из путешествия", 409)
+        return a + b
+    }
+    val inventory = before.inventory.toMutableMap()
+    if (converted.woodGranted > 0) inventory["wood"] = add(inventory["wood"] ?: 0, converted.woodGranted)
+    if (converted.stoneGranted > 0) inventory["stone"] = add(inventory["stone"] ?: 0, converted.stoneGranted)
+    assertEconomyMarketCapacity(c, user, inventory)
+    saveEconomyProfile(c, user, before.copy(wallet=before.wallet.copy(coins=add(before.wallet.coins, converted.coinsGranted)), inventory=inventory))
+    c.worldUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,items) VALUES (?,?,'legacy_journey',?,?::jsonb)",
+        user, key, converted.coinsGranted, "{\"wood\":${converted.woodGranted},\"stone\":${converted.stoneGranted}}")
 }
 
 /** Both users are already locked by the account lifecycle transaction. Starter
@@ -78,6 +87,12 @@ class JdbcWorldRepository(private val source: DataSource): WorldRepository {
                 val current=actor(c,hash)
                 val now=c.worldRows("SELECT clock_timestamp()") { it.getObject(1,OffsetDateTime::class.java) }.first()
                 c.worldUpdate("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb) ON CONFLICT DO NOTHING",current.id,worldJson.encodeToString(WorldState()))
+                ensureEconomyProfile(c, current.id)
+                val economy = readEconomyProfile(c, current.id).state
+                val legacy = checkNotNull(c.worldRow(current.id)).state
+                val synced = legacy.copy(resources=WorldResources(), houseLevel=economy.buildings["home"] ?: 1,
+                    workshop=(economy.buildings["workshop"] ?: 0)>0, workshopLevel=economy.buildings["workshop"] ?: 0)
+                if (synced != legacy) c.worldSave(current.id, synced)
                 val result=block(c,current,now); c.commit(); result
             } catch(error: Exception) { c.rollback(); throw error }
         }
@@ -86,7 +101,7 @@ class JdbcWorldRepository(private val source: DataSource): WorldRepository {
         val row=checkNotNull(c.worldRow(actor.id))
         val gifts=c.worldRows("SELECT item_id FROM game_items WHERE user_id=? ORDER BY item_id",actor.id) { it.getString(1) }
         return WorldSnapshot(actor.publicId,row.revision,now.toInstant().toString(),row.state,gifts,
-            if(row.day==now.withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()) row.earned else 0,WorldRules.catalog.version)
+            0,WorldRules.catalog.version)
     }
     override suspend fun snapshot(sessionHash: ByteArray): WorldSnapshot = transaction(sessionHash) { c,actor,now -> snapshot(c,actor,now) }
     override suspend fun command(sessionHash: ByteArray,command: WorldCommand): WorldResult = transaction(sessionHash) { c,actor,now ->
@@ -98,11 +113,19 @@ class JdbcWorldRepository(private val source: DataSource): WorldRepository {
             if(receipt.first!=signature) throw AuthFailure("WORLD_COMMAND_CONFLICT","Этот запрос уже использован для другого действия",409)
             return@transaction WorldResult(snapshot(c,actor,now),receipt.second,true)
         }
+        if (command.action !in setOf("equip", "set_decoration", "claim_journey", "recall_journey"))
+            throw AuthFailure("WORLD_ECONOMY_MOVED", "Это действие перенесено в хозяйство. Обновите приложение и откройте раздел хозяйства.", 409)
         val before=checkNotNull(c.worldRow(actor.id))
         if(before.revision!=command.expectedRevision) throw AuthFailure("WORLD_REVISION_CONFLICT","Мир уже изменился. Обновите его и повторите действие.",409)
         val gifts = if (command.action == "set_decoration")
             c.worldRows("SELECT item_id FROM game_items WHERE user_id=?", actor.id) { it.getString(1) } else emptyList()
-        val (state,message)=WorldRules.apply(before.state,command,now.toInstant(),gifts)
+        val legacyJourney = if (command.action == "claim_journey") before.state.journeys.find { it.id == command.target } else null
+        // Only collections and trip completion use old rules; old resource rewards are converted below.
+        val safeBefore = before.state.copy(resources=WorldResources(), journeys=before.state.journeys.map { it.copy(rewards=WorldResources()) })
+        val (applied,originalMessage)=WorldRules.apply(safeBefore,command,now.toInstant(),gifts)
+        val state=applied.copy(resources=WorldResources(), journeys=before.state.journeys.filter { original -> applied.journeys.any { it.id==original.id } })
+        val message=if (legacyJourney != null) "Путешествие завершено: находки сохранены, награда пересчитана в новую экономику." else originalMessage
+        if (legacyJourney != null) creditLegacyJourney(c, actor.id, legacyJourney)
         c.worldSave(actor.id,state)
         if(command.action=="claim_journey") recordCollectionAchievement(c,actor.id,now)
         val a=state.resources; val b=before.state.resources

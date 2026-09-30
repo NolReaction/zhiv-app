@@ -2,7 +2,8 @@ import forest from "./tiled/forest.generated.json";
 import type { FixedWorldScene } from "./tiled/types";
 
 /** Temporary presentation limits while the new forest receives its sites and routes.
- * Stored rewards, inventory and game progress remain independent of these switches. */
+ * These switches select the Tiled presentation and hide legacy artwork; the new
+ * economy is available independently. Stored rewards and progress are preserved. */
 export const WORLD_PRESENTATION = {
   rebuilding: true,
   streakDecor: false,

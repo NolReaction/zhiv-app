@@ -3,13 +3,14 @@ import type { CSSProperties } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { GameItemId } from "@/features/game/game-rewards";
+import type { EconomyController } from "@/features/economy/use-economy";
 import type { WorldController } from "./use-world";
 import WorldView from "./world-view";
 import styles from "./world.module.css";
 
 export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
-  world: WorldController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
+  world: WorldController; economy: EconomyController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
   wakeSignal: number;
   bestStreakDays: number; items?: readonly GameItemId[];
 };

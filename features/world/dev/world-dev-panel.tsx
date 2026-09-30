@@ -410,8 +410,11 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
       <h3 className={styles.pageTitle}>Постройки</h3>
       <Toggle label="Показывать постройки" checked={state.showBuildings} onChange={showBuildings => change({ showBuildings })} />
       <Toggle label="Тени у основания" checked={state.buildingShadow} onChange={buildingShadow => change({ buildingShadow })} />
+      <Toggle label="Предпросмотр уровней" checked={state.previewBuildings} onChange={previewBuildings => change({ previewBuildings })} />
       {TILED_WORLD.sites.map(site => <Field key={site.id} label={site.label}>
-        <select value={state.levels[site.id] ?? site.initialLevel} onChange={event => change({ levels: { ...state.levels, [site.id]: Number(event.target.value) } })}>
+        <select value={state.previewBuildings ? state.levels[site.id] ?? site.initialLevel : "account"} onChange={event => change(event.target.value === "account"
+          ? { previewBuildings: false } : { previewBuildings: true, levels: { ...state.levels, [site.id]: Number(event.target.value) } })}>
+          <option value="account">Уровень аккаунта</option>
           {site.states.map(visual => <option key={visual.level} value={visual.level}>{visual.label} · уровень {visual.level}</option>)}
         </select>
       </Field>)}

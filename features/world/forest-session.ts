@@ -23,6 +23,8 @@ export type ForestSessionState = {
   lastBirdStimulus: number;
   pendingLife: ForestDirective | null;
   pendingAttention: boolean;
+  /** Transient display state only; economic jobs are restored from the economy API. */
+  explorationId?: string | null;
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;
@@ -67,7 +69,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
           Object.assign(state, { elapsed: 0, wetness: 0, clearing: createClearingActivity(scene), life: createForestLife(scene),
             fauna: createForestFauna(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
-            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, reaction: 0, animation: null,
+            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: null, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
           memory.apply(payload);

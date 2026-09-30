@@ -8,35 +8,36 @@ import { sceneJourney } from "./journey-timeline";
 import { JourneyProgress } from "./journey-progress";
 import type { GameItemId } from "@/features/game/game-rewards";
 import type { SceneOptions } from "@/features/mochlik/scene";
+import type { EconomySceneJourney } from "./economy-scene-state";
 import type { WorldState } from "./model";
 import type { createMapEngine, MapAction, WorldPlace } from "./map-engine";
 import { MAP_PLACES } from "./map-layout";
 import { WORLD_PRESENTATION } from "./presentation";
 import styles from "./world.module.css";
 
-type Props = { state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void;
+type Props = { economyJourney?: EconomySceneJourney | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void;
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, topHud, bottomHud }: Props) {
+export function WorldScene({ economyJourney, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, topHud, bottomHud }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
   const time = useRef(now);
   useEffect(() => { time.current = now; engine.current?.setTime(now); }, [now]);
   const previousWake = useRef(wakeSignal), pendingWake = useRef(0);
   const { lampOn, dusk } = habitatLighting(now, timeZone);
-  const latest = useRef({ state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace });
+  const latest = useRef({ state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney });
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   useEffect(() => {
-    latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace };
+    latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney };
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    engine.current?.update({ lampOn, dusk, paused: false, view: "world", reducedMotion: media.matches, worldState: state, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
-  }, [state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace]);
+    engine.current?.update({ lampOn, dusk, paused: false, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
+  }, [state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney]);
   useEffect(() => {
     let disposed = false;
     const abort = new AbortController();
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const options = (): SceneOptions => ({ serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, paused: false, view: "world", reducedMotion: media.matches,
-      worldState: latest.current.state, worldGifts: latest.current.gifts, items: latest.current.items,
+      worldState: latest.current.state, economyJourney: latest.current.economyJourney, worldGifts: latest.current.gifts, items: latest.current.items,
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     void import("./map-engine").then(module => {
       if (disposed) return null;
@@ -80,6 +81,9 @@ export function WorldScene({ state, gifts, items, timeZone, now, owner, bestStre
       <button onClick={() => control("overview")} disabled={!ready} aria-label="Показать всю карту" title="Вся карта"><Scan size={19} /></button>
       <button onClick={() => control("pet")} disabled={!ready} aria-label="Найти Мохлика" title="Найти Мохлика"><LocateFixed size={19} /></button>
     </div>
-    {journey && <button className={styles.away} onClick={() => onPlace("journeys")} aria-label="Открыть текущее путешествие"><JourneyProgress journey={journey} equipment={state.equipment} now={now} /></button>}
+    {economyJourney && <button className={styles.away} onClick={() => onPlace("cave")} aria-label="Открыть исследование Мохлика">
+      <span>{economyJourney.label ?? "Исследование"} · {now >= Date.parse(economyJourney.finishesAt) ? "Мохлик вернулся — забрать находки" : `${Math.max(1, Math.ceil((Date.parse(economyJourney.finishesAt) - now) / 60000))} мин до возвращения`}</span>
+    </button>}
+    {!economyJourney && journey && <button className={styles.away} onClick={() => onPlace("journeys")} aria-label="Открыть текущее путешествие"><JourneyProgress journey={journey} equipment={state.equipment} now={now} /></button>}
   </div>;
 }

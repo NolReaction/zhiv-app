@@ -21,8 +21,6 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
   const [pending, setPending] = useState<AdminPlayerCommand | null>(null);
   const [reason, setReason] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [resource, setResource] = useState("sparks");
-  const [amount, setAmount] = useState("10");
   const [item, setItem] = useState(worldCatalog.items[0].id);
   const [find, setFind] = useState(worldCatalog.finds[0].id);
   const [tagText, setTagText] = useState(target.tag?.text ?? "");
@@ -78,7 +76,6 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
   }
   const tag = tagText ? { text: tagText, color: tagColor } : null;
   const tagValid = !tag || playerTagSchema.safeParse(tag).success;
-  const quantity = Number(amount);
   return <Dialog open onOpenChange={open => { if (!open && !busy && !pending) onClose(); }}>
     <DialogContent className={styles.dialog} onInteractOutside={event => { if (locked) event.preventDefault(); }}>
       <DialogHeader><DialogTitle>Управление игроком</DialogTitle><DialogDescription>
@@ -87,17 +84,15 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
       {error && <p className={styles.error} role="alert">{error}</p>}
       {notice && <p className={styles.notice} role="status">{notice}</p>}
       {!player ? <p>Загружаем аккаунт…</p> : <>
-        <div className={styles.balance}><span>Искры <b>{player.world.resources.sparks}</b></span><span>Дерево <b>{player.world.resources.wood}</b></span><span>Камень <b>{player.world.resources.stone}</b></span></div>
+        <p className={styles.hint}>Старые ресурсы пересчитаны в хозяйство. Здесь можно управлять одеждой и коллекциями.</p>
         <fieldset disabled={locked} className={styles.confirmation}>
           <label>Причина изменения<input maxLength={240} value={reason} onChange={event => setReason(event.target.value)} placeholder="Не менее 8 символов · останется в журнале" /></label>
           <label>Подтвердите ID игрока<input value={confirmation} onChange={event => setConfirmation(event.target.value.toUpperCase())} placeholder={target.publicId} autoComplete="off" /></label>
         </fieldset>
         <Tabs defaultValue="world">
-          <TabsList className={styles.tabs}><TabsTrigger value="world">Ресурсы и вещи</TabsTrigger><TabsTrigger value="tag">Тег</TabsTrigger><TabsTrigger value="account">Аккаунт</TabsTrigger></TabsList>
+          <TabsList className={styles.tabs}><TabsTrigger value="world">Вещи и коллекции</TabsTrigger><TabsTrigger value="tag">Тег</TabsTrigger><TabsTrigger value="account">Аккаунт</TabsTrigger></TabsList>
           <TabsContent value="world" className={styles.stack}>
             <fieldset disabled={locked} className={styles.stack}>
-              <label>Ресурс<select value={resource} onChange={event => setResource(event.target.value)}><option value="sparks">Искры</option><option value="wood">Дерево</option><option value="stone">Камень</option></select></label>
-              <div className={styles.row}><label>Количество<input type="number" min="1" max="100000" step="1" value={amount} onChange={event => setAmount(event.target.value)} /></label><button disabled={!authorized || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000} onClick={() => void run("grant_resource", { target: resource, amount: quantity })}>Выдать ресурс</button></div>
               <label>Предмет<select value={item} onChange={event => setItem(event.target.value)}>{worldCatalog.items.map(value => <option key={value.id} value={value.id}>{value.name}{player.world.inventory.includes(value.id) ? " · уже есть" : ""}</option>)}</select></label>
               <button disabled={!authorized || player.world.inventory.includes(item)} onClick={() => void run("grant_world_item", { target: item })}>Выдать предмет</button>
               <label>Находка<select value={find} onChange={event => setFind(event.target.value)}>{worldCatalog.finds.map(value => <option key={value.id} value={value.id}>{value.name}{player.world.collection.includes(value.id) ? " · уже есть" : ""}</option>)}</select></label>

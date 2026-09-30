@@ -176,16 +176,18 @@ test("the rod stays in the leading hand and beside the face on both walking legs
 });
 
 
-test("map rebuilding hides construction and new trips without hiding saved journeys", async () => {
+test("map exposes the new economy while retaining legacy journey collection", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const { WorldJourneys } = await vite.ssrLoadModule("/features/world/world-journeys.tsx");
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
     workshop: false, journeys: [], collection: [], inventory: [], equipment: {}, completedJourneys: 0 };
   const world = { snapshot: { state, gifts: ["flower", "leaf_garland"] }, now: Date.parse("2026-09-21T12:00:00Z"), act() {} };
-  const props = { world, ownerPublicId: "test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 30 };
+  const economy = { snapshot: null, market: null, now: world.now, busy: false, uncertain: false, error: null, notice: "", retryAt: 0, act() {}, actMarket() {}, retry() {}, refresh() {}, refreshMarket() {} };
+  const props = { world, economy, ownerPublicId: "test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 30 };
   const markup = renderToStaticMarkup(createElement(WorldView, props));
   assert.match(markup, /Гардероб/); assert.match(markup, /Коллекции/);
-  assert.doesNotMatch(markup, /data-map-anchor|Строить|В путь|Первая прогулка|Обустроить дом/);
+  assert.match(markup, /Хозяйство/); assert.match(markup, /В путь/); assert.match(markup, /Рынок/);
+  assert.doesNotMatch(markup, /Строить|Первая прогулка|Обустроить дом/);
   state.journeys = [{ id: "saved", routeId: "first_path", startedAt: "2026-09-20T12:00:00Z", finishesAt: "2026-09-20T12:01:00Z" }];
   const pending = renderToStaticMarkup(createElement(WorldJourneys, { world, destination: "trail" }));
   assert.match(pending, /Подтвердить возвращение/);

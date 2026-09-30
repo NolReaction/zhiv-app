@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, X, Feather, Gem, Hammer, House, Info, Leaf, LockKeyhole, Shirt, Sparkles, Sprout, Wind, Mountain, Fish, Shell, FishingHook } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, BookOpen, Check, Compass, X, Feather, Gem, Hammer, House, Info, Leaf, LockKeyhole, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -10,22 +10,26 @@ import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "./world-scene";
-import { canAfford, collectionCount, workshopLevel, worldCatalog as catalog } from "./model";
+import { collectionCount, workshopLevel, worldCatalog as catalog } from "./model";
 import type { WorldPlace } from "./map-engine";
 import styles from "./world.module.css";
-import { Materials, WorldJourneys } from "./world-journeys";
+import { WorldJourneys } from "./world-journeys";
 import { WorldFeedback } from "./world-feedback";
-import { WorldBalances } from "./world-balances";
+import { EconomyBalances, EconomyPanel, type EconomyTab } from "@/features/economy/economy-panel";
+import { economySceneJourney, economyWorldState } from "@/features/economy/world-adapter";
 import { WORLD_PRESENTATION } from "./presentation";
 import { WorldHelp } from "./world-help";
 import { MochlikState } from "./mochlik-state";
 
-type Panel = "journeys" | "build" | "customize" | "wardrobe" | "collection" | "stats" | "cave" | "fishing" | "help";
+type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "stats" | "help";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
 const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind, shell: Shell, float: FishingHook };
-export default function WorldView({ world, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items }: WorldPortalProps) {
+export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items }: WorldPortalProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
+  const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
+  const renderedState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
   const claim = useRef<{ id: string; owner: string } | null>(null);
   useEffect(() => {
@@ -41,34 +45,28 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
   const confirming = (id: string) => { claim.current = { id, owner: ownerPublicId }; };
   const panelReturn = useRef<HTMLElement | null>(null);
   const openPanel = useCallback((next: Panel) => {
-    if (WORLD_PRESENTATION.rebuilding && ["build", "customize", "cave", "fishing"].includes(next)) return;
     if (!WORLD_PRESENTATION.streakDecor && next === "customize") return;
     if (panel === null) panelReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel(next);
   }, [panel]);
-  const [destination, setDestination] = useState<"trail" | "river">("trail");
-  const onPlace = useCallback((place: WorldPlace) => {
-    if (WORLD_PRESENTATION.rebuilding) { if (place === "journeys") openPanel("journeys"); return; }
-    if (place === "cave" || place === "fishing") { openPanel(place); return; }
-    if (place === "river" || place === "trail" || place === "journeys") { setDestination(place === "river" ? "river" : "trail"); openPanel("journeys"); }
-    else openPanel(place === "wardrobe" ? "wardrobe" : "build");
+  const openEconomy = useCallback((tab: EconomyTab) => {
+    setEconomyTab(tab); openPanel("economy");
   }, [openPanel]);
+  const onPlace = useCallback((place: WorldPlace) => {
+    if (place === "journeys") { openPanel("journeys"); return; }
+    if (["cave", "fishing", "river", "trail"].includes(place)) { openEconomy("exploration"); return; }
+    if (place === "wardrobe") openPanel("wardrobe");
+    else openEconomy("buildings");
+  }, [openPanel, openEconomy]);
   const { snapshot, busy, uncertain, act } = world;
   if (!snapshot) return <section className={styles.loading} aria-live="polite"><button id="world-exit" onClick={onClose}><ArrowLeft size={18} />Назад</button><Compass size={32} /><h1>Лес Мохлика</h1>
     <p>{world.error ?? "Открываем вашу полянку…"}</p>{world.error && <button onClick={() => void world.retry()}>Попробовать ещё раз</button>}</section>;
-  const state = snapshot.state;
+  const state = renderedState ?? snapshot.state;
   const shopLevel = workshopLevel(state);
-  const shopCost = catalog.workshopUpgrades.find(c => c.level === shopLevel + 1);
   const locked = busy || uncertain;
-  const houseCost = catalog.houseUpgrades.find(c => c.level === state.houseLevel + 1);
   const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
-  const goal = !state.firstJourneyCompleted ? "Отправьте Мохлика на первую прогулку. Через минуту он принесёт материалы для домика."
-    : state.houseLevel === 1 ? "Улучшите домик, чтобы открыть рыбалку у берега."
-      : !state.workshop ? "Постройте мастерскую, чтобы делать одежду и пробовать новые цвета мха."
-        : collectionCount(state.collection) < catalog.finds.length ? "За лесной альбом — шляпа следопыта, за рыболовный — особая удочка."
-          : "Обе коллекции собраны! Игра в разработке — новые приключения появятся позже.";
   return <section className={styles.world} aria-label="Лес Мохлика">
-    <WorldScene state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={world.now} timeZone={timeZone}
+    <WorldScene economyJourney={economicJourney} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} worldView active={panel === null}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
@@ -82,16 +80,17 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
         <button className={styles.checkIn} onClick={() => openPanel("collection")} aria-label="Открыть коллекции"><BookOpen size={21} /><span>Коллекции</span></button>
         <button className={styles.helpButton} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={22} aria-hidden="true" /></button>
       </div>
-      <WorldBalances key={ownerPublicId} value={state.resources} />
+      <div aria-live="polite">{economy.snapshot ? <EconomyBalances wallet={economy.snapshot.wallet} /> : <button onClick={() => openEconomy("overview")}>Хозяйство · {economy.error ? "повторить загрузку" : "загрузка…"}</button>}</div>
     </header>
     {panel === null && <WorldFeedback world={world} />}
     <div ref={bottomHud} className={styles.bottomHud}>
       <MochlikState presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} />
-      {!WORLD_PRESENTATION.rebuilding && <button className={styles.goalChip} onClick={() => openPanel(!state.firstJourneyCompleted ? "journeys" : houseCost ? "build" : "collection")}><Sprout size={18} /><span>{!state.firstJourneyCompleted ? "Первая прогулка" : houseCost ? "Обустроить дом" : "Лесной альбом"}</span><ChevronRight size={16} /></button>}
       <nav className={styles.gameDock} aria-label="Действия в игре">
-        {!WORLD_PRESENTATION.rebuilding && <button onClick={() => openPanel("build")}><Hammer size={23} /><span>Строить</span></button>}
+        <button onClick={() => openEconomy("overview")}><Hammer size={23} /><span>Хозяйство</span></button>
+        <button onClick={() => openEconomy("exploration")}><Compass size={23} /><span>В путь</span></button>
+        <button onClick={() => openEconomy("market")}><Store size={23} /><span>Рынок</span></button>
         <button onClick={() => openPanel("wardrobe")}><Shirt size={23} /><span>Гардероб</span></button>
-        {(!WORLD_PRESENTATION.rebuilding || state.journeys.length > 0) && <button onClick={() => openPanel("journeys")}><Compass size={23} /><span>{WORLD_PRESENTATION.rebuilding ? "В пути" : "В путь"}</span></button>}
+        {state.journeys.length > 0 && <button onClick={() => openPanel("journeys")}><BookOpen size={23} /><span>Старые походы</span></button>}
       </nav>
     </div>
     <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}>
@@ -100,16 +99,13 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.sheet}
         onCloseAutoFocus={event => { event.preventDefault(); if (panelReturn.current?.isConnected) panelReturn.current.focus(); else document.getElementById("world-exit")?.focus(); }}>
         <div className={styles.sheetHeader}>
-          <DialogTitle>{panel === "help" ? "Справка по игре" : panel === "cave" ? "Пещера" : panel === "fishing" ? "Рыбалка" : panel === "build" || panel === "customize" ? "Постройки" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : panel === "stats" ? "Мой Мохлик" : "Путешествия"}</DialogTitle>
+          <DialogTitle>{panel === "help" ? "Справка по игре" : panel === "economy" ? "Лесное хозяйство" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : panel === "stats" ? "Мой Мохлик" : "Путешествия"}</DialogTitle>
           <button onClick={() => setPanel(null)} aria-label="Закрыть панель"><X size={21} /></button>
         </div>
         <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите тему через поиск или раскройте нужный раздел." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
         <div className={styles.sheetBody}>
           {panel === "help" && <WorldHelp />}
-          {(panel === "build" || panel === "customize") && <nav className={styles.buildTabs} aria-label="Обустройство дома">
-            <button aria-pressed={panel === "build"} onClick={() => openPanel("build")}><Hammer size={17} />Улучшения</button>
-            {WORLD_PRESENTATION.streakDecor && <button aria-pressed={panel === "customize"} onClick={() => openPanel("customize")}><Sprout size={17} />Кастомизация</button>}
-          </nav>}
+          {panel === "economy" && <EconomyPanel key={economyTab} economy={economy} initialTab={economyTab} />}
           {WORLD_PRESENTATION.streakDecor && panel === "customize" && <div className={styles.panel}>
             <div className={styles.panelHeading}><span className={styles.eyebrow}>ДОМИК ПО ТВОЕМУ ВКУСУ</span><h2>Украшения</h2><p>Выбирай, что оставить у дома. Подарки сохраняются, даже когда выключены.</p></div>
             {GAME_ITEMS.map(item => {
@@ -122,27 +118,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
               </article>;
             })}
           </div>}
-          {panel === "cave" && <div className={styles.destination}>
-            <Mountain size={48} aria-hidden="true" />
-            <h2>В разработке</h2>
-            <p>Здесь появится новая карта пещеры.</p>
-            <button onClick={() => setPanel(null)}><ArrowLeft size={18} />Вернуться в лес</button>
-          </div>}
-          {panel === "build" && <p className={styles.hint}>{goal}</p>}
-          {panel === "journeys" && <WorldJourneys key={destination} world={world} destination={destination} onClaim={confirming} allowStart={!WORLD_PRESENTATION.rebuilding} />}
-          {panel === "fishing" && <WorldJourneys world={world} destination="river" onClaim={confirming} allowStart={!WORLD_PRESENTATION.rebuilding} />}
-        {panel === "build" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>СВОЁ МЕСТО В ЛЕСУ</span><h2>Больше уюта</h2><p>Улучшения открывают новые возможности.</p></div>
-          <article className={styles.card}><House className={styles.cardIcon} /><h3>Домик Мохлика <span className={styles.kicker}>ур. {state.houseLevel}{state.houseLevel <= 2 ? "/2" : " · ранее получен"}</span></h3>
-            <p>{state.houseLevel === 1 ? "Второй уровень открывает рыбалку у берега." : "Игра в разработке. Новые улучшения появятся позже."} Новый внешний вид уровней пока в разработке.</p>
-            {houseCost && <Materials cost={houseCost} />}
-            <div className={styles.houseActions}><button className={styles.primary} disabled={!houseCost || locked || !canAfford(state.resources, houseCost)} onClick={() => act("upgrade_house")}>{houseCost ? "Улучшить" : "Улучшено"}</button>
-              {WORLD_PRESENTATION.streakDecor && <button onClick={() => openPanel("customize")}><Sprout size={16} />Кастомизация</button>}</div></article>
-          <article className={styles.card}><Hammer className={styles.cardIcon} /><h3>Лесная мастерская <span className={styles.kicker}>{state.workshop ? `ур. ${shopLevel}/3` : "Ещё не построена"}</span></h3><p>Шарфы, головные уборы и новые оттенки мха. Всё сделанное остаётся в гардеробе.</p>
-            {state.workshop ? <>
-              <p>{shopCost ? "Мастерскую можно улучшить до следующего уровня." : "Достигнут максимальный уровень мастерской."}</p>
-              {shopCost && <><Materials cost={shopCost} /><button className={styles.primary} disabled={locked || !canAfford(state.resources, shopCost)} onClick={() => act("upgrade_workshop")}>Улучшить до {shopCost.level} уровня</button></>}
-              <button onClick={() => openPanel("wardrobe")}>Выбрать, что изготовить<ArrowRight size={16} /></button></> : <><Materials cost={catalog.workshop} /><button disabled={locked || !canAfford(state.resources, catalog.workshop)} onClick={() => act("build_workshop")}>{canAfford(state.resources, catalog.workshop) ? "Построить мастерскую" : "Накопите материалы на мастерскую"}</button></>}</article>
-        </div>}
+          {panel === "journeys" && <WorldJourneys world={world} destination="trail" onClaim={confirming} allowStart={false} />}
         {panel === "wardrobe" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ХАРАКТЕР В ДЕТАЛЯХ</span><h2>Твой Мохлик</h2><p>Одежда и оттенки мха видны и здесь, и в круглой кнопке.</p></div>
           <div className={styles.wardrobe}>{catalog.items.map(item => {
             const owned = state.inventory.includes(item.id), equipped = Object.values(state.equipment).includes(item.id);
@@ -150,18 +126,18 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
               <div><h3>{item.name}</h3><p>{item.slot === "palette" ? "Цвет мха" : item.slot === "head" ? "Головной убор" : item.slot === "rod" ? "Снаряжение для рыбалки" : "Шарф"}</p></div>
               {owned ? <button disabled={locked || equipped && item.slot === "palette"} onClick={() => act("equip", equipped ? `remove_${item.slot}` : item.id)}>{equipped ? item.slot === "palette" ? "Выбран" : item.slot === "rod" ? "Убрать" : "Снять" : item.slot === "rod" ? "Взять" : "Надеть"}</button>
                 : item.id === "explorer_cap" || item.id === "willow_rod" ? <span className={styles.kicker}><LockKeyhole size={13} />{item.id === "willow_rod" ? "За коллекцию рыбалки" : "За лесной альбом"}</span>
-                  : <button disabled={locked || WORLD_PRESENTATION.rebuilding || !state.workshop || state.resources.sparks < item.sparks} onClick={() => act("craft", item.id)}>{WORLD_PRESENTATION.rebuilding ? "Позже" : !state.workshop ? "Нужна мастерская" : <>Создать · {item.sparks}<Sparkles size={13} /></>}</button>}
+                  : <span className={styles.kicker}>Новые рецепты появятся позже</span>}
             </article>;
           })}</div>
         </div>}
         {panel === "stats" && <div className={styles.statsPanel}>
           <div className={styles.statsIdentity}><GameLevelIcon level={level} size={42} /><h2>{displayName}</h2><span>Уровень {level}</span></div>
-          <dl><div><dt>Домик</dt><dd>{state.houseLevel}{state.houseLevel <= 2 ? " / 2" : " · ранее получен"}</dd></div><div><dt>Мастерская</dt><dd>{state.workshop ? `${shopLevel} / 3` : "Не построена"}</dd></div>
-          <div><dt>Путешествия</dt><dd>{state.completedJourneys}</dd></div><div><dt>Находки</dt><dd>{collectionCount(state.collection)} / {catalog.finds.length}</dd></div>
+          <dl><div><dt>Домик</dt><dd>{state.houseLevel} / 5</dd></div><div><dt>Мастерская</dt><dd>{state.workshop ? `${shopLevel} / 3` : "Не построена"}</dd></div>
+          <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? 0}</dd></div><div><dt>Прежние путешествия</dt><dd>{state.completedJourneys}</dd></div><div><dt>Находки</dt><dd>{collectionCount(state.collection)} / {catalog.finds.length}</dd></div>
           <div><dt>Гардероб</dt><dd>{state.inventory.length} вещей</dd></div><div><dt>Лучшая серия отметок</dt><dd>{bestStreakDays} дн.</dd></div></dl>
-          {!WORLD_PRESENTATION.rebuilding && <button onClick={() => openPanel("build")}><House size={18} />Обустроить дом</button>}
+          <button onClick={() => openEconomy("buildings")}><House size={18} />Обустроить дом</button>
         </div>}
-        {panel === "collection" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ПАМЯТЬ О ПУТЕШЕСТВИЯХ</span><h2>Коллекции <small>{collectionCount(state.collection)}/{catalog.finds.length}</small></h2><p>{WORLD_PRESENTATION.rebuilding ? "Новые прогулки и рыбалка временно недоступны. Ранее начатые путешествия можно завершить через «В пути». " : ""}При подтверждении возвращения вы получаете одну новую находку, пока набор выбранного маршрута не собран. За все {catalog.finds.length} находок — достижение «Хранитель находок».</p></div>
+        {panel === "collection" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ПАМЯТЬ О ПУТЕШЕСТВИЯХ</span><h2>Коллекции <small>{collectionCount(state.collection)}/{catalog.finds.length}</small></h2><p>Здесь сохранены находки из прежних путешествий. Незавершённые походы доступны через «Старые походы». Новые исследования приносят предметы на склад; пополнение альбомов появится отдельно.</p></div>
           {(["forest", "fishing"] as const).map(group => {
             const finds = catalog.finds.filter(find => find.group === group);
             const reward = group === "forest" ? "explorer_cap" : "willow_rod";
@@ -182,10 +158,7 @@ export default function WorldView({ world, ownerPublicId, timeZone, onClose, dis
             </article>)}</div>
           </details>}
         </div>}
-          {panel === "stats" && <details className={styles.details}><summary><Sparkles size={16} />Откуда берутся искры?</summary>
-            <p>Каждые {catalog.tapsPerSpark} засчитанных игровых тапов дают 1 искру. Сегодня получено {snapshot.dailySparksEarned} из {catalog.dailySparkLimit}. Лимит обновляется в 00:00 UTC.</p>
-            <p>Материалы и дополнительные искры Мохлик приносит из путешествий.</p>
-          </details>}
+          {panel === "stats" && <p className={styles.hint}>Монеты можно получить за товары. Материалы нужны и для производства, и для строительства. Прежние искры переведены в ограниченный стартовый запас; игровые тапы продолжают повышать уровень Мохлика.</p>}
           <WorldFeedback world={world} />
         </div>
       </DialogPrimitive.Content>

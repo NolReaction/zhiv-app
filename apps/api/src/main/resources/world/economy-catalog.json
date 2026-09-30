@@ -1,0 +1,570 @@
+{
+  "version": 1,
+  "maxBatch": 10,
+  "items": [
+    {
+      "id": "berries",
+      "name": "Лесные ягоды",
+      "category": "produce",
+      "baseSellPrice": 3,
+      "tradable": true
+    },
+    {
+      "id": "wood",
+      "name": "Древесина",
+      "category": "material",
+      "baseSellPrice": 4,
+      "tradable": true
+    },
+    {
+      "id": "stone",
+      "name": "Камень",
+      "category": "material",
+      "baseSellPrice": 3,
+      "tradable": true
+    },
+    {
+      "id": "ore",
+      "name": "Железная руда",
+      "category": "material",
+      "baseSellPrice": 6,
+      "tradable": true
+    },
+    {
+      "id": "fiber",
+      "name": "Растительное волокно",
+      "category": "material",
+      "baseSellPrice": 2,
+      "tradable": true
+    },
+    {
+      "id": "fish",
+      "name": "Речная рыба",
+      "category": "produce",
+      "baseSellPrice": 8,
+      "tradable": true
+    },
+    {
+      "id": "planks",
+      "name": "Доски",
+      "category": "crafted",
+      "baseSellPrice": 12,
+      "tradable": true
+    },
+    {
+      "id": "rope",
+      "name": "Верёвка",
+      "category": "crafted",
+      "baseSellPrice": 8,
+      "tradable": true
+    },
+    {
+      "id": "metal_parts",
+      "name": "Металлические детали",
+      "category": "crafted",
+      "baseSellPrice": 18,
+      "tradable": true
+    },
+    {
+      "id": "dried_berries",
+      "name": "Сушёные ягоды",
+      "category": "provisions",
+      "baseSellPrice": 26,
+      "tradable": true
+    },
+    {
+      "id": "smoked_fish",
+      "name": "Копчёная рыба",
+      "category": "provisions",
+      "baseSellPrice": 24,
+      "tradable": true
+    }
+  ],
+  "buildings": [
+    {
+      "id": "home",
+      "name": "Дом Мохлика",
+      "description": "Новые уровни открывают исследования и рецепты. Во время стройки действует прежний уровень.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 0,
+          "cost": {
+            "coins": 0,
+            "items": {}
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 2,
+          "seconds": 1800,
+          "cost": {
+            "coins": 100,
+            "items": {
+              "wood": 12,
+              "stone": 8
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 3,
+          "seconds": 7200,
+          "cost": {
+            "coins": 250,
+            "items": {
+              "planks": 8,
+              "stone": 18,
+              "rope": 4
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 4,
+          "seconds": 21600,
+          "cost": {
+            "coins": 600,
+            "items": {
+              "planks": 18,
+              "stone": 30,
+              "metal_parts": 8
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 5,
+          "seconds": 43200,
+          "cost": {
+            "coins": 1200,
+            "items": {
+              "planks": 30,
+              "stone": 50,
+              "metal_parts": 15,
+              "rope": 12
+            }
+          },
+          "requiredHomeLevel": 1
+        }
+      ]
+    },
+    {
+      "id": "garden",
+      "name": "Ягодный сад",
+      "description": "Выращивает плоды, пока Мохлик исследует лес. Готовый урожай не портится.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 120,
+          "cost": {
+            "coins": 15,
+            "items": {
+              "wood": 2
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 2,
+          "seconds": 600,
+          "cost": {
+            "coins": 80,
+            "items": {
+              "wood": 8,
+              "stone": 4
+            }
+          },
+          "requiredHomeLevel": 2
+        }
+      ]
+    },
+    {
+      "id": "woodlot",
+      "name": "Лесной участок",
+      "description": "Запас древесины от лесных работников. Один заказ за раз.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 300,
+          "cost": {
+            "coins": 30,
+            "items": {
+              "wood": 4,
+              "stone": 2
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 2,
+          "seconds": 1200,
+          "cost": {
+            "coins": 100,
+            "items": {
+              "planks": 5,
+              "stone": 8
+            }
+          },
+          "requiredHomeLevel": 2
+        }
+      ]
+    },
+    {
+      "id": "quarry",
+      "name": "Каменоломня",
+      "description": "Добывает камень. Руда открывается после улучшения.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 600,
+          "cost": {
+            "coins": 60,
+            "items": {
+              "wood": 6,
+              "stone": 4
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 2,
+          "seconds": 1800,
+          "cost": {
+            "coins": 180,
+            "items": {
+              "planks": 8,
+              "rope": 4
+            }
+          },
+          "requiredHomeLevel": 2
+        }
+      ]
+    },
+    {
+      "id": "workshop",
+      "name": "Мастерская",
+      "description": "Мастер перерабатывает материалы в детали для построек.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 1200,
+          "cost": {
+            "coins": 120,
+            "items": {
+              "wood": 10,
+              "stone": 8
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 2,
+          "seconds": 3600,
+          "cost": {
+            "coins": 250,
+            "items": {
+              "planks": 10,
+              "stone": 12
+            }
+          },
+          "requiredHomeLevel": 2
+        },
+        {
+          "level": 3,
+          "seconds": 7200,
+          "cost": {
+            "coins": 500,
+            "items": {
+              "planks": 20,
+              "metal_parts": 10
+            }
+          },
+          "requiredHomeLevel": 3
+        }
+      ]
+    },
+    {
+      "id": "dryer",
+      "name": "Заготовки",
+      "description": "Сушильня и коптильня готовят припасы для продажи и дальних вылазок.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 600,
+          "cost": {
+            "coins": 45,
+            "items": {
+              "wood": 6,
+              "stone": 2
+            }
+          },
+          "requiredHomeLevel": 1
+        },
+        {
+          "level": 2,
+          "seconds": 1800,
+          "cost": {
+            "coins": 140,
+            "items": {
+              "planks": 6,
+              "stone": 8
+            }
+          },
+          "requiredHomeLevel": 2
+        }
+      ]
+    }
+  ],
+  "recipes": [
+    {
+      "id": "grow_berries",
+      "name": "Вырастить ягоды",
+      "buildingId": "garden",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "seconds": 600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 6
+      }
+    },
+    {
+      "id": "grow_berries_large",
+      "name": "Большой урожай",
+      "buildingId": "garden",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 20
+      }
+    },
+    {
+      "id": "gather_wood",
+      "name": "Заготовить древесину",
+      "buildingId": "woodlot",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 5
+      }
+    },
+    {
+      "id": "gather_fiber",
+      "name": "Собрать волокно",
+      "buildingId": "woodlot",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "fiber": 8
+      }
+    },
+    {
+      "id": "quarry_stone",
+      "name": "Добыть камень",
+      "buildingId": "quarry",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 8
+      }
+    },
+    {
+      "id": "quarry_ore",
+      "name": "Добыть руду",
+      "buildingId": "quarry",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "ore": 5
+      }
+    },
+    {
+      "id": "make_planks",
+      "name": "Распилить доски",
+      "buildingId": "workshop",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "wood": 2
+        }
+      },
+      "rewards": {
+        "planks": 1
+      }
+    },
+    {
+      "id": "make_rope",
+      "name": "Сплести верёвку",
+      "buildingId": "workshop",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "seconds": 600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fiber": 3
+        }
+      },
+      "rewards": {
+        "rope": 1
+      }
+    },
+    {
+      "id": "make_metal_parts",
+      "name": "Сделать детали",
+      "buildingId": "workshop",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ore": 2
+        }
+      },
+      "rewards": {
+        "metal_parts": 1
+      }
+    },
+    {
+      "id": "dry_berries",
+      "name": "Высушить ягоды",
+      "buildingId": "dryer",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berries": 6
+        }
+      },
+      "rewards": {
+        "dried_berries": 1
+      }
+    },
+    {
+      "id": "smoke_fish",
+      "name": "Закоптить рыбу",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish": 2,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "smoked_fish": 1
+      }
+    }
+  ],
+  "explorations": [
+    {
+      "id": "forest",
+      "name": "Лесная разведка",
+      "description": "Бесплатная вылазка: древесина, камни и волокно всегда помогут начать снова.",
+      "requiredHomeLevel": 1,
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 5,
+        "stone": 3,
+        "fiber": 4
+      }
+    },
+    {
+      "id": "shore",
+      "name": "Рыбалка на берегу",
+      "description": "Обычный улов без расходников. Мохлик занимает одно место исследователя.",
+      "requiredHomeLevel": 1,
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "fish": 4
+      }
+    },
+    {
+      "id": "cave",
+      "name": "Вход в пещеру",
+      "description": "Разведанный участок с камнем и железной рудой.",
+      "requiredHomeLevel": 2,
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 8,
+        "ore": 4
+      }
+    },
+    {
+      "id": "deep_cave",
+      "name": "Глубокий проход",
+      "description": "Для долгой вылазки нужны припасы. Возвращение всегда приносит материалы.",
+      "requiredHomeLevel": 3,
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "dried_berries": 1,
+          "smoked_fish": 1
+        }
+      },
+      "rewards": {
+        "stone": 30,
+        "ore": 20
+      }
+    }
+  ],
+  "market": {
+    "requiredHomeLevel": 2,
+    "requiredExplorations": 1,
+    "maxListings": 10,
+    "maxLotQuantity": 99,
+    "maxPriceMultiplier": 5,
+    "feeBps": 0
+  }
+}

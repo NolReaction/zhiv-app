@@ -52,6 +52,12 @@ import ru.zhiv.game.gameEventRoutes
 import ru.zhiv.world.WorldRepository
 import ru.zhiv.world.worldRoutes
 import ru.zhiv.db.JdbcWorldRepository
+import ru.zhiv.db.JdbcEconomyRepository
+import ru.zhiv.db.JdbcEconomyMarketRepository
+import ru.zhiv.economy.EconomyRepository
+import ru.zhiv.economy.EconomyMarketRepository
+import ru.zhiv.economy.economyRoutes
+import ru.zhiv.economy.economyMarketRoutes
 import ru.zhiv.db.JdbcForestMemoryRepository
 import ru.zhiv.forest.ForestMemoryRepository
 import ru.zhiv.forest.forestMemoryRoutes
@@ -121,6 +127,8 @@ fun Application.module() {
         vk = vk,
         games = JdbcGameRepository(dataSource),
         worlds = JdbcWorldRepository(dataSource),
+        economy = JdbcEconomyRepository(dataSource),
+        economyMarket = JdbcEconomyMarketRepository(dataSource),
         forestMemory = JdbcForestMemoryRepository(dataSource),
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
         incidents = UserIncidentRepository(dataSource),
@@ -150,6 +158,8 @@ fun Application.installZhivApi(
     incidents: UserIncidentRepository? = null,
     feedback: FeedbackRepository? = null,
     forestMemory: ForestMemoryRepository? = null,
+    economy: EconomyRepository? = null,
+    economyMarket: EconomyMarketRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -300,6 +310,8 @@ fun Application.installZhivApi(
         games?.let { gameRoutes(it, tokenCodec, config) }
         incidents?.let { userIncidentRoutes(it, admin, config, tokenCodec) }
         worlds?.let { worldRoutes(it, tokenCodec, config) }
+        economy?.let { economyRoutes(it, tokenCodec, config) }
+        economyMarket?.let { economyMarketRoutes(it, tokenCodec, config) }
         forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         admin?.let { repository ->

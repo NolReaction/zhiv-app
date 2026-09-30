@@ -26,7 +26,7 @@ export type ForestObservation = Readonly<{
     events: ReadonlyArray<Readonly<{ id: number; at: number; type: string; label: string; reason: string }>>;
   }>;
 }>;
-type Options = { paused?: boolean; manual?: boolean; now?: number; force?: boolean };
+type Options = { paused?: boolean; manual?: boolean; now?: number; force?: boolean; exploration?: string | null };
 type ObservationEntry = { snapshot: ForestObservation; signature: string; phase: string; nextAt: number };
 const entries = new Map<string, ObservationEntry>();
 const subscribers = new Map<string, Set<() => void>>();
@@ -55,6 +55,7 @@ export function forgetForestObservation(key: string | undefined) {
 }
 
 function currentActivity(state: ForestSessionState, options: Options) {
+  if (options.exploration) return { label: "В исследовании", detail: options.exploration };
   const { clearing, life, fauna } = state;
   const frame = clearingActivityFrame(clearing);
   if (options.manual) return { label: "Показывает анимацию", detail: "Сейчас включён просмотр позы Мохлика." };
@@ -157,7 +158,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
     activity: activity.label, detail: `${activity.detail} ${mood.description}`, mood: mood.label,
     needs: Object.freeze({ energy: percent(mind.needs.energy), curiosity: percent(mind.needs.curiosity),
       comfort: percent(mind.needs.comfort), attention: percent(mind.needs.attention) }),
-    sleeping: state.clearing.stage === "home-sleep" || clearingActivityFrame(state.clearing).pose === "sleep",
+    sleeping: !options.exploration && (state.clearing.stage === "home-sleep" || clearingActivityFrame(state.clearing).pose === "sleep"),
     paused: Boolean(options.paused) || memory?.sync?.mode === "other-device",
     memory: Object.freeze({ status, savedAt: memory?.lastSavedAt ?? null,
       ...(memory?.sync ? { sync: Object.freeze({ ...memory.sync }) } : {}) }),
@@ -178,7 +179,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
 export function publishForestObservation(key: string | undefined, state: ForestSessionState, options: Options = {}) {
   if (!key) return;
   const now = options.now ?? Date.now(), previous = entries.get(key);
-  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${Boolean(state.director.campfireVisit)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}`;
+  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${Boolean(state.director.campfireVisit)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}:${options.exploration ?? ""}`;
   if (!options.force && previous?.phase === phase && now < previous.nextAt) return;
   const snapshot = forestObservationFrame(state, options), signature = JSON.stringify(snapshot);
   if (previous?.signature === signature) { previous.nextAt = now + 500; previous.phase = phase; return; }

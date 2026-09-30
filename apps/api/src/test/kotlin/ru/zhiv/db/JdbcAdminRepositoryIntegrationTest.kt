@@ -477,18 +477,21 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals("clear_signal", audit.events.single().action)
     }
 
-    @Test fun `world grants are atomic replayable bounded and preserve normal progression`() = runBlocking<Unit> {
+    @Test fun `retired resource grants reject explicitly and cosmetic grants remain replayable`() = runBlocking<Unit> {
         val admin=user(); val target=user(); val repo=repository(admin)
         val grant=command(target,"grant_resource","wood",25)
-        val receipts=coroutineScope { List(2) { async(Dispatchers.IO) { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(grant.requestId),grant) } }.awaitAll() }
-        assertEquals(receipts[0],receipts[1]); assertEquals(25L,repo.player(admin.hash,target.publicId).world.resources.wood)
+        assertEquals("ADMIN_RESOURCE_RETIRED",assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(grant.requestId),grant) }.code)
+        assertEquals(0L,repo.player(admin.hash,target.publicId).world.resources.wood)
+        assertEquals("0",scalar("SELECT count(*) FROM admin_actions WHERE request_id=?",UUID.fromString(grant.requestId)))
+        val cosmetic=command(target,"grant_world_item","explorer_cap")
+        val receipts=coroutineScope { List(2) { async(Dispatchers.IO) { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(cosmetic.requestId),cosmetic) } }.awaitAll() }
+        assertEquals(receipts[0],receipts[1])
         assertEquals(1L,repo.player(admin.hash,target.publicId).revision)
         assertEquals("0",scalar("SELECT tap_sparks FROM world_profiles WHERE user_id=?",target.id))
         assertEquals("0",scalar("SELECT count(*) FROM game_monthly_scores WHERE user_id=?",target.id))
         val duplicate=command(target,"grant_world_item","moss")
         assertFalse(repo.managePlayer(admin.hash,target.publicId,UUID.fromString(duplicate.requestId),duplicate).changed)
-        assertEquals(1L,repo.player(admin.hash,target.publicId).revision)
-        assertEquals(409,assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(grant.requestId),grant.copy(amount=26)) }.status)
+        assertEquals(409,assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(cosmetic.requestId),cosmetic.copy(target="amber_scarf")) }.status)
         for(bad in listOf(grant.copy(requestId=UUID.randomUUID().toString(),amount=-1),grant.copy(requestId=UUID.randomUUID().toString(),amount=100001),command(target,"grant_world_item","unknown"))) {
             assertEquals(400,assertFailsWith<AuthFailure> { repo.managePlayer(admin.hash,target.publicId,UUID.fromString(bad.requestId),bad) }.status)
         }

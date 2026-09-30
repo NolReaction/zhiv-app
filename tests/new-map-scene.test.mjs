@@ -44,6 +44,8 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/navigation.ts"),
       ...await vite.ssrLoadModule("/features/world/clearing-activity.ts"),
       ...await vite.ssrLoadModule("/features/world/new-map-scene.ts"),
+      ...await vite.ssrLoadModule("/features/world/economy-scene-state.ts"),
+      ...await vite.ssrLoadModule("/features/world/forest-observer.ts"),
     };
   } finally { await vite.close(); }
 }
@@ -1654,4 +1656,172 @@ test("static night and DEV lighting edits update real firefly glow without advan
     assert.equal(glowFrame().length, 3); assert.ok(glowFrame().every(alpha => alpha > 0), "a frozen frame reflects the current night immediately");
     assert.deepEqual(probe.state.fauna, frozen); assert.equal(env.frames.size, 0);
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("saved house progression selects both cameras, preserves memory and commits new geometry only with its artwork", async () => {
+  const geometry = offset => ({
+    bounds: { ...clearingHome.bounds, x: clearingHome.bounds.x + offset },
+    anchor: { ...clearingHome.anchor, x: clearingHome.anchor.x + offset },
+    entry: { ...clearingHome.entry, x: clearingHome.entry.x + offset },
+    doorway: { ...clearingHome.doorway, x: clearingHome.doorway.x + offset },
+    collision: clearingHome.collision.map(point => ({ ...point, x: point.x + offset })),
+    hitArea: clearingHome.hitArea.map(point => ({ ...point, x: point.x + offset })),
+  });
+  const site = { ...clearingHome, initialLevel: 2, states: [1, 2].map(level => ({ level,
+    label: `Level ${level}`, image: `/account-home-${level}.webp`, geometry: geometry((level - 1) * 50) })) };
+  const navigation = { ...livingNavigation, areas: [{ id: "clearing", points: [
+    { x: 570, y: 610 }, { x: 780, y: 610 }, { x: 780, y: 735 }, { x: 570, y: 735 },
+  ] }] };
+  const { mountHabitat, connectForestSession, previewWorldScene, TILED_WORLD, worldDevStore } = await modules({ sites: [site], navigation });
+  const env = browser(), scenes = [], probes = [], saved = new Map();
+  window.localStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) };
+  try {
+    const initial = { ...options, presenceKey: "progression-scene", worldState: { houseLevel: 1 } };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    assert.deepEqual(env.requests, ["/test-ground.webp", "/account-home-1.webp"], "authored preview level cannot override the account");
+    env.finish(); const first = env.finish(); await flush();
+    const probe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { home: 1 }), "circle", 0, 0, () => {}); probes.push(probe);
+    assert.equal(probe.state.memory.enabled, true);
+    probe.state.clearing.behavior.mind.needs.energy = .42;
+    const building = scene => {
+      const surface = env.surface(); scene.paintWorld(surface.context);
+      return surface.calls.findLast(call => call.method === "drawImage" && call.args[0] instanceof Image && call.args.length === 5).args;
+    };
+    const upgraded = { ...initial, worldState: { houseLevel: 2 } };
+    circle.configure(upgraded); world.configure({ ...upgraded, view: "world" });
+    assert.deepEqual(building(circle), [first, 620, 580, 80, 70], "an in-flight replacement never reveals unready geometry");
+    assert.equal(probe.state.clearing.interactions.home.entry.x, 650);
+    const second = env.finishPath("/account-home-2.webp"); await flush();
+    const current = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { home: 2 }), "circle", 0, 0, () => {}); probes.push(current);
+    assert.equal(current.state.memory.enabled, true, "a legitimate upgrade keeps memory saving enabled");
+    assert.equal(current.state.clearing.behavior.mind.needs.energy, .42, "geometry reconciliation preserves needs");
+    assert.equal(current.state.clearing.interactions.home.entry.x, 700);
+    assert.deepEqual(building(circle), [second, 670, 580, 80, 70]);
+    assert.deepEqual(building(world), building(circle));
+    worldDevStore.patch({ previewBuildings: true, levels: { home: 1 } }); await flush();
+    assert.deepEqual(building(circle), [first, 620, 580, 80, 70], "an explicit preview overrides saved progression");
+    worldDevStore.reset(); await flush();
+    assert.deepEqual(building(circle), [second, 670, 580, 80, 70], "DEV reset returns to the saved account level");
+  } finally { scenes.forEach(scene => scene.dispose()); probes.forEach(probe => probe.release()); worldDevStore.reset(); env.restore(); }
+});
+
+test("account house levels fall back to available art and explicit DEV can preview the authored initial level", async () => {
+  const site = { ...clearingHome, states: [1, 3, 5].map(level => ({ level, label: `Level ${level}`, image: `/fallback-${level}.png` })) };
+  const { accountSceneLevels, TILED_WORLD, WORLD_DEV_DEFAULTS } = await modules({ sites: [site] });
+  assert.equal(accountSceneLevels(TILED_WORLD, 4, WORLD_DEV_DEFAULTS).home, 3);
+  assert.equal(accountSceneLevels(TILED_WORLD, 99, WORLD_DEV_DEFAULTS).home, 5);
+  for (const invalid of [NaN, Infinity, -1, 1.5, undefined]) assert.equal(accountSceneLevels(TILED_WORLD, invalid).home, 1);
+  assert.equal(accountSceneLevels(TILED_WORLD, 5, { ...WORLD_DEV_DEFAULTS, previewBuildings: true }).home, 1);
+});
+
+test("exploration hides the shared hero, releases carried props, advances ecology and returns on server time", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, pixelSprite, getForestObservation } = await modules({ habitats: livingHabitats });
+  const env = browser(), scenes = [], saved = new Map(); let probe;
+  window.localStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) };
+  try {
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "exploring-account" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const basket = { position: { x: 680, y: 700 }, approach: { x: 660, y: 700 }, homePosition: { x: 680, y: 700 },
+      homeApproach: { x: 660, y: 700 }, size: 14, berries: 3, capacity: 12, held: true };
+    probe.state.life.garden.basket = basket;
+    const journey = { id: "exploration-1", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(160_000).toISOString(), label: "Разведка лесной тропы" };
+    const travelling = { ...initial, economyJourney: journey };
+    const before = circle.position(), lifeBefore = probe.state.life.elapsed;
+    circle.configure(travelling);
+    const world = mountHabitat(env.surface(), { ...travelling, view: "world" }, callbacks); scenes.push(world); await flush();
+    const heroElapsed = probe.state.clearing.elapsed, needs = structuredClone(probe.state.clearing.behavior.mind.needs);
+    assert.equal(basket.held, false, "the basket is placed beside the actual feet before departure");
+    assert.equal(basket.berries, 3, "departure cannot lose delivered fruit");
+    for (const scene of [circle, world]) {
+      assert.equal(sampleHero(scene, env, pixelSprite).body, undefined);
+      assert.equal(scene.hitPet(.5, .5), false); scene.notice();
+    }
+    const clock = sceneClock(env); clock.advance(2);
+    assert.equal(probe.state.reaction, 0, "tapping cannot spawn a second hero on the clearing");
+    assert.equal(probe.state.clearing.elapsed, heroElapsed, "autonomous hero actions stay paused");
+    assert.deepEqual(probe.state.clearing.behavior.mind.needs, needs);
+    assert.deepEqual(circle.position(), before, "departure never writes an imaginary off-map position");
+    assert.ok(probe.state.life.elapsed > lifeBefore, "mushrooms and forest ecology keep their clock");
+    assert.ok(probe.state.fauna.elapsed > 0);
+    assert.equal(probe.state.memory.enabled, true, "exploration is not a DEV memory override");
+    assert.equal(getForestObservation(initial.presenceKey).activity, "В исследовании");
+    probe.saveMemory();
+    assert.equal([...saved.values()].some(value => value.includes("exploration-1")), false, "the cosmetic snapshot cannot own an economic job");
+    world.configure({ ...travelling, view: "world", reducedMotion: true });
+    circle.configure({ ...travelling, backgrounded: true });
+    world.setTime(160_000);
+    assert.ok(sampleHero(world, env, pixelSprite).body, "server completion returns the hero even without animation frames or a reward claim");
+    assert.equal(probe.state.explorationId, null);
+    assert.equal(probe.state.clearing.idleSeconds, 0);
+    assert.equal(basket.berries, 3);
+  } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); env.restore(); }
+});
+
+test("exploration server clock corrects backwards independently of the monotonic forest clock", async () => {
+  const { mountHabitat, pixelSprite } = await modules();
+  const env = browser(); let scene;
+  try {
+    const journey = { id: "corrected-clock", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(160_000).toISOString() };
+    const initial = { ...options, serverNow: 1_000_000, economyJourney: journey };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    assert.ok(sampleHero(scene, env, pixelSprite).body, "initial inaccurate client time is ahead of the deadline");
+    scene.setTime(110_000);
+    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined, "a server sample behind client time restores the real active exploration");
+    scene.configure(initial);
+    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined, "visibility/configuration with an old sample cannot replace the newer server clock");
+    scene.setTime(160_000);
+    assert.ok(sampleHero(scene, env, pixelSprite).body, "authoritative completion returns the hero in reduced motion");
+    scene.configure({ ...initial, serverNow: 120_000 });
+    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined, "configure also accepts a fresh authoritative correction");
+  } finally { scene?.dispose(); env.restore(); }
+});
+
+test("map house taps use committed artwork geometry and sleeping hero wake-up takes priority", async () => {
+  const geometry = offset => ({
+    bounds: { ...clearingHome.bounds, x: clearingHome.bounds.x + offset },
+    anchor: { ...clearingHome.anchor, x: clearingHome.anchor.x + offset },
+    entry: { ...clearingHome.entry, x: clearingHome.entry.x + offset },
+    doorway: { ...clearingHome.doorway, x: clearingHome.doorway.x + offset },
+    collision: clearingHome.collision.map(point => ({ ...point, x: point.x + offset })),
+    hitArea: clearingHome.hitArea.map(point => ({ ...point, x: point.x + offset })),
+  });
+  const site = { ...clearingHome, states: [1, 2].map(level => ({ level, label: `Level ${level}`,
+    image: `/click-home-${level}.webp`, geometry: geometry((level - 1) * 100) })) };
+  const { createMapEngine, connectForestSession, previewWorldScene, TILED_WORLD, worldDevStore } = await modules({
+    sites: [site], paths: [clearingHomePath],
+  });
+  const env = browser(); let engine, probe;
+  try {
+    const canvas = env.surface(400), places = [], initial = { ...options, reducedMotion: false, presenceKey: "click-home", worldState: { houseLevel: 1 } };
+    const loading = createMapEngine(canvas, initial, place => places.push(place), []);
+    env.finish(); await flush(); env.finishPath("/click-home-1.webp"); engine = await loading;
+    engine.control("overview");
+    const tap = (x, y) => {
+      const event = { pointerId: 1, pointerType: "mouse", button: 0, clientX: x * 400 / fixture.width, clientY: y * 400 / fixture.height };
+      canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+      canvas.events.get("pointerup")({ ...event, type: "pointerup" });
+    };
+    tap(630, 600); assert.deepEqual(places, ["house"], "clicking the awake household opens construction");
+    probe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { home: 1 }), "circle", 0, 0, () => {});
+    const clock = sceneClock(env);
+    worldDevStore.triggerLife("home-sleep");
+    clock.until(() => probe.state.clearing.stage === "home-sleep", "the hero reaches the authored home", 600);
+    tap(630, 600);
+    assert.equal(places.length, 1, "the same target wakes an indoor hero before opening a panel");
+    assert.notEqual(probe.state.clearing.stage, "home-sleep");
+    clock.until(() => probe.state.clearing.routeKind !== "home", "waking finishes the real exit", 600);
+    engine.update({ ...initial, worldState: { houseLevel: 2 } });
+    tap(730, 600); assert.equal(places.length, 1, "pending artwork cannot expose the new hit area");
+    env.finishPath("/click-home-2.webp"); await flush();
+    tap(630, 600); assert.equal(places.length, 1, "the old hit area disappears with old art");
+    tap(730, 600); assert.deepEqual(places, ["house", "house"]);
+    worldDevStore.patch({ showBuildings: false }); tap(730, 600);
+    assert.equal(places.length, 2, "hidden buildings have no ghost click target");
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

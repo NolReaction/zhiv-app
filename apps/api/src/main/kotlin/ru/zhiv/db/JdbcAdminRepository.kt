@@ -327,18 +327,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                 c.update("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb) ON CONFLICT DO NOTHING",target,worldJson.encodeToString(WorldState()))
                 val before = c.one("SELECT state FROM world_profiles WHERE user_id=?",target) { worldJson.decodeFromString<WorldState>(it.getString(1)) }!!
                 val after = when(request.action) {
-                    "grant_resource" -> {
-                        val r=before.resources
-                        fun add(value: Long): Long {
-                            if(value > 9_007_199_254_740_991L - request.amount) fail("ADMIN_RESOURCE_LIMIT","Достигнут предел ресурсов",409)
-                            return value + request.amount
-                        }
-                        before.copy(resources=when(request.target) {
-                            "sparks" -> r.copy(sparks=add(r.sparks))
-                            "wood" -> r.copy(wood=add(r.wood))
-                            else -> r.copy(stone=add(r.stone))
-                        })
-                    }
+                    "grant_resource" -> fail("ADMIN_RESOURCE_RETIRED", "Искры, старое дерево и камень больше не выдаются. Используйте новую экономику; старый запрос отменён.", 409)
                     "grant_world_item" -> if(request.target in before.inventory) before else before.copy(inventory=(before.inventory+request.target).sorted())
                     "grant_find" -> {
                         val collection=if(request.target in before.collection) before.collection else (before.collection+request.target).sorted()

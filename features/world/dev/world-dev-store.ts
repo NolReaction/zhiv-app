@@ -39,6 +39,7 @@ export type WorldDevState = Readonly<{
   showBuildings: boolean;
   heroShadow: boolean;
   buildingShadow: boolean;
+  previewBuildings: boolean;
   debug: boolean;
   debugWater: boolean;
   debugNavigation: boolean;
@@ -58,6 +59,7 @@ export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   autoLife: true, navigationMode: "auto", puddles: true,
   paused: false, reducedMotion: "auto", pose: "auto", direction: "front", heroScale: 1,
   showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true,
+  previewBuildings: false,
   debug: false, debugWater: false, debugNavigation: false, debugFauna: false,
   levels: Object.freeze(initialPreviewLevels(TILED_WORLD)), equipment: null,
   animation: null, lifeEvent: null, birdEvent: 0, scenarioEvent: null, cameraEvent: null, artError: null,
@@ -71,7 +73,7 @@ const enumValues = {
   navigationMode: ["auto", "routes"],
   direction: ["front", "back", "left", "right"],
 } as const;
-const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
+const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
 const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "watch-birds", "campfire", "idle"].some(kind => kind === value);
@@ -114,8 +116,11 @@ export function createWorldDevStore(enabled: boolean) {
           const level = patch.levels![site.id];
           return [site.id, site.states.some(visual => visual.level === level) ? level : state.levels[site.id]];
         }));
-        if (Object.keys(levels).some(id => levels[id] !== state.levels[id])) next.levels = Object.freeze(levels);
+        if (Object.keys(levels).some(id => levels[id] !== state.levels[id])) {
+          next.levels = Object.freeze(levels); next.previewBuildings = true;
+        }
       }
+      if (patch.previewBuildings === false) { next.previewBuildings = false; next.levels = WORLD_DEV_DEFAULTS.levels; }
       const equipment = patch.equipment;
       if (equipment === null) next.equipment = null;
       else if (isRecord(equipment) && typeof equipment.palette === "string"

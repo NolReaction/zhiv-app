@@ -10,12 +10,14 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.config.AppConfig
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.world.*
+import ru.zhiv.economy.*
+import java.time.Instant
 import ru.zhiv.forest.*
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.*
 
-/** Exercise both the older deployed schema and the current release before forest memory. */
+/** Exercise upgrades from deployed schemas before memory and the replacement economy. */
 @Testcontainers(disabledWithoutDocker = true)
 class JdbcReleaseUpgradeIntegrationTest {
     private class Postgres(image: String) : PostgreSQLContainer<Postgres>(image)
@@ -32,7 +34,19 @@ class JdbcReleaseUpgradeIntegrationTest {
         scalar(source, "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text FROM public.\"$table\" t")
     }
 
-    @Test fun `upgrade from populated V30 adds memory without changing existing accounts feedback or economy`() = runBlocking<Unit> {
+    private fun seedLegacyWorld(source: DataSource, user: UUID, state: WorldState, revision: Long, command: WorldCommand) {
+        source.connection.use { connection ->
+            fun execute(sql: String, vararg values: Any?) = connection.prepareStatement(sql).use { statement ->
+                values.forEachIndexed { index, value -> statement.setObject(index+1,value) }; statement.executeUpdate()
+            }
+            execute("INSERT INTO world_profiles(user_id,state,revision) VALUES (?,?::jsonb,?)",user,worldJson.encodeToString(state),revision)
+            execute("INSERT INTO world_commands(user_id,request_id,signature,message) VALUES (?,?,?,?)",user,UUID.fromString(command.requestId),worldJson.encodeToString(command),"Мохлик отправился в путь")
+            execute("INSERT INTO world_ledger(user_id,source_key,kind) VALUES (?,?,'start_journey')",user,"command:${command.requestId}")
+            connection.commit()
+        }
+    }
+
+    @Test fun `upgrade from populated V30 preserves accounts and feedback while initializing the new economy`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
             Flyway.configure().dataSource(source).locations("classpath:db/migration").target("30").cleanDisabled(true).load().migrate()
@@ -41,9 +55,9 @@ class JdbcReleaseUpgradeIntegrationTest {
             val player = identities.bootstrap("До памяти", tokens.issue().hash, token.hash, 365)
             identities.record(token.hash, UUID.randomUUID())
             val world = JdbcWorldRepository(source)
-            val initial = world.snapshot(token.hash)
-            val travel = WorldCommand(UUID.randomUUID().toString(), player.publicId, initial.revision, "start_journey", "first_path")
-            val savedWorld = world.command(token.hash, travel).snapshot
+            val travel = WorldCommand(UUID.randomUUID().toString(), player.publicId, 0, "start_journey", "first_path")
+            val savedWorld = WorldRules.apply(WorldState(),travel,Instant.now()).first
+            seedLegacyWorld(source,player.id,savedWorld,1,travel)
             source.connection.use { connection ->
                 connection.prepareStatement("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('email','v30-upgrade@example.invalid',?)").use { statement ->
                     statement.setObject(1, player.id); statement.executeUpdate()
@@ -57,17 +71,18 @@ class JdbcReleaseUpgradeIntegrationTest {
                     buildList { while (rows.next()) add(rows.getString(1)) }
                 }
             } }
-            val before = legacyData(source, tables)
+            val unchangedTables = tables.filterNot { it == "world_profiles" }
+            val before = legacyData(source, unchangedTables)
             val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=30"
             val beforeHistory = scalar(source, historySql)
             DatabaseFactory.migrate(source)
-            assertEquals(before, legacyData(source, tables))
+            assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("31", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("33", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
-            assertEquals(before, legacyData(source, tables))
+            assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(player.publicId, identities.findBySession(token.hash)?.publicId)
             val memory = JdbcForestMemoryRepository(source)
             val acquire = ForestMemoryCommand(player.publicId, UUID.randomUUID().toString(), UUID.randomUUID().toString(), 0, "acquire")
@@ -77,8 +92,8 @@ class JdbcReleaseUpgradeIntegrationTest {
             val saved = memory.command(token.hash, save).state
             assertEquals(memoryFixture(), JdbcForestMemoryRepository(source).read(token.hash, player.publicId, UUID.fromString(acquire.clientId)).snapshot)
             assertEquals(2L, saved.revision)
-            assertEquals(savedWorld.state, world.snapshot(token.hash).state)
-            assertEquals(savedWorld.revision, world.snapshot(token.hash).revision)
+            assertEquals(savedWorld, world.snapshot(token.hash).state)
+            assertEquals(2L, world.snapshot(token.hash).revision)
             assertTrue(world.command(token.hash, travel).replayed)
         }
     }
@@ -91,14 +106,13 @@ class JdbcReleaseUpgradeIntegrationTest {
             val identity = JdbcZhivRepository(source)
             val player = identity.bootstrap("До обновления", TokenCodec().issue().hash, token.hash, 365)
             identity.record(token.hash, UUID.randomUUID())
-            val world = JdbcWorldRepository(source)
-            val initial = world.snapshot(token.hash)
-            val travel = WorldCommand(UUID.randomUUID().toString(), player.publicId, initial.revision, "start_journey", "first_path")
-            val departed = world.command(token.hash, travel).snapshot
-            val savedWorld = departed.state.copy(resources = WorldResources(120, 27, 13), houseLevel = 3,
+            val travel = WorldCommand(UUID.randomUUID().toString(), player.publicId, 0, "start_journey", "first_path")
+            val departed = WorldRules.apply(WorldState(),travel,Instant.now()).first
+            val savedWorld = departed.copy(resources = WorldResources(120, 27, 13), houseLevel = 3,
                 workshop = true, workshopLevel = 2, inventory = listOf("moss", "amber_scarf", "willow_rod"),
                 equipment = WorldEquipment(neck = "amber_scarf", rod = "willow_rod"), collection = listOf("acorn"),
                 completedJourneys = 7, hiddenGifts = listOf("flower"))
+            seedLegacyWorld(source,player.id,savedWorld,8,travel)
             source.connection.use { connection ->
                 fun execute(sql: String, vararg values: Any?) = connection.prepareStatement(sql).use { statement ->
                     values.forEachIndexed { index, value -> statement.setObject(index + 1, value) }; statement.executeUpdate()
@@ -117,14 +131,15 @@ class JdbcReleaseUpgradeIntegrationTest {
                 }
             } }
             assertEquals(42, tables.size)
-            val before = legacyData(source, tables)
+            val unchangedTables = tables.filterNot { it == "world_profiles" }
+            val before = legacyData(source, unchangedTables)
             val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=28"
             val oldHistory = scalar(source, historySql)
 
             DatabaseFactory.migrate(source)
-            assertEquals(before, legacyData(source, tables), "Upgrading must not rewrite any existing player table")
+            assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("31", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("33", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -133,19 +148,25 @@ class JdbcReleaseUpgradeIntegrationTest {
                 FROM game_tap_collection_metadata m JOIN flyway_schema_history h ON h.version='28' AND h.success"""))
             val upgradedHistory = scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
             DatabaseFactory.migrate(source)
-            assertEquals(before, legacyData(source, tables), "Repeated startup must not reapply economy effects")
+            assertEquals(before, legacyData(source, unchangedTables), "Repeated startup must not reapply economy effects")
             assertEquals(upgradedHistory, scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h"))
 
             assertEquals(player.publicId, JdbcZhivRepository(source).findBySession(token.hash)?.publicId)
             assertEquals(12345L, JdbcGameRepository(source).progress(token.hash).lifetimeTaps)
             val restored = JdbcWorldRepository(source).snapshot(token.hash)
-            assertEquals(8L, restored.revision)
-            assertEquals(savedWorld, restored.state)
+            assertEquals(9L, restored.revision)
+            assertEquals(savedWorld.copy(resources=WorldResources()), restored.state)
+            val economic=JdbcEconomyRepository(source).snapshot(token.hash)
+            assertEquals(EconomyRules.legacyConversion(120,27,13).coinsGranted,economic.wallet.coins)
+            assertEquals(mapOf("wood" to 5L,"stone" to 3L),economic.inventory)
+            assertEquals(3,economic.buildings["home"])
+            assertEquals(2,economic.buildings["workshop"])
+            assertEquals("1",scalar(source,"SELECT count(*) FROM economy_conversion_audit WHERE user_id='${player.id}'"))
             assertEquals(listOf("flower"), restored.gifts)
             val replay = JdbcWorldRepository(source).command(token.hash, travel)
             assertTrue(replay.replayed, "A request acknowledged before deployment must remain idempotent")
-            assertEquals(savedWorld, replay.snapshot.state)
-            assertEquals(8L, replay.snapshot.revision)
+            assertEquals(savedWorld.copy(resources=WorldResources()), replay.snapshot.state)
+            assertEquals(9L, replay.snapshot.revision)
         }
     }
 }
