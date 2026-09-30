@@ -225,6 +225,7 @@ await api("POST", managePath, { cookie: ordinary.cookie, body: resourceGrant, ex
 await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant, source: "https://untrusted.invalid", expected: 403 });
 const resourceDenied = await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant, expected: 409 });
 assert.equal(resourceDenied.data.code, "ADMIN_RESOURCE_RETIRED");
+assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 3, "Rejected legacy grants must not create a successful audit action");
 assert.equal((await api("GET", "/api/v1/world", { cookie: freshCookie })).data.state.resources.wood,
   beforeManagement.data.world.resources.wood);
 const tag = { text: "Tester", color: "blue" };
@@ -255,7 +256,7 @@ await api("GET", "/api/v1/me", { cookie: freshCookie, expected: 401 });
 const unbannedCookie = addSession(target.publicId);
 assert.deepEqual((await api("GET", "/api/v1/me", { cookie: unbannedCookie })).data.user.tag, tag);
 assert.equal((await api("GET", "/api/v1/game/progress", { cookie: unbannedCookie })).data.lifetimeTaps, 9);
-assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 7);
+assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 6);
 await api("POST", managePath, { cookie: admin.cookie, body: management("watch") });
 assert.equal((await api("GET", playerPath, { cookie: admin.cookie })).data.watchlisted, true);
 await api("POST", managePath, { cookie: admin.cookie, body: management("unwatch") });
