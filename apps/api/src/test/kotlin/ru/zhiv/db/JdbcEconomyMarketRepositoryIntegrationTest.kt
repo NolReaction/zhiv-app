@@ -217,7 +217,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(3, (first.listings + second.listings).map { it.id }.toSet().size)
         assertTrue(first.listings.all { it.sellerPublicId == seller.publicId && !it.owned })
         assertFalse(economyJson.encodeToString(first).contains(seller.id.toString()))
-        execute("UPDATE app_users SET banned_at=clock_timestamp() WHERE id=?", seller.id)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Economy test account ban' WHERE id=?", seller.id)
         assertTrue(market.market(viewer.hash).listings.isEmpty())
         assertFailsWith<AuthFailure> { market.market(viewer.hash, limit = 51) }
     }

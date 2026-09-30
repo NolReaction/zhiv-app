@@ -139,7 +139,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val start = command(p, initial, "start_exploration", "forest")
         assertEquals("ECONOMY_EXPLORER_BUSY", assertFailsWith<AuthFailure> { economy.command(p.hash, start) }.code)
         assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, start) }.code)
-        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='test' WHERE id=?", p.id)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Economy test account ban' WHERE id=?", p.id)
         assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { economy.snapshot(p.hash) }.code)
     }
 
