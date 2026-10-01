@@ -58,7 +58,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -3535,7 +3535,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -7166,7 +7166,7 @@
          "name":"WaterExclusions",
          "opacity":1,
          "type":"group",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -7201,7 +7201,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -7308,7 +7308,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -7587,7 +7587,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -7836,7 +7836,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -7970,7 +7970,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -8163,7 +8163,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -8696,7 +8696,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -9229,7 +9229,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -9259,7 +9259,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -9426,13 +9426,57 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
         {
          "id":25,
          "layers":[
+                {
+                 "id":63,
+                 "layers":[
+                        {
+                         "id":64,
+                         "layers":[
+                                {
+                                 "draworder":"topdown",
+                                 "id":65,
+                                 "name":"Quarry-image",
+                                 "objects":[
+                                        {
+                                         "gid":11,
+                                         "height":148.472029875491,
+                                         "id":205,
+                                         "name":"",
+                                         "opacity":1,
+                                         "rotation":0,
+                                         "type":"",
+                                         "visible":true,
+                                         "width":148.472029875491,
+                                         "x":542.499019161066,
+                                         "y":91.067092142647
+                                        }],
+                                 "opacity":1,
+                                 "type":"objectgroup",
+                                 "visible":true,
+                                 "x":0,
+                                 "y":0
+                                }],
+                         "name":"Quarry-lvl-0",
+                         "opacity":1,
+                         "type":"group",
+                         "visible":true,
+                         "x":0,
+                         "y":0
+                        }],
+                 "name":"Quarry",
+                 "opacity":1,
+                 "type":"group",
+                 "visible":true,
+                 "x":0,
+                 "y":0
+                }, 
                 {
                  "id":48,
                  "layers":[
@@ -9539,13 +9583,14 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }, 
                                 {
                                  "draworder":"index",
                                  "id":58,
+                                 "locked":true,
                                  "name":"Bridge-tracing",
                                  "objects":[
                                         {
@@ -9694,7 +9739,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }],
@@ -9842,7 +9887,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }, 
@@ -10205,7 +10250,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }],
@@ -10353,7 +10398,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }, 
@@ -10684,7 +10729,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }],
@@ -11170,7 +11215,7 @@
                          "name":"Home-lvl-1",
                          "opacity":1,
                          "type":"group",
-                         "visible":true,
+                         "visible":false,
                          "x":0,
                          "y":0
                         }, 
@@ -11621,7 +11666,7 @@
                          "name":"Home-lvl-2",
                          "opacity":1,
                          "type":"group",
-                         "visible":true,
+                         "visible":false,
                          "x":0,
                          "y":0
                         }, 
@@ -12140,7 +12185,7 @@
                          "name":"Home-lvl-3",
                          "opacity":1,
                          "type":"group",
-                         "visible":true,
+                         "visible":false,
                          "x":0,
                          "y":0
                         }, 
@@ -12691,7 +12736,7 @@
                          "name":"Home-lvl-4",
                          "opacity":1,
                          "type":"group",
-                         "visible":true,
+                         "visible":false,
                          "x":0,
                          "y":0
                         }, 
@@ -13132,7 +13177,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }, 
@@ -13239,7 +13284,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }],
@@ -13324,7 +13369,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -13354,12 +13399,12 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }],
- "nextlayerid":63,
- "nextobjectid":205,
+ "nextlayerid":66,
+ "nextobjectid":206,
  "orientation":"orthogonal",
  "properties":[
         {
@@ -13384,7 +13429,7 @@
          "name":"Forest image collection",
          "objectalignment":"topleft",
          "spacing":0,
-         "tilecount":10,
+         "tilecount":11,
          "tileheight":2560,
          "tiles":[
                 {
@@ -13626,6 +13671,12 @@
                          "type":"string",
                          "value":"bridge"
                         }]
+                }, 
+                {
+                 "id":10,
+                 "image":"..\/..\/public\/world\/prototype\/quarry-lvl-0.png",
+                 "imageheight":1254,
+                 "imagewidth":1254
                 }],
          "tilewidth":2560
         }],
