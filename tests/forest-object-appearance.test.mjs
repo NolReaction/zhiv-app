@@ -7,7 +7,6 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { forestObjectArtwork, harmonizeForestPixels, forestSiteMaterial } = await vite.ssrLoadModule("/features/world/forest-object-appearance.ts");
-const { siteGroundMarks, drawBuildingGroundDetails } = await vite.ssrLoadModule("/features/world/building-ground-details.ts");
 const { siteImagePoint, drawSiteImage } = await vite.ssrLoadModule("/features/world/tiled/site-image.ts");
 
 function withDocument(document, action) {
@@ -85,62 +84,6 @@ function siteFixture(id = "home") {
   return { id, bounds: { x: 0, y: 0, width: 120, height: 120 }, anchor: { x: 60, y: 100 }, entry: { x: 60, y: 99 },
     collision: [{ x: 5, y: 70 }, { x: 115, y: 70 }, { x: 115, y: 110 }, { x: 5, y: 110 }], hitArea: [], states: [], initialLevel: 0 };
 }
-const samples = Array.from({ length: 21 }, (_, i) => ({ u: (i + 2) / 24, v: .82 }));
-
-test("ground joins stay at actual artwork feet, avoid the entrance and respect water", () => {
-  const site = siteFixture(), marks = siteGroundMarks({}, site, samples);
-  assert.ok(marks.length > 3);
-  assert.ok(marks.every(mark => mark.kind === "grass" && mark.y === .82 * 120));
-  assert.ok(marks.every(mark => Math.hypot(mark.x - site.entry.x, mark.y - site.entry.y) >= 8));
-  assert.deepEqual(siteGroundMarks({}, site, [{ u: .5, v: .2 }]), [], "roof is never treated as a foundation");
-  const water = { surfaces: [{ points: [{ x: 0, y: 0 }, { x: 120, y: 0 }, { x: 120, y: 120 }, { x: 0, y: 120 }] }], exclusions: [] };
-  assert.deepEqual(siteGroundMarks({ water }, site, samples), []);
-  water.exclusions.push(water.surfaces[0]);
-  assert.deepEqual(siteGroundMarks({ water }, site, samples), marks, "authored dry islands can carry details");
-});
-
-test("foundation dressing forms a few stable separated groups instead of a regular border", () => {
-  const site = siteFixture(), marks = siteGroundMarks({}, site, samples);
-  assert.ok(marks.length >= 3 && marks.length <= 5);
-  assert.deepEqual(siteGroundMarks({}, site, samples), marks, "animation frames cannot reshuffle the dressing");
-  for (let i = 0; i < marks.length; i++) for (let j = i + 1; j < marks.length; j++) {
-    assert.ok(Math.hypot(marks[i].x - marks[j].x, marks[i].y - marks[j].y) >= 110 * .12);
-  }
-  for (const id of ["home", "workshop", "quarry", "lighthouse"]) {
-    const before = siteFixture(id), copy = structuredClone(before);
-    const groups = siteGroundMarks({}, before, samples);
-    assert.ok(groups.length <= (id === "lighthouse" ? 3 : id === "quarry" ? 4 : 5));
-    assert.deepEqual(before, copy, "decoration must not change navigation or authoring geometry");
-  }
-  const doorway = { ...site, entry: { x: 60, y: 120 }, doorway: { x: 60, y: 80 } };
-  assert.ok(siteGroundMarks({}, doorway, samples).every(mark => Math.abs(mark.x - 60) >= 7),
-    "the entire approach stays open between entry and threshold, including the stepping stone");
-});
-
-test("quarry uses stone fragments and workshop uses chips; broken bridge never gets a land patch", () => {
-  assert.ok(siteGroundMarks({}, siteFixture("quarry"), samples).some(mark => mark.kind === "stone"));
-  assert.ok(siteGroundMarks({}, siteFixture("workshop"), samples).some(mark => mark.kind === "chip"));
-  const bridge = { ...siteFixture("bridge"), imagePlacement: { x: 20, y: 30, width: 120, height: 60, rotation: 346.507 } };
-  assert.deepEqual(siteGroundMarks({}, bridge, samples), []);
-  withDocument({ createElement() { assert.fail("bridge must not allocate soil textures"); } }, () => {
-    drawBuildingGroundDetails({ drawImage() { assert.fail("bridge must not cover the river"); } }, {}, bridge, {});
-  });
-});
-
-test("bridge joins use only the two dry outer supports and never the span or water gap", () => {
-  const site = siteFixture("bridge"), water = { surfaces: [{ points: [
-    { x: 35, y: 0 }, { x: 85, y: 0 }, { x: 85, y: 120 }, { x: 35, y: 120 },
-  ] }], exclusions: [] };
-  const samples = [.08, .12, .3, .45, .55, .7, .90, .94].map(u => ({ u, v: .82 }));
-  const marks = siteGroundMarks({ water }, site, samples);
-  assert.equal(marks.length, 2);
-  assert.ok(marks.some(mark => mark.x < 16)); assert.ok(marks.some(mark => mark.x > 104));
-  const flooded = { surfaces: [{ points: [
-    { x: 0, y: 0 }, { x: 120, y: 0 }, { x: 120, y: 120 }, { x: 0, y: 120 },
-  ] }], exclusions: [] };
-  assert.deepEqual(siteGroundMarks({ water: flooded }, site, samples), []);
-});
-
 test("normalized contacts and artwork share the authored rotation without changing world markers", () => {
   const site = { ...siteFixture(), imagePlacement: { x: 30, y: 40, width: 120, height: 60, rotation: 450 } };
   const original = structuredClone(site), calls = [];

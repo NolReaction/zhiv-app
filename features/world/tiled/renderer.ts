@@ -1,5 +1,4 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
-import { drawBuildingGroundDetails } from "../building-ground-details";
 import { forestObjectArtwork, forestSiteMaterial } from "../forest-object-appearance";
 import { drawForestBushGrounding, drawForestBushRootFringe } from "../forest-bush-grounding";
 import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
@@ -91,7 +90,6 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
     if (image) {
       if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image, frame.dusk ?? Number(frame.options.night));
       drawSiteImage(ctx, site, forestObjectArtwork(image, forestSiteMaterial(site)));
-      drawBuildingGroundDetails(ctx, scene, site, image);
     }
   }
   drawForestLightFixtures(ctx, scene, frame.options.showBuildings);

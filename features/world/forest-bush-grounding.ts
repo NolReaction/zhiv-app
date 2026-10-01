@@ -85,44 +85,6 @@ function paintRootBase(ctx: CanvasRenderingContext2D, contacts: readonly WorldPo
   }
 }
 
-function paintRootFringe(ctx: CanvasRenderingContext2D, contacts: readonly WorldPoint[], size: number) {
-  if (contacts.length < 3) return;
-  // All shoots grow out of the same ground plane. Attaching a tiny tuft to
-  // every rising side leaf reinforced the impression of a floating leafy ball.
-  const groundY = Math.max(...contacts.map(point => point.y)) + size * .014;
-  const shoots = contacts.length > 5 ? [contacts[2], contacts[5]] : [contacts[0], contacts.at(-1)!];
-  for (let i = 0; i < shoots.length; i++) {
-    const contact = shoots[i], x = contact.x + size * (i ? .015 : -.026);
-    const y = groundY + size * (i ? .007 : -.014);
-    const height = size * (i ? .055 : .082);
-    // Low, broad rosettes break the cutout edge without becoming thin stilts.
-    // Irregular leaf lengths, widths and green facets match the painted grass.
-    for (let blade = 0; blade < 4; blade++) {
-      const lean = height * [ -.69, -.16, .44, .78 ][blade];
-      const tipY = y - height * [ .43, 1, .72, .29 ][blade];
-      const thickness = height * (blade === 1 ? .28 : .24);
-      ctx.fillStyle = ["#3d5424", "#596d2c", "#727d35", "#465a25"][(i + blade) % 4];
-      ctx.beginPath(); ctx.moveTo(x - thickness * .5, y);
-      ctx.quadraticCurveTo(x + lean * .16 - thickness, y - height * .47, x + lean, tipY);
-      ctx.quadraticCurveTo(x + lean * .6 + thickness * .4, y - height * .36, x + thickness * .5, y);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#263e20"; ctx.lineWidth = size * .0068; ctx.lineJoin = "round"; ctx.stroke();
-      ctx.strokeStyle = "rgba(166,165,75,.6)"; ctx.lineWidth = Math.max(.16, size * .0035);
-      ctx.beginPath(); ctx.moveTo(x, y - height * .06);
-      ctx.quadraticCurveTo(x + lean * .36, y - height * .36, x + lean * .8, tipY + height * .14); ctx.stroke();
-    }
-    // Broken moss at the foot hides the stem-to-ground seam without a smooth rim.
-    for (let chip = 0; chip < 4; chip++) {
-      const dx = (chip - 1.5) * size * .012, dy = (chip % 2 ? .006 : -.002) * size;
-      ctx.fillStyle = chip % 2 ? "#4a602b" : "#687633";
-      ctx.beginPath(); ctx.moveTo(x + dx - size * .012, y + dy);
-      ctx.lineTo(x + dx, y + dy - size * .013);
-      ctx.lineTo(x + dx + size * .015, y + dy + size * .003);
-      ctx.lineTo(x + dx - size * .007, y + dy + size * .011); ctx.closePath(); ctx.fill();
-    }
-  }
-}
-
 /** Bake only the cutout's alpha, compressed onto the ground under the lower leaves. */
 function shadowFor(bush: WorldBush, terrain: WorldImage, image: HTMLImageElement): BushShadow | null {
   const previous = shadows.get(bush);
@@ -180,8 +142,6 @@ function shadowFor(bush: WorldBush, terrain: WorldImage, image: HTMLImageElement
       }
       fringeCtx.putImageData(shade, 0, 0);
     } catch { /* Low foliage retains its original shading when readback is unavailable. */ }
-    fringeCtx.scale(scale, scale); fringeCtx.translate(-bounds.x, -bounds.y);
-    paintRootFringe(fringeCtx, contacts, size);
   } catch { /* Cross-origin artwork keeps its original alpha shadow without fringe. */ }
 
   const bottom = crown.y + crown.height - bounds.y;
