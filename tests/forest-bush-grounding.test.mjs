@@ -7,8 +7,29 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { forestBushRootContacts, drawForestBushGrounding, drawForestBushRootFringe } =
+const { forestBushRootContacts, attachForestBushContact, drawForestBushGrounding, drawForestBushRootFringe } =
   await vite.ssrLoadModule("/features/world/forest-bush-grounding.ts");
+
+test("tight contact meets the opaque lower leaf row without filling transparent gaps or high side leaves", () => {
+  const width = 12, height = 18, source = new Uint8ClampedArray(width * height * 4);
+  const target = new Uint8ClampedArray(source.length), alpha = (data, x, y) => data[(y * width + x) * 4 + 3];
+  for (const [x, floor] of [[2, 4], [4, 8], [5, 9], [7, 8], [8, 7]]) {
+    for (let y = 0; y <= floor; y++) source[(y * width + x) * 4 + 3] = 255;
+  }
+  const original = source.slice();
+  attachForestBushContact(source, target, width, height, 4, 4);
+  assert.ok(alpha(target, 5, 10) > 100, "the very next row under the lowest leaf has a visible tight shadow");
+  assert.ok(alpha(target, 5, 10) > alpha(target, 5, 11) && alpha(target, 5, 11) > alpha(target, 5, 12));
+  assert.equal(alpha(target, 5, 13), 0, "contact stays short, rather than projecting a second floating crown");
+  assert.ok(alpha(target, 4, 9) > 0, "an irregular lower silhouette remains attached too");
+  for (let y = 0; y < height; y++) {
+    assert.equal(alpha(target, 6, y), 0, "a transparent gap is not bridged by a rectangular strip");
+    assert.equal(alpha(target, 2, y), 0, "upper side leaves do not receive a false floating contact line");
+  }
+  assert.deepEqual(source, original, "the artwork's alpha is not changed");
+  const blank = new Uint8ClampedArray(target.length);
+  attachForestBushContact(source, blank, width, height, NaN, 4); assert.ok(blank.every(value => value === 0));
+});
 
 test("root fringe follows opaque lower leaves, including padding and transparent notches", () => {
   const width = 40, height = 40, pixels = new Uint8ClampedArray(width * height * 4);

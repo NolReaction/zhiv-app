@@ -157,12 +157,12 @@ function siteShadow(site: FixedSite, image: HTMLImageElement): SiteShadow | null
         };
         const size = Math.min(bounds.width, bounds.height);
         const bridge = site.id === "bridge";
-        paint(contactCtx, bridge ? .21 : .28, Math.min(1.1, size * (bridge ? .003 : .006)), 0, size * .005);
+        paint(contactCtx, bridge ? .24 : .32, Math.min(1.2, size * (bridge ? .003 : .006)), 0, size * .008);
         // A broken bridge keeps two separate short shadows. Do not stretch its
         // planks into a dark platform across the river or fill the central gap.
-        paint(diffuseCtx, bridge ? .07 : .14, Math.min(5, size * (bridge ? .008 : .026)), 0, size * .01, bridge ? 1 : 1.025);
-        paint(diffuseCtx, bridge ? .09 : .19, Math.min(3.5, size * (bridge ? .005 : .017)),
-          size * (bridge ? .012 : .028), size * .018, 1, bridge ? .98 : .82);
+        paint(diffuseCtx, bridge ? .07 : .14, Math.min(5, size * (bridge ? .008 : .026)), 0, size * .012, bridge ? 1 : 1.025);
+        paint(diffuseCtx, bridge ? .1 : .23, Math.min(4, size * (bridge ? .005 : .022)),
+          size * (bridge ? .016 : .045), size * (bridge ? .018 : .029), 1, bridge ? .98 : .85);
         shadow = { contact, diffuse, bounds: shadowBounds };
       }
     }

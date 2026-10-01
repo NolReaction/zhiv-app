@@ -9,6 +9,34 @@ type BushShadow = {
 };
 const shadows = new WeakMap<WorldBush, BushShadow>();
 
+/** Join ground darkness directly to the lowest opaque leaves, without an airy
+ * gap left by a projected/blurred crown. Works only on the cached mask pixels. */
+export function attachForestBushContact(source: Uint8ClampedArray, target: Uint8ClampedArray,
+  width: number, height: number, rise: number, depth: number) {
+  if (source.length !== width * height * 4 || target.length !== source.length
+    || !Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0
+    || !Number.isFinite(rise) || !Number.isFinite(depth) || rise <= 0 || depth <= 0) return;
+  const floor = new Int32Array(width).fill(-1);
+  let bottom = -1;
+  for (let x = 0; x < width; x++) for (let y = height - 1; y >= 0; y--) {
+    if (source[(y * width + x) * 4 + 3] < 96) continue;
+    floor[x] = y; bottom = Math.max(bottom, y); break;
+  }
+  if (bottom < 0) return;
+  for (let x = 0; x < width; x++) {
+    const leaf = floor[x];
+    if (leaf < 0 || leaf < bottom - rise) continue;
+    const sideFade = Math.min(1, (leaf - bottom + rise) / (rise * .45));
+    for (let y = leaf; y < Math.min(height, leaf + depth); y++) {
+      const index = (y * width + x) * 4;
+      const alpha = 235 * sideFade * Math.pow(1 - (y - leaf) / depth, 1.45);
+      if (alpha <= target[index + 3]) continue;
+      target[index] = 34; target[index + 1] = 44; target[index + 2] = 24;
+      target[index + 3] = alpha;
+    }
+  }
+}
+
 /** Find the lowest opaque leaf tips, never the navigation polygon or PNG padding.
  * Sampling is performed once while baking the grounding, not during animation. */
 export function forestBushRootContacts(pixels: Uint8ClampedArray, width: number, height: number,
@@ -36,19 +64,61 @@ export function forestBushRootContacts(pixels: Uint8ClampedArray, width: number,
   return contacts;
 }
 
+function paintRootBase(ctx: CanvasRenderingContext2D, contacts: readonly WorldPoint[], size: number) {
+  if (contacts.length < 3) return;
+  const x = contacts[Math.floor(contacts.length / 2)].x;
+  const y = Math.max(...contacts.map(point => point.y)) + size * .015;
+  const unit = size * .018;
+  // A squat woody fork reaches 3–4 world units beyond the central leaf tip.
+  // Its top is later erased with the PNG alpha, so it really emerges underneath.
+  const contour = [[-1.4, -3.1], [1.1, -3.3], [1.7, -.6], [4.3, .9], [7, 1.5], [7.6, 2.1],
+    [4.6, 1.9], [1.8, .8], [1.4, 2.4], [2.5, 3.2], [.9, 3.0], [-.8, .9],
+    [-3.8, 2.4], [-6.6, 2.7], [-7.1, 2.2], [-4.4, 1.5], [-1.6, -.4]];
+  ctx.fillStyle = "#4e3520"; ctx.beginPath();
+  contour.forEach(([dx, dy], index) => index ? ctx.lineTo(x + dx * unit, y + dy * unit) : ctx.moveTo(x + dx * unit, y + dy * unit));
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#382c1b"; ctx.lineWidth = unit * .3; ctx.lineJoin = "round"; ctx.stroke();
+  ctx.strokeStyle = "#977141"; ctx.lineWidth = unit * .32; ctx.lineCap = "round";
+  for (const branch of [[[-.5, -2.5], [-.35, .2], [-3.5, 1.65], [-5.8, 2.05]],
+    [[.45, -1.8], [.9, .15], [3.7, 1.1], [6.1, 1.6]], [[.15, .35], [.75, 2.2], [1.65, 2.7]]]) {
+    ctx.beginPath(); branch.forEach(([dx, dy], index) => index ? ctx.lineTo(x + dx * unit, y + dy * unit) : ctx.moveTo(x + dx * unit, y + dy * unit)); ctx.stroke();
+  }
+}
+
 function paintRootFringe(ctx: CanvasRenderingContext2D, contacts: readonly WorldPoint[], size: number) {
-  for (let i = 0; i < contacts.length; i++) {
-    const { x, y } = contacts[i], height = size * (.031 + i % 3 * .007);
-    // A few blades cross the lowest leaf tips. Their dark bases remain at the
-    // true alpha contact; no continuous bright outline or duplicate leaf sprite.
-    for (let blade = 0; blade < 3; blade++) {
-      const lean = (blade - 1) * height * (.43 + i % 2 * .12);
-      const tipY = y - height * (blade === 1 ? 1 : .73);
-      ctx.fillStyle = ["#4d652d", "#738439", "#607330"][(i + blade) % 3];
-      ctx.beginPath(); ctx.moveTo(x - height * .12, y + height * .16);
-      ctx.quadraticCurveTo(x + lean * .2, y - height * .4, x + lean, tipY);
-      ctx.quadraticCurveTo(x + lean * .4 + height * .13, y - height * .25, x + height * .13, y + height * .16);
+  if (contacts.length < 3) return;
+  // All shoots grow out of the same ground plane. Attaching a tiny tuft to
+  // every rising side leaf reinforced the impression of a floating leafy ball.
+  const groundY = Math.max(...contacts.map(point => point.y)) + size * .014;
+  const shoots = contacts.length > 5 ? [contacts[2], contacts[5]] : [contacts[0], contacts.at(-1)!];
+  for (let i = 0; i < shoots.length; i++) {
+    const contact = shoots[i], x = contact.x + size * (i ? .015 : -.026);
+    const y = groundY + size * (i ? .007 : -.014);
+    const height = size * (i ? .055 : .082);
+    // Low, broad rosettes break the cutout edge without becoming thin stilts.
+    // Irregular leaf lengths, widths and green facets match the painted grass.
+    for (let blade = 0; blade < 4; blade++) {
+      const lean = height * [ -.69, -.16, .44, .78 ][blade];
+      const tipY = y - height * [ .43, 1, .72, .29 ][blade];
+      const thickness = height * (blade === 1 ? .28 : .24);
+      ctx.fillStyle = ["#3d5424", "#596d2c", "#727d35", "#465a25"][(i + blade) % 4];
+      ctx.beginPath(); ctx.moveTo(x - thickness * .5, y);
+      ctx.quadraticCurveTo(x + lean * .16 - thickness, y - height * .47, x + lean, tipY);
+      ctx.quadraticCurveTo(x + lean * .6 + thickness * .4, y - height * .36, x + thickness * .5, y);
       ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#263e20"; ctx.lineWidth = size * .0068; ctx.lineJoin = "round"; ctx.stroke();
+      ctx.strokeStyle = "rgba(166,165,75,.6)"; ctx.lineWidth = Math.max(.16, size * .0035);
+      ctx.beginPath(); ctx.moveTo(x, y - height * .06);
+      ctx.quadraticCurveTo(x + lean * .36, y - height * .36, x + lean * .8, tipY + height * .14); ctx.stroke();
+    }
+    // Broken moss at the foot hides the stem-to-ground seam without a smooth rim.
+    for (let chip = 0; chip < 4; chip++) {
+      const dx = (chip - 1.5) * size * .012, dy = (chip % 2 ? .006 : -.002) * size;
+      ctx.fillStyle = chip % 2 ? "#4a602b" : "#687633";
+      ctx.beginPath(); ctx.moveTo(x + dx - size * .012, y + dy);
+      ctx.lineTo(x + dx, y + dy - size * .013);
+      ctx.lineTo(x + dx + size * .015, y + dy + size * .003);
+      ctx.lineTo(x + dx - size * .007, y + dy + size * .011); ctx.closePath(); ctx.fill();
     }
   }
 }
@@ -80,9 +150,36 @@ function shadowFor(bush: WorldBush, terrain: WorldImage, image: HTMLImageElement
   maskCtx.globalCompositeOperation = "source-in"; maskCtx.fillStyle = "#26341c";
   maskCtx.fillRect(0, 0, mask.width, mask.height);
 
+  let alphaMask: Uint8ClampedArray | null = null;
   try {
-    const contacts = forestBushRootContacts(maskCtx.getImageData(0, 0, mask.width, mask.height).data,
-      mask.width, mask.height, bounds);
+    alphaMask = maskCtx.getImageData(0, 0, mask.width, mask.height).data;
+    const contacts = forestBushRootContacts(alphaMask, mask.width, mask.height, bounds);
+    fringeCtx.save(); fringeCtx.scale(scale, scale); fringeCtx.translate(-bounds.x, -bounds.y);
+    paintRootBase(fringeCtx, contacts, size); fringeCtx.restore();
+    // Foreground ownership does not put wood over leaves: retain only the part
+    // outside the original cutout. The foliage remains free to sway above it.
+    fringeCtx.globalCompositeOperation = "destination-out";
+    fringeCtx.drawImage(mask, 0, 0); fringeCtx.globalCompositeOperation = "source-over";
+    // Darken only the last few pixels inside the low opaque leaves. The same
+    // alpha mask joins the contact below to the foliage above, avoiding a lit rim.
+    try {
+      const shade = fringeCtx.getImageData(0, 0, mask.width, mask.height), floor = new Int32Array(mask.width).fill(-1);
+      let bottom = -1;
+      for (let x = 0; x < mask.width; x++) for (let y = mask.height - 1; y >= 0; y--) {
+        if (alphaMask[(y * mask.width + x) * 4 + 3] < 96) continue;
+        floor[x] = y; bottom = Math.max(bottom, y); break;
+      }
+      const depth = size * .049 * scale, rise = size * .15 * scale;
+      for (let x = 0; x < mask.width; x++) for (let y = 0; y < mask.height; y++) {
+        const index = (y * mask.width + x) * 4, distance = floor[x] - y;
+        const fade = Math.max(0, Math.min(1, (floor[x] - bottom + rise) / rise));
+        const alpha = distance >= 0 && distance < depth ? alphaMask[index + 3] * .32 * (1 - distance / depth) * fade : 0;
+        if (alpha <= 0) continue;
+        shade.data[index] = 26; shade.data[index + 1] = 43; shade.data[index + 2] = 20;
+        shade.data[index + 3] = alpha;
+      }
+      fringeCtx.putImageData(shade, 0, 0);
+    } catch { /* Low foliage retains its original shading when readback is unavailable. */ }
     fringeCtx.scale(scale, scale); fringeCtx.translate(-bounds.x, -bounds.y);
     paintRootFringe(fringeCtx, contacts, size);
   } catch { /* Cross-origin artwork keeps its original alpha shadow without fringe. */ }
@@ -110,6 +207,13 @@ function shadowFor(bush: WorldBush, terrain: WorldImage, image: HTMLImageElement
   // Contact stays immediately beneath the foliage, even when daylight fades.
   project(castCtx, .18, .82, size * .037, size * .025, size * .023);
   project(contactCtx, .14, .74, 0, size * .02, size * .009);
+  if (alphaMask) {
+    try {
+      const pixels = contactCtx.getImageData(0, 0, mask.width, mask.height);
+      attachForestBushContact(alphaMask, pixels.data, mask.width, mask.height, size * .14 * scale, size * .033 * scale);
+      contactCtx.putImageData(pixels, 0, 0);
+    } catch { /* Keep the projected contact if pixel readback is unavailable. */ }
+  }
   const shadow = { image, terrain, bounds, contact, cast, fringe };
   shadows.set(bush, shadow);
   return shadow;
@@ -129,7 +233,7 @@ export function drawForestBushGrounding(ctx: CanvasRenderingContext2D, scene: Fi
   const alpha = ctx.globalAlpha;
   ctx.globalAlpha = alpha * .12 * (1 - darkness * .68);
   ctx.drawImage(shadow.cast, bounds.x, bounds.y, bounds.width, bounds.height);
-  ctx.globalAlpha = alpha * .49 * (1 - darkness * .18);
+  ctx.globalAlpha = alpha * .57 * (1 - darkness * .18);
   ctx.drawImage(shadow.contact, bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.restore();
 }
@@ -142,5 +246,8 @@ export function drawForestBushRootFringe(ctx: CanvasRenderingContext2D, scene: F
   const shadow = shadowFor(bush, terrain, image);
   if (!shadow) return;
   const { bounds } = shadow;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
   ctx.drawImage(shadow.fringe, bounds.x, bounds.y, bounds.width, bounds.height);
+  ctx.restore();
 }

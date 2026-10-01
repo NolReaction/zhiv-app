@@ -54,8 +54,8 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
   if (typeof document === "undefined") return null;
   // The visible bed tucks behind the lower crown. Keep the authored watering lip
   // stable so a visual adjustment cannot move the hand or the stream's destination.
-  const bed = { ...shape, center: { x: shape.center.x, y: shape.center.y - shape.radiusY * .16 },
-    radiusX: shape.radiusX * .78, radiusY: shape.radiusY * .92 };
+  const bed = { ...shape, center: { x: shape.center.x, y: shape.center.y + shape.radiusY * .24 },
+    radiusX: shape.radiusX * .70, radiusY: shape.radiusY * .82 };
   const { center, radiusX, radiusY } = bed, { bounds } = shape;
   const scale = Math.min(3, 256 / Math.max(bounds.width, bounds.height));
   const surface = () => {
@@ -77,8 +77,8 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
       const y = center.y + Math.sin(i * 2.2) * radiusY * .19;
       ctx.save(); ctx.translate(x, y); ctx.scale(radiusX * spread, radiusY * (.69 + i % 2 * .12));
       const patch = ctx.createRadialGradient(0, 0, .12, 0, 0, 1);
-      patch.addColorStop(0, damp ? "rgba(53,49,25,.65)" : "rgba(130,111,58,.47)");
-      patch.addColorStop(.52, damp ? "rgba(66,58,29,.42)" : "rgba(137,119,59,.29)");
+      patch.addColorStop(0, damp ? "rgba(53,49,25,.75)" : "rgba(118,97,48,.64)");
+      patch.addColorStop(.52, damp ? "rgba(66,58,29,.52)" : "rgba(143,119,58,.4)");
       patch.addColorStop(1, "rgba(109,112,46,0)");
       ctx.fillStyle = patch; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
     }
@@ -87,24 +87,31 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
       const angle = i * 2.3999632297, distance = Math.sqrt((i + .5) / 64);
       const x = center.x + Math.cos(angle) * radiusX * distance;
       const y = center.y + Math.sin(angle) * radiusY * distance;
-      ctx.fillStyle = i % 3 ? (damp ? "rgba(31,29,15,.18)" : "rgba(66,52,28,.24)")
-        : damp ? "rgba(177,162,112,.16)" : "rgba(194,173,110,.27)";
-      ctx.beginPath(); ctx.ellipse(x, y, radiusY * (.05 + i % 4 * .018), radiusY * (.025 + i % 3 * .015), -.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = i % 3 ? (damp ? "rgba(31,29,15,.27)" : "rgba(66,52,28,.38)")
+        : damp ? "rgba(177,162,112,.22)" : "rgba(194,173,110,.41)";
+      const chip = radiusY * (.055 + i % 4 * .025);
+      ctx.beginPath(); ctx.moveTo(x - chip, y);
+      ctx.lineTo(x - chip * .35, y - chip * .6); ctx.lineTo(x + chip * .7, y - chip * .32);
+      ctx.lineTo(x + chip, y + chip * .23); ctx.lineTo(x - chip * .28, y + chip * .55); ctx.closePath(); ctx.fill();
     }
     // Short woody roots emerge from underneath the cutout and join the soil.
     // Most of each root is covered by leaves; the few exposed tips break the
     // detached "ball over an oval" silhouette without a second foliage sprite.
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     for (let i = 0; i < 3; i++) {
-      const side = i - 1, startX = center.x + side * radiusX * .31;
-      const middleX = center.x + side * radiusX * .39, endX = center.x + side * radiusX * .45;
-      const endY = center.y + radiusY * (side ? .41 : .57);
-      ctx.strokeStyle = damp ? "rgba(64,60,36,.65)" : "rgba(100,83,51,.62)"; ctx.lineWidth = radiusY * .14;
-      ctx.beginPath(); ctx.moveTo(startX, center.y - radiusY * .85);
-      ctx.lineTo(middleX, center.y + radiusY * .08); ctx.lineTo(endX, endY); ctx.stroke();
-      ctx.strokeStyle = damp ? "rgba(140,124,66,.32)" : "rgba(184,157,84,.4)"; ctx.lineWidth = radiusY * .04;
-      ctx.beginPath(); ctx.moveTo(startX - radiusY * .04, center.y - radiusY * .8);
-      ctx.lineTo(middleX - radiusY * .04, center.y); ctx.lineTo(endX, endY - radiusY * .04); ctx.stroke();
+      const side = i - 1, startX = center.x + side * radiusX * .13;
+      const middleX = center.x + side * radiusX * .23 + radiusY * .07;
+      const endX = center.x + side * radiusX * .36 + (side ? 0 : radiusY * .24);
+      const endY = center.y + radiusY * (side ? .15 : .3);
+      ctx.strokeStyle = damp ? "#382e1c" : "#4c3823"; ctx.lineWidth = radiusY * .21;
+      ctx.beginPath(); ctx.moveTo(startX, center.y - radiusY * 1.25);
+      ctx.lineTo(middleX, center.y + radiusY * .04); ctx.lineTo(endX, endY); ctx.stroke();
+      ctx.strokeStyle = damp ? "#6b542f" : "#96703d"; ctx.lineWidth = radiusY * .07;
+      ctx.beginPath(); ctx.moveTo(startX - radiusY * .05, center.y - radiusY * 1.2);
+      ctx.lineTo(middleX - radiusY * .06, center.y); ctx.lineTo(endX, endY - radiusY * .07); ctx.stroke();
+      ctx.strokeStyle = damp ? "#3d2c1a" : "#604027"; ctx.lineWidth = radiusY * .09;
+      ctx.beginPath(); ctx.moveTo(middleX, center.y + radiusY * .04);
+      ctx.lineTo(endX + radiusX * .06, endY + radiusY * .1); ctx.stroke();
     }
     ctx.restore();
     // Interrupt the edge with tiny grass-coloured chips instead of a clean ellipse border.

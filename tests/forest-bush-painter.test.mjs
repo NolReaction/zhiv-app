@@ -145,8 +145,11 @@ test('separate cutout preserves transparent gaps and soil without copying ground
     assert.equal(draws.length, 16, 'one warped copy, no unchanged silhouette beneath it');
     assert.ok(draws.every(call => call.args[0] === shrub));
     assert.equal(bands.length, 16);
-    assert.ok(bands.every((call, index) => !index || call.args[1] === bands[index - 1].args[1] + bands[index - 1].args[3]),
-      'adjacent bands do not paint their common row twice');
+    assert.ok(bands.every((call, index) => {
+      if (!index) return true;
+      const overlap = bands[index - 1].args[1] + bands[index - 1].args[3] - call.args[1];
+      return overlap > 0 && overlap <= .2;
+    }), 'adjacent clips close antialiased seams with a tiny overlap, without duplicating a full leaf row');
     assert.deepEqual(transforms.at(-1).args.map(value => value || 0), [1, 0, 0, 1, 0, 0], 'base stays attached during rustle');
   }
   const still = context();

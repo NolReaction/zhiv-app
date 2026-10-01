@@ -137,8 +137,9 @@ function drawCutout(ctx: CanvasRenderingContext2D, source: TerrainSource, crown:
       const y = area.y + index * bandHeight, nextY = y + bandHeight;
       const offset = displacement(y), shear = (displacement(nextY) - offset) / bandHeight;
       ctx.save();
-      // Each source row is drawn once; no still silhouette remains beneath the flexing leaves.
-      ctx.beginPath(); ctx.rect(area.x - amplitude, y, area.width + amplitude * 2, bandHeight); ctx.clip();
+      // A tiny overlap closes antialiased clip seams at fractional camera scales;
+      // no still silhouette remains beneath the flexing leaves.
+      ctx.beginPath(); ctx.rect(area.x - amplitude, y, area.width + amplitude * 2, bandHeight + .15); ctx.clip();
       ctx.transform(1, 0, shear, 1, offset - shear * y, 0);
       paintTerrain(ctx, [source]);
       ctx.restore();
