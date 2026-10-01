@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isCalendarMonth } from "./check-in-calendar";
 import { deviceTimeZone } from "./time-zone";
+import { retryAfterMs, withRequestDeadline } from "./request-deadline";
 import type {
   ApiErrorResponse,
   FavoriteResponse,
@@ -249,50 +250,52 @@ async function request<T>(
   schema: z.ZodType<T>,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    cache: "no-store",
-    credentials: "same-origin",
-    signal: init?.signal ?? AbortSignal.timeout(8_000),
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
+  return withRequestDeadline(8_000, init?.signal, async signal => {
+    const response = await fetch(path, {
+      ...init,
+      cache: "no-store",
+      credentials: "same-origin",
+      signal,
+      headers: {
+        Accept: "application/json",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+
+    const contentType = response.headers.get("content-type") ?? "";
+    const body = contentType.includes("application/json")
+      ? await response.json().catch(() => undefined)
+      : undefined;
+
+    if (!response.ok) {
+      const knownError = cooldownSchema.safeParse(body).success
+        ? cooldownSchema.parse(body)
+        : displayNameCooldownSchema.safeParse(body).success
+          ? displayNameCooldownSchema.parse(body)
+          : errorSchema.safeParse(body).success
+            ? errorSchema.parse(body)
+            : undefined;
+      const message =
+        knownError && "message" in knownError
+          ? knownError.message
+          : response.status === 429
+            ? "Слишком много запросов. Подождите немного и повторите."
+            : "Не удалось связаться с сервером";
+      throw new ApiError(message, response.status, knownError, response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
+    }
+
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      throw new ApiError("Сервер вернул некорректный ответ", 502, undefined, response.headers.get("X-Request-ID"));
+    }
+    return parsed.data;
   });
-
-  const contentType = response.headers.get("content-type") ?? "";
-  const body = contentType.includes("application/json")
-    ? await response.json().catch(() => undefined)
-    : undefined;
-
-  if (!response.ok) {
-    const knownError = cooldownSchema.safeParse(body).success
-      ? cooldownSchema.parse(body)
-      : displayNameCooldownSchema.safeParse(body).success
-        ? displayNameCooldownSchema.parse(body)
-        : errorSchema.safeParse(body).success
-          ? errorSchema.parse(body)
-          : undefined;
-    const message =
-      knownError && "message" in knownError
-        ? knownError.message
-        : response.status === 429
-          ? "Слишком много запросов. Подождите немного и повторите."
-          : "Не удалось связаться с сервером";
-    throw new ApiError(message, response.status, knownError, response.headers.get("X-Request-ID"));
-  }
-
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    throw new ApiError("Сервер вернул некорректный ответ", 502);
-  }
-  return parsed.data;
 }
 
-export async function getMe(): Promise<MeResponse | null> {
+export async function getMe(signal?: AbortSignal): Promise<MeResponse | null> {
   try {
-    return await request<MeResponse>("/api/v1/me", meSchema);
+    return await request<MeResponse>("/api/v1/me", meSchema, { signal });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return null;
     throw error;
@@ -340,21 +343,24 @@ export function createCheckIn(idempotencyKey: string): Promise<CheckInResponse> 
 }
 
 export async function reportClickerSeries(event: ClickerSeriesEvent): Promise<void> {
-  const response = await fetch("/api/v1/game-events", {
-    method: "POST",
-    cache: "no-store",
-    credentials: "same-origin",
-    keepalive: true,
-    signal: AbortSignal.timeout(4_000),
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(event),
+  return withRequestDeadline(4_000, undefined, async signal => {
+    const response = await fetch("/api/v1/game-events", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      keepalive: true,
+      signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(event),
+    });
+    if (!response.ok) {
+      throw new ApiError("Не удалось записать игровое событие", response.status, undefined,
+        response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
+    }
   });
-  if (!response.ok) {
-    throw new ApiError("Не удалось записать игровое событие", response.status);
-  }
 }
 
 export function updateMyDisplayName(

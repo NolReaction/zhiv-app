@@ -2,7 +2,7 @@
 
 import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
-import { reportIncident, incidentCode } from "@/lib/client-incidents";
+import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -87,6 +87,7 @@ import glass from "@/components/glass-action.module.css";
 import { notify, TransientNotice } from "@/components/app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { copyText } from "@/lib/identity-sharing";
+import { createIdentityRecovery, type IdentityRecovery } from "./identity-recovery";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
@@ -331,6 +332,7 @@ function TapCounter({ progress, result, count, isRecord }: {
 
 export function CheckInApp() {
   const [screen, setScreen] = useState<Screen>("loading");
+  const [identityError, setIdentityError] = useState<string | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
@@ -402,6 +404,7 @@ export function CheckInApp() {
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [groupsUpdatedAt, setGroupsUpdatedAt] = useState<number | null>(null);
   const identityEpoch = useRef(0);
+  const identityRecovery = useRef<IdentityRecovery | null>(null);
   const accountReturn = useRef(false);
   const peopleRequest = useRef(0);
   const groupsRequest = useRef(0);
@@ -551,6 +554,8 @@ export function CheckInApp() {
   ]);
 
   const loseSession = useCallback(() => {
+    identityRecovery.current?.dispose();
+    void resolveStartupIncidents(null);
     closeWorld();
     setCalendarOpen(false);
     setGameOpen(false);
@@ -655,6 +660,8 @@ export function CheckInApp() {
   }, [loseSession]);
 
   const adoptMe = useCallback((identity: MeResponse) => {
+    identityRecovery.current?.dispose();
+    void resolveStartupIncidents(identity.user.publicId);
     identityEpoch.current += 1;
     setPeopleUpdatedAt(null);
     setGroupsUpdatedAt(null);
@@ -726,8 +733,6 @@ export function CheckInApp() {
   }, [loseSession, syncMeSnapshot]);
 
   useEffect(() => {
-    let active = true;
-
     accountReturn.current = new URL(window.location.href).searchParams.get("auth") === "account-proof";
     try {
       accountReturn.current ||= ["email", "merge", "delete"].includes(window.sessionStorage.getItem("zhiv:account-action") ?? "");
@@ -744,40 +749,70 @@ export function CheckInApp() {
     pendingBootstrap.current = restoredBootstrap;
     pendingCheckIn.current = restoredCheckIn;
 
-    void getMe()
-      .then((identity) => {
-        if (!active) return;
+    const recovery = createIdentityRecovery({
+      load: getMe,
+      isOnline: () => navigator.onLine,
+      isVisible: () => !document.hidden,
+      onLoading: () => {
+        setIdentityError(null);
+        setScreen("loading");
+      },
+      onIdentity: (identity) => {
         if (identity) adoptMe(identity);
         else {
-          if (restoredBootstrap) setName(restoredBootstrap.displayName);
+          void resolveStartupIncidents(null);
+          if (pendingBootstrap.current) setName(pendingBootstrap.current.displayName);
           clearPendingCheckIn();
           resetTransientCheckIn();
           setScreen("onboarding");
         }
-      })
-      .catch(() => {
-        if (!active) return;
+      },
+      onFailure: (error, attempted) => {
+        if (attempted) reportStartupIncident(error);
+        setIdentityError(error instanceof ApiError ? error.message : null);
         setScreen("load-error");
-      });
+      },
+    });
+    identityRecovery.current = recovery;
+    recovery.retry();
 
-    const markOnline = () => setIsOnline(true);
-    const markOffline = () => setIsOnline(false);
+    const resumeIdentity = () => {
+      setIsOnline(navigator.onLine);
+      recovery.resume();
+    };
+    const markOffline = () => {
+      setIsOnline(false);
+      recovery.pause();
+      recovery.resume();
+    };
     const flushClickerProgress = () => persistClickerRun(clickerRunRef.current);
     const flushHiddenClickerProgress = () => {
-      if (document.hidden) flushClickerProgress();
+      if (document.hidden) {
+        flushClickerProgress();
+        recovery.pause();
+      } else resumeIdentity();
     };
-    window.addEventListener("online", markOnline);
+    const pauseIdentity = () => {
+      flushClickerProgress();
+      recovery.pause();
+    };
+    window.addEventListener("online", resumeIdentity);
     window.addEventListener("offline", markOffline);
-    window.addEventListener("pagehide", flushClickerProgress);
+    window.addEventListener("pageshow", resumeIdentity);
+    window.addEventListener("focus", resumeIdentity);
+    window.addEventListener("pagehide", pauseIdentity);
     document.addEventListener("visibilitychange", flushHiddenClickerProgress);
 
     const clock = window.setInterval(() => setClientNowMs(Date.now()), 15_000);
 
     return () => {
-      active = false;
-      window.removeEventListener("online", markOnline);
+      recovery.dispose();
+      if (identityRecovery.current === recovery) identityRecovery.current = null;
+      window.removeEventListener("online", resumeIdentity);
       window.removeEventListener("offline", markOffline);
-      window.removeEventListener("pagehide", flushClickerProgress);
+      window.removeEventListener("pageshow", resumeIdentity);
+      window.removeEventListener("focus", resumeIdentity);
+      window.removeEventListener("pagehide", pauseIdentity);
       document.removeEventListener("visibilitychange", flushHiddenClickerProgress);
       window.clearInterval(clock);
       if (burstTimer.current) clearTimeout(burstTimer.current);
@@ -843,22 +878,8 @@ export function CheckInApp() {
     return () => window.clearTimeout(timer);
   }, [clockOffsetMs, me?.profile.displayNameChangeAvailableAt, screen]);
 
-  async function retryIdentity() {
-    setScreen("loading");
-    try {
-      const identity = await getMe();
-      if (identity) adoptMe(identity);
-      else {
-        if (pendingBootstrap.current) {
-          setName(pendingBootstrap.current.displayName);
-        }
-        clearPendingCheckIn();
-        resetTransientCheckIn();
-        setScreen("onboarding");
-      }
-    } catch {
-      setScreen("load-error");
-    }
+  function retryIdentity() {
+    identityRecovery.current?.retry();
   }
 
   const triggerStoryEffect = useCallback((type: ClickerEffect) => {
@@ -1295,10 +1316,11 @@ export function CheckInApp() {
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="load-error-title">
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
-          <h1 id="load-error-title">Сервер молчит</h1>
+          <h1 id="load-error-title">{isOnline ? "Не удалось загрузить профиль" : "Нет подключения"}</h1>
           <p className={styles.intro}>
-            Профиль не изменён. Проверим связь ещё раз — без создания нового пользователя.
+            Профиль не изменён. Повторная проверка не создаёт нового пользователя.
           </p>
+          {identityError ? <p className={styles.intro} role="status">{identityError}</p> : null}
           <button className={styles.retryButton} type="button" onClick={retryIdentity}>
             Повторить
           </button>
