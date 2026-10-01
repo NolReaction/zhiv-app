@@ -1,5 +1,7 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
-import { drawForestBushGrounding } from "../forest-bush-grounding";
+import { drawBuildingGroundDetails } from "../building-ground-details";
+import { forestObjectArtwork, forestSiteMaterial } from "../forest-object-appearance";
+import { drawForestBushGrounding, drawForestBushRootFringe } from "../forest-bush-grounding";
 import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
 import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
 import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
@@ -74,8 +76,12 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       const bushId = scene.bushes?.find(bush => bush.imageId === terrain.id)?.id;
       drawForestBushGrounding(ctx, scene, terrain, image, frame.dusk ?? Number(frame.options.night),
         frame.bushMoisture?.find(bush => bush.id === bushId)?.moisture);
-      if (!frame.hiddenTerrainIds?.includes(terrain.id))
-        ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+      if (!frame.hiddenTerrainIds?.includes(terrain.id)) {
+        if (bushId) {
+          ctx.drawImage(forestObjectArtwork(image, "foliage"), bounds.x, bounds.y, bounds.width, bounds.height);
+          drawForestBushRootFringe(ctx, scene, terrain, image);
+        } else ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+      }
     }
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
@@ -84,7 +90,8 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {
       if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image, frame.dusk ?? Number(frame.options.night));
-      drawSiteImage(ctx, site, image);
+      drawSiteImage(ctx, site, forestObjectArtwork(image, forestSiteMaterial(site)));
+      drawBuildingGroundDetails(ctx, scene, site, image);
     }
   }
   drawForestLightFixtures(ctx, scene, frame.options.showBuildings);

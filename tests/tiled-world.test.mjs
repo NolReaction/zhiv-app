@@ -501,6 +501,29 @@ function separateBuildingLevels(map) {
   return { image, nextImage, baseMarkers, nextMarkers };
 }
 
+test("editor visibility never deletes building levels or metadata and hidden geometry is still validated", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  const life = livingLayers().map(layer => ({ ...layer, id: layer.id + 100,
+    objects: layer.objects.map(object => ({ ...object, id: object.id + 100 })) }));
+  map.layers.push(...life, groupLayer(200, "WaterExclusions", [waterLayer(201, "Leaves", [waterPolygon(200, "leaf")])]));
+  const before = await compile();
+  const hide = layers => layers.forEach(layer => {
+    layer.visible = false;
+    if (layer.layers) hide(layer.layers);
+    else layer.objects.forEach(object => { object.visible = false; });
+  });
+  hide(map.layers);
+  const authored = clone(map);
+  assert.deepEqual(await compile(), before, "editor eyes cannot remove collisions, habitats, water masks or inactive upgrades");
+  assert.deepEqual(map, authored, "export does not re-enable the editor eyes");
+  assert.equal(before.sites[0].states.length, 2);
+  nextMarkers.find(object => object.properties.some(property => property.value === "collision")).polygon = [
+    { x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 15, y: 5 },
+  ];
+  await assert.rejects(compile(), /polygon must not self-intersect/, "hidden unfinished geometry cannot bypass validation");
+});
+
 test("grouped levels inherit tile identity and switch their own bounds and marker geometry", async t => {
   const { map, compile } = await fixture(t);
   const { image, nextImage, nextMarkers } = separateBuildingLevels(map);
@@ -689,7 +712,7 @@ test("ordinary folders retain strict transforms, unique IDs and leaf layer valid
   const nested = value => value.layers[0].layers[0];
   const leaf = value => nested(value).layers[0];
   const cases = [
-    ["hidden outer folder", value => { value.layers[0].visible = false; }, /map\.layers\[0\]\.visible: expected true/],
+    ["invalid outer visibility", value => { value.layers[0].visible = "false"; }, /map\.layers\[0\]\.visible: expected a boolean/],
     ["nested opacity", value => { nested(value).opacity = 0.5; }, /layers\[0\]\.layers\[0\]\.opacity: expected 1/],
     ["nested offset", value => { nested(value).offsetx = 2; }, /offsetx: expected 0/],
     ["nested position", value => { nested(value).y = 2; }, /\.y: expected 0/],
@@ -703,7 +726,7 @@ test("ordinary folders retain strict transforms, unique IDs and leaf layer valid
     ["duplicate nested layer ID", value => { leaf(value).id = 2; }, /duplicate layer ID/],
     ["duplicate object across folders", value => { value.layers.push(groupLayer(4, "More", [objectLayer(5, "Copy", [clone(leaf(value).objects[7])])])); }, /duplicate object ID/],
     ["top-down scene layer", value => { leaf(value).draworder = "topdown"; }, /draworder: expected "index"/],
-    ["hidden nested image", value => { leaf(value).objects[1].visible = false; }, /objects\[1\]\.visible: expected true/],
+    ["invalid nested image visibility", value => { leaf(value).objects[1].visible = 0; }, /objects\[1\]\.visible: expected a boolean/],
   ];
   for (const [name, mutate, pattern] of cases) {
     await t.test(name, async () => {
@@ -728,7 +751,7 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["layer offset", value => { value.layers[0].offsetx = 3; }, /layers\[0\]\.offsetx: expected 0/],
     ["layer blend mode", value => { value.layers[0].mode = "multiply"; }, /layers\[0\]\.mode: expected "normal"/],
     ["tile layer", value => { value.layers[0].type = "tilelayer"; }, /layers\[0\]\.type: expected "objectgroup"/],
-    ["hidden layer", value => { value.layers[0].visible = false; }, /layers\[0\]\.visible: expected true/],
+    ["invalid layer visibility", value => { value.layers[0].visible = null; }, /layers\[0\]\.visible: expected a boolean/],
     ["distorted sprite", value => { value.layers[0].objects[1].width = 19; }, /objects\[1\]: object aspect ratio/],
     ["missing entry", value => { value.layers[0].objects.splice(3, 1); }, /site kiln is missing entry/],
     ["unplaced catalog", value => { value.layers[0].objects.splice(1, 1); }, /state catalog kiln has no placed site/],
@@ -843,7 +866,7 @@ test("invalid water geometry and unsupported nested transforms fail with the obj
     ["group offset", value => { value.layers[2].offsetx = 5; }, /layers\[2\]\.offsetx: expected 0/],
     ["nested layer offset", value => { value.layers[2].layers[0].y = 3; }, /layers\[2\]\.layers\[0\]\.y: expected 0/],
     ["nested layer parallax", value => { value.layers[2].layers[0].parallaxx = 0.5; }, /parallaxx: expected 1/],
-    ["hidden group", value => { value.layers[2].visible = false; }, /visible: expected true/],
+    ["invalid group visibility", value => { value.layers[2].visible = "false"; }, /visible: expected a boolean/],
     ["conflicting group roles", value => { value.layers[2].layers[0].name = "Water"; }, /must not be nested inside each other/],
     ["duplicate nested layer ID", value => { value.layers[2].layers[0].id = 1; }, /duplicate layer ID/],
     ["duplicate nested object ID", value => { value.layers[2].layers[0].objects[0].id = 20; }, /duplicate object ID/],
@@ -937,7 +960,7 @@ test("malformed Lights authoring fails at the exact marker rather than silently 
     ["accidental role property", value => { light(value).properties.push(...props({ role: "light" })); }, /unknown property "role"/],
     ["duplicate property", value => { light(value).properties.push(...props({ intensity: 1 })); }, /duplicate property "intensity"/],
     ["light group offset", value => { value.layers[1].offsetx = 1; }, /offsetx: expected 0/],
-    ["hidden nested group", value => { value.layers[1].layers[0].visible = false; }, /visible: expected true/],
+    ["invalid nested group visibility", value => { value.layers[1].layers[0].visible = 0; }, /visible: expected a boolean/],
     ["Water nested in Lights", value => { value.layers[1].layers[0].name = "Water"; }, /must not be nested inside each other/],
     ["Lights nested in WaterExclusions", value => { value.layers[1].name = "WaterExclusions"; value.layers[1].layers[0].name = "Lights"; }, /must not be nested inside each other/],
   ];
@@ -1126,7 +1149,7 @@ test("malformed living geometry, stable IDs, references and activity values fail
     ["zero cell size", value => { value.properties.push(...props({ navigationCellSize: 0 })); }, /expected a cell size > 0 and <= 64/],
     ["nonfinite cell size", value => { value.properties.push({ name: "navigationCellSize", type: "float", value: Infinity }); }, /expected a finite number/],
     ["excess cell size", value => { value.properties.push(...props({ navigationCellSize: 65 })); }, /expected a cell size > 0 and <= 64/],
-    ["hidden layer", value => { value.layers[1].visible = false; }, /visible: expected true/],
+    ["invalid layer visibility", value => { value.layers[1].visible = "false"; }, /visible: expected a boolean/],
     ["transformed layer", value => { value.layers[1].offsetx = 1; }, /offsetx: expected 0/],
     ["spawn outside walk area", value => { value.layers[0].objects.push({ ...spawn(), x: 95, y: 95 }); }, /navigation spawn: position must be inside a walk area/],
     ["spawn inside site collision", value => { value.layers[0].objects.push({ ...spawn(), x: 25, y: 35 }); }, /navigation spawn: position must not overlap/],
@@ -1169,6 +1192,14 @@ test("committed authoring exports identically and --check refuses stale output w
   const rect = ({ x, y, width, height }) => ({ x, y, width, height });
   assert.equal(scene.width, source.width);
   assert.equal(scene.height, source.height);
+  assert.deepEqual(scene.sites.find(site => site.id === "home").states.map(state => state.level), [1, 2, 3, 4, 5]);
+  const quarry = scene.sites.find(site => site.id === "quarry");
+  assert.ok(quarry, "the placed quarry must be exported as a site, not an untyped image");
+  assert.equal(quarry.initialLevel, 0);
+  assert.equal(quarry.states.length, 1);
+  assert.ok(quarry.entry.y > Math.max(...quarry.collision.map(point => point.y)) + scene.actor.size * 0.2,
+    "the quarry approach leaves room south of its ground footprint");
+
   assert.deepEqual(scene.terrain.map(({ id, bounds }) => ({ id, bounds })),
     withRole("terrain").map(object => ({ id: object.name, bounds: rect(object) })));
   const tileFor = object => source.tilesets.flatMap(tileset => tileset.tiles.map(tile => ({ gid: tileset.firstgid + tile.id, tile }))).find(entry => entry.gid === object.gid)?.tile;

@@ -1,5 +1,7 @@
 import type { FixedWorldScene, WorldBounds, WorldBush, WorldPoint } from "./tiled/types";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
+import { drawForestBushRootFringe } from "./forest-bush-grounding";
+import { forestObjectArtwork } from "./forest-object-appearance";
 import { forestBushBounds, forestBushParticles, type ForestBushBurst, type ForestBushParticle } from "./forest-bush-particles";
 
 export type ForestBushFrame = {
@@ -9,7 +11,7 @@ export type ForestBushFrame = {
   bursts?: readonly ForestBushBurst[];
   ripe?: boolean;
 };
-type TerrainSource = { image: HTMLImageElement; bounds: WorldBounds };
+type TerrainSource = { image: HTMLImageElement; bounds: WorldBounds; artwork?: HTMLImageElement | HTMLCanvasElement };
 type BushTexture = { leaves: HTMLCanvasElement | null; bounds: WorldBounds; sources: TerrainSource[] };
 const textures = new WeakMap<FixedWorldScene, WeakMap<WorldBush, BushTexture>>();
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -30,8 +32,9 @@ function overlaps(a: WorldBounds, b: WorldBounds) {
 }
 
 function paintTerrain(ctx: CanvasRenderingContext2D, sources: readonly TerrainSource[]) {
-  for (const { image, bounds } of sources) {
-    ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+  for (const { image, bounds, artwork } of sources) {
+    if (artwork && artwork !== image) ctx.drawImage(artwork, bounds.x, bounds.y, bounds.width, bounds.height);
+    else ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
   }
 }
 
@@ -168,7 +171,10 @@ export function drawForestBush(
     const terrain = scene.terrain.find(item => item.id === bush.imageId);
     const image = terrain && images.get(terrain.image);
     if (!terrain || !image?.naturalWidth || !image.naturalHeight) return;
-    if (forestBushForegroundActive(frame, still)) drawCutout(ctx, { image, bounds: terrain.bounds }, bounds, rustle, time);
+    if (forestBushForegroundActive(frame, still)) {
+      drawCutout(ctx, { image, artwork: forestObjectArtwork(image, "foliage"), bounds: terrain.bounds }, bounds, rustle, time);
+      drawForestBushRootFringe(ctx, scene, terrain, image);
+    }
     drawParticles(ctx, particles);
     return;
   }

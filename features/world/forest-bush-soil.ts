@@ -40,7 +40,7 @@ function outline(ctx: CanvasRenderingContext2D, shape: ForestBushSoil, expansion
   ctx.beginPath();
   for (let i = 0; i < 48; i++) {
     const angle = i * Math.PI / 24;
-    const radius = expansion * (1 + Math.sin(angle * 5 + .4) * .033 + Math.cos(angle * 9 - .7) * .022);
+    const radius = expansion * (1 + Math.sin(angle * 5 + .4) * .09 + Math.cos(angle * 9 - .7) * .065);
     const x = shape.center.x + Math.cos(angle) * shape.radiusX * radius;
     const y = shape.center.y + Math.sin(angle) * shape.radiusY * radius;
     if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
@@ -54,8 +54,8 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
   if (typeof document === "undefined") return null;
   // The visible bed tucks behind the lower crown. Keep the authored watering lip
   // stable so a visual adjustment cannot move the hand or the stream's destination.
-  const bed = { ...shape, center: { x: shape.center.x, y: shape.center.y - shape.radiusY * .28 },
-    radiusX: shape.radiusX * .80, radiusY: shape.radiusY * .95 };
+  const bed = { ...shape, center: { x: shape.center.x, y: shape.center.y - shape.radiusY * .16 },
+    radiusX: shape.radiusX * .78, radiusY: shape.radiusY * .92 };
   const { center, radiusX, radiusY } = bed, { bounds } = shape;
   const scale = Math.min(3, 256 / Math.max(bounds.width, bounds.height));
   const surface = () => {
@@ -68,19 +68,23 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
   if (!dryCtx || !wetCtx) return null;
   for (const [ctx, damp] of [[dryCtx, false], [wetCtx, true]] as const) {
     ctx.scale(scale, scale); ctx.translate(-bounds.x, -bounds.y);
-    // Warm olive edges blend into the painted grass; the interior remains visibly earthy.
-    ctx.filter = `blur(${radiusY * .11 * scale}px)`;
-    outline(ctx, bed, 1.055); ctx.fillStyle = damp ? "rgba(49,42,21,.5)" : "rgba(85,78,32,.35)"; ctx.fill();
-    ctx.filter = "none";
+    // Separate permeable pockets let the painted grass show through. A filled
+    // ellipse reads as a pedestal and makes this round crown appear to hover.
     ctx.save(); outline(ctx, bed); ctx.clip();
-    const fill = ctx.createLinearGradient(center.x, center.y - radiusY, center.x, center.y + radiusY);
-    fill.addColorStop(0, damp ? "#3d3823" : "#69603a");
-    fill.addColorStop(.65, damp ? "#514228" : "#927247");
-    fill.addColorStop(1, damp ? "#605034" : "#a18a50");
-    ctx.fillStyle = fill; ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    for (let i = 0; i < 9; i++) {
+      const side = (i - 4) / 4, spread = .29 + i % 3 * .035;
+      const x = center.x + side * radiusX * .79;
+      const y = center.y + Math.sin(i * 2.2) * radiusY * .19;
+      ctx.save(); ctx.translate(x, y); ctx.scale(radiusX * spread, radiusY * (.69 + i % 2 * .12));
+      const patch = ctx.createRadialGradient(0, 0, .12, 0, 0, 1);
+      patch.addColorStop(0, damp ? "rgba(53,49,25,.65)" : "rgba(130,111,58,.47)");
+      patch.addColorStop(.52, damp ? "rgba(66,58,29,.42)" : "rgba(137,119,59,.29)");
+      patch.addColorStop(1, "rgba(109,112,46,0)");
+      ctx.fillStyle = patch; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
+    }
     // Stable small clods and broken root lines are baked once, shared by both cameras.
-    for (let i = 0; i < 96; i++) {
-      const angle = i * 2.3999632297, distance = Math.sqrt((i + .5) / 96);
+    for (let i = 0; i < 64; i++) {
+      const angle = i * 2.3999632297, distance = Math.sqrt((i + .5) / 64);
       const x = center.x + Math.cos(angle) * radiusX * distance;
       const y = center.y + Math.sin(angle) * radiusY * distance;
       ctx.fillStyle = i % 3 ? (damp ? "rgba(31,29,15,.18)" : "rgba(66,52,28,.24)")
@@ -92,13 +96,13 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
     // detached "ball over an oval" silhouette without a second foliage sprite.
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     for (let i = 0; i < 3; i++) {
-      const side = i - 1, startX = center.x + side * radiusX * .14;
-      const middleX = center.x + side * radiusX * .46, endX = center.x + side * radiusX * .82;
-      const endY = center.y + radiusY * (side ? .55 : .8);
-      ctx.strokeStyle = damp ? "#403c24" : "#645333"; ctx.lineWidth = radiusY * .27;
+      const side = i - 1, startX = center.x + side * radiusX * .31;
+      const middleX = center.x + side * radiusX * .39, endX = center.x + side * radiusX * .45;
+      const endY = center.y + radiusY * (side ? .41 : .57);
+      ctx.strokeStyle = damp ? "rgba(64,60,36,.65)" : "rgba(100,83,51,.62)"; ctx.lineWidth = radiusY * .14;
       ctx.beginPath(); ctx.moveTo(startX, center.y - radiusY * .85);
       ctx.lineTo(middleX, center.y + radiusY * .08); ctx.lineTo(endX, endY); ctx.stroke();
-      ctx.strokeStyle = damp ? "rgba(140,124,66,.45)" : "rgba(184,157,84,.55)"; ctx.lineWidth = radiusY * .07;
+      ctx.strokeStyle = damp ? "rgba(140,124,66,.32)" : "rgba(184,157,84,.4)"; ctx.lineWidth = radiusY * .04;
       ctx.beginPath(); ctx.moveTo(startX - radiusY * .04, center.y - radiusY * .8);
       ctx.lineTo(middleX - radiusY * .04, center.y); ctx.lineTo(endX, endY - radiusY * .04); ctx.stroke();
     }
@@ -128,9 +132,9 @@ export function drawForestBushSoil(ctx: CanvasRenderingContext2D, points: readon
   const { bounds } = shape, wet = unit((moisture - .12) / .88);
   ctx.save();
   const alpha = ctx.globalAlpha;
-  ctx.globalAlpha = alpha * .82;
+  ctx.globalAlpha = alpha * .68;
   ctx.drawImage(texture.dry, bounds.x, bounds.y, bounds.width, bounds.height);
-  ctx.globalAlpha = alpha * .82 * wet;
+  ctx.globalAlpha = alpha * .76 * wet;
   if (wet > 0) ctx.drawImage(texture.wet, bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.restore();
 }

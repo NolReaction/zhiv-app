@@ -10,6 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 const { EconomyPanel, EconomyBalances, economyDuration } = await vite.ssrLoadModule("/features/economy/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { economyBuildingDestination } = await vite.ssrLoadModule("/features/economy/world-adapter.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-09-30T21:00:00Z");
@@ -228,4 +229,36 @@ test("days are readable and higher tier recipes explain their actual prerequisit
   assert.match(html, /Условия открытия/);
   assert.ok(button(html, "Мастерская: 0 / 1 ур."));
   assert.ok(button(html, "К постройке"));
+});
+
+test("placed workshop and quarry open their own requirements and then their confirmed production", () => {
+  for (const id of ["workshop", "quarry"]) {
+    let state = snapshot();
+    const building = state.catalog.buildings.find(entry => entry.id === id);
+    let destination = economyBuildingDestination(id, state);
+    assert.deepEqual(destination, { tab: "buildings", focusId: id });
+    let html = render(destination.tab, controller({ snapshot: state }), destination.focusId);
+    assert.match(html, new RegExp(`<h3>${building.name}</h3>`));
+    assert.equal(disabled(button(html, `Построить: ${building.name}`)), true);
+    assert.match(html, /Условия открытия/);
+    assert.doesNotMatch(html, /Открыть производство/);
+
+    state = snapshot({ buildings: { home: 2, workshop: 1, quarry: 1, garden: 1, warehouse: 1 } });
+    destination = economyBuildingDestination(id, state);
+    assert.deepEqual(destination, { tab: "production", focusId: id });
+    html = render(destination.tab, controller({ snapshot: state }), destination.focusId);
+    assert.match(html, new RegExp(`<option value="${id}" selected="">`));
+    assert.ok(button(html, `Развитие: ${building.name}`));
+    assert.ok(button(render("buildings", controller({ snapshot: state }), id), "Открыть производство"));
+
+    state.jobs = [job({ kind: "construction", targetId: id, targetLevel: 2, recipeId: null })];
+    destination = economyBuildingDestination(id, state);
+    assert.deepEqual(destination, { tab: "buildings", focusId: id }, "an ongoing upgrade opens its timer instead of production");
+    html = render(destination.tab, controller({ snapshot: state }), destination.focusId);
+    assert.equal(disabled(button(html, `Завершить: ${building.name}`)), true);
+    state.jobs[0].finishesAt = new Date(now - 1000).toISOString();
+    assert.deepEqual(economyBuildingDestination(id, state), destination, "elapsed local time never confirms a new level");
+  }
+  assert.deepEqual(economyBuildingDestination("home", snapshot({ buildings: { home: 5 } })), { tab: "buildings", focusId: "home" });
+  assert.deepEqual(economyBuildingDestination("workshop", null), { tab: "buildings", focusId: "workshop" });
 });

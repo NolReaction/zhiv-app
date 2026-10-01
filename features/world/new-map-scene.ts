@@ -512,6 +512,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (disposed || !art || dev?.showBuildings === false) return null;
       return previewSiteAt(world, point)?.id ?? null;
     },
+    siteAnchor(siteId) {
+      if (disposed || !art || dev?.showBuildings === false) return null;
+      return world.sites.find(site => site.id === siteId)?.anchor ?? null;
+    },
     setTime(now) {
       if (disposed || !Number.isFinite(now)) return;
       const wasExploring = exploring();

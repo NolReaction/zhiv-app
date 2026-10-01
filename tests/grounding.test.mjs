@@ -234,12 +234,15 @@ test("shrub shadows preserve cutout holes, remain under the crown and reuse boun
     const footprint = [...layer.pixels.keys()].map(key => key.split(":").map(Number));
     assert.ok(footprint.every(([, row]) => y + (row + .5) / layer.height * height > 265), "shadow is flattened below the crown");
     const mask = layer.getContext("2d").draws[0][0];
+    let outsideInteractionPolygon = false;
     for (const key of mask.pixels.keys()) {
       const [column, row] = key.split(":").map(Number);
       const wx = x + (column + .5) / 3, wy = y + (row + .5) / 3;
-      assert.ok(insidePolygon(wx, wy, bush.points));
+      assert.ok(wx >= 115 && wx < 185 && wy >= 215 && wy < 285, "mask follows the original opaque artwork");
+      outsideInteractionPolygon ||= !insidePolygon(wx, wy, bush.points);
       assert.ok(wx < 144 || wx >= 156, "transparent gap never becomes a solid rectangular shadow");
     }
+    assert.ok(outsideInteractionPolygon, "approximate interaction vertices do not cut the visual shadow");
     assert.ok(width > 70); assert.equal(draw.filter, "none", "blur is baked once, not per frame");
   }
   assert.equal(day.draws[2].args[0], night.draws[2].args[0]);
@@ -264,8 +267,9 @@ test("shrub shadow refreshes for replacement artwork and never shadows baked or 
   const compositor = recordingContext();
   paintFixedWorld(compositor, scene, { images: new Map([[terrain.image, image]]), visuals: {}, actor: null,
     options: { night: false, selectedSiteId: null, debug: false } });
-  assert.equal(compositor.draws.length, 5);
+  assert.equal(compositor.draws.length, 6);
   assert.equal(compositor.draws[4].args[0], image, "cutout covers its own soil and shadow in the shared compositor");
+  assert.notEqual(compositor.draws[5].args[0], image, "root fringe crosses the lowest leaves after the single cutout draw");
 });
 
 test("site contact follows authored collision and intersects the image bounds", () => {

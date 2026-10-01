@@ -111,6 +111,7 @@ function siteShadow(site: FixedSite, image: HTMLImageElement): SiteShadow | null
     canvas.height = Math.max(1, Math.ceil(bounds.height * scale));
     const ctx = canvas.getContext("2d");
     if (ctx) {
+      ctx.save();
       ctx.scale(canvas.width / bounds.width, canvas.height / bounds.height);
       ctx.translate(-bounds.x, -bounds.y);
       if (collisionBounds(site)) {
@@ -124,10 +125,13 @@ function siteShadow(site: FixedSite, image: HTMLImageElement): SiteShadow | null
       }
       ctx.beginPath(); ctx.rect(area.x, area.y, area.width, area.height); ctx.clip();
       drawSiteImage(ctx, site, image);
-      // Source-in keeps all holes and soft alpha edges of the current level artwork.
+      ctx.restore();
+      // Geometry is already encoded in the painted alpha. Tint the complete
+      // bitmap in identity space, without carrying world-space clips/transforms
+      // into compositing (which differs between Canvas implementations).
       ctx.globalCompositeOperation = "source-in";
       ctx.fillStyle = "#22231e";
-      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       // Bake blur once per artwork/geometry. Padding prevents a rectangular blur cutoff.
       const padding = Math.min(16, Math.max(bounds.width, bounds.height) * .09);
       const shadowBounds = { x: bounds.x - padding, y: bounds.y - padding,
@@ -152,9 +156,13 @@ function siteShadow(site: FixedSite, image: HTMLImageElement): SiteShadow | null
             bounds.width * widthScale * shadowScale, bounds.height * heightScale * shadowScale);
         };
         const size = Math.min(bounds.width, bounds.height);
-        paint(contactCtx, .28, Math.min(1.1, size * .006), 0, size * .005);
-        paint(diffuseCtx, .14, Math.min(5, size * .026), 0, size * .01, 1.025);
-        paint(diffuseCtx, .19, Math.min(3.5, size * .017), size * .028, size * .018, 1, .82);
+        const bridge = site.id === "bridge";
+        paint(contactCtx, bridge ? .21 : .28, Math.min(1.1, size * (bridge ? .003 : .006)), 0, size * .005);
+        // A broken bridge keeps two separate short shadows. Do not stretch its
+        // planks into a dark platform across the river or fill the central gap.
+        paint(diffuseCtx, bridge ? .07 : .14, Math.min(5, size * (bridge ? .008 : .026)), 0, size * .01, bridge ? 1 : 1.025);
+        paint(diffuseCtx, bridge ? .09 : .19, Math.min(3.5, size * (bridge ? .005 : .017)),
+          size * (bridge ? .012 : .028), size * .018, 1, bridge ? .98 : .82);
         shadow = { contact, diffuse, bounds: shadowBounds };
       }
     }

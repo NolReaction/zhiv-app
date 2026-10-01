@@ -8,10 +8,11 @@ import { drawRouteProps } from "./route-props";
 import { drawBoatWreck, prepareBoatWreck } from "./boat-wreck";
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "./dev/world-dev-store";
+import { sitePlace, type BuildingPlace } from "./site-interactions";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
-export type WorldPlace = "house" | "workshop" | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
+export type WorldPlace = BuildingPlace | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
 export type MapAction = "home" | "pet" | "overview" | "in" | "out";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}) {
@@ -102,8 +103,11 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       habitat.paintWeather(ctx);
     }
     for (const node of anchors) {
-      if (rebuilding) { node.style.visibility = "hidden"; continue; }
-      const point = worldToScreen({ x: Number(node.dataset.x), y: Number(node.dataset.y) }, camera, view);
+      // Keyboard/touch shortcuts follow the geometry committed with the visible artwork.
+      const anchor = rebuilding ? habitat.siteAnchor?.(node.dataset.siteId ?? "")
+        : { x: Number(node.dataset.x), y: Number(node.dataset.y) };
+      if (!anchor) { node.style.visibility = "hidden"; continue; }
+      const point = worldToScreen(anchor, camera, view);
       node.style.transform = `translate(${Math.round(point.x)}px, ${Math.round(point.y)}px) translate(-50%, -50%)`;
       // At region scale, the small bush target would overlap the house button.
       const smallDetail = node.dataset.kind === "bush" && HOME_AREA.size * camera.zoom < 200;
@@ -177,7 +181,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       const world = screenToWorld(p, camera, view);
       if (rebuilding) {
         if (habitat.hitPet((world.x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width, (world.y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) habitat.notice();
-        else if (habitat.hitSite?.(world) === "home") onPlace("house");
+        else {
+          const place = sitePlace(habitat.hitSite?.(world));
+          if (place) onPlace(place);
+        }
       } else {
         const { x, y } = worldToHome(world);
         const place = mapPlaceAt(world);

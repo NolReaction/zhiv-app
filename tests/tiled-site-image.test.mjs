@@ -56,7 +56,8 @@ function canvas() {
     rect(x, y, width, height) { path.push(...corners(x, y, width, height)); },
     clip() { clips.push([...path]); },
     drawImage(image, x, y, width, height) { draws.push({ image, corners: corners(x, y, width, height), alpha: this.globalAlpha }); },
-    fillRect(x, y, width, height) { fills.push({ corners: corners(x, y, width, height), composite: this.globalCompositeOperation }); },
+    fillRect(x, y, width, height) { fills.push({ corners: corners(x, y, width, height), composite: this.globalCompositeOperation,
+      rectangle: [x, y, width, height], matrix: [...matrix] }); },
   };
   return { width: 0, height: 0, getContext: () => ctx };
 }
@@ -120,6 +121,8 @@ test("the contact-shadow mask rotates the image once, clips world geometry, and 
     closePoints(maskCtx.draws[0].corners, corners.map(toMask));
     closePoints(maskCtx.clips[0], bridge.collision.map(toMask));
     assert.equal(maskCtx.fills[0].composite, "source-in");
+    assert.deepEqual(maskCtx.fills[0].matrix, [1, 0, 0, 1, 0, 0], "tint uses bitmap coordinates after geometry clipping is painted into alpha");
+    assert.deepEqual(maskCtx.fills[0].rectangle, [0, 0, mask.width, mask.height]);
     closePoints(maskCtx.fills[0].corners, rectangle(0, 0, mask.width, mask.height));
     assert.ok(layers[1].corners[0].x > layers[0].corners[0].x, "cast stays to the right regardless of artwork rotation");
     for (const draw of ctx.draws) {

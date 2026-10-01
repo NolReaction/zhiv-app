@@ -40,6 +40,11 @@ const absent = (object, keys, at) => {
 const defaultValue = (object, key, expected, at) => {
   if (own(object, key)) exact(object[key], expected, `${at}.${key}`);
 };
+// Editor eyes only declutter the authoring view. Runtime visibility belongs to
+// selected site levels and game state; hidden geometry is still fully validated.
+const editorVisibility = (object, at) => {
+  if (own(object, "visible")) requireThat(typeof object.visible === "boolean", `${at}.visible`, "expected a boolean");
+};
 
 function properties(object, at, allowed) {
   const result = Object.create(null);
@@ -64,7 +69,7 @@ function properties(object, at, allowed) {
 function transforms(object, at) {
   for (const key of ["x", "y", "offsetx", "offsety", "parallaxoriginx", "parallaxoriginy"]) defaultValue(object, key, 0, at);
   for (const key of ["opacity", "parallaxx", "parallaxy"]) defaultValue(object, key, 1, at);
-  defaultValue(object, "visible", true, at);
+  editorVisibility(object, at);
   defaultValue(object, "mode", "normal", at);
   absent(object, ["tintcolor", "blendmode", "transparentcolor"], at);
 }
@@ -398,7 +403,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         && object.properties?.find?.(property => property?.name === "role")?.value === "site";
       if (!isSiteImage) exact(rotation, 0, `${at}.rotation`);
       defaultValue(object, "opacity", 1, at);
-      defaultValue(object, "visible", true, at);
+      editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
       requireThat(!objects.has(objectId), `${at}.id`, "duplicate object ID");
       objects.add(objectId);

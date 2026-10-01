@@ -200,7 +200,7 @@ function BuildingCard({ economy, building, navigate }: { economy: ReadyEconomy; 
       </>}
       {reason && <p className={styles.hint}>{target && target.level <= level ? <Check size={14} aria-hidden /> : <LockKeyhole size={14} aria-hidden />}{reason}</p>}
       {target && target.level > level + 1 && <button className={styles.textButton} onClick={() => setPreview(null)}>К ближайшему улучшению<ArrowRight size={15} aria-hidden /></button>}
-      {production && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>К текущему заказу<ArrowRight size={15} aria-hidden /></button>}
+      {level > 0 && state.catalog.recipes.some(recipe => recipe.buildingId === building.id) && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>{production ? "К текущему заказу" : "Открыть производство"}<ArrowRight size={15} aria-hidden /></button>}
       {target && target.level > level && Object.entries(target.cost.items).some(([id, amount]) => (state.inventory[id] ?? 0) < amount) && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(target.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount)?.[0])}>Где взять недостающие материалы?<ArrowRight size={15} aria-hidden /></button>}
     </article>
   </div>;
@@ -253,6 +253,7 @@ function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; nav
   const locked = recipes.filter(recipe => unmetRequirement(state, requirements(recipe, recipe)));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>У каждого здания свой заказ. Все партии забираются вместе после его завершения.</p></div></div>
     <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
+    {state.buildings[station] > 0 && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
     {job && <JobCard economy={economy} job={job} navigate={navigate} />}
     {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings", station)}>К постройке<ArrowRight size={15} aria-hidden /></button></div></div>}
     {open.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}

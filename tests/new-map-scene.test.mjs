@@ -365,6 +365,45 @@ test("new map ignores old place hit areas while camera controls and pet taps rem
   } finally { engine?.dispose(); env.restore(); }
 });
 
+test("authored workshop and quarry targets open their place while unsupported ruins stay decorative", async () => {
+  const sites = ["workshop", "quarry", "bridge", "lighthouse"].map((id, index) => {
+    const x = 100 + index * 240, y = 180;
+    const points = [{ x, y }, { x: x + 120, y }, { x: x + 120, y: y + 100 }, { x, y: y + 100 }];
+    return { id, label: id, initialLevel: 0, bounds: { x, y, width: 120, height: 100 },
+      anchor: { x: x + 60, y: y + 100 }, entry: { x: x + 60, y: y + 110 }, hitArea: points, collision: [],
+      states: [{ level: 0, label: id, image: `/click-${id}.webp` }] };
+  });
+  const { createMapEngine, worldDevStore } = await modules({ sites });
+  const env = browser(); let engine;
+  try {
+    const canvas = env.surface(400), places = [];
+    const anchors = sites.slice(0, 2).map(site => ({ dataset: { siteId: site.id, kind: site.id, x: site.anchor.x, y: site.anchor.y }, style: {} }));
+    const loading = createMapEngine(canvas, options, place => places.push(place), anchors);
+    env.finish(); await flush();
+    for (const site of sites) env.finishPath(site.states[0].image);
+    engine = await loading;
+    engine.control("overview");
+    for (const anchor of anchors) {
+      assert.equal(anchor.style.visibility, "visible");
+      assert.match(anchor.style.transform, /^translate\(/);
+    }
+    const tap = site => {
+      const event = { pointerId: 1, pointerType: "mouse", button: 0,
+        clientX: site.anchor.x * 400 / fixture.width, clientY: (site.anchor.y - 50) * 400 / fixture.height };
+      canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+      canvas.events.get("pointerup")({ ...event, type: "pointerup" });
+    };
+    sites.forEach(tap);
+    assert.deepEqual(places, ["workshop", "quarry"]);
+    dragMap(canvas, 45, 0);
+    assert.deepEqual(places, ["workshop", "quarry"], "panning does not select a place");
+    worldDevStore.patch({ showBuildings: false });
+    sites.forEach(tap);
+    assert.deepEqual(places, ["workshop", "quarry"]);
+    for (const anchor of anchors) assert.equal(anchor.style.visibility, "hidden");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 function mapProjection(canvas, width = fixture.width, height = fixture.height) {
   const frame = canvas.calls.slice(canvas.calls.findLastIndex(call => call.method === "setTransform"));
   const translates = frame.filter(call => call.method === "translate");
@@ -1799,7 +1838,8 @@ test("map house taps use committed artwork geometry and sleeping hero wake-up ta
   const env = browser(); let engine, probe;
   try {
     const canvas = env.surface(400), places = [], initial = { ...options, reducedMotion: false, presenceKey: "click-home", worldState: { houseLevel: 1 } };
-    const loading = createMapEngine(canvas, initial, place => places.push(place), []);
+    const anchor = { dataset: { siteId: "home", kind: "house" }, style: {} };
+    const loading = createMapEngine(canvas, initial, place => places.push(place), [anchor]);
     env.finish(); await flush(); env.finishPath("/click-home-1.webp"); engine = await loading;
     engine.control("overview");
     const tap = (x, y) => {
@@ -1816,12 +1856,16 @@ test("map house taps use committed artwork geometry and sleeping hero wake-up ta
     assert.equal(places.length, 1, "the same target wakes an indoor hero before opening a panel");
     assert.notEqual(probe.state.clearing.stage, "home-sleep");
     clock.until(() => probe.state.clearing.routeKind !== "home", "waking finishes the real exit", 600);
+    const previousAnchor = anchor.style.transform;
     engine.update({ ...initial, worldState: { houseLevel: 2 } });
     tap(730, 600); assert.equal(places.length, 1, "pending artwork cannot expose the new hit area");
+    assert.equal(anchor.style.transform, previousAnchor, "pending art cannot move the accessible shortcut either");
     env.finishPath("/click-home-2.webp"); await flush();
     tap(630, 600); assert.equal(places.length, 1, "the old hit area disappears with old art");
+    assert.notEqual(anchor.style.transform, previousAnchor, "the shortcut follows committed geometry");
     tap(730, 600); assert.deepEqual(places, ["house", "house"]);
     worldDevStore.patch({ showBuildings: false }); tap(730, 600);
     assert.equal(places.length, 2, "hidden buildings have no ghost click target");
+    assert.equal(anchor.style.visibility, "hidden");
   } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

@@ -12,7 +12,8 @@ import type { EconomySceneJourney } from "./economy-scene-state";
 import type { WorldState } from "./model";
 import type { createMapEngine, MapAction, WorldPlace } from "./map-engine";
 import { MAP_PLACES } from "./map-layout";
-import { WORLD_PRESENTATION } from "./presentation";
+import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
+import { interactiveSites } from "./site-interactions";
 import styles from "./world.module.css";
 
 type Props = { economyJourney?: EconomySceneJourney | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void;
@@ -65,11 +66,15 @@ export function WorldScene({ economyJourney, state, gifts, items, timeZone, now,
     else pendingWake.current += taps;
   }, [wakeSignal]);
   const journey = sceneJourney(state, now);
+  const sites = interactiveSites(TILED_WORLD);
   const control = (action: MapAction) => engine.current?.control(action);
   return <div ref={root} className={styles.scene} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
-    {!WORLD_PRESENTATION.rebuilding && <div className={styles.mapAnchors} hidden={!ready}>
+    {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Постройки на карте">
+      {sites.map(({ site, place }) => <button key={site.id} data-map-anchor data-site-id={site.id} data-kind={place}
+        onClick={() => onPlace(place)} aria-label={`Открыть: ${site.label}`} title={site.label} />)}
+    </div> : <div className={styles.mapAnchors} hidden={!ready}>
       <button data-map-anchor data-kind="house" data-x={MAP_PLACES.house.marker.x} data-y={MAP_PLACES.house.marker.y} onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
       <button data-map-anchor data-kind="bush" data-x={MAP_PLACES.bush.marker.x} data-y={MAP_PLACES.bush.marker.y} onClick={() => engine.current?.visitBush()} aria-label="Позвать Мохлика к кустику" title="Кустик" />
       <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />

@@ -16,7 +16,7 @@ import styles from "./world.module.css";
 import { WorldJourneys } from "./world-journeys";
 import { WorldFeedback } from "./world-feedback";
 import { EconomyBalances, EconomyPanel, type EconomyTab } from "@/features/economy/economy-panel";
-import { economySceneJourney, economyWorldState } from "@/features/economy/world-adapter";
+import { economyBuildingDestination, economySceneJourney, economyWorldState } from "@/features/economy/world-adapter";
 import { WORLD_PRESENTATION } from "./presentation";
 import { WorldHelp } from "./world-help";
 import { MochlikState } from "./mochlik-state";
@@ -28,6 +28,7 @@ const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, 
 export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items }: WorldPortalProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
+  const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const renderedState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
@@ -49,15 +50,18 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (panel === null) panelReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel(next);
   }, [panel]);
-  const openEconomy = useCallback((tab: EconomyTab) => {
-    setEconomyTab(tab); openPanel("economy");
+  const openEconomy = useCallback((tab: EconomyTab, focusId?: string) => {
+    setEconomyTab(tab); setEconomyFocusId(focusId); openPanel("economy");
   }, [openPanel]);
   const onPlace = useCallback((place: WorldPlace) => {
     if (place === "journeys") { openPanel("journeys"); return; }
     if (["cave", "fishing", "river", "trail"].includes(place)) { openEconomy("exploration"); return; }
     if (place === "wardrobe") openPanel("wardrobe");
-    else openEconomy("buildings");
-  }, [openPanel, openEconomy]);
+    else {
+      const destination = economyBuildingDestination(place === "house" ? "home" : place, economy.snapshot);
+      openEconomy(destination.tab, destination.focusId);
+    }
+  }, [openPanel, openEconomy, economy.snapshot]);
   const { snapshot, busy, uncertain, act } = world;
   if (!snapshot) return <section className={styles.loading} aria-live="polite"><button id="world-exit" onClick={onClose}><ArrowLeft size={18} />Назад</button><Compass size={32} /><h1>Лес Мохлика</h1>
     <p>{world.error ?? "Открываем вашу полянку…"}</p>{world.error && <button onClick={() => void world.retry()}>Попробовать ещё раз</button>}</section>;
@@ -105,7 +109,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите тему через поиск или раскройте нужный раздел." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
         <div className={styles.sheetBody}>
           {panel === "help" && <WorldHelp />}
-          {panel === "economy" && <EconomyPanel key={economyTab} economy={economy} initialTab={economyTab} />}
+          {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} />}
           {WORLD_PRESENTATION.streakDecor && panel === "customize" && <div className={styles.panel}>
             <div className={styles.panelHeading}><span className={styles.eyebrow}>ДОМИК ПО ТВОЕМУ ВКУСУ</span><h2>Украшения</h2><p>Выбирай, что оставить у дома. Подарки сохраняются, даже когда выключены.</p></div>
             {GAME_ITEMS.map(item => {
@@ -132,7 +136,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         </div>}
         {panel === "stats" && <div className={styles.statsPanel}>
           <div className={styles.statsIdentity}><GameLevelIcon level={level} size={42} /><h2>{displayName}</h2><span>Уровень {level}</span></div>
-          <dl><div><dt>Домик</dt><dd>{state.houseLevel} / 5</dd></div><div><dt>Мастерская</dt><dd>{state.workshop ? `${shopLevel} / 3` : "Не построена"}</dd></div>
+          <dl><div><dt>Домик</dt><dd>{state.houseLevel} / 5</dd></div><div><dt>Мастерская</dt><dd>{state.workshop ? `${shopLevel} / ${economy.snapshot?.catalog.buildings.find(building => building.id === "workshop")?.levels.length ?? 5}` : "Не построена"}</dd></div>
           <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? 0}</dd></div><div><dt>Прежние путешествия</dt><dd>{state.completedJourneys}</dd></div><div><dt>Находки</dt><dd>{collectionCount(state.collection)} / {catalog.finds.length}</dd></div>
           <div><dt>Гардероб</dt><dd>{state.inventory.length} вещей</dd></div><div><dt>Лучшая серия отметок</dt><dd>{bestStreakDays} дн.</dd></div></dl>
           <button onClick={() => openEconomy("buildings")}><House size={18} />Обустроить дом</button>
