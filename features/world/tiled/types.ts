@@ -2,8 +2,12 @@
 export type WorldPoint = { x: number; y: number };
 export type WorldBounds = WorldPoint & { width: number; height: number };
 export type WorldImage = { id: string; image: string; bounds: WorldBounds };
+/** Tiled image rectangle, rotated clockwise around its original top-left corner. */
+export type SiteImagePlacement = WorldBounds & { rotation: number };
 export type SiteGeometry = {
+  /** World-axis-aligned envelope, including any image rotation. */
   bounds: WorldBounds;
+  imagePlacement?: SiteImagePlacement;
   anchor: WorldPoint;
   entry: WorldPoint;
   /** Optional foot position on the visible threshold, beyond the outside entry. */

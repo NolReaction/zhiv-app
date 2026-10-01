@@ -120,6 +120,43 @@ function bounds(object, at, world) {
   return { ...origin, width, height };
 }
 
+function rotationAxes(rotation) {
+  const radians = (rotation % 360) * Math.PI / 180;
+  // Exact quarter turns must not create out-of-bounds corners through roundoff.
+  const snap = value => Math.abs(value) < 1e-12 ? 0 : value;
+  return { cos: snap(Math.cos(radians)), sin: snap(Math.sin(radians)) };
+}
+
+function siteImageGeometry(object, at, world, rotation) {
+  if (rotation === 0) return { bounds: bounds(object, at, world) };
+  const origin = point(object, at, world);
+  const width = number(object.width, `${at}.width`, Number.EPSILON);
+  const height = number(object.height, `${at}.height`, Number.EPSILON);
+  const imagePlacement = { ...origin, width, height, rotation };
+  const { cos, sin } = rotationAxes(rotation);
+  // Tiled uses clockwise rotation about the top-left tile alignment point.
+  const corners = [[0, 0], [width, 0], [width, height], [0, height]].map(([x, y]) => ({
+    x: origin.x + x * cos - y * sin, y: origin.y + x * sin + y * cos,
+  }));
+  const epsilon = 1e-9;
+  requireThat(corners.every(({ x, y }) => x >= -epsilon && y >= -epsilon && x <= world.width + epsilon && y <= world.height + epsilon),
+    at, "rotated image is outside world bounds");
+  const left = Math.max(0, Math.min(...corners.map(p => p.x)));
+  const top = Math.max(0, Math.min(...corners.map(p => p.y)));
+  const right = Math.min(world.width, Math.max(...corners.map(p => p.x)));
+  const bottom = Math.min(world.height, Math.max(...corners.map(p => p.y)));
+  return { bounds: { x: left, y: top, width: right - left, height: bottom - top }, imagePlacement };
+}
+
+function insideImage(position, geometry) {
+  const frame = geometry.imagePlacement ?? geometry.bounds;
+  const { cos, sin } = rotationAxes(frame.rotation ?? 0);
+  const dx = position.x - frame.x, dy = position.y - frame.y;
+  const x = dx * cos + dy * sin, y = -dx * sin + dy * cos;
+  const epsilon = geometry.imagePlacement ? 1e-9 : 0;
+  return x >= -epsilon && x <= frame.width + epsilon && y >= -epsilon && y <= frame.height + epsilon;
+}
+
 const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 function segmentsIntersect(a, b, c, d) {
   const epsilon = 0.000000001;
@@ -356,7 +393,10 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(object, at);
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
-      defaultValue(object, "rotation", 0, at);
+      const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
+      const isSiteImage = !waterKind && !isLightLayer && !livingKind && own(object, "gid")
+        && object.properties?.find?.(property => property?.name === "role")?.value === "site";
+      if (!isSiteImage) exact(rotation, 0, `${at}.rotation`);
       defaultValue(object, "opacity", 1, at);
       defaultValue(object, "visible", true, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -442,8 +482,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         requireThat(gid <= 0x0fffffff, `${at}.gid`, "tile flip/rotation bits are not supported");
         const tile = tiles.get(gid);
         requireThat(tile, `${at}.gid`, `unknown tile ID ${gid}`);
-        const rect = bounds(object, at, world);
-        aspect(tile, rect, at);
+        const imageGeometry = role === "site" ? siteImageGeometry(object, at, world, rotation) : { bounds: bounds(object, at, world) };
+        aspect(tile, imageGeometry.imagePlacement ?? imageGeometry.bounds, at);
         if (role === "terrain") {
           exact(tile.role, "terrain", `${at}.gid role`);
           requireThat(!hasSite, at, "terrain must precede site objects in layer order");
@@ -451,7 +491,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
           const id = identifier(object.name, `${at}.name`);
           requireThat(!terrainIds.has(id), at, `duplicate terrain ID ${id}`);
           terrainIds.add(id);
-          world.terrain.push({ id, image: tile.image, bounds: rect });
+          world.terrain.push({ id, image: tile.image, bounds: imageGeometry.bounds });
         } else {
           exact(role, "site", `${at}.properties.role`);
           exact(tile.role, "siteState", `${at}.gid role`);
@@ -464,7 +504,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
           requireThat(catalog.some(state => state.level === initialLevel), at, `initialLevel ${initialLevel} is missing from site ${id} states`);
           const site = sites.get(id) ?? { id, placements: new Map(), catalog };
           requireThat(!site.placements.has(tile.level), at, `site ${id} has more than one preview object for level ${tile.level}`);
-          site.placements.set(tile.level, { bounds: rect, initialLevel, label: string(props.label ?? tile.label, `${at}.properties.label`), at });
+          site.placements.set(tile.level, { ...imageGeometry, initialLevel, label: string(props.label ?? tile.label, `${at}.properties.label`), at });
           sites.set(id, site);
           hasSite = true;
         }
@@ -623,20 +663,22 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     const hasVariants = site.placements.size > 1 || markerSets?.explicitLevels;
     const geometries = new Map();
     const states = site.catalog.map(state => {
-      const placement = site.placements.get(state.level), rect = placement?.bounds ?? base.bounds;
-      if (!placement) aspect(state, rect, `${base.at} site ${site.id}, level ${state.level}`);
-      const geometry = { bounds: rect, ...fallback, ...markerSets?.levels.get(state.level) };
+      const placement = site.placements.get(state.level), selected = placement ?? base;
+      if (!placement) aspect(state, selected.imagePlacement ?? selected.bounds, `${base.at} site ${site.id}, level ${state.level}`);
+      const geometry = { bounds: selected.bounds, ...(selected.imagePlacement ? { imagePlacement: selected.imagePlacement } : {}),
+        ...fallback, ...markerSets?.levels.get(state.level) };
       for (const role of ["anchor", "entry", "hitArea", "collision"]) requireThat(own(geometry, role), "map", `site ${site.id} is missing ${role} for level ${state.level}`);
       for (const role of ["doorway", "chimney", "window"]) {
         const points = geometry[role] ? role === "window" ? geometry[role] : [geometry[role]] : [];
-        requireThat(points.every(({ x, y }) => x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height),
+        requireThat(points.every(position => insideImage(position, geometry)),
           "map", `site ${site.id} ${role} must be inside its image bounds for level ${state.level}`);
       }
       geometries.set(state.level, geometry);
       return { level: state.level, label: state.label, image: state.image, ...(hasVariants ? { geometry } : {}) };
     });
     const geometry = geometries.get(base.initialLevel);
-    return { id: site.id, label: base.label, bounds: geometry.bounds, anchor: geometry.anchor, entry: geometry.entry,
+    return { id: site.id, label: base.label, bounds: geometry.bounds,
+      ...(geometry.imagePlacement ? { imagePlacement: geometry.imagePlacement } : {}), anchor: geometry.anchor, entry: geometry.entry,
       ...(geometry.doorway ? { doorway: geometry.doorway } : {}), hitArea: geometry.hitArea, collision: geometry.collision,
       ...(geometry.light ? { light: geometry.light } : {}), ...(geometry.chimney ? { chimney: geometry.chimney } : {}),
       ...(geometry.window ? { window: geometry.window } : {}), initialLevel: base.initialLevel, states };

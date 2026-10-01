@@ -3,6 +3,7 @@ import { drawForestBushGrounding } from "../forest-bush-grounding";
 import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
 import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
 import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
+import { drawSiteImage } from "./site-image";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
 
@@ -83,7 +84,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {
       if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image, frame.dusk ?? Number(frame.options.night));
-      ctx.drawImage(image, site.bounds.x, site.bounds.y, site.bounds.width, site.bounds.height);
+      drawSiteImage(ctx, site, image);
     }
   }
   drawForestLightFixtures(ctx, scene, frame.options.showBuildings);

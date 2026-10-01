@@ -40,7 +40,7 @@ test("every achievement has one readable asset and a catalog description", async
   }
 });
 
-test("all registered maps and both journey cards exist", async () => {
+test("all registered world and journey artwork exists", async () => {
   const paths = [WORLD_ART.map, WORLD_ART.home, WORLD_ART.homeDetail, ...Object.values(WORLD_ART.routes)];
   for (const path of paths) {
     const bytes = await readFile(`${root}/public${path.split("?")[0]}`);

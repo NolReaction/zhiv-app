@@ -191,7 +191,10 @@ test("all eight DEV scenarios enter and leave at map edges with whole-sprite cul
 
 test("tree arrivals reserve both ends of transfers and never share scarce or overlapping perches", () => {
   const originalPerches = forestBirdPerches(scene);
-  const sparse = { ...scene, sites: originalPerches.slice(1).map(p => ({ bounds: { x: p.x - 1, y: p.y - 1, width: 2, height: 2 } })) };
+  // Retain buildings that already obscure crowns; replacing them would reopen
+  // perches excluded from originalPerches when new sites are placed in Tiled.
+  const sparse = { ...scene, sites: [...scene.sites,
+    ...originalPerches.slice(1).map(p => ({ bounds: { x: p.x - 1, y: p.y - 1, width: 2, height: 2 } }))] };
   assert.equal(forestBirdPerches(sparse).length, 1);
   for (const changed of [scene, sparse]) for (const seed of [0, 2, 5]) {
     const reserved = new Map();

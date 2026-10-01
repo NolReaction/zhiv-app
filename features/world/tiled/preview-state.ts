@@ -24,7 +24,7 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
   if (cached) return cached;
   const effective = { ...scene, sites: scene.sites.map((site, index) => {
     const geometry = states[index]?.geometry;
-    return geometry ? { ...site, doorway: undefined, light: undefined, chimney: undefined, window: undefined, ...geometry } : site;
+    return geometry ? { ...site, imagePlacement: undefined, doorway: undefined, light: undefined, chimney: undefined, window: undefined, ...geometry } : site;
   }) };
   if (cache.size >= 32) cache.delete(cache.keys().next().value!);
   cache.set(key, effective);

@@ -27,6 +27,19 @@ const waterLayer = (id, name, objects) => ({ id, name, type: "objectgroup", draw
 const groupLayer = (id, name, layers = []) => ({ id, name, type: "group", layers });
 const objectLayer = (id, name, objects) => ({ ...waterLayer(id, name, objects), draworder: "index" });
 const layerObjects = layers => layers.flatMap(layer => layer.layers ? layerObjects(layer.layers) : layer.objects);
+const assertRectClose = (actual, expected) => {
+  for (const key of ["x", "y", "width", "height"]) assert.ok(Math.abs(actual[key] - expected[key]) < 1e-9,
+    `${key}: expected ${expected[key]}, received ${actual[key]}`);
+};
+const imageEnvelope = ({ x, y, width, height, rotation = 0 }) => {
+  if (rotation === 0) return { x, y, width, height };
+  const angle = rotation * Math.PI / 180;
+  const vertices = [[0, 0], [width, 0], [width, height], [0, height]].map(([dx, dy]) => ({
+    x: x + dx * Math.cos(angle) - dy * Math.sin(angle), y: y + dx * Math.sin(angle) + dy * Math.cos(angle),
+  }));
+  const minX = Math.min(...vertices.map(p => p.x)), minY = Math.min(...vertices.map(p => p.y));
+  return { x: minX, y: minY, width: Math.max(...vertices.map(p => p.x)) - minX, height: Math.max(...vertices.map(p => p.y)) - minY };
+};
 
 async function fixture(t, { directoryRoot = tmpdir() } = {}) {
   const directory = await mkdtemp(path.join(directoryRoot, "tiled-world-"));
@@ -114,6 +127,61 @@ test("moving authoring geometry and replacing image bytes changes only the gener
   assert.notEqual(updated.sites[0].states[1].image, moved.sites[0].states[1].image);
   assert.equal(updated.sites[0].states[0].image, moved.sites[0].states[0].image);
   assert.deepEqual(updated.sites[0].bounds, moved.sites[0].bounds);
+});
+
+test("rotated site images preserve Tiled placement and world-authored markers without stretching catalog-only variants", async t => {
+  const { map, compile } = await fixture(t);
+  const before = (await compile()).sites[0];
+  map.layers[0].objects[1].rotation = 346.507;
+  const authored = clone(map);
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.imagePlacement, { x: 20, y: 30, width: 20, height: 30, rotation: 346.507 });
+  assertRectClose(site.bounds, { x: 20, y: 25.33346870565279, width: 26.447765618965718, height: 33.83848431051457 });
+  for (const role of ["anchor", "entry", "hitArea", "collision", "light"]) assert.deepEqual(site[role], before[role], `${role} is already in world coordinates`);
+  assert.deepEqual(site.states, before.states, "catalog-only images share the authored rectangle, not the rotated envelope aspect");
+  assert.deepEqual(map, authored, "rotation and authoring coordinates are never rewritten");
+  map.layers[0].objects[1].rotation = -13.493;
+  const negative = (await compile()).sites[0];
+  assert.equal(negative.imagePlacement.rotation, -13.493, "negative angles remain exactly as authored");
+  assertRectClose(negative.bounds, site.bounds);
+});
+
+test("rotated image world bounds validate actual corners including quarter turns and reject non-finite angles", async t => {
+  const { map, compile } = await fixture(t);
+  const image = map.layers[0].objects[1];
+  Object.assign(image, { x: 95, y: 20, rotation: 90 });
+  assert.deepEqual((await compile()).sites[0].bounds, { x: 65, y: 20, width: 30, height: 20 },
+    "unrotated rectangle may extend outside the map when all rotated corners are inside");
+  Object.assign(image, { x: 30, y: 0 });
+  assert.deepEqual((await compile()).sites[0].bounds, { x: 0, y: 0, width: 30, height: 20 }, "corners may touch map boundaries");
+  for (const placement of [{ x: 2, y: 20, rotation: 90 }, { x: 20, y: 2, rotation: 346.507 }, { x: 90, y: 80, rotation: 45 }]) {
+    Object.assign(image, placement);
+    await assert.rejects(compile(), /objects\[1\]: rotated image is outside world bounds/);
+  }
+  for (const rotation of [NaN, Infinity, "90", null]) {
+    image.rotation = rotation;
+    await assert.rejects(compile(), /objects\[1\]\.rotation: expected a finite number/);
+  }
+});
+
+test("doorway, chimney and window markers must lie inside the rotated image rather than its enclosing rectangle", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers[0].objects[1].rotation = 346.507;
+  const objects = map.layers[0].objects;
+  objects.push(
+    { id: 10, x: 33, y: 42, point: true, properties: props({ role: "doorway", siteId: "kiln" }) },
+    { id: 11, x: 32, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 12, x: 33, y: 40, polygon: [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }, { x: 0, y: 2 }], properties: props({ role: "window", siteId: "kiln" }) },
+  );
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.doorway, { x: 33, y: 42 });
+  assert.deepEqual(site.chimney, { x: 32, y: 32 });
+  assert.deepEqual(site.window, [{ x: 33, y: 40 }, { x: 35, y: 40 }, { x: 35, y: 42 }, { x: 33, y: 42 }]);
+  for (const [index, role] of [[9, "doorway"], [10, "chimney"], [11, "window"]]) {
+    const invalid = clone(map);
+    Object.assign(invalid.layers[0].objects[index], { x: 20.1, y: 25.5 });
+    await assert.rejects(compile(invalid), new RegExp(`${role} must be inside its image bounds`));
+  }
 });
 
 test("terrain and focus form a valid scene before any sites or routes are placed", async t => {
@@ -456,6 +524,26 @@ test("grouped levels inherit tile identity and switch their own bounds and marke
   assert.deepEqual(reordered.bounds, site.states[0].geometry.bounds);
 });
 
+test("level geometries independently preserve rotations and clear the transform on an unrotated initial level", async t => {
+  const { map, compile } = await fixture(t);
+  const { image, nextImage } = separateBuildingLevels(map);
+  image.rotation = 346.507;
+  let site = (await compile()).sites[0];
+  assert.deepEqual(site.states[0].geometry.imagePlacement, { x: 20, y: 30, width: 20, height: 30, rotation: 346.507 });
+  assert.equal(Object.hasOwn(site.states[1].geometry, "imagePlacement"), false);
+  assert.equal(Object.hasOwn(site, "imagePlacement"), false, "initial level 1 has no inherited rotation from level 0");
+  nextImage.rotation = 90;
+  site = (await compile()).sites[0];
+  assert.deepEqual(site.imagePlacement, { x: 45, y: 30, width: 20, height: 30, rotation: 90 });
+  assert.deepEqual(site.bounds, { x: 15, y: 30, width: 30, height: 20 });
+  assert.deepEqual(site.states[1].geometry.imagePlacement, site.imagePlacement);
+  assert.deepEqual(site.states[1].geometry.anchor, { x: 55, y: 50 }, "state markers remain world-authored");
+  setProp(image, "initialLevel", 0);
+  site = (await compile()).sites[0];
+  assert.deepEqual(site.imagePlacement, site.states[0].geometry.imagePlacement);
+  assert.deepEqual(site.bounds, site.states[0].geometry.bounds);
+});
+
 test("each placed level may have its own image aspect and scale while unplaced variants retain legacy checks", async t => {
   const { map, compile, writeImage } = await fixture(t);
   const { nextImage } = separateBuildingLevels(map);
@@ -633,7 +721,8 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["implicit bottom alignment", value => { delete value.tilesets[0].objectalignment; }, /objectalignment: expected "topleft"/],
     ["tile offset", value => { value.tilesets[0].tileoffset = { x: 1, y: 0 }; }, /tileoffset: not supported/],
     ["template", value => { value.layers[0].objects[1].template = "site.tx"; }, /objects\[1\]\.template: not supported/],
-    ["rotation", value => { value.layers[0].objects[1].rotation = 15; }, /objects\[1\]\.rotation: expected 0/],
+    ["terrain rotation", value => { value.layers[0].objects[0].rotation = 15; }, /objects\[0\]\.rotation: expected 0/],
+    ["marker rotation", value => { value.layers[0].objects[2].rotation = 15; }, /objects\[2\]\.rotation: expected 0/],
     ["flip bits", value => { value.layers[0].objects[1].gid = 0x80000002; }, /objects\[1\]\.gid: tile flip\/rotation bits/],
     ["hex rotation bit", value => { value.layers[0].objects[1].gid = 0x10000002; }, /tile flip\/rotation bits/],
     ["layer offset", value => { value.layers[0].offsetx = 3; }, /layers\[0\]\.offsetx: expected 0/],
@@ -1091,9 +1180,14 @@ test("committed authoring exports identically and --check refuses stale output w
     assert.ok(base);
     assert.equal(site.label, property(base, "label") ?? property(tileFor(base), "label"));
     assert.equal(site.initialLevel, property(base, "initialLevel") ?? property(tileFor(base), "level"));
-    assert.deepEqual(site.bounds, rect(selected));
+    assertRectClose(site.bounds, imageEnvelope(selected));
+    if (selected.rotation) assert.deepEqual(site.imagePlacement, { ...rect(selected), rotation: selected.rotation });
+    else assert.equal(Object.hasOwn(site, "imagePlacement"), false);
     if (placements.length > 1) for (const placed of placements) {
-      assert.deepEqual(site.states.find(state => state.level === property(tileFor(placed), "level")).geometry.bounds, rect(placed));
+      const geometry = site.states.find(state => state.level === property(tileFor(placed), "level")).geometry;
+      assertRectClose(geometry.bounds, imageEnvelope(placed));
+      if (placed.rotation) assert.deepEqual(geometry.imagePlacement, { ...rect(placed), rotation: placed.rotation });
+      else assert.equal(Object.hasOwn(geometry, "imagePlacement"), false);
     }
   }
   assert.equal(scene.sites.length, new Set(placedSites.map(object => property(object, "siteId") ?? property(tileFor(object), "siteId"))).size);

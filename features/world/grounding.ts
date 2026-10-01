@@ -1,5 +1,6 @@
 import { pixelSprite, type PixelDirection, type PixelPose, type PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedSite, WorldBounds } from "./tiled/types";
+import { drawSiteImage } from "./tiled/site-image";
 
 export const HERO_SOURCE_SIZE = 48;
 export const HERO_SOURCE_FEET_Y = 45;
@@ -122,7 +123,7 @@ function siteShadow(site: FixedSite, image: HTMLImageElement): SiteShadow | null
         ctx.clip();
       }
       ctx.beginPath(); ctx.rect(area.x, area.y, area.width, area.height); ctx.clip();
-      ctx.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height);
+      drawSiteImage(ctx, site, image);
       // Source-in keeps all holes and soft alpha edges of the current level artwork.
       ctx.globalCompositeOperation = "source-in";
       ctx.fillStyle = "#22231e";
