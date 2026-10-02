@@ -34,6 +34,20 @@ const assertRectClose = (actual, expected) => {
   for (const key of ["x", "y", "width", "height"]) assert.ok(Math.abs(actual[key] - expected[key]) < 1e-9,
     `${key}: expected ${expected[key]}, received ${actual[key]}`);
 };
+const assertPointsClose = (actual, expected) => {
+  assert.equal(actual.length, expected.length);
+  actual.forEach((point, index) => {
+    for (const axis of ["x", "y"]) assert.ok(Math.abs(point[axis] - expected[index][axis]) < 1e-9,
+      `vertex ${index}.${axis}: expected ${expected[index][axis]}, received ${point[axis]}`);
+  });
+};
+const authoredVertices = (object, kind) => {
+  const angle = (object.rotation ?? 0) % 360 * Math.PI / 180;
+  return object[kind].map(({ x, y }) => ({
+    x: object.x + x * Math.cos(angle) - y * Math.sin(angle),
+    y: object.y + x * Math.sin(angle) + y * Math.cos(angle),
+  }));
+};
 const imageEnvelope = ({ x, y, width, height, rotation = 0 }) => {
   if (rotation === 0) return { x, y, width, height };
   const angle = rotation * Math.PI / 180;
@@ -186,6 +200,103 @@ test("rotated image world bounds validate actual corners including quarter turns
   for (const rotation of [NaN, Infinity, "90", null]) {
     image.rotation = rotation;
     await assert.rejects(compile(), /objects\[1\]\.rotation: expected a finite number/);
+  }
+});
+
+test("polygon and polyline vertices rotate clockwise about their own Tiled origins", async t => {
+  const { map, compile } = await fixture(t);
+  const triangle = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 8 }];
+  const positive = [{ x: 50, y: 50 }, { x: 50 + 5 * Math.sqrt(3), y: 55 }, { x: 46, y: 50 + 4 * Math.sqrt(3) }];
+  const negative = [{ x: 50, y: 50 }, { x: 50 + 5 * Math.sqrt(3), y: 45 }, { x: 54, y: 50 + 4 * Math.sqrt(3) }];
+  const quarter = [{ x: 50, y: 50 }, { x: 50, y: 60 }, { x: 42, y: 50 }];
+  for (const [rotation, expected] of [[30, positive], [-30, negative], [390, positive], [-330, positive], [90, quarter], [450, quarter], [-270, quarter]]) {
+    await t.test(`rotation ${rotation}`, async () => {
+      const value = clone(map);
+      for (const index of [5, 6]) Object.assign(value.layers[0].objects[index], { x: 50, y: 50, rotation, polygon: clone(triangle) });
+      Object.assign(value.layers[0].objects[8], { x: 50, y: 50, rotation, polyline: clone(triangle) });
+      const source = clone(value), scene = await compile(value);
+      assertPointsClose(scene.sites[0].hitArea, expected);
+      assertPointsClose(scene.sites[0].collision, expected);
+      assertPointsClose(scene.paths[0].points, expected);
+      assert.deepEqual(value, source, "export must preserve the authored rotation and local vertices");
+      assert.equal(serializeTiledWorld(scene), serializeTiledWorld(await compile(value)));
+    });
+  }
+});
+
+test("nested offsets translate rotated contours and routes once without rotating point origins", async t => {
+  const { map, compile } = await fixture(t);
+  const [ground, ...objects] = map.layers[0].objects;
+  for (const index of [4, 5]) objects[index].rotation = 90;
+  objects[7].rotation = -90;
+  for (const index of [1, 2, 3]) objects[index].rotation = 450;
+  map.layers = [objectLayer(1, "Terrain", [ground]),
+    { ...groupLayer(2, "Buildings", [{ ...groupLayer(3, "Moved", [objectLayer(4, "Markers", objects)]), offsetx: -2, offsety: 4 }]), offsetx: 5, offsety: -2 }];
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.sites[0].anchor, { x: 33, y: 52 });
+  assert.deepEqual(scene.sites[0].entry, { x: 33, y: 62 });
+  assert.deepEqual(scene.sites[0].light, { x: 35, y: 42 });
+  for (const role of ["hitArea", "collision"]) assert.deepEqual(scene.sites[0][role], [
+    { x: 33, y: 32 }, { x: 33, y: 47 }, { x: 8, y: 47 }, { x: 8, y: 32 },
+  ]);
+  assert.deepEqual(scene.paths[0].points, [{ x: 33, y: 62 }, { x: 43, y: 52 }, { x: 43, y: 42 }]);
+  assert.deepEqual(map, source);
+});
+
+test("image rotation does not rotate world points or apply twice to a window contour", async t => {
+  const { map, compile } = await fixture(t);
+  const objects = map.layers[0].objects;
+  Object.assign(objects[1], { x: 30, y: 30, rotation: 90 });
+  objects[2].rotation = -30;
+  objects[3].rotation = 450;
+  objects.push(
+    { id: 10, x: 20, y: 40, point: true, rotation: 450, properties: props({ role: "doorway", siteId: "kiln" }) },
+    { id: 11, x: 10, y: 40, point: true, rotation: -30, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 12, x: 22, y: 34, rotation: 90, polygon: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 2 }], properties: props({ role: "window", siteId: "kiln" }) },
+  );
+  const scene = await compile(), site = scene.sites[0];
+  assert.deepEqual(site.anchor, { x: 30, y: 50 });
+  assert.deepEqual(site.entry, { x: 30, y: 60 });
+  assert.deepEqual(site.doorway, { x: 20, y: 40 });
+  assert.deepEqual(site.chimney, { x: 10, y: 40 });
+  assert.deepEqual(site.window, [{ x: 22, y: 34 }, { x: 22, y: 38 }, { x: 20, y: 34 }]);
+  assert.deepEqual(site.hitArea, [{ x: 20, y: 30 }, { x: 35, y: 30 }, { x: 35, y: 55 }, { x: 20, y: 55 }]);
+});
+
+test("rotated geometry validates transformed world bounds and keeps exact quarter-turn boundaries", async t => {
+  const { map, compile } = await fixture(t);
+  Object.assign(map.layers[0].objects[5], { x: 100, y: 0, rotation: 90,
+    polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 100 }, { x: 0, y: 100 }] });
+  Object.assign(map.layers[0].objects[8], { x: 100, y: 0, rotation: 90, polyline: [{ x: 0, y: 0 }, { x: 100, y: 100 }] });
+  const scene = await compile();
+  assert.deepEqual(scene.sites[0].hitArea, [{ x: 100, y: 0 }, { x: 100, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 0 }]);
+  assert.deepEqual(scene.paths[0].points, [{ x: 100, y: 0 }, { x: 0, y: 100 }]);
+  const polygonOutside = clone(map);
+  polygonOutside.layers[0].objects[5].x = 99;
+  await assert.rejects(compile(polygonOutside), /objects\[5\]\.polygon\[2\]\.x: expected a finite number >= 0/);
+  const routeOutside = clone(map);
+  routeOutside.layers[0].objects[8].rotation = -90;
+  await assert.rejects(compile(routeOutside), /objects\[8\]\.polyline\[1\]\.y: expected a finite number >= 0/);
+});
+
+test("rotation retains polygon topology checks and rejects non-finite angles on every geometry shape", async t => {
+  const { map, compile } = await fixture(t);
+  const cases = [
+    ["adjacent vertices", [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }], /adjacent vertices must differ/],
+    ["repeated closure", [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }, { x: 0, y: 0 }], /polygon vertices must be unique/],
+    ["zero area", [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }], /polygon must enclose a nonzero area/],
+    ["self intersection", [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 15, y: 5 }], /polygon must not self-intersect/],
+    ["overlapping edges", [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 10 }], /polygon edges must not overlap/],
+  ];
+  for (const [name, polygon, pattern] of cases) await t.test(name, async () => {
+    const value = clone(map);
+    Object.assign(value.layers[0].objects[5], { rotation: 3.77904083202368, polygon });
+    await assert.rejects(compile(value), pattern);
+  });
+  for (const index of [2, 5, 8]) for (const rotation of [NaN, Infinity, -Infinity, "30", null]) {
+    const value = clone(map);
+    value.layers[0].objects[index].rotation = rotation;
+    await assert.rejects(compile(value), new RegExp(`objects\\[${index}\\]\\.rotation: expected a finite number`));
   }
 });
 
@@ -770,7 +881,7 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["tile offset", value => { value.tilesets[0].tileoffset = { x: 1, y: 0 }; }, /tileoffset: not supported/],
     ["template", value => { value.layers[0].objects[1].template = "site.tx"; }, /objects\[1\]\.template: not supported/],
     ["out-of-bounds terrain rotation", value => { value.layers[0].objects[0].rotation = 15; }, /rotated image is outside world bounds/],
-    ["marker rotation", value => { value.layers[0].objects[2].rotation = 15; }, /objects\[2\]\.rotation: expected 0/],
+    ["focus rectangle rotation", value => { value.layers[0].objects[7].rotation = 15; }, /objects\[7\]\.rotation: expected 0/],
     ["flip bits", value => { value.layers[0].objects[1].gid = 0x80000002; }, /objects\[1\]\.gid: tile flip\/rotation bits/],
     ["hex rotation bit", value => { value.layers[0].objects[1].gid = 0x10000002; }, /tile flip\/rotation bits/],
     ["layer offset", value => { value.layers[0].offsetx = 3; }, /layers\[0\]\.offsetx: expected 0/],
@@ -876,6 +987,21 @@ test("Water also supports nested groups and WaterExclusions supports a plain obj
   assert.deepEqual((await compile()).water, { surfaces: [], exclusions: [] }, "an emptied authoring mask stays empty");
 });
 
+test("water surfaces and nested exclusions use their own rotations", async t => {
+  const { map, compile } = await fixture(t);
+  const polygon = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }];
+  map.layers.push(waterLayer(2, "Water", [{ ...waterPolygon(20, "river-main", 50, 50), polygon, rotation: 90 }]));
+  map.layers.push(groupLayer(3, "WaterExclusions", [waterLayer(4, "Leaves", [
+    { ...waterPolygon(21, "leaf-1", 50, 50), polygon, rotation: -90 },
+  ])]));
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.water, {
+    surfaces: [{ id: "river-main", points: [{ x: 50, y: 50 }, { x: 50, y: 60 }, { x: 42, y: 60 }, { x: 42, y: 50 }] }],
+    exclusions: [{ id: "leaf-1", points: [{ x: 50, y: 50 }, { x: 50, y: 40 }, { x: 58, y: 40 }, { x: 58, y: 50 }] }],
+  });
+  assert.deepEqual(map, source);
+});
+
 test("invalid water geometry and unsupported nested transforms fail with the object location", async t => {
   const { map, compile } = await fixture(t);
   map.layers.push(waterLayer(2, "Water", [waterPolygon(20, "river-main")]));
@@ -887,7 +1013,7 @@ test("invalid water geometry and unsupported nested transforms fail with the obj
     ["explicit repeated closure", value => { const p = value.layers[1].objects[0].polygon; p.push(clone(p[0])); }, /polygon vertices must be unique/],
     ["zero area", value => { value.layers[1].objects[0].polygon = [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }]; }, /polygon must enclose a nonzero area/],
     ["self intersection", value => { value.layers[1].objects[0].polygon = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 15, y: 5 }]; }, /\(river-main\): polygon must not self-intersect/],
-    ["exclusion rotation", value => { value.layers[2].layers[0].objects[0].rotation = 30; }, /layers\[2\]\.layers\[0\]\.objects\[0\]\.rotation: expected 0/],
+    ["invalid exclusion rotation", value => { value.layers[2].layers[0].objects[0].rotation = "30"; }, /layers\[2\]\.layers\[0\]\.objects\[0\]\.rotation: expected a finite number/],
     ["group offset", value => { value.layers[2].offsetx = 5; }, /layers\[2\]\.offsetx: expected 0/],
     ["nested layer offset", value => { value.layers[2].layers[0].y = 3; }, /layers\[2\]\.layers\[0\]\.y: expected 0/],
     ["nested layer parallax", value => { value.layers[2].layers[0].parallaxx = 0.5; }, /parallaxx: expected 1/],
@@ -1226,6 +1352,14 @@ test("committed authoring exports identically and --check refuses stale output w
     ?? withRole("entry").find(object => property(object, "siteId") === "quarry");
   assert.deepEqual(quarry.entry, { x: quarryEntry.x, y: quarryEntry.y });
 
+  const bridge = scene.sites.find(site => site.id === "bridge");
+  assert.ok(bridge, "the bridge retains its authored interaction and collision contours");
+  for (const role of ["hitArea", "collision"]) {
+    const authored = withRole(role).find(object => property(object, "siteId") === "bridge");
+    assert.ok(authored);
+    assertPointsClose(bridge[role], authoredVertices(authored, "polygon"));
+  }
+
   const tileFor = object => source.tilesets.flatMap(tileset => tileset.tiles.map(tile => ({ gid: tileset.firstgid + tile.id, tile }))).find(entry => entry.gid === object.gid)?.tile;
   const terrainObjects = objects.filter(object => (property(object, "role") ?? property(tileFor(object) ?? {}, "role")) === "terrain");
   assert.equal(scene.terrain.length, terrainObjects.length);
@@ -1255,7 +1389,7 @@ test("committed authoring exports identically and --check refuses stale output w
   }
   assert.equal(scene.sites.length, new Set(placedSites.map(object => property(object, "siteId") ?? property(tileFor(object), "siteId"))).size);
   assert.deepEqual(scene.paths, withRole("path").map(object => ({ id: object.name,
-    points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
+    points: authoredVertices(object, "polyline"),
     ...Object.fromEntries(["siteId", "behavior", "activity", "pauseSeconds", "bushId"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
   assert.deepEqual(scene.mushrooms, withRole("mushroom").map(object => ({ id: object.name, position: { x: object.x, y: object.y } })));
   assert.equal(withRole("basket").length, 1, "the live forest has one movable basket marker");
@@ -1264,7 +1398,7 @@ test("committed authoring exports identically and --check refuses stale output w
   assert.deepEqual(scene.bushes, withRole("bush").map(object => {
     const id = property(object, "bushId");
     const marker = role => withRole(role).find(candidate => property(candidate, "bushId") === id);
-    return { id, points: object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
+    return { id, points: authoredVertices(object, "polygon"),
       ...(property(object, "imageId") !== undefined ? { imageId: property(object, "imageId") } : {}),
       entry: { x: marker("bush-entry").x, y: marker("bush-entry").y },
       hide: { x: marker("bush-hide").x, y: marker("bush-hide").y } };
@@ -1277,7 +1411,7 @@ test("committed authoring exports identically and --check refuses stale output w
   const authoredWater = source.layers.find(layer => layer.name === "Water");
   const authoredExclusions = source.layers.find(layer => layer.name === "WaterExclusions");
   const waterGeometry = layers => layerObjects(layers).map(object => ({ id: object.name,
-    points: object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y })) }));
+    points: authoredVertices(object, "polygon") }));
   assert.deepEqual(scene.water, { surfaces: waterGeometry([authoredWater]), exclusions: waterGeometry([authoredExclusions]) });
   assert.equal(await readFile(path.join(root, "features/world/tiled/forest.generated.json"), "utf8"), expected);
   const command = [path.join(root, "scripts/tiled-world.mjs"), input, output];

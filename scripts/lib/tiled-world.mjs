@@ -206,10 +206,13 @@ function vertices(object, kind, at, world) {
   const points = array(object[kind], `${at}.${kind}`);
   requireThat(points.length >= (kind === "polygon" ? 3 : 2), `${at}.${kind}`, `requires at least ${kind === "polygon" ? 3 : 2} points`);
   const origin = point(object, at, world);
+  const { cos, sin } = rotationAxes(object.rotation ?? 0);
   const result = points.map((value, index) => {
     const where = `${at}.${kind}[${index}]`;
     record(value, where);
-    return point({ x: origin.x + number(value.x, `${where}.x`), y: origin.y + number(value.y, `${where}.y`) }, where, world);
+    const dx = number(value.x, `${where}.x`), dy = number(value.y, `${where}.y`);
+    // Each Tiled shape owns its rotation; the site's image angle is not applied again.
+    return point({ x: origin.x + dx * cos - dy * sin, y: origin.y + dx * sin + dy * cos }, where, world);
   });
   for (let index = 1; index < result.length; index++) {
     requireThat(result[index].x !== result[index - 1].x || result[index].y !== result[index - 1].y, at, "adjacent vertices must differ");
@@ -410,7 +413,6 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
       const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
       const isImage = !waterKind && !isLightLayer && !livingKind && own(object, "gid");
-      if (!isImage) exact(rotation, 0, `${at}.rotation`);
       defaultValue(object, "opacity", 1, at);
       editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -419,6 +421,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const shapes = ["gid", "point", "polygon", "polyline"].filter(key => own(object, key));
       requireThat(shapes.length <= 1, at, "object must have exactly one shape");
       const shape = shapes[0] ?? "rectangle";
+      if (!isImage && shape === "rectangle") exact(rotation, 0, `${at}.rotation`);
       if (isLightLayer) {
         const light = compileLight(object, shape, at, world);
         requireThat(!lightIds.has(light.id), at, `duplicate light ID ${light.id}`);
