@@ -7303,8 +7303,8 @@
                  "type":"",
                  "visible":true,
                  "width":0,
-                 "x":569.292472908935,
-                 "y":628.613869313888
+                 "x":537.912572346542,
+                 "y":614.146512561096
                 }, 
                 {
                  "height":0,
@@ -7850,12 +7850,12 @@
                          "y":0
                         }, 
                         {
-                         "x":22.909357870082772,
-                         "y":-44.513659245236454
+                         "x":22.9093578700828,
+                         "y":-44.5136592452365
                         }, 
                         {
-                         "x":26.65259464793121,
-                         "y":-47.221532658999195
+                         "x":26.6525946479312,
+                         "y":-47.2215326589992
                         }],
                  "properties":[
                         {
@@ -7899,8 +7899,8 @@
                          "y":-30.043232944969
                         }, 
                         {
-                         "x":-29.198770587804006,
-                         "y":-61.429363631080946
+                         "x":-29.198770587804,
+                         "y":-61.4293636310809
                         }],
                  "properties":[
                         {
@@ -13692,7 +13692,7 @@
                                         }],
                                  "opacity":1,
                                  "type":"objectgroup",
-                                 "visible":true,
+                                 "visible":false,
                                  "x":0,
                                  "y":0
                                 }],
@@ -15869,7 +15869,7 @@
                         {
                          "name":"radius",
                          "type":"float",
-                         "value":72
+                         "value":100
                         }],
                  "rotation":0,
                  "type":"",
@@ -15881,7 +15881,7 @@
                 {
                  "height":0,
                  "id":96,
-                 "name":"river-path-torch",
+                 "name":"quarry-torch-1",
                  "opacity":1,
                  "point":true,
                  "properties":[
@@ -15914,8 +15914,8 @@
                  "type":"",
                  "visible":true,
                  "width":0,
-                 "x":922,
-                 "y":807
+                 "x":733.163042367061,
+                 "y":277.398453627629
                 }, 
                 {
                  "height":0,
@@ -15955,6 +15955,84 @@
                  "width":0,
                  "x":937,
                  "y":249
+                }, 
+                {
+                 "height":0,
+                 "id":323,
+                 "name":"river-path-torch",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"color",
+                         "type":"color",
+                         "value":"#ffffb45d"
+                        }, 
+                        {
+                         "name":"flicker",
+                         "type":"float",
+                         "value":0.1
+                        }, 
+                        {
+                         "name":"intensity",
+                         "type":"float",
+                         "value":1
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"torch"
+                        }, 
+                        {
+                         "name":"radius",
+                         "type":"float",
+                         "value":85
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":921.111408916287,
+                 "y":791.502015265696
+                }, 
+                {
+                 "height":0,
+                 "id":325,
+                 "name":"bridge-torch-right",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"color",
+                         "type":"color",
+                         "value":"#ffffb45d"
+                        }, 
+                        {
+                         "name":"flicker",
+                         "type":"float",
+                         "value":0.1
+                        }, 
+                        {
+                         "name":"intensity",
+                         "type":"float",
+                         "value":1
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"torch"
+                        }, 
+                        {
+                         "name":"radius",
+                         "type":"float",
+                         "value":85
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":672.731234339253,
+                 "y":998.474779387733
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -15994,12 +16072,12 @@
                          "y":-36.2857615349582
                         }, 
                         {
-                         "x":38.0449533077468,
-                         "y":-18.4517147468398
+                         "x":42.9583391345184,
+                         "y":-16.8139194712493
                         }, 
                         {
-                         "x":58.3326647194706,
-                         "y":-19.5167284920067
+                         "x":57.702743459628,
+                         "y":-15.107279673109
                         }, 
                         {
                          "x":79.2278969732781,
@@ -16201,8 +16279,8 @@
                  "type":"",
                  "visible":true,
                  "width":0,
-                 "x":594.984600060389,
-                 "y":637.845753542878
+                 "x":595.445904321303,
+                 "y":640.984704931585
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -16211,7 +16289,7 @@
          "y":0
         }],
  "nextlayerid":94,
- "nextobjectid":323,
+ "nextobjectid":326,
  "orientation":"orthogonal",
  "properties":[
         {
@@ -16509,23 +16587,38 @@
                 {
                  "id":11,
                  "image":"..\/..\/public\/world\/prototype\/quarry-ground.png",
-                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1254,
-                 "imagewidth":1254
+                 "imagewidth":1254,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }]
                 }, 
                 {
                  "id":12,
                  "image":"..\/..\/public\/world\/prototype\/workshop-ground.png",
-                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":971,
-                 "imagewidth":1619
+                 "imagewidth":1619,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }]
                 }, 
                 {
                  "id":13,
                  "image":"..\/..\/public\/world\/prototype\/lighthouse-ground.png",
-                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1122,
-                 "imagewidth":1402
+                 "imagewidth":1402,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }]
                 }, 
                 {
                  "id":15,
@@ -16611,16 +16704,26 @@
                 {
                  "id":18,
                  "image":"..\/..\/public\/world\/prototype\/house-ground-1.png",
-                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1254,
-                 "imagewidth":1254
+                 "imagewidth":1254,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }]
                 }, 
                 {
                  "id":19,
                  "image":"..\/..\/public\/world\/prototype\/house-ground-2.png",
-                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1254,
-                 "imagewidth":1254
+                 "imagewidth":1254,
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"terrain"
+                        }]
                 }, 
                 {
                  "id":20,
