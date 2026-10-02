@@ -83,6 +83,19 @@ test("the shared compositor preserves the bridge angle and size without rotating
   closePoints(ctx.draws[1].corners, rectangle(straight.bounds.x, straight.bounds.y, straight.bounds.width, straight.bounds.height));
 });
 
+test("rotated terrain decals paint below sites without leaking their canvas transform", () => {
+  const { scene, bridge, corners, straight } = fixture(), ctx = canvas().getContext("2d");
+  const groundImage = {}, bridgeImage = {}, workshopImage = {};
+  scene.terrain = [{ id: "ground-patch", image: "/ground.png", bounds: bridge.bounds, imagePlacement: placement }];
+  paintFixedWorld(ctx, scene, { images: new Map([["/ground.png", groundImage], ["/bridge.png", bridgeImage], ["/workshop.png", workshopImage]]),
+    visuals: Object.fromEntries(scene.sites.map(site => [site.id, site.states[0]])), actor: null,
+    options: { levels: { bridge: 0, workshop: 0 }, night: false, debug: false, selectedSiteId: null, reducedMotion: true, buildingShadow: false } });
+  assert.deepEqual(ctx.draws.map(draw => draw.image), [groundImage, bridgeImage, workshopImage]);
+  closePoints(ctx.draws[0].corners, corners);
+  closePoints(ctx.draws[1].corners, corners);
+  closePoints(ctx.draws[2].corners, rectangle(straight.bounds.x, straight.bounds.y, straight.bounds.width, straight.bounds.height));
+});
+
 test("changing to an unrotated level clears image placement while keeping markers in world coordinates", () => {
   const { scene, bridge, straight } = fixture(), before = structuredClone(scene);
   const ruins = previewWorldScene(scene, { bridge: 0 }), restored = previewWorldScene(scene, { bridge: 1 });

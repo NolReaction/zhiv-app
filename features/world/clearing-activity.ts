@@ -194,7 +194,8 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
     for (let sample = 0; sample <= 16; sample++) {
       const t = sample / 16, point = { x: bush.entry.x + (bush.hide.x - bush.entry.x) * t,
         y: bush.entry.y + (bush.hide.y - bush.entry.y) * t }, lift = Math.sin(t * Math.PI) * actor.size * .28;
-      if (distance(point, actor.spawn) > radius) return "outside-clearing-radius";
+      // The local route ends at entry; the bounded jump can extend beyond it.
+      if (distance(point, actor.spawn) > radius + WORLD_INTERACTION_LIMITS.bushJump) return "outside-clearing-radius";
       for (const dx of [-actor.size * .5, actor.size * .5]) for (const dy of [-actor.size - lift, actor.size * .08]) {
         const x = point.x + dx, y = point.y + dy;
         if (x < 0 || y < 0 || x > scene.width || y > scene.height) return "outside-map";

@@ -66,8 +66,12 @@ function properties(object, at, allowed) {
   return result;
 }
 
-function transforms(object, at) {
-  for (const key of ["x", "y", "offsetx", "offsety", "parallaxoriginx", "parallaxoriginy"]) defaultValue(object, key, 0, at);
+function transforms(object, at, allowOffset = false) {
+  for (const key of ["x", "y", "parallaxoriginx", "parallaxoriginy"]) defaultValue(object, key, 0, at);
+  for (const key of ["offsetx", "offsety"]) {
+    if (allowOffset && own(object, key)) number(object[key], `${at}.${key}`);
+    else defaultValue(object, key, 0, at);
+  }
   for (const key of ["opacity", "parallaxx", "parallaxy"]) defaultValue(object, key, 1, at);
   editorVisibility(object, at);
   defaultValue(object, "mode", "normal", at);
@@ -341,10 +345,10 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
   const navigation = () => world.navigation ??= { version: 1, cellSize, areas: [], obstacles: [], interests: [] };
   if (own(mapProperties, "navigationCellSize")) navigation();
-  // Groups organize layers without changing coordinates or authored draw order.
+  // Group offsets accumulate once; leaf order preserves authored draw order.
   // Named metadata groups pass their meaning through every descendant group;
   // ordinary groups leave object roles and site IDs in control.
-  function* objectLayers(entries, at, inheritedKind, groups = []) {
+  function* objectLayers(entries, at, inheritedKind, groups = [], offset = { x: 0, y: 0 }) {
     for (const [layerIndex, layer] of array(entries, at).entries()) {
       const layerAt = `${at}[${layerIndex}]`;
       record(layer, layerAt);
@@ -356,7 +360,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const livingKind = Object.values(livingKinds).includes(metadataKind) ? metadataKind : undefined;
       const isGroup = layer.type === "group";
       if (!isGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
-      transforms(layer, layerAt);
+      transforms(layer, layerAt, isGroup && !metadataKind);
+      const layerOffset = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
       absent(layer, ["data", "chunks", "image", ...(isGroup ? ["objects", "draworder"] : ["layers"])], layerAt);
       properties(layer, layerAt, {});
       const layerId = integer(layer.id, `${layerAt}.id`, 1);
@@ -369,11 +374,12 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (isLifeLayer && layer.name === "Mushrooms") world.mushrooms ??= [];
       if (isLifeLayer && layer.name === "Bushes") world.bushes ??= [];
       if (isGroup) {
-        yield* objectLayers(layer.layers, `${layerAt}.layers`, metadataKind, [...groups, layer]);
+        yield* objectLayers(layer.layers, `${layerAt}.layers`, metadataKind, [...groups, layer], layerOffset);
       } else {
-        if (metadataKind || isLifeLayer) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata");
+        const terrainOnly = Array.isArray(layer.objects) && layer.objects.every(object => tiles.get(object.gid)?.role === "terrain");
+        if (metadataKind || isLifeLayer || terrainOnly) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata/terrain");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
-        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", livingKind, groups };
+        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", livingKind, groups, offset: layerOffset };
       }
     }
   }
@@ -392,16 +398,19 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     }
   }
   const routeOwners = [];
-  let hasSite = false;
-  for (const { layer, layerAt, waterKind, isLightLayer, livingKind, groups } of leaves) {
-    for (const [objectIndex, object] of array(layer.objects, `${layerAt}.objects`).entries()) {
+  for (const { layer, layerAt, waterKind, isLightLayer, livingKind, groups, offset } of leaves) {
+    const entries = [...array(layer.objects, `${layerAt}.objects`).entries()];
+    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !livingKind) entries.sort((a, b) => a[1].y - b[1].y);
+    for (const [objectIndex, authoredObject] of entries) {
       const at = `${layerAt}.objects[${objectIndex}]`;
-      record(object, at);
+      record(authoredObject, at);
+      const object = offset.x || offset.y ? { ...authoredObject,
+        x: number(authoredObject.x, `${at}.x`) + offset.x,
+        y: number(authoredObject.y, `${at}.y`) + offset.y } : authoredObject;
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
       const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
-      const isSiteImage = !waterKind && !isLightLayer && !livingKind && own(object, "gid")
-        && object.properties?.find?.(property => property?.name === "role")?.value === "site";
-      if (!isSiteImage) exact(rotation, 0, `${at}.rotation`);
+      const isImage = !waterKind && !isLightLayer && !livingKind && own(object, "gid");
+      if (!isImage) exact(rotation, 0, `${at}.rotation`);
       defaultValue(object, "opacity", 1, at);
       editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -487,16 +496,15 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         requireThat(gid <= 0x0fffffff, `${at}.gid`, "tile flip/rotation bits are not supported");
         const tile = tiles.get(gid);
         requireThat(tile, `${at}.gid`, `unknown tile ID ${gid}`);
-        const imageGeometry = role === "site" ? siteImageGeometry(object, at, world, rotation) : { bounds: bounds(object, at, world) };
-        aspect(tile, imageGeometry.imagePlacement ?? imageGeometry.bounds, at);
+        const imageGeometry = siteImageGeometry(object, at, world, rotation);
+        if (role !== "terrain") aspect(tile, imageGeometry.imagePlacement ?? imageGeometry.bounds, at);
         if (role === "terrain") {
           exact(tile.role, "terrain", `${at}.gid role`);
-          requireThat(!hasSite, at, "terrain must precede site objects in layer order");
           requireThat(Object.keys(props).length === 1, at, "terrain objects only accept the role property");
-          const id = identifier(object.name, `${at}.name`);
+          const id = identifier(object.name || `terrain-${objectId}`, `${at}.name`);
           requireThat(!terrainIds.has(id), at, `duplicate terrain ID ${id}`);
           terrainIds.add(id);
-          world.terrain.push({ id, image: tile.image, bounds: imageGeometry.bounds });
+          world.terrain.push({ id, image: tile.image, ...imageGeometry });
         } else {
           exact(role, "site", `${at}.properties.role`);
           exact(tile.role, "siteState", `${at}.gid role`);
@@ -511,7 +519,6 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
           requireThat(!site.placements.has(tile.level), at, `site ${id} has more than one preview object for level ${tile.level}`);
           site.placements.set(tile.level, { ...imageGeometry, initialLevel, label: string(props.label ?? tile.label, `${at}.properties.label`), at });
           sites.set(id, site);
-          hasSite = true;
         }
       } else if (role === "focus") {
         exact(shape, "rectangle", `${at} shape`);

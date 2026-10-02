@@ -26,7 +26,10 @@ const waterPolygon = (id, name = "", x = 30.125, y = 50.375) => ({
 const waterLayer = (id, name, objects) => ({ id, name, type: "objectgroup", draworder: "topdown", objects });
 const groupLayer = (id, name, layers = []) => ({ id, name, type: "group", layers });
 const objectLayer = (id, name, objects) => ({ ...waterLayer(id, name, objects), draworder: "index" });
-const layerObjects = layers => layers.flatMap(layer => layer.layers ? layerObjects(layer.layers) : layer.objects);
+const layerObjects = (layers, offset = { x: 0, y: 0 }) => layers.flatMap(layer => {
+  const shift = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
+  return layer.layers ? layerObjects(layer.layers, shift) : layer.objects.map(object => ({ ...object, x: object.x + shift.x, y: object.y + shift.y }));
+});
 const assertRectClose = (actual, expected) => {
   for (const key of ["x", "y", "width", "height"]) assert.ok(Math.abs(actual[key] - expected[key]) < 1e-9,
     `${key}: expected ${expected[key]}, received ${actual[key]}`);
@@ -127,6 +130,28 @@ test("moving authoring geometry and replacing image bytes changes only the gener
   assert.notEqual(updated.sites[0].states[1].image, moved.sites[0].states[1].image);
   assert.equal(updated.sites[0].states[0].image, moved.sites[0].states[0].image);
   assert.deepEqual(updated.sites[0].bounds, moved.sites[0].bounds);
+});
+
+test("nested group offsets move geometry together and terrain decals retain stretch, rotation and topdown order", async t => {
+  const { map, compile } = await fixture(t);
+  const before = await compile(), [ground, ...objects] = map.layers[0].objects;
+  const decals = [
+    { id: 22, name: "", gid: 1, x: 15, y: 30, width: 18, height: 9, rotation: 15 },
+    { id: 23, name: "", gid: 1, x: 15, y: 14, width: 18, height: 9, rotation: 0 },
+  ];
+  map.layers = [objectLayer(1, "Terrain", [ground]),
+    { ...groupLayer(2, "Buildings", [{ ...groupLayer(3, "Moved", [objectLayer(4, "Markers", objects),
+      waterLayer(5, "Ground", decals)]), offsetx: -2, offsety: 4 }]), offsetx: 5, offsety: -2 }];
+  const authored = clone(map), moved = await compile();
+  const shift = point => ({ x: point.x + 3, y: point.y + 2 });
+  for (const role of ["anchor", "entry", "light"]) assert.deepEqual(moved.sites[0][role], shift(before.sites[0][role]));
+  for (const role of ["collision", "hitArea"]) assert.deepEqual(moved.sites[0][role], before.sites[0][role].map(shift));
+  assert.deepEqual(moved.paths[0].points, before.paths[0].points.map(shift));
+  assert.deepEqual(moved.sites[0].bounds, { ...before.sites[0].bounds, ...shift(before.sites[0].bounds) });
+  assert.deepEqual(moved.terrain.map(image => image.id), ["ground", "terrain-23", "terrain-22"]);
+  assert.deepEqual(moved.terrain[2].imagePlacement, { x: 18, y: 32, width: 18, height: 9, rotation: 15 });
+  assertRectClose(moved.terrain[2].bounds, imageEnvelope(moved.terrain[2].imagePlacement));
+  assert.deepEqual(map, authored);
 });
 
 test("rotated site images preserve Tiled placement and world-authored markers without stretching catalog-only variants", async t => {
@@ -685,7 +710,7 @@ test("navigation spawn and interests must remain clear of every building level",
   await assert.rejects(compile(), /navigation interest look-here: position must not overlap/);
 });
 
-test("nested folders retain authored depth-first draw order and the terrain-before-sites guard", async t => {
+test("nested folders retain terrain order independently of interleaved site placements", async t => {
   const { map, compile } = await fixture(t);
   const [ground, ...rest] = map.layers[0].objects;
   const topGround = { ...clone(ground), id: 20, name: "ground-overlay" };
@@ -703,7 +728,7 @@ test("nested folders retain authored depth-first draw order and the terrain-befo
   map.layers[0].layers.reverse();
   assert.deepEqual((await compile()).terrain.map(item => item.id), ["ground-overlay", "ground"], "sibling groups are not sorted by name or ID");
   map.layers.reverse();
-  await assert.rejects(compile(), /terrain must precede site objects in layer order/, "group boundaries cannot hide later terrain");
+  assert.deepEqual((await compile()).terrain.map(item => item.id), ["ground-overlay", "ground"]);
 });
 
 test("ordinary folders retain strict transforms, unique IDs and leaf layer validation", async t => {
@@ -714,7 +739,7 @@ test("ordinary folders retain strict transforms, unique IDs and leaf layer valid
   const cases = [
     ["invalid outer visibility", value => { value.layers[0].visible = "false"; }, /map\.layers\[0\]\.visible: expected a boolean/],
     ["nested opacity", value => { nested(value).opacity = 0.5; }, /layers\[0\]\.layers\[0\]\.opacity: expected 1/],
-    ["nested offset", value => { nested(value).offsetx = 2; }, /offsetx: expected 0/],
+    ["invalid nested offset", value => { nested(value).offsetx = "2"; }, /offsetx: expected a finite number/],
     ["nested position", value => { nested(value).y = 2; }, /\.y: expected 0/],
     ["nested parallax", value => { nested(value).parallaxx = 0.5; }, /parallaxx: expected 1/],
     ["nested blend mode", value => { nested(value).mode = "multiply"; }, /mode: expected "normal"/],
@@ -744,7 +769,7 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["implicit bottom alignment", value => { delete value.tilesets[0].objectalignment; }, /objectalignment: expected "topleft"/],
     ["tile offset", value => { value.tilesets[0].tileoffset = { x: 1, y: 0 }; }, /tileoffset: not supported/],
     ["template", value => { value.layers[0].objects[1].template = "site.tx"; }, /objects\[1\]\.template: not supported/],
-    ["terrain rotation", value => { value.layers[0].objects[0].rotation = 15; }, /objects\[0\]\.rotation: expected 0/],
+    ["out-of-bounds terrain rotation", value => { value.layers[0].objects[0].rotation = 15; }, /rotated image is outside world bounds/],
     ["marker rotation", value => { value.layers[0].objects[2].rotation = 15; }, /objects\[2\]\.rotation: expected 0/],
     ["flip bits", value => { value.layers[0].objects[1].gid = 0x80000002; }, /objects\[1\]\.gid: tile flip\/rotation bits/],
     ["hex rotation bit", value => { value.layers[0].objects[1].gid = 0x10000002; }, /tile flip\/rotation bits/],
@@ -1196,13 +1221,20 @@ test("committed authoring exports identically and --check refuses stale output w
   const quarry = scene.sites.find(site => site.id === "quarry");
   assert.ok(quarry, "the placed quarry must be exported as a site, not an untyped image");
   assert.equal(quarry.initialLevel, 0);
-  assert.equal(quarry.states.length, 1);
-  assert.ok(quarry.entry.y > Math.max(...quarry.collision.map(point => point.y)) + scene.actor.size * 0.2,
-    "the quarry approach leaves room south of its ground footprint");
+  assert.deepEqual(quarry.states.map(state => state.level), [0, 1]);
+  const quarryEntry = withRole("entry").find(object => property(object, "siteId") === "quarry" && property(object, "level") === 0)
+    ?? withRole("entry").find(object => property(object, "siteId") === "quarry");
+  assert.deepEqual(quarry.entry, { x: quarryEntry.x, y: quarryEntry.y });
 
-  assert.deepEqual(scene.terrain.map(({ id, bounds }) => ({ id, bounds })),
-    withRole("terrain").map(object => ({ id: object.name, bounds: rect(object) })));
   const tileFor = object => source.tilesets.flatMap(tileset => tileset.tiles.map(tile => ({ gid: tileset.firstgid + tile.id, tile }))).find(entry => entry.gid === object.gid)?.tile;
+  const terrainObjects = objects.filter(object => (property(object, "role") ?? property(tileFor(object) ?? {}, "role")) === "terrain");
+  assert.equal(scene.terrain.length, terrainObjects.length);
+  for (const object of terrainObjects) {
+    const terrain = scene.terrain.find(item => item.id === (object.name || `terrain-${object.id}`));
+    assert.ok(terrain);
+    assertRectClose(terrain.bounds, imageEnvelope(object));
+    if (object.rotation) assert.deepEqual(terrain.imagePlacement, { ...rect(object), rotation: object.rotation });
+  }
   const placedSites = withRole("site");
   for (const site of scene.sites) {
     const placements = placedSites.filter(object => (property(object, "siteId") ?? property(tileFor(object), "siteId")) === site.id)
@@ -1320,7 +1352,7 @@ test("CLI export validates the complete refreshed scene before writing either fi
   assert.deepEqual(await readFile(output), originalOutput);
 });
 
-test("terrain placements inherit tile roles without hiding empty overrides or missing names", async t => {
+test("terrain placements inherit tile roles and give unnamed copies stable object IDs", async t => {
   const { map, compile } = await fixture(t);
   const expected = await compile();
   delete map.layers[0].objects[0].properties;
@@ -1331,7 +1363,7 @@ test("terrain placements inherit tile roles without hiding empty overrides or mi
   await assert.rejects(compile(), /properties\[0\].value: expected a non-empty string/);
   delete map.layers[0].objects[0].properties;
   map.layers[0].objects[0].name = "";
-  await assert.rejects(compile(), /name: expected a non-empty string/);
+  assert.equal((await compile()).terrain[0].id, "terrain-1");
   map.layers[0].objects[0].name = "ground";
   map.layers[0].objects[1].properties = props({ siteId: "kiln", initialLevel: 1 });
   await assert.rejects(compile(), /properties.role: expected a non-empty string/, "siteState tiles still need a site placement role");

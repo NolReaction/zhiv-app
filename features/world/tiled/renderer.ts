@@ -79,7 +79,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
         if (bushId) {
           ctx.drawImage(forestObjectArtwork(image, "foliage"), bounds.x, bounds.y, bounds.width, bounds.height);
           drawForestBushRootFringe(ctx, scene, terrain, image);
-        } else ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+        } else drawSiteImage(ctx, terrain, image);
       }
     }
   }

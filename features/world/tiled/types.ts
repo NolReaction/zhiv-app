@@ -1,7 +1,7 @@
 /** Runtime contract compiled from the deliberately small Tiled authoring subset. */
 export type WorldPoint = { x: number; y: number };
 export type WorldBounds = WorldPoint & { width: number; height: number };
-export type WorldImage = { id: string; image: string; bounds: WorldBounds };
+export type WorldImage = { id: string; image: string; bounds: WorldBounds; imagePlacement?: SiteImagePlacement };
 /** Tiled image rectangle, rotated clockwise around its original top-left corner. */
 export type SiteImagePlacement = WorldBounds & { rotation: number };
 export type SiteGeometry = {

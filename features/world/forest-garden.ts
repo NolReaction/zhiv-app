@@ -70,6 +70,9 @@ export function createForestGarden(scene: FixedWorldScene): ForestGardenState {
     artworkPending: !forestBushArtworkAvailable(scene, bush), growth: .2, moisture: .32, waterIn: 0,
   }));
   if (!actor || !nav) return state;
+  // A placed prop needs its own footprint to fit, not a second hero-sized gap.
+  // Walking and the handle approach still use the actor's full clearance below.
+  const groundNavigation = createWorldNavigation(scene, 0);
   const interactions = compileWorldInteractions(scene);
   state.basketCorridors = [...(interactions.home ? [interactions.home] : []), ...interactions.bushes]
     .map(interaction => [...interaction.departure.slice().reverse(), interaction.entry,
@@ -102,7 +105,7 @@ export function createForestGarden(scene: FixedWorldScene): ForestGardenState {
     if (!finitePoint(position)) continue;
     const footprint = basketFootprint(position, FOREST_GARDEN_LIMITS.basketSize);
     if ((!scene.basket && !isForestGroundClear(scene, position, actor.size * .085)) || !isWalkable(nav, position)
-      || !footprint.every(point => isWalkable(nav, point))) continue;
+      || !groundNavigation || !footprint.every(point => isWalkable(groundNavigation, point))) continue;
     const parkedNavigation = withWorldNavigationObstacle(nav, footprint);
     if (!parkedNavigation || !isWalkable(parkedNavigation, actor.spawn) || !corridorsClear(parkedNavigation, state.basketCorridors)) continue;
     const approach = gardenBasketApproach(position, actor.size, parkedNavigation, actor.spawn);

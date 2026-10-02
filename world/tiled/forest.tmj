@@ -7850,16 +7850,12 @@
                          "y":0
                         }, 
                         {
-                         "x":15.508756503261,
-                         "y":-12.043232944969
+                         "x":22.909357870082772,
+                         "y":-44.513659245236454
                         }, 
                         {
-                         "x":31.508756503261,
-                         "y":-26.043232944969
-                        }, 
-                        {
-                         "x":42.981295187158,
-                         "y":-43.044423218732
+                         "x":26.65259464793121,
+                         "y":-47.221532658999195
                         }],
                  "properties":[
                         {
@@ -7903,8 +7899,8 @@
                          "y":-30.043232944969
                         }, 
                         {
-                         "x":-16.491243496739,
-                         "y":-40.043232944969
+                         "x":-29.198770587804006,
+                         "y":-61.429363631080946
                         }],
                  "properties":[
                         {
@@ -16002,8 +15998,8 @@
                          "y":-18.4517147468398
                         }, 
                         {
-                         "x":50.3326647194706,
-                         "y":-7.51672849200668
+                         "x":58.3326647194706,
+                         "y":-19.5167284920067
                         }, 
                         {
                          "x":79.2278969732781,
@@ -16513,18 +16509,21 @@
                 {
                  "id":11,
                  "image":"..\/..\/public\/world\/prototype\/quarry-ground.png",
+                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1254,
                  "imagewidth":1254
                 }, 
                 {
                  "id":12,
                  "image":"..\/..\/public\/world\/prototype\/workshop-ground.png",
+                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":971,
                  "imagewidth":1619
                 }, 
                 {
                  "id":13,
                  "image":"..\/..\/public\/world\/prototype\/lighthouse-ground.png",
+                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1122,
                  "imagewidth":1402
                 }, 
@@ -16612,12 +16611,14 @@
                 {
                  "id":18,
                  "image":"..\/..\/public\/world\/prototype\/house-ground-1.png",
+                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1254,
                  "imagewidth":1254
                 }, 
                 {
                  "id":19,
                  "image":"..\/..\/public\/world\/prototype\/house-ground-2.png",
+                 "properties":[{ "name":"role", "type":"string", "value":"terrain" }],
                  "imageheight":1254,
                  "imagewidth":1254
                 }, 
