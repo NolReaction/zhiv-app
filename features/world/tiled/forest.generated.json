@@ -6,7 +6,7 @@
   "terrain": [
     {
       "id": "forest-ground",
-      "image": "/world/prototype/forest-ground.webp?v=04972505b5dd",
+      "image": "/world/prototype/forest-ground.webp?v=922d4cfd37c0",
       "bounds": {
         "x": 0,
         "y": 0,
@@ -25,64 +25,64 @@
       }
     },
     {
-      "id": "terrain-287",
-      "image": "/world/prototype/lighthouse-ground.png?v=02dbbbe096f0",
-      "bounds": {
-        "x": 522.750788975069,
-        "y": 156.6509784858788,
-        "width": 129.21942272724039,
-        "height": 92.85830889396829
-      },
-      "imagePlacement": {
-        "x": 522.750788975069,
-        "y": 165.305515682238,
-        "width": 123.612880342352,
-        "height": 84.4109107707852,
-        "rotation": 355.985252813574
-      }
-    },
-    {
       "id": "terrain-301",
       "image": "/world/prototype/lighthouse-ground.png?v=02dbbbe096f0",
       "bounds": {
-        "x": 570.175354267082,
-        "y": 180.21402795215616,
-        "width": 129.21987469146916,
-        "height": 92.85882454456001
+        "x": 539.061746025328,
+        "y": 173.01930626932258,
+        "width": 94.73295418006808,
+        "height": 68.07614379597857
       },
       "imagePlacement": {
-        "x": 570.175354267082,
-        "y": 188.869117621208,
-        "width": 123.613,
-        "height": 84.4109,
+        "x": 539.061746025328,
+        "y": 179.364477358525,
+        "width": 90.6224734625427,
+        "height": 61.8828484479735,
         "rotation": 355.985
       }
     },
     {
-      "id": "terrain-300",
-      "image": "/world/prototype/lighthouse-ground.png?v=02dbbbe096f0",
+      "id": "terrain-329",
+      "image": "/world/prototype/workshop-ground.png?v=ddd14e1f27f4",
       "bounds": {
-        "x": 578.114112418486,
-        "y": 172.84232395442416,
-        "width": 129.21987469146916,
-        "height": 92.85882454455998
-      },
-      "imagePlacement": {
-        "x": 578.114112418486,
-        "y": 181.497413623476,
-        "width": 123.613,
-        "height": 84.4109,
-        "rotation": 355.985
+        "x": 563.633360441927,
+        "y": 168.883689096118,
+        "width": 147.945113505531,
+        "height": 88.7305158825636
       }
     },
     {
       "id": "terrain-280",
       "image": "/world/prototype/quarry-ground.png?v=00707626ef4c",
       "bounds": {
-        "x": 564.481103367344,
-        "y": 134.564943115516,
+        "x": 553.520796049841,
+        "y": 138.0515099153553,
+        "width": 116.7064377429898,
+        "height": 116.70643774298978
+      },
+      "imagePlacement": {
+        "x": 553.520796049841,
+        "y": 141.470202204394,
         "width": 113.339316774923,
-        "height": 113.339316774923
+        "height": 113.339316774923,
+        "rotation": 358.271505778678
+      }
+    },
+    {
+      "id": "terrain-327",
+      "image": "/world/prototype/quarry-ground.png?v=00707626ef4c",
+      "bounds": {
+        "x": 573.949017393459,
+        "y": 146.9738555985088,
+        "width": 124.66448826664953,
+        "height": 124.66448826664958
+      },
+      "imagePlacement": {
+        "x": 573.949017393459,
+        "y": 150.62464960106,
+        "width": 121.068751113959,
+        "height": 121.068751113959,
+        "rotation": 358.272
       }
     },
     {
@@ -13028,16 +13028,16 @@
         {
           "id": "butterfly-north-leaf",
           "position": {
-            "x": 550,
-            "y": 616
+            "x": 558.441668073611,
+            "y": 574.466993077832
           },
           "kind": "rest"
         },
         {
           "id": "butterfly-north-shelter",
           "position": {
-            "x": 540,
-            "y": 601
+            "x": 551.143001857167,
+            "y": 587.999831166639
           },
           "kind": "shelter"
         }
@@ -13137,16 +13137,16 @@
         {
           "id": "firefly-clearing-leaf",
           "position": {
-            "x": 550,
-            "y": 616
+            "x": 556.246834374472,
+            "y": 573.791659631943
           },
           "kind": "rest"
         },
         {
           "id": "firefly-clearing-shelter",
           "position": {
-            "x": 540,
-            "y": 601
+            "x": 548.272834712139,
+            "y": 583.778997129833
           },
           "kind": "shelter"
         }
