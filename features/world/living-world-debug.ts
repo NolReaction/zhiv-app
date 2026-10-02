@@ -44,8 +44,11 @@ function trace(ctx: CanvasRenderingContext2D, points: readonly DebugPoint[], clo
   if (count < (close ? 3 : 2) || !finitePoint(points[0])) return;
   ctx.moveTo(points[0].x, points[0].y);
   for (let index = 1; index < count; index++) {
-    if (!finitePoint(points[index])) return;
-    ctx.lineTo(points[index].x, points[index].y);
+    // Sample the full closed contour so the vertex cap cannot create a false closing chord.
+    const sampledIndex = close ? Math.floor(index * (points.length - 1) / (count - 1)) : index;
+    const point = points[sampledIndex];
+    if (!finitePoint(point)) return;
+    ctx.lineTo(point.x, point.y);
   }
   if (close) ctx.closePath();
 }

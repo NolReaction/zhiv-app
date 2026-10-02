@@ -66,6 +66,13 @@ function properties(object, at, allowed) {
   return result;
 }
 
+function siteLevelCondition(props, at) {
+  const hasSite = own(props, "siteId"), hasLevel = own(props, "level");
+  requireThat(hasSite === hasLevel, at, "conditional visibility requires siteId and level together");
+  if (!hasSite) return undefined;
+  return { siteId: identifier(props.siteId, `${at}.properties.siteId`), level: integer(props.level, `${at}.properties.level`) };
+}
+
 function transforms(object, at, allowOffset = false) {
   for (const key of ["x", "y", "parallaxoriginx", "parallaxoriginy"]) defaultValue(object, key, 0, at);
   for (const key of ["offsetx", "offsety"]) {
@@ -400,7 +407,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       }
     }
   }
-  const routeOwners = [];
+  const routeOwners = [], visibilityReferences = [];
   for (const { layer, layerAt, waterKind, isLightLayer, livingKind, groups, offset } of leaves) {
     const entries = [...array(layer.objects, `${layerAt}.objects`).entries()];
     if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !livingKind) entries.sort((a, b) => a[1].y - b[1].y);
@@ -445,7 +452,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const role = livingKind ?? authoredRole;
         const allowed = role === "interest" ? { activity: "string" }
           : role === "wildlife-habitat" ? { species: "string", capacity: "int", excludeHabitatId: "string" }
-          : role === "wildlife-anchor" ? { habitatId: "string", kind: "string" } : {};
+          : role === "wildlife-anchor" ? { habitatId: "string", kind: "string" }
+          : { siteId: "string", level: "int" };
         const props = properties(object, livingAt, { role: "string", ...allowed });
         exact(props.role, role, `${livingAt}.properties.role`);
         const id = identifier(object.name, `${livingAt}.name`);
@@ -462,7 +470,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
             nav.interests.push({ id, position: point(object, livingAt, world), activity: props.activity });
           } else {
             exact(shape, "polygon", `${livingAt} shape`);
-            nav[role === "walk-area" ? "areas" : "obstacles"].push({ id, points: vertices(object, "polygon", livingAt, world) });
+            const when = siteLevelCondition(props, livingAt);
+            if (when) visibilityReferences.push({ when, at: livingAt });
+            nav[role === "walk-area" ? "areas" : "obstacles"].push({ id, points: vertices(object, "polygon", livingAt, world), ...(when ? { when } : {}) });
           }
         } else if (role === "wildlife-habitat") {
           exact(shape, "polygon", `${livingAt} shape`);
@@ -503,11 +513,13 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         if (role !== "terrain") aspect(tile, imageGeometry.imagePlacement ?? imageGeometry.bounds, at);
         if (role === "terrain") {
           exact(tile.role, "terrain", `${at}.gid role`);
-          requireThat(Object.keys(props).length === 1, at, "terrain objects only accept the role property");
+          requireThat(Object.keys(props).every(key => ["role", "siteId", "level"].includes(key)), at, "terrain objects only accept role, siteId and level properties");
+          const when = siteLevelCondition(props, at);
+          if (when) visibilityReferences.push({ when, at });
           const id = identifier(object.name || `terrain-${objectId}`, `${at}.name`);
           requireThat(!terrainIds.has(id), at, `duplicate terrain ID ${id}`);
           terrainIds.add(id);
-          world.terrain.push({ id, image: tile.image, ...imageGeometry });
+          world.terrain.push({ id, image: tile.image, ...imageGeometry, ...(when ? { when } : {}) });
         } else {
           exact(role, "site", `${at}.properties.role`);
           exact(tile.role, "siteState", `${at}.gid role`);
@@ -698,6 +710,12 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       ...(geometry.light ? { light: geometry.light } : {}), ...(geometry.chimney ? { chimney: geometry.chimney } : {}),
       ...(geometry.window ? { window: geometry.window } : {}), initialLevel: base.initialLevel, states };
   });
+  for (const { when, at } of visibilityReferences) {
+    const site = world.sites.find(value => value.id === when.siteId);
+    requireThat(site, at, `conditional visibility references unknown site ${when.siteId}`);
+    requireThat(site.states.some(state => state.level === when.level), at,
+      `conditional visibility references unknown visual level ${when.level} for site ${when.siteId}`);
+  }
   for (const { id, excludedId, at } of habitatExclusions) {
     const excluded = habitats.get(excludedId);
     requireThat(excluded, at, `habitat references unknown excluded habitat ${excludedId}`);
@@ -715,11 +733,13 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   }
   if (world.habitats) world.habitats = [...habitats.values()];
   if (world.navigation) {
+    const permanentAreas = world.navigation.areas.filter(area => !area.when);
     const blockers = [...world.navigation.obstacles.map(obstacle => obstacle.points),
       ...world.sites.flatMap(site => site.states.map(state => state.geometry?.collision ?? site.collision)),
       ...(world.water?.surfaces ?? []).map(surface => surface.points)];
     const validatePosition = (position, at) => {
-      requireThat(world.navigation.areas.some(area => insidePolygon(position, area.points)), at, "position must be inside a walk area");
+      requireThat(permanentAreas.some(area => insidePolygon(position, area.points)), at,
+        "position must be inside a walk area that is unconditional; spawn and interests do not switch with site levels");
       requireThat(!blockers.some(polygon => insidePolygon(position, polygon)), at, "position must not overlap an obstacle, site collision or water surface");
     };
     for (const interest of world.navigation.interests) validatePosition(interest.position, `navigation interest ${interest.id}`);

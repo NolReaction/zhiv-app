@@ -1,7 +1,7 @@
 import type { FixedWorldScene } from "./tiled/types";
 
 /** Only places with an implemented account action get a map shortcut. */
-const places = { home: "house", workshop: "workshop", quarry: "quarry" } as const;
+const places = { home: "house", workshop: "workshop", quarry: "quarry", woodlot: "woodlot" } as const;
 export type BuildingPlace = typeof places[keyof typeof places];
 
 export function sitePlace(siteId: string | null | undefined): BuildingPlace | null {

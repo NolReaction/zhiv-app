@@ -168,6 +168,83 @@ test("nested group offsets move geometry together and terrain decals retain stre
   assert.deepEqual(map, authored);
 });
 
+test("terrain and navigation conditions resolve later sites and catalog-only visual levels without mutating Tiled", async t => {
+  const { map, compile } = await fixture(t);
+  const terrain = { id: 30, name: "kiln-debris", gid: 1, x: 60, y: 20, width: 12, height: 6,
+    properties: props({ role: "terrain", siteId: "kiln", level: 0 }) };
+  const polygon = (id, name, role, level) => ({ id, name, x: 65, y: 65, width: 0, height: 0,
+    polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+    properties: props({ role, siteId: "kiln", level }) });
+  map.layers.unshift(objectLayer(2, "Terrain", [terrain]),
+    objectLayer(3, "WalkAreas", [polygon(31, "restored-walk", "walk-area", 1)]),
+    objectLayer(4, "Obstacles", [polygon(32, "ruin-blocker", "nav-obstacle", 0)]));
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.terrain.find(image => image.id === "kiln-debris").when, { siteId: "kiln", level: 0 });
+  assert.deepEqual(scene.navigation.areas[0].when, { siteId: "kiln", level: 1 });
+  assert.deepEqual(scene.navigation.obstacles[0].when, { siteId: "kiln", level: 0 });
+  assert.equal(Object.hasOwn(scene.terrain.find(image => image.id === "ground"), "when"), false);
+  assert.equal(scene.sites[0].states[0].geometry, undefined, "conditions can use a catalog state without separate placed geometry");
+  assert.deepEqual(map, source);
+  assert.equal(serializeTiledWorld(scene), serializeTiledWorld(await compile()));
+  const inheritedRole = clone(map);
+  inheritedRole.layers[0].objects[0].properties = props({ siteId: "kiln", level: 0 });
+  assert.deepEqual((await compile(inheritedRole)).terrain.find(image => image.id === "kiln-debris").when,
+    { siteId: "kiln", level: 0 }, "Tiled may omit the role inherited from its terrain tile");
+});
+
+test("conditional terrain and navigation reject partial conditions, unknown sites and missing visual levels", async t => {
+  const { map, compile } = await fixture(t);
+  const targets = [
+    ["terrain", value => value.layers[0].objects.push({ id: 30, name: "debris", gid: 1, x: 60, y: 20, width: 12, height: 6, properties: [] })],
+    ["walk-area", value => value.layers.push(objectLayer(2, "WalkAreas", [{ id: 31, name: "conditional-walk", x: 65, y: 65,
+      polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }], properties: [] }]))],
+    ["nav-obstacle", value => value.layers.push(objectLayer(2, "Obstacles", [{ id: 32, name: "conditional-blocker", x: 65, y: 65,
+      polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }], properties: [] }]))],
+  ];
+  for (const [role, add] of targets) for (const [condition, expected] of [
+    [{ siteId: "kiln" }, /conditional visibility requires siteId and level together/],
+    [{ level: 0 }, /conditional visibility requires siteId and level together/],
+    [{ siteId: "unknown-site", level: 0 }, /conditional visibility references unknown site unknown-site/],
+    [{ siteId: "kiln", level: 2 }, /conditional visibility references unknown visual level 2 for site kiln/],
+    [{ siteId: "Kiln", level: 0 }, /expected a lowercase identifier/],
+    [{ siteId: "kiln", level: 0.5 }, /expected a safe integer/],
+  ]) {
+    await t.test(`${role}: ${JSON.stringify(condition)}`, async () => {
+      const value = clone(map);
+      add(value);
+      const object = role === "terrain" ? value.layers[0].objects.at(-1) : value.layers.at(-1).objects[0];
+      object.properties = props({ role, ...condition });
+      await assert.rejects(compile(value), expected);
+    });
+  }
+  const tileCondition = clone(map);
+  tileCondition.tilesets[0].tiles[0].properties.push(...props({ siteId: "kiln", level: 0 }));
+  await assert.rejects(compile(tileCondition), /terrain tiles only accept the role property/,
+    "conditions belong to placed terrain objects, not the reusable tile");
+});
+
+test("permanent spawn and interests cannot rely on a walk area hidden by another site level", async t => {
+  const { map, compile } = await fixture(t);
+  setProp(map.layers[0].objects[1], "initialLevel", 0);
+  const walk = (id, name, x, y, condition = {}) => ({ id, name, x, y,
+    polygon: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }],
+    properties: props({ role: "walk-area", ...condition }) });
+  map.layers.push(objectLayer(2, "WalkAreas", [walk(30, "permanent-ground", 5, 5),
+    walk(31, "restored-only-ground", 70, 70, { siteId: "kiln", level: 1 })]));
+  const actor = { ...spawn(), x: 75, y: 75 };
+  const withSpawn = clone(map);
+  withSpawn.layers[0].objects.push(actor);
+  await assert.rejects(compile(withSpawn), /navigation spawn: position must be inside a walk area that is unconditional/);
+  const withInterest = clone(map);
+  withInterest.layers.push(objectLayer(3, "PointsOfInterest", [{ id: 32, name: "future-interest", x: 75, y: 75,
+    point: true, properties: props({ role: "interest", activity: "look" }) }]));
+  await assert.rejects(compile(withInterest), /navigation interest future-interest: position must be inside a walk area that is unconditional/);
+  setProp(withSpawn.layers[1].objects[1], "level", 0);
+  await assert.rejects(compile(withSpawn), /walk area that is unconditional/, "even initially visible conditional areas can disappear after upgrading");
+  withSpawn.layers[1].objects[1].properties = props({ role: "walk-area" });
+  assert.deepEqual((await compile(withSpawn)).actor.spawn, { x: 75, y: 75 }, "a permanent area makes the same spawn safe in every visual state");
+});
+
 test("rotated site images preserve Tiled placement and world-authored markers without stretching catalog-only variants", async t => {
   const { map, compile } = await fixture(t);
   const before = (await compile()).sites[0];

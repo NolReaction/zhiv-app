@@ -1,4 +1,4 @@
-import type { FixedSite, FixedWorldScene, PreviewLevels, WorldPoint } from "./types";
+import type { FixedSite, FixedWorldScene, PreviewLevels, WorldPoint, WorldVisibilityCondition } from "./types";
 
 /** Preview state contains levels only; each level may select its own authored geometry. */
 export function initialPreviewLevels(scene: FixedWorldScene): PreviewLevels {
@@ -16,16 +16,24 @@ const sceneCache = new WeakMap<FixedWorldScene, Map<string, FixedWorldScene>>();
 /** One effective scene feeds drawing, hit testing and navigation without mutating the map. */
 export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels): FixedWorldScene {
   const states = scene.sites.map(site => previewSiteVisual(site, levels));
-  if (!states.some(state => state?.geometry)) return scene;
+  const hasGeometry = states.some(state => state?.geometry);
+  const hasConditions = scene.terrain.some(image => image.when)
+    || scene.navigation?.areas.some(area => area.when) || scene.navigation?.obstacles.some(obstacle => obstacle.when);
+  if (!hasGeometry && !hasConditions) return scene;
   let cache = sceneCache.get(scene);
   if (!cache) { cache = new Map(); sceneCache.set(scene, cache); }
   const key = JSON.stringify(states.map(state => state?.level));
   const cached = cache.get(key);
   if (cached) return cached;
-  const effective = { ...scene, sites: scene.sites.map((site, index) => {
+  const selectedLevels = new Map(scene.sites.map((site, index) => [site.id, states[index]?.level]));
+  const visible = (value: { when?: WorldVisibilityCondition }) => !value.when || selectedLevels.get(value.when.siteId) === value.when.level;
+  const filterVisible = <T extends { when?: WorldVisibilityCondition }>(values: T[]): T[] => values.some(value => !visible(value)) ? values.filter(visible) : values;
+  const effective = { ...scene, sites: hasGeometry ? scene.sites.map((site, index) => {
     const geometry = states[index]?.geometry;
     return geometry ? { ...site, imagePlacement: undefined, doorway: undefined, light: undefined, chimney: undefined, window: undefined, ...geometry } : site;
-  }) };
+  }) : scene.sites, terrain: filterVisible(scene.terrain),
+    ...(scene.navigation ? { navigation: { ...scene.navigation,
+      areas: filterVisible(scene.navigation.areas), obstacles: filterVisible(scene.navigation.obstacles) } } : {}) };
   if (cache.size >= 32) cache.delete(cache.keys().next().value!);
   cache.set(key, effective);
   return effective;

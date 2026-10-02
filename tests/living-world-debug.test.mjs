@@ -88,6 +88,36 @@ test("fauna diagnostics use the same IDs and targets independently of navigation
   });
 });
 
+test("long closed boundaries cover the full contour without a false closing chord", () => {
+  inEnvironment("development", () => {
+    const radius = 100;
+    const points = Array.from({ length: 863 }, (_, index) => {
+      const angle = index * Math.PI * 2 / 863;
+      return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+    });
+    const { ctx, calls } = drawing();
+    drawLivingWorldDebug(ctx, { ...scene, navigation: undefined, sites: [],
+      water: { surfaces: [{ id: "long-river", points }], exclusions: [] } }, { debugNavigation: true });
+    const vertices = calls.filter(([name]) => name === "moveTo" || name === "lineTo")
+      .map(([, x, y]) => ({ x, y }));
+    assert.ok(vertices.length <= 256, "debug drawing remains bounded");
+    assert.deepEqual(vertices[0], points[0]);
+    assert.deepEqual(vertices.at(-1), points.at(-1));
+    for (const axis of ["x", "y"]) {
+      assert.ok(Math.min(...vertices.map(point => point[axis])) < -radius * .99, `${axis}: missing negative half`);
+      assert.ok(Math.max(...vertices.map(point => point[axis])) > radius * .99, `${axis}: missing positive half`);
+    }
+    const authoredVertices = new Set(points.map(point => `${point.x}:${point.y}`));
+    for (let index = 0; index < vertices.length; index++) {
+      const point = vertices[index], next = vertices[(index + 1) % vertices.length];
+      assert.ok(authoredVertices.has(`${point.x}:${point.y}`), "contour retains authored vertices");
+      assert.ok(Math.hypot(next.x - point.x, next.y - point.y) < radius * .05,
+        "every edge, including the closing edge, follows the contour");
+    }
+    assert.equal(calls.filter(([name]) => name === "closePath").length, 1);
+  });
+});
+
 test("large grids and populations cannot produce unbounded debug draw work", () => {
   inEnvironment("development", () => {
     const { ctx, calls } = drawing();

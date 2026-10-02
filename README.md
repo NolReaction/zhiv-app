@@ -56,7 +56,7 @@ npm run dev:local
 
 ## Обновить карту
 
-Исходник — `art/world/prototype/forest-ground.jpg`; браузер использует `public/world/prototype/forest-ground.webp`. Из корня:
+Исходник — `art/world/prototype/forest-ground.png`; браузер использует `public/world/prototype/forest-ground.webp`. Из корня:
 
 ```bash
 node scripts/prepare-world-assets.mjs

@@ -39,8 +39,8 @@ import { accountSceneLevels, economyJourneyAway } from "./economy-scene-state";
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
-const artworkUrls = (visuals: Record<string, SiteVisual>) => [...new Set([
-  ...TILED_WORLD.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
+const artworkUrls = (scene: FixedWorldScene, visuals: Record<string, SiteVisual>) => [...new Set([
+  ...scene.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
 ])];
 
 function pointInPolygon(point: WorldPoint, polygon: WorldPoint[]) {
@@ -380,8 +380,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function prepareArtwork() {
     const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
-    const next = visualsFor(selected), urls = artworkUrls(next);
     const nextWorld = previewWorldScene(TILED_WORLD, selected);
+    const next = visualsFor(selected), urls = artworkUrls(nextWorld, next);
     const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
     if (key === requestedKey) return;
     requestedKey = key;

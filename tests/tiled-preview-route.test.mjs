@@ -196,6 +196,51 @@ test("loaded level atomically changes image bounds and revalidates routes in bot
   renderer.dispose();
 });
 
+test("switching back to a broken bridge loads its debris before replacing either complete view", async t => {
+  const env = canvasEnvironment(t), requests = [];
+  let releaseDebris;
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: class {
+    naturalWidth = 1; naturalHeight = 1;
+    set src(value) {
+      this.url = value;
+      requests.push(value);
+      if (value === "/beams.png") releaseDebris = () => this.onload?.();
+      else queueMicrotask(() => this.onload?.());
+    }
+    removeAttribute() {}
+  } });
+  t.after(() => descriptor ? Object.defineProperty(globalThis, "Image", descriptor) : delete globalThis.Image);
+  const base = { bounds: { x: 300, y: 300, width: 40, height: 40 }, anchor: { x: 320, y: 330 },
+    entry: { x: 320, y: 345 }, hitArea: [], collision: [] };
+  const authored = { ...scene, terrain: [{ id: "bridge-debris", image: "/beams.png", bounds: base.bounds,
+    when: { siteId: "bridge", level: 0 } }], sites: [{ id: "bridge", label: "Bridge", ...base, initialLevel: 1,
+    states: [0, 1].map(level => ({ level, label: String(level), image: "/bridge.png" })) }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, authored, options);
+  t.after(() => renderer.dispose());
+  assert.deepEqual(requests, ["/bridge.png"], "intact bridge does not request hidden debris");
+  renderer.update({ ...options, levels: { bridge: 0 } });
+  assert.ok(releaseDebris, "the requested scene, not the previous scene, supplies new terrain assets");
+  for (const canvas of [env.world, env.circle]) assert.equal(canvas.dataset.renderedLevels, '{"bridge":1}');
+  releaseDebris();
+  await new Promise(resolve => setImmediate(resolve));
+  for (const canvas of [env.world, env.circle]) {
+    assert.equal(canvas.dataset.renderedLevels, '{"bridge":0}');
+    assert.ok(canvas.context.calls.some(call => call.method === "drawImage" && call.args[0]?.url === "/beams.png"));
+    canvas.context.calls.length = 0;
+  }
+  renderer.update({ ...options, levels: { bridge: 1 } });
+  await new Promise(resolve => setImmediate(resolve));
+  for (const canvas of [env.world, env.circle]) canvas.context.calls.length = 0;
+  renderer.update({ ...options, levels: { bridge: 1 } });
+  for (const canvas of [env.world, env.circle]) {
+    assert.equal(canvas.dataset.renderedLevels, '{"bridge":1}');
+    assert.equal(canvas.context.calls.some(call => call.method === "drawImage" && call.args[0]?.url === "/beams.png"), false);
+  }
+  assert.equal(authored.terrain.length, 1, "switching leaves source artwork intact");
+  renderer.dispose();
+});
+
 test("renderer stays idle by default, settles on reduced motion, and cancels pending animation on reset/dispose", async t => {
   const env = canvasEnvironment(t), statuses = [];
   const renderer = await createFixedWorldRenderer(env.world, env.circle, scene, options, { onRouteChange: value => statuses.push(value) });

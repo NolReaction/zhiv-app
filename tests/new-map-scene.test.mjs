@@ -30,7 +30,7 @@ const sourceAndDestination = args => args.length === 5
 
 async function modules(override) {
   const vite = await createServer({ appType: "custom", configFile: false, root,
-    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
   try {
     const { default: scene } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
     Object.assign(scene, structuredClone(fixture), override);
@@ -696,6 +696,60 @@ test("development building levels load only selected artwork and reject stale an
     assert.equal(env.requests.length, 5, "invalid or unauthored states never load artwork");
     worldDevStore.reset(); await flush(); assert.equal(paintedBuilding(), first); assert.equal(worldDevStore.getSnapshot().artError, null);
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("conditional bridge debris loads atomically with current obstacles in the main circle and world", async () => {
+  const bridge = { id: "bridge", label: "Мост", bounds: { x: 700, y: 720, width: 40, height: 40 },
+    anchor: { x: 720, y: 750 }, entry: { x: 720, y: 765 }, hitArea: [], collision: [], initialLevel: 0,
+    states: [0, 1].map(level => ({ level, label: String(level), image: "/conditional-bridge.webp" })) };
+  const debris = { id: "bridge-debris", image: "/conditional-beams.png", bounds: bridge.bounds, when: { siteId: "bridge", level: 0 } };
+  const navigation = { ...livingNavigation, obstacles: [{ id: "debris-blocker", when: { siteId: "bridge", level: 0 },
+    points: [{ x: 680, y: 640 }, { x: 700, y: 640 }, { x: 700, y: 660 }, { x: 680, y: 660 }] }] };
+  const { mountHabitat, worldDevStore, connectForestSession, TILED_WORLD, previewWorldScene, isWalkable } =
+    await modules({ sites: [bridge], navigation, terrain: [...fixture.terrain, debris] });
+  const env = browser(), scenes = [], probes = [];
+  try {
+    worldDevStore.patch({ ...quietClearing, paused: true, autoLife: false, previewBuildings: true, levels: { bridge: 1 } });
+    const initial = { ...options, presenceKey: "conditional-bridge-account" };
+    let ready = 0;
+    const callbacks = { activity() {}, ready: () => ready++, failure: assert.fail };
+    scenes.push(mountHabitat(env.surface(), initial, callbacks));
+    scenes.push(mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks));
+    assert.deepEqual(env.requests, ["/test-ground.webp", "/conditional-bridge.webp"],
+      "an intact bridge must not wait for its hidden debris image");
+    env.finishPath("/test-ground.webp"); env.finishPath("/conditional-bridge.webp"); await flush();
+    assert.equal(ready, 2, "both views become ready without loading beams");
+    const current = level => {
+      const probe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { bridge: level }), "circle", 0, 0, () => {});
+      probes.push(probe); return probe;
+    };
+    const intact = current(1), blockedPoint = { x: 690, y: 650 };
+    assert.equal(isWalkable(intact.state.clearing.navigation, blockedPoint), true);
+    let beams;
+    const paintedDebris = scene => {
+      const surface = env.surface(); scene.paintWorld(surface.context);
+      return surface.calls.some(call => call.method === "drawImage" && call.args[0] === beams);
+    };
+    worldDevStore.patch({ levels: { bridge: 0 } });
+    assert(env.pending.some(request => request.path === debris.image), "returning to ruins requests previously hidden terrain");
+    for (const scene of scenes) assert.equal(paintedDebris(scene), false, "pending debris keeps the previous complete frame");
+    assert.equal(isWalkable(intact.state.clearing.navigation, blockedPoint), true, "pending images cannot install the ruin blocker early");
+    beams = env.finishPath(debris.image); await flush();
+    for (const scene of scenes) assert.equal(paintedDebris(scene), true);
+    const ruins = current(0);
+    assert.notEqual(ruins.state, intact.state);
+    assert.equal(isWalkable(ruins.state.clearing.navigation, blockedPoint), false, "committed ruins use the filtered current obstacles");
+    worldDevStore.patch({ levels: { bridge: 1 } }); await flush();
+    for (const scene of scenes) assert.equal(paintedDebris(scene), false);
+    assert.equal(isWalkable(current(1).state.clearing.navigation, blockedPoint), true, "restoration removes the blocker from actual navigation");
+    const requests = env.requests.length;
+    worldDevStore.patch({ levels: { bridge: 0 } }); await flush();
+    for (const scene of scenes) assert.equal(paintedDebris(scene), true);
+    assert.equal(isWalkable(current(0).state.clearing.navigation, blockedPoint), false, "switching back reinstates the cached ruin navigation");
+    assert.equal(env.requests.length, requests, "revisiting a complete scene reuses its already loaded artwork");
+    assert.equal(TILED_WORLD.terrain.length, 2);
+    assert.equal(TILED_WORLD.navigation.obstacles.length, 1, "level changes never rewrite authored conditions");
+  } finally { probes.forEach(probe => probe.release()); scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
 });
 
 test("building geometry switches with loaded art and both cameras share the new doorway and collision", async () => {

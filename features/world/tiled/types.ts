@@ -1,7 +1,9 @@
 /** Runtime contract compiled from the deliberately small Tiled authoring subset. */
 export type WorldPoint = { x: number; y: number };
 export type WorldBounds = WorldPoint & { width: number; height: number };
-export type WorldImage = { id: string; image: string; bounds: WorldBounds; imagePlacement?: SiteImagePlacement };
+/** Visible only while this authored site visual level is selected. */
+export type WorldVisibilityCondition = { siteId: string; level: number };
+export type WorldImage = { id: string; image: string; bounds: WorldBounds; imagePlacement?: SiteImagePlacement; when?: WorldVisibilityCondition };
 /** Tiled image rectangle, rotated clockwise around its original top-left corner. */
 export type SiteImagePlacement = WorldBounds & { rotation: number };
 export type SiteGeometry = {
@@ -40,7 +42,7 @@ export type WorldPath = {
   pauseSeconds?: number;
 };
 export type WorldWaterPolygon = { id: string; points: WorldPoint[] };
-export type WorldNavigationPolygon = { id: string; points: WorldPoint[] };
+export type WorldNavigationPolygon = { id: string; points: WorldPoint[]; when?: WorldVisibilityCondition };
 export type WorldInterest = {
   id: string;
   position: WorldPoint;

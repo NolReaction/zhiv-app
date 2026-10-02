@@ -233,7 +233,7 @@ export async function createFixedWorldRenderer(
   async function prepareImages(force = false) {
     const nextScene = previewWorldScene(sourceScene, options.levels);
     const next = Object.fromEntries(nextScene.sites.map(site => [site.id, previewSiteVisual(site, options.levels)]));
-    const urls = [...new Set([...scene.terrain.map(image => image.image), ...Object.values(next).map(visual => visual.image)])];
+    const urls = [...new Set([...nextScene.terrain.map(image => image.image), ...Object.values(next).map(visual => visual.image)])];
     const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
     if (!force && key === requestedKey) return;
     requestedKey = key;
