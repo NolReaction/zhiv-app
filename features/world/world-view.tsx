@@ -70,7 +70,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const locked = busy || uncertain;
   const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
   return <section className={styles.world} aria-label="Лес Мохлика">
-    <WorldScene economyJourney={economicJourney} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} worldView active={panel === null}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}

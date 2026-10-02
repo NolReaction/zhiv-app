@@ -389,6 +389,51 @@ test("bush routes require an authored reachable entry and validate the whole jum
   }
 });
 
+test("only the final authored bush entry may extend the local radius and every safety check still applies", () => {
+  const extended = () => {
+    const source = bushScene();
+    source.bushes[0] = { id: "nearby-bush", points: rect(100, 135, 40, 50), entry: point(105, 190), hide: point(120, 175) };
+    source.paths[0].points[source.paths[0].points.length - 1] = { ...source.bushes[0].entry };
+    return source;
+  };
+  assert.equal(clearingRouteDiagnostics(extended())[0].valid, true);
+  for (const [reason, change] of [
+    ["outside-clearing-radius", s => {
+      s.bushes[0] = { id: "nearby-bush", points: rect(60, 170, 40, 40), entry: point(65, 210), hide: point(80, 195) };
+      s.paths[0].points[s.paths[0].points.length - 1] = { ...s.bushes[0].entry };
+    }],
+    ["outside-clearing-radius", s => { s.paths[0].points[1] = point(105, 210); }],
+    ["outside-clearing-radius", s => { s.paths[0].activity = "look"; delete s.paths[0].bushId; }],
+    ["bush-end-away-from-entry", s => { s.paths[0].points.at(-1).x += 1; }],
+    ["building-collision", s => { s.sites.push({ id: "approach-blocker", collision: rect(144, 195, 3, 10) }); }],
+    ["water-collision", s => { s.water = { surfaces: [{ points: rect(144, 195, 3, 10) }], exclusions: [] }; }],
+    ["outside-focus", s => { s.focus = { x: 100, y: 100, width: 200, height: 200 }; }],
+    ["invalid-bush-corridor", s => { s.bushes[0].hide = point(150, 175); s.bushes[0].points = rect(140, 135, 30, 50); }],
+  ]) {
+    const source = extended(); change(source);
+    assert.equal(clearingRouteDiagnostics(source)[0].reason, reason);
+    assert.equal(createClearingActivity(source).routes.some(route => route.id === "bush"), false);
+  }
+});
+
+test("the authored bush approach reaches the current entry safely for all homes and both hero sizes", async () => {
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const { createWorldNavigation, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
+  for (const home of [1, 2, 3, 4, 5]) for (const size of [50, 56]) {
+    const source = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home })); source.actor.size = size;
+    const bush = source.bushes[0], path = source.paths.find(route => route.bushId === bush.id);
+    assert.deepEqual(path.points.at(-1), bush.entry);
+    const state = createClearingActivity(source), nav = createWorldNavigation(source, size * .1);
+    assert.equal(state.diagnostics.find(item => item.id === path.id).valid, true, `home ${home}, size ${size}`);
+    assert.ok(state.routes.some(route => route.id === path.id));
+    for (let index = 1; index < path.points.length; index++) assert.equal(canTraverse(nav, path.points[index - 1], path.points[index]), true);
+    for (const navigationEnabled of [true, false]) {
+      const clearing = createClearingActivity(source); clearing.navigationEnabled = navigationEnabled;
+      assert.equal(requestClearingBush(clearing), true, `home ${home}, size ${size}, navigation ${navigationEnabled}`);
+    }
+  }
+});
+
 test("bush play walks, anticipates, jumps behind foliage, rustles, exits, lands and retraces", () => {
   const state = createClearingActivity(bushScene(), 1), stages = new Set(), poses = new Set();
   assert.equal(requestClearingBush(state), true);

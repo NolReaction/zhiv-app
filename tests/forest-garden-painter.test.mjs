@@ -243,7 +243,9 @@ test('one real fruit travels from foliage via the two paws into the basket witho
     const grasp = at(start + .300001);
     assert.ok(grasp.pickedBerry && previewPointInPolygon(grasp.pickedBerry, scene.bushes[0].points), 'fruit starts at its actual cluster');
     assert.ok(grasp.pickedBerry.y > actor.y - actor.size * .3, 'worked fruit sits below the near ear');
-    assert.ok(grasp.pickedBerry.x < actor.x - actor.size * .32, 'worked fruit stays beside the torso');
+    const fruitOffset = grasp.pickedBerry.x - actor.x;
+    assert.ok(Math.abs(fruitOffset) > actor.size * .32, 'worked fruit stays beside the torso from either approach');
+    assert.equal(grasp.direction, fruitOffset < 0 ? 'left' : 'right', 'the hero faces the actual worked fruit');
     assert.equal(forestGardenBerries(scene, garden)[0].picked, cycle + 1, 'the plucked fruit is removed from that cluster');
     let last = grasp.pickedBerry;
     for (let phase = .31; phase < .8; phase += .01) {

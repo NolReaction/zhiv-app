@@ -119,7 +119,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   options: SceneOptions, elapsed: number, reacting: boolean, timestamp = options.serverNow ?? 0,
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
-  const currentLevels = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev);
+  const currentLevels = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
   const world = preview?.scene ?? previewWorldScene(TILED_WORLD, currentLevels);
   const home = world.sites.find(site => site.id === "home");
   const selectedVisuals = preview?.visuals ?? visualsFor(currentLevels);
@@ -212,8 +212,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const ctx = context;
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
-  let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev));
-  let visuals = visualsFor(accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev)), requestedKey: string | null = null, artworkVersion = 0;
+  let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings));
+  let visuals = visualsFor(accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings)), requestedKey: string | null = null, artworkVersion = 0;
   let unsubscribe = () => {};
   let frame = 0, previous = 0;
   let configuredTimestamp = Number.isFinite(initial.serverNow) ? initial.serverNow! : null;
@@ -379,7 +379,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     document.removeEventListener("visibilitychange", visibilityChanged); session.release();
   }
   function prepareArtwork() {
-    const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev);
+    const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
     const next = visualsFor(selected), urls = artworkUrls(next);
     const nextWorld = previewWorldScene(TILED_WORLD, selected);
     const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));

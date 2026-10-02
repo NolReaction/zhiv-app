@@ -8,7 +8,7 @@ import { sceneJourney } from "./journey-timeline";
 import { JourneyProgress } from "./journey-progress";
 import type { GameItemId } from "@/features/game/game-rewards";
 import type { SceneOptions } from "@/features/mochlik/scene";
-import type { EconomySceneJourney } from "./economy-scene-state";
+import type { EconomySceneBuildings, EconomySceneJourney } from "./economy-scene-state";
 import type { WorldState } from "./model";
 import type { createMapEngine, MapAction, WorldPlace } from "./map-engine";
 import { MAP_PLACES } from "./map-layout";
@@ -16,29 +16,29 @@ import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { interactiveSites } from "./site-interactions";
 import styles from "./world.module.css";
 
-type Props = { economyJourney?: EconomySceneJourney | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void;
+type Props = { economyJourney?: EconomySceneJourney | null; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void;
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ economyJourney, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, topHud, bottomHud }: Props) {
+export function WorldScene({ economyJourney, economyBuildings, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, topHud, bottomHud }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
   const time = useRef(now);
   useEffect(() => { time.current = now; engine.current?.setTime(now); }, [now]);
   const previousWake = useRef(wakeSignal), pendingWake = useRef(0);
   const { lampOn, dusk } = habitatLighting(now, timeZone);
-  const latest = useRef({ state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney });
+  const latest = useRef({ state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney, economyBuildings });
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   useEffect(() => {
-    latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney };
+    latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney, economyBuildings };
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    engine.current?.update({ lampOn, dusk, paused: false, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
-  }, [state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney]);
+    engine.current?.update({ lampOn, dusk, paused: false, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, economyBuildings, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
+  }, [state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney, economyBuildings]);
   useEffect(() => {
     let disposed = false;
     const abort = new AbortController();
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const options = (): SceneOptions => ({ serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, paused: false, view: "world", reducedMotion: media.matches,
-      worldState: latest.current.state, economyJourney: latest.current.economyJourney, worldGifts: latest.current.gifts, items: latest.current.items,
+      worldState: latest.current.state, economyJourney: latest.current.economyJourney, economyBuildings: latest.current.economyBuildings, worldGifts: latest.current.gifts, items: latest.current.items,
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     void import("./map-engine").then(module => {
       if (disposed) return null;

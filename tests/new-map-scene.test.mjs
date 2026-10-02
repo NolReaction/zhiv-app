@@ -25,6 +25,8 @@ const livingNavigation = { version: 1, cellSize: 8,
   obstacles: [], interests: [{ id: "test-flowers", position: { x: 680, y: 705 }, activity: "sniff" }] };
 const options = { paused: false, reducedMotion: true, lampOn: false, dusk: false };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+const sourceAndDestination = args => args.length === 5
+  ? [args[0], 0, 0, args[0].naturalWidth, args[0].naturalHeight, ...args.slice(1)] : args;
 
 async function modules(override) {
   const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -161,8 +163,8 @@ test("new circle and world paint the same 2560px source in 1254 logical units an
     const groundCalls = target => target.calls.filter(call => call.method === "drawImage" && call.args[0] === image);
     const sourceToWorld = [image, 0, 0, 2560, 2560, 0, 0, 1254, 1254];
     assert.equal(NEW_MAP_SIZE, 1254);
-    assert.deepEqual(groundCalls(circle).at(-1).args, sourceToWorld);
-    assert.deepEqual(groundCalls(fullWorld).at(-1).args, sourceToWorld);
+    assert.deepEqual(sourceAndDestination(groundCalls(circle).at(-1).args), sourceToWorld);
+    assert.deepEqual(sourceAndDestination(groundCalls(fullWorld).at(-1).args), sourceToWorld);
     assert.ok(circle.calls.some(call => call.method === "setTransform" && call.args[0] === 640 / NEW_MAP_FOCUS.width
       && call.args[3] === 640 / NEW_MAP_FOCUS.height));
     assert.ok(circle.calls.some(call => call.method === "translate" && call.args[0] === -NEW_MAP_FOCUS.x && call.args[1] === -NEW_MAP_FOCUS.y));
@@ -534,8 +536,8 @@ test("exported Tiled edits drive both live views, active site art, pet hit area 
     engine = await createMapEngine(world, options, assert.fail, []);
     for (const target of [circle, world]) {
       const images = target.calls.filter(call => call.method === "drawImage");
-      assert.deepEqual(images.find(call => call.args[0] === ground).args.slice(1), [0, 0, 2560, 2560, 0, 0, 1800, 1800]);
-      assert.deepEqual(images.find(call => call.args[0] === shore).args.slice(1), [0, 0, 2560, 2560, 0, 1800, 600, 600]);
+      assert.deepEqual(sourceAndDestination(images.find(call => call.args[0] === ground).args).slice(1), [0, 0, 2560, 2560, 0, 0, 1800, 1800]);
+      assert.deepEqual(sourceAndDestination(images.find(call => call.args[0] === shore).args).slice(1), [0, 0, 2560, 2560, 0, 1800, 600, 600]);
       assert.deepEqual(images.find(call => call.args[0] === home).args.slice(1), [600, 820, 120, 120]);
       const hero = images.findLast(call => call.args[0] === pixelSprite("idle", "front", 0));
       assert.deepEqual(hero.args.slice(1), [680, 933.75, 60, 60]);
@@ -1753,6 +1755,141 @@ test("account house levels fall back to available art and explicit DEV can previ
   assert.equal(accountSceneLevels(TILED_WORLD, 99, WORLD_DEV_DEFAULTS).home, 5);
   for (const invalid of [NaN, Infinity, -1, 1.5, undefined]) assert.equal(accountSceneLevels(TILED_WORLD, invalid).home, 1);
   assert.equal(accountSceneLevels(TILED_WORLD, 5, { ...WORLD_DEV_DEFAULTS, previewBuildings: true }).home, 1);
+});
+
+function productionSite(id, y, available = [0, 1, 2]) {
+  const states = available.map(level => {
+    const x = 400 + level * 120;
+    return { level, label: `${id} ${level}`, image: `/account-${id}-${level}.webp`, geometry: {
+      bounds: { x, y, width: 80, height: 70 }, anchor: { x: x + 40, y: y + 70 }, entry: { x: x + 40, y: y + 90 },
+      hitArea: [{ x, y }, { x: x + 80, y }, { x: x + 80, y: y + 70 }, { x, y: y + 70 }],
+      collision: [{ x: x + 10, y: y + 35 }, { x: x + 70, y: y + 35 }, { x: x + 70, y: y + 70 }, { x: x + 10, y: y + 70 }],
+    } };
+  });
+  return { id, label: id, initialLevel: 1, ...states[0].geometry, states };
+}
+
+test("confirmed economy levels include ruins, keep missing buildings authored and preserve home and DEV fallbacks", async () => {
+  const sites = [clearingHome, productionSite("workshop", 380), productionSite("quarry", 800, [0, 1]), productionSite("lighthouse", 100)];
+  const { accountSceneLevels, TILED_WORLD, WORLD_DEV_DEFAULTS } = await modules({ sites });
+  const authored = { home: 1, workshop: 1, quarry: 1, lighthouse: 1 };
+  assert.deepEqual(accountSceneLevels(TILED_WORLD, undefined, WORLD_DEV_DEFAULTS), authored);
+  for (const level of [0, 1, 2, 5]) {
+    const selected = accountSceneLevels(TILED_WORLD, 1, WORLD_DEV_DEFAULTS, { workshop: level, quarry: level, unplaced: 5 });
+    assert.deepEqual(selected, { ...authored, workshop: Math.min(level, 2), quarry: Math.min(level, 1) });
+  }
+  for (const invalid of [NaN, Infinity, -1, 1.5, undefined]) {
+    assert.deepEqual(accountSceneLevels(TILED_WORLD, 1, WORLD_DEV_DEFAULTS, { workshop: invalid, quarry: invalid }), authored);
+  }
+  const home = { ...clearingHome, states: [1, 3, 5].map(level => ({ level, label: `Home ${level}`, image: `/fallback-home-${level}.webp` })) };
+  const scene = { ...TILED_WORLD, sites: [home, ...sites.slice(1)] };
+  assert.equal(accountSceneLevels(scene, 3, WORLD_DEV_DEFAULTS, null).home, 3, "legacy house remains usable while economy is loading");
+  assert.equal(accountSceneLevels(scene, 3, WORLD_DEV_DEFAULTS, { home: 5 }).home, 5, "confirmed economy wins over an older legacy snapshot");
+  assert.equal(accountSceneLevels(scene, 3, WORLD_DEV_DEFAULTS, { home: 0 }).home, 1, "missing lower artwork keeps the earliest authored home");
+  const economy = { home: 5, workshop: 2, quarry: 0 };
+  assert.deepEqual(accountSceneLevels(scene, 3, { ...WORLD_DEV_DEFAULTS, previewBuildings: true }, economy), authored,
+    "explicit DEV can preview initial levels even when they differ from confirmed progression");
+  assert.deepEqual(accountSceneLevels(scene, 3, { ...WORLD_DEV_DEFAULTS, levels: { ...authored, workshop: 0 } }, economy),
+    { ...authored, workshop: 0 }, "existing implicit DEV level selection retains priority");
+  assert.deepEqual(accountSceneLevels(scene, 3, WORLD_DEV_DEFAULTS, { lighthouse: 2 }), { ...authored, home: 3, lighthouse: 2 },
+    "the same rule supports a future confirmed building without inventing an economy for it");
+});
+
+test("confirmed production levels switch artwork and collision together in both views, preserving progress on load failure", async () => {
+  const sites = [productionSite("workshop", 380), productionSite("quarry", 800, [0, 1])];
+  const navigation = { ...livingNavigation, areas: [{ id: "production-clearing", points: [
+    { x: 300, y: 200 }, { x: 1100, y: 200 }, { x: 1100, y: 1050 }, { x: 300, y: 1050 },
+  ] }] };
+  const { mountHabitat, connectForestSession, previewWorldScene, TILED_WORLD, worldDevStore, isWalkable } = await modules({ sites, navigation });
+  const env = browser(), scenes = [], probes = [], images = new Map(), saved = new Map();
+  window.localStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) };
+  try {
+    const initial = { ...options, presenceKey: "production-account", economyBuildings: { workshop: 0, quarry: 0 } };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
+    const finish = (id, level, error = false) => {
+      const path = `/account-${id}-${level}.webp`, image = env.finishPath(path, error);
+      if (!error) images.set(path, image);
+    };
+    env.finishPath("/test-ground.webp"); finish("workshop", 0); finish("quarry", 0); await flush();
+    const rendered = (scene, id) => {
+      const surface = env.surface(); scene.paintWorld(surface.context);
+      return surface.calls.filter(call => call.method === "drawImage" && call.args.length === 5)
+        .find(call => [...images].some(([path, image]) => path.startsWith(`/account-${id}-`) && call.args[0] === image))?.args;
+    };
+    const check = (id, level) => {
+      const geometry = sites.find(site => site.id === id).states.find(state => state.level === level).geometry;
+      for (const scene of scenes) {
+        assert.deepEqual(rendered(scene, id), [images.get(`/account-${id}-${level}.webp`), geometry.bounds.x, geometry.bounds.y, 80, 70]);
+        assert.deepEqual(scene.siteAnchor(id), geometry.anchor);
+        assert.equal(scene.hitSite({ x: geometry.bounds.x + 40, y: geometry.bounds.y + 20 }), id);
+      }
+    };
+    check("workshop", 0); check("quarry", 0);
+    const initialProbe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, initial.economyBuildings), "circle", 0, 0, () => {}); probes.push(initialProbe);
+    initialProbe.state.clearing.behavior.mind.needs.energy = .42;
+    const configure = buildings => {
+      circle.configure({ ...initial, economyBuildings: buildings });
+      world.configure({ ...initial, view: "world", economyBuildings: buildings });
+    };
+    configure({ workshop: 1, quarry: 1 });
+    finish("workshop", 1); await flush();
+    check("workshop", 0); check("quarry", 0);
+    finish("quarry", 1); await flush();
+    check("workshop", 1); check("quarry", 1);
+    const current = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { workshop: 1, quarry: 1 }), "circle", 0, 0, () => {}); probes.push(current);
+    assert.equal(current.state.memory.enabled, true, "confirmed production changes preserve account memory");
+    assert.equal(current.state.clearing.behavior.mind.needs.energy, .42);
+    assert.equal(isWalkable(current.state.clearing.navigation, { x: 440, y: 430 }), true, "the old workshop footprint is released");
+    assert.equal(isWalkable(current.state.clearing.navigation, { x: 560, y: 430 }), false, "the confirmed workshop footprint blocks navigation");
+    configure({ workshop: 2, quarry: 5 });
+    finish("workshop", 2, true); await flush();
+    check("workshop", 1); check("quarry", 1);
+    assert.ok(worldDevStore.getSnapshot().artError);
+    configure({ workshop: 2, quarry: 5 });
+    finish("workshop", 2); await flush();
+    check("workshop", 2); check("quarry", 1);
+    const requests = env.requests.length;
+    configure({ workshop: 5, quarry: 5 }); await flush();
+    check("workshop", 2); check("quarry", 1);
+    assert.equal(env.requests.length, requests, "higher confirmed levels never request unauthored artwork");
+    worldDevStore.patch({ previewBuildings: true, levels: { workshop: 0, quarry: 0 } }); await flush();
+    check("workshop", 0); check("quarry", 0);
+    worldDevStore.reset(); await flush();
+    check("workshop", 2); check("quarry", 1);
+  } finally { scenes.forEach(scene => scene.dispose()); probes.forEach(probe => probe.release()); worldDevStore.reset(); env.restore(); }
+});
+
+test("map production clicks and accessible anchors follow only the loaded confirmed building level", async () => {
+  const sites = [productionSite("workshop", 380), productionSite("quarry", 800, [0, 1])];
+  const { createMapEngine } = await modules({ sites });
+  const env = browser(); let engine;
+  try {
+    const canvas = env.surface(400), places = [], initial = { ...options, economyBuildings: { workshop: 0, quarry: 0 } };
+    const anchors = sites.map(site => ({ dataset: { siteId: site.id, kind: site.id }, style: {} }));
+    const loading = createMapEngine(canvas, initial, place => places.push(place), anchors);
+    env.finish(); await flush(); env.finishPath("/account-workshop-0.webp"); env.finishPath("/account-quarry-0.webp"); engine = await loading;
+    engine.control("overview");
+    const tap = (x, y) => {
+      const event = { pointerId: 1, pointerType: "mouse", button: 0, clientX: x * 400 / fixture.width, clientY: y * 400 / fixture.height };
+      canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+      canvas.events.get("pointerup")({ ...event, type: "pointerup" });
+    };
+    for (const site of sites) tap(440, site.bounds.y + 20);
+    assert.deepEqual(places, ["workshop", "quarry"]);
+    const previous = anchors.map(anchor => anchor.style.transform);
+    engine.update({ ...initial, economyBuildings: { workshop: 1, quarry: 1 } });
+    for (const site of sites) tap(560, site.bounds.y + 20);
+    assert.equal(places.length, 2, "unloaded geometry cannot receive production clicks");
+    assert.deepEqual(anchors.map(anchor => anchor.style.transform), previous);
+    env.finishPath("/account-workshop-1.webp"); env.finishPath("/account-quarry-1.webp"); await flush();
+    for (const site of sites) tap(440, site.bounds.y + 20);
+    assert.equal(places.length, 2, "the old hit areas disappear after the confirmed replacement");
+    for (const site of sites) tap(560, site.bounds.y + 20);
+    assert.deepEqual(places, ["workshop", "quarry", "workshop", "quarry"]);
+    anchors.forEach((anchor, index) => assert.notEqual(anchor.style.transform, previous[index]));
+  } finally { engine?.dispose(); env.restore(); }
 });
 
 test("exploration hides the shared hero, releases carried props, advances ecology and returns on server time", async () => {

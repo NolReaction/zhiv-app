@@ -148,7 +148,10 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
   let length = 0;
   for (let i = 0; i < points.length; i++) {
     const point = points[i], previous = points[Math.max(0, i - 1)];
-    if (distance(point, actor.spawn) > radius) return "outside-clearing-radius";
+    // Only the final authored bush entry may extend the local walk. Intermediate
+    // points and ordinary routes keep their radius; visibility and blockers still apply.
+    const pointRadius = bush && i === points.length - 1 ? radius + WORLD_INTERACTION_LIMITS.bushJump : radius;
+    if (distance(point, actor.spawn) > pointRadius) return "outside-clearing-radius";
     // A convex ellipse also contains every intermediate point of these straight segments.
     for (const dx of [-actor.size * .5, actor.size * .5]) for (const dy of [-actor.size, actor.size * .08]) {
       const x = point.x + dx, y = point.y + dy;

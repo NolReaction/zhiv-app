@@ -220,7 +220,12 @@ test("ground feeding keeps feet and every hop on inspected soil and current geom
     const levelScene = previewWorldScene(scene, { home });
     const changed = { ...levelScene, actor: { ...levelScene.actor, size } };
     const patches = forestBirdGroundPatches(changed), nav = createWorldNavigation(changed, 7);
-    assert.ok(patches.length >= 2, `house ${home}, actor ${size}: has safe separate patches`);
+    assert.ok(patches.length >= 1, `house ${home}, actor ${size}: has safe ground support`);
+    const visit = sample(10, changed, 6), resting = visit.filter(bird => bird.surface === "ground");
+    assert.equal(visit.length, 2, "the pair stays visible even when only one bird can land");
+    assert.equal(resting.length, Math.min(2, patches.length), "only available safe patches receive the ground pair");
+    assert.ok(visit.filter(bird => bird.surface !== "ground").every(bird => !bird.perchId && ["flap", "glide"].includes(bird.state)),
+      "a bird without its own ground patch continues flying instead of sharing unsafe support");
     const states = new Set();
     for (let time = 7; time < 19.5; time += .025) {
       const ground = sample(time, changed, 6).filter(b => b.groundY !== undefined);

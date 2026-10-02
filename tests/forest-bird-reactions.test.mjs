@@ -251,11 +251,15 @@ test("rain or dusk ends ground feeding progressively while paused and explicit p
   }
 });
 
-test("abrupt downpour and darkness preserve actual departing birds until they leave the map", () => {
+test("abrupt downpour and darkness preserve actual departing birds until they leave the map", async () => {
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  // The authored first home leaves one safe ground patch; the second home
+  // supports a pair, needed here to check the waiting partner's departure.
+  const pairedScene = previewWorldScene(scene, { home: 2 });
   const options = { dusk: 0, rain: 0, reducedMotion: false };
   let arrival = 0, clear = [];
   for (let elapsed = 0; elapsed < 1800; elapsed += .25) {
-    const frame = forestBirdFrame(scene, { ...options, elapsed });
+    const frame = forestBirdFrame(pairedScene, { ...options, elapsed });
     if (frame.length === 2 && frame.every(b => b.surface === "ground" && b.state === "lookout")) {
       arrival = elapsed; clear = frame; break;
     }
@@ -266,7 +270,7 @@ test("abrupt downpour and darkness preserve actual departing birds until they le
     advanceBirdReactions(state, clear, .05, undefined, bounds, undefined, { rain: 0, dusk: 0 });
     let previous = new Map(clear.map(b => [b.id, b])), exited = new Set();
     for (let tick = 1; tick <= 330; tick++) {
-      const base = forestBirdFrame(scene, { ...options, ...weather, elapsed: arrival + tick * .05 });
+      const base = forestBirdFrame(pairedScene, { ...options, ...weather, elapsed: arrival + tick * .05 });
       assert.equal(base.length, 0, "automatic weather mask removed authored visits");
       advanceBirdReactions(state, base, .05, undefined, bounds, undefined, weather);
       const frame = applyBirdReactions(state, base);
