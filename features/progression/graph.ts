@@ -1,6 +1,6 @@
 import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/features/economy/model";
 
-export type ProgressionNodeKind = "building" | "recipe" | "exploration" | "world" | "collection" | "equipment" | "milestone" | "market" | "project";
+export type ProgressionNodeKind = "location" | "building" | "recipe" | "exploration" | "world" | "collection" | "equipment" | "milestone" | "market" | "project";
 
 export type ProgressionNode = {
   id: string;
@@ -11,6 +11,8 @@ export type ProgressionNode = {
   status: "active" | "plan";
   phase: number;
   buildingId?: string;
+  /** The existing map object that hosts this economic improvement or recipe. */
+  locationId?: string;
   level?: number;
   cost?: EconomyCost;
   seconds?: number;
@@ -26,14 +28,23 @@ export type ProgressionEdge = {
   id: string;
   source: string;
   target: string;
-  kind: "requirement" | "unlock" | "cost" | "available" | "flow" | "any" | "plan";
+  kind: "requirement" | "unlock" | "cost" | "available" | "flow" | "any" | "plan" | "contains";
 };
 
 export type ProgressionGraph = { nodes: ProgressionNode[]; edges: ProgressionEdge[] };
 
 export const buildingLabels: Record<string, string> = {
-  home: "Дом", garden: "Сад", woodlot: "Лесной участок", quarry: "Каменоломня", kiln: "Печь", workshop: "Верстак", dryer: "Заготовки", warehouse: "Склад",
+  home: "Дом", garden: "Ягодный куст", woodlot: "Лесозаготовки", quarry: "Шахта", kiln: "Печь", workshop: "Верстак", dryer: "Заготовки у костра", warehouse: "Кладовая",
 };
+export const progressionLocations = [
+  { id: "place:home", title: "Дом", icon: "🏠", buildingIds: ["home", "warehouse"], description: "Дом на полянке. Уровень дома открывает новые возможности хозяйства; кладовая расширяется отдельно внутри дома." },
+  { id: "bush", title: "Ягодный куст", icon: "🫐", buildingIds: ["garden"], description: "Существующий куст открывает ягодное хозяйство. Рост, полив и перенос корзинки остаются жизнью полянки; серверные ягоды выдаются за отдельные производственные заказы." },
+  { id: "place:woodlot", title: "Лесной участок", icon: "🌲", buildingIds: ["woodlot"], description: "Лес и существующий навес. Здесь обустраиваются лесозаготовки: сначала древесина и волокно, затем твёрдая древесина и смола." },
+  { id: "place:workshop", title: "Мастерская", icon: "🛠️", buildingIds: ["workshop", "kiln"], description: "Одно здание мастерской: внутри отдельно развиваются верстак и печь. У каждого оборудования свои условия обустройства и рецепты." },
+  { id: "campfire", title: "Костёр", icon: "🏕️", buildingIds: ["dryer"], description: "Существующий костёр служит местом отдыха и приготовления запасов. Заготовки еды развиваются здесь, без отдельного здания сушилки." },
+  { id: "place:quarry", title: "Шахта", icon: "⛏️", buildingIds: ["quarry"], description: "Заброшенная шахта уже есть на карте. Добыча начинается после её открытия по условиям хозяйства. Интерьер и его мини-карта относятся к будущему этапу." },
+] as const;
+const locationByBuilding = new Map<string, typeof progressionLocations[number]>(progressionLocations.flatMap(location => location.buildingIds.map(id => [id, location] as const)));
 const buildingIcons: Record<string, string> = { home: "🏠", garden: "🌱", woodlot: "🌲", quarry: "⛏️", kiln: "🔥", workshop: "🛠️", dryer: "♨️", warehouse: "📦" };
 const itemIcons: Record<string, string> = {
   berries: "🫐", wood: "🪵", stone: "🪨", ore: "⛏️", fiber: "🌾", fish: "🐟", planks: "🪵", rope: "🪢", metal_parts: "⚙️", dried_berries: "🫐", smoked_fish: "🐟", clay: "🏺", sand: "⌛", charcoal: "🔥", iron_ingot: "🔩", bricks: "🧱", glass: "💎", hardwood: "🌳", resin: "🍯", cloth: "🧵", beams: "🏗️", tools: "🛠️", reinforced_parts: "⚙️", cut_stone: "🪨",
@@ -56,8 +67,6 @@ const shortTime = (seconds: number) => seconds % 3600 === 0 ? `${seconds / 3600}
 type WorldDefinition = [id: string, label: string, icon: string, description: string, kind?: ProgressionNodeKind];
 const worldDefinitions: WorldDefinition[] = [
   ["living", "Живая поляна", "🌿", "Мохлик выбирает занятия, отдыхает, спит, встречает живность и запоминает состояние полянки. Эта жизнь развивается отдельно от серверного хозяйства."],
-  ["bush", "Куст и полив", "🫐", "Рост и влажность куста, полив, сбор и перенос корзинки уже работают на полянке. Эти декоративные ягоды не пополняют серверный склад."],
-  ["campfire", "Костёр и отдых", "🏕️", "Вечерний очаг, отдых и потребности Мохлика. Топливо и экономические награды пока не подключены."],
   ["wildlife", "Птицы и живность", "🦋", "Птицы, бабочки и светлячки взаимодействуют с полянкой. Они не являются производством ресурсов."],
   ["bridge_ruin", "Мост · уровень 0", "🌉", "Существующий разрушенный мост на карте. Для него пока нет экономической стройки, действующего перехода на другой берег или игровых требований восстановления."],
   ["lighthouse_ruin", "Маяк · уровень 0", "🔦", "Существующий маяк на карте. Рисунок следующего состояния можно примерить в редакторе, но это ещё не игровое восстановление и не доступ к кораблям."],
@@ -79,6 +88,7 @@ const worldDefinitions: WorldDefinition[] = [
 ];
 
 const projectDefinitions: WorldDefinition[] = [
+  ["mine_interior", "Шахта: интерьер", "⛏️", "Будущий внутренний экран шахты с собственной мини-картой. Он не требуется для действующих заказов добычи: их результат определяется серверным таймером, без непрерывного присутствия Мохлика у шахты."],
   ["bridge", "Восстановить мост", "🌉", "На карте есть разрушенный мост уровня 0. Восстановление и проход ещё не реализованы."],
   ["far_bank", "Другой берег", "🗺️", "Предлагаемое открытие территории после восстановления моста."],
   ["regional_trips", "Новые территории", "🧭", "Предлагаемые региональные исследования за пределами нынешних маршрутов."],
@@ -119,11 +129,15 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     return add({ id, title, label: title, icon, phase, description, kind, status, requirements: {}, children: [] });
   }
 
-  fixed("start", "Начало", "🌱", 0, "На новом аккаунте уже есть дом 1, сад 1 и склад 1. Монет и серверных товаров в начале нет.");
+  fixed("start", "Начало", "🌱", 0, "На новом аккаунте уже есть дом 1, ягодный куст 1 и кладовая 1. Монет и серверных товаров в начале нет. Места на карте объединяют несколько хозяйственных возможностей; их уровни улучшаются отдельно.");
   fixed("trader", "Торговец", "🧑‍🌾", 0, "Продажа товаров со склада по фиксированной цене. Доступна с начала игры, без рынка игроков.");
   fixed("coins", "Монеты", "🪙", 0, "Выручка за товары идёт на строительство и улучшения. Монеты не занимают место на складе.");
   edge("start", "trader", "available");
   edge("trader", "coins", "flow");
+  for (const location of progressionLocations) {
+    fixed(location.id, location.title, location.icon, 0, location.description, "location");
+    edge("start", location.id, "available");
+  }
 
   const orderedBuildings = [...catalog.buildings].sort((a, b) => {
     const order = ["home", ...productionOrder];
@@ -139,9 +153,9 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
       if (level > 1) requirements[building.id] = Math.max(requirements[building.id] || 0, level - 1);
       if (building.id === "home" && level === 1) delete requirements.home;
       const node = add({
-        id: buildingNodeId(building.id, level), title: `${building.name} · уровень ${level}`,
+        id: buildingNodeId(building.id, level), title: `${buildingLabels[building.id] || building.name} · уровень ${level}`,
         label: `${buildingLabels[building.id] || building.name} ${level}`, icon: buildingIcons[building.id] || "🏗️",
-        kind: "building", status: "active", phase: level, buildingId: building.id, level,
+        kind: "building", status: "active", phase: level, buildingId: building.id, locationId: locationByBuilding.get(building.id)?.id, level,
         cost: cloneCost(data.cost), seconds: data.seconds, requirements, children: [],
         description: initialBuildings.has(building.id) && level === 1 ? `Есть на старте. ${building.description}` : building.description,
         ...(data.warehouseCapacity != null ? { warehouseCapacity: data.warehouseCapacity } : {}),
@@ -155,9 +169,9 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
           id: `r:${recipe.id}`, title: recipe.name,
           label: recipeLabels[recipe.id] || (single ? outputLabel + (recipe.seconds >= 14400 ? ` · ${shortTime(recipe.seconds)}` : "") : "Партия"),
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
-          buildingId: recipe.buildingId, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
+          buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
           rewards: { ...recipe.rewards }, requirements, children: [],
-          description: recipe.seconds >= 14400 ? "Длинный цикл: можно реже забирать результат." : undefined,
+          description: `${recipe.seconds >= 14400 ? "Длинный цикл: можно реже забирать результат. " : ""}Заказ идёт по серверному таймеру; Мохлику не нужно всё время стоять у производства. Готовый результат нужно забрать.`,
         });
         node.children.push(child.id);
         edge(node.id, child.id, "unlock");
@@ -170,6 +184,35 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
         kind: "exploration", status: "active", phase: level, cost: cloneCost(exploration.cost), seconds: exploration.seconds,
         rewards: { ...exploration.rewards }, requirements: { home: exploration.requiredHomeLevel, ...exploration.requiredBuildings }, children: [], description: exploration.description,
       });
+    }
+  }
+
+  // A producer may start later than its own level number: quarry 1 and kiln 1 need home 2.
+  // Group recipes with the phase of their actual producer, including additional AND gates.
+  const phaseCache = new Map<string, number>();
+  const phasePending = new Set<string>();
+  function phaseFor(node: ProgressionNode): number {
+    const cached = phaseCache.get(node.id);
+    if (cached !== undefined) return cached;
+    if (phasePending.has(node.id)) throw new Error(`Cyclic progression requirements: ${node.id}`);
+    phasePending.add(node.id);
+    let phase = node.phase;
+    for (const [buildingId, level] of Object.entries(node.requirements)) {
+      const prerequisite = byId.get(buildingNodeId(buildingId, level));
+      if (prerequisite && prerequisite !== node) phase = Math.max(phase, phaseFor(prerequisite));
+    }
+    phasePending.delete(node.id);
+    phaseCache.set(node.id, phase);
+    return phase;
+  }
+  for (const node of nodes.filter(value => ["building", "recipe", "exploration"].includes(value.kind))) node.phase = phaseFor(node);
+  for (const location of progressionLocations) {
+    const node = byId.get(location.id)!;
+    for (const buildingId of location.buildingIds) {
+      const childId = buildingNodeId(buildingId, 1);
+      if (!byId.has(childId)) continue;
+      node.children.push(childId);
+      edge(node.id, childId, "contains");
     }
   }
 
@@ -204,7 +247,8 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
 
   for (const [id, label, icon, description, kind] of worldDefinitions) fixed(id, label, icon, 6, description, kind);
   edge("start", "living", "available");
-  for (const id of ["bush", "campfire", "wildlife", "bridge_ruin", "lighthouse_ruin"]) edge("living", id, "available");
+  for (const id of ["wildlife", "bridge_ruin", "lighthouse_ruin"]) edge("living", id, "available");
+  edge("bush", "living", "flow"); edge("campfire", "living", "flow");
   edge("start", "album", "available"); edge("start", "wardrobe", "available");
   edge("album", "forest_set", "flow"); edge("album", "river_set", "flow");
   edge("forest_set", "explorer_cap"); edge("river_set", "willow_rod");
@@ -219,6 +263,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   for (const [id, title, icon, description] of projectDefinitions) fixed(id, title, icon, 7, description, "project", "plan");
   byId.get("bridge")!.label = "Мост: ремонт";
   byId.get("lighthouse")!.label = "Маяк: ремонт";
+  edge("place:quarry", "mine_interior", "plan");
   edge("bridge_ruin", "bridge", "plan"); edge("lighthouse_ruin", "lighthouse", "plan");
   for (const [source, target] of [
     ["r:make_planks", "bridge"], ["r:make_rope", "bridge"], ["r:make_tools", "bridge"], ["bridge", "far_bank"],
@@ -237,14 +282,14 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
 
 export const progressionGraph = buildProgressionGraph();
 
-/** Includes the selected node; flow/any are informational, and proposals never gate an active node. */
+/** Includes the selected node; flow/any/contains are informational, and proposals never gate an active node. */
 export function getPrerequisiteIds(graph: ProgressionGraph, nodeId: string, includeCosts = true): Set<string> {
   const nodes = new Map(graph.nodes.map(node => [node.id, node]));
   const selected = nodes.get(nodeId);
   if (!selected) return new Set();
   const incoming = new Map<string, ProgressionEdge[]>();
   for (const edge of graph.edges) {
-    if (edge.kind === "flow" || edge.kind === "any" || (!includeCosts && edge.kind === "cost")) continue;
+    if (edge.kind === "flow" || edge.kind === "any" || edge.kind === "contains" || (!includeCosts && edge.kind === "cost")) continue;
     if (selected.status !== "plan" && (edge.kind === "plan" || nodes.get(edge.source)?.status === "plan")) continue;
     const values = incoming.get(edge.target) || [];
     values.push(edge);

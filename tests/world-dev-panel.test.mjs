@@ -11,6 +11,7 @@ after(() => vite.close());
 const { WorldDevTabs, WorldDevPanelContent, gardenDevActionUnavailable } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
 const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
 
 function inspect(element) {
   const elements = [];
@@ -180,6 +181,28 @@ test("returning to building controls uses the selected level and changing one bu
   assert.equal(state.levels.home, home.states.at(-1).level);
   assert.equal(state.weather, "rain");
   assert.equal(state.paused, true);
+});
+
+test("object shortcuts use authored places and account menus without granting a preview level", () => {
+  const events = [];
+  const state = { ...WORLD_DEV_DEFAULTS, previewBuildings: true, levels: { home: 5, workshop: 2 } };
+  const { elements, calls, markup } = panel("buildings", { state,
+    onOpenObject: place => events.push(["open", place]),
+    shortcut: callback => { events.push(["close-dev"]); callback(); },
+  });
+  const objects = interactiveMapObjects(TILED_WORLD);
+  const buttons = elements.filter(element => element.props["data-dev-object"]);
+  assert.deepEqual(buttons.map(button => button.props["data-dev-object"]), objects.map(object => object.place));
+  assert.deepEqual(buttons.map(labelText), objects.map(object => object.label));
+  for (const button of buttons) button.props.onClick();
+  assert.deepEqual(events, objects.flatMap(object => [["close-dev"], ["open", object.place]]));
+  assert.deepEqual(calls.patches, []);
+  assert.deepEqual(calls.actions, []);
+  assert.match(markup, /настоящий прогресс аккаунта/);
+  assert.equal(panel("buildings").elements.some(element => element.props["data-dev-object"]), false);
+  const hidden = panel("buildings", { state: { ...state, showBuildings: false }, onOpenObject() {} });
+  assert.deepEqual(hidden.elements.filter(element => element.props["data-dev-object"]).map(button => button.props["data-dev-object"]),
+    interactiveMapObjects(TILED_WORLD, { showBuildings: false }).map(object => object.place));
 });
 
 test("route diagnostics follow the selected house geometry instead of the base Tiled level", () => {

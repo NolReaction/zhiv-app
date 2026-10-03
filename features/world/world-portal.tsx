@@ -1,5 +1,5 @@
 "use client";
-import type { CSSProperties } from "react";
+import { useRef, type CSSProperties } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { GameItemId } from "@/features/game/game-rewards";
@@ -15,16 +15,18 @@ export type WorldPortalProps = {
   bestStreakDays: number; items?: readonly GameItemId[];
 };
 export default function WorldPortal(props: WorldPortalProps) {
+  const escapeHandlerRef = useRef<(() => boolean) | null>(null);
   return <Dialog open={props.open} onOpenChange={open => { if (!open) props.onClose(); }}>
     <DialogPortal>
     <DialogOverlay className={styles.portalScrim} />
     {/* Fullscreen content must not inherit the centered dialog's translate utilities. */}
     <DialogPrimitive.Content data-slot="dialog-content" className={styles.portal} style={props.origin}
+      onEscapeKeyDown={event => { if (escapeHandlerRef.current?.()) { event.preventDefault(); event.stopPropagation(); } }}
       onCloseAutoFocus={event => { event.preventDefault(); props.returnFocus(); }}
       onOpenAutoFocus={event => { event.preventDefault(); document.getElementById("world-exit")?.focus(); }}>
       <DialogTitle className={styles.sr}>Лес Мохлика</DialogTitle>
       <DialogDescription className={styles.sr}>Исследуйте карту, улучшайте домик и собирайте лесные находки.</DialogDescription>
-      <WorldView {...props} />
+      <WorldView {...props} escapeHandlerRef={escapeHandlerRef} />
     </DialogPrimitive.Content>
     </DialogPortal>
   </Dialog>;

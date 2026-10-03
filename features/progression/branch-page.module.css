@@ -42,9 +42,12 @@
 .phase { position: absolute; border: 1px solid #bcd0a514; border-radius: 18px; background: linear-gradient(180deg, #bfd59807, transparent 380px); pointer-events: none; padding: 18px 16px; }
 .phaseNumber { display: block; color: #93ad81; font-size: 10px; font-weight: 650; letter-spacing: .17em; margin-bottom: 7px; }
 .phase h2 { margin: 0; color: #d0e1bb; font-size: 16px; font-weight: 600; line-height: 1.3; }
+.locationGroup { position: absolute; border: 1px solid #83a9b026; border-radius: 12px; background: #a4cbd703; padding: 10px 12px; pointer-events: none; }
+.locationGroup > span { color: #a4bdc0; font-size: 10px; letter-spacing: .035em; }
 .connections { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .connection { fill: none; stroke: #8fab7350; stroke-width: 1.1; }
 .connection[data-kind='flow'], .connection[data-kind='available'], .connection[data-kind='any'] { stroke: #8eaba43a; }
+.connection[data-kind='contains'] { stroke: #9ecbd16b; stroke-dasharray: 2 5; }
 .connection[data-kind='plan'] { stroke: #c3abd356; stroke-dasharray: 7 6; }
 .connection[data-kind='cost'] { stroke: #e4b963; stroke-dasharray: 4 4; stroke-width: 1.5; }
 .connection[data-highlight='path'] { stroke: #c0df8f; stroke-width: 2.6; }
@@ -55,11 +58,13 @@
 .node:hover { background: #2d3d26; border-color: #b4d391; z-index: 3; }
 .nodeIcon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: #c4dba9; }
 .node[data-kind='building'] .nodeIcon { color: #dfc58c; }
+.node[data-kind='location'] .nodeIcon { color: #b1d0d3; }
 .node[data-kind='exploration'] .nodeIcon { color: #a4d0ce; }
 .node[data-status='plan'] .nodeIcon { color: #cdb5df; }
 .node[data-selected] .nodeIcon { color: #263e16; }
 .nodeLabel { display: block; font-size: 12px; line-height: 1.35; font-weight: 550; width: 100%; text-align: center; overflow-wrap: anywhere; }
 .node[data-kind='building'] { border-color: #d8bc6e8c; background: #2c2e1e; }
+.node[data-kind='location'] { border-color: #94bcc18c; background: #203034; }
 .node[data-kind='exploration'] { border-color: #87b6bb70; background: #1a2b28; }
 .node[data-kind='market'] { border-color: #d3b77778; background: #302b1e; }
 .node[data-status='plan'] { border-style: dashed; border-color: #b49bc27d; background: #27212d; }
@@ -74,6 +79,7 @@
 .legend > span { display: inline-flex; align-items: center; gap: 5px; margin-left: 7px; }
 .legend i { width: 15px; height: 0; border-top: 2px solid #b1cd85; display: inline-block; }
 .costKey i { border-color: #e4b963; border-top-style: dashed; }
+.locationKey i { border-color: #9ecbd1; border-top-style: dotted; }
 .planKey i { border-color: #c3abd3; border-top-style: dashed; }
 .details { background: var(--branch-panel); border-left: 1px solid var(--branch-line); min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #6a7c56 #182119; overscroll-behavior: contain; }
 .detailHeader { display: flex; align-items: center; gap: 12px; padding: 22px 20px 18px; border-bottom: 1px solid var(--branch-line); background: #202d1e; }

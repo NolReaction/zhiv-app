@@ -37,7 +37,9 @@ test("travel progress derives from absolute journey time and remains bounded aft
 
 test("the fullscreen forest mounts raw modal content without centered-dialog geometry", () => {
   const origin = { "--portal-x": "180px", "--portal-y": "350px", "--portal-radius": "150px" };
-  const dialog = WorldPortal({ open: true, origin });
+  let dialog;
+  function PortalProbe() { dialog = WorldPortal({ open: true, origin }); return null; }
+  renderToStaticMarkup(createElement(PortalProbe));
   const portal = Children.toArray(dialog.props.children).find(child => child.type === DialogPortal);
   assert.ok(portal, "fullscreen content must be portaled outside the app layout");
   const content = Children.toArray(portal.props.children).find(child => child.type === DialogPrimitive.Content);
@@ -47,6 +49,16 @@ test("the fullscreen forest mounts raw modal content without centered-dialog geo
   assert.doesNotMatch(content.props.className, /translate-|top-\[50%\]|left-\[50%\]|animate-in|zoom-in/);
   assert.equal(typeof content.props.onOpenAutoFocus, "function");
   assert.equal(typeof content.props.onCloseAutoFocus, "function");
+  const view = Children.toArray(content.props.children).find(child => child.props.escapeHandlerRef);
+  assert.ok(view, "the local popover must share the outer Radix Escape boundary");
+  let prevented = false, stopped = false;
+  const event = { preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } };
+  view.props.escapeHandlerRef.current = () => false;
+  content.props.onEscapeKeyDown(event);
+  assert.equal(prevented, false, "Escape can close the world when no local menu is open");
+  view.props.escapeHandlerRef.current = () => true;
+  content.props.onEscapeKeyDown(event);
+  assert.ok(prevented && stopped, "closing a local menu must not also dismiss the world");
 });
 
 test("account-owned sibling dialogs have distinct keys and remount on account changes", async () => {
@@ -185,8 +197,11 @@ test("map exposes the new economy while retaining legacy journey collection", as
   const economy = { snapshot: null, market: null, now: world.now, busy: false, uncertain: false, error: null, notice: "", retryAt: 0, act() {}, actMarket() {}, retry() {}, refresh() {}, refreshMarket() {} };
   const props = { world, economy, ownerPublicId: "test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 30 };
   const markup = renderToStaticMarkup(createElement(WorldView, props));
-  assert.match(markup, /Гардероб/); assert.match(markup, /Коллекции/);
-  assert.match(markup, /Хозяйство/); assert.match(markup, /В путь/); assert.match(markup, /Рынок/);
+  assert.match(markup, /aria-controls="world-more-actions"/);
+  assert.match(markup, /Хозяйство/); assert.match(markup, /В путь/);
+  for (const place of ["house", "garden", "campfire", "workshop", "quarry", "woodlot", "bridge", "lighthouse"]) {
+    assert.match(markup, new RegExp(`data-kind="${place}"`), "production and upgrades are reached through map objects");
+  }
   assert.doesNotMatch(markup, /Строить|Первая прогулка|Обустроить дом/);
   state.journeys = [{ id: "saved", routeId: "first_path", startedAt: "2026-09-20T12:00:00Z", finishesAt: "2026-09-20T12:01:00Z" }];
   const pending = renderToStaticMarkup(createElement(WorldJourneys, { world, destination: "trail" }));

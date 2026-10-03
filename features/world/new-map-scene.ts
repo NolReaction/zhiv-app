@@ -35,6 +35,7 @@ import { applyForestDevScenario } from "./dev/forest-dev-scenarios";
 import { forestPersistenceOverridden } from "./forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 import { accountSceneLevels, economyJourneyAway } from "./economy-scene-state";
+import { interactiveMapObjects } from "./site-interactions";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
@@ -467,6 +468,16 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     resume();
   });
   prepareArtwork();
+  function hitVisiblePet(x: number, y: number) {
+    if (disposed || exploring() || dev?.showHero === false) return false;
+    const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
+    const size = PET_SIZE * (dev?.heroScale ?? 1), actor = clearingActivityFrame(state.clearing);
+    const bush = actor.bush?.occlude && world.bushes?.find(item => item.id === actor.bush!.id);
+    if (bush && pointInPolygon(point, bush.points)) return false;
+    const feetY = actor.y - (actor.lift ?? 0);
+    return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
+      && point.y > feetY - size && point.y < feetY;
+  }
   return {
     position: () => {
       const actor = clearingActivityFrame(state.clearing);
@@ -497,17 +508,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     hitPet(x, y) {
       const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
-      const size = PET_SIZE * (dev?.heroScale ?? 1);
       const actor = clearingActivityFrame(state.clearing);
       if (disposed || exploring() || dev?.showHero === false) return false;
       const home = world.sites.find(site => site.id === "home");
       if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
       const bush = actor.bush?.occupied && world.bushes?.find(item => item.id === actor.bush!.id);
       if (bush && pointInPolygon(point, bush.points)) return true;
-      const feetY = actor.y - (actor.lift ?? 0);
-      return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
-        && point.y > feetY - size && point.y < feetY;
+      return hitVisiblePet(x, y);
     },
+    hitVisiblePet,
     hitSite(point) {
       if (disposed || !art || dev?.showBuildings === false) return null;
       return previewSiteAt(world, point)?.id ?? null;
@@ -515,6 +524,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     siteAnchor(siteId) {
       if (disposed || !art || dev?.showBuildings === false) return null;
       return world.sites.find(site => site.id === siteId)?.anchor ?? null;
+    },
+    mapObjects() {
+      return disposed || !art ? [] : interactiveMapObjects(world, { showBuildings: dev?.showBuildings });
     },
     setTime(now) {
       if (disposed || !Number.isFinite(now)) return;

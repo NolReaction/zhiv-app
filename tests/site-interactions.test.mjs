@@ -7,12 +7,13 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { sitePlace, interactiveSites } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
+const { sitePlace, interactiveSites, interactiveMapObjects, mapObjectAt } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
 const { economyBuildingDestination } = await vite.ssrLoadModule("/features/economy/world-adapter.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { newEconomyState, applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/rules.ts");
 const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/economy-scene-state.ts");
-const { initialPreviewLevels, previewSiteVisual } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+const { initialPreviewLevels, previewSiteVisual, previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+const { default: authoredWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
 
 const freshState = () => newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
 const issue = (state, action, targetId, now) => applyEconomyCommand(state, {
@@ -27,6 +28,55 @@ test("only implemented economic sites receive map shortcuts, including the fores
     ["home", "house"], ["woodlot", "woodlot"], ["workshop", "workshop"], ["quarry", "quarry"],
   ]);
   for (const id of ["bridge", "lighthouse", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
+});
+
+test("object menus use the existing authored polygons and anchors for every map station", () => {
+  const world = previewWorldScene(authoredWorld, initialPreviewLevels(authoredWorld));
+  const source = structuredClone(authoredWorld), objects = interactiveMapObjects(world);
+  assert.deepEqual(objects.map(object => [object.id, object.place]), [
+    ...world.sites.map(site => [site.id, site.id === "home" ? "house" : site.id]),
+    ["clearing-bush", "garden"], ["clearing-campfire", "campfire"],
+  ]);
+  for (const site of world.sites) {
+    const object = objects.find(object => object.id === site.id);
+    assert.equal(object.anchor, site.anchor, `${site.id} follows the committed level's anchor`);
+    assert.equal(object.hitArea, site.hitArea, `${site.id} uses its contour rather than the PNG bounds`);
+    assert.equal(mapObjectAt([object], site.hitArea[0]), object, "polygon edges remain clickable");
+  }
+  const garden = objects.find(object => object.place === "garden");
+  assert.equal(garden.hitArea, world.bushes[0].points);
+  assert.equal(garden.anchor, world.bushes[0].hide);
+  const fire = world.campfires[0], hearth = objects.find(object => object.place === "campfire");
+  assert.equal(hearth.anchor, fire.position);
+  assert.equal(mapObjectAt([hearth], fire.position), hearth);
+  assert.equal(mapObjectAt([hearth], { x: fire.position.x, y: fire.position.y - fire.radius }), hearth,
+    "the visible flame remains a touch target above the ground anchor");
+  assert.equal(mapObjectAt(objects, { x: 0, y: 0 }), null, "blank ground has no invented station");
+  assert.equal(mapObjectAt(objects, { x: NaN, y: 600 }), null);
+  assert.deepEqual(authoredWorld, source, "building registry reads preserve source placement");
+});
+
+test("hidden buildings remove their menus while garden and campfire remain on the map", () => {
+  const world = previewWorldScene(authoredWorld, initialPreviewLevels(authoredWorld));
+  const objects = interactiveMapObjects(world), visibleAgain = interactiveMapObjects(world);
+  assert.equal(visibleAgain, objects, "the immutable committed scene reuses its registry");
+  assert.deepEqual(interactiveMapObjects(world, { showBuildings: false }).map(object => object.place), ["garden", "campfire"]);
+  assert.equal(interactiveMapObjects(world), objects, "DEV visibility cannot mutate the saved registry");
+  for (const place of ["bridge", "lighthouse", "quarry"]) assert.ok(objects.some(object => object.place === place),
+    "planned and locked objects stay visible and can explain their requirements");
+});
+
+test("pending or misplaced explicit bush artwork cannot create a garden on empty ground", () => {
+  const points = [{ x: 20, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 40 }, { x: 20, y: 40 }];
+  const bush = { id: "garden", imageId: "garden-art", points, hide: { x: 30, y: 30 }, entry: { x: 30, y: 45 } };
+  const scene = { sites: [], terrain: [], bushes: [bush] };
+  assert.deepEqual(interactiveMapObjects(scene), []);
+  const misplaced = { ...scene, terrain: [{ id: "garden-art", bounds: { x: 200, y: 200, width: 50, height: 50 } }] };
+  assert.deepEqual(interactiveMapObjects(misplaced), []);
+  const placed = { ...scene, terrain: [{ id: "garden-art", bounds: { x: 10, y: 10, width: 50, height: 50 } }] };
+  assert.equal(mapObjectAt(interactiveMapObjects(placed), bush.hide)?.place, "garden");
+  assert.equal(interactiveMapObjects({ ...scene, bushes: [{ ...bush, imageId: undefined }] })[0].place, "garden",
+    "older baked foliage remains usable without requiring duplicate artwork");
 });
 
 test("shelter clicks follow actual construction and production progress without confirming elapsed jobs", () => {

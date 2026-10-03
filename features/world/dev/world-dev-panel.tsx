@@ -8,6 +8,7 @@ import { TILED_WORLD } from "../presentation";
 import { clearingRouteDiagnostics } from "../clearing-activity";
 import { compileWorldInteractions, WORLD_INTERACTION_LIMITS } from "../interaction-navigation";
 import { previewWorldScene } from "../tiled/preview-state";
+import { interactiveMapObjects, type MapObjectPlace } from "../site-interactions";
 import type { WorldController } from "../use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
@@ -27,6 +28,7 @@ export type WorldDevPanelProps = {
   onOpenStatus?: () => void;
   onOpenWardrobe?: () => void;
   onOpenCollection?: () => void;
+  onOpenObject?: (place: MapObjectPlace) => void;
 };
 type ManualAction = { kind: "scenario"; scenario: WorldDevScenario } | { kind: "pose"; pose: PixelPose } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
 
@@ -149,7 +151,7 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, active = true, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, active = true, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(false);
@@ -216,7 +218,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
     worldDevStore.patch(patch); setFeedback(message);
   }
   function close() { setOpen(false); trigger.current?.focus({ preventScroll: true }); }
-  function shortcut(callback: () => void) { callback(); }
+  function shortcut(callback: () => void) { setOpen(false); callback(); }
   function outfit(slot: "palette" | "head" | "neck", value: string) {
     change({ equipment: { palette: appearance.palette, head: appearance.head, neck: appearance.neck, [slot]: value || null } }, "Примерка включена. Инвентарь сохранён");
   }
@@ -280,6 +282,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
             onScroll={event => { scrollPositions.current[subpage] = event.currentTarget.scrollTop; }}>
             {page === subpage && <WorldDevPanelContent world={world} worldView={worldView} presenceKey={presenceKey}
               onOpenWorld={onOpenWorld} onOpenCalendar={onOpenCalendar} onOpenGame={onOpenGame} onOpenStatus={onOpenStatus} onOpenWardrobe={onOpenWardrobe} onOpenCollection={onOpenCollection}
+              onOpenObject={onOpenObject}
               state={state} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
               heroUnavailable={heroUnavailable} birdsUnavailable={birdsUnavailable} unavailable={unavailable}
               change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} />}
@@ -295,7 +298,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
 }
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
-export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection,
+export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject,
   state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion,
 }: WorldDevPanelProps & {
   state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
@@ -418,7 +421,14 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
           {site.states.map(visual => <option key={visual.level} value={visual.level}>{visual.label} · уровень {visual.level}</option>)}
         </select>
       </Field>)}
-      <p className={styles.hint}>Предпросмотр меняет рисунок, тени и точки подхода уровня. Уровни и покупки аккаунта сохраняются.</p>
+      <p className={styles.hint}>Предпросмотр меняет рисунок, тени и точки подхода уровня. Рецепты, ресурсы и стройка используют настоящий прогресс аккаунта; примерка уровня их не открывает.</p>
+      {onOpenObject && <>
+        <p className={styles.hint}><strong>Меню объектов</strong> · открыть тот же объект, что нажатием на карте.</p>
+        <div className={styles.lifeActions}>
+          {interactiveMapObjects(TILED_WORLD, { showBuildings: state.showBuildings }).map(object => <button key={object.id} type="button"
+            data-dev-object={object.place} onClick={() => shortcut(() => onOpenObject(object.place))}>{object.label}</button>)}
+        </div>
+      </>}
     </>}
     {page === "ai" && <>
       <h3 className={styles.pageTitle}>Мышление и память</h3>

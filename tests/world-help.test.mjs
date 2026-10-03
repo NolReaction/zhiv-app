@@ -55,10 +55,12 @@ test("help has a labelled search, native keyboard-operable topics and current st
   assert.doesNotMatch(markup, /<details[^>]* open=/, "the first visit presents a compact table of contents");
 });
 
-test("world HUD places the labelled info action directly after collections", async () => {
+test("world HUD keeps help visible and moves secondary actions under More", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const world = { snapshot: { state: newWorldState(), gifts: [] }, now: Date.parse("2026-09-23T12:00:00Z"), act() {} };
   const markup = renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
-  assert.match(markup, /aria-label="Открыть коллекции"[^]*?<\/button><button[^>]*aria-label="Справка по игре"/);
+  assert.match(markup, /aria-label="Справка по игре"/);
+  assert.match(markup, /aria-controls="world-more-actions"/);
+  assert.doesNotMatch(markup, /aria-label="Открыть коллекции"/);
   assert.match(markup, /lucide-info/);
 });

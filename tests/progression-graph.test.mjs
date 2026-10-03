@@ -12,7 +12,15 @@ const context = { exports: {}, require: specifier => {
   return { economyCatalog: catalog };
 } };
 vm.runInNewContext(code, context);
-const { progressionGraph: graph, buildProgressionGraph, getPrerequisiteIds } = context.exports;
+const { progressionGraph: graph, buildProgressionGraph, getPrerequisiteIds, buildingLabels, progressionLocations } = context.exports;
+const layoutSource = readFileSync(new URL("../features/progression/layout.ts", import.meta.url), "utf8");
+const layoutCode = ts.transpileModule(layoutSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+const layoutContext = { exports: {}, require: specifier => {
+  assert.equal(specifier, "./graph");
+  return context.exports;
+} };
+vm.runInNewContext(layoutCode, layoutContext);
+const { buildProgressionLayout, NODE_WIDTH, NODE_HEIGHT } = layoutContext.exports;
 const plain = value => JSON.parse(JSON.stringify(value));
 const node = id => graph.nodes.find(value => value.id === id);
 const hasEdge = (source, target, kind) => graph.edges.some(edge => edge.source === source && edge.target === target && edge.kind === kind);
@@ -40,7 +48,7 @@ test("progression contains every catalog building level, recipe and exploration 
   for (const building of catalog.buildings) for (const level of building.levels) {
     const value = node(`b:${building.id}:${level.level}`);
     assert(value, `${building.id} ${level.level}`);
-    assert.equal(value.title, `${building.name} · уровень ${level.level}`);
+    assert.equal(value.title, `${buildingLabels[building.id] || building.name} · уровень ${level.level}`);
     assert.deepEqual(plain(value.cost), level.cost);
     assert.equal(value.seconds, level.seconds);
     if (level.warehouseCapacity) assert.equal(value.warehouseCapacity, level.warehouseCapacity);
@@ -77,8 +85,8 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 138);
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 13);
+  assert.equal(graph.nodes.length, 143);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 14);
 });
 
 test("production and construction retain every house, previous-level and additional building gate", () => {
@@ -127,6 +135,7 @@ test("future bridge and lighthouse proposals cannot gate actual production, coll
   assert.equal(node("lighthouse_ruin").status, "active");
   assert.equal(node("bridge").status, "plan");
   assert.equal(node("lighthouse").status, "plan");
+  assert.equal(node("mine_interior").status, "plan");
   for (const edge of graph.edges.filter(edge => proposed.has(edge.source) || proposed.has(edge.target))) assert.equal(edge.kind, "plan", edge.id);
   for (const value of graph.nodes.filter(value => value.status === "active")) {
     for (const prerequisite of getPrerequisiteIds(graph, value.id)) assert(!proposed.has(prerequisite), `${prerequisite} gates ${value.id}`);
@@ -135,6 +144,97 @@ test("future bridge and lighthouse proposals cannot gate actual production, coll
   for (const id of ["bridge_ruin", "r:make_planks", "r:make_rope", "r:make_tools"]) assert(bridge.has(id));
   assert(!getPrerequisiteIds(graph, "album").has("new_finds"));
   assert(!getPrerequisiteIds(graph, "leaderboard").has("taps"), "Rating flow is not an unlock gate");
+});
+
+test("existing places contain improvements without becoming construction or recipe gates", () => {
+  const expected = {
+    "place:home": ["home", "warehouse"], "place:workshop": ["workshop", "kiln"],
+    bush: ["garden"], campfire: ["dryer"], "place:woodlot": ["woodlot"], "place:quarry": ["quarry"],
+  };
+  assert.equal(graph.nodes.filter(value => value.kind === "location").length, Object.keys(expected).length);
+  for (const [locationId, buildingIds] of Object.entries(expected)) {
+    const place = node(locationId);
+    assert.equal(place.kind, "location");
+    assert.deepEqual(plain(place.requirements), {});
+    assert.equal(place.cost, undefined, "A map object is not a second economic construction");
+    assert.deepEqual(Array.from(place.children).sort(), buildingIds.map(id => `b:${id}:1`).sort());
+    for (const buildingId of buildingIds) {
+      assert(hasEdge(locationId, `b:${buildingId}:1`, "contains"));
+      for (const value of graph.nodes.filter(value => value.buildingId === buildingId)) {
+        assert.equal(value.locationId, locationId);
+        assert(!getPrerequisiteIds(graph, value.id, false).has(locationId), `${locationId} is placement, not a gate for ${value.id}`);
+      }
+    }
+  }
+  assert.equal(node("b:warehouse:1").label, "Кладовая 1");
+  assert.equal(node("b:workshop:1").label, "Верстак 1");
+  assert.equal(node("b:kiln:1").label, "Печь 1");
+  assert.match(node("start").description, /кладовая 1/);
+  assert.doesNotMatch(node("b:woodlot:1").description, /Есть на старте/);
+});
+
+test("new quarry and kiln construction follow home 2 while grandfathered low-level recipes keep their catalog requirements", () => {
+  assert.equal(node("b:quarry:1").requirements.home, 2);
+  assert.equal(node("b:kiln:1").requirements.home, 2);
+  assert.equal(node("b:kiln:1").requirements.workshop, 1);
+  assert.equal(node("b:kiln:1").requirements.quarry, 1);
+  assert(!("quarry" in node("b:home:2").requirements));
+  assert(!getPrerequisiteIds(graph, "b:home:2", false).has("b:quarry:1"));
+  for (const id of ["b:quarry:1", "b:kiln:1", "r:quarry_stone", "r:quarry_stone_overnight", "r:make_charcoal"]) assert.equal(node(id).phase, 2, id);
+  for (const id of ["quarry_stone", "make_charcoal"]) {
+    const recipe = catalog.recipes.find(value => value.id === id);
+    assert.equal(node(`r:${id}`).requirements.home, recipe.requiredHomeLevel, "Display phase must not invent a stronger server recipe requirement");
+  }
+});
+
+test("display phases follow transitive catalog gates without moving unrelated places or inventing new requirements", () => {
+  const changed = structuredClone(catalog);
+  changed.buildings.find(value => value.id === "garden").levels[0].requiredHomeLevel = 2;
+  changed.buildings.find(value => value.id === "dryer").levels[0].requiredBuildings = { garden: 1 };
+  const custom = buildProgressionGraph(changed);
+  const find = id => custom.nodes.find(value => value.id === id);
+  for (const id of ["b:garden:1", "b:dryer:1", "r:grow_berries", "r:dry_berries"]) assert.equal(find(id).phase, 2, id);
+  assert.equal(find("bush").phase, 0, "The existing object itself is not a late-game unlock");
+  assert.equal(find("b:home:2").phase, 2);
+  assert.equal(find("b:woodlot:1").phase, 1);
+  assert.equal(find("r:dry_berries").requirements.home, catalog.recipes.find(value => value.id === "dry_berries").requiredHomeLevel);
+});
+
+test("workbench layout places every node once and groups equipment in one map location without overlapping nodes", () => {
+  const layout = buildProgressionLayout(graph);
+  assert.equal(layout.positions.size, graph.nodes.length);
+  for (const value of graph.nodes) {
+    const position = layout.positions.get(value.id);
+    assert(position, value.id);
+    const section = layout.sections.find(section => section.phase === value.phase);
+    assert(Number.isFinite(position.x) && Number.isFinite(position.y), value.id);
+    assert(position.x >= section.x && position.x + NODE_WIDTH <= section.x + section.width, value.id);
+    assert(position.y >= section.y && position.y + NODE_HEIGHT <= section.y + section.height, value.id);
+    if (value.kind === "building" || value.kind === "recipe") {
+      const group = layout.groups.find(group => group.phase === value.phase && group.locationId === value.locationId);
+      assert(group, `No map location group for ${value.id}`);
+      assert(position.y >= group.y && position.y + NODE_HEIGHT <= group.y + group.height, value.id);
+    }
+  }
+  for (const location of progressionLocations) {
+    assert.equal(layout.groups.filter(group => group.phase === 2 && group.locationId === location.id).length, 1, location.id);
+  }
+  const placed = Array.from(layout.positions.entries());
+  for (let index = 0; index < placed.length; index += 1) for (let other = index + 1; other < placed.length; other += 1) {
+    const [id, first] = placed[index], [otherId, second] = placed[other];
+    assert(first.x + NODE_WIDTH <= second.x || second.x + NODE_WIDTH <= first.x || first.y + NODE_HEIGHT <= second.y || second.y + NODE_HEIGHT <= first.y, `${id} overlaps ${otherId}`);
+  }
+  // Catalog additions with more than three recipes wrap inside the same workbench column.
+  const expanded = structuredClone(catalog);
+  const recipe = expanded.recipes.find(value => value.id === "make_planks");
+  for (let index = 0; index < 5; index += 1) expanded.recipes.push({ ...structuredClone(recipe), id: `extra_planks_${index}` });
+  const extraGraph = buildProgressionGraph(expanded), extraLayout = buildProgressionLayout(extraGraph);
+  assert.equal(extraLayout.positions.size, extraGraph.nodes.length);
+  const section = extraLayout.sections.find(value => value.phase === 1);
+  for (const value of extraGraph.nodes.filter(value => value.kind === "recipe" && value.buildingId === "workshop" && value.level === 1)) {
+    const point = extraLayout.positions.get(value.id);
+    assert(point.x >= section.x && point.x + NODE_WIDTH <= section.x + section.width, value.id);
+  }
 });
 
 test("cost chains are optional for prerequisite inspection and never rewrite the catalog", () => {

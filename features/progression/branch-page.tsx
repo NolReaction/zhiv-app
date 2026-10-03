@@ -4,24 +4,20 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Keyboard
 import { Anchor, Apple, ArrowLeft, ArrowRight, Binoculars, Bird, Blocks, BookOpen, Box, BrickWall, Cable, CalendarDays, Check, CircleCheck, CircleDot, Clock3, Cog, Coins, Combine, Compass, CookingPot, Droplets, Expand, Fence, Fish, FishingHook, FishingRod, Flame, Gem, Gift, GraduationCap, Hammer, Hand, Heart, Home, Hourglass, Info, Layers, Leaf, Logs, MapPinned, Medal, Minus, Mountain, Package, Pickaxe, Plus, RectangleHorizontal, Sailboat, ScrollText, Search, Shell, Ship, Shirt, Sprout, SquareStack, Star, Store, TentTree, TowerControl, TreePine, Trees, Trophy, Warehouse, Waves, Wheat, Wrench, X, Zap, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { getPrerequisiteIds, progressionGraph, progressionItemNames, type ProgressionNode } from "./graph";
+import { buildProgressionLayout, COLUMN_WIDTH, NODE_HEIGHT, NODE_WIDTH, phaseTitles } from "./layout";
 import styles from "./branch-page.module.css";
 
 type Point = { x: number; y: number };
 type Camera = Point & { scale: number };
 type Gesture = { start: Point; camera: Camera; distance?: number; moved: boolean };
 
-const NODE_WIDTH = 148;
-const NODE_HEIGHT = 104;
-const COLUMN_WIDTH = 544;
 const MIN_SCALE = 0.04;
 const MAX_SCALE = 1.8;
-const phaseTitles = ["Начало и торговля", "Дом 1 · первые производства", "Дом 2 · металл и рынок", "Дом 3 · стройматериалы", "Дом 4 · инструменты", "Дом 5 · крупные партии", "Живая поляна и коллекции", "Расширение мира · план"];
-const buildingOrder = ["garden", "woodlot", "quarry", "workshop", "dryer", "kiln", "warehouse"];
-const kindNames: Record<string, string> = { building: "Постройка", recipe: "Производство", exploration: "Вылазка", world: "Мир", collection: "Коллекция", equipment: "Снаряжение", milestone: "Прогресс", market: "Торговля", project: "Будущее мира" };
+const kindNames: Record<string, string> = { location: "Место на карте", building: "Улучшение хозяйства", recipe: "Производство", exploration: "Вылазка", world: "Мир", collection: "Коллекция", equipment: "Снаряжение", milestone: "Прогресс", market: "Торговля", project: "Будущее мира" };
 const buildingIcons: Record<string, LucideIcon> = { home: Home, garden: Sprout, woodlot: Trees, quarry: Pickaxe, workshop: Hammer, dryer: CookingPot, kiln: Flame, warehouse: Warehouse };
 const itemIcons: Record<string, LucideIcon> = { berries: Apple, wood: Logs, stone: CircleDot, ore: Pickaxe, fiber: Wheat, fish: Fish, planks: Layers, rope: Cable, metal_parts: Cog, dried_berries: Apple, smoked_fish: Fish, clay: CookingPot, sand: Hourglass, charcoal: Flame, iron_ingot: RectangleHorizontal, bricks: BrickWall, glass: Gem, hardwood: TreePine, resin: Droplets, cloth: Shirt, beams: Blocks, tools: Wrench, reinforced_parts: Combine, cut_stone: SquareStack };
 const worldIcons: Record<string, LucideIcon> = {
-  start: Sprout, trader: Store, coins: Coins, claimed: CircleCheck, market: Store, living: Leaf, bush: Droplets, campfire: TentTree, wildlife: Bird, bridge_ruin: Fence, lighthouse_ruin: TowerControl, album: BookOpen, forest_set: Leaf, river_set: Shell, explorer_cap: GraduationCap, willow_rod: FishingRod, wardrobe: Shirt, full_collection: Medal, life_marks: Heart, day_streak: CalendarDays, calendar_gifts: Gift, taps: Hand, player_level: Star, tap_streak: Zap, leaderboard: Trophy, achievements: Medal, bridge: Fence, far_bank: MapPinned, regional_trips: Compass, new_finds: Binoculars, shore_site: Waves, boat: Sailboat, port: Anchor, lighthouse: TowerControl, ships: Ship, sea_trips: Waves, orders: ScrollText, new_fruits: Apple, tackle: FishingHook,
+  start: Sprout, trader: Store, coins: Coins, claimed: CircleCheck, market: Store, "place:home": Home, "place:workshop": Hammer, "place:woodlot": Trees, "place:quarry": Pickaxe, living: Leaf, bush: Droplets, campfire: TentTree, wildlife: Bird, bridge_ruin: Fence, lighthouse_ruin: TowerControl, album: BookOpen, forest_set: Leaf, river_set: Shell, explorer_cap: GraduationCap, willow_rod: FishingRod, wardrobe: Shirt, full_collection: Medal, life_marks: Heart, day_streak: CalendarDays, calendar_gifts: Gift, taps: Hand, player_level: Star, tap_streak: Zap, leaderboard: Trophy, achievements: Medal, mine_interior: Pickaxe, bridge: Fence, far_bank: MapPinned, regional_trips: Compass, new_finds: Binoculars, shore_site: Waves, boat: Sailboat, port: Anchor, lighthouse: TowerControl, ships: Ship, sea_trips: Waves, orders: ScrollText, new_fruits: Apple, tackle: FishingHook,
 };
 const explorationIcons: Record<string, LucideIcon> = { forest: TreePine, shore: Fish, forest_camp: Trees, shore_camp: FishingRod, cave: Pickaxe, deep_cave: Mountain, old_woodland: Trees, coastal_deposits: Waves, uplands: Mountain, abandoned_quarry: Pickaxe };
 
@@ -43,37 +39,7 @@ const duration = (seconds: number) => {
 };
 
 const nodeById = new Map(progressionGraph.nodes.map(node => [node.id, node]));
-const graphLayout = (() => {
-  const positions = new Map<string, Point>();
-  const sections: { phase: number; x: number; y: number; width: number; height: number }[] = [];
-  const place = (id: string, x: number, y: number) => {
-    if (nodeById.has(id)) positions.set(id, { x, y });
-  };
-  for (let phase = 0; phase < phaseTitles.length; phase += 1) {
-    const x = 36 + phase * COLUMN_WIDTH;
-    let bottom = 0;
-    if (phase >= 1 && phase <= 5) {
-      place(`b:home:${phase}`, x + 184, 98);
-      for (const [index, buildingId] of buildingOrder.entries()) {
-        const id = `b:${buildingId}:${phase}`;
-        const y = 276 + index * 258;
-        place(id, x + 184, y);
-        const recipes = progressionGraph.nodes.filter(node => node.kind === "recipe" && node.buildingId === buildingId && node.level === phase);
-        recipes.forEach((node, recipeIndex) => place(node.id, x + 18 + recipeIndex * 166 + (3 - recipes.length) * 83, y + 124));
-        bottom = Math.max(bottom, y + (recipes.length ? 228 : 104));
-      }
-      const extra = progressionGraph.nodes.filter(node => node.phase === phase && !positions.has(node.id));
-      extra.forEach((node, index) => place(node.id, x + 18 + (index % 3) * 166, bottom + 62 + Math.floor(index / 3) * 132));
-      bottom += 62 + Math.ceil(extra.length / 3) * 132;
-    } else {
-      const nodes = progressionGraph.nodes.filter(node => node.phase === phase);
-      nodes.forEach((node, index) => place(node.id, x + 18 + (index % 3) * 166, 98 + Math.floor(index / 3) * 164));
-      bottom = 98 + Math.ceil(nodes.length / 3) * 164;
-    }
-    sections.push({ phase, x, y: 34, width: COLUMN_WIDTH - 26, height: bottom + 40 });
-  }
-  return { positions, sections, width: COLUMN_WIDTH * phaseTitles.length + 72, height: Math.max(...sections.map(section => section.height)) + 80 };
-})();
+const graphLayout = buildProgressionLayout(progressionGraph);
 
 function connectionPath(sourceId: string, targetId: string, index: number) {
   const source = graphLayout.positions.get(sourceId);
@@ -115,11 +81,13 @@ export function BranchPage() {
   const markerId = useId().replace(/:/g, "");
   const selected = nodeById.get(selectedId) ?? progressionGraph.nodes[0];
   const prerequisites = useMemo(() => getPrerequisiteIds(progressionGraph, selected.id), [selected.id]);
-  const searchResults = useMemo(() => query.trim() ? progressionGraph.nodes.filter(node => `${node.title} ${node.label} ${kindNames[node.kind] ?? ""} ${node.buildingId === "workshop" ? "верстак" : ""}`.toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU"))).slice(0, 18) : [], [query]);
+  const searchResults = useMemo(() => query.trim() ? progressionGraph.nodes.filter(node => `${node.title} ${node.label} ${kindNames[node.kind] ?? ""} ${node.locationId ? nodeById.get(node.locationId)?.title ?? "" : ""} ${node.buildingId === "quarry" ? "каменоломня" : ""}`.toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU"))).slice(0, 18) : [], [query]);
   const activeCount = progressionGraph.nodes.filter(node => node.status === "active").length;
-  const outgoing = progressionGraph.edges.filter(edge => edge.source === selected.id && edge.kind !== "cost").map(edge => nodeById.get(edge.target)).filter((node): node is ProgressionNode => !!node);
-  const openedNodes = [...new Map([...selected.children.map(id => nodeById.get(id)), ...outgoing].filter((node): node is ProgressionNode => !!node).map(node => [node.id, node])).values()];
-  const incoming = progressionGraph.edges.filter(edge => edge.target === selected.id && edge.kind !== "cost" && (selected.status === "plan" || (edge.kind !== "plan" && nodeById.get(edge.source)?.status === "active"))).map(edge => nodeById.get(edge.source)).filter((node): node is ProgressionNode => !!node);
+  const outgoing = progressionGraph.edges.filter(edge => edge.source === selected.id && edge.kind !== "cost" && edge.kind !== "contains").map(edge => nodeById.get(edge.target)).filter((node): node is ProgressionNode => !!node);
+  const containedNodes = selected.kind === "location" ? selected.children.map(id => nodeById.get(id)).filter((node): node is ProgressionNode => !!node) : [];
+  const openedNodes = [...new Map([...(selected.kind === "location" ? [] : selected.children.map(id => nodeById.get(id))), ...outgoing].filter((node): node is ProgressionNode => !!node).map(node => [node.id, node])).values()];
+  const incoming = progressionGraph.edges.filter(edge => edge.target === selected.id && edge.kind !== "cost" && edge.kind !== "contains" && (selected.status === "plan" || (edge.kind !== "plan" && nodeById.get(edge.source)?.status === "active"))).map(edge => nodeById.get(edge.source)).filter((node): node is ProgressionNode => !!node);
+  const location = selected.locationId ? nodeById.get(selected.locationId) : undefined;
 
   useEffect(() => { if (detailRef.current) detailRef.current.scrollTop = 0; }, [selected.id]);
 
@@ -293,6 +261,7 @@ export function BranchPage() {
         <div ref={canvasRef} className={styles.viewport} data-dragging={dragging || undefined} tabIndex={0} role="region" aria-label="Карта развития. Перетаскивайте для перемещения, колесо для масштаба. Клавиатура: стрелки, плюс, минус, ноль — вся ветка." onPointerDown={startGesture} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={endGesture} onKeyDown={canvasKeys}>
           <div className={styles.graph} style={{ width: graphLayout.width, height: graphLayout.height, transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})` }}>
             {graphLayout.sections.map(section => <div key={section.phase} className={styles.phase} style={{ left: section.x, top: section.y, width: section.width, height: section.height }}><span className={styles.phaseNumber}>{section.phase === 0 ? "СТАРТ" : section.phase < 6 ? `УРОВЕНЬ ${section.phase}` : section.phase === 6 ? "ЖИЗНЬ МИРА" : "БУДУЩЕЕ"}</span><h2>{phaseTitles[section.phase]}</h2></div>)}
+            {graphLayout.groups.map(group => <div key={`${group.phase}:${group.locationId}`} className={styles.locationGroup} style={{ left: group.x, top: group.y, width: group.width, height: group.height }}><span>{group.title} · хозяйство</span></div>)}
             <svg className={styles.connections} viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`} aria-hidden="true"><defs><marker id={markerId} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="context-stroke" /></marker></defs>{progressionGraph.edges.map((edge, index) => {
               const inPath = prerequisites.has(edge.source) && prerequisites.has(edge.target);
               const adjacent = edge.source === selected.id || edge.target === selected.id;
@@ -303,28 +272,30 @@ export function BranchPage() {
               const point = graphLayout.positions.get(node.id);
               if (!point) return null;
               const isSelected = node.id === selected.id;
-              return <button key={node.id} type="button" className={styles.node} style={{ left: point.x, top: point.y }} data-kind={node.kind} data-status={node.status} data-selected={isSelected || undefined} data-prerequisite={!isSelected && prerequisites.has(node.id) || undefined} aria-pressed={isSelected} title={node.title} aria-label={`${node.title}${node.status === "plan" ? ". План развития" : ""}`} onFocus={() => { if (inputMode.current === "keyboard") centerNode(node.id); }} onClick={() => { if (performance.now() >= suppressClickUntil.current) selectNode(node.id); }}>
+              return <button key={node.id} type="button" className={styles.node} style={{ left: point.x, top: point.y }} data-node-id={node.id} data-kind={node.kind} data-status={node.status} data-selected={isSelected || undefined} data-prerequisite={!isSelected && prerequisites.has(node.id) || undefined} aria-pressed={isSelected} title={node.title} aria-label={`${node.title}${node.status === "plan" ? ". План развития" : ""}`} onFocus={() => { if (inputMode.current === "keyboard") centerNode(node.id); }} onClick={() => { if (performance.now() >= suppressClickUntil.current) selectNode(node.id); }}>
                 <span className={styles.nodeIcon} aria-hidden="true"><NodeIcon node={node} /></span>
                 <span className={styles.nodeLabel}>{node.label}</span>
-                {node.status === "plan" ? <span className={styles.nodeBadge}>ПЛАН</span> : node.kind === "building" ? <span className={styles.nodeBadge}>{node.level}</span> : null}
+                {node.status === "plan" ? <span className={styles.nodeBadge}>ПЛАН</span> : node.kind === "location" ? <span className={styles.nodeBadge}>МЕСТО</span> : node.kind === "building" ? <span className={styles.nodeBadge}>{node.level}</span> : null}
                 {isSelected && <Check className={styles.selectedCheck} size={14} aria-hidden="true" />}
               </button>;
             })}
           </div>
         </div>
-        <footer className={styles.boardFooter}><span className={styles.legend}><i />Условия<span className={styles.costKey}><i />Ресурсы</span><span className={styles.planKey}><i />План</span></span><span className={styles.navigationHint}>Перетаскивай · колесо / два пальца — масштаб</span><span>{activeCount} действующих · {progressionGraph.nodes.length - activeCount} планов</span></footer>
+        <footer className={styles.boardFooter}><span className={styles.legend}><i />Условия<span className={styles.locationKey}><i />Внутри места</span><span className={styles.costKey}><i />Ресурсы</span><span className={styles.planKey}><i />План</span></span><span className={styles.navigationHint}>Перетаскивай · колесо / два пальца — масштаб</span><span>{activeCount} действующих · {progressionGraph.nodes.length - activeCount} планов</span></footer>
       </section>
       <aside ref={detailRef} className={styles.details} data-open={detailOpen || undefined} aria-labelledby={detailHeadingId}>
         <div className={styles.detailHeader}><span className={styles.detailIcon} aria-hidden="true"><NodeIcon node={selected} size={30} /></span><div><span>{kindNames[selected.kind] ?? "Мир"}{selected.status === "plan" ? " · План" : ""}</span><h2 id={detailHeadingId}>{selected.title}</h2></div><button type="button" className={styles.closeDetails} aria-label="Закрыть подробности" onClick={() => { setDetailOpen(false); canvasRef.current?.focus(); }}><X size={19} aria-hidden="true" /></button></div>
         <div className={styles.detailContent} key={selected.id}>
           {selected.status === "plan" && <p className={styles.planNotice}>План развития. Игровые требования, цена и таймер ещё не заданы.</p>}
           {selected.description && <p className={styles.description}>{selected.description}</p>}
+          {location && <section><h3>Место на карте</h3><ul className={styles.relatedList}><li>{relatedButton(location)}</li></ul></section>}
+          {containedNodes.length > 0 && <section><h3>{selected.id === "place:home" || selected.id === "place:workshop" ? "Внутри" : "Хозяйство этого места"}</h3><p className={styles.sectionHint}>Это одно место на карте. Каждая возможность улучшается отдельно; наличие места само по себе не открывает все уровни и рецепты.</p><ul className={styles.relatedList}>{containedNodes.map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
           {(requirementNodes.length > 0 || incoming.length > 0) && <section><h3>{selected.status === "plan" ? "Предлагаемые связи" : requirementNodes.length ? "Условия открытия" : "Связи ветки"}</h3>{requirementNodes.length > 0 ? <><p className={styles.sectionHint}>Нужно выполнить все условия</p><ul className={styles.relatedList}>{requirementNodes.map(({ node, buildingId, level }) => <li key={buildingId}>{node ? relatedButton(node) : <span>{buildingId} · {level}</span>}</li>)}</ul></> : <>{selected.id === "claimed" && <p className={styles.sectionHint}>Подходит любой из маршрутов</p>}<ul className={styles.relatedList}>{[...new Map(incoming.map(node => [node.id, node])).values()].map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></>}</section>}
-          {selected.cost && <section><h3>{selected.kind === "building" ? "Стоимость стройки" : "Расход за один цикл"}</h3><ul className={styles.itemList}>{!!selected.cost.coins && <li><Coins size={16} aria-hidden="true" /><button type="button" onClick={() => selectNode("coins", true)}>Монеты</button><strong>{number(selected.cost.coins)}</strong></li>}{Object.entries(selected.cost.items).map(([id, count]) => <li key={id}>{itemSources.get(id) ? <button type="button" onClick={() => selectNode(itemSources.get(id)!, true)} title="Показать, где получить">{progressionItemNames[id] ?? id}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{progressionItemNames[id] ?? id}</span>}<strong>×{number(count)}</strong></li>)}</ul>{!selected.cost.coins && !Object.keys(selected.cost.items).length && <p className={styles.sectionHint}>Без затрат</p>}</section>}
-          {selected.seconds !== undefined && <p className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{selected.kind === "building" ? "Строительство" : "Один цикл"}</span><strong>{duration(selected.seconds)}</strong></p>}
-          {selected.warehouseCapacity && <section><h3>Вместимость склада</h3><p className={styles.capacity}>{number(selected.warehouseCapacity)} <span>предметов</span></p></section>}
+          {selected.cost && <section><h3>{selected.kind === "building" ? "Стоимость обустройства" : "Расход за один цикл"}</h3><ul className={styles.itemList}>{!!selected.cost.coins && <li><Coins size={16} aria-hidden="true" /><button type="button" onClick={() => selectNode("coins", true)}>Монеты</button><strong>{number(selected.cost.coins)}</strong></li>}{Object.entries(selected.cost.items).map(([id, count]) => <li key={id}>{itemSources.get(id) ? <button type="button" onClick={() => selectNode(itemSources.get(id)!, true)} title="Показать, где получить">{progressionItemNames[id] ?? id}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{progressionItemNames[id] ?? id}</span>}<strong>×{number(count)}</strong></li>)}</ul>{!selected.cost.coins && !Object.keys(selected.cost.items).length && <p className={styles.sectionHint}>Без затрат</p>}</section>}
+          {selected.seconds !== undefined && <p className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{selected.kind === "building" ? "Обустройство" : "Один цикл"}</span><strong>{duration(selected.seconds)}</strong></p>}
+          {selected.warehouseCapacity && <section><h3>Вместимость кладовой</h3><p className={styles.capacity}>{number(selected.warehouseCapacity)} <span>предметов</span></p></section>}
           {selected.rewards && Object.keys(selected.rewards).length > 0 && <section><h3>Получишь</h3><ul className={styles.itemList}>{Object.entries(selected.rewards).map(([id, count]) => <li key={id}><span>{progressionItemNames[id] ?? id}</span><strong>×{number(count)}</strong></li>)}</ul></section>}
-          {openedNodes.length > 0 && <section><h3>{selected.kind === "building" ? "Открывает и помогает открыть" : "Продолжение ветки"}</h3>{selected.kind === "building" && <p className={styles.sectionHint}>Для связанных улучшений могут понадобиться другие постройки. Рецепты прошлых уровней остаются доступны.</p>}<ul className={styles.relatedList}>{openedNodes.map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
+          {openedNodes.length > 0 && <section><h3>{selected.kind === "building" ? "Открывает и помогает открыть" : "Продолжение ветки"}</h3>{selected.kind === "building" && <p className={styles.sectionHint}>Для связанных улучшений могут понадобиться другие уровни хозяйства. Рецепты прошлых уровней остаются доступны.</p>}<ul className={styles.relatedList}>{openedNodes.map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
           {selected.rewards && <section><h3>Где нужны эти ресурсы</h3><ul className={styles.relatedList}>{progressionGraph.nodes.filter(node => node.id !== selected.id && Object.keys(node.cost?.items ?? {}).some(id => selected.rewards?.[id])).map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
           <button type="button" className={styles.centerButton} onClick={() => { centerNode(selected.id, 1); setDetailOpen(false); canvasRef.current?.focus(); }}><Expand size={16} aria-hidden="true" />Показать этот узел на схеме</button>
         </div>

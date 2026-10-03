@@ -10,7 +10,7 @@ import { takeOverForestSession } from "./forest-session";
 import glass from "@/components/glass-dialog.module.css";
 import styles from "./mochlik-state.module.css";
 
-type Props = { presenceKey: string };
+type Props = { presenceKey: string; onOpen?: () => void; onCall?: () => void };
 
 const feelingLabels = {
   energy: { title: "Силы", Icon: Sprout, labels: ["Пора передохнуть", "На спокойной волне", "Полон сил"] },
@@ -71,11 +71,11 @@ export function MochlikState(props: Props) {
   return <MochlikStateDialog key={props.presenceKey} {...props} />;
 }
 
-function MochlikStateDialog({ presenceKey }: Props) {
+function MochlikStateDialog({ presenceKey, onOpen, onCall }: Props) {
   const observation = useForestObservation(presenceKey);
   const [open, setOpen] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
-  return <Dialog open={open} onOpenChange={setOpen}>
+  return <Dialog open={open} onOpenChange={next => { if (next) onOpen?.(); setOpen(next); }}>
     <DialogTrigger asChild>
       <button type="button" className={styles.chip}>
         <Leaf size={16} aria-hidden="true" /><span>Как Мохлик?</span><ChevronRight size={15} aria-hidden="true" />
@@ -91,6 +91,7 @@ function MochlikStateDialog({ presenceKey }: Props) {
         </div>
         <DialogDescription className={styles.description}>Его настроение и самочувствие на полянке.</DialogDescription>
         <MochlikStateDetails observation={observation} onTakeOver={() => takeOverForestSession(presenceKey)} />
+        {onCall && <button type="button" className={styles.takeOver} disabled={!observation || observation.paused} onClick={() => { onCall(); setOpen(false); }}><Heart size={16} aria-hidden="true" />Позвать Мохлика</button>}
       </DialogPrimitive.Content>
     </DialogPortal>
   </Dialog>;

@@ -8,14 +8,16 @@ import { drawRouteProps } from "./route-props";
 import { drawBoatWreck, prepareBoatWreck } from "./boat-wreck";
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "./dev/world-dev-store";
-import { sitePlace, type BuildingPlace } from "./site-interactions";
+import { mapObjectAt, type MapObjectPlace } from "./site-interactions";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
-export type WorldPlace = BuildingPlace | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
+export type WorldPlace = MapObjectPlace | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
+export type MapObjectSelection = { place: WorldPlace; objectId: string; x: number; y: number; viewportWidth: number; viewportHeight: number };
+export type MapInteractionCallbacks = { onSelectionChange?: (selection: MapObjectSelection | null) => void };
 export type MapAction = "home" | "pet" | "overview" | "in" | "out";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
-export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}) {
+export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}) {
   let ground: HTMLImageElement;
   const rebuilding = WORLD_PRESENTATION.rebuilding;
   const bounds = rebuilding ? NEW_MAP_BOUNDS : { width: MAP_SIZE, height: MAP_SIZE };
@@ -42,14 +44,15 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let framing: "world" | "home" | "overview" | "manual" = "world";
   let inView = true;
   const home = document.createElement("canvas");
-  type Touch = { initial: Point; position: Point };
+  type Touch = { initial: Point; position: Point; objectId?: string };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
+  let selectedObjectId: string | null = null, selectionKey: string | null = null;
   let readyResolve!: () => void, readyReject!: (error: unknown) => void;
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
-    rendered: () => { if (motionReduced() || dev?.paused) draw(); },
+    rendered: () => { if (motionReduced() || paused()) draw(); else updateSelection(); },
   });
   const abort = () => { disposed = true; habitat.dispose(); readyReject(signal?.reason ?? new DOMException("Aborted", "AbortError")); };
   signal?.addEventListener("abort", abort, { once: true });
@@ -77,6 +80,40 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     boatArt = prepareBoatWreck(image);
     if (!document.hidden && !options.backgrounded && inView && !options.paused) draw();
   }).catch(() => { /* An unavailable prop must not prevent visiting the forest. */ });
+  function projectedSelection(objectId: string): MapObjectSelection | null {
+    const object = habitat.mapObjects?.().find(object => object.id === objectId);
+    if (!object) return null;
+    const point = worldToScreen(object.anchor, camera, view);
+    if (point.x < 0 || point.x > view.width || point.y < 0 || point.y > view.height) return null;
+    return { objectId, place: object.place, x: Math.round(point.x), y: Math.round(point.y),
+      viewportWidth: view.width, viewportHeight: view.height };
+  }
+  function updateSelection(): MapObjectSelection | null {
+    if (disposed) return null;
+    const selection = selectedObjectId ? projectedSelection(selectedObjectId) : null;
+    if (!selection) selectedObjectId = null;
+    const key = selection ? JSON.stringify(selection) : null;
+    if (key !== selectionKey) { selectionKey = key; interactions.onSelectionChange?.(selection); }
+    return selection;
+  }
+  function setSelectedObject(objectId: string | null) {
+    selectedObjectId = objectId;
+    updateSelection();
+  }
+  function activateObject(objectId: string) {
+    const object = habitat.mapObjects?.().find(object => object.id === objectId);
+    if (!object) return false;
+    if (!projectedSelection(objectId)) {
+      framing = "manual";
+      camera = clampCamera({ ...camera, x: object.anchor.x, y: object.anchor.y }, view, bounds, cameraInsets);
+    }
+    selectedObjectId = objectId;
+    const selection = updateSelection();
+    if (!selection) return false;
+    draw();
+    onPlace(selection.place, selection);
+    return true;
+  }
   function draw() {
     if (disposed || !ctx) return;
     const ratio = canvas.width / view.width;
@@ -104,7 +141,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     }
     for (const node of anchors) {
       // Keyboard/touch shortcuts follow the geometry committed with the visible artwork.
-      const anchor = rebuilding ? habitat.siteAnchor?.(node.dataset.siteId ?? "")
+      const anchor = rebuilding ? node.dataset.objectId
+        ? habitat.mapObjects?.().find(object => object.id === node.dataset.objectId)?.anchor
+        : habitat.siteAnchor?.(node.dataset.siteId ?? "")
         : { x: Number(node.dataset.x), y: Number(node.dataset.y) };
       if (!anchor) { node.style.visibility = "hidden"; continue; }
       const point = worldToScreen(anchor, camera, view);
@@ -113,6 +152,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       const smallDetail = node.dataset.kind === "bush" && HOME_AREA.size * camera.zoom < 200;
       node.style.visibility = smallDetail || point.x < -60 || point.y < 0 || point.x > view.width + 60 || point.y > view.height + 50 ? "hidden" : "visible";
     }
+    updateSelection();
   }
   function tick(time: number) {
     raf = 0;
@@ -150,12 +190,27 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   resize();
   const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; visibility(); }); observer.observe(canvas);
   const point = (event: PointerEvent): Point => viewportPoint({ x: event.clientX, y: event.clientY }, canvas.getBoundingClientRect(), view);
+  const markerObjectIds = new Set(anchors.flatMap(node => node.dataset.objectId ? [node.dataset.objectId] : []));
+  function nearestMarkerObject(p: Point): string | undefined {
+    let nearest: string | undefined, distance = Infinity;
+    for (const object of habitat.mapObjects?.() ?? []) {
+      if (!markerObjectIds.has(object.id)) continue;
+      const projected = worldToScreen(object.anchor, camera, view);
+      if (projected.x < -60 || projected.y < 0 || projected.x > view.width + 60 || projected.y > view.height + 50) continue;
+      const candidateDistance = (Math.round(projected.x) - p.x) ** 2 + (Math.round(projected.y) - p.y) ** 2;
+      if (candidateDistance <= 43 ** 2 && candidateDistance < distance) { nearest = object.id; distance = candidateDistance; }
+    }
+    return nearest;
+  }
   const separation = () => { const pair = [...pointers.values()].slice(0, 2); return pair.length === 2 ? Math.hypot(pair[0].position.x - pair[1].position.x, pair[0].position.y - pair[1].position.y) : 0; };
   const midpoint = () => { const pair = [...pointers.values()].slice(0, 2); return { x: (pair[0].position.x + pair[1].position.x) / 2, y: (pair[0].position.y + pair[1].position.y) / 2 }; };
-  function down(event: PointerEvent) {
+  function down(event: PointerEvent, objectId?: string) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (!pointers.size) { travelled = 0; multiTouch = false; cancelled = false; }
-    const p = point(event); pointers.set(event.pointerId, { initial: p, position: p });
+    const p = point(event);
+    // Large touch targets overlap in the phone overview. Resolve the closest
+    // rendered marker, independently of which DOM button received the press.
+    pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined });
     multiTouch ||= pointers.size > 1; canvas.setPointerCapture(event.pointerId); canvas.focus({ preventScroll: true });
   }
   function move(event: PointerEvent) {
@@ -180,10 +235,17 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (!pointers.size && isMapTap(travelled, multiTouch, cancelled)) {
       const world = screenToWorld(p, camera, view);
       if (rebuilding) {
-        if (habitat.hitPet((world.x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width, (world.y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) habitat.notice();
+        const petPoint = { x: (world.x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width,
+          y: (world.y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height };
+        const objects = habitat.mapObjects?.() ?? [];
+        const markerObject = touch.objectId ? objects.find(object => object.id === touch.objectId) : null;
+        const object = mapObjectAt(objects, world);
+        if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); habitat.notice(); }
+        else if (markerObject) activateObject(markerObject.id);
+        else if (object) activateObject(object.id);
         else {
-          const place = sitePlace(habitat.hitSite?.(world));
-          if (place) onPlace(place);
+          setSelectedObject(null);
+          if (habitat.hitPet(petPoint.x, petPoint.y)) habitat.notice();
         }
       } else {
         const { x, y } = worldToHome(world);
@@ -212,6 +274,13 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
   for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.addEventListener(name, end);
   canvas.addEventListener("wheel", wheel, { passive: false }); canvas.addEventListener("keydown", key);
+  // Pointer gestures beginning on an accessible object marker use the same
+  // capture and movement threshold as the canvas; its click is keyboard-only.
+  const markerListeners = anchors.filter(node => node.dataset.objectId).map(node => {
+    const pointerDown = (event: PointerEvent) => down(event, node.dataset.objectId);
+    node.addEventListener?.("pointerdown", pointerDown);
+    return () => node.removeEventListener?.("pointerdown", pointerDown);
+  });
   // Controls may have changed while the scene's selected artwork was loading.
   if (WORLD_DEV_ENABLED) dev = worldDevStore.getSnapshot();
   document.addEventListener("visibilitychange", visibility); visibility();
@@ -228,6 +297,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }) : () => {};
   return {
     control,
+    activateObject,
+    setSelectedObject,
     setTime(now: number) { habitat.setTime(now); },
     update(next: SceneOptions) {
       options = next;
@@ -237,6 +308,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
       disposed = true; cancelAnimationFrame(raf); unsubscribeDev(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      markerListeners.forEach(remove => remove());
       window.removeEventListener?.("online", retryGround); window.removeEventListener?.("focus", retryGround);
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(name, end);

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { LocateFixed, Minus, Plus, LoaderCircle, Scan } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
@@ -10,15 +10,17 @@ import type { GameItemId } from "@/features/game/game-rewards";
 import type { SceneOptions } from "@/features/mochlik/scene";
 import type { EconomySceneBuildings, EconomySceneJourney } from "./economy-scene-state";
 import type { WorldState } from "./model";
-import type { createMapEngine, MapAction, WorldPlace } from "./map-engine";
+import type { createMapEngine, MapAction, MapObjectSelection, WorldPlace } from "./map-engine";
 import { MAP_PLACES } from "./map-layout";
 import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
-import { interactiveSites } from "./site-interactions";
+import { interactiveMapObjects } from "./site-interactions";
 import styles from "./world.module.css";
 
-type Props = { economyJourney?: EconomySceneJourney | null; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace) => void;
+type Props = { economyJourney?: EconomySceneJourney | null; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
+  selectedObjectId?: string | null; onObjectSelection?: (selection: MapObjectSelection | null) => void;
+  openObjectRequest?: { id: number; place: WorldPlace };
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ economyJourney, economyBuildings, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, topHud, bottomHud }: Props) {
+export function WorldScene({ economyJourney, economyBuildings, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
   const time = useRef(now);
@@ -26,6 +28,14 @@ export function WorldScene({ economyJourney, economyBuildings, state, gifts, ite
   const previousWake = useRef(wakeSignal), pendingWake = useRef(0);
   const { lampOn, dusk } = habitatLighting(now, timeZone);
   const latest = useRef({ state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney, economyBuildings });
+  const selection = useRef({ selectedObjectId, onObjectSelection });
+  const objectRequest = useRef(openObjectRequest), handledObjectRequest = useRef<number | null>(null);
+  const applyObjectRequest = useCallback(() => {
+    const request = objectRequest.current;
+    if (!request || handledObjectRequest.current === request.id) return;
+    const object = interactiveMapObjects(TILED_WORLD).find(object => object.place === request.place);
+    if (object && engine.current?.activateObject(object.id)) handledObjectRequest.current = request.id;
+  }, []);
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   useEffect(() => {
@@ -33,6 +43,9 @@ export function WorldScene({ economyJourney, economyBuildings, state, gifts, ite
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     engine.current?.update({ lampOn, dusk, paused: false, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, economyBuildings, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
   }, [state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney, economyBuildings]);
+  useEffect(() => { selection.current = { selectedObjectId, onObjectSelection }; }, [selectedObjectId, onObjectSelection]);
+  useEffect(() => { engine.current?.setSelectedObject(selectedObjectId ?? null); }, [selectedObjectId]);
+  useEffect(() => { objectRequest.current = openObjectRequest; applyObjectRequest(); }, [openObjectRequest, applyObjectRequest]);
   useEffect(() => {
     let disposed = false;
     const abort = new AbortController();
@@ -42,12 +55,13 @@ export function WorldScene({ economyJourney, economyBuildings, state, gifts, ite
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     void import("./map-engine").then(module => {
       if (disposed) return null;
-      return module.createMapEngine(canvas.current!, options(), place => latest.current.onPlace(place), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), abort.signal,
-        { top: topHud.current, bottom: bottomHud.current });
+      return module.createMapEngine(canvas.current!, options(), (place, selection) => latest.current.onPlace(place, selection), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), abort.signal,
+        { top: topHud.current, bottom: bottomHud.current }, { onSelectionChange: value => selection.current.onObjectSelection?.(value) });
     }).then(value => {
       if (!value) return;
       if (disposed) { value.dispose(); return; }
-      engine.current = value; value.update(options()); value.setTime(time.current);
+      engine.current = value; value.update(options()); value.setTime(time.current); value.setSelectedObject(selection.current.selectedObjectId ?? null);
+      applyObjectRequest();
       for (let i = 0; i < pendingWake.current; i++) value.notice(); pendingWake.current = 0;
       setReady(true); setError(null);
     }).catch((error: unknown) => {
@@ -59,21 +73,21 @@ export function WorldScene({ economyJourney, economyBuildings, state, gifts, ite
     });
     const change = () => engine.current?.update(options()); media.addEventListener("change", change);
     return () => { disposed = true; abort.abort(); media.removeEventListener("change", change); engine.current?.dispose(); engine.current = null; };
-  }, [reload, topHud, bottomHud]);
+  }, [reload, topHud, bottomHud, applyObjectRequest]);
   useEffect(() => {
     const taps = Math.max(0, wakeSignal - previousWake.current); previousWake.current = wakeSignal;
     if (engine.current) { for (let i = 0; i < taps; i++) engine.current.notice(); }
     else pendingWake.current += taps;
   }, [wakeSignal]);
   const journey = sceneJourney(state, now);
-  const sites = interactiveSites(TILED_WORLD);
+  const objects = interactiveMapObjects(TILED_WORLD);
   const control = (action: MapAction) => engine.current?.control(action);
   return <div ref={root} className={styles.scene} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
-    {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Постройки на карте">
-      {sites.map(({ site, place }) => <button key={site.id} data-map-anchor data-site-id={site.id} data-kind={place}
-        onClick={() => onPlace(place)} aria-label={`Открыть: ${site.label}`} title={site.label} />)}
+    {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Объекты на карте">
+      {objects.map(({ id, place, label }) => <button key={id} data-map-anchor data-object-id={id} data-kind={place}
+        onClick={event => { if (event.detail === 0) engine.current?.activateObject(id); }} aria-label={`Открыть: ${label}`} aria-expanded={selectedObjectId === id} title={label} />)}
     </div> : <div className={styles.mapAnchors} hidden={!ready}>
       <button data-map-anchor data-kind="house" data-x={MAP_PLACES.house.marker.x} data-y={MAP_PLACES.house.marker.y} onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
       <button data-map-anchor data-kind="bush" data-x={MAP_PLACES.bush.marker.x} data-y={MAP_PLACES.bush.marker.y} onClick={() => engine.current?.visitBush()} aria-label="Позвать Мохлика к кустику" title="Кустик" />

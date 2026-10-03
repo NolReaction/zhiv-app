@@ -164,7 +164,7 @@ test("warehouse shows real occupied, escrow, free and overflow counts and its ne
   assert.ok(button(html, "Расширить склад"));
   const upgrade = render("buildings", controller({ snapshot: state }), "warehouse");
   assert.match(upgrade, /Вместимость склада: 500 предметов/);
-  assert.ok(button(upgrade, "Улучшить до ур. 2: Склад"));
+  assert.ok(button(upgrade, "Улучшить до ур. 2: Кладовая"));
 });
 
 test("full storage leaves ready rewards safe and offers recovery without preventing fitting production", () => {

@@ -47,6 +47,100 @@ test("fresh account starts empty with free garden and exploration, cosmetic memo
   assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: expected.berries * model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, pearls: 0 });
 });
 
+test("new quarry and workshop furnace need home two before spending, while starter gathering stays free", () => {
+  for (const id of ["quarry", "kiln"]) {
+    const p = player(), target = model.economyCatalog.buildings.find(building => building.id === id).levels[0];
+    fixture(p, { coins: target.cost.coins, items: target.cost.items, home: 1, buildings: target.requiredBuildings });
+    const before = read(p);
+    assert.throws(() => issue(p, "start_construction", id), { code: "ECONOMY_HOME_REQUIRED" });
+    assert.deepEqual(read(p), before, "locked construction cannot spend goods, create a job or alter its revision");
+  }
+  const p = player(), fresh = read(p);
+  assert.equal(fresh.buildings.quarry, 0); assert.equal(fresh.buildings.kiln, 0);
+  assert.equal(issue(p, "start_production", "grow_berries").state.wallet.coins, 0);
+  const forest = issue(p, "start_exploration", "forest").state.jobs.find(job => job.kind === "exploration");
+  assert.ok(forest.rewards.stone > 0, "free starter exploration remains an early source of building stone");
+  assert.deepEqual(forest.cost, { coins: 0, items: {} });
+});
+
+test("an empty account reaches home two with bush and forest goods before opening the quarry and furnace", () => {
+  const p = player();
+  let clock = now;
+  const complete = (action, targetId, quantity = 1) => {
+    const started = issue(p, action, targetId, quantity, clock).state;
+    const job = started.jobs.at(-1);
+    clock = Date.parse(job.finishesAt);
+    return issue(p, "claim_job", job.id, 1, clock).state;
+  };
+  assert.deepEqual(read(p).inventory, {});
+  const harvest = complete("start_production", "grow_berries_overnight");
+  issue(p, "sell", "berries", harvest.inventory.berries, clock);
+  complete("start_exploration", "forest_camp");
+  complete("start_construction", "woodlot");
+  complete("start_construction", "workshop");
+  complete("start_exploration", "forest");
+  complete("start_production", "gather_wood");
+  complete("start_production", "make_planks", 6);
+  complete("start_production", "make_rope", 2);
+  const beforeHome = read(p, clock);
+  assert.equal(beforeHome.buildings.home, 1);
+  assert.equal(beforeHome.buildings.quarry, 0); assert.equal(beforeHome.buildings.kiln, 0);
+  assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
+  const upgraded = complete("start_construction", "home");
+  assert.equal(upgraded.buildings.home, 2);
+  assert.equal(upgraded.buildings.quarry, 0); assert.equal(upgraded.buildings.kiln, 0);
+  const listing = trade(p, "create_listing", "fiber", 1, 2, clock).listing;
+  assert.equal(listing.quantity, 1, "home two and a claimed exploration permit trading without a quarry");
+  trade(p, "cancel_listing", listing.id, 1, 0, clock);
+
+  complete("start_exploration", "forest_camp");
+  const mined = complete("start_construction", "quarry");
+  assert.equal(mined.buildings.quarry, 1); assert.equal(mined.buildings.kiln, 0);
+  const equipped = complete("start_construction", "kiln");
+  assert.equal(equipped.buildings.kiln, 1);
+  assert.ok(equipped.wallet.coins >= 0);
+});
+
+test("home two furnace is workshop equipment and existing home one producers and jobs remain usable", () => {
+  const furnace = model.economyCatalog.buildings.find(building => building.id === "kiln").levels[0];
+  const p = player();
+  const row = fixture(p, { home: 2, coins: furnace.cost.coins, items: furnace.cost.items, buildings: { quarry: 1, workshop: 0 } });
+  assert.throws(() => issue(p, "start_construction", "kiln"), { code: "ECONOMY_BUILDING_REQUIRED" });
+  row.state.buildings.workshop = 1;
+  assert.equal(issue(p, "start_construction", "kiln").state.jobs[0].targetLevel, 1);
+
+  const legacy = player();
+  fixture(legacy, { home: 1, coins: 0, items: { wood: 2 }, buildings: { quarry: 1, kiln: 1 } });
+  const reopening = read(legacy);
+  assert.equal(reopening.buildings.quarry, 1); assert.equal(reopening.buildings.kiln, 1);
+  const stone = issue(legacy, "start_production", "quarry_stone").state.jobs.find(job => job.targetId === "quarry");
+  const charcoal = issue(legacy, "start_production", "make_charcoal").state.jobs.find(job => job.targetId === "kiln");
+  const claimed = issue(legacy, "claim_job", charcoal.id, 1, Date.parse(charcoal.finishesAt)).state;
+  assert.equal(claimed.inventory.charcoal, charcoal.rewards.charcoal);
+  assert.deepEqual(claimed.jobs[0], stone);
+  assert.equal(claimed.buildings.home, 1);
+  assert.equal(claimed.buildings.quarry, 1); assert.equal(claimed.buildings.kiln, 1);
+});
+
+test("already paid home one quarry and furnace construction keeps its snapshot and may finish after the new gate", () => {
+  for (const id of ["quarry", "kiln"]) {
+    const p = player(), target = model.economyCatalog.buildings.find(building => building.id === id).levels[0];
+    const row = fixture(p, { home: 1, coins: 17, items: { wood: 5 }, buildings: id === "kiln" ? { quarry: 1 } : {} });
+    const paid = { id: crypto.randomUUID(), kind: "construction", targetId: id, targetLevel: 1, recipeId: null,
+      startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 1000).toISOString(),
+      cost: structuredClone(target.cost), rewards: {}, catalogVersion: 2 };
+    row.state.jobs.push(paid);
+    const before = read(p);
+    assert.deepEqual(before.jobs[0], paid, "catalog changes never rewrite the paid order");
+    assert.throws(() => issue(p, "claim_job", paid.id, 1, now), { code: "ECONOMY_JOB_NOT_READY" });
+    const claimed = issue(p, "claim_job", paid.id, 1, now + 1000).state;
+    assert.equal(claimed.buildings[id], 1);
+    assert.equal(claimed.buildings.home, 1); assert.equal(claimed.buildings.workshop, 0);
+    assert.deepEqual(claimed.wallet, before.wallet); assert.deepEqual(claimed.inventory, before.inventory);
+    assert.deepEqual(claimed.jobs, []);
+  }
+});
+
 test("legacy conversion is modest, monotonic and capped for safe-integer beta balances", () => {
   assert.deepEqual(rules.convertLegacyEconomy({ sparks: 0, wood: 0, stone: 0 }), { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 });
   assert.deepEqual(rules.convertLegacyEconomy({ sparks: 100, wood: 25, stone: 9 }), { version: 1, coinsGranted: 28, woodGranted: 5, stoneGranted: 3 });

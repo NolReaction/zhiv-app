@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Check, Compass, X, Feather, Gem, Hammer, House, Info, Leaf, LockKeyhole, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { ArrowLeft, BookOpen, Check, Compass, X, Feather, Gem, Hammer, House, Info, Leaf, LockKeyhole, MoreHorizontal, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -11,7 +11,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "./world-scene";
 import { collectionCount, workshopLevel, worldCatalog as catalog } from "./model";
-import type { WorldPlace } from "./map-engine";
+import type { MapObjectSelection, WorldPlace } from "./map-engine";
 import styles from "./world.module.css";
 import { WorldJourneys } from "./world-journeys";
 import { WorldFeedback } from "./world-feedback";
@@ -20,18 +20,73 @@ import { economyBuildingDestination, economySceneJourney, economyWorldState } fr
 import { WORLD_PRESENTATION } from "./presentation";
 import { WorldHelp } from "./world-help";
 import { MochlikState } from "./mochlik-state";
+import { WorldObjectMenu } from "@/features/economy/world-object-menu";
 
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "stats" | "help";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
 const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind, shell: Shell, float: FishingHook };
-export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items }: WorldPortalProps) {
+export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
+  const [selection, setSelection] = useState<MapObjectSelection | null>(null);
+  const selectedId = useRef<string | null>(null);
+  const objectReturn = useRef<HTMLElement | null>(null);
+  const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [localNotice, setLocalNotice] = useState(0);
+  const [menuBounds, setMenuBounds] = useState({ top: 144, bottom: 88, left: 12, right: 12 });
+  const worldElement = useRef<HTMLElement>(null), moreElement = useRef<HTMLDivElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const renderedState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
+  const hasWorld = Boolean(world.snapshot);
+  useEffect(() => {
+    if (!hasWorld) return;
+    const measure = () => {
+      const top = topHud.current, bottom = bottomHud.current;
+      if (!top || !bottom) return;
+      // Match camera insets; entrance transforms must not change layout bounds.
+      const padding = getComputedStyle(top);
+      const next = { top: top.offsetHeight, bottom: bottom.offsetHeight, left: Math.max(12, parseFloat(padding.paddingLeft) || 0), right: Math.max(12, parseFloat(padding.paddingRight) || 0) };
+      setMenuBounds(previous => previous.top === next.top && previous.bottom === next.bottom && previous.left === next.left && previous.right === next.right ? previous : next);
+    };
+    const observer = new ResizeObserver(measure);
+    for (const element of [worldElement.current, topHud.current, bottomHud.current]) if (element) observer.observe(element);
+    const frame = requestAnimationFrame(measure);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [hasWorld]);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const outside = (event: PointerEvent) => { if (event.target instanceof Node && !moreElement.current?.contains(event.target)) setMoreOpen(false); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [moreOpen]);
+  const clearObject = useCallback(() => { selectedId.current = null; setSelection(null); }, []);
+  const closeObject = useCallback(() => {
+    clearObject();
+    if (objectReturn.current?.isConnected) objectReturn.current.focus({ preventScroll: true });
+  }, [clearObject]);
+  useEffect(() => {
+    if (!escapeHandlerRef) return;
+    // Radix handles Escape in document capture, before a popover's own key handler.
+    escapeHandlerRef.current = () => {
+      if (moreOpen) { setMoreOpen(false); moreButton.current?.focus(); return true; }
+      if (selection) { closeObject(); return true; }
+      return false;
+    };
+    return () => { escapeHandlerRef.current = null; };
+  }, [escapeHandlerRef, moreOpen, selection, closeObject]);
+  const onObjectSelection = useCallback((next: MapObjectSelection | null) => {
+    if (next === null) { selectedId.current = null; setSelection(null); }
+    else if (selectedId.current === next.objectId) setSelection(next);
+  }, []);
+  const openObject = useCallback((place: WorldPlace) => {
+    setPanel(null); setMoreOpen(false);
+    setOpenObjectRequest(previous => ({ id: (previous?.id ?? 0) + 1, place }));
+  }, []);
   const claim = useRef<{ id: string; owner: string } | null>(null);
   useEffect(() => {
     const pending = claim.current;
@@ -47,13 +102,19 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const panelReturn = useRef<HTMLElement | null>(null);
   const openPanel = useCallback((next: Panel) => {
     if (!WORLD_PRESENTATION.streakDecor && next === "customize") return;
-    if (panel === null) panelReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (panel === null) panelReturn.current = moreElement.current?.contains(document.activeElement) ? moreButton.current : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    clearObject(); setMoreOpen(false);
     setPanel(next);
-  }, [panel]);
+  }, [panel, clearObject]);
   const openEconomy = useCallback((tab: EconomyTab, focusId?: string) => {
     setEconomyTab(tab); setEconomyFocusId(focusId); openPanel("economy");
   }, [openPanel]);
-  const onPlace = useCallback((place: WorldPlace) => {
+  const onPlace = useCallback((place: WorldPlace, object?: MapObjectSelection) => {
+    if (object) {
+      if (!selectedId.current) objectReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      selectedId.current = object.objectId; setSelection(object); setPanel(null); setMoreOpen(false);
+      return;
+    }
     if (place === "journeys") { openPanel("journeys"); return; }
     if (["cave", "fishing", "river", "trail"].includes(place)) { openEconomy("exploration"); return; }
     if (place === "wardrobe") openPanel("wardrobe");
@@ -69,39 +130,46 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const shopLevel = workshopLevel(state);
   const locked = busy || uncertain;
   const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
-  return <section className={styles.world} aria-label="Лес Мохлика">
+  return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика">
     <WorldScene economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
-      onPlace={onPlace} bestStreakDays={bestStreakDays} wakeSignal={wakeSignal} topHud={topHud} bottomHud={bottomHud} />
+      onPlace={onPlace} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
+      bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} worldView active={panel === null}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
-      onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
+      onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header ref={topHud} className={styles.hud}>
       <div className={styles.playerBar}>
         <button id="world-exit" onClick={onClose} aria-label="Вернуться к отметке Я живой"><ArrowLeft size={22} /></button>
         <button className={styles.player} onClick={() => openPanel("stats")} aria-label={`Статистика Мохлика. ${displayName}, уровень ${level}`}>
           <GameLevelIcon level={level} size={23} /><span><strong>{displayName}</strong><small>Уровень {level}</small></span>
         </button>
-        <button className={styles.checkIn} onClick={() => openPanel("collection")} aria-label="Открыть коллекции"><BookOpen size={21} /><span>Коллекции</span></button>
         <button className={styles.helpButton} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={22} aria-hidden="true" /></button>
       </div>
       <div aria-live="polite">{economy.snapshot ? <EconomyBalances wallet={economy.snapshot.wallet} /> : <button onClick={() => openEconomy("overview")}>Хозяйство · {economy.error ? "повторить загрузку" : "загрузка…"}</button>}</div>
     </header>
     {panel === null && <WorldFeedback world={world} />}
+    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={selection.objectId} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onNavigate={openObject} onExplore={() => openEconomy("exploration")} /></div>}
     <div ref={bottomHud} className={styles.bottomHud}>
-      <MochlikState presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} />
       <nav className={styles.gameDock} aria-label="Действия в игре">
-        <button onClick={() => openEconomy("overview")}><Hammer size={23} /><span>Хозяйство</span></button>
-        <button onClick={() => openEconomy("exploration")}><Compass size={23} /><span>В путь</span></button>
-        <button onClick={() => openEconomy("market")}><Store size={23} /><span>Рынок</span></button>
-        <button onClick={() => openPanel("wardrobe")}><Shirt size={23} /><span>Гардероб</span></button>
-        {state.journeys.length > 0 && <button onClick={() => openPanel("journeys")}><BookOpen size={23} /><span>Старые походы</span></button>}
+        <MochlikState presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onOpen={() => { clearObject(); setMoreOpen(false); }} onCall={() => setLocalNotice(value => value + 1)} />
+        <button onClick={() => openEconomy("exploration")}><Compass size={20} /><span>В путь</span></button>
+        <div ref={moreElement} className={styles.moreContainer}>
+          <button ref={moreButton} aria-expanded={moreOpen} aria-controls="world-more-actions" onClick={() => { clearObject(); setMoreOpen(open => !open); }}><MoreHorizontal size={21} /><span>Ещё</span></button>
+          {moreOpen && <div id="world-more-actions" className={styles.moreActions} aria-label="Другие действия">
+            <button onClick={() => openEconomy("market")}><Store size={19} />Рынок</button>
+            <button onClick={() => openPanel("wardrobe")}><Shirt size={19} />Гардероб</button>
+            <button onClick={() => openPanel("collection")}><BookOpen size={19} />Коллекции</button>
+            <button onClick={() => openEconomy("overview")}><Hammer size={19} />Обзор хозяйства</button>
+            {state.journeys.length > 0 && <button onClick={() => openPanel("journeys")}><Compass size={19} />Старые походы</button>}
+          </div>}
+        </div>
       </nav>
     </div>
     <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}>
       <DialogPortal>
       <DialogOverlay className={styles.sheetScrim} />
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.sheet}
-        onCloseAutoFocus={event => { event.preventDefault(); if (panelReturn.current?.isConnected) panelReturn.current.focus(); else document.getElementById("world-exit")?.focus(); }}>
+        onCloseAutoFocus={event => { event.preventDefault(); if (selectedId.current) worldElement.current?.querySelector<HTMLElement>('[role="dialog"][data-place]')?.focus({ preventScroll: true }); else if (panelReturn.current?.isConnected) panelReturn.current.focus(); else document.getElementById("world-exit")?.focus(); }}>
         <div className={styles.sheetHeader}>
           <DialogTitle>{panel === "help" ? "Справка по игре" : panel === "economy" ? "Лесное хозяйство" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : panel === "stats" ? "Мой Мохлик" : "Путешествия"}</DialogTitle>
           <button onClick={() => setPanel(null)} aria-label="Закрыть панель"><X size={21} /></button>
@@ -139,7 +207,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           <dl><div><dt>Домик</dt><dd>{state.houseLevel} / 5</dd></div><div><dt>Мастерская</dt><dd>{state.workshop ? `${shopLevel} / ${economy.snapshot?.catalog.buildings.find(building => building.id === "workshop")?.levels.length ?? 5}` : "Не построена"}</dd></div>
           <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? 0}</dd></div><div><dt>Прежние путешествия</dt><dd>{state.completedJourneys}</dd></div><div><dt>Находки</dt><dd>{collectionCount(state.collection)} / {catalog.finds.length}</dd></div>
           <div><dt>Гардероб</dt><dd>{state.inventory.length} вещей</dd></div><div><dt>Лучшая серия отметок</dt><dd>{bestStreakDays} дн.</dd></div></dl>
-          <button onClick={() => openEconomy("buildings")}><House size={18} />Обустроить дом</button>
+          <button onClick={() => openObject("house")}><House size={18} />Обустроить дом</button>
         </div>}
         {panel === "collection" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ПАМЯТЬ О ПУТЕШЕСТВИЯХ</span><h2>Коллекции <small>{collectionCount(state.collection)}/{catalog.finds.length}</small></h2><p>Здесь сохранены находки из прежних путешествий. Незавершённые походы доступны через «Старые походы». Новые исследования приносят предметы на склад; пополнение альбомов появится отдельно.</p></div>
           {(["forest", "fishing"] as const).map(group => {

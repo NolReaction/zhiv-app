@@ -38,6 +38,110 @@ class EconomyRulesTest {
         assertEquals(1, sold.jobs.size)
     }
 
+    @Test fun `new quarry and kiln construction waits for home two even with enough materials`() {
+        val quarryState = stocked()
+        val kilnState = quarryState.copy(buildings = quarryState.buildings + mapOf("quarry" to 1, "workshop" to 1))
+        for ((target, state) in listOf("quarry" to quarryState, "kiln" to kilnState)) {
+            assertEquals("ECONOMY_HOME_REQUIRED", assertFailsWith<AuthFailure> {
+                apply(state, "start_construction", target)
+            }.code, target)
+            assertEquals(0, state.buildings[target])
+            assertTrue(state.jobs.isEmpty())
+        }
+    }
+
+    @Test fun `a fresh account reaches home two before quarry and then builds quarry and kiln`() {
+        var state = EconomyRules.initial()
+        var at = now
+        fun complete(action: String, target: String, quantity: Long = 1) {
+            val started = apply(state, action, target, quantity, at)
+            val job = started.jobs.single()
+            at = Instant.parse(job.finishesAt)
+            state = apply(started, "claim_job", job.id, at = at)
+        }
+
+        complete("start_production", "grow_berries_overnight")
+        state = apply(state, "sell", "berries", state.inventory.getValue("berries"), at)
+        complete("start_exploration", "forest_camp")
+        complete("start_construction", "woodlot")
+        complete("start_construction", "workshop")
+        complete("start_exploration", "forest")
+        complete("start_production", "gather_wood")
+        complete("start_production", "make_planks", 6)
+        complete("start_production", "make_rope", 2)
+        assertEquals(0, state.buildings["quarry"])
+        assertEquals(0, state.buildings["kiln"])
+        complete("start_construction", "home")
+        assertEquals(2, state.buildings["home"])
+        assertEquals(0, state.buildings["quarry"])
+        assertEquals(0, state.buildings["kiln"])
+
+        complete("start_exploration", "forest_camp")
+        complete("start_construction", "quarry")
+        complete("start_construction", "kiln")
+        assertEquals(1, state.buildings["quarry"])
+        assertEquals(1, state.buildings["kiln"])
+        assertTrue(state.jobs.isEmpty())
+        assertEquals(0L, state.wallet.pearls)
+        assertTrue(EconomyRules.storage(state).overflow == 0L)
+    }
+
+    @Test fun `kiln construction needs claimed quarry and workshop levels after home two`() {
+        val before = stocked().copy(buildings = stocked().buildings + ("home" to 2))
+        for (missing in listOf("quarry", "workshop")) {
+            val locked = before.copy(buildings = before.buildings + mapOf("quarry" to 1, "workshop" to 1) + (missing to 0),
+                jobs = listOf(EconomyJob(UUID.randomUUID().toString(), "construction", missing, targetLevel = 1,
+                    startedAt = now.minusSeconds(60).toString(), finishesAt = now.toString())))
+            assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> {
+                apply(locked, "start_construction", "kiln")
+            }.code, missing)
+            val claimed = apply(locked, "claim_job", locked.jobs.single().id)
+            val started = apply(claimed, "start_construction", "kiln")
+            assertEquals(1, started.jobs.single().targetLevel)
+            assertEquals(0, started.buildings["kiln"])
+        }
+    }
+
+    @Test fun `completed quarry and kiln construction from the former unlocks keeps its paid snapshot`() {
+        for (target in listOf("quarry", "kiln")) {
+            val paidCost = EconomyRules.catalog.buildings.single { it.id == target }.levels.single { it.level == 1 }.cost
+            val job = EconomyJob(UUID.randomUUID().toString(), "construction", target, targetLevel = 1,
+                startedAt = now.minusSeconds(3600).toString(), finishesAt = now.toString(),
+                cost = paidCost, catalogVersion = 2)
+            val before = EconomyRules.initial().copy(wallet = EconomyWallet(17),
+                inventory = mapOf("wood" to 5L), jobs = listOf(job),
+                buildings = EconomyRules.initial().buildings + ("quarry" to if (target == "kiln") 1 else 0))
+            val claimed = apply(before, "claim_job", job.id)
+            assertEquals(1, claimed.buildings[target])
+            assertEquals(1, claimed.buildings["home"])
+            assertEquals(0, claimed.buildings["workshop"])
+            assertEquals(before.wallet, claimed.wallet)
+            assertEquals(before.inventory, claimed.inventory)
+            assertTrue(claimed.jobs.isEmpty())
+        }
+    }
+
+    @Test fun `existing home one quarry and kiln keep producing and claiming their locked rewards`() {
+        val existing = EconomyRules.initial().copy(buildings = EconomyRules.initial().buildings + mapOf("quarry" to 1, "kiln" to 1),
+            inventory = mapOf("wood" to 4L))
+        for (recipe in listOf("quarry_stone", "quarry_stone_overnight", "make_charcoal")) {
+            val started = apply(existing, "start_production", recipe)
+            val job = started.jobs.single()
+            val claimed = apply(started, "claim_job", job.id, at = Instant.parse(job.finishesAt))
+            assertEquals(existing.buildings, claimed.buildings)
+            for ((item, quantity) in job.rewards)
+                assertEquals((started.inventory[item] ?: 0L) + quantity, claimed.inventory[item], recipe)
+        }
+
+        val lockedJob = EconomyJob(UUID.randomUUID().toString(), "production", "kiln", "make_charcoal",
+            startedAt = now.minusSeconds(1800).toString(), finishesAt = now.toString(),
+            rewards = mapOf("charcoal" to 7L), cost = EconomyCost(items = mapOf("wood" to 2L)), catalogVersion = 2)
+        val claimed = apply(existing.copy(jobs = listOf(lockedJob)), "claim_job", lockedJob.id)
+        assertEquals(7L, claimed.inventory["charcoal"])
+        assertEquals(existing.inventory["wood"], claimed.inventory["wood"])
+        assertEquals(existing.buildings, claimed.buildings)
+    }
+
     @Test fun `conversion is bounded monotonic preserves buildings and never grants premium currency`() {
         assertEquals(EconomyMigration(coinsGranted = 0, woodGranted = 0, stoneGranted = 0), EconomyRules.legacyConversion(0, 0, 0))
         val small = EconomyRules.initial(100, 81, 49, 4, 2)
