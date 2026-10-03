@@ -245,7 +245,7 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
     setLastAction(action);
   }
 
-  return <aside className={styles.root} aria-label="Инструменты разработчика">
+  return <aside className={styles.root} data-world-view={worldView || undefined} aria-label="Инструменты разработчика">
     <div className={styles.toolbar}>
       {lastAction && <button type="button" className={styles.repeat} disabled={Boolean(repeatUnavailable)}
         aria-label={`Повторить: ${repeatLabel}`} title={repeatUnavailable ?? repeatLabel} onClick={() => play(lastAction)}><RotateCcw size={15} aria-hidden />Повторить</button>}

@@ -42,6 +42,17 @@ test("help uses current catalog rules and marks unavailable mechanics while rebu
   assert.doesNotMatch(worldHelpTopics(false).find(topic => topic.id === "journeys").paragraphs.join(" "), /временно недоступны|началось раньше/);
 });
 
+test("help directs each map action to its focused menu", () => {
+  const topics = worldHelpTopics(), text = id => topics.find(topic => topic.id === id).paragraphs.join(" ");
+  assert.match(text("level"), /уровень слева сверху.*профиль.*самочувствие/);
+  assert.match(text("resources"), /Кладовая.*отдельное меню запасов/);
+  assert.match(text("journeys"), /В путь.*только исследования/);
+  assert.match(text("journeys"), /таймер с названием постройки/);
+  assert.match(text("journeys"), /в меню «Ещё» появятся «Старые походы»/);
+  assert.match(text("saving"), /профиль кнопкой уровня.*Продолжить здесь/);
+  assert.doesNotMatch(topics.flatMap(topic => [...(topic.steps ?? []), ...(topic.paragraphs ?? []), topic.note ?? ""]).join(" "), /Как Мохлик\?/);
+});
+
 test("help has a labelled search, native keyboard-operable topics and current status", () => {
   const markup = renderToStaticMarkup(createElement(WorldHelp));
   const inputId = /<input id="([^"]+)"/.exec(markup)?.[1];
@@ -60,9 +71,14 @@ test("world HUD keeps help visible and moves secondary actions under More", asyn
   const world = { snapshot: { state: newWorldState(), gifts: [] }, now: Date.parse("2026-09-23T12:00:00Z"), act() {} };
   const markup = renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
   assert.match(markup, /aria-label="Справка по игре"/);
-  assert.match(markup, /aria-controls="world-more-actions"/);
+  assert.match(markup, /data-world-quick="more" aria-haspopup="dialog" aria-expanded="false"/);
   assert.match(markup, /aria-label="Открыть кладовую"/);
   assert.doesNotMatch(markup, /aria-label="Открыть коллекции"/);
+  assert.match(markup, /aria-label="Профиль Мохлика\. Мохлик, уровень 1"/);
+  const dock = /<nav[^>]*aria-label="Действия в игре"[^>]*>([\s\S]*?)<\/nav>/.exec(markup)?.[1];
+  assert.ok(dock);
+  assert.deepEqual([...dock.matchAll(/data-world-quick="([^"]+)"/g)].map(match => match[1]), ["pantry", "expeditions", "more"]);
+  assert.doesNotMatch(markup, /Как Мохлик\?|Хозяйство/);
   assert.match(markup, /lucide-info/);
 });
 
@@ -73,6 +89,7 @@ test("pantry shortcut is visible before opening a building and includes reserved
   const economy = { snapshot: { wallet: { coins: 150, pearls: 2 }, buildings: { home: 1, warehouse: 1 }, jobs: [], storage: { used: 180, reserved: 20, capacity: 200, available: 0, overflow: 0 } }, now: world.now };
   const markup = renderToStaticMarkup(createElement(WorldView, { world, economy, ownerPublicId: "pantry-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
   assert.match(markup, /aria-label="Кладовая: занято 200 из 200 мест" data-full="true"/);
-  assert.match(markup, /Кладовая<small>200 \/ 200<\/small>/);
+  assert.match(markup, /<span>Кладовая<\/span>/);
+  assert.doesNotMatch(markup, /200 \/ 200/, "capacity stays in the accessible label and pantry rather than enlarging the dock");
   assert.doesNotMatch(markup, /data-upgrade-station/);
 });

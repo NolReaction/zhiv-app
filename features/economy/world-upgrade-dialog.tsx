@@ -55,14 +55,14 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     </div>}
     <div className={styles.unlockGroups}>
       {!!groupedUpgrades.length && <div className={styles.unlockGroup} data-wide={stationId === "home" || undefined}><h4>Развитие хозяйства</h4><ul>{groupedUpgrades.map(upgrade => <li key={upgrade.stationId}><UnlockLabel icon={stationIcons[upgrade.stationId] ?? Hammer} onClick={navigation?.canOpen(upgrade.stationId) ? () => navigation.open(upgrade.stationId) : undefined}>{upgrade.name} · ур. {levelLabel(upgrade.levels)}</UnlockLabel></li>)}</ul></div>}
-      {!!unlocks.recipes.length && <div className={styles.unlockGroup}><h4>Рецепты</h4>{stationId === "home" ? <><p className={styles.recipeCount}>Новых рецептов: <strong>{unlocks.recipes.length}</strong></p><p className={styles.muted}>По мере обустройства производств.</p></> : <ul>{unlocks.recipes.map(recipe => {
+      {!!unlocks.recipes.length && <div className={styles.unlockGroup}><h4>Рецепты</h4>{stationId === "home" ? <p className={styles.recipeCount}>Новых рецептов: <strong>{unlocks.recipes.length}</strong></p> : <ul>{unlocks.recipes.map(recipe => {
         const itemId = Object.keys(recipe.rewards)[0];
         return <li key={recipe.id}><span className={styles.recipeIcon}><ProductIcon itemId={itemId ?? ""} size={16} /></span><span>{recipe.name}</span></li>;
       })}</ul>}</div>}
       {!!unlocks.routes.length && <div className={styles.unlockGroup}><h4>Исследования</h4><ul>{unlocks.routes.map(route => <li key={route.id}><UnlockLabel icon={Compass} onClick={navigation?.explore}>{route.name}</UnlockLabel></li>)}</ul></div>}
       {unlocks.market && <div className={styles.unlockGroup}><h4>Торговля</h4><ul><li><UnlockLabel icon={Store}>Рынок между игроками</UnlockLabel></li></ul>{state.catalog.market.requiredExplorations > 0 && <p className={styles.muted}>Также нужно полученных исследований: {state.catalog.market.requiredExplorations}.</p>}</div>}
     </div>
-    {hasConditions && <p className={styles.muted}>Этот уровень выполняет одно из условий. Для новых рецептов, построек и маршрутов могут понадобиться другие улучшения.</p>}
+    {hasConditions && <p className={styles.muted}>Для открытия также могут потребоваться другие постройки и улучшения.</p>}
   </section>;
 }
 
@@ -85,18 +85,18 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
 
   return <>
     <header className={styles.header}>
-      <span className={styles.buildingIcon}><Icon size={27} strokeWidth={1.7} aria-hidden="true" /></span>
-      <div className={styles.heading}><span className={styles.eyebrow}>{stationId === "home" ? "Развитие дома" : "Развитие хозяйства"}</span><Dialog.Title data-upgrade-heading tabIndex={-1}>{name}</Dialog.Title><Dialog.Description>{!state ? "Уровни, условия и стоимость улучшения." : construction ? "Улучшение уже оплачено. Здесь можно следить за работой и завершить её." : target ? "Следующий уровень: возможности, условия и стоимость." : "Ваш текущий уровень и возможности постройки."}</Dialog.Description></div>
+      <span className={styles.buildingIcon}><Icon size={22} strokeWidth={1.7} aria-hidden="true" /></span>
+      <div className={styles.heading}>
+        <Dialog.Title data-upgrade-heading tabIndex={-1}>{name}</Dialog.Title>
+        <Dialog.Description className={styles.srOnly}>{!state ? "Уровни, условия и стоимость улучшения." : construction ? "Улучшение уже оплачено. Здесь можно следить за работой и завершить её." : target ? "Следующий уровень: возможности, условия и стоимость." : "Ваш текущий уровень и возможности постройки."}</Dialog.Description>
+        {state ? <div className={styles.levels}><span>{current ? `Уровень ${current}` : "Не обустроено"}</span>{target ? <><ArrowRight size={12} aria-hidden="true" /><strong>Уровень {target.level}</strong></> : <strong><Check size={12} aria-hidden="true" />Максимум</strong>}</div> : <span className={styles.muted}>Загружаем хозяйство…</span>}
+      </div>
       <button type="button" className={styles.close} aria-label="Закрыть окно улучшения" onClick={onClose}><X size={19} aria-hidden="true" /></button>
     </header>
-    <div className={styles.levelBar}>
-      {state ? <div className={styles.levels}><span>{current ? `Уровень ${current}` : "Не обустроено"}</span>{target ? <><ArrowRight size={16} aria-hidden="true" /><strong>Уровень {target.level}</strong></> : <strong><Check size={14} aria-hidden="true" />Максимум</strong>}</div> : <span className={styles.muted}>Загружаем хозяйство…</span>}
-      {stationId === "home" && onOpenPantry && <button type="button" className={styles.pantry} onClick={onOpenPantry}><Package size={16} aria-hidden="true" />Кладовая<ArrowRight size={13} aria-hidden="true" /></button>}
-    </div>
+    {readyEconomy && construction && <section className={styles.activeWork} aria-label="Ход улучшения"><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><p className={styles.muted}>Материалы оплачены. Работа продолжится после выхода.</p></section>}
     <div className={styles.body}>
       {!state ? <div className={styles.loading} role="status"><RefreshCw size={24} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={menuStyles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые улучшения доступны после подтверждения." : economy.error}</p><button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
-        {economy.notice && <p className={menuStyles.notice} role="status"><Check size={14} aria-hidden="true" />{economy.notice}</p>}
         {readyEconomy && job?.kind === "production" && <section className={styles.section} aria-label="Текущий заказ"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите заказ</h3><Work economy={readyEconomy} job={job} openPantry={onOpenPantry} /></section>}
         {target ? <>
           {!construction && <section className={`${styles.section} ${styles.costCard}`} aria-label="Подготовка к улучшению">
@@ -105,16 +105,16 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
             {!!missing.length && <div className={styles.conditions}><h4><LockKeyhole size={14} aria-hidden="true" />Сначала потребуется</h4><Requirements state={state} required={required} navigation={navigation} /></div>}
           </section>}
           <UpgradeUnlocks state={state} stationId={stationId} target={target} navigation={navigation} />
-        </> : <section className={`${styles.section} ${styles.complete}`}><span className={styles.completeIcon}><Check size={28} aria-hidden="true" /></span><h3>Все улучшения получены</h3><p>{building?.description ?? "Эта постройка достигла максимального уровня."}</p>{stationId === "warehouse" && <p>Вместимость кладовой — {number(state.storage.capacity)} предметов.</p>}</section>}
+        </> : <section className={`${styles.section} ${styles.complete}`}><span className={styles.completeIcon}><Check size={22} aria-hidden="true" /></span><h3>Все улучшения получены</h3><p>{building?.description ?? "Эта постройка достигла максимального уровня."}</p>{stationId === "warehouse" && <p>Вместимость кладовой — {number(state.storage.capacity)} предметов.</p>}</section>}
       </>}
     </div>
-    <footer className={styles.footer}>
-      {readyEconomy && construction ? <><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><p className={styles.muted}>Материалы уже списаны. Работа продолжится после выхода.</p></> : state && target ? <>
+    {!construction && <footer className={styles.footer}>
+      {state && target ? <>
         {(pendingReason || reason) && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{pendingReason ?? reason}</p>}
         <div className={styles.confirmRow}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>Время улучшения<strong>{worldDuration(target.seconds)}</strong></span></span><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={() => void economy.act("start_construction", stationId)}><Hammer size={17} aria-hidden="true" />{current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
         {!pendingReason && !reason && <p className={styles.muted}>Монеты и материалы спишутся при запуске.</p>}
       </> : <button type="button" className={styles.done} onClick={onClose}>{state ? "Готово" : "Вернуться на карту"}</button>}
-    </footer>
+    </footer>}
   </>;
 }
 

@@ -156,16 +156,16 @@ test("map menu is compact and nonmodal with place-specific production rather tha
   assert.match(html, /aria-label="Вырастить ягоды/);
   assert.doesNotMatch(html, /aria-label="[^\"]*(Выплавить|Доски|Рыбу)/);
   assert.equal(disabled(button(render("workshop"), "Верстак")), false);
-  assert.equal(disabled(button(renderUpgrade("home"), "Кладовая")), false);
+  assert.doesNotMatch(renderUpgrade("home"), /<button[^>]*>[^<]*Кладовая/);
   assert.doesNotMatch(html, /Начать ·/);
 });
 
-test("busy, uncertain and retry cooldown block claims while station navigation remains available", () => {
+test("busy, uncertain and retry cooldown block claims while closing remains available", () => {
   const state = snapshot({ jobs: [job({ kind: "construction", targetId: "home", recipeId: null, targetLevel: 2, rewards: {}, finishesAt: new Date(now).toISOString() })] });
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 10_000 }]) {
     const html = renderUpgrade("home", controller({ snapshot: state, ...flags }));
     assert.equal(disabled(button(html, "Завершить")), true);
-    assert.equal(disabled(button(html, "Кладовая")), false);
+    assert.match(html, /<button(?![^>]*disabled)[^>]*aria-label="Закрыть окно улучшения"/);
   }
 });
 

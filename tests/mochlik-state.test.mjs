@@ -74,25 +74,16 @@ test("switching accounts remounts the dialog and initial trigger has an accessib
   assert.doesNotMatch(markup, /aria-live/);
 });
 
-test("home has no state button; the map button stays outside taps and inside the measured HUD", async () => {
-  for (const [path, world] of [["features/check-in/check-in-app.tsx", false], ["features/world/world-view.tsx", true]]) {
+test("home and map omit the separate character-state trigger", async () => {
+  for (const path of ["features/check-in/check-in-app.tsx", "features/world/world-view.tsx"]) {
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     const tree = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    let found = false;
     const visit = node => {
-      if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(tree) === "MochlikState") {
-        found = true;
-        const ancestors = [];
-        for (let parent = node.parent; parent; parent = parent.parent) {
-          if (ts.isJsxElement(parent)) ancestors.push(parent.openingElement);
-        }
-        assert.ok(ancestors.every(element => element.tagName.getText(tree) !== "button"), "no nested interactive control");
-        assert.ok(ancestors.every(element => !element.attributes.getText(tree).includes("handleGameAreaPointerDown")), "status taps must stay outside the game tap handler");
-        if (world) assert.ok(ancestors.some(element => element.attributes.getText(tree).includes("ref={bottomHud}")), "camera must reserve room for the visible status");
+      if (ts.isJsxSelfClosingElement(node)) {
+        assert.notEqual(node.tagName.getText(tree), "MochlikState", "state belongs in the profile, without another map button");
       }
       ts.forEachChild(node, visit);
     };
     visit(tree);
-    assert.equal(found, world);
   }
 });

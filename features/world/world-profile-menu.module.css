@@ -1,0 +1,28 @@
+.profile, .profile * { box-sizing: border-box; }
+.profile { display: grid; gap: 15px; min-width: 0; color: #e1ead8; }
+.identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.identity > div { min-width: 0; }
+.levelIcon { display: grid; place-items: center; flex: 0 0 46px; width: 46px; height: 46px; border: 1px solid #c3dca728; border-radius: 15px; background: #b8d79b0b; }
+.identity h2 { margin: 0; font-size: 1rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.identity p { margin: 3px 0 0; color: #afc09f; font-size: .75rem; }
+.mood { padding-top: 13px; border-top: 1px solid #bdd3aa20; }
+.mood > span { color: #a9bc99; font-size: .6875rem; }
+.mood h3 { margin: 3px 0 0; font-size: .875rem; font-weight: 600; line-height: 1.4; }
+.feelings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin: 0; }
+.feelings > div { min-width: 0; }
+.feelings dt { display: flex; align-items: center; gap: 5px; color: #a9bc99; font-size: .6875rem; }
+.feelings dt svg { flex-shrink: 0; }
+.feelings dd { margin: 4px 0 0; font-size: .75rem; line-height: 1.4; overflow-wrap: anywhere; }
+.stats { display: grid; gap: 9px; margin: 0; padding-top: 14px; border-top: 1px solid #bdd3aa20; font-size: .75rem; }
+.stats > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.stats dt { min-width: 0; color: #a9bc99; }
+.stats dd { flex-shrink: 0; margin: 0; font-variant-numeric: tabular-nums; }
+.memory, .waiting { margin: 0; color: #97aa88; font-size: .6875rem; line-height: 1.5; }
+.memory p { margin: 0; }
+.memory[data-warning] { padding: 10px; border: 1px solid #d8bd7a40; border-radius: 11px; background: #caaa5810; color: #ddceaa; }
+.memory .action { width: 100%; margin-top: 8px; }
+.action { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 12px; border: 1px solid #c3dca745; border-radius: 12px; background: #344b2a; color: #edf5e4; font: inherit; font-size: .75rem; line-height: 1.4; cursor: pointer; touch-action: manipulation; }
+.action:hover:enabled { background: #405c33; }
+.action:focus-visible { outline: 2px solid #cee5b8; outline-offset: 3px; }
+.action:disabled { opacity: .45; cursor: default; }
+@media (max-width: 360px) { .profile { gap: 12px; } .feelings { gap: 10px 12px; } }

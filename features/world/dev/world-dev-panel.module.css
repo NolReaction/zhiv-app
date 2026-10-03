@@ -189,3 +189,7 @@
 .scenarioList button[data-last-run="true"] { border-color: #96be86; background: rgba(75,106,60,.35); }
 .scenarioList button span { font-size: 12px; line-height: 1.45; opacity: .8; }
 .scenarioList button:focus-visible { outline: 2px solid #b9dfa8; outline-offset: 2px; }
+
+/* The map measures its compact HUD, including an active construction indicator. */
+.root[data-world-view="true"] { top: var(--quick-top, calc(80px + env(safe-area-inset-top))); }
+.root[data-world-view="true"] .drawer { height: min(700px, calc(100dvh - var(--quick-top, 80px) - 70px - env(safe-area-inset-bottom))); }

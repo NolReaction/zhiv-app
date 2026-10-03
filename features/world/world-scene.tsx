@@ -16,11 +16,11 @@ import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { interactiveMapObjects } from "./site-interactions";
 import styles from "./world.module.css";
 
-type Props = { economyJourney?: EconomySceneJourney | null; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
+type Props = { hideJourneyStatus?: boolean; hideMapControls?: boolean; economyJourney?: EconomySceneJourney | null; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
   selectedObjectId?: string | null; onObjectSelection?: (selection: MapObjectSelection | null) => void;
   openObjectRequest?: { id: number; place: WorldPlace };
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ economyJourney, economyBuildings, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
+export function WorldScene({ hideJourneyStatus = false, hideMapControls = false, economyJourney, economyBuildings, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
   const time = useRef(now);
@@ -94,15 +94,15 @@ export function WorldScene({ economyJourney, economyBuildings, state, gifts, ite
       <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />
       <button data-map-anchor data-kind="fishing" data-x={MAP_PLACES.fishing.marker.x} data-y={MAP_PLACES.fishing.marker.y} onClick={() => onPlace("fishing")} aria-label="Открыть рыбалку" title="Рыбалка" />
     </div>}
-    <div className={styles.cameraControls} aria-label="Управление картой">
+    <div className={styles.cameraControls} hidden={hideMapControls} aria-label="Управление картой">
       <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>
       <button onClick={() => control("out")} disabled={!ready} aria-label="Отдалить карту"><Minus size={19} /></button>
       <button onClick={() => control("overview")} disabled={!ready} aria-label="Показать всю карту" title="Вся карта"><Scan size={19} /></button>
       <button onClick={() => control("pet")} disabled={!ready} aria-label="Найти Мохлика" title="Найти Мохлика"><LocateFixed size={19} /></button>
     </div>
-    {economyJourney && <button className={styles.away} onClick={() => onPlace("cave")} aria-label="Открыть исследование Мохлика">
+    {!hideJourneyStatus && economyJourney && <button className={styles.away} onClick={() => onPlace("cave")} aria-label="Открыть исследование Мохлика">
       <span>{economyJourney.label ?? "Исследование"} · {now >= Date.parse(economyJourney.finishesAt) ? "Мохлик вернулся — забрать находки" : `${Math.max(1, Math.ceil((Date.parse(economyJourney.finishesAt) - now) / 60000))} мин до возвращения`}</span>
     </button>}
-    {!economyJourney && journey && <button className={styles.away} onClick={() => onPlace("journeys")} aria-label="Открыть текущее путешествие"><JourneyProgress journey={journey} equipment={state.equipment} now={now} /></button>}
+    {!hideJourneyStatus && !economyJourney && journey && <button className={styles.away} onClick={() => onPlace("journeys")} aria-label="Открыть текущее путешествие"><JourneyProgress journey={journey} equipment={state.equipment} now={now} /></button>}
   </div>;
 }

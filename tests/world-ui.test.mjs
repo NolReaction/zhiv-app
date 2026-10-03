@@ -188,7 +188,7 @@ test("the rod stays in the leading hand and beside the face on both walking legs
 });
 
 
-test("map exposes the new economy while retaining legacy journey collection", async () => {
+test("map keeps focused actions and retains collection of saved legacy journeys", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const { WorldJourneys } = await vite.ssrLoadModule("/features/world/world-journeys.tsx");
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
@@ -197,8 +197,9 @@ test("map exposes the new economy while retaining legacy journey collection", as
   const economy = { snapshot: null, market: null, now: world.now, busy: false, uncertain: false, error: null, notice: "", retryAt: 0, act() {}, actMarket() {}, retry() {}, refresh() {}, refreshMarket() {} };
   const props = { world, economy, ownerPublicId: "test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 30 };
   const markup = renderToStaticMarkup(createElement(WorldView, props));
-  assert.match(markup, /aria-controls="world-more-actions"/);
-  assert.match(markup, /Хозяйство/); assert.match(markup, /В путь/);
+  assert.match(markup, /data-world-quick="more" aria-haspopup="dialog" aria-expanded="false"/);
+  assert.match(markup, /В путь/); assert.match(markup, /Кладовая/);
+  assert.doesNotMatch(markup, /Хозяйство|Как Мохлик\?/);
   for (const place of ["house", "garden", "campfire", "workshop", "quarry", "woodlot", "bridge", "lighthouse"]) {
     assert.match(markup, new RegExp(`data-kind="${place}"`), "production and upgrades are reached through map objects");
   }

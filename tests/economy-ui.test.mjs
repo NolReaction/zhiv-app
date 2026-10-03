@@ -32,6 +32,18 @@ const button = (html, text) => {
   assert.ok(found, `Missing button: ${text}`); return found;
 };
 const disabled = entry => /\bdisabled=/.test(entry.attributes);
+
+test("standalone map market keeps trade actions without the old economy hub or repeated wallet", () => {
+  const html = renderToStaticMarkup(createElement(EconomyPanel, {
+    initialTab: "market", standalone: true, onNavigate() {},
+    economy: controller({ notice: "DEV: Дом Мохлика — уровень 2" }),
+  }));
+  assert.match(html, /aria-label="Рынок между игроками"/);
+  assert.doesNotMatch(html, /Разделы хозяйства|aria-label="Кошелёк"|DEV: Дом Мохлика/);
+  assert.ok(button(html, "Продолжить обустройство"));
+  assert.match(html, /Лесной рынок/);
+});
+
 function job(overrides = {}) {
   return { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "production", targetId: "garden", recipeId: "grow_berries", targetLevel: null,
     startedAt: new Date(now - 100_000).toISOString(), finishesAt: new Date(now + 500_000).toISOString(),

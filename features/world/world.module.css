@@ -13,17 +13,6 @@
 .scene > canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 .scene > canvas:active { cursor: grabbing; }
 .sceneLoading { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); width: min(340px, 80%); border: 1px solid #c1d59340; border-radius: 16px; background: #152017ef; padding: 18px; text-align: center; font-size: 1rem; }
-.hud { position: absolute; top: 0; left: 0; right: 0; z-index: 3; padding: calc(12px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 36px max(12px, env(safe-area-inset-left)); pointer-events: none; background: linear-gradient(#0d180dc9, transparent); }
-.playerBar { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; }
-.playerBar > button { pointer-events: auto; min-width: 44px; box-shadow: 0 4px 14px #0610073d; }
-.playerBar .player { min-width: 0; max-width: none; height: 56px; justify-content: flex-start; gap: 9px; padding: 7px 12px; }
-.player > svg { flex-shrink: 0; }
-.player > span { min-width: 0; text-align: left; display: grid; gap: 1px; }
-.player strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .875rem; }
-.player small { font-size: .75rem; color: #b4c49c; }
-.playerBar .checkIn { width: 100%; height: 56px; margin: 0; padding: 8px; color: #e5efc9; }
-.playerBar .helpButton { width: 44px; height: 56px; padding: 8px; }
-@media (max-width: 380px) { .playerBar .checkIn { width: 44px; } .playerBar .checkIn span { display: none; } .playerBar .player { padding: 7px 8px; gap: 6px; } }
 .balances { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 8px auto 0; width: fit-content; max-width: 100%; border: 1px solid #d9e8b324; border-radius: 12px; background: #172619eb; padding: 7px 12px; box-shadow: 0 4px 14px #06100733; }
 .balances > span { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; min-width: 0; }
 .balances > span + span { border-left: 1px solid #d4e4b42c; }
@@ -39,23 +28,12 @@
 .world .mapAnchors button:hover { background: transparent; border: 0; }
 .mapAnchors button:hover::after, .mapAnchors button:focus-visible::after { transform: rotate(45deg) scale(1.25); box-shadow: 0 0 0 3px #14231799, 0 0 10px var(--place-color); }
 .cameraControls { position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: calc(90px + env(safe-area-inset-bottom)); display: grid; gap: 6px; }
+.cameraControls[hidden] { display: none; }
 .cameraControls button { width: 44px; padding: 8px; background: #132018eb; }
 @media (max-width: 380px) and (max-height: 680px) { .cameraControls { display: flex; bottom: calc(72px + env(safe-area-inset-bottom)); } }
 .away { position: absolute; top: calc(120px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 90px); font-size: .875rem; }
-.bottomHud { position: absolute; bottom: 0; left: 0; right: 0; z-index: 3; display: grid; justify-items: center; gap: 8px; padding: 32px 12px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, #0d180dbd); pointer-events: none; }
-.bottomHud button { pointer-events: auto; }
-.bottomHud .goalChip { min-height: 40px; padding: 7px 13px; border-radius: 12px; background: #172316e8; font-size: .875rem; box-shadow: 0 3px 12px #06100755; }
-.goalChip > svg:first-child { color: #d0dea2; }
-.gameDock { display: flex; align-items: center; justify-content: center; max-width: 100%; gap: 6px; }
-.gameDock button { display: inline-flex; justify-content: center; gap: 6px; min-height: 44px; min-width: 0; padding: 8px 12px; border-radius: 16px; background: #1b2b1cec; box-shadow: inset 0 1px #f1f9ce17, 0 4px 14px #07110655; font-size: .8rem; }
-.gameDock svg { color: #d2dfaa; }
 .objectLayer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .mapAnchors button { touch-action: none; }
-.moreContainer { position: relative; }
-.moreActions { position: absolute; bottom: calc(100% + 10px); right: 0; display: grid; gap: 4px; width: 216px; max-height: min(360px, 55dvh); overflow-y: auto; padding: 8px; border: 1px solid #adbf854f; border-radius: 18px; background: #17241af5; box-shadow: 0 8px 32px #07110677; pointer-events: auto; }
-.gameDock .moreActions button { justify-content: flex-start; background: transparent; box-shadow: none; border-color: transparent; border-radius: 10px; }
-.gameDock .moreActions button:hover { background: #35482c; }
-@media (max-width: 359px) { .gameDock button { padding: 8px; font-size: .75rem; } .gameDock > button:first-child svg:last-child { display: none; } }
 .feedback { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(148px + env(safe-area-inset-bottom)); width: min(440px, calc(100% - 100px)); pointer-events: none; z-index: 4; font-size: .875rem; }
 .feedback > p { margin: 0; border-radius: 12px; padding: 10px 13px; border: 1px solid #dae4b134; background: #142319ed; text-align: center; line-height: 1.5; }
 .feedback button { pointer-events: auto; }
@@ -135,11 +113,10 @@
 @media (max-width: 640px) {
   .sheet[data-slot='dialog-content'] { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; height: min(76dvh, 780px); max-height: calc(100dvh - 60px - env(safe-area-inset-top)); border-radius: 24px 24px 0 0; border-bottom: 0; }
   .sheetBody { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
-  .playerBar .player { flex: 1; }
   .balances > span { padding: 0 6px; }
 }
-@media (max-width: 359px) { .playerBar .checkIn span { display: none; } .collection { grid-template-columns: 1fr; } .balances { padding: 7px 5px; } }
-@media (max-height: 500px) { .goalChip { display: none !important; } .hud { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 12px; } .playerBar .player, .playerBar .helpButton { height: 44px; } .gameDock { width: auto; } .gameDock button { min-height: 44px; display: flex; font-size: .75rem; } .cameraControls { bottom: 75px; display: flex; } .bottomHud { justify-items: start; padding-top: 12px; } .away { top: 105px; } .feedback { bottom: 75px; } }
+@media (max-width: 359px) { .collection { grid-template-columns: 1fr; } .balances { padding: 7px 5px; } }
+@media (max-height: 500px) { .cameraControls { bottom: 75px; display: flex; } .away { top: 105px; } .feedback { bottom: 75px; } }
 @media (prefers-reduced-motion: reduce) { .portal[data-state], .sheet[data-state] { animation: none; clip-path: none; } .world *, .sheet * { transition: none !important; } }
 
 .sheetScrim[data-slot='dialog-overlay'] { z-index: 90; background: #06100970; }
@@ -147,9 +124,7 @@
 /* World-only motion; never inherit the centered modal transform utilities. */
 .portalScrim[data-slot='dialog-overlay'] { animation-duration: 650ms; background: #0610095c; }
 .portal[data-state='open'] .scene { animation: terrain-arrive 950ms cubic-bezier(.22,.65,.25,1) both; transform-origin: var(--portal-x, 50%) var(--portal-y, 50%); }
-.portal[data-state='open'] .hud, .portal[data-state='open'] .bottomHud { animation: hud-arrive 500ms ease 350ms both; }
 @keyframes terrain-arrive { from { transform: scale(1.055); } to { transform: scale(1); } }
-@keyframes hud-arrive { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
 .scene .away { border: 0; padding: 0; background: none; min-height: 46px; top: calc(112px + env(safe-area-inset-top)); }
 .routeChooser { overflow: hidden; margin: 8px 0 14px; border-radius: 16px; border: 1px solid #c9dca438; background: #152418; }
 .routeChooser > img { display: block; width: 100%; height: clamp(115px, 20dvh, 190px); object-fit: cover; image-rendering: pixelated; }
@@ -169,16 +144,7 @@
 .feedback[data-collapsed='true'] button { width: 44px; padding: 8px; }
 .sheet .feedback { position: relative; inset: auto; transform: none; width: 100%; margin-top: 12px; }
 .sheet .feedback[data-collapsed='true'] { width: 44px; margin-left: auto; }
-.statsPanel { padding: 16px 0; }
-.statsIdentity { display: grid; justify-items: center; gap: 9px; }
-.statsIdentity h2 { font-size: 1.25rem; overflow-wrap: anywhere; }
-.statsIdentity > span { font-size: .875rem; color: #c7d7ac; }
-.statsPanel dl { margin: 22px 0; display: grid; gap: 0; }
-.statsPanel dl > div { display: flex; gap: 16px; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #b4c89422; font-size: .875rem; }
-.statsPanel dt { color: #b6c5a6; }
-.statsPanel dd { margin: 0; text-align: right; }
-.statsPanel > button { width: 100%; }
-@media (prefers-reduced-motion: reduce) { .portal .scene, .portal .hud, .portal .bottomHud, .notice, .notice i { animation: none !important; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .portal .scene, .notice, .notice i { animation: none !important; transform: none; } }
 
 .sceneLoading p { display: grid; justify-items: center; gap: 10px; margin: 0 0 8px; }
 .loadingSpinner { animation: loading-spin 1.5s linear infinite; }
@@ -202,17 +168,3 @@
 .fishingModes { grid-template-columns: repeat(var(--mode-count, 4), minmax(0, 1fr)); }
 .albumHeading { margin: 4px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 18px; }
 .albumReward { display: flex; align-items: center; gap: 8px; color: #dece98; font-size: 14px; }
-
-.gameDock .pantryShortcut { border-color: #adbf8559; }
-.pantryShortcut > span { display: grid; gap: 1px; text-align: left; }
-.pantryShortcut small { color: #b9cca3; font-size: 10px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.gameDock .pantryShortcut[data-full="true"] { border-color: #c99f67; }
-.pantryShortcut[data-full="true"] small { color: #f0c58f; }
-@media (max-width: 520px) {
-  .gameDock { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: min(420px, 100%); align-items: stretch; gap: 5px; }
-  .gameDock > button, .gameDock > .moreContainer > button { flex-direction: column; width: 100%; height: 100%; min-height: 62px; padding: 6px 3px; gap: 3px; font-size: 11px; line-height: 1.25; }
-  .gameDock > button:first-child svg:last-child { display: none; }
-  .pantryShortcut > span { text-align: center; }
-  .pantryShortcut small { font-size: 9px; }
-}
-@media (max-width: 380px) and (max-height: 680px) { .cameraControls { bottom: calc(94px + env(safe-area-inset-bottom)); } }

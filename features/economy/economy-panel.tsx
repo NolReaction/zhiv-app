@@ -407,7 +407,7 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
 }
 
 /** Account-owned controller survives closing this body; the caller owns the accessible dialog. */
-export function EconomyPanel({ economy, initialTab = "overview", initialFocusId }: { economy: EconomyController; initialTab?: EconomyTab; initialFocusId?: string }) {
+export function EconomyPanel({ economy, initialTab = "overview", initialFocusId, standalone = false, onNavigate }: { economy: EconomyController; initialTab?: EconomyTab; initialFocusId?: string; standalone?: boolean; onNavigate?: Navigate }) {
   const [tab, setTab] = useState<EconomyTab>(initialTab);
   const [focusId, setFocusId] = useState<string | undefined>(initialFocusId);
   const panel = useRef<HTMLElement>(null);
@@ -415,17 +415,18 @@ export function EconomyPanel({ economy, initialTab = "overview", initialFocusId 
   const cooldown = Math.max(0, Math.ceil((retryAt - now) / 1000));
   const controller = snapshot ? { ...economy, snapshot, busy: busy || cooldown > 0 } : null;
   const navigate: Navigate = (next, target) => {
+    if (standalone && next !== initialTab && onNavigate) { onNavigate(next, target); return; }
     setTab(next);
     setFocusId(target);
     // The dialog supplies the scrolling body; a new section starts at its top.
     const scrollBody = panel.current?.parentElement;
     if (scrollBody && scrollBody.scrollHeight > scrollBody.clientHeight) scrollBody.scrollTop = 0;
   };
-  return <section ref={panel} className={styles.panel} aria-label="Хозяйство Мохлика" aria-busy={busy}>
-    {snapshot && <EconomyBalances wallet={snapshot.wallet} />}
-    <nav className={styles.navigation} aria-label="Разделы хозяйства">{tabs.map(({ id, label, Icon }) => <button key={id} aria-current={tab === id ? "page" : undefined} onClick={() => navigate(id)}><Icon size={16} aria-hidden />{label}</button>)}</nav>
+  return <section ref={panel} className={styles.panel} aria-label={standalone && initialTab === "market" ? "Рынок между игроками" : "Хозяйство Мохлика"} aria-busy={busy}>
+    {snapshot && !standalone && <EconomyBalances wallet={snapshot.wallet} />}
+    {!standalone && <nav className={styles.navigation} aria-label="Разделы хозяйства">{tabs.map(({ id, label, Icon }) => <button key={id} aria-current={tab === id ? "page" : undefined} onClick={() => navigate(id)}><Icon size={16} aria-hidden />{label}</button>)}</nav>}
     {(error || uncertain) && <div className={styles.notice} data-kind={uncertain ? "pending" : "error"} role="alert"><CircleHelp size={18} aria-hidden /><div><p>{uncertain ? "Проверяем последнее действие. Новые операции станут доступны после подтверждения." : error}</p><button disabled={busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button></div></div>}
-    {notice && !error && !uncertain && <p role="status" className={styles.notice}><Check size={18} aria-hidden />{notice}</p>}
+    {!standalone && notice && !error && !uncertain && <p role="status" className={styles.notice}><Check size={18} aria-hidden />{notice}</p>}
     {!controller ? !error && <div className={styles.stack} role="status"><p className={styles.muted}>Открываем ваше хозяйство…</p><div className={styles.skeleton} aria-hidden /><div className={styles.skeleton} aria-hidden /></div>
       : <div className={styles.stack} key={tab}>
         {tab === "overview" && <Overview economy={controller} navigate={navigate} />}
