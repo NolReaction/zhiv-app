@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Check, ChevronDown, Clock3, Coins, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
+import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyJob, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { ProductIcon, itemName, locked, number, stationName } from "./world-economy-parts";
@@ -32,7 +33,7 @@ const routeIcon = (id: string): LucideIcon => expeditionSectors.find(sector => s
 const canPrepare = (state: EconomyView, route: Route) => worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, route.cost).length === 0;
 
 function Findings({ state, rewards, compact = false }: { state: EconomyView; rewards: Record<string, number>; compact?: boolean }) {
-  return <span className={styles.findings} data-compact={compact || undefined} role="list" aria-label="Находки">{Object.entries(rewards).map(([id, quantity]) => <span role="listitem" key={id} title={itemName(state, id)}><ProductIcon itemId={id} size={15} /><span className={styles.resourceName}>{itemName(state, id)}</span><strong>×{number(quantity)}</strong></span>)}</span>;
+  return <span className={styles.findings} data-compact={compact || undefined} role="list" aria-label="Находки">{Object.entries(rewards).map(([id, quantity]) => <span role="listitem" key={id} title={itemName(state, id)}><ProductIcon itemId={id} size={18} /><span className={styles.resourceName}>{itemName(state, id)}</span><strong>×{number(quantity)}</strong></span>)}</span>;
 }
 
 function ActiveExpedition({ economy, state, job, onOpenPantry }: Pick<WorldExpeditionsMenuProps, "economy" | "onOpenPantry"> & { state: EconomyView; job: EconomyJob }) {
@@ -56,7 +57,7 @@ function RouteDetails({ route, state, economy, exploring, onOpenPantry, onNaviga
   const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || exploring;
   return <div className={styles.detail}>
     {missing.length > 0 && <ul className={styles.requirements} aria-label="Условия открытия">{missing.map(({ id, level }) => <li key={id}><LockKeyhole size={12} aria-hidden="true" />{onNavigateStation ? <button type="button" className={styles.link} onClick={() => onNavigateStation(id)}>{stationName(state, id)} · нужен ур. {level}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{stationName(state, id)} · нужен ур. {level}</span>}</li>)}</ul>}
-    {route.cost.coins > 0 || Object.keys(route.cost.items).length > 0 ? <div className={styles.provisions}><span className={styles.caption}>С собой</span><ul aria-label="Припасы для вылазки">{route.cost.coins > 0 && <li data-missing={state.wallet.coins < route.cost.coins || undefined}><Coins size={15} aria-hidden="true" /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(route.cost.coins)}</strong></li>}{Object.entries(route.cost.items).map(([id, quantity]) => <li key={id} data-missing={(state.inventory[id] ?? 0) < quantity || undefined}><ProductIcon itemId={id} size={15} /><span>{itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(quantity)}</strong></li>)}</ul></div> : <p className={styles.free}><Check size={12} aria-hidden="true" />Без затрат</p>}
+    {route.cost.coins > 0 || Object.keys(route.cost.items).length > 0 ? <div className={styles.provisions}><span className={styles.caption}>С собой</span><ul aria-label="Припасы для вылазки">{route.cost.coins > 0 && <li data-missing={state.wallet.coins < route.cost.coins || undefined}><ItemIcon itemId="coins" size={16} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(route.cost.coins)}</strong></li>}{Object.entries(route.cost.items).map(([id, quantity]) => <li key={id} data-missing={(state.inventory[id] ?? 0) < quantity || undefined}><ProductIcon itemId={id} size={18} /><span>{itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(quantity)}</strong></li>)}</ul></div> : <p className={styles.free}><Check size={12} aria-hidden="true" />Без затрат</p>}
     {tooLarge ? <div className={styles.warning}><p>Находки займут {number(findings)} мест, вместимость — {number(state.storage.capacity)}.</p><button type="button" className={styles.link} onClick={onNavigateStation ? () => onNavigateStation("warehouse") : onOpenPantry}>Расширить кладовую<ArrowRight size={12} aria-hidden="true" /></button></div> : state.storage.available < findings && <button type="button" className={styles.storageHint} onClick={onOpenPantry}><Package size={13} aria-hidden="true" /><span>К возвращению нужно {number(findings)} мест · свободно {number(state.storage.available)}</span><ArrowRight size={12} aria-hidden="true" /></button>}
     {exploring ? <p className={styles.caption}>Следующая вылазка — после получения находок.</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || locked(economy)} onClick={() => void economy.act("start_exploration", route.id)} aria-label={`Отправиться: ${route.name}`}>Отправиться · {worldDuration(route.seconds)}<ArrowRight size={13} aria-hidden="true" /></button></div>}
   </div>;

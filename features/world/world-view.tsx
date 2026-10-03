@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowLeft, BookOpen, Check, Compass, X, Feather, Gem, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, Compass, X, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -10,7 +10,9 @@ import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "./world-scene";
-import { collectionCount, worldCatalog as catalog } from "./model";
+import { worldCatalog as catalog } from "./model";
+import { WorldCollections } from "./world-collections";
+import { ItemIcon } from "@/features/items/item-icon";
 import type { MapObjectSelection, WorldPlace } from "./map-engine";
 import styles from "./world.module.css";
 import { WorldJourneys } from "./world-journeys";
@@ -32,7 +34,6 @@ type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | 
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
-const findIcons = { leaf: Leaf, feather: Feather, sparkles: Sparkles, gem: Gem, wind: Wind, shell: Shell, float: FishingHook };
 export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
@@ -282,7 +283,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         {panel === "wardrobe" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ХАРАКТЕР В ДЕТАЛЯХ</span><h2>Твой Мохлик</h2><p>Одежда и оттенки мха видны и здесь, и в круглой кнопке.</p></div>
           <div className={styles.wardrobe}>{catalog.items.map(item => {
             const owned = state.inventory.includes(item.id), equipped = Object.values(state.equipment).includes(item.id);
-            return <article key={item.id} className={styles.item} data-owned={owned}><span className={styles.itemSwatch} style={{ background: item.color }}><span>{item.slot === "palette" ? <Leaf /> : item.slot === "head" ? <Compass /> : item.slot === "rod" ? <FishingHook /> : <Shirt />}</span></span>
+            return <article key={item.id} className={styles.item} data-owned={owned}><span className={styles.itemSwatch} style={{ background: `${item.color}26` }}><ItemIcon itemId={item.id} size={38} /></span>
               <div><h3>{item.name}</h3><p>{item.slot === "palette" ? "Цвет мха" : item.slot === "head" ? "Головной убор" : item.slot === "rod" ? "Снаряжение для рыбалки" : "Шарф"}</p></div>
               {owned ? <button disabled={locked || equipped && item.slot === "palette"} onClick={() => act("equip", equipped ? `remove_${item.slot}` : item.id)}>{equipped ? item.slot === "palette" ? "Выбран" : item.slot === "rod" ? "Убрать" : "Снять" : item.slot === "rod" ? "Взять" : "Надеть"}</button>
                 : item.id === "explorer_cap" || item.id === "willow_rod" ? <span className={styles.kicker}><LockKeyhole size={13} />{item.id === "willow_rod" ? "За коллекцию рыбалки" : "За лесной альбом"}</span>
@@ -290,27 +291,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
             </article>;
           })}</div>
         </div>}
-        {panel === "collection" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ПАМЯТЬ О ПУТЕШЕСТВИЯХ</span><h2>Коллекции <small>{collectionCount(state.collection)}/{catalog.finds.length}</small></h2><p>Здесь сохранены находки из прежних путешествий. Незавершённые походы доступны через «Старые походы». Новые исследования приносят предметы на склад; пополнение альбомов появится отдельно.</p></div>
-          {(["forest", "fishing"] as const).map(group => {
-            const finds = catalog.finds.filter(find => find.group === group);
-            const reward = group === "forest" ? "explorer_cap" : "willow_rod";
-            return <section key={group} className={styles.panel}>
-              <h3 className={styles.albumHeading}>{group === "forest" ? "Лесной альбом" : "Находки рыболова"}<small>{finds.filter(find => state.collection.includes(find.id)).length}/6</small></h3>
-              <p className={styles.albumReward}>{state.inventory.includes(reward) ? <Check size={16} /> : group === "forest" ? <Compass size={16} /> : <FishingHook size={16} />}{group === "forest" ? "Шляпа следопыта" : "Ивовая удочка"}{state.inventory.includes(reward) ? " · получена" : " · за все 6 находок"}</p>
-              <div className={styles.collection}>{finds.map(find => {
-                const owned = state.collection.includes(find.id), Icon = findIcons[find.symbol as keyof typeof findIcons] ?? Leaf;
-                const fishing = catalog.routes.some(route => route.id.startsWith("fishing_") && route.finds.includes(find.id));
-                return <article key={find.id} className={styles.find} data-owned={owned}><Icon size={32} /><h3>{find.name}</h3><p>{find.description}</p><span className={styles.kicker}>{owned ? <><Check size={13} />В альбоме</> : fishing ? <><Fish size={13} />{WORLD_PRESENTATION.rebuilding ? "Рыбалка · новые выходы закрыты" : "На рыбалке · любой режим"}</> : WORLD_PRESENTATION.rebuilding ? "Прогулка · новые выходы закрыты" : "На лесной прогулке · 5 или 10 мин"}</span></article>;
-              })}</div>
-            </section>;
-          })}
-          <p className={styles.hint}>Завершено путешествий: {state.completedJourneys}. Находки остаются навсегда.</p>
-          {WORLD_PRESENTATION.streakDecor && <details className={styles.details}><summary>Подарки Мохлику · {snapshot.gifts.length}/{GAME_ITEMS.length}</summary>
-            <div className={styles.collection}>{GAME_ITEMS.map(item => <article className={styles.find} data-owned={snapshot.gifts.includes(item.id)} key={item.id}>
-              <h3>{item.title}</h3><span className={styles.kicker}>{snapshot.gifts.includes(item.id) ? (state.hiddenGifts ?? []).includes(item.id) ? "Хранится в коллекции" : "Украшает домик" : `За ${item.days} дней отметок подряд`}</span>
-            </article>)}</div>
-          </details>}
-        </div>}
+        {panel === "collection" && <WorldCollections state={state} gifts={snapshot.gifts} />}
 
           <WorldFeedback world={world} />
         </div>

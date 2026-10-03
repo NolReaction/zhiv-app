@@ -1,7 +1,7 @@
 "use client";
 import { useState, type CSSProperties } from "react";
 import Image from "next/image";
-import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, FlaskConical, Gem, Leaf, LockKeyhole, Sparkles, Trees } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, FlaskConical, LockKeyhole, Sparkles } from "lucide-react";
 import { worldCatalog as catalog, type WorldResources } from "./model";
 import type { WorldController } from "./use-world";
 import { JourneyProgress } from "./journey-progress";
@@ -9,12 +9,13 @@ import { WORLD_ART } from "./art";
 import { WORLD_PRESENTATION } from "./presentation";
 import { journeyPhaseLabel } from "./journey-timeline";
 import styles from "./world.module.css";
+import { ItemIcon, CollectionIcon } from "@/features/items/item-icon";
 
 export function Materials({ cost }: { cost: WorldResources }) {
   return <span className={styles.materials}>
     {cost.sparks > 0 && <span><Sparkles size={14} aria-hidden />{cost.sparks}<span className={styles.sr}> искр</span></span>}
-    {cost.wood > 0 && <span><Trees size={14} aria-hidden />{cost.wood}<span className={styles.sr}> древесины</span></span>}
-    {cost.stone > 0 && <span><Gem size={14} aria-hidden />{cost.stone}<span className={styles.sr}> камня</span></span>}
+    {cost.wood > 0 && <span><ItemIcon itemId="wood" size={18} />{cost.wood}<span className={styles.sr}> древесины</span></span>}
+    {cost.stone > 0 && <span><ItemIcon itemId="stone" size={18} />{cost.stone}<span className={styles.sr}> камня</span></span>}
   </span>;
 }
 export function WorldJourneys({ world, destination, onClaim, allowStart = !WORLD_PRESENTATION.rebuilding }: { world: WorldController; destination: "trail" | "river"; onClaim?: (id: string) => void; allowStart?: boolean }) {
@@ -60,7 +61,7 @@ export function WorldJourneys({ world, destination, onClaim, allowStart = !WORLD
       return <article className={styles.card} key={route.id}>
         <div className={styles.cardTop}><h3>{route.name}</h3><span className={styles.kicker}><Clock3 size={14} />{route.seconds / 60} мин</span></div>
         <Materials cost={route} />
-        <div className={styles.routeFinds}>{route.finds.map(id => <span key={id}>{state.collection.includes(id) ? <Check size={12} /> : <Leaf size={12} />}{catalog.finds.find(find => find.id === id)?.name}</span>)}</div>
+        <div className={styles.routeFinds}>{route.finds.map(id => <span key={id}><CollectionIcon findId={id} size={20} />{state.collection.includes(id) && <Check size={12} aria-hidden="true" />}{catalog.finds.find(find => find.id === id)?.name}</span>)}</div>
         <button className={styles.primary} disabled={locked || gate || state.journeys.length > 0} onClick={() => world.act("start_journey", route.id)}>
           {gate ? <><LockKeyhole size={15} />Нужен дом {route.houseLevel} уровня</> : state.journeys.length ? "Сначала завершите прогулку" : <>{selected === "river" ? "На рыбалку" : "Отправиться"}<ChevronRight size={16} /></>}
         </button>

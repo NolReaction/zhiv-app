@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Clock3, Coins, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ItemIcon } from "@/features/items/item-icon";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/map-engine";
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
@@ -88,7 +89,7 @@ function Sale({ economy, itemId, onCollapse }: { economy: ReadyEconomy; itemId: 
   const maximum = Math.max(0, Math.min(stock, 10_000, Math.floor((ECONOMY_MAX_BALANCE - economy.snapshot.wallet.coins) / item.baseSellPrice)));
   const quantity = Number(quantityText);
   const valid = Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
-  return <section className={styles.detail} aria-label={`Продажа: ${item.name}`}><div className={styles.detailTitle}><h3>{item.name}</h3><button type="button" className={styles.iconButton} aria-label="Свернуть продажу" onClick={onCollapse}><ChevronUp size={16} aria-hidden="true" /></button></div><p className={styles.small}>На складе {number(stock)} · торговец даёт {number(item.baseSellPrice)} монет за штуку</p>{item.tradable ? <div className={styles.sale}><label htmlFor={inputId}>Количество</label><input id={inputId} type="number" inputMode="numeric" min={1} max={maximum} step={1} value={quantityText} disabled={locked(economy)} onChange={event => setQuantityText(event.target.value)} /><button type="button" className={styles.primary} disabled={!valid || locked(economy)} onClick={() => void economy.act("sell", item.id, quantity)}>Продать · {valid ? number(quantity * item.baseSellPrice) : "—"}<Coins size={13} aria-hidden="true" /></button></div> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}</section>;
+  return <section className={styles.detail} aria-label={`Продажа: ${item.name}`}><div className={styles.detailTitle}><h3>{item.name}</h3><button type="button" className={styles.iconButton} aria-label="Свернуть продажу" onClick={onCollapse}><ChevronUp size={16} aria-hidden="true" /></button></div><p className={styles.small}>На складе {number(stock)} · торговец даёт {number(item.baseSellPrice)} монет за штуку</p>{item.tradable ? <div className={styles.sale}><label htmlFor={inputId}>Количество</label><input id={inputId} type="number" inputMode="numeric" min={1} max={maximum} step={1} value={quantityText} disabled={locked(economy)} onChange={event => setQuantityText(event.target.value)} /><button type="button" className={styles.primary} disabled={!valid || locked(economy)} onClick={() => void economy.act("sell", item.id, quantity)}>Продать · {valid ? number(quantity * item.baseSellPrice) : "—"}<ItemIcon itemId="coins" size={16} /></button></div> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}</section>;
 }
 
 function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId }: WorldObjectMenuProps) {

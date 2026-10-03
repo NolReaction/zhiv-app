@@ -58,6 +58,7 @@
 | Задача | Главные файлы | Инструкция |
 |---|---|---|
 | Кнопки над картой, коллекции, гардероб, игровые панели | [`world-view.tsx`](../features/world/world-view.tsx), [`world.module.css`](../features/world/world.module.css) | [Устройство мира](game/world-foundation.md) |
+| Рисунки товаров, находок, гардероба и валют | [`features/items/item-icon.tsx`](../features/items/item-icon.tsx), `art-natural.tsx`, `art-crafted.tsx`, `art-collection.tsx`, `art-equipment.tsx` в той же папке | [Векторные мастера и размеры](../art/README.md#иконки-предметов-и-находок). Один ID — один рисунок во всех меню; коллекции выбираются по ID находки |
 | Состояние Мохлика для игрока и диагностика его решений | [`mochlik-state.tsx`](../features/world/mochlik-state.tsx), [`forest-observer.ts`](../features/world/forest-observer.ts), [`forest-ai-diagnostics.tsx`](../features/world/dev/forest-ai-diagnostics.tsx) | [Utility AI и DEV](game/world-mind.md) |
 | Тексты игровой справки | [`world-help-content.ts`](../features/world/world-help-content.ts) | Правило редактирования ниже |
 | Поиск, раскрываемые темы и оформление справки | [`world-help.tsx`](../features/world/world-help.tsx), [`world-help.module.css`](../features/world/world-help.module.css) | Проверка ниже |

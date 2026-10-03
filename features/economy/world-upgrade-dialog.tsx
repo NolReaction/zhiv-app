@@ -2,7 +2,8 @@
 
 import { useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
-import { ArrowRight, Check, ChevronDown, Clock3, Coins, Compass, Hammer, House, LockKeyhole, Package, RefreshCw, Sparkles, Store, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Clock3, Compass, Hammer, House, LockKeyhole, Package, RefreshCw, Sparkles, Store, X } from "lucide-react";
+import { ItemIcon } from "@/features/items/item-icon";
 import { economyCatalog, type EconomyCost, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { Requirements, Work, ProductIcon, itemName, stationIcons, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
@@ -39,7 +40,7 @@ function UpgradeCost({ state, cost, navigation }: { state: EconomyView; cost: Ec
     const missing = available < amount;
     const source = missing && id !== "coins" ? worldMaterialSource(state, id) : null;
     const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId) : source?.kind === "exploration" ? navigation?.explore : undefined;
-    const content = <><span className={styles.costIcon}>{id === "coins" ? <Coins size={22} aria-hidden="true" /> : <ProductIcon itemId={id} size={22} />}{openSource && <ArrowRight size={10} className={styles.sourceArrow} aria-hidden="true" />}</span><span className={styles.costName}>{name}</span><strong><span>{number(available)}</span><span className={styles.costNeeded}> / {number(amount)}</span></strong></>;
+    const content = <><span className={styles.costIcon}><ProductIcon itemId={id} size={22} />{openSource && <ArrowRight size={10} className={styles.sourceArrow} aria-hidden="true" />}</span><span className={styles.costName}>{name}</span><strong><span>{number(available)}</span><span className={styles.costNeeded}> / {number(amount)}</span></strong></>;
     return <li key={id} data-missing={missing || undefined}>{openSource ? <button type="button" className={styles.costTile} onClick={openSource} aria-label={`Где получить: ${name}${source?.kind === "exploration" ? ", В путь" : ""}. Есть ${number(available)}, нужно ${number(amount)}`}>{content}</button> : <div className={styles.costTile}>{content}</div>}</li>;
   })}</ul>;
 }
@@ -77,7 +78,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
         const missing = worldMissingRequirements(futureState, worldRequirements(entry, entry));
         return <button key={entry.id} type="button" className={styles.recipeTile} aria-label={`Рецепт: ${entry.name}`} aria-expanded={selectedRecipe === entry.id} aria-controls={selectedRecipe === entry.id ? detailId : undefined} data-recipe={entry.id} onClick={() => setSelectedRecipe(selectedRecipe === entry.id ? null : entry.id)}><span className={styles.resultIcons}>{rewards.slice(0, 2).map(([id]) => <ProductIcon key={id} itemId={id} size={25} />)}</span><strong>{rewards.length === 1 ? itemName(state, rewards[0][0]) : `Набор · ${rewards.length} вида`}</strong><span>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.seconds)}</span>{missing.length > 0 && <small><LockKeyhole size={10} aria-hidden="true" />Ещё условия</small>}</button>;
       })}</div>
-      {recipe && <div id={detailId} className={styles.recipeDetail}><strong>{recipe.name}</strong><ul aria-label="Результат рецепта">{Object.entries(recipe.rewards).map(([id, amount]) => <li key={id}><ProductIcon itemId={id} size={14} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul><p className={styles.recipeInputs}><span>Нужно:</span>{recipe.cost.coins > 0 && <span><Coins size={12} aria-hidden="true" />{number(recipe.cost.coins)}</span>}{Object.entries(recipe.cost.items).map(([id, amount]) => <span key={id}><ProductIcon itemId={id} size={12} />{itemName(state, id)} ×{number(amount)}</span>)}{!recipe.cost.coins && !Object.keys(recipe.cost.items).length && <span>без затрат</span>}</p><Requirements state={futureState} required={worldRequirements(recipe, recipe)} navigation={navigation} /></div>}
+      {recipe && <div id={detailId} className={styles.recipeDetail}><strong>{recipe.name}</strong><ul aria-label="Результат рецепта">{Object.entries(recipe.rewards).map(([id, amount]) => <li key={id}><ProductIcon itemId={id} size={18} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul><p className={styles.recipeInputs}><span>Нужно:</span>{recipe.cost.coins > 0 && <span><ItemIcon itemId="coins" size={16} />{number(recipe.cost.coins)}</span>}{Object.entries(recipe.cost.items).map(([id, amount]) => <span key={id}><ProductIcon itemId={id} size={16} />{itemName(state, id)} ×{number(amount)}</span>)}{!recipe.cost.coins && !Object.keys(recipe.cost.items).length && <span>без затрат</span>}</p><Requirements state={futureState} required={worldRequirements(recipe, recipe)} navigation={navigation} /></div>}
     </>}
     {stationId !== "home" && !target.warehouseCapacity && !recipes.length && <p className={styles.muted}>Следующий уровень постройки.</p>}
   </section>;

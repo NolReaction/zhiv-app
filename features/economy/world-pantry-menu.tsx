@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronUp, Clock3, Coins, Compass, Hammer, Package, RefreshCw, Store } from "lucide-react";
+import { ArrowRight, Check, ChevronUp, Clock3, Compass, Hammer, Package, RefreshCw, Store } from "lucide-react";
+import { ItemIcon } from "@/features/items/item-icon";
 import { ECONOMY_MAX_BALANCE } from "./model";
 import type { EconomyController } from "./use-economy";
 import { ProductIcon, locked, number, type ReadyEconomy } from "./world-economy-parts";
@@ -43,7 +44,7 @@ function PantrySale({ economy, itemId, onClose }: { economy: ReadyEconomy; itemI
         <input id={inputId} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={locked(economy) || maximum === 0} onChange={event => setQuantityText(event.target.value)} />
         <button type="button" className={styles.textButton} disabled={locked(economy) || maximum === 0} onClick={() => setQuantityText(String(maximum))}>{maximum < stock ? `До ${number(maximum)}` : "Всё"}</button>
       </div>
-      <button type="button" className={styles.sellButton} disabled={!valid || locked(economy)} onClick={() => void economy.act("sell", item.id, quantity)}>Продать торговцу · {valid ? number(quantity * item.baseSellPrice) : "—"}<Coins size={13} aria-hidden="true" /></button>
+      <button type="button" className={styles.sellButton} disabled={!valid || locked(economy)} onClick={() => void economy.act("sell", item.id, quantity)}>Продать торговцу · {valid ? number(quantity * item.baseSellPrice) : "—"}<ItemIcon itemId="coins" size={16} /></button>
       {maximum === 0 && <p className={styles.hint}>{stock === 0 ? "Эти запасы уже закончились." : "В кошельке нет места для продажи."}</p>}
       {!valid && maximum > 0 && <p className={styles.hint}>Укажите от 1 до {number(maximum)}.</p>}
     </> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}

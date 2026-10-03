@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Coins, Compass, Fish, Flame, Gem, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, Shell, ShoppingBasket, Sprout, Store, Trees, Wheat } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, Trees } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { canAffordEconomy } from "./rules";
@@ -23,7 +24,6 @@ const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "market", label: "Рынок", Icon: Store },
   { id: "inventory", label: "Склад", Icon: Package },
 ];
-const itemIcons: Record<string, LucideIcon> = { berries: Sprout, wood: Trees, stone: Mountain, ore: Gem, fiber: Wheat, fish: Fish, planks: Trees, rope: Wheat, metal_parts: Hammer, dried_berries: Leaf, smoked_fish: Fish };
 const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame };
 const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы" };
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
@@ -78,8 +78,8 @@ function integer(value: string, maximum: number) {
 
 export function EconomyBalances({ wallet }: { wallet: EconomyView["wallet"] }) {
   return <div className={styles.wallet} aria-label="Кошелёк">
-    <span><Coins size={18} aria-hidden /><strong>{number(wallet.coins)}</strong><span className={styles.walletLabel}>монет</span><span className={styles.sr}>Монеты: {number(wallet.coins)}</span></span>
-    <span title="Жемчуг — будущая валюта для особого оформления. Покупка пока недоступна."><Shell size={17} aria-hidden /><strong>{number(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {number(wallet.pearls)}. Покупка пока недоступна.</span></span>
+    <span><ItemIcon itemId="coins" size={18} /><strong>{number(wallet.coins)}</strong><span className={styles.walletLabel}>монет</span><span className={styles.sr}>Монеты: {number(wallet.coins)}</span></span>
+    <span title="Жемчуг — будущая валюта для особого оформления. Покупка пока недоступна."><ItemIcon itemId="pearls" size={18} /><strong>{number(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {number(wallet.pearls)}. Покупка пока недоступна.</span></span>
   </div>;
 }
 
@@ -87,18 +87,17 @@ function Cost({ state, cost, quantity = 1 }: { state: EconomyView; cost: Economy
   const entries = Object.entries(cost.items);
   if (!cost.coins && !entries.length) return <p className={styles.hint}><Leaf size={14} aria-hidden />Без затрат</p>;
   return <div><span className={styles.sectionLabel}>Потребуется</span><ul className={styles.costs} aria-label="Стоимость">
-    {cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins * quantity}><Coins size={14} aria-hidden />{number(cost.coins * quantity)} монет<span className={styles.sr}>; есть {number(state.wallet.coins)}</span></li>}
+    {cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins * quantity}><ItemIcon itemId="coins" size={16} />{number(cost.coins * quantity)} монет<span className={styles.sr}>; есть {number(state.wallet.coins)}</span></li>}
     {entries.map(([id, amount]) => {
-      const Icon = itemIcons[id] ?? Package, available = state.inventory[id] ?? 0, required = amount * quantity;
-      return <li key={id} data-missing={available < required}><Icon size={14} aria-hidden />{itemName(state, id)}: {number(available)} / {number(required)}<span className={styles.sr}>{available < required ? "; не хватает" : "; достаточно"}</span></li>;
+      const available = state.inventory[id] ?? 0, required = amount * quantity;
+      return <li key={id} data-missing={available < required}><ItemIcon itemId={id} size={18} />{itemName(state, id)}: {number(available)} / {number(required)}<span className={styles.sr}>{available < required ? "; не хватает" : "; достаточно"}</span></li>;
     })}
   </ul></div>;
 }
 
 function Rewards({ state, value, quantity = 1 }: { state: EconomyView; value: Record<string, number>; quantity?: number }) {
   return <ul className={styles.rewards} aria-label="Результат">{Object.entries(value).map(([id, amount]) => {
-    const Icon = itemIcons[id] ?? Package;
-    return <li key={id}><Icon size={14} aria-hidden />{itemName(state, id)} × {number(amount * quantity)}</li>;
+    return <li key={id}><ItemIcon itemId={id} size={18} />{itemName(state, id)} × {number(amount * quantity)}</li>;
   })}</ul>;
 }
 
@@ -289,7 +288,7 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const inputId = useId(), stock = state.inventory[item.id] ?? 0, maximum = Math.min(10_000, stock), quantity = integer(value, maximum);
   return <div className={styles.card}><h3>Продать торговцу: {item.name.toLocaleLowerCase("ru-RU")}</h3><p className={styles.muted}>Торговец покупает сразу по {number(item.baseSellPrice)} монет за штуку. На прилавке можно предложить свою цену другим игрокам.</p>
     <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={1} max={maximum} step={1} value={value} disabled={busy || uncertain} onChange={event => setValue(event.target.value)} /></label>
-    <button className={styles.primary} disabled={!quantity || busy || uncertain} onClick={() => { if (quantity) void economy.act("sell", item.id, quantity); }}><Coins size={16} aria-hidden />Продать {quantity ?? "—"} шт. за {quantity ? number(quantity * item.baseSellPrice) : "—"} монет</button>
+    <button className={styles.primary} disabled={!quantity || busy || uncertain} onClick={() => { if (quantity) void economy.act("sell", item.id, quantity); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "—"} шт. за {quantity ? number(quantity * item.baseSellPrice) : "—"} монет</button>
     {!quantity && <p className={styles.hint}>Укажите целое количество от 1 до {number(maximum)}.</p>}
   </div>;
 }
@@ -330,8 +329,7 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
     <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {state.catalog.items.length}</button></div>
     <label className={styles.field} htmlFor={categoryId}>Категория<select id={categoryId} value={category} onChange={event => setCategory(event.target.value)}><option value="all">Все категории</option>{categories.map(value => <option key={value} value={value}>{categoryNames[value] ?? value}</option>)}</select></label>
     {items.length ? <div className={styles.stockGrid}>{items.map(entry => {
-      const Icon = itemIcons[entry.id] ?? Package;
-      return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><Icon size={23} aria-hidden /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id] ?? 0)}</small></span></button>;
+      return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><ItemIcon itemId={entry.id} size={23} /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id] ?? 0)}</small></span></button>;
     })}</div> : <div className={styles.empty}><Package size={32} aria-hidden /><h3>{owned.length ? "В этой категории пока пусто" : "Здесь будут ваши находки"}</h3><p className={styles.muted}>Вырастите урожай, отправьте Мохлика за сырьём или посмотрите источники товаров в каталоге.</p><button onClick={() => navigate("exploration")}>Выбрать вылазку<ArrowRight size={16} aria-hidden /></button><button onClick={() => { setAll(true); setCategory("all"); }}>Посмотреть все товары</button></div>}
     {item && <ItemGuide economy={economy} item={item} navigate={navigate} />}
     {item && item.tradable && (state.inventory[item.id] ?? 0) > 0 && <SellForm key={item.id} economy={economy} item={item} />}
@@ -343,10 +341,10 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
 function OfferCard({ economy, offer, owned, navigate }: { economy: ReadyEconomy; offer: EconomyMarketListing; owned?: boolean; navigate: Navigate }) {
   const { snapshot: state, busy, uncertain } = economy;
   const [confirm, setConfirm] = useState(false);
-  const Icon = itemIcons[offer.itemId] ?? Package, enough = state.wallet.coins >= offer.totalPrice, unlocked = canTrade(state), room = offer.quantity <= state.storage.available;
+  const enough = state.wallet.coins >= offer.totalPrice, unlocked = canTrade(state), room = offer.quantity <= state.storage.available;
   return <article className={styles.card}>
-    <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{itemName(state, offer.itemId)} × {number(offer.quantity)}</h3><p className={styles.muted}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
-    <div className={styles.offerMeta}><span className={styles.offerPrice}><Coins size={18} aria-hidden />{number(offer.totalPrice)}<span className={styles.sr}>монет за весь лот</span></span><span className={styles.muted}>за весь лот</span></div>
+    <div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={offer.itemId} size={22} /></span><div><h3>{itemName(state, offer.itemId)} × {number(offer.quantity)}</h3><p className={styles.muted}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
+    <div className={styles.offerMeta}><span className={styles.offerPrice}><ItemIcon itemId="coins" size={18} />{number(offer.totalPrice)}<span className={styles.sr}>монет за весь лот</span></span><span className={styles.muted}>за весь лот</span></div>
     {confirm ? <div className={styles.confirmation}><p>{owned ? "Снять предложение и вернуть все предметы на склад?" : `Получите ${number(offer.quantity)} шт. за ${number(offer.totalPrice)} монет. Покупается весь лот.`}</p><div className={styles.actions}><button disabled={busy || uncertain} onClick={() => setConfirm(false)}>Назад</button><button className={styles.primary} disabled={busy || uncertain || (!owned && (!enough || !unlocked || !room))} onClick={() => { if (owned) economy.actMarket("cancel_listing", offer.id); else economy.actMarket("buy_listing", offer.id, offer.quantity, offer.totalPrice); }}>{owned ? "Снять с продажи" : "Подтвердить покупку"}</button></div></div>
       : <button disabled={busy || uncertain || (!owned && (!enough || !unlocked || !room))} onClick={() => setConfirm(true)}>{owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет"}</button>}
     {!owned && !room && <div className={styles.hint}><Package size={15} aria-hidden /><div>Лот занимает {number(offer.quantity)} мест, свободно {number(state.storage.available)}.<br /><button className={styles.textButton} onClick={() => navigate("inventory")}>Освободить место<ArrowRight size={15} aria-hidden /></button></div></div>}

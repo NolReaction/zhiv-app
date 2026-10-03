@@ -1,12 +1,11 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
-import { Coins, Shell } from "lucide-react";
+import { ItemIcon } from "@/features/items/item-icon";
 import { walletDeltaLabel, walletTween } from "./wallet-animation";
 import styles from "./world-wallet.module.css";
 
 function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }) {
-  const Icon = kind === "coins" ? Coins : Shell;
   const label = kind === "coins" ? "Монеты" : "Жемчуг";
   const number = useRef<HTMLSpanElement>(null);
   const effect = useRef<HTMLSpanElement>(null);
@@ -72,12 +71,12 @@ function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }
   }, [amount]);
 
   return <div className={styles.currency} data-currency={kind} data-balance={amount}>
-    <dt><Icon size={15} aria-hidden="true" /><span className={styles.sr}>{label}</span></dt>
+    <dt><ItemIcon itemId={kind} size={18} /><span className={styles.sr}>{label}</span></dt>
     <dd>
       <span ref={number} aria-hidden="true">{amount.toLocaleString("ru-RU")}</span>
       <span className={styles.sr} aria-live="polite" aria-atomic="true">{label}: {amount.toLocaleString("ru-RU")}</span>
       <span ref={effect} className={styles.change} hidden aria-hidden="true" data-wallet-change>
-        <Icon size={15} /><span ref={deltaText} />
+        <ItemIcon itemId={kind} size={18} /><span ref={deltaText} />
       </span>
     </dd>
   </div>;

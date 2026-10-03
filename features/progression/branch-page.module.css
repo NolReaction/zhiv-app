@@ -102,6 +102,8 @@
 .relatedButton > svg { color: #9cb381; flex-shrink: 0; }
 .itemList { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; }
 .itemList li { display: flex; align-items: center; gap: 7px; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #bacfa315; font-size: 12px; min-width: 0; }
+.itemList li > span { display: flex; align-items: center; gap: 7px; margin-right: auto; }
+.itemList li > span > svg { flex-shrink: 0; }
 .itemList li > svg { color: #e1bd73; flex-shrink: 0; }
 .itemList li button { display: flex; align-items: center; gap: 5px; border: 0; background: transparent; padding: 2px 0; color: #c1d4ab; text-align: left; font-size: 12px; margin-right: auto; }
 .itemList li button:hover { color: #e3f3ca; text-decoration: underline; }
