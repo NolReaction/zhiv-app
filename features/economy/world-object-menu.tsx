@@ -103,6 +103,9 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   const recipeTrigger = useRef<HTMLElement | null>(null);
   const menuBody = useRef<HTMLDivElement>(null);
   const navigating = useRef(false);
+  const completedUpgrade = useRef(false);
+  const completions = economy.completedConstructions;
+  const seenCompletions = useRef(new Set(completions?.map(event => event.id)));
   const [size, setSize] = useState({ width: 320, height: 214 });
   const panel = useRef<HTMLElement>(null);
   const headingId = useId();
@@ -120,6 +123,15 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   const job = state?.jobs.find(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId);
   const Icon = placeIcons[selection.place] ?? Package;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
+
+  useEffect(() => {
+    const newlyCompleted = completions?.filter(event => !seenCompletions.current.has(event.id)) ?? [];
+    seenCompletions.current = new Set(completions?.map(event => event.id));
+    if (!upgradeStation && newlyCompleted.some(event => event.stationId === stationId)) {
+      completedUpgrade.current = true;
+      onClose();
+    }
+  }, [completions, upgradeStation, stationId, onClose]);
 
   useEffect(() => {
     const element = panel.current;
@@ -171,10 +183,11 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
     {state && !definition.future && target && <footer className={styles.footer}><button type="button" className={styles.upgradeAction} aria-haspopup="dialog" onClick={openUpgrade}><Hammer size={15} aria-hidden="true" /><span>{job?.kind === "construction" ? "Ход улучшения" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}<small>{current ? `${current} → ${target.level} уровень` : "Первый уровень"}</small></span><ArrowRight size={16} aria-hidden="true" /></button></footer>}
     {state && !definition.future && !target && !job && <footer className={styles.footer}><span className={styles.maximum}><Check size={12} aria-hidden="true" />Все уровни оборудования открыты</span></footer>}
   </section>}
-    <WorldUpgradeDialog stationId={upgradeStation} economy={economy} onClose={closeUpgrade} navigation={navigation}
+    <WorldUpgradeDialog stationId={upgradeStation} economy={economy} onClose={closeUpgrade} onCompleted={() => { completedUpgrade.current = true; onClose(); }} navigation={navigation}
       onOpenPantry={onOpenPantry ? () => { navigating.current = true; setUpgradeStation(null); onOpenPantry(); } : selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => { navigating.current = true; setUpgradeStation(null); onNavigate("house", "warehouse"); } : undefined}
       onCloseAutoFocus={event => {
         event.preventDefault();
+        if (completedUpgrade.current) { onReturnFocus?.(); return; }
         if (navigating.current) { navigating.current = false; return; }
         if (upgradeTrigger.current?.isConnected) upgradeTrigger.current.focus({ preventScroll: true });
         else if (panel.current) panel.current.focus({ preventScroll: true });

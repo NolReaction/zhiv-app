@@ -1,6 +1,9 @@
 {
   "version": 2,
   "maxBatch": 10,
+  "constructionSpeedup": {
+    "secondsPerPearl": 300
+  },
   "items": [
     {
       "id": "berries",

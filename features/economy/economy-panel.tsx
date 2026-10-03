@@ -7,6 +7,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { canAffordEconomy } from "./rules";
+import { ConstructionSpeedup } from "./construction-speedup";
 import styles from "./economy-panel.module.css";
 
 export type EconomyTab = "overview" | "buildings" | "production" | "exploration" | "market" | "inventory";
@@ -125,6 +126,7 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
         {job.kind === "construction" ? "Завершить" : "Забрать"}<span className={styles.sr}>: {jobTitle(state, job)}</span>
       </button>
     </div>
+    {job.kind === "construction" && <ConstructionSpeedup key={job.id} economy={economy} job={job} />}
     {job.kind === "construction" && !ready && <p className={styles.muted}>Материалы уже внесены. Прежний уровень продолжает действовать.</p>}
     {ready && storageBlocked && <div className={styles.notice}><Package size={18} aria-hidden /><div><p>Для результата нужно {number(rewardCount)} мест, свободно {number(state.storage.available)}. Готовые вещи ждут и не портятся.</p><button onClick={() => navigate(rewardCount > state.storage.capacity ? "buildings" : "inventory", rewardCount > state.storage.capacity ? "warehouse" : undefined)}>{rewardCount > state.storage.capacity ? "Расширить склад" : "Освободить место"}<ArrowRight size={15} aria-hidden /></button></div></div>}
   </article>;

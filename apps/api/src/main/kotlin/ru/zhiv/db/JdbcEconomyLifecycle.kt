@@ -79,8 +79,8 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     // These rows are idempotency fences, not another transfer of the source's historic earnings.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,items)
         SELECT ?,source_key,'merged_receipt',0,'{}'::jsonb FROM economy_ledger WHERE user_id=? ON CONFLICT DO NOTHING""", target, source)
-    c.lifecycleEconomyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,items)
-        VALUES (?,?,'account_merge',?,?::jsonb) ON CONFLICT DO NOTHING""", target,"merge:$source",b.wallet.coins,economyJson.encodeToString(b.inventory))
+    c.lifecycleEconomyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items)
+        VALUES (?,?,'account_merge',?,?,?::jsonb) ON CONFLICT DO NOTHING""", target,"merge:$source",b.wallet.coins,b.wallet.pearls,economyJson.encodeToString(b.inventory))
 }
 
 /** Keep the one-time conversion audit attached to the retired UUID. No new grant on reset. */

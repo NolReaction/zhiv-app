@@ -1,8 +1,8 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
 import { forestObjectArtwork, forestSiteMaterial } from "../forest-object-appearance";
-import { drawForestBushGrounding, drawForestBushRootFringe } from "../forest-bush-grounding";
+import { drawForestBushGrounding, drawForestBushLeafShade } from "../forest-bush-grounding";
 import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
-import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
+import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "../forest-lighting";
 import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
 import { drawSiteImage } from "./site-image";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
@@ -78,7 +78,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       if (!frame.hiddenTerrainIds?.includes(terrain.id)) {
         if (bushId) {
           ctx.drawImage(forestObjectArtwork(image, "foliage"), bounds.x, bounds.y, bounds.width, bounds.height);
-          drawForestBushRootFringe(ctx, scene, terrain, image);
+          drawForestBushLeafShade(ctx, scene, terrain, image);
         } else drawSiteImage(ctx, terrain, image);
       }
     }
@@ -103,7 +103,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
   if (frame.options.night) {
     const lighting = { night: 1, elapsed: frame.elapsed ?? 0, reducedMotion: frame.options.reducedMotion,
       showBuildings: frame.options.showBuildings, levels: frame.options.levels };
-    drawForestLighting(ctx, scene, lighting); drawForestLightEmitters(ctx, scene, lighting);
+    drawForestLighting(ctx, scene, lighting); drawForestLighthouseBeams(ctx, scene, lighting); drawForestLightEmitters(ctx, scene, lighting);
   }
   const selected = scene.sites.find(site => site.id === frame.options.selectedSiteId);
   if (selected) {
@@ -303,7 +303,7 @@ export async function createFixedWorldRenderer(
   }
   const moving = () => route.moving()
     || options.showBuildings !== false && buildingDetailsAnimated(scene)
-    || options.night && forestLightSources(scene, options).some(light => light.intensity > 0 && light.flicker > 0);
+    || options.night && forestLightSources(scene, options).some(light => light.intensity > 0 && (light.flicker > 0 || light.beamLength));
   function animate() {
     cancelAnimationFrame(raf); raf = 0; previous = 0; lastPaint = 0;
     if (!disposed && ready && !options.paused && !options.reducedMotion && moving() && canPaint()) raf = requestAnimationFrame(tick);

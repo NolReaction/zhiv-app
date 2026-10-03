@@ -12,6 +12,7 @@ const { WorldHelp } = await vite.ssrLoadModule("/features/world/world-help.tsx")
 const { worldHelpTopics, searchWorldHelp } = await vite.ssrLoadModule("/features/world/world-help-content.ts");
 const { worldCatalog, newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
 const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 
 test("help search handles Russian spelling, word order, whitespace and missing results", () => {
   const topics = worldHelpTopics();
@@ -34,7 +35,7 @@ test("help uses current catalog rules and marks unavailable mechanics while rebu
   for (const id of ["explorer_cap", "willow_rod"]) {
     assert.ok(get("collection").paragraphs.join(" ").includes(worldCatalog.items.find(item => item.id === id).name));
   }
-  assert.match(get("journeys").paragraphs[0], /Монеты и материалы списываются при начале работ/);
+  assert.match(get("production").paragraphs[0], /Монеты и материалы списываются при начале работ/);
   assert.match(get("journeys").paragraphs.join("\n"), /Одновременно идёт одно исследование/);
   assert.match(get("market").paragraphs[1], /Свой лот купить нельзя/);
   assert.match(get("wardrobe").note, /пока нельзя изготовить.*полученные вещи можно менять/);
@@ -47,15 +48,29 @@ test("help directs each map action to its focused menu", () => {
   assert.match(text("level"), /уровень слева сверху.*профиль.*самочувствие/);
   assert.match(text("resources"), /Кладовая.*отдельное меню запасов/);
   assert.match(text("journeys"), /В путь.*только исследования/);
-  assert.match(text("journeys"), /Таймер находится над улучшаемым объектом/);
-  assert.match(text("journeys"), /кладовая — над домом, печь — над мастерской, заготовки — над костром/);
+  assert.match(text("construction"), /Таймер находится над улучшаемым объектом/);
+  assert.match(text("construction"), /кладовая — над домом, печь — над мастерской, заготовки — над костром/);
   assert.match(text("journeys"), /сектор «Лес», «Побережье» или «Пещеры»/);
-  assert.match(text("journeys"), /будущие рецепты свёрнуты в «Позже»/);
+  assert.match(text("production"), /будущие рецепты свёрнуты в «Позже»/);
   assert.match(text("resources"), /Эффект начинается после подтверждения действия/);
   assert.doesNotMatch(text("resources") + text("journeys"), /Переход из окна дома|В окне дома доступны улучшение и переход|сверху карты виден таймер/);
   assert.match(text("journeys"), /в меню «Ещё» появятся «Старые походы»/);
   assert.match(text("saving"), /профиль кнопкой уровня.*Продолжить здесь/);
   assert.doesNotMatch(topics.flatMap(topic => [...(topic.steps ?? []), ...(topic.paragraphs ?? []), topic.note ?? ""]).join(" "), /Как Мохлик\?/);
+});
+
+test("guide separates construction, production and pearl spending without promising unreleased income", () => {
+  const topics = worldHelpTopics(), get = id => topics.find(topic => topic.id === id);
+  const pearls = get("pearls");
+  assert.ok(pearls.steps.join(" ").includes(`${economyCatalog.constructionSpeedup.secondsPerPearl / 60} минут`));
+  assert.match(pearls.steps.join(" "), /Подтвердите завершение.*цена снизится.*меньшая сумма.*готова — ничего/);
+  assert.match(pearls.note, /только на строительство.*не на производство или вылазки/);
+  assert.match(pearls.note, /дождитесь таймера и завершите бесплатно/);
+  assert.match(pearls.note, /способы её заработка ещё готовятся/);
+  assert.match(get("construction").paragraphs.join(" "), /При уменьшении движения/);
+  assert.match(get("future-world").paragraphs.join(" "), /Их восстановление.*ещё готовятся/);
+  assert.doesNotMatch(topics.flatMap(topic => topic.paragraphs ?? []).join(" "), /ускорения пока не подключены|Жемчуг зарезервирован/);
+  assert.deepEqual(searchWorldHelp(topics, "ускорение жемчуг").map(topic => topic.id), ["construction", "pearls"]);
 });
 
 test("help has a labelled search, native keyboard-operable topics and current status", () => {

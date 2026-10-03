@@ -1,5 +1,5 @@
 .portal[data-slot='dialog-content'] { --dialog-padding: 0; translate: none; position: fixed; inset: 0; z-index: 80; display: block; width: 100%; height: 100dvh; max-width: none; max-height: none; padding: 0; border: 0; border-radius: 0; transform: none; gap: 0; background: #142218; color: #eef2dc; overflow: hidden; isolation: isolate; }
-.portal[data-state='open'] { animation: forest-open 950ms cubic-bezier(.22,.65,.25,1) both; }
+.portal[data-state='open'] { animation: forest-open 950ms cubic-bezier(.22,.65,.25,1) backwards; }
 .portal[data-state='closed'] { animation: forest-close 500ms cubic-bezier(.4,0,.6,1) both; }
 @keyframes forest-open { from { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: .95; } to { clip-path: circle(var(--portal-end-radius, 120vmax) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } }
 @keyframes forest-close { from { clip-path: circle(var(--portal-end-radius, 120vmax) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } to { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 0; } }

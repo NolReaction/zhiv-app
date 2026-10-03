@@ -22,7 +22,7 @@
 .dialog.dialog .close { flex-shrink: 0; width: 32px; min-height: 32px; padding: 6px; color: #b9c7ae; }
 .levels { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 5px; color: #a7b89c; font-size: 11px; }
 .levels > strong { display: inline-flex; align-items: center; gap: 4px; color: #dce7bf; font-size: inherit; font-weight: 550; }
-.activeWork { display: flex; flex: 0 0 auto; flex-direction: column; gap: 7px; padding: 14px 16px 0; }
+.activeWork { display: flex; flex: 0 0 auto; flex-direction: column; gap: 7px; }
 .body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 16px; min-height: 0; padding: 15px 16px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #638051 transparent; }
 .section { display: flex; flex: 0 0 auto; flex-direction: column; gap: 10px; }
 .section h3 { display: flex; align-items: center; gap: 6px; color: #e0e8ca; font-size: 13px; line-height: 1.35; font-weight: 600; }
@@ -107,7 +107,6 @@
   .heading h2 { font-size: 16px; }
   .buildingIcon { flex-basis: 32px; width: 32px; height: 32px; }
   .body { padding: 13px 12px; gap: 14px; }
-  .activeWork { padding: 12px 12px 0; }
   .capacity { gap: 9px; padding: 11px 9px; }
   .capacity strong { gap: 6px; font-size: 21px; }
   .recipeGrid { gap: 5px; }
@@ -123,6 +122,5 @@
   .dialog.dialog { max-height: calc(100dvh - 16px); }
   .header { padding-top: 10px; padding-bottom: 10px; }
   .body { padding-top: 12px; padding-bottom: 12px; }
-  .activeWork { padding-top: 10px; }
   .footer { padding-top: 9px; padding-bottom: 10px; gap: 5px; }
 }

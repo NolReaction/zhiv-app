@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { economyCommandSchema, marketCommandSchema, type EconomyCommand, type EconomyResult, type EconomyView, type MarketCommand, type MarketView } from "./model";
 import { economyDevCommandSchema, type EconomyDevCommand } from "./dev-model";
+import { constructionCompletions, type ConstructionCompletion } from "./construction-completion";
 
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
@@ -14,12 +15,13 @@ type Pending = { kind: "economy"; command: EconomyCommand } | { kind: "market"; 
 type View = {
   snapshot: EconomyView | null; market: MarketView | null; marketError: string | null;
   error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number;
+  completedConstructions: readonly ConstructionCompletion[];
 };
 type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 /** Account-scoped session, independent of map/panel lifetime. An uncertain command keeps its exact receipt. */
 export function createEconomySession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: ReceiptStorage) {
-  let view: View = { snapshot: null, market: null, marketError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0 };
+  let view: View = { snapshot: null, market: null, marketError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [] };
   let pending: Pending | null = null, active = false, epoch = 0, readSequence = 0, marketSequence = 0;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null;
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
@@ -106,7 +108,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   }
   async function execute(value: Pending) {
     if (!active || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev)) return;
-    const generation = epoch, request = controller();
+    const generation = epoch, request = controller(), before = view.snapshot;
     ++readSequence; ++marketSequence; reading = null; marketReading = null; remember(value);
     publish({ busy: true, error: null, notice: "", retryAt: 0 });
     let reloadMarket = false;
@@ -116,7 +118,12 @@ export function createEconomySession(owner: string | null, transport: Transport,
         : await transport.dev!(value.command, request.signal);
       if (!valid(generation)) return;
       if (adopt(result.state)) {
-        remember(null); publish({ notice: result.message, uncertain: false });
+        // A local confirmed claim can celebrate once. Loading, polling or recovering
+        // an already-applied receipt never manufactures a new completion event.
+        const completed = value.kind === "economy" && ["claim_job", "speedup_construction"].includes(value.command.action)
+          ? constructionCompletions(before, result.state).filter(event => !view.completedConstructions.some(previous => previous.id === event.id)) : [];
+        remember(null); publish({ notice: result.message, uncertain: false,
+          ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}) });
         reloadMarket = value.kind === "market";
       }
     } catch (error) {
@@ -157,9 +164,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
       };
     },
     refresh, refreshSoft: () => refresh(false), refreshMarket,
-    act(action: EconomyCommand["action"], targetId: string, quantity = 1) {
+    act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
       if (!owner || !view.snapshot || pending || !active) return;
-      void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice: 0 } });
+      void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice } });
     },
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
       if (!owner || !view.snapshot || pending || !active) return;

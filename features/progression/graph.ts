@@ -132,7 +132,9 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   fixed("start", "Начало", "🌱", 0, "На новом аккаунте уже есть дом 1, ягодный куст 1 и кладовая 1. Монет и серверных товаров в начале нет. Места на карте объединяют несколько хозяйственных возможностей; их уровни улучшаются отдельно.");
   fixed("trader", "Торговец", "🧑‍🌾", 0, "Продажа товаров со склада по фиксированной цене. Доступна с начала игры, без рынка игроков.");
   fixed("coins", "Монеты", "🪙", 0, "Выручка за товары идёт на строительство и улучшения. Монеты не занимают место на складе.");
+  fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку: 1 жемчужина за каждые начатые ${catalog.constructionSpeedup.secondsPerPearl / 60} минут остатка. Цена подтверждается перед списанием. Бесплатный путь — дождаться таймера. Производство и вылазки не ускоряются; получение и покупка жемчуга ещё готовятся.`);
   edge("start", "trader", "available");
+  edge("start", "pearls", "available");
   edge("trader", "coins", "flow");
   for (const location of progressionLocations) {
     fixed(location.id, location.title, location.icon, 0, location.description, "location");

@@ -82,7 +82,7 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
       patch.addColorStop(1, "rgba(109,112,46,0)");
       ctx.fillStyle = patch; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
     }
-    // Stable small clods and broken root lines are baked once, shared by both cameras.
+    // Stable small clods are baked once, shared by both cameras.
     for (let i = 0; i < 64; i++) {
       const angle = i * 2.3999632297, distance = Math.sqrt((i + .5) / 64);
       const x = center.x + Math.cos(angle) * radiusX * distance;
@@ -93,25 +93,6 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
       ctx.beginPath(); ctx.moveTo(x - chip, y);
       ctx.lineTo(x - chip * .35, y - chip * .6); ctx.lineTo(x + chip * .7, y - chip * .32);
       ctx.lineTo(x + chip, y + chip * .23); ctx.lineTo(x - chip * .28, y + chip * .55); ctx.closePath(); ctx.fill();
-    }
-    // Short woody roots emerge from underneath the cutout and join the soil.
-    // Most of each root is covered by leaves; the few exposed tips break the
-    // detached "ball over an oval" silhouette without a second foliage sprite.
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    for (let i = 0; i < 3; i++) {
-      const side = i - 1, startX = center.x + side * radiusX * .13;
-      const middleX = center.x + side * radiusX * .23 + radiusY * .07;
-      const endX = center.x + side * radiusX * .36 + (side ? 0 : radiusY * .24);
-      const endY = center.y + radiusY * (side ? .15 : .3);
-      ctx.strokeStyle = damp ? "#382e1c" : "#4c3823"; ctx.lineWidth = radiusY * .21;
-      ctx.beginPath(); ctx.moveTo(startX, center.y - radiusY * 1.25);
-      ctx.lineTo(middleX, center.y + radiusY * .04); ctx.lineTo(endX, endY); ctx.stroke();
-      ctx.strokeStyle = damp ? "#6b542f" : "#96703d"; ctx.lineWidth = radiusY * .07;
-      ctx.beginPath(); ctx.moveTo(startX - radiusY * .05, center.y - radiusY * 1.2);
-      ctx.lineTo(middleX - radiusY * .06, center.y); ctx.lineTo(endX, endY - radiusY * .07); ctx.stroke();
-      ctx.strokeStyle = damp ? "#3d2c1a" : "#604027"; ctx.lineWidth = radiusY * .09;
-      ctx.beginPath(); ctx.moveTo(middleX, center.y + radiusY * .04);
-      ctx.lineTo(endX + radiusX * .06, endY + radiusY * .1); ctx.stroke();
     }
     ctx.restore();
     // Interrupt the edge with tiny grass-coloured chips instead of a clean ellipse border.

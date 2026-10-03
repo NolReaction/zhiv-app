@@ -9,6 +9,7 @@
 | Задача | Главные файлы | Как менять и проверять |
 |---|---|---|
 | Расставить фонари и факелы | [`forest.tmj`](../world/tiled/forest.tmj), слой `Lights` | [Освещение](game/world-lighting.md) |
+| Изменить свет у зданий и лучи маяка | [`forest-building-lights.ts`](../features/world/forest-building-lights.ts), [`forest-lighting.ts`](../features/world/forest-lighting.ts) | [Освещение](game/world-lighting.md). Привязки к активному рисунку учитывают масштаб и поворот |
 | Изменить ночной цвет, световое пятно, пламя, мерцание | [`forest-lighting.ts`](../features/world/forest-lighting.ts) | [Освещение](game/world-lighting.md) |
 | Изменить расписание дня/ночи | [`lighting.ts`](../features/mochlik/lighting.ts), переход в [`new-map-scene.ts`](../features/world/new-map-scene.ts) | [Освещение](game/world-lighting.md) |
 | Изменить погоду и общие параметры окружения | [`forest-atmosphere.ts`](../features/world/forest-atmosphere.ts) | [Атмосфера](game/world-atmosphere.md) |
@@ -60,12 +61,14 @@
 | Кнопки над картой, коллекции, гардероб, игровые панели | [`world-view.tsx`](../features/world/world-view.tsx), [`world.module.css`](../features/world/world.module.css) | [Устройство мира](game/world-foundation.md) |
 | Рисунки товаров, находок, гардероба и валют | [`features/items/item-icon.tsx`](../features/items/item-icon.tsx), `art-natural.tsx`, `art-crafted.tsx`, `art-collection.tsx`, `art-equipment.tsx` в той же папке | [Векторные мастера и размеры](../art/README.md#иконки-предметов-и-находок). Один ID — один рисунок во всех меню; коллекции выбираются по ID находки |
 | Состояние Мохлика для игрока и диагностика его решений | [`mochlik-state.tsx`](../features/world/mochlik-state.tsx), [`forest-observer.ts`](../features/world/forest-observer.ts), [`forest-ai-diagnostics.tsx`](../features/world/dev/forest-ai-diagnostics.tsx) | [Utility AI и DEV](game/world-mind.md) |
+| Эффект подтверждённого улучшения | [`world-upgrade-effects.tsx`](../features/world/world-upgrade-effects.tsx), [`construction-completion.ts`](../features/economy/construction-completion.ts), сессия экономики | [Устройство мира](game/world-foundation.md). Только подтверждённый результат команды, без повтора при загрузке |
 | Тексты игровой справки | [`world-help-content.ts`](../features/world/world-help-content.ts) | Правило редактирования ниже |
 | Поиск, раскрываемые темы и оформление справки | [`world-help.tsx`](../features/world/world-help.tsx), [`world-help.module.css`](../features/world/world-help.module.css) | Проверка ниже |
 | Включить перенесённые возможности новой карты | [`presentation.ts`](../features/world/presentation.ts) | [Текущие ограничения мира](game/world-foundation.md); смена флага не переносит старую геометрию |
 | Переход между главным экраном и миром | [`world-portal.tsx`](../features/world/world-portal.tsx), [`use-world-portal.ts`](../features/world/use-world-portal.ts) | [Устройство мира](game/world-foundation.md) |
 | Меню поездок, подтверждение наград, отображение пути | [`world-journeys.tsx`](../features/world/world-journeys.tsx), [`journey-progress.tsx`](../features/world/journey-progress.tsx) | [Правила и данные](development/backend-and-data.md), [рыбалка](game/fishing.md) |
 | Дерево улучшений, ресурсы, склад, рецепты и сроки развития | [`economy-catalog.json`](../apps/api/src/main/resources/world/economy-catalog.json), [`features/economy/`](../features/economy/), [`EconomyRules.kt`](../apps/api/src/main/kotlin/ru/zhiv/economy/EconomyRules.kt), `npm run economy:check` | [Экономика](game/economy-foundation.md) |
+| Тариф и правила ускорения стройки за жемчуг | `constructionSpeedup` в общем каталоге, [`rules.ts`](../features/economy/rules.ts), `EconomyRules.kt`, [`construction-speedup.tsx`](../features/economy/construction-speedup.tsx) | [Валюты и серверное списание](game/economy-foundation.md#валюты-и-рынок) |
 | Отдельная схема всего мира на `/branch` | [`app/branch/page.tsx`](../app/branch/page.tsx), [`features/progression/`](../features/progression/) | Экономические узлы строятся из актуального каталога. Условия и планы мира — в `graph.ts`; плановые связи не блокируют действующие механики. Проверка — `tests/progression-graph.test.mjs` |
 | Цены, ресурсы, одежда, коллекции и длительности | [`catalog.json`](../apps/api/src/main/resources/world/catalog.json), [`model.ts`](../features/world/model.ts), [`WorldModel.kt`](../apps/api/src/main/kotlin/ru/zhiv/world/WorldModel.kt) | [Правила и данные](development/backend-and-data.md) |
 | Игровые команды, повторы запросов и сохранение | [`session.ts`](../features/world/session.ts), [`api.ts`](../features/world/api.ts), [`use-world.ts`](../features/world/use-world.ts) | [Правила и данные](development/backend-and-data.md) |
@@ -76,7 +79,7 @@
 
 **Как поддерживать справку.** Добавляйте короткий ответ в `world-help-content.ts`, а не в JSX панели. Числа берите из каталога/правил, доступность — из `WORLD_PRESENTATION`. Отличайте существующую механику от доступной сейчас кнопки. Пользователю нужны действия и последствия; пути исходников и команды запуска остаются в `docs/`.
 
-Проверьте: ⓘ рядом с коллекциями → открытие темы → поиск по тексту → отсутствие результатов → очистка поиска → закрытие и возврат фокуса на ⓘ. Убедитесь, что панель прокручивается на телефоне шириной 320 px и работает клавиатурой. Тесты справки: [`tests/world-help.test.mjs`](../tests/world-help.test.mjs).
+Проверьте: ⓘ рядом с кошельком → открытие темы → поиск по тексту → отсутствие результатов → очистка поиска → закрытие и возврат фокуса на ⓘ. Убедитесь, что панель прокручивается на телефоне шириной 320 px и работает клавиатурой. Тесты справки: [`tests/world-help.test.mjs`](../tests/world-help.test.mjs).
 
 ## Приложение и сервер
 

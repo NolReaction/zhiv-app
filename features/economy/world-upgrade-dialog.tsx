@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 import { ArrowRight, Check, ChevronDown, Clock3, Compass, Hammer, House, LockKeyhole, Package, RefreshCw, Sparkles, Store, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { economyCatalog, type EconomyCost, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
+import { ConstructionSpeedup } from "./construction-speedup";
 import { Requirements, Work, ProductIcon, itemName, stationIcons, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
 import { worldConstructionReason, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "./world-stations";
 import menuStyles from "./world-object-menu.module.css";
@@ -15,6 +16,7 @@ export type WorldUpgradeDialogProps = {
   stationId: string | null;
   economy: EconomyController;
   onClose: () => void;
+  onCompleted?: () => void;
   navigation?: StationNavigation;
   onOpenPantry?: () => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -112,8 +114,8 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
       </div>
       <button type="button" className={styles.close} aria-label="Закрыть окно улучшения" onClick={onClose}><X size={19} aria-hidden="true" /></button>
     </header>
-    {readyEconomy && construction && <section className={styles.activeWork} aria-label="Ход улучшения"><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><p className={styles.muted}>Материалы оплачены. Работа продолжится после выхода.</p></section>}
     <div className={styles.body}>
+      {readyEconomy && construction && <section className={styles.activeWork} aria-label="Ход улучшения"><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><ConstructionSpeedup key={construction.id} economy={readyEconomy} job={construction} /><p className={styles.muted}>Материалы оплачены. Работа продолжится после выхода.</p></section>}
       {!state ? <div className={styles.loading} role="status"><RefreshCw size={24} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={menuStyles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые улучшения доступны после подтверждения." : economy.error}</p><button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {readyEconomy && job?.kind === "production" && <section className={styles.section} aria-label="Текущий заказ"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите заказ</h3><Work economy={readyEconomy} job={job} openPantry={onOpenPantry} /></section>}
@@ -136,8 +138,16 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
   </>;
 }
 
-export function WorldUpgradeDialog({ stationId, onCloseAutoFocus, ...props }: WorldUpgradeDialogProps) {
+export function WorldUpgradeDialog({ stationId, onCloseAutoFocus, onCompleted, ...props }: WorldUpgradeDialogProps) {
   const content = useRef<HTMLDivElement>(null);
+  const onClose = props.onClose;
+  const completions = props.economy.completedConstructions;
+  const seenCompletions = useRef(new Set(completions?.map(event => event.id)));
+  useEffect(() => {
+    const newlyCompleted = completions?.filter(event => !seenCompletions.current.has(event.id)) ?? [];
+    seenCompletions.current = new Set(completions?.map(event => event.id));
+    if (stationId && newlyCompleted.some(event => event.stationId === stationId)) (onCompleted ?? onClose)();
+  }, [completions, stationId, onClose, onCompleted]);
   return <Dialog.Root open={stationId !== null} onOpenChange={open => { if (!open) props.onClose(); }}>
     <Dialog.Portal>
       <Dialog.Overlay className={styles.overlay} />

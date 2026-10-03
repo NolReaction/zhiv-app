@@ -11,6 +11,7 @@ const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a
 export const economyCostSchema = z.object({ coins: balance, items: quantities });
 export const economyCatalogSchema = z.object({
   version: z.literal(2), maxBatch: z.number().int().min(1).max(100),
+  constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400) }),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000) }),
   items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance.positive(), tradable: z.boolean() })).max(1000),
   buildings: z.array(z.object({ id, name: z.string(), description: z.string(), levels: z.array(z.object({
@@ -41,7 +42,7 @@ const commandBase = {
   quantity: z.number().int().min(1).max(10_000).default(1), totalPrice: balance.default(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_exploration", "start_construction", "claim_job", "sell"]),
+  action: z.enum(["start_production", "start_exploration", "start_construction", "speedup_construction", "claim_job", "sell"]),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing"]),

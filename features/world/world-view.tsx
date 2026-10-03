@@ -52,6 +52,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const quickReturn = useRef<HTMLElement | null>(null);
   const upgradeReturn = useRef<HTMLElement | null>(null);
   const navigatingUpgrade = useRef(false);
+  const completedQuickUpgrade = useRef(false);
   const [localNotice, setLocalNotice] = useState(0);
   const [menuBounds, setMenuBounds] = useState({ top: 144, bottom: 88, left: 12, right: 12 });
   const worldElement = useRef<HTMLElement>(null);
@@ -208,7 +209,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         </div>
         <div className={hudStyles.rightControls}>
           {economy.snapshot ? <WorldWallet key={ownerPublicId} {...economy.snapshot.wallet} /> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
-          <button className={hudStyles.iconButton} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
+          <button className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
     </header>
@@ -243,10 +244,17 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       </div>
     </section>}
     <WorldUpgradeDialog stationId={quickUpgrade} economy={economy} onClose={() => setQuickUpgrade(null)}
+      onCompleted={() => { completedQuickUpgrade.current = true; setQuickUpgrade(null); closeQuick(); }}
       navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: id => leaveUpgrade(() => openStation(id)), explore: () => leaveUpgrade(() => openQuick("expeditions")) }}
       onOpenPantry={() => leaveUpgrade(() => openQuick("pantry"))}
       onCloseAutoFocus={event => {
         event.preventDefault();
+        if (completedQuickUpgrade.current) {
+          completedQuickUpgrade.current = false;
+          if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
+          else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true });
+          return;
+        }
         if (navigatingUpgrade.current) { navigatingUpgrade.current = false; return; }
         const target = upgradeReturn.current?.dataset.constructionTarget;
         const trigger = target ? worldElement.current?.querySelector<HTMLElement>(`[data-construction-target="${target}"]`) : upgradeReturn.current;

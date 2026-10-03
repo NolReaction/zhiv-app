@@ -129,8 +129,9 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
                     next.buildings["home"] ?: 1, (next.buildings["workshop"] ?: 0) > 0, next.buildings["workshop"] ?: 0, actor.id)
             }
             val delta = (before.state.inventory.keys + next.inventory.keys).associateWith { (next.inventory[it] ?: 0) - (before.state.inventory[it] ?: 0) }.filterValues { it != 0L }
-            c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,items) VALUES (?,?,?,?,?::jsonb)",
-                actor.id, "command:$requestId", command.action, next.wallet.coins - before.state.wallet.coins, economyJson.encodeToString(delta))
+            c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items) VALUES (?,?,?,?,?,?::jsonb)",
+                actor.id, "command:$requestId", command.action, next.wallet.coins - before.state.wallet.coins,
+                next.wallet.pearls - before.state.wallet.pearls, economyJson.encodeToString(delta))
             c.economyUpdate("INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision) VALUES (?,?,?,?,?)",
                 actor.id, requestId, signature, message, before.revision + 1)
             EconomyResult(economyView(c, actor.id, actor.publicId, now), message, before.revision + 1)

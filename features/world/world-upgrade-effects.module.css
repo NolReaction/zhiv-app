@@ -1,0 +1,19 @@
+.layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.effect { position: absolute; width: 0; height: 0; pointer-events: none; color: #f8eab4; }
+.effect[hidden] { display: none; }
+.halo { position: absolute; width: 176px; height: 144px; left: -88px; top: -64px; background: radial-gradient(ellipse, #ffe3a544 0%, #e4ef9c22 28%, #dbeba400 69%); animation: halo 1.9s ease-out both; }
+.ring { position: absolute; left: -61px; top: -8px; width: 122px; height: 48px; border: 2px solid #f6e8b4; border-radius: 50%; box-shadow: 0 0 10px #ffdf9850, inset 0 0 7px #e8d99433; animation: ring 1.4s cubic-bezier(.15,.5,.35,1) both; }
+.glints { position: absolute; left: -90px; top: -88px; width: 180px; height: 144px; fill: #fff1c8; overflow: visible; filter: drop-shadow(0 0 3px #e6cb72); }
+.glints > path { transform-box: fill-box; transform-origin: center; animation: glint 1.4s ease-out var(--glint-delay) both; }
+.badge { position: absolute; bottom: 17px; left: var(--badge-offset, 0px); width: 132px; padding: 8px 9px; display: grid; gap: 2px; text-align: center; border: 1px solid #ebdfa7c9; border-radius: 13px; background: linear-gradient(155deg, #455837f5, #1a3325f5); box-shadow: 0 4px 15px #11201560, inset 0 1px #f9edbe26; transform: translateX(-50%); animation: badge 2.8s cubic-bezier(.2,.65,.3,1) both; }
+.badge > span { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.badge strong { font-size: .82rem; line-height: 1.2; }
+.badge small { color: #e1e7c6; font-size: .64rem; line-height: 1.25; white-space: nowrap; }
+@keyframes halo { 0% { opacity: 0; transform: scale(.45); } 20% { opacity: 1; } 100% { opacity: 0; transform: scale(1.25); } }
+@keyframes ring { 0% { opacity: 0; transform: scale(.25); } 15% { opacity: .85; } 100% { opacity: 0; transform: scale(1.3); } }
+@keyframes glint { 0% { opacity: 0; transform: translateY(14px) scale(.3); } 25% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-22px) scale(.3); } }
+@keyframes badge { 0% { opacity: 0; transform: translate(-50%, 9px) scale(.94); } 13%, 78% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, -7px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) {
+  .halo, .ring, .glints { display: none; }
+  .badge { animation: none; }
+}

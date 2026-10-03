@@ -17,6 +17,7 @@ import { interactiveMapObjects } from "./site-interactions";
 import type { EconomyController } from "@/features/economy/use-economy";
 import type { MapObjectScreenAnchor } from "./construction-map-anchor";
 import { WorldConstructionStatus } from "./world-construction-status";
+import { WorldUpgradeEffects } from "./world-upgrade-effects";
 import styles from "./world.module.css";
 
 type Props = { hideJourneyStatus?: boolean; hideMapControls?: boolean; economyJourney?: EconomySceneJourney | null; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
@@ -104,6 +105,7 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
     </div>}
     {ready && constructionEconomy && onOpenConstruction && <WorldConstructionStatus economy={constructionEconomy}
       anchors={objectAnchors} onOpen={onOpenConstruction} hidden={hideConstructionStatus} />}
+    {constructionEconomy && <WorldUpgradeEffects economy={constructionEconomy} anchors={objectAnchors} ready={ready} />}
     <div className={styles.cameraControls} hidden={hideMapControls} aria-label="Управление картой">
       <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>
       <button onClick={() => control("out")} disabled={!ready} aria-label="Отдалить карту"><Minus size={19} /></button>

@@ -3,6 +3,12 @@ import { ECONOMY_MAX_BALANCE, economyCatalog, type EconomyCommand, type EconomyC
 export class EconomyRuleError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
 }
+/** A display quote only: the authoritative command recomputes this from its own clock. */
+export function constructionSpeedupPrice(job: Pick<EconomyJob, "kind" | "finishesAt">, now: number,
+  config = economyCatalog.constructionSpeedup): number {
+  if (job.kind !== "construction") return 0;
+  return Math.ceil(Math.max(0, Date.parse(job.finishesAt) - now) / (config.secondsPerPearl * 1000));
+}
 const fail = (code: string, message: string): never => { throw new EconomyRuleError(code, message); };
 export function canAffordEconomy(state: Pick<EconomyState, "wallet" | "inventory">, cost: EconomyCost, quantity = 1) {
   return state.wallet.coins >= cost.coins * quantity && Object.entries(cost.items).every(([item, amount]) => (state.inventory[item] ?? 0) >= amount * quantity);
@@ -74,7 +80,7 @@ function requireBuildings(state: EconomyState, required: Record<string, number>)
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}): string {
-  if (command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  if (command.action !== "speedup_construction" && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards">, seconds: number, cost: EconomyCost) => {
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
@@ -116,6 +122,19 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (state.jobs.some(job => job.kind === "production" && job.targetId === building.id)) fail("ECONOMY_BUILDING_BUSY", "Перед улучшением заберите результат производства");
       createJob({ kind: "construction", targetId: building.id, recipeId: null, targetLevel: target.level, rewards: {} }, target.seconds, target.cost);
       return "Строительство началось";
+    }
+    case "speedup_construction": {
+      const job = state.jobs.find(item => item.id === command.targetId);
+      if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
+      if (job.kind !== "construction") return fail("ECONOMY_SPEEDUP_KIND", "За жемчуг можно завершить только строительство");
+      const price = constructionSpeedupPrice(job, now);
+      // totalPrice is the user's accepted maximum, never a trusted price or reward.
+      if (price > command.totalPrice) return fail("ECONOMY_SPEEDUP_PRICE_CHANGED", "Стоимость ускорения изменилась. Проверьте цену и подтвердите снова");
+      if (state.wallet.pearls < price) return fail("ECONOMY_PEARLS", "Не хватает жемчужин для ускорения");
+      state.wallet.pearls -= price;
+      state.buildings[job.targetId] = job.targetLevel!;
+      state.jobs = state.jobs.filter(item => item.id !== job.id);
+      return price > 0 ? "Строительство завершено за жемчуг" : "Постройка готова";
     }
     case "claim_job": {
       const job = state.jobs.find(item => item.id === command.targetId);

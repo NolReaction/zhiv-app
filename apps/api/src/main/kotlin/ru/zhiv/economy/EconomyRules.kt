@@ -6,6 +6,7 @@ import ru.zhiv.auth.AuthFailure
 import ru.zhiv.http.parseCanonicalUuidV4
 import ru.zhiv.http.parsePublicId
 import java.time.Instant
+import java.time.Duration
 import kotlin.math.floor
 import kotlin.math.sqrt
 
@@ -39,6 +40,7 @@ object EconomyRules {
 
     init {
         require(catalog.version == 2 && catalog.maxBatch in 1..10)
+        require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
             catalog.market.maxPriceMultiplier in 1L..5L && catalog.market.feeBps == 0)
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
@@ -119,9 +121,18 @@ object EconomyRules {
         }
     }
 
+    /** Started billing intervals, including a fractional final second, cost one pearl each. */
+    fun constructionSpeedupPrice(job: EconomyJob, now: Instant): Long {
+        if (job.kind != "construction") return 0
+        val remaining = Duration.between(now, Instant.parse(job.finishesAt))
+        if (remaining.isNegative || remaining.isZero) return 0
+        val interval = catalog.constructionSpeedup.secondsPerPearl
+        return remaining.seconds / interval + if (remaining.seconds % interval != 0L || remaining.nano > 0) 1 else 0
+    }
+
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.totalPrice != 0L) invalidEconomy()
+        if (command.action != "speedup_construction" && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "start_production" -> {
@@ -161,6 +172,18 @@ object EconomyRules {
                 val job = EconomyJob(command.requestId, "construction", building.id, targetLevel = next,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(upgrade.seconds).toString(), cost = upgrade.cost, catalogVersion = catalog.version)
                 spend(state, upgrade.cost).copy(jobs = state.jobs + job) to "Материалы внесены, строительство началось"
+            }
+            "speedup_construction" -> {
+                val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
+                if (job.kind != "construction") economyFailure("ECONOMY_SPEEDUP_KIND", "За жемчуг можно завершить только строительство")
+                val price = constructionSpeedupPrice(job, now)
+                // The client accepts a maximum; only the server clock determines the charge.
+                if (price > command.totalPrice) economyFailure("ECONOMY_SPEEDUP_PRICE_CHANGED", "Стоимость ускорения изменилась. Проверьте цену и подтвердите снова")
+                if (state.wallet.pearls < price) economyFailure("ECONOMY_PEARLS", "Не хватает жемчужин для ускорения")
+                state.copy(wallet = state.wallet.copy(pearls = state.wallet.pearls - price),
+                    buildings = state.buildings + (job.targetId to checkNotNull(job.targetLevel)),
+                    jobs = state.jobs.filterNot { it.id == job.id }) to
+                    if (price > 0) "Строительство завершено за жемчуг" else "Постройка готова"
             }
             "claim_job" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")

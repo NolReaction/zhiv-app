@@ -11,7 +11,7 @@ import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATIO
 import { drawForestWater } from "./forest-water";
 import { drawForestGroundWeather, updateForestWetness } from "./forest-ground-weather";
 import { drawForestGroundImpacts } from "./forest-ground-impacts";
-import { drawForestLighting, drawForestLightEmitters } from "./forest-lighting";
+import { drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams } from "./forest-lighting";
 import { forestLifeFrame, type ForestLifeState } from "./forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "./forest-life-painter";
 import { drawForestBush, forestBushForegroundActive } from "./forest-bush-painter";
@@ -199,6 +199,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     showBuildings: dev?.showBuildings, levels: selectedLevels };
   drawForestAtmosphere(context, world, { ...atmosphere, groundBirdsPainted: true }, () => { drawForestLighting(context, world, lighting);
     drawForestCampfireGlow(context, life?.campfires ?? [], elapsed, still, lighting.night, heroVisible ? actor : undefined); });
+  drawForestLighthouseBeams(context, world, lighting);
   drawForestLightEmitters(context, world, lighting);
   drawBuildingDetails(context, world, lighting);
   if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, world);

@@ -115,3 +115,48 @@ test("a trade refreshes market even while an invalidated old page is still loadi
   stale.resolve({ ...market(), listings: [{ id: "already-sold" }] }); await oldRead;
   assert.deepEqual(session.getSnapshot().market.listings, []);
 });
+
+test("construction speedup sends the approved pearl quote once and waits for server balance", async () => {
+  const wait = deferred(), sent = [];
+  const initial = state(); initial.wallet.pearls = 7;
+  const session = createEconomySession(owner, transport({ get: async () => initial, send: command => {
+    sent.push(structuredClone(command)); return wait.promise;
+  } }), () => assert.fail());
+  session.activate(); await session.refresh();
+  const jobId = crypto.randomUUID();
+  session.act("speedup_construction", jobId, 1, 3);
+  session.act("speedup_construction", jobId, 1, 3);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].action, "speedup_construction");
+  assert.equal(sent[0].targetId, jobId);
+  assert.equal(sent[0].totalPrice, 3);
+  assert.equal(session.getSnapshot().snapshot.wallet.pearls, 7);
+  assert.equal(session.getSnapshot().snapshot.buildings.home, 1);
+  const confirmed = state(1); confirmed.wallet.pearls = 4; confirmed.buildings.home = 2;
+  wait.resolve(result(confirmed)); await flush();
+  assert.equal(session.getSnapshot().snapshot.wallet.pearls, 4);
+  assert.equal(session.getSnapshot().snapshot.buildings.home, 2);
+});
+
+test("uncertain pearl speedup restores the exact maximum price and request ID", async () => {
+  const cache = storage(), sent = [];
+  let wallet = state(); wallet.wallet.pearls = 7;
+  const t = transport({ get: async () => wallet, send: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) { wallet = state(1); wallet.wallet.pearls = 4; wallet.buildings.home = 2; throw Error("Lost response"); }
+    return { ...result(wallet), replayed: true };
+  } });
+  const first = createEconomySession(owner, t, () => assert.fail(), cache), stop = first.activate();
+  await first.refresh(); first.act("speedup_construction", crypto.randomUUID(), 1, 3); await flush();
+  assert.equal(first.getSnapshot().uncertain, true);
+  first.act("speedup_construction", crypto.randomUUID(), 1, 8);
+  assert.equal(sent.length, 1); stop();
+  const next = createEconomySession(owner, t, () => assert.fail(), cache); next.activate(); await next.refresh();
+  assert.equal(next.getSnapshot().uncertain, true);
+  await next.retry();
+  assert.deepEqual(sent[1], sent[0]);
+  assert.equal(sent[1].totalPrice, 3);
+  assert.equal(next.getSnapshot().snapshot.wallet.pearls, 4);
+  assert.equal(next.getSnapshot().uncertain, false);
+  assert.equal(cache.data.size, 0);
+});

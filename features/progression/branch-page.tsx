@@ -22,7 +22,7 @@ const worldIcons: Record<string, LucideIcon> = {
 const explorationIcons: Record<string, LucideIcon> = { forest: TreePine, shore: Fish, forest_camp: Trees, shore_camp: FishingRod, cave: Pickaxe, deep_cave: Mountain, old_woodland: Trees, coastal_deposits: Waves, uplands: Mountain, abandoned_quarry: Pickaxe };
 
 function NodeIcon({ node, size = 32 }: { node: ProgressionNode; size?: number }) {
-  if (node.id === "coins" || node.id === "explorer_cap" || node.id === "willow_rod") return <ItemIcon itemId={node.id} size={size} />;
+  if (node.id === "coins" || node.id === "pearls" || node.id === "explorer_cap" || node.id === "willow_rod") return <ItemIcon itemId={node.id} size={size} />;
   if (node.id === "forest_set" || node.id === "river_set") return <CollectionIcon findId={node.id === "forest_set" ? "acorn" : "river_shell"} size={size} />;
   let Icon = worldIcons[node.id] ?? Box;
   if (node.kind === "building") Icon = buildingIcons[node.buildingId ?? ""] ?? Box;

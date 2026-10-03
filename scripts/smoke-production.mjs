@@ -224,7 +224,7 @@ const worldEarned = await api("GET", "/api/v1/world", { cookie: owner.cookie });
 assert.equal(worldEarned.data.state.resources.sparks, 0);
 const travel = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldEarned.data.revision, action: "start_journey", target: "first_path" };
 await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel, expected: 409 });
-// V32–V34 must work under the restricted runtime role, including immutable command receipts.
+// V32–V35 must work under the restricted runtime role, including immutable command receipts.
 await api("GET", "/api/v1/economy", { expected: 401 });
 const economyBefore = await api("GET", "/api/v1/economy", { cookie: owner.cookie });
 assert.equal(economyBefore.headers["cache-control"], "no-store");

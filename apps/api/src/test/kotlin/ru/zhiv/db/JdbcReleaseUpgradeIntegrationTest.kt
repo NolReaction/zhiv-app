@@ -78,7 +78,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("34", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("35", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -139,7 +139,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("34", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("35", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -193,7 +193,9 @@ class JdbcReleaseUpgradeIntegrationTest {
             }
             val unchangedTables = listOf("economy_market_listings", "economy_market_receipts", "economy_conversion_audit", "economy_ledger", "economy_commands")
             val before = legacyData(source, unchangedTables)
-            DatabaseFactory.migrate(source)
+            // This assertion isolates V34; V35 separately tests its new ledger column.
+            val warehouseMigration = Flyway.configure().dataSource(source).locations("classpath:db/migration").target("34").load()
+            warehouseMigration.migrate()
             val expected = state.copy(buildings = state.buildings + ("warehouse" to 1) + ("kiln" to 0))
             source.connection.use { c ->
                 val row = readEconomyProfile(c, player.id)
@@ -204,7 +206,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(EconomyStorage(200, 720, 30, 0, 550), view.storage)
             assertEquals(listOf(oldJob), view.jobs)
             assertEquals(before, legacyData(source, unchangedTables))
-            DatabaseFactory.migrate(source)
+            warehouseMigration.migrate()
             assertEquals(20L, JdbcEconomyRepository(source).snapshot(token.hash).revision)
             assertEquals(before, legacyData(source, unchangedTables))
             // The new wrapper preserves the original conversion and adds no second grant.

@@ -1,6 +1,6 @@
 import type { FixedWorldScene, WorldBounds, WorldBush, WorldPoint } from "./tiled/types";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
-import { drawForestBushRootFringe } from "./forest-bush-grounding";
+import { drawForestBushLeafShade } from "./forest-bush-grounding";
 import { forestObjectArtwork } from "./forest-object-appearance";
 import { forestBushBounds, forestBushParticles, type ForestBushBurst, type ForestBushParticle } from "./forest-bush-particles";
 
@@ -174,7 +174,7 @@ export function drawForestBush(
     if (!terrain || !image?.naturalWidth || !image.naturalHeight) return;
     if (forestBushForegroundActive(frame, still)) {
       drawCutout(ctx, { image, artwork: forestObjectArtwork(image, "foliage"), bounds: terrain.bounds }, bounds, rustle, time);
-      drawForestBushRootFringe(ctx, scene, terrain, image);
+      drawForestBushLeafShade(ctx, scene, terrain, image);
     }
     drawParticles(ctx, particles);
     return;

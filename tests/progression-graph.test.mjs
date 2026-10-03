@@ -85,7 +85,9 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 143);
+  assert.equal(graph.nodes.length, 144);
+  assert.equal(node("pearls").status, "active");
+  assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
   assert.equal(graph.nodes.filter(value => value.status === "plan").length, 14);
 });
 

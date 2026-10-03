@@ -3,6 +3,7 @@
 .leftControls, .rightControls { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
 .hud button { pointer-events: auto; box-shadow: 0 3px 14px #07140b40; }
 .hud .iconButton { flex: 0 0 40px; width: 40px; height: 44px; min-height: 44px; padding: 8px; border-radius: 13px; }
+.hud .helpButton { height: auto; align-self: stretch; border-color: #d8e6b62e; background: #18291df2; }
 .hud .level { min-height: 44px; gap: 8px; padding: 6px 11px; border-radius: 13px; }
 .level > span { display: flex; flex-direction: column; gap: 1px; text-align: left; line-height: 1.1; }
 .level small { font-size: 9px; color: #b4c5a0; }
