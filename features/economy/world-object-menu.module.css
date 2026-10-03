@@ -75,7 +75,7 @@
 .stations { display: flex; flex: 0 0 auto; gap: 3px; margin: 0 12px 8px; padding: 3px; background: rgba(0, 0, 0, .18); border: 1px solid rgba(164, 186, 139, .1); border-radius: 10px; }
 .menu .stations button { flex: 1; padding: 5px 4px; min-height: 30px; color: #adbea4; font-size: 11px; }
 .menu .stations button[aria-pressed="true"] { color: #edf3da; background: #40563b; box-shadow: 0 1px 3px #091b1259; }
-.body { display: flex; flex-direction: column; gap: 9px; min-height: 0; padding: 0 12px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #65805b transparent; }
+.body { display: flex; flex: 1; flex-direction: column; gap: 9px; min-height: 0; padding: 0 12px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #65805b transparent; }
 .future, .loading { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0 3px; color: #b9c8ae; }
 .loading { flex-wrap: wrap; }
 .loading p { flex: 1; }
@@ -99,8 +99,8 @@
 .hint .textButton { margin-left: 4px; }
 .small { color: #a6b89d; font-size: 10px; }
 .detail { display: flex; flex-direction: column; gap: 8px; padding-top: 9px; border-top: 1px solid rgba(164, 186, 139, .17); }
+.detailTitle h3 { font-size: 12px; font-weight: 650; }
 .detailTitle { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.detailTitle h3, .upgradeTitle h3 { font-size: 12px; font-weight: 650; }
 .menu .iconButton { min-width: 28px; min-height: 28px; padding: 5px; color: #b7c7a7; }
 .rewards { display: flex; flex-wrap: wrap; gap: 5px; }
 .rewards li { display: flex; align-items: center; gap: 5px; padding: 5px 7px; background: #83965c1a; border-radius: 6px; color: #d5e2b4; font-size: 11px; }
@@ -122,12 +122,6 @@
 .menu .primary { min-height: 34px; padding: 7px 10px; background: #4d653b; border: 1px solid #a3bb7166; color: #f3f5dc; font-size: 11px; font-weight: 600; }
 .menu .primary:hover:not(:disabled) { background: #627c49; }
 .order .primary { flex: 1; }
-.upgradeTitle { display: flex; align-items: center; gap: 5px; color: #d9e1b9; }
-.upgradeTitle h3 { flex: 1; }
-.upgradeTitle > span { display: flex; align-items: center; gap: 3px; color: #aabb9d; font-size: 10px; }
-.newRecipes { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; }
-.newRecipes > span { color: #9eb396; font-size: 10px; }
-.newRecipes .textButton { font-size: 10px; }
 .inventoryHeading { display: flex; justify-content: space-between; align-items: center; color: #b4c5a7; font-size: 11px; }
 .inventoryHeading strong { color: #d9e4c2; font-size: 10px; font-weight: 500; }
 .products { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
@@ -137,17 +131,11 @@
 .product strong { font-size: 10px; font-weight: 550; line-height: 1.2; overflow-wrap: anywhere; }
 .product > span { display: inline-flex; gap: 3px; align-items: center; color: #9fb395; font-size: 9px; }
 .empty { padding: 5px 0; color: #afc1a2; font-size: 11px; }
-.homePeek { display: flex; gap: 10px; align-items: center; padding: 4px 0; color: #d0ddaf; }
-.homePeek > div { min-width: 0; }
-.homePeek strong { font-size: 12px; font-weight: 600; }
-.homePeek p { margin-top: 4px; color: #aebe9e; font-size: 11px; }
 .sale { display: grid; grid-template-columns: 1fr 68px; gap: 6px; align-items: center; }
 .sale label { color: #aebe9e; font-size: 11px; }
 .menu .sale input { box-sizing: border-box; width: 100%; min-height: 32px; padding: 5px 7px; border: 1px solid #8d9c7059; border-radius: 6px; background: #0b1e14; color: #eef1db; font: inherit; }
 .sale .primary { grid-column: 1 / -1; }
 .footer { flex: 0 0 auto; padding: 7px 12px 9px; border-top: 1px solid rgba(164, 186, 139, .14); }
-.menu .upgradeToggle { justify-content: flex-start; width: 100%; min-height: 30px; padding: 5px 2px; color: #cbd9b0; font-size: 11px; }
-.upgradeToggle > span { margin-left: auto; color: #9bb08c; font-size: 10px; }
 .maximum { display: inline-flex; align-items: center; gap: 5px; color: #9db490; font-size: 10px; }
 @media (max-width: 380px) { .header { gap: 6px; padding-left: 10px; } .body { padding-left: 10px; padding-right: 10px; } .coins { max-width: 63px; } .menu .product { min-height: 77px; } }
 @media (max-height: 500px) {
@@ -160,6 +148,10 @@
   .menu .stations button { min-height: 25px; padding: 4px; font-size: 10px; }
   .body { gap: 6px; padding-bottom: 7px; }
   .footer { padding-top: 3px; padding-bottom: 5px; }
-  .menu .upgradeToggle { min-height: 25px; padding-top: 3px; padding-bottom: 3px; font-size: 10px; }
   .menu .product { min-height: 70px; gap: 4px; padding-top: 6px; }
 }
+
+.menu .upgradeAction { justify-content: flex-start; width: 100%; min-height: 44px; padding: 7px 9px; border: 1px solid #8da76a55; background: #536b3833; color: #dce8bf; text-align: left; }
+.upgradeAction > span { flex: 1; font-weight: 600; }
+.upgradeAction small { display: block; margin-top: 2px; color: #aec299; font-size: 10px; font-weight: 400; }
+@media (max-height: 500px) { .menu .upgradeAction { min-height: 34px; padding: 4px 7px; } .upgradeAction > span { display: flex; align-items: center; justify-content: space-between; gap: 6px; } .upgradeAction small { margin: 0; } }

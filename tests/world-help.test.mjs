@@ -34,7 +34,7 @@ test("help uses current catalog rules and marks unavailable mechanics while rebu
   for (const id of ["explorer_cap", "willow_rod"]) {
     assert.ok(get("collection").paragraphs.join(" ").includes(worldCatalog.items.find(item => item.id === id).name));
   }
-  assert.match(get("journeys").paragraphs[0], /Стоимость улучшения включает монеты и материалы/);
+  assert.match(get("journeys").paragraphs[0], /Монеты и материалы списываются при начале работ/);
   assert.match(get("journeys").paragraphs.join("\n"), /Одновременно идёт одно исследование/);
   assert.match(get("market").paragraphs[1], /Свой лот купить нельзя/);
   assert.match(get("wardrobe").note, /пока нельзя изготовить.*полученные вещи можно менять/);

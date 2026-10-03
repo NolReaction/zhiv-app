@@ -32,6 +32,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
   const [selection, setSelection] = useState<MapObjectSelection | null>(null);
   const selectedId = useRef<string | null>(null);
+  const requestedStation = useRef<string | undefined>(undefined);
+  const [objectStation, setObjectStation] = useState<string | undefined>();
   const objectReturn = useRef<HTMLElement | null>(null);
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -65,10 +67,13 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     return () => document.removeEventListener("pointerdown", outside);
   }, [moreOpen]);
   const clearObject = useCallback(() => { selectedId.current = null; setSelection(null); }, []);
+  const restoreObjectFocus = useCallback(() => {
+    if (objectReturn.current?.isConnected) objectReturn.current.focus({ preventScroll: true });
+  }, []);
   const closeObject = useCallback(() => {
     clearObject();
-    if (objectReturn.current?.isConnected) objectReturn.current.focus({ preventScroll: true });
-  }, [clearObject]);
+    restoreObjectFocus();
+  }, [clearObject, restoreObjectFocus]);
   useEffect(() => {
     if (!escapeHandlerRef) return;
     // Radix handles Escape in document capture, before a popover's own key handler.
@@ -83,7 +88,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (next === null) { selectedId.current = null; setSelection(null); }
     else if (selectedId.current === next.objectId) setSelection(next);
   }, []);
-  const openObject = useCallback((place: WorldPlace) => {
+  const openObject = useCallback((place: WorldPlace, stationId?: string) => {
+    requestedStation.current = stationId;
     setPanel(null); setMoreOpen(false);
     setOpenObjectRequest(previous => ({ id: (previous?.id ?? 0) + 1, place }));
   }, []);
@@ -112,7 +118,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const onPlace = useCallback((place: WorldPlace, object?: MapObjectSelection) => {
     if (object) {
       if (!selectedId.current) objectReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      selectedId.current = object.objectId; setSelection(object); setPanel(null); setMoreOpen(false);
+      selectedId.current = object.objectId; setObjectStation(requestedStation.current); requestedStation.current = undefined; setSelection(object); setPanel(null); setMoreOpen(false);
       return;
     }
     if (place === "journeys") { openPanel("journeys"); return; }
@@ -148,7 +154,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       <div aria-live="polite">{economy.snapshot ? <EconomyBalances wallet={economy.snapshot.wallet} /> : <button onClick={() => openEconomy("overview")}>Хозяйство · {economy.error ? "повторить загрузку" : "загрузка…"}</button>}</div>
     </header>
     {panel === null && <WorldFeedback world={world} />}
-    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={selection.objectId} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onNavigate={openObject} onExplore={() => openEconomy("exploration")} /></div>}
+    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}`} initialStationId={objectStation} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onExplore={() => openEconomy("exploration")} /></div>}
     <div ref={bottomHud} className={styles.bottomHud}>
       <nav className={styles.gameDock} aria-label="Действия в игре">
         <MochlikState presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onOpen={() => { clearObject(); setMoreOpen(false); }} onCall={() => setLocalNotice(value => value + 1)} />

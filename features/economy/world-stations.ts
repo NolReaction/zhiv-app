@@ -44,6 +44,12 @@ export function worldMenuPosition(selection: Pick<MapObjectSelection, "x" | "y" 
   }).sort((a, b) => a.score - b.score);
   return { ...options[0], width, height, anchorX: clamp(anchor.x - options[0].x, 20, Math.max(20, width - 20)), anchorY: clamp(anchor.y - options[0].y, 20, Math.max(20, height - 20)) };
 }
+// Production menus keep this frame while recipes, work and inventory change inside
+// their scroll area. Content measurements must not choose a new side of the object.
+export function worldStableMenuPosition(selection: Pick<MapObjectSelection, "x" | "y" | "viewportWidth" | "viewportHeight">, bounds: WorldMenuBounds = {}) {
+  const { width, maxHeight } = worldMenuDimensions(selection, bounds);
+  return worldMenuPosition(selection, { width, height: maxHeight }, bounds);
+}
 export type WorldRecipe = EconomyCatalog["recipes"][number];
 export type WorldBuildingLevel = EconomyCatalog["buildings"][number]["levels"][number];
 export function worldRequirements(value: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }, recipe?: Pick<WorldRecipe, "buildingId" | "buildingLevel">) {

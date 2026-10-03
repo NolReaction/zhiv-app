@@ -3,12 +3,14 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { createElement } from "react";
+import { Dialog } from "radix-ui";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const helpers = await vite.ssrLoadModule("/features/economy/world-stations.ts");
 const { WorldObjectMenu } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
@@ -31,6 +33,9 @@ function job(overrides = {}) {
 }
 function render(place, economy = controller(), extra = {}) {
   return renderToStaticMarkup(createElement(WorldObjectMenu, { selection: { place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 }, economy, onClose() {}, ...extra }));
+}
+function renderUpgrade(stationId, economy = controller(), extra = {}) {
+  return renderToStaticMarkup(createElement(Dialog.Root, { open: true }, createElement(WorldUpgradeContent, { stationId, economy, onClose() {}, onOpenPantry() {}, ...extra })));
 }
 function button(html, text) {
   const found = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: match[2].replace(/<[^>]*>/g, "") })).find(entry => entry.text.includes(text));
@@ -112,7 +117,7 @@ test("starter stone sources use an available forest exploration instead of the l
   const route = state.catalog.explorations.find(entry => entry.id === source.targetId);
   assert.ok(route.rewards.stone > 0);
   assert.deepEqual(helpers.worldMissingRequirements(state, helpers.worldRequirements(route)), []);
-  const html = render("woodlot", controller({ snapshot: state }), { onExplore() {}, onNavigate() {} });
+  const html = renderUpgrade("woodlot", controller({ snapshot: state }), { navigation: { open() {}, canOpen() { return true; }, explore() {} } });
   assert.match(html, /aria-label="Где получить: Камень, В путь"/);
   state.buildings.home = 2; state.buildings.quarry = 1;
   assert.equal(helpers.worldMaterialSource(state, "stone").stationId, "quarry");
@@ -138,21 +143,21 @@ test("map menu is compact and nonmodal with place-specific production rather tha
   assert.match(html, /aria-label="Вырастить ягоды/);
   assert.doesNotMatch(html, /aria-label="[^\"]*(Выплавить|Доски|Рыбу)/);
   assert.equal(disabled(button(render("workshop"), "Верстак")), false);
-  assert.equal(disabled(button(render("house"), "Кладовая")), false);
+  assert.equal(disabled(button(renderUpgrade("home"), "Кладовая")), false);
   assert.doesNotMatch(html, /Начать ·/);
 });
 
 test("busy, uncertain and retry cooldown block claims while station navigation remains available", () => {
   const state = snapshot({ jobs: [job({ kind: "construction", targetId: "home", recipeId: null, targetLevel: 2, rewards: {}, finishesAt: new Date(now).toISOString() })] });
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 10_000 }]) {
-    const html = render("house", controller({ snapshot: state, ...flags }));
+    const html = renderUpgrade("home", controller({ snapshot: state, ...flags }));
     assert.equal(disabled(button(html, "Завершить")), true);
     assert.equal(disabled(button(html, "Кладовая")), false);
   }
 });
 
 test("missing-navigation requirements remain honest text; future landmarks offer no spend controls", () => {
-  const html = render("quarry");
+  const html = renderUpgrade("quarry");
   assert.match(html, /нужен ур. 2/);
   assert.equal(disabled(button(html, "Начать обустройство")), true);
   for (const place of ["bridge", "lighthouse"]) {
@@ -163,10 +168,28 @@ test("missing-navigation requirements remain honest text; future landmarks offer
 });
 
 test("loading and initial failures show no made-up stocks or spend action", () => {
-  let html = render("house", controller({ snapshot: null }));
+  let html = renderUpgrade("home", controller({ snapshot: null }));
   assert.match(html, /Открываем ваше хозяйство/);
   assert.doesNotMatch(html, /монет"|Начать обустройство|Продать|Развить дом/);
   html = render("garden", controller({ snapshot: null, error: "Нет связи" }));
   assert.match(html, /Нет связи/);
   assert.equal(disabled(button(html, "Попробовать ещё раз")), false);
+});
+
+// The actual portal and keyboard/focus transition are covered in the browser pass.
+test("house skips the anchored menu and production upgrades use a separate dialog action", () => {
+  assert.doesNotMatch(render("house"), /aria-modal="false"|Оборудование: Дом/);
+  const html = render("garden");
+  const upgrade = button(html, "Улучшить");
+  assert.match(upgrade.attributes, /aria-haspopup="dialog"/);
+  assert.doesNotMatch(upgrade.attributes, /aria-expanded/);
+  assert.doesNotMatch(html, /Улучшить до ур\.|aria-label="Обустройство:/);
+});
+
+test("navigation to house storage preserves the requested station instead of opening home upgrades", () => {
+  const html = render("house", controller(), { initialStationId: "warehouse" });
+  assert.match(html, /aria-modal="false"/);
+  assert.match(html, /Пока пусто/);
+  assert.equal(disabled(button(html, "Расширить кладовую")), false);
+  assert.doesNotMatch(render("house", controller(), { initialStationId: "kiln" }), /aria-modal="false"/);
 });

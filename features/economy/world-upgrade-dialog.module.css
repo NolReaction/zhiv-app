@@ -1,0 +1,114 @@
+.overlay { position: fixed; inset: 0; z-index: 110; background: rgba(4, 12, 8, .68); backdrop-filter: blur(3px); }
+.dialog.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 111;
+  width: min(560px, calc(100vw - 32px));
+  height: min(720px, calc(100dvh - 40px));
+  max-height: calc(100dvh - 40px);
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  border-radius: 20px;
+  font-size: 13px;
+  box-shadow: 0 28px 90px #0008;
+}
+.dialog.dialog::after { display: none; }
+.header { display: flex; align-items: flex-start; gap: 12px; flex: 0 0 auto; padding: 22px 18px 16px 22px; }
+.buildingIcon { display: grid; place-items: center; flex: 0 0 46px; width: 46px; height: 46px; color: #d7e4af; background: #b3c77b18; border: 1px solid #c1d39426; border-radius: 14px; }
+.heading { flex: 1; min-width: 0; }
+.eyebrow { display: block; margin-bottom: 4px; color: #a2b694; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.heading h2 { color: #edf1df; font-size: 23px; font-weight: 650; line-height: 1.15; letter-spacing: -.035em; outline: none; }
+.heading p { margin-top: 7px; color: #a9bba0; font-size: 11px; line-height: 1.5; }
+.dialog.dialog .close { flex-shrink: 0; width: 36px; min-height: 36px; padding: 7px; color: #b9c7ae; }
+.levelBar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; flex: 0 0 auto; min-height: 43px; margin: 0 22px; padding: 0 0 14px; border-bottom: 1px solid #b4c98a24; }
+.levels { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: #a7b89c; font-size: 12px; }
+.levels > strong { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 7px; color: #e5edca; background: #afc77620; font-size: 12px; font-weight: 600; }
+.dialog.dialog .pantry { min-height: 34px; padding: 7px 9px; color: #cedfb4; background: #101f1680; border-color: #aabf812e; font-size: 11px; }
+.body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 16px; min-height: 0; padding: 18px 22px 22px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #638051 transparent; }
+.section { display: flex; flex-direction: column; gap: 12px; }
+.section h3 { display: flex; align-items: center; gap: 7px; color: #e0e8ca; font-size: 14px; line-height: 1.35; font-weight: 600; }
+.highlights { display: grid; gap: 6px; }
+.highlights p { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 10px; background: #9cb86d13; color: #cedfb8; font-size: 12px; }
+.highlights strong { color: #e4edcd; font-weight: 600; }
+.unlockGroups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.unlockGroup { min-width: 0; padding: 10px 11px; border: 1px solid #9db27b22; border-radius: 10px; background: #07181030; }
+.unlockGroup[data-wide="true"] { grid-column: 1 / -1; }
+.unlockGroup[data-wide="true"] ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.unlockGroup h4, .conditions h4 { margin: 0 0 8px; color: #a9bd98; font-size: 10px; font-weight: 500; }
+.unlockGroup ul { display: grid; gap: 6px; }
+.unlockGroup li { display: flex; align-items: center; gap: 7px; min-width: 0; color: #d4dfc0; font-size: 11px; line-height: 1.45; }
+.unlockGroup li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.recipeIcon { display: inline-flex; flex: 0 0 auto; color: #a9c58b; }
+.recipeCount { color: #d4dfc0; font-size: 12px; }
+.recipeCount strong { color: #e7efd1; font-weight: 600; }
+.unlockLabel, .dialog.dialog .unlockLink { display: flex; align-items: center; justify-content: flex-start; gap: 7px; width: 100%; min-width: 0; min-height: 0; padding: 0; color: #d4dfc0; text-align: left; font-size: 11px; line-height: 1.45; }
+.unlockLabel > svg, .unlockLink > svg { color: #a9c58b; }
+.unlockLink > span, .unlockLabel > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dialog.dialog .unlockLink { min-height: 26px; margin: -2px 0; }
+.dialog.dialog .unlockLink:hover { background: transparent; color: #f1f5d8; text-decoration: underline; }
+.dialog .muted { color: #9fb293; font-size: 10px; line-height: 1.5; }
+.unlockGroup > .muted { margin-top: 8px; }
+.costCard { padding: 13px 14px; border: 1px solid #b4c7882e; border-radius: 11px; background: #050f0929; }
+.sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sectionHeading > span { flex: 0 0 auto; color: #9aaf8d; font-size: 10px; }
+.costCard > ul { gap: 8px; }
+.costCard > ul > li { font-size: 12px; }
+.costCard > ul > li > strong { font-size: 12px; font-variant-numeric: tabular-nums; }
+.conditions { padding-top: 10px; border-top: 1px solid #b4c78820; }
+.conditions h4 { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: #d0b890; font-size: 11px; }
+.loading { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 120px; padding: 20px; text-align: center; color: #adbf9f; }
+.complete { align-items: center; justify-content: center; flex: 1; gap: 14px; padding: 22px 10px; text-align: center; }
+.completeIcon { display: grid; place-items: center; width: 62px; height: 62px; border: 1px solid #b0c68240; border-radius: 50%; background: #a0b96913; color: #c1d498; }
+.complete p { max-width: 340px; color: #aabd9f; font-size: 12px; line-height: 1.65; }
+.footer { display: flex; flex: 0 0 auto; flex-direction: column; gap: 9px; padding: 15px 22px 19px; border-top: 1px solid #b4c98a24; background: #0e1c14b3; }
+.confirmRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.duration { display: inline-flex; align-items: center; gap: 7px; color: #a8bb98; }
+.duration > span { display: flex; flex-direction: column; gap: 2px; font-size: 10px; }
+.duration strong { color: #d8e4c0; font-size: 12px; font-weight: 550; }
+.dialog.dialog .confirm { min-height: 43px; padding: 11px 15px; color: #f1f5de; background: #4c693b; border: 1px solid #b3ce7a66; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.dialog.dialog .confirm:hover:not(:disabled) { background: #617e46; }
+.dialog.dialog .confirm:disabled { opacity: .55; }
+.reason { display: flex; align-items: flex-start; gap: 6px; color: #d6bb95; font-size: 11px; line-height: 1.45; }
+.reason svg { margin-top: 1px; }
+.dialog.dialog .done { align-self: flex-end; min-width: 94px; min-height: 40px; padding: 9px 15px; border: 1px solid #aec48845; color: #dbe7c3; background: #66804a28; }
+@media (max-width: 480px) {
+  .dialog.dialog { width: calc(100vw - 20px); height: min(720px, calc(100dvh - 24px)); max-height: calc(100dvh - 24px); border-radius: 16px; }
+  .header { gap: 9px; padding: 17px 12px 13px 15px; }
+  .heading h2 { font-size: 20px; }
+  .heading p { font-size: 10px; }
+  .buildingIcon { flex-basis: 37px; width: 37px; height: 37px; border-radius: 11px; }
+  .buildingIcon svg { width: 23px; height: 23px; }
+  .dialog.dialog .close { width: 30px; min-height: 32px; padding: 5px; }
+  .levelBar { margin: 0 15px; padding-bottom: 12px; gap: 6px; }
+  .levels { gap: 6px; font-size: 11px; }
+  .levels > strong { padding: 5px 7px; font-size: 11px; }
+  .dialog.dialog .pantry { padding: 6px 7px; font-size: 10px; }
+  .body { padding: 15px; gap: 14px; }
+  .unlockGroups { gap: 8px; }
+  .unlockGroup { padding: 9px; }
+  .footer { padding: 13px 15px 15px; }
+  .confirmRow { gap: 8px; }
+  .dialog.dialog .confirm { flex: 1; max-width: 230px; padding: 10px; font-size: 11px; }
+  .costCard { padding: 11px; }
+}
+@media (max-width: 350px) {
+  .unlockGroups { grid-template-columns: 1fr; }
+  .unlockGroup[data-wide="true"] ul { grid-template-columns: 1fr; }
+  .sectionHeading { align-items: flex-start; gap: 7px; }
+  .sectionHeading h3 { font-size: 12px; }
+  .duration > span { font-size: 9px; }
+  .confirmRow > .duration > svg { display: none; }
+}
+@media (max-height: 500px) {
+  .dialog.dialog { width: min(680px, calc(100vw - 32px)); height: calc(100dvh - 20px); max-height: calc(100dvh - 20px); }
+  .header { align-items: center; padding-top: 10px; padding-bottom: 8px; }
+  .heading h2 { font-size: 18px; }
+  .heading p { display: none; }
+  .eyebrow { font-size: 9px; margin-bottom: 3px; }
+  .buildingIcon { flex-basis: 35px; width: 35px; height: 35px; }
+  .levelBar { min-height: 36px; padding-bottom: 7px; }
+  .body { padding-top: 12px; padding-bottom: 14px; }
+  .footer { padding-top: 9px; padding-bottom: 10px; gap: 5px; }
+  .dialog.dialog .confirm { min-height: 36px; padding-top: 8px; padding-bottom: 8px; }
+}
