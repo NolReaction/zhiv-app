@@ -1674,7 +1674,7 @@ export function CheckInApp() {
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
-      {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world}
+      {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world} economy={economy}
         presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`}
         active={activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}
         onOpenWorld={() => worldEntryButton.current?.click()}

@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Children, isValidElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldDevTabs, WorldDevPanelContent, gardenDevActionUnavailable } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
 const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
+const { WorldDevCheats } = await vite.ssrLoadModule("/features/world/dev/world-dev-cheats.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 
 function inspect(element) {
   const elements = [];
@@ -85,7 +88,7 @@ test("each DEV page renders only its controls, with no simulation or account mut
   const snapshot = worldDevStore.getSnapshot();
   const expected = {
     scenarios: "Готовые сценарии", scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
-    world: "Погода и живность", buildings: "Постройки", ai: "Мышление и память",
+    world: "Погода и живность", buildings: "Постройки", cheats: "Читы хозяйства", ai: "Мышление и память",
     overlays: "Разметка сцены", routes: "Навигация и входы", app: "Приложение и тесты",
   };
   for (const [page, title] of Object.entries(expected)) {
@@ -212,20 +215,102 @@ test("route diagnostics follow the selected house geometry instead of the base T
   assert.match(panel("appearance").markup, /визуальный масштаб.*Actor.size/);
 });
 
-test("account test resources still require a permitted server and an unambiguous request", () => {
-  const grants = [];
-  const world = { busy: false, uncertain: true, snapshot: { devTools: true,
-    state: { resources: { sparks: 10, wood: 20, stone: 30 }, equipment: { palette: "moss", head: null, neck: null } } }, act: command => grants.push(command), retry() {} };
-  const { elements } = panel("app", { world });
-  const grant = elements.find(element => element.type === "button" && labelText(element).includes("+50"));
-  assert.equal(grant.props.disabled, true);
-  grant.props.onClick();
-  assert.deepEqual(grants, []);
-  const denied = panel("app", { world: { ...world, uncertain: false, snapshot: { ...world.snapshot, devTools: false } } });
-  const deniedGrant = denied.elements.find(element => element.type === "button" && labelText(element).includes("+50"));
-  deniedGrant.props.onClick();
-  assert.equal(deniedGrant.props.disabled, true);
-  assert.deepEqual(grants, []);
+test("application diagnostics link to economy cheats instead of granting obsolete resources", () => {
+  const { markup } = panel("app");
+  assert.match(markup, /отдельной вкладке «Читы»/);
+  assert.doesNotMatch(markup, /\+50|dev_grant_resources|Тестовые ресурсы/);
+});
+
+const cheatNow = Date.parse("2026-10-03T13:00:00Z");
+function cheats(economyPatch = {}, snapshotPatch = {}, propsPatch = {}) {
+  const commands = [], claims = [], retries = [];
+  const snapshot = { ownerPublicId: "ME", revision: 3, serverTime: new Date(cheatNow).toISOString(),
+    wallet: { coins: 10, pearls: 4 }, inventory: { wood: 3 }, buildings: { home: 1, warehouse: 1 }, jobs: [],
+    catalog: economyCatalog, ...snapshotPatch };
+  snapshot.storage = snapshotPatch.storage ?? economyStorage(snapshot);
+  const props = {
+    world: { snapshot: { devTools: true } },
+    economy: { snapshot, now: cheatNow, retryAt: 0, busy: false, uncertain: false, notice: "", error: null, devAvailable: true,
+      actDev: (...command) => commands.push(command), act: (...command) => claims.push(command), retry: () => retries.push(true), ...economyPatch },
+    ...propsPatch,
+  };
+  let element;
+  function Probe() { element = WorldDevCheats(props); return element; }
+  renderToStaticMarkup(createElement(Probe));
+  return { ...inspect(element), commands, claims, retries, props };
+}
+const cheatButton = (view, action) => view.elements.find(element => element.props["data-dev-action"] === action);
+
+test("cheats use the economy account, real catalog levels and server commands without changing visual previews", () => {
+  const before = worldDevStore.getSnapshot();
+  const view = cheats();
+  assert.deepEqual(view.commands, [], "render must not grant anything");
+  assert.match(view.markup, /ресурсы и уровни сохраняются после перезагрузки/);
+  assert.match(view.markup, /Монеты|Жемчуг/);
+  for (const [button, command] of [
+    ["grant-coins-10000", ["grant_currency", "coins", 10000]],
+    ["grant-pearls-100", ["grant_currency", "pearls", 100]],
+    ["grant-item", ["grant_item", "wood", 100]],
+    ["set-building-level", ["set_building_level", "home", 2]],
+    ["grant-upgrade-cost", ["grant_upgrade_cost", "home", 1]],
+  ]) {
+    const control = cheatButton(view, button);
+    assert.equal(control.props.disabled, false);
+    control.props.onClick();
+    assert.deepEqual(view.commands.at(-1), command);
+  }
+  const level = view.elements.find(element => element.type === "select" && element.props.value === 2);
+  assert.deepEqual(Children.toArray(level.props.children).map(option => option.props.value), economyCatalog.buildings.find(building => building.id === "home").levels.map(entry => entry.level));
+  assert.equal(worldDevStore.getSnapshot(), before);
+});
+
+test("unpermitted servers, unloaded accounts, pending receipts and cooldowns prevent cheat dispatch", () => {
+  for (const [patch, props] of [[{}, { world: { snapshot: { devTools: false } } }], [{ snapshot: null }, {}],
+    [{ uncertain: true }, {}], [{ busy: true }, {}], [{ retryAt: cheatNow + 5000 }, {}], [{ devAvailable: false }, {}]]) {
+    const view = cheats(patch, {}, props);
+    for (const button of view.elements.filter(element => element.props["data-dev-action"])) {
+      assert.equal(button.props.disabled, true);
+      button.props.onClick();
+    }
+    assert.deepEqual(view.commands, []);
+  }
+  const waiting = cheats({ uncertain: true, retryAt: cheatNow + 5000 });
+  assert.match(waiting.markup, /Следующий запрос через 5 с/);
+  const retry = waiting.elements.find(element => element.type === "button" && labelText(element) === "Проверить результат");
+  assert.equal(retry.props.disabled, true);
+  retry.props.onClick(); assert.deepEqual(waiting.retries, []);
+  const uncertain = cheats({ uncertain: true });
+  uncertain.elements.find(element => element.type === "button" && labelText(element) === "Проверить результат").props.onClick();
+  assert.deepEqual(uncertain.retries, [true]);
+});
+
+test("DEV job timers preserve regular claiming and prevent changing a building with an active job", () => {
+  const construction = { id: "house-job", targetId: "home", kind: "construction", targetLevel: 2, finishesAt: new Date(cheatNow + 60000).toISOString() };
+  const waiting = cheats({}, { jobs: [construction] });
+  assert.equal(cheatButton(waiting, "set-building-level").props.disabled, true);
+  cheatButton(waiting, "set-building-level").props.onClick();
+  assert.deepEqual(waiting.commands, []);
+  cheatButton(waiting, "finish-jobs").props.onClick();
+  assert.deepEqual(waiting.commands, [["finish_jobs", "all", 1]]);
+  assert.deepEqual(waiting.claims, []);
+  const ready = cheats({}, { jobs: [{ ...construction, finishesAt: new Date(cheatNow).toISOString() }] });
+  assert.equal(cheatButton(ready, "finish-jobs").props.disabled, true);
+  ready.elements.find(element => element.type === "button" && labelText(element) === "Завершить стройку").props.onClick();
+  assert.deepEqual(ready.claims, [["claim_job", "house-job"]]);
+  assert.match(ready.markup, /Готово к получению/);
+});
+
+test("cheat feedback reports actual overflow and the visual building override independently", () => {
+  const toggles = [];
+  const view = cheats({ notice: "Выдано 100 древесины", error: "Проверьте соединение" }, { storage: { used: 350, capacity: 200, reserved: 5, available: 0, overflow: 155 } },
+    { previewBuildings: true, onShowAccountBuildings: () => toggles.push(true) });
+  assert.match(view.markup, /Сверх вместимости: 155/);
+  assert.match(view.markup, /Выдано 100 древесины/);
+  assert.match(view.markup, /Проверьте соединение/);
+  assert.match(view.markup, /Включён визуальный предпросмотр зданий/);
+  view.elements.find(element => element.type === "button" && labelText(element) === "Показывать уровни хозяйства").props.onClick();
+  assert.deepEqual(toggles, [true]);
+  assert.deepEqual(view.commands, []);
 });
 
 test("scenario cards explain conditions and dispatch one explicit choice without navigating away", () => {

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { getEconomy, getEconomyMarket, sendEconomyCommand, sendMarketCommand } from "./api";
+import { getEconomy, getEconomyMarket, sendEconomyCommand, sendEconomyDevCommand, sendMarketCommand } from "./api";
 import { createEconomySession } from "./session";
 
 function receiptStorage() {
@@ -11,6 +11,7 @@ export function useEconomy(owner: string | null, onSessionLost: () => void) {
   const session = useMemo(() => createEconomySession(owner, {
     get: getEconomy, send: sendEconomyCommand,
     market: getEconomyMarket, trade: sendMarketCommand,
+    dev: process.env.NODE_ENV === "development" ? sendEconomyDevCommand : undefined,
   }, () => {}, receiptStorage()), [owner]);
   useEffect(() => { session.setSessionLost(onSessionLost); }, [session, onSessionLost]);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
@@ -28,6 +29,6 @@ export function useEconomy(owner: string | null, onSessionLost: () => void) {
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
   }, [session, owner]);
-  return { ...view, now: view.snapshot ? session.now() : now, act: session.act, actMarket: session.actMarket, retry: session.retry, refresh: session.refresh, refreshMarket: session.refreshMarket };
+  return { ...view, now: view.snapshot ? session.now() : now, act: session.act, actMarket: session.actMarket, actDev: session.actDev, devAvailable: session.devAvailable, retry: session.retry, refresh: session.refresh, refreshMarket: session.refreshMarket };
 }
 export type EconomyController = ReturnType<typeof useEconomy>;

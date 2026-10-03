@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ArrowLeft, BookOpen, Check, Compass, X, Feather, Gem, Hammer, House, Info, Leaf, LockKeyhole, MoreHorizontal, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Compass, X, Feather, Gem, Hammer, House, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -140,7 +140,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     <WorldScene economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       onPlace={onPlace} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
-    {WorldDevPanel && <WorldDevPanel world={world} worldView active={panel === null}
+    {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header ref={topHud} className={styles.hud}>
@@ -158,6 +158,10 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     <div ref={bottomHud} className={styles.bottomHud}>
       <nav className={styles.gameDock} aria-label="Действия в игре">
         <MochlikState presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onOpen={() => { clearObject(); setMoreOpen(false); }} onCall={() => setLocalNotice(value => value + 1)} />
+        <button className={styles.pantryShortcut} aria-haspopup="dialog" aria-label={economy.snapshot ? `Кладовая: занято ${economy.snapshot.storage.used + economy.snapshot.storage.reserved} из ${economy.snapshot.storage.capacity} мест` : "Открыть кладовую"}
+          data-full={economy.snapshot && economy.snapshot.storage.available <= 0 || undefined} onClick={() => openObject("house", "warehouse")}>
+          <Package size={20} aria-hidden="true" /><span>Кладовая<small>{economy.snapshot ? `${(economy.snapshot.storage.used + economy.snapshot.storage.reserved).toLocaleString("ru-RU")} / ${economy.snapshot.storage.capacity.toLocaleString("ru-RU")}` : "Загрузка…"}</small></span>
+        </button>
         <button onClick={() => openEconomy("exploration")}><Compass size={20} /><span>В путь</span></button>
         <div ref={moreElement} className={styles.moreContainer}>
           <button ref={moreButton} aria-expanded={moreOpen} aria-controls="world-more-actions" onClick={() => { clearObject(); setMoreOpen(open => !open); }}><MoreHorizontal size={21} /><span>Ещё</span></button>

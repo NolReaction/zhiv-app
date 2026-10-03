@@ -86,6 +86,19 @@ test("small viewport edge anchors still stay inside safe insets", () => {
   }
 });
 
+test("small portrait pantry keeps useful content height between the HUD and camera controls", () => {
+  const bounds = { top: 140, right: 8, bottom: 116, left: 8 };
+  for (const y of [140, 284, 452]) {
+    const selection = { x: 160, y, viewportWidth: 320, viewportHeight: 568 };
+    const dimensions = helpers.worldMenuDimensions(selection, bounds);
+    assert.ok(dimensions.maxHeight >= 280, "header, station tabs and footer must leave room for pantry contents");
+    const placed = helpers.worldStableMenuPosition(selection, bounds);
+    assert.ok(placed.height >= 280);
+    assert.ok(placed.x >= 8 && placed.x + placed.width <= 312);
+    assert.ok(placed.y >= 140 && placed.y + placed.height <= 452);
+  }
+});
+
 test("catalog gates and current stock determine construction availability together", () => {
   const state = snapshot({ buildings: { home: 3, warehouse: 1, workshop: 3, kiln: 3 } });
   const target = { level: 1, requiredHomeLevel: 4, requiredBuildings: { kiln: 4 }, seconds: 90, cost: { coins: 174, items: { glass: 7 } } };

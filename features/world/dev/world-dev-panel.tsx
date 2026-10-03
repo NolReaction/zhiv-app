@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ChevronDown, FlaskConical, RotateCcw, X } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
+import type { EconomyController } from "@/features/economy/use-economy";
 import { worldCatalog } from "../model";
 import { TILED_WORLD } from "../presentation";
 import { clearingRouteDiagnostics } from "../clearing-activity";
@@ -12,6 +13,7 @@ import { interactiveMapObjects, type MapObjectPlace } from "../site-interactions
 import type { WorldController } from "../use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
+import { WorldDevCheats } from "./world-dev-cheats";
 import { useForestObservation } from "../use-forest-observation";
 import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario } from "./world-dev-store";
@@ -19,6 +21,7 @@ import styles from "./world-dev-panel.module.css";
 
 export type WorldDevPanelProps = {
   world: WorldController;
+  economy?: EconomyController;
   active?: boolean;
   worldView?: boolean;
   presenceKey?: string;
@@ -115,7 +118,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
   </details>;
 }
 
-const DEV_TABS = [["mochlik", "Мохлик"], ["world", "Мир"], ["buildings", "Здания"], ["ai", "AI"], ["debug", "Отладка"]] as const;
+const DEV_TABS = [["mochlik", "Мохлик"], ["world", "Мир"], ["buildings", "Здания"], ["cheats", "Читы"], ["ai", "AI"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenarios", "Сценарии"], ["scenes", "Сценки"], ["activities", "Занятия"], ["animation", "Анимации"], ["appearance", "Внешность"]] as const;
 const DEBUG_TABS = [["overlays", "Разметка"], ["routes", "Пути"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
@@ -146,12 +149,12 @@ export function WorldDevTabs<T extends string>({ id, label, tabs, selected, onSe
   </div>;
 }
 
-/** The whole drawer is absent from production; visual settings never become game commands. */
+/** Absent from production. Visual previews and account-changing cheats stay in separate tabs. */
 export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, active = true, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(false);
@@ -254,7 +257,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
     {!open && lastAction && <p className={styles.closedFeedback} role="status">{repeatUnavailable ?? feedback}</p>}
     {open && <section id={drawerId} className={styles.drawer} aria-labelledby={titleId}>
       <header className={styles.header}>
-        <div><h2 id={titleId}>Проверка леса</h2><p>Круг и карта · локальный режим</p></div>
+        <div><h2 id={titleId}>Проверка леса</h2><p>Вид сцены и тестовое хозяйство</p></div>
         <button type="button" className={styles.headerButton} onClick={() => { worldDevStore.reset(); setLastAction(null); setFeedback("Все настройки вида сброшены"); }}
           title="Вернуть настройки вида. Память Мохлика и ресурсы сохранятся."><RotateCcw size={15} aria-hidden />Сброс вида</button>
         <button ref={closeButton} type="button" className={styles.headerButton} onClick={close} aria-label="Закрыть панель разработчика"><X size={16} aria-hidden />Закрыть</button>
@@ -280,7 +283,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
             hidden={page !== subpage} className={styles.body} tabIndex={page === subpage ? 0 : -1}
             ref={node => { if (node && page === subpage) node.scrollTop = scrollPositions.current[subpage] ?? 0; }}
             onScroll={event => { scrollPositions.current[subpage] = event.currentTarget.scrollTop; }}>
-            {page === subpage && <WorldDevPanelContent world={world} worldView={worldView} presenceKey={presenceKey}
+            {page === subpage && <WorldDevPanelContent world={world} economy={economy} worldView={worldView} presenceKey={presenceKey}
               onOpenWorld={onOpenWorld} onOpenCalendar={onOpenCalendar} onOpenGame={onOpenGame} onOpenStatus={onOpenStatus} onOpenWardrobe={onOpenWardrobe} onOpenCollection={onOpenCollection}
               onOpenObject={onOpenObject}
               state={state} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
@@ -298,7 +301,7 @@ function DevelopmentPanel({ world, active = true, worldView = false, presenceKey
 }
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
-export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject,
+export function WorldDevPanelContent({ world, economy, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject,
   state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion,
 }: WorldDevPanelProps & {
   state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
@@ -307,8 +310,6 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
   outfit: (slot: "palette" | "head" | "neck", value: string) => void; shortcut: (callback: () => void) => void;
   onFeedback: (message: string) => void; prefersReducedMotion: boolean;
 }) {
-  const locked = world.busy || world.uncertain;
-  const canGrant = process.env.NODE_ENV === "development" && world.snapshot?.devTools === true;
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   const previewScene = page === "routes" ? previewWorldScene(TILED_WORLD, state.levels) : null;
   const clearingRoutes = previewScene ? clearingRouteDiagnostics(previewScene) : [];
@@ -318,6 +319,11 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
   const gardenReasons = page === "activities"
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   return <div className={styles.pageContent}>
+    {page === "cheats" && <>
+      <h3 className={styles.pageTitle}>Читы хозяйства</h3>
+      <WorldDevCheats world={world} economy={economy} previewBuildings={state.previewBuildings}
+        onShowAccountBuildings={() => change({ previewBuildings: false }, "Карта показывает настоящие уровни хозяйства")} />
+    </>}
     {page === "scenarios" && <>
       <h3 className={styles.pageTitle}>Готовые сценарии</h3>
       <p className={styles.hint}>Один запуск задаёт погоду, время и нужное занятие, снимает паузу. Положение Мохлика, выбранный дом и масштаб сохраняются.</p>
@@ -472,25 +478,9 @@ export function WorldDevPanelContent({ world, worldView, presenceKey, onOpenWorl
           .filter(([, callback]) => callback).map(([label, callback]) => <button key={label} type="button" onClick={() => { if (callback) shortcut(callback); }}>{label}</button>)}
         <a href="/prototype/tiled-world">Карта и маршруты ↗</a>
       </div>
-      <Section title="Тестовые ресурсы">
-      <p className={styles.scope}>Выдача меняет баланс аккаунта в локальном API. Сброс вида её не отменяет.</p>
-      {world.snapshot && <dl className={styles.resources}>
-        <div><dt>Искры</dt><dd>{world.snapshot.state.resources.sparks.toLocaleString("ru-RU")}</dd></div>
-        <div><dt>Дерево</dt><dd>{world.snapshot.state.resources.wood.toLocaleString("ru-RU")}</dd></div>
-        <div><dt>Камень</dt><dd>{world.snapshot.state.resources.stone.toLocaleString("ru-RU")}</dd></div>
-      </dl>}
-      <button type="button" disabled={!canGrant || locked} onClick={() => { if (!canGrant || locked) return; world.act("dev_grant_resources"); onFeedback("Запрос на выдачу отправлен"); }}>
-        {world.busy ? "Отправляем…" : "+50 искр, дерева и камня"}
-      </button>
-      {!canGrant && <p className={styles.hint}>{world.snapshot ? "Тестовая выдача недоступна на этом сервере." : "Ожидаем загрузку мира…"}</p>}
-      {world.uncertain && <><p className={styles.hint}>Ответ не получен. Проверьте результат тем же запросом перед новой выдачей.</p>
-        <button type="button" disabled={world.busy} onClick={() => { void world.retry(); onFeedback("Проверяем результат запроса"); }}>Проверить результат</button></>}
-      {world.error && <p className={styles.error} role="alert">{world.error}</p>}
-      {world.notice && <p className={styles.hint} role="status">{world.notice}</p>}
-      </Section>
       <Section title="О DEV и ограничениях">
-        <p className={styles.scope}>Настройки DEV действуют в этой вкладке и сбрасываются при перезагрузке. Память Мохлика хранится отдельно; сброс вида её не удаляет.</p>
-        <p className={styles.pending}>Фонари и игровые улучшения новой карты появятся после адаптации.</p>
+        <p className={styles.scope}>Настройки вида действуют в этой вкладке и сбрасываются при перезагрузке. «Читы» меняют ресурсы и постройки тестового профиля на сервере. Сброс вида не отменяет читы и не удаляет память Мохлика.</p>
+        <p className={styles.hint}>Валюта, материалы и мгновенная постройка — в отдельной вкладке «Читы».</p>
       </Section>
     </>}
   </div>;

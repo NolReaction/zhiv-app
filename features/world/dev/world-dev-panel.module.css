@@ -40,7 +40,7 @@
 .header p { margin: 3px 0 0; color: var(--dev-muted); font-size: 11px; }
 .root .drawer .headerButton { flex: 0 0 auto; padding: 6px; gap: 4px; background: transparent; border-color: transparent; font-size: 11px; }
 .tabs, .subtabs { display: grid; flex-shrink: 0; gap: 3px; padding: 5px 8px; border-bottom: 1px solid var(--dev-line); }
-.tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .subtabs { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding-top: 4px; padding-bottom: 4px; background: #122118; }
 .root .drawer :is(.tabs, .subtabs) button { min-width: 0; padding: 6px 2px; border-color: transparent; border-radius: 7px; background: transparent; font-size: 12px; line-height: 1.2; }
 .root .drawer .tabs button[aria-selected='true'] { color: #f7ffe7; background: #425a35; border-color: #b5cd86; font-weight: 700; }
@@ -84,6 +84,26 @@
 .resources > div { min-width: 0; padding: 8px; border: 1px solid var(--dev-line); border-radius: 9px; }
 .resources dt { font-size: 11px; color: var(--dev-muted); }
 .resources dd { margin: 3px 0 0; font-size: 14px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.cheats { display: grid; gap: 14px; min-width: 0; }
+.cheatSection { display: grid; gap: 10px; min-width: 0; padding-top: 14px; border-top: 1px solid var(--dev-line); }
+.cheatSection h4 { margin: 0; font-size: 13px; color: #e3edcf; }
+.cheatBalance { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.cheatBalance > div { min-width: 0; padding: 10px; border: 1px solid var(--dev-line); border-radius: 10px; background: #203326; }
+.cheatBalance dt { color: var(--dev-muted); font-size: 12px; }
+.cheatBalance dd { margin: 4px 0 0; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cheatQuantity { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: end; gap: 8px; }
+.cheats .field input { width: 100%; min-width: 0; min-height: 44px; padding: 8px; box-sizing: border-box; color: var(--dev-ink); background: #203326; border: 1px solid var(--dev-line); border-radius: 9px; }
+.cheats .field input[aria-invalid='true'] { border-color: #e5b383; }
+.cheats :is(select, input):disabled { opacity: .55; cursor: default; }
+.root .drawer .cheats button { min-width: 0; padding-inline: 6px; overflow-wrap: anywhere; }
+.cheatNotice, .cheatWarning { margin: 0; padding: 10px; border: 1px solid #607b51; border-radius: 9px; background: #2c4027; color: #e7f0ce; font-size: 12px; overflow-wrap: anywhere; }
+.cheatWarning { display: grid; gap: 8px; border-color: #846f43; background: #3d3621; color: #f4dfaa; }
+.cheatWarning p { margin: 0; }
+.cheatJobs { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.cheatJobs li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; padding: 8px; border: 1px solid var(--dev-line); border-radius: 9px; }
+.cheatJobs li > div { display: grid; gap: 4px; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.cheatJobs span { color: var(--dev-muted); font-size: 11px; }
+.root .drawer .cheatJobs button { max-width: 112px; font-size: 12px; }
 .error { margin: 0; padding: 10px; border: 1px solid #b7796a; border-radius: 9px; background: #492c24; color: #ffe0cf; font-size: 12px; overflow-wrap: anywhere; }
 .body > .error { margin: 12px 0; }
 .shortcuts a { display: flex; justify-content: center; align-items: center; text-decoration: none; grid-column: 1 / -1; }
@@ -138,10 +158,11 @@
 @media (max-width: 600px) {
   .root { top: calc(88px + env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); max-width: calc(100vw - 16px); gap: 6px; }
   .drawer { width: min(420px, calc(100vw - 16px)); height: min(700px, calc(100dvh - 150px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
-  .field select, .timeControl select { font-size: 16px; }
+  .field select, .timeControl select, .cheats .field input { font-size: 16px; }
   .body { padding-top: 10px; }
 }
 @media (max-width: 380px) {
+  .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .header p, .headerButton svg, .timeControl > span { display: none; }
   .globalControls { grid-template-columns: 94px minmax(0, 1fr); }
   .root .drawer .tabs button { font-size: 11px; }

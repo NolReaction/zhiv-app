@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { economyResultSchema, economyViewSchema, marketViewSchema, type EconomyCommand, type MarketCommand } from "./model";
+import type { EconomyDevCommand } from "./dev-model";
 
-async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, command?: EconomyCommand | MarketCommand, signal?: AbortSignal): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
@@ -39,3 +40,5 @@ export const getEconomyMarket = (signal?: AbortSignal, cursor?: string) => reque
   marketViewSchema, undefined, signal);
 export const sendMarketCommand = (command: MarketCommand, signal?: AbortSignal) => request(
   "/api/v1/economy/market/commands", economyResultSchema, command, signal);
+export const sendEconomyDevCommand = (command: EconomyDevCommand, signal?: AbortSignal) => request(
+  "/api/v1/economy/dev", economyResultSchema, command, signal);

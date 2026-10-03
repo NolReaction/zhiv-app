@@ -20,7 +20,7 @@ export type WorldMenuBounds = { top?: number; right?: number; bottom?: number; l
 export function worldMenuDimensions(viewport: Pick<MapObjectSelection, "viewportWidth" | "viewportHeight">, bounds: WorldMenuBounds = {}) {
   const availableWidth = Math.max(1, viewport.viewportWidth - Math.max(8, bounds.left ?? 8) - Math.max(8, bounds.right ?? 8));
   const availableHeight = Math.max(1, viewport.viewportHeight - Math.max(8, bounds.top ?? 8) - Math.max(8, bounds.bottom ?? 8));
-  return { width: Math.min(320, availableWidth), maxHeight: Math.min(380, availableHeight < 300 ? availableHeight : availableHeight * .48) };
+  return { width: Math.min(320, availableWidth), maxHeight: Math.min(380, Math.max(Math.min(280, availableHeight), availableHeight * .48)) };
 }
 export function worldMenuPosition(selection: Pick<MapObjectSelection, "x" | "y" | "viewportWidth" | "viewportHeight">, size: { width: number; height: number }, bounds: WorldMenuBounds = {}) {
   const left = Math.max(8, bounds.left ?? 8), top = Math.max(8, bounds.top ?? 8);

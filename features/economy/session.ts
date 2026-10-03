@@ -1,14 +1,16 @@
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { economyCommandSchema, marketCommandSchema, type EconomyCommand, type EconomyResult, type EconomyView, type MarketCommand, type MarketView } from "./model";
+import { economyDevCommandSchema, type EconomyDevCommand } from "./dev-model";
 
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
   send: (command: EconomyCommand, signal: AbortSignal) => Promise<EconomyResult>;
   market: (signal: AbortSignal, cursor?: string) => Promise<MarketView>;
   trade: (command: MarketCommand, signal: AbortSignal) => Promise<EconomyResult>;
+  dev?: (command: EconomyDevCommand, signal: AbortSignal) => Promise<EconomyResult>;
 };
-type Pending = { kind: "economy"; command: EconomyCommand } | { kind: "market"; command: MarketCommand };
+type Pending = { kind: "economy"; command: EconomyCommand } | { kind: "market"; command: MarketCommand } | { kind: "dev"; command: EconomyDevCommand };
 type View = {
   snapshot: EconomyView | null; market: MarketView | null; marketError: string | null;
   error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number;
@@ -38,7 +40,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const raw = storage?.getItem(storageKey);
       if (!raw) return;
       const value = JSON.parse(raw) as { kind?: unknown; command?: unknown };
-      const schema = value.kind === "economy" ? economyCommandSchema : value.kind === "market" ? marketCommandSchema : null;
+      const schema = value.kind === "economy" ? economyCommandSchema : value.kind === "market" ? marketCommandSchema
+        : value.kind === "dev" && transport.dev ? economyDevCommandSchema : null;
       const parsed = schema?.safeParse(value.command);
       if (parsed?.success && parsed.data.ownerPublicId === owner) {
         pending = { kind: value.kind, command: parsed.data } as Pending;
@@ -102,13 +105,15 @@ export function createEconomySession(owner: string | null, transport: Transport,
     } finally { requests.delete(request); }
   }
   async function execute(value: Pending) {
-    if (!active || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil) return;
+    if (!active || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev)) return;
     const generation = epoch, request = controller();
     ++readSequence; ++marketSequence; reading = null; marketReading = null; remember(value);
     publish({ busy: true, error: null, notice: "", retryAt: 0 });
     let reloadMarket = false;
     try {
-      const result = value.kind === "economy" ? await transport.send(value.command, request.signal) : await transport.trade(value.command, request.signal);
+      const result = value.kind === "economy" ? await transport.send(value.command, request.signal)
+        : value.kind === "market" ? await transport.trade(value.command, request.signal)
+        : await transport.dev!(value.command, request.signal);
       if (!valid(generation)) return;
       if (adopt(result.state)) {
         remember(null); publish({ notice: result.message, uncertain: false });
@@ -142,7 +147,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   return {
     setSessionLost(callback: () => void) { onSessionLost = callback; },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    getSnapshot: () => view, now,
+    getSnapshot: () => view, now, devAvailable: Boolean(transport.dev),
     activate() {
       active = true; restore();
       return () => {
@@ -159,6 +164,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
       if (!owner || !view.snapshot || pending || !active) return;
       void execute({ kind: "market", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice } });
+    },
+    actDev(action: EconomyDevCommand["action"], targetId: string, quantity = 1) {
+      if (!transport.dev || !owner || !view.snapshot || pending || !active) return;
+      const command = economyDevCommandSchema.safeParse({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice: 0 });
+      if (command.success) void execute({ kind: "dev", command: command.data });
     },
     retry: () => pending ? execute(pending) : refresh(),
   };

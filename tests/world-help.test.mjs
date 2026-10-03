@@ -61,6 +61,18 @@ test("world HUD keeps help visible and moves secondary actions under More", asyn
   const markup = renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
   assert.match(markup, /aria-label="Справка по игре"/);
   assert.match(markup, /aria-controls="world-more-actions"/);
+  assert.match(markup, /aria-label="Открыть кладовую"/);
   assert.doesNotMatch(markup, /aria-label="Открыть коллекции"/);
   assert.match(markup, /lucide-info/);
+});
+
+
+test("pantry shortcut is visible before opening a building and includes reserved storage", async () => {
+  const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
+  const world = { snapshot: { state: newWorldState(), gifts: [] }, now: Date.parse("2026-10-03T12:00:00Z"), act() {} };
+  const economy = { snapshot: { wallet: { coins: 150, pearls: 2 }, buildings: { home: 1, warehouse: 1 }, jobs: [], storage: { used: 180, reserved: 20, capacity: 200, available: 0, overflow: 0 } }, now: world.now };
+  const markup = renderToStaticMarkup(createElement(WorldView, { world, economy, ownerPublicId: "pantry-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
+  assert.match(markup, /aria-label="Кладовая: занято 200 из 200 мест" data-full="true"/);
+  assert.match(markup, /Кладовая<small>200 \/ 200<\/small>/);
+  assert.doesNotMatch(markup, /data-upgrade-station/);
 });

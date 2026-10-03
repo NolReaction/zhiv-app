@@ -4,8 +4,10 @@ import { consumeDevLegacyEconomy, hasDevLegacyJourney } from "@/lib/dev/world-st
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
+import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number };
+type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand;
 type Profile = { revision: number; state: EconomyState; receipts: Map<string, Receipt>; legacyJourneys: Set<string> };
 type Listing = Omit<EconomyMarketListing, "owned" | "sellerName">;
 type Store = { profiles: Map<string, Profile>; listings: Map<string, Listing> };
@@ -36,7 +38,7 @@ function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
   value.revision++;
 }
-function receipt(value: Profile, owner: string, command: EconomyCommand | MarketCommand, now: number): EconomyResult | null {
+function receipt(value: Profile, owner: string, command: ReceiptCommand, now: number): EconomyResult | null {
   if (owner !== command.ownerPublicId) return fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите хозяйство");
   const signature = JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]);
   const found = value.receipts.get(receiptKey(command));
@@ -48,7 +50,7 @@ function receipt(value: Profile, owner: string, command: EconomyCommand | Market
   if (value.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
   return null;
 }
-function receiptKey(command: EconomyCommand | MarketCommand) {
+function receiptKey(command: ReceiptCommand) {
   return command.requestId.toLowerCase();
 }
 function escrowItems(owner: string, excluding?: string): Record<string, number> {
@@ -59,7 +61,7 @@ function escrowItems(owner: string, excluding?: string): Record<string, number> 
   }
   return totals;
 }
-function commit(owner: string, value: Profile, next: EconomyState, command: EconomyCommand | MarketCommand, message: string, now: number): EconomyResult {
+function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number): EconomyResult {
   value.state = next; bump(value);
   value.receipts.set(receiptKey(command), {
     signature: JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]),
@@ -84,6 +86,60 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const reserved = escrowItems(owner);
   const message = applyEconomyCommand(next, command, now, () => command.requestId, reserved);
   assertEconomyStorageTransition(value.state, next, reserved);
+  return commit(owner, value, next, command, message, now);
+}
+/** QA tools mutate the same server snapshot and receipt ledger as ordinary play. */
+export function commandDevEconomyCheat(token: string | undefined, input: EconomyDevCommand, now = Date.now()): EconomyResult {
+  if (process.env.NODE_ENV !== "development") return fail("DEV_TOOLS_DISABLED", "Читы доступны только в локальной разработке", 404);
+  const parsed = economyDevCommandSchema.safeParse(input);
+  if (!parsed.success) return fail("INVALID_ECONOMY_COMMAND", "Некорректная DEV-команда", 400);
+  const command = parsed.data, { owner, value } = profile(token, now);
+  const replay = receipt(value, owner, command, now);
+  if (replay) return replay;
+  const next: EconomyState = structuredClone(value.state);
+  let message: string;
+  switch (command.action) {
+    case "grant_currency": {
+      const currency = command.targetId as "coins" | "pearls";
+      if (next.wallet[currency] + command.quantity > ECONOMY_MAX_BALANCE) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
+      next.wallet[currency] += command.quantity;
+      message = `DEV: выдано ${command.quantity} ${currency === "coins" ? "монет" : "жемчужин"}`;
+      break;
+    }
+    case "grant_item":
+      creditEconomyItems(next, { [command.targetId]: command.quantity });
+      message = `DEV: выдано ${command.quantity} × ${economyCatalog.items.find(item => item.id === command.targetId)!.name}`;
+      break;
+    case "grant_upgrade_cost": {
+      const building = economyCatalog.buildings.find(item => item.id === command.targetId)!;
+      const target = building.levels.find(level => level.level === (next.buildings[building.id] ?? 0) + 1);
+      if (!target) return fail("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены");
+      next.wallet.coins = Math.max(next.wallet.coins, target.cost.coins);
+      creditEconomyItems(next, Object.fromEntries(Object.entries(target.cost.items)
+        .map(([item, quantity]) => [item, Math.max(0, quantity - (next.inventory[item] ?? 0))])));
+      message = `DEV: добавлены недостающие монеты и материалы для «${building.name}», уровень ${target.level}`;
+      break;
+    }
+    case "set_building_level": {
+      if (next.jobs.some(job => job.targetId === command.targetId && (job.kind === "construction" || job.kind === "production")))
+        return fail("ECONOMY_BUILDING_BUSY", "Сначала ускорьте работу этого здания и заберите результат");
+      next.buildings[command.targetId] = command.quantity;
+      message = `DEV: ${economyCatalog.buildings.find(item => item.id === command.targetId)!.name} — уровень ${command.quantity}`;
+      break;
+    }
+    case "finish_jobs": {
+      const jobs = next.jobs.filter(job => (command.targetId === "all" || job.kind === command.targetId) && Date.parse(job.finishesAt) > now);
+      if (!jobs.length) return fail("ECONOMY_DEV_NO_JOBS", "Нет незавершённых работ этого типа");
+      for (const job of jobs) job.finishesAt = new Date(now).toISOString();
+      message = `DEV: ускорено работ — ${jobs.length}. Заберите результат у объекта или в путешествиях`;
+      break;
+    }
+  }
+  // DEV grants may deliberately exceed storage capacity, but never numeric limits,
+  // including the player's materials already reserved by market listings.
+  const reserved = escrowItems(owner);
+  if (Object.entries(next.inventory).some(([item, quantity]) => quantity + (reserved[item] ?? 0) > ECONOMY_MAX_BALANCE))
+    return fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   return commit(owner, value, next, command, message, now);
 }
 export function getDevEconomyBuildingLevels(token: string | undefined, now = Date.now()): { home: number; workshop: number } {
