@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, Check, ChevronUp, Coins, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Clock3, Coins, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/map-engine";
-import { ECONOMY_MAX_BALANCE } from "./model";
+import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { worldBatchLimit, worldDuration, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldMissingRequirements, worldPlaceForStation, worldProductionReason, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "./world-stations";
-import { Cost, Requirements, Rewards, Work, ProductIcon, stationIcons, itemName, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
+import { Cost, Requirements, Work, ProductIcon, stationIcons, itemName, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
 import { WorldUpgradeDialog } from "./world-upgrade-dialog";
 import styles from "./world-object-menu.module.css";
 
@@ -24,20 +24,58 @@ export type WorldObjectMenuProps = {
 };
 const placeIcons: Partial<Record<WorldPlace, LucideIcon>> = { house: House, garden: Sprout, campfire: Flame, workshop: Hammer, quarry: Pickaxe, woodlot: Trees, bridge: Fence, lighthouse: TowerControl };
 
-function RecipeDetail({ economy, recipe, navigation, onCollapse }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void }) {
+function recipeTitle(state: EconomyView, recipe: WorldRecipe) {
+  const outputs = Object.keys(recipe.rewards);
+  return outputs.length === 1 ? itemName(state, outputs[0]) : recipe.name.split(" · ")[0];
+}
+
+function RecipeCard({ state, recipe, onChoose }: { state: EconomyView; recipe: WorldRecipe; onChoose: (id: string) => void }) {
+  const missing = worldMissingRequirements(state, worldRequirements(recipe, recipe));
+  const results = Object.entries(recipe.rewards);
+  return <button type="button" className={`${styles.product} ${styles.recipeCard}`} data-recipe={recipe.id} data-locked={!!missing.length || undefined}
+    aria-label={`${recipe.name}: ${results.map(([id, amount]) => `${itemName(state, id)} ×${number(amount)}`).join(", ")}, ${worldDuration(recipe.seconds)}${missing.length ? ", пока закрыто" : ""}`} onClick={() => onChoose(recipe.id)}>
+    <span className={styles.recipeOutputs} aria-hidden="true">{results.map(([id, amount]) => <span key={id}><ProductIcon itemId={id} size={results.length > 1 ? 18 : 25} /><b>×{number(amount)}</b></span>)}</span>
+    <strong>{recipeTitle(state, recipe)}</strong>
+    <span className={styles.recipeTime}>{missing.length ? <LockKeyhole size={10} aria-hidden="true" /> : <Clock3 size={10} aria-hidden="true" />}{worldDuration(recipe.seconds)}</span>
+  </button>;
+}
+
+function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recipes: WorldRecipe[]; onChoose: (id: string) => void }) {
+  const available = recipes.filter(recipe => !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length);
+  const later = recipes.filter(recipe => worldMissingRequirements(state, worldRequirements(recipe, recipe)).length > 0);
+  const ordinary = available.filter(recipe => recipe.seconds < 4 * 3600);
+  const lengthy = available.filter(recipe => recipe.seconds >= 4 * 3600);
+  return <>
+    {[{ id: "ordinary", title: "Обычные заказы", recipes: ordinary }, { id: "lengthy", title: "На несколько часов", recipes: lengthy }].filter(group => group.recipes.length).map(group => <section key={group.id} className={styles.recipeGroup} aria-label={group.title}>
+      <h3>{group.title}<span>{group.recipes.length}</span></h3>
+      <div className={styles.products}>{group.recipes.map(recipe => <RecipeCard key={recipe.id} state={state} recipe={recipe} onChoose={onChoose} />)}</div>
+    </section>)}
+    {!available.length && <p className={styles.empty}>Сначала обустройте это место.</p>}
+    {!!later.length && <details className={styles.laterRecipes}>
+      <summary><LockKeyhole size={12} aria-hidden="true" /><span>Позже</span><small>{later.length}</small><ChevronDown size={13} aria-hidden="true" /></summary>
+      <div className={styles.products}>{later.map(recipe => <RecipeCard key={recipe.id} state={state} recipe={recipe} onChoose={onChoose} />)}</div>
+    </details>}
+  </>;
+}
+
+export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void }) {
   const [requestedQuantity, setQuantity] = useState(1);
+  const backButton = useRef<HTMLButtonElement>(null);
   const maximum = worldBatchLimit(economy.snapshot, recipe);
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
   const reason = worldProductionReason(economy.snapshot, recipe, quantity);
+  const missingRequirements = worldMissingRequirements(economy.snapshot, worldRequirements(recipe, recipe));
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) * quantity;
   const quantityId = useId();
-  return <section className={styles.detail} aria-label={recipe.name}>
-    <div className={styles.detailTitle}><h3>{recipe.name}</h3><button type="button" className={styles.iconButton} aria-label="Свернуть рецепт" onClick={onCollapse}><ChevronUp size={16} aria-hidden="true" /></button></div>
-    <Rewards state={economy.snapshot} rewards={recipe.rewards} quantity={quantity} />
-    <Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} />
+  useEffect(() => { backButton.current?.focus({ preventScroll: true }); }, []);
+  return <section className={styles.recipeDetail} aria-label={recipe.name}>
+    <button ref={backButton} type="button" className={styles.recipeBack} onClick={onCollapse}><ArrowLeft size={14} aria-hidden="true" />Все рецепты</button>
+    <div className={styles.resultCards} aria-label="Результат">{Object.entries(recipe.rewards).map(([id, amount]) => <div key={id}><span><ProductIcon itemId={id} size={24} /></span><strong>{itemName(economy.snapshot, id)}</strong><b>×{number(amount * quantity)}</b></div>)}</div>
+    <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} /></div>
     <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
     <div className={styles.order}><label htmlFor={quantityId}>Партий</label><div className={styles.stepper}><button type="button" disabled={quantity <= 1 || locked(economy)} onClick={() => setQuantity(quantity - 1)} aria-label="Уменьшить партию"><Minus size={14} aria-hidden="true" /></button><output id={quantityId} aria-live="polite">{quantity}</output><button type="button" disabled={quantity >= maximum || locked(economy)} onClick={() => setQuantity(quantity + 1)} aria-label="Увеличить партию"><Plus size={14} aria-hidden="true" /></button></div><button type="button" className={styles.primary} disabled={Boolean(reason) || locked(economy)} onClick={() => void economy.act("start_production", recipe.id, quantity)}>Начать · {worldDuration(recipe.seconds * quantity)}</button></div>
-    {reason ? <p className={styles.hint}>{reason}</p> : <p className={styles.small}>Результат: {number(output)} мест · свободно {number(economy.snapshot.storage.available)}. Место понадобится при получении.</p>}
+    {reason && !missingRequirements.length && <p className={styles.hint}>{reason}</p>}
+    {output > economy.snapshot.storage.available && !missingRequirements.length && <p className={styles.hint}>Для получения понадобится {number(output)} мест · свободно {number(economy.snapshot.storage.available)}.</p>}
   </section>;
 }
 
@@ -61,6 +99,8 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   const [saleItem, setSaleItem] = useState<string | null>(null);
   const [upgradeStation, setUpgradeStation] = useState<string | null>(initialStation === "home" ? "home" : null);
   const upgradeTrigger = useRef<HTMLElement | null>(null);
+  const recipeTrigger = useRef<HTMLElement | null>(null);
+  const menuBody = useRef<HTMLDivElement>(null);
   const navigating = useRef(false);
   const [size, setSize] = useState({ width: 320, height: 214 });
   const panel = useRef<HTMLElement>(null);
@@ -74,7 +114,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   const current = state?.buildings[stationId] ?? 0;
   const building = state?.catalog.buildings.find(entry => entry.id === stationId);
   const target = building?.levels.find(level => level.level === current + 1);
-  const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId && recipe.buildingLevel <= Math.max(1, current)) ?? [];
+  const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId) ?? [];
   const selectedRecipe = state?.catalog.recipes.find(recipe => recipe.id === recipeId && recipe.buildingId === stationId);
   const job = state?.jobs.find(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId);
   const Icon = placeIcons[selection.place] ?? Package;
@@ -101,7 +141,15 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
     else if (definition.stationIds.includes(id)) chooseStation(id);
     else { const place = worldPlaceForStation(id); if (place && onNavigate) { navigating.current = true; setUpgradeStation(null); onNavigate(place, id); } }
   }
-  function chooseRecipe(id: string) { setRecipeId(value => value === id ? null : id); setUpgradeStation(null); }
+  function chooseRecipe(id: string) {
+    recipeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setRecipeId(id); setUpgradeStation(null);
+    if (menuBody.current) menuBody.current.scrollTop = 0;
+  }
+  function closeRecipe() {
+    setRecipeId(null);
+    requestAnimationFrame(() => recipeTrigger.current?.focus());
+  }
   const navigation: StationNavigation = { open: openStation, canOpen: id => definition.stationIds.includes(id) || Boolean(onNavigate && worldPlaceForStation(id)), explore: onExplore ? () => { navigating.current = true; setUpgradeStation(null); onExplore(); } : undefined };
   const readyEconomy = state ? { ...economy, snapshot: state } : null;
   const ownedItems = state?.catalog.items.filter(item => (state.inventory[item.id] ?? 0) > 0) ?? [];
@@ -109,11 +157,14 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   return <>{showMenu && <section ref={panel} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: position.y, width, height: definition.future ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header className={styles.header}><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : current ? `Уровень ${current}` : "Пока не обустроено"}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : definition.label}</h2></div><button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button></header>
     {definition.stationIds.length > 1 && <nav className={styles.stations} aria-label={`Оборудование: ${definition.label}`}>{definition.stationIds.map(id => { const StationIcon = stationIcons[id] ?? Package; return <button key={id} type="button" aria-pressed={stationId === id} onClick={() => chooseStation(id)}><StationIcon size={15} aria-hidden="true" />{id === "workshop" ? "Верстак" : state ? stationName(state, id) : id === "warehouse" ? "Кладовая" : id === "kiln" ? "Печь" : definition.label}</button>; })}</nav>}
-    <div className={styles.body}>
+    <div ref={menuBody} className={styles.body}>
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {readyEconomy && job && <Work economy={readyEconomy} job={job} openPantry={onOpenPantry ?? (selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => onNavigate("house", "warehouse") : undefined)} />}
-        {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <Sale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : <>{!!recipes.length && <div className={styles.products} aria-label={`Продукция: ${building?.name ?? definition.label}`}>{recipes.map(recipe => { const outputs = Object.keys(recipe.rewards); const blocked = worldMissingRequirements(state, worldRequirements(recipe, recipe)).length > 0; return <button key={recipe.id} type="button" className={styles.product} aria-pressed={recipeId === recipe.id} data-locked={blocked || undefined} aria-label={`${recipe.name}, ${worldDuration(recipe.seconds)}${blocked ? ", пока закрыто" : ""}`} onClick={() => chooseRecipe(recipe.id)}>{outputs.length === 1 ? <ProductIcon itemId={outputs[0]} /> : <Package size={24} strokeWidth={1.8} aria-hidden="true" />}<strong>{outputs.length === 1 ? itemName(state, outputs[0]) : recipe.name}</strong><span>{blocked && <LockKeyhole size={10} aria-hidden="true" />}{worldDuration(recipe.seconds)}</span></button>; })}</div>}{readyEconomy && selectedRecipe && <RecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={() => setRecipeId(null)} />}</>}
+        {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <Sale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : <>
+          <div className={styles.recipeCatalog} hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
+          {readyEconomy && selectedRecipe && <WorldRecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={closeRecipe} />}
+        </>}
       </>}
     </div>
     {state && !definition.future && target && <footer className={styles.footer}><button type="button" className={styles.upgradeAction} aria-haspopup="dialog" onClick={openUpgrade}><Hammer size={15} aria-hidden="true" /><span>{job?.kind === "construction" ? "Ход улучшения" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}<small>{current ? `${current} → ${target.level} уровень` : "Первый уровень"}</small></span><ArrowRight size={16} aria-hidden="true" /></button></footer>}

@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldExpeditionsMenu } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
+const { WorldExpeditionsMenu, WorldExpeditionSector, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
@@ -27,6 +27,9 @@ function job(overrides = {}) {
 function render(economy = controller(), props = {}) {
   return renderToStaticMarkup(createElement(WorldExpeditionsMenu, { economy, onOpenPantry() {}, ...props }));
 }
+function renderSector(sectorId, economy = controller(), props = {}) {
+  return renderToStaticMarkup(createElement(WorldExpeditionSector, { sectorId, economy, state: economy.snapshot, selectedRoute: null, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration"), onSelectRoute() {}, onOpenPantry() {}, ...props }));
+}
 function route(html, id) {
   const found = html.match(new RegExp(`<details\\b[^>]*data-route="${id}"[^>]*>[\\s\\S]*?<\\/details>`));
   assert.ok(found, `Missing route: ${id}`);
@@ -39,20 +42,52 @@ function button(html, label) {
 }
 const disabled = value => /\bdisabled=/.test(value.attributes);
 
-test("expeditions keep every catalog route in collapsed rows, without another economy dashboard", () => {
+test("expeditions open one sector with accessible controls instead of all ten routes", () => {
   const html = render();
-  for (const entry of economyCatalog.explorations) {
-    const content = route(html, entry.id);
-    assert.match(content, /<summary>/);
-    assert.doesNotMatch(content, /<details[^>]*\bopen=/);
-    for (const [itemId, count] of Object.entries(entry.rewards)) {
-      assert.ok(content.includes(economyCatalog.items.find(item => item.id === itemId).name));
-      assert.ok(content.includes(`×${count}`));
-    }
-  }
-  assert.equal([...html.matchAll(/<details\b/g)].length, economyCatalog.explorations.length);
+  assert.match(html, /role="group" aria-label="Секторы вылазок"/);
+  assert.match(html, /data-sector-select="forest" aria-pressed="true"/);
+  for (const id of ["shore", "caves"]) assert.match(html, new RegExp(`data-sector-select="${id}" aria-pressed="false"`));
+  assert.match(html, /data-sector="forest"/);
+  assert.doesNotMatch(html, /data-route="(?:shore|cave|deep_cave)"/);
+  assert.equal([...html.matchAll(/<details\b/g)].length, 4);
+  assert.ok(html.indexOf('data-route="forest"') < html.indexOf('data-route="old_woodland"'));
+  assert.match(html, /Можно отправиться/);
+  assert.match(html, /Нужно подготовиться/);
   assert.doesNotMatch(html, /role="dialog"|role="tablist"|Кошелёк|<h[123][^>]*>Обзор|Продать|Производство/);
   assert.equal(disabled(button(route(html, "forest"), "Отправиться")), false);
+});
+
+test("every catalog route belongs to exactly one sector and keeps its actual findings", () => {
+  const expected = { forest: ["forest", "forest_camp", "old_woodland", "uplands"], shore: ["shore", "shore_camp", "coastal_deposits"], caves: ["cave", "deep_cave", "abandoned_quarry"] };
+  const seen = [];
+  for (const sector of expeditionSectors) {
+    const html = renderSector(sector.id);
+    const ids = [...html.matchAll(/data-route="([^"]+)"/g)].map(match => match[1]);
+    assert.deepEqual(ids, expected[sector.id]);
+    seen.push(...ids);
+    for (const id of ids) {
+      const entry = economyCatalog.explorations.find(route => route.id === id);
+      assert.equal(expeditionSector(id), sector.id);
+      const content = route(html, id);
+      assert.match(content, /<summary>/);
+      assert.doesNotMatch(content, /<details[^>]*\bopen=/);
+      for (const [itemId, count] of Object.entries(entry.rewards)) {
+        assert.ok(content.includes(economyCatalog.items.find(item => item.id === itemId).name));
+        assert.ok(content.includes(`×${count}`));
+      }
+      assert.ok(!content.includes(entry.description), "descriptive prose should not obscure route choices");
+    }
+  }
+  assert.deepEqual(seen.sort(), economyCatalog.explorations.map(route => route.id).sort());
+});
+
+test("selected route alone expands and resource labels remain available to assistive technology", () => {
+  const html = renderSector("shore", controller(), { selectedRoute: "shore" });
+  assert.match(route(html, "shore"), /<details[^>]*\bopen=/);
+  assert.doesNotMatch(route(html, "shore_camp"), /<details[^>]*\bopen=/);
+  assert.equal([...html.matchAll(/<details[^>]*\bopen=/g)].length, 1);
+  assert.match(route(html, "shore"), /role="list" aria-label="Находки"/);
+  assert.match(route(html, "shore_camp"), /data-compact="true"/);
 });
 
 test("locked routes explain all missing buildings and offer navigation only when supplied", () => {
@@ -68,11 +103,11 @@ test("locked routes explain all missing buildings and offer navigation only when
 
 test("deep routes use actual consumable amounts, and missing provisions block departure", () => {
   const state = snapshot({ buildings: { home: 3, warehouse: 1 }, inventory: { dried_berries: 1 } });
-  let html = route(render(controller({ snapshot: state })), "deep_cave");
+  let html = route(renderSector("caves", controller({ snapshot: state })), "deep_cave");
   assert.match(html, /Припасы для вылазки/);
   assert.match(html, /Не хватает припасов/);
   assert.equal(disabled(button(html, "Отправиться")), true);
-  html = route(render(controller({ snapshot: snapshot({ ...state, inventory: { dried_berries: 1, smoked_fish: 1 } }) })), "deep_cave");
+  html = route(renderSector("caves", controller({ snapshot: snapshot({ ...state, inventory: { dried_berries: 1, smoked_fish: 1 } }) })), "deep_cave");
   assert.equal(disabled(button(html, "Отправиться")), false);
 });
 
@@ -95,7 +130,15 @@ test("ongoing exploration shows real progress and seconds, and exposes no second
   assert.match(html, /<progress[^>]*value="0\.033/);
   assert.equal(disabled(button(html, "Забрать находки: Лесная разведка")), true);
   assert.doesNotMatch(html, /aria-label="Отправиться:/);
-  assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Маршруты вылазок"));
+  assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Секторы вылазок"));
+});
+
+test("an active route from another sector stays above the sector picker", () => {
+  const html = render(controller({ snapshot: snapshot({ jobs: [job({ targetId: "deep_cave", rewards: { stone: 30, ore: 20 } })] }) }));
+  assert.match(html, /Текущая вылазка: Глубокий проход/);
+  assert.match(html, /data-sector="forest"/);
+  assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Секторы вылазок"));
+  assert.doesNotMatch(html, /aria-label="Отправиться:/);
 });
 
 test("ready finds honor available space including market reservations and retain an accessible pantry action", () => {

@@ -1,25 +1,13 @@
 .hud { position: absolute; inset: 0 0 auto; z-index: 6; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: calc(12px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left)); pointer-events: none; }
 .headerRow { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; width: 100%; }
 .leftControls, .rightControls { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
-.hud button, .wallet { pointer-events: auto; box-shadow: 0 3px 14px #07140b40; }
+.hud button { pointer-events: auto; box-shadow: 0 3px 14px #07140b40; }
 .hud .iconButton { flex: 0 0 40px; width: 40px; height: 44px; min-height: 44px; padding: 8px; border-radius: 13px; }
 .hud .level { min-height: 44px; gap: 8px; padding: 6px 11px; border-radius: 13px; }
 .level > span { display: flex; flex-direction: column; gap: 1px; text-align: left; line-height: 1.1; }
 .level small { font-size: 9px; color: #b4c5a0; }
 .level strong { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.wallet { display: grid; gap: 4px; margin: 0; padding: 7px 11px; min-width: 75px; border: 1px solid #d8e6b62e; border-radius: 13px; background: #18291df2; }
-.wallet > div { display: flex; justify-content: space-between; align-items: center; gap: 9px; }
-.wallet dt { display: flex; color: #e0c787; }
-.wallet > div + div dt { color: #aad3cf; }
-.wallet dd { margin: 0; color: #eef1dc; font-size: 12px; font-weight: 550; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .hud .loadingWallet { max-width: 108px; padding: 7px; font-size: 10px; }
-.hud .construction { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 33px; max-width: min(360px, 100%); padding: 7px 10px 9px; border-radius: 11px; overflow: hidden; font-size: 11px; background: #233322f5; border-color: #c1b87765; }
-.constructionName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.constructionName small { color: #bdcba8; font-size: inherit; }
-.construction strong { margin-left: 5px; flex: 0 0 auto; font-size: 11px; font-variant-numeric: tabular-nums; color: #e3d79f; }
-.construction[data-ready="true"] strong { color: #d4eaa7; }
-.constructionTrack { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: #08160c60; }
-.constructionTrack > span { display: block; height: 100%; background: #bcce86; }
 .bottomHud { position: absolute; inset: auto 0 0; z-index: 7; padding: 8px max(12px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); pointer-events: none; display: flex; justify-content: center; }
 .dock { display: flex; gap: 7px; min-width: 0; max-width: 100%; }
 .dock button { pointer-events: auto; min-width: 0; min-height: 44px; padding: 9px 13px; gap: 7px; border-radius: 13px; font-size: 12px; background: #1b2c20f5; box-shadow: 0 3px 14px #06100755; }
@@ -46,8 +34,6 @@
   .leftControls, .rightControls { gap: 5px; }
   .hud .level { padding-inline: 8px; gap: 6px; }
   .hud .iconButton { width: 36px; flex-basis: 36px; }
-  .wallet { padding-inline: 8px; }
-  .wallet dd { font-size: 11px; }
   .dock { gap: 6px; }
   .dock button { padding-inline: 10px; font-size: 11px; gap: 6px; }
   .quickBody { padding: 10px; }
@@ -57,8 +43,4 @@
   .headerRow { align-items: flex-start; }
   .quickMenu { max-height: calc(100% - var(--quick-top, 65px) - var(--quick-bottom, 65px) - 2px); }
   .bottomHud { padding-top: 5px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
-}
-
-@media (max-height: 500px) and (min-width: 600px) {
-  .hud .construction { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); max-width: 38%; }
 }

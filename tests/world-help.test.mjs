@@ -47,7 +47,12 @@ test("help directs each map action to its focused menu", () => {
   assert.match(text("level"), /уровень слева сверху.*профиль.*самочувствие/);
   assert.match(text("resources"), /Кладовая.*отдельное меню запасов/);
   assert.match(text("journeys"), /В путь.*только исследования/);
-  assert.match(text("journeys"), /таймер с названием постройки/);
+  assert.match(text("journeys"), /Таймер находится над улучшаемым объектом/);
+  assert.match(text("journeys"), /кладовая — над домом, печь — над мастерской, заготовки — над костром/);
+  assert.match(text("journeys"), /сектор «Лес», «Побережье» или «Пещеры»/);
+  assert.match(text("journeys"), /будущие рецепты свёрнуты в «Позже»/);
+  assert.match(text("resources"), /Эффект начинается после подтверждения действия/);
+  assert.doesNotMatch(text("resources") + text("journeys"), /Переход из окна дома|В окне дома доступны улучшение и переход|сверху карты виден таймер/);
   assert.match(text("journeys"), /в меню «Ещё» появятся «Старые походы»/);
   assert.match(text("saving"), /профиль кнопкой уровня.*Продолжить здесь/);
   assert.doesNotMatch(topics.flatMap(topic => [...(topic.steps ?? []), ...(topic.paragraphs ?? []), topic.note ?? ""]).join(" "), /Как Мохлик\?/);

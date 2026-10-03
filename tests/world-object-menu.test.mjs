@@ -131,7 +131,7 @@ test("starter stone sources use an available forest exploration instead of the l
   assert.ok(route.rewards.stone > 0);
   assert.deepEqual(helpers.worldMissingRequirements(state, helpers.worldRequirements(route)), []);
   const html = renderUpgrade("woodlot", controller({ snapshot: state }), { navigation: { open() {}, canOpen() { return true; }, explore() {} } });
-  assert.match(html, /aria-label="Где получить: Камень, В путь"/);
+  assert.match(html, /aria-label="Где получить: Камень, В путь\. Есть 0, нужно [0-9]+"/);
   state.buildings.home = 2; state.buildings.quarry = 1;
   assert.equal(helpers.worldMaterialSource(state, "stone").stationId, "quarry");
 });

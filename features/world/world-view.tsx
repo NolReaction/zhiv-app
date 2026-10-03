@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowLeft, BookOpen, Check, Coins, Compass, X, Feather, Gem, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Compass, X, Feather, Gem, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Sparkles, Wind, Fish, Shell, FishingHook, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -24,7 +24,7 @@ import { WorldPantryMenu } from "@/features/economy/world-pantry-menu";
 import { WorldExpeditionsMenu } from "@/features/economy/world-expeditions-menu";
 import { WorldUpgradeDialog } from "@/features/economy/world-upgrade-dialog";
 import { worldPlaceForStation } from "@/features/economy/world-stations";
-import { WorldConstructionStatus } from "./world-construction-status";
+import { WorldWallet } from "./world-wallet";
 import hudStyles from "./world-map-hud.module.css";
 import { WorldObjectMenu } from "@/features/economy/world-object-menu";
 
@@ -190,6 +190,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
     <WorldScene economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus hideMapControls={quickMenu !== null || selection !== null} onPlace={onPlace} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
+      constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null}
+      onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && quickUpgrade === null}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
@@ -204,14 +206,10 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           </button>
         </div>
         <div className={hudStyles.rightControls}>
-          {economy.snapshot ? <dl className={hudStyles.wallet} aria-label="Ваши валюты">
-            <div><dt><Coins size={15} aria-hidden="true" /><span className={styles.sr}>Монеты</span></dt><dd>{economy.snapshot.wallet.coins.toLocaleString("ru-RU")}</dd></div>
-            <div><dt><Shell size={15} aria-hidden="true" /><span className={styles.sr}>Жемчуг</span></dt><dd>{economy.snapshot.wallet.pearls.toLocaleString("ru-RU")}</dd></div>
-          </dl> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
+          {economy.snapshot ? <WorldWallet key={ownerPublicId} {...economy.snapshot.wallet} /> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
           <button className={hudStyles.iconButton} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
-      <WorldConstructionStatus economy={economy} onOpen={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }} />
     </header>
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}
     {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}`} initialStationId={objectStation} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
@@ -246,7 +244,15 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     <WorldUpgradeDialog stationId={quickUpgrade} economy={economy} onClose={() => setQuickUpgrade(null)}
       navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: id => leaveUpgrade(() => openStation(id)), explore: () => leaveUpgrade(() => openQuick("expeditions")) }}
       onOpenPantry={() => leaveUpgrade(() => openQuick("pantry"))}
-      onCloseAutoFocus={event => { event.preventDefault(); if (navigatingUpgrade.current) { navigatingUpgrade.current = false; return; } if (upgradeReturn.current?.isConnected) upgradeReturn.current.focus({ preventScroll: true }); else if (quickFrame.current) quickFrame.current.focus({ preventScroll: true }); else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true }); }} />
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (navigatingUpgrade.current) { navigatingUpgrade.current = false; return; }
+        const target = upgradeReturn.current?.dataset.constructionTarget;
+        const trigger = target ? worldElement.current?.querySelector<HTMLElement>(`[data-construction-target="${target}"]`) : upgradeReturn.current;
+        if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+        else if (quickFrame.current) quickFrame.current.focus({ preventScroll: true });
+        else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true });
+      }} />
     <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}>
       <DialogPortal>
       <DialogOverlay className={styles.sheetScrim} />

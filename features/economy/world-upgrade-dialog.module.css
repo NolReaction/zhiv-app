@@ -24,37 +24,65 @@
 .levels > strong { display: inline-flex; align-items: center; gap: 4px; color: #dce7bf; font-size: inherit; font-weight: 550; }
 .activeWork { display: flex; flex: 0 0 auto; flex-direction: column; gap: 7px; padding: 14px 16px 0; }
 .body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 16px; min-height: 0; padding: 15px 16px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #638051 transparent; }
-.section { display: flex; flex-direction: column; gap: 10px; }
+.section { display: flex; flex: 0 0 auto; flex-direction: column; gap: 10px; }
 .section h3 { display: flex; align-items: center; gap: 6px; color: #e0e8ca; font-size: 13px; line-height: 1.35; font-weight: 600; }
-.highlights { display: grid; gap: 6px; }
-.highlights p { display: flex; align-items: center; gap: 7px; color: #cedfb8; font-size: 11px; }
-.highlights strong { color: #e4edcd; font-weight: 600; }
-.unlockGroups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; row-gap: 12px; }
-.unlockGroup { min-width: 0; }
-.unlockGroup[data-wide="true"] { grid-column: 1 / -1; }
-.unlockGroup[data-wide="true"] ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; }
-.unlockGroup h4, .conditions h4 { margin: 0 0 5px; color: #9fb38f; font-size: 10px; font-weight: 500; }
-.unlockGroup ul { display: grid; gap: 5px; }
-.unlockGroup li { display: flex; align-items: center; gap: 6px; min-width: 0; color: #d4dfc0; font-size: 11px; line-height: 1.4; }
-.unlockGroup li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
-.recipeIcon { display: inline-flex; flex: 0 0 auto; color: #a9c58b; }
-.recipeCount { color: #d4dfc0; font-size: 11px; }
-.recipeCount strong { color: #e7efd1; font-weight: 600; }
-.unlockLabel, .dialog.dialog .unlockLink { display: flex; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; min-width: 0; min-height: 0; padding: 0; color: #d4dfc0; text-align: left; font-size: 11px; line-height: 1.4; }
-.unlockLabel > svg, .unlockLink > svg { color: #a9c58b; }
-.unlockLink > span, .unlockLabel > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.dialog.dialog .unlockLink { min-height: 30px; margin: -2px 0; }
-.dialog.dialog .unlockLink:hover { background: transparent; color: #f1f5d8; text-decoration: underline; }
+.capacity { display: flex; align-items: center; gap: 13px; padding: 14px 12px; color: #d7e6b8; border: 1px solid #a8bf7950; border-radius: 12px; background: linear-gradient(120deg, #b2cc7b21, #839d4c0a); }
+.capacity > div { flex: 1; min-width: 0; }
+.capacity > div > span { display: block; margin-bottom: 6px; color: #b7c8a3; font-size: 10px; }
+.capacity strong { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: #edf4d2; font-size: 23px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.capacity strong svg { color: #9cb97b; }
+.capacityGain { align-self: center; color: #d1e7ab; text-align: center; font-size: 14px; font-weight: 600; }
+.capacityGain small { display: block; margin-top: 3px; color: #9fb78d; font-size: 9px; font-weight: 400; }
+.homeResult { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #a8bf7938; border-radius: 10px; color: #c9dea9; background: #adc98013; }
+.homeResult strong { display: block; color: #e2edca; font-size: 13px; font-weight: 550; }
+.homeResult span { display: block; margin-top: 5px; color: #aec399; font-size: 10px; line-height: 1.4; }
+.moreUnlocks { padding: 0 2px; }
+.moreUnlocks summary { display: flex; align-items: center; justify-content: space-between; min-height: 30px; color: #b9cda1; font-size: 11px; cursor: pointer; list-style: none; }
+.moreUnlocks summary::-webkit-details-marker { display: none; }
+.moreUnlocks summary:focus-visible { outline: 2px solid #d4dea9; outline-offset: 2px; border-radius: 4px; }
+.moreUnlocks summary b { display: inline-grid; place-items: center; min-width: 18px; margin-left: 4px; padding: 2px 4px; border-radius: 5px; color: #d7e5b6; background: #a9c4781c; font-size: 10px; }
+.moreUnlocks[open] summary > svg { transform: rotate(180deg); }
+.homeUnlocks { display: grid; gap: 10px; padding: 9px 0 3px; }
+.homeUnlocks > div { display: grid; gap: 4px; }
+.homeUnlocks > div > span { display: flex; align-items: center; gap: 7px; color: #c6d6ad; }
+.homeUnlocks strong { flex: 1; font-size: 11px; font-weight: 500; }
+.homeUnlocks small { color: #99ae88; font-size: 9px; }
+.recipeGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.dialog.dialog .recipeTile { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; min-width: 0; min-height: 103px; padding: 11px 5px 9px; border: 1px solid #a1bc7040; border-radius: 10px; background: #8fae5e14; color: #c1d5a3; text-align: center; }
+.dialog.dialog .recipeTile:hover, .dialog.dialog .recipeTile[aria-expanded="true"] { background: #b1cb7930; border-color: #b4cf8080; }
+.resultIcons { display: flex; align-items: center; justify-content: center; gap: 4px; height: 27px; }
+.recipeTile strong { color: #e0eacc; font-size: 11px; font-weight: 550; line-height: 1.3; overflow-wrap: anywhere; }
+.recipeTile > span:last-of-type { margin-top: auto; color: #a5bb91; font-size: 10px; }
+.recipeTile small { display: inline-flex; align-items: center; gap: 3px; color: #dfc293; font-size: 9px; }
+.recipeDetail { display: grid; gap: 9px; padding: 11px; border: 1px solid #afc88038; border-radius: 9px; background: #0a18133d; }
+.recipeDetail > strong { color: #dae7c2; font-size: 12px; font-weight: 550; }
+.recipeDetail > ul { display: grid; gap: 6px; }
+.recipeDetail > ul > li { display: flex; align-items: center; gap: 6px; color: #c3d2b0; font-size: 11px; }
+.recipeDetail > ul > li > span { flex: 1; }
+.recipeDetail b { color: #d7e8b7; font-weight: 500; }
+.recipeInputs { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 10px; color: #a7bc94; font-size: 10px; line-height: 1.45; }
+.recipeInputs > span { display: inline-flex; align-items: center; gap: 4px; }
 .dialog .muted { color: #9fb293; font-size: 10px; line-height: 1.45; }
-.unlockGroup > .muted { margin-top: 5px; }
-.costCard { padding-bottom: 15px; border-bottom: 1px solid #b4c78824; }
+.costCard { padding-top: 14px; border-top: 1px solid #b4c78824; }
 .sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .sectionHeading > span { flex: 0 0 auto; color: #9aaf8d; font-size: 10px; }
-.costCard > ul { gap: 7px; }
-.costCard > ul > li { font-size: 11px; }
-.costCard > ul > li > strong { font-size: 11px; font-variant-numeric: tabular-nums; }
-.conditions { padding-top: 8px; }
-.conditions h4 { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: #d0b890; font-size: 11px; }
+.costGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.costGrid > li { min-width: 0; border: 1px solid #a1b68030; border-radius: 9px; overflow: hidden; background: #c1cd9410; }
+.costGrid > li[data-missing="true"] { border-color: #d8aa7540; background: #c58b4d09; }
+.costTile, .dialog.dialog .costTile { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 100%; min-height: 92px; padding: 10px 5px 8px; border: 0; border-radius: 8px; color: #bfcca8; text-align: center; }
+.costIcon { display: inline-flex; position: relative; color: #afc48e; }
+.sourceArrow { position: absolute; top: -3px; right: -12px; color: #d9c791; }
+.costName { min-width: 0; color: #bbc9a7; font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; }
+.costTile strong { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 0 3px; margin-top: auto; color: #dfeac5; font-size: 11px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.costTile strong > span { white-space: nowrap; }
+.costTile .costNeeded { color: #a9bc92; font-size: 10px; font-weight: 450; }
+.costGrid > li[data-missing="true"] .costTile strong > span:first-child { color: #edb582; }
+.conditions { padding-top: 5px; }
+.conditions h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 7px; color: #d0b890; font-size: 10px; font-weight: 500; }
+.conditions > ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.conditions > ul > li { min-width: 0; padding: 5px 7px; border: 1px solid #c8a9782e; border-radius: 7px; background: #bda7740b; font-size: 10px; line-height: 1.4; }
+.conditions > ul > li > svg { display: none; }
+.dialog.dialog .conditions button { justify-content: flex-start; flex-wrap: wrap; gap: 4px; min-height: 25px; padding: 0; text-align: left; font-size: 10px; }
 .loading { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 100px; padding: 20px; text-align: center; color: #adbf9f; }
 .complete { align-items: center; justify-content: center; gap: 11px; padding: 14px 8px; text-align: center; }
 .completeIcon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #b0c68240; border-radius: 50%; background: #a0b96913; color: #c1d498; }
@@ -70,6 +98,9 @@
 .reason { display: flex; align-items: flex-start; gap: 6px; color: #d6bb95; font-size: 11px; line-height: 1.45; }
 .reason svg { margin-top: 1px; }
 .dialog.dialog .done { align-self: flex-end; min-width: 90px; min-height: 36px; padding: 8px 12px; border: 1px solid #aec48845; color: #dbe7c3; background: #66804a28; }
+@media (max-width: 420px) {
+  .recipeGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 380px) {
   .dialog.dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 20px); border-radius: 14px; }
   .header { gap: 8px; padding: 12px 9px 12px 12px; }
@@ -77,8 +108,11 @@
   .buildingIcon { flex-basis: 32px; width: 32px; height: 32px; }
   .body { padding: 13px 12px; gap: 14px; }
   .activeWork { padding: 12px 12px 0; }
-  .unlockGroups { column-gap: 10px; }
-  .unlockGroup[data-wide="true"] ul { gap: 3px 8px; }
+  .capacity { gap: 9px; padding: 11px 9px; }
+  .capacity strong { gap: 6px; font-size: 21px; }
+  .recipeGrid { gap: 5px; }
+  .dialog.dialog .recipeTile { padding-right: 4px; padding-left: 4px; }
+  .costGrid { gap: 5px; }
   .footer { padding: 11px 12px 12px; }
   .confirmRow { gap: 8px; }
   .duration > span { font-size: 9px; }

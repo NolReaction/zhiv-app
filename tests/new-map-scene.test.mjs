@@ -490,6 +490,48 @@ test("map object selection tracks projected anchors through camera changes and d
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("construction anchors follow live map projection without repeated React notifications on idle redraws", async () => {
+  const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(400), samples = [], top = { offsetHeight: 40 }, bottom = { offsetHeight: 40 };
+    const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top, bottom },
+      { onObjectAnchorsChange: anchors => samples.push(anchors) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.control("overview");
+    const expected = () => {
+      const projection = mapProjection(canvas);
+      const xs = clearingHome.hitArea.map(point => point.x), ys = clearingHome.hitArea.map(point => point.y);
+      return { objectId: "home", place: "house", x: Math.round(projection.left + (Math.min(...xs) + Math.max(...xs)) / 2 * projection.zoom),
+        y: Math.round(projection.top + Math.min(...ys) * projection.zoom - 10), pointerOffset: 0 };
+    };
+    assert.deepEqual(samples.at(-1), [expected()]);
+    const idleCount = samples.length;
+    engine.update(options); engine.control("overview");
+    assert.equal(samples.length, idleCount, "unchanged projected pixels do not notify React every frame");
+    engine.control("home");
+    assert.deepEqual(samples.at(-1), [expected()]);
+    const beforePan = samples.at(-1)[0];
+    dragMap(canvas, 12, 18);
+    assert.deepEqual(samples.at(-1), [expected()]);
+    assert.equal(samples.at(-1)[0].x, beforePan.x + 12);
+    assert.equal(samples.at(-1)[0].y, beforePan.y + 18);
+    canvas.clientWidth = 520; canvas.clientHeight = 600; env.resize(canvas);
+    assert.deepEqual(samples.at(-1), [expected()], "resize updates visible construction anchors immediately");
+    worldDevStore.patch({ showBuildings: false });
+    assert.deepEqual(samples.at(-1), [], "hidden site artwork removes its timer anchor too");
+    worldDevStore.patch({ showBuildings: true });
+    assert.deepEqual(samples.at(-1), [expected()]);
+    top.offsetHeight = canvas.clientHeight; env.resize(top);
+    assert.deepEqual(samples.at(-1), [], "measured HUD changes hide covered timers");
+    top.offsetHeight = 40; env.resize(top);
+    assert.deepEqual(samples.at(-1), [expected()]);
+    dragMap(canvas, -10_000, -10_000);
+    assert.deepEqual(samples.at(-1), [], "an offscreen building never leaves a timer pinned to the edge");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 test("map object selection ignores drag pinch and canceled pointers before a real tap", async () => {
   const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
   const env = browser(); let engine;

@@ -9,12 +9,16 @@ import { drawBoatWreck, prepareBoatWreck } from "./boat-wreck";
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "./dev/world-dev-store";
 import { mapObjectAt, type MapObjectPlace } from "./site-interactions";
+import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
 export type WorldPlace = MapObjectPlace | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
 export type MapObjectSelection = { place: WorldPlace; objectId: string; x: number; y: number; viewportWidth: number; viewportHeight: number };
-export type MapInteractionCallbacks = { onSelectionChange?: (selection: MapObjectSelection | null) => void };
+export type MapInteractionCallbacks = {
+  onSelectionChange?: (selection: MapObjectSelection | null) => void;
+  onObjectAnchorsChange?: (anchors: readonly MapObjectScreenAnchor[]) => void;
+};
 export type MapAction = "home" | "pet" | "overview" | "in" | "out";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}) {
@@ -48,6 +52,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
   let selectedObjectId: string | null = null, selectionKey: string | null = null;
+  let anchorsKey = "";
   let readyResolve!: () => void, readyReject!: (error: unknown) => void;
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
@@ -99,6 +104,15 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function setSelectedObject(objectId: string | null) {
     selectedObjectId = objectId;
     updateSelection();
+  }
+  function updateObjectAnchors() {
+    if (disposed || !interactions.onObjectAnchorsChange) return;
+    const projected = (habitat.mapObjects?.() ?? []).flatMap(object => {
+      const anchor = projectConstructionAnchor(object, camera, view, cameraInsets);
+      return anchor ? [anchor] : [];
+    });
+    const key = JSON.stringify(projected);
+    if (key !== anchorsKey) { anchorsKey = key; interactions.onObjectAnchorsChange(projected); }
   }
   function activateObject(objectId: string) {
     const object = habitat.mapObjects?.().find(object => object.id === objectId);
@@ -153,6 +167,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       node.style.visibility = smallDetail || point.x < -60 || point.y < 0 || point.x > view.width + 60 || point.y > view.height + 50 ? "hidden" : "visible";
     }
     updateSelection();
+    updateObjectAnchors();
   }
   function tick(time: number) {
     raf = 0;
