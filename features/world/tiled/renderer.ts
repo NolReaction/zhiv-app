@@ -5,6 +5,8 @@ import { buildingDetailsAnimated, drawBuildingDetails } from "../building-detail
 import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "../forest-lighting";
 import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
 import { drawSiteImage } from "./site-image";
+import { boundsInCanvas, canvasWorldViewport } from "../canvas-viewport";
+import { worldArtworkMipCache } from "../artwork-mip-cache";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
 
@@ -66,10 +68,14 @@ function debugLabel(ctx: CanvasRenderingContext2D, point: WorldPoint, color: str
 
 /** Both cameras call this exact compositor in world pixels, including its light pass. */
 export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame: PaintFrame) {
+  const viewport = canvasWorldViewport(ctx);
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "low";
   for (const terrain of scene.terrain) {
+    // Cull before creating artwork/shadow surfaces. The bush's contact bed may
+    // extend beyond the PNG, so retain a generous world-space border.
+    if (!boundsInCanvas(viewport, terrain.bounds, Math.max(16, Math.max(terrain.bounds.width, terrain.bounds.height) * .3))) continue;
     const image = frame.images.get(terrain.image), bounds = terrain.bounds;
     if (image) {
       const bushId = scene.bushes?.find(bush => bush.imageId === terrain.id)?.id;
@@ -77,19 +83,20 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
         frame.bushMoisture?.find(bush => bush.id === bushId)?.moisture);
       if (!frame.hiddenTerrainIds?.includes(terrain.id)) {
         if (bushId) {
-          ctx.drawImage(forestObjectArtwork(image, "foliage"), bounds.x, bounds.y, bounds.width, bounds.height);
+          ctx.drawImage(worldArtworkMipCache.image(ctx, terrain, forestObjectArtwork(image, "foliage")), bounds.x, bounds.y, bounds.width, bounds.height);
           drawForestBushLeafShade(ctx, scene, terrain, image);
-        } else drawSiteImage(ctx, terrain, image);
+        } else drawSiteImage(ctx, terrain, worldArtworkMipCache.image(ctx, terrain, image));
       }
     }
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
   if (frame.paintGround) { ctx.save(); frame.paintGround(ctx); ctx.restore(); }
   for (const site of frame.options.showBuildings === false ? [] : scene.sites) {
+    if (!boundsInCanvas(viewport, site.bounds, 16)) continue;
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {
       if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image, frame.dusk ?? Number(frame.options.night));
-      drawSiteImage(ctx, site, forestObjectArtwork(image, forestSiteMaterial(site)));
+      drawSiteImage(ctx, site, worldArtworkMipCache.image(ctx, site, forestObjectArtwork(image, forestSiteMaterial(site))));
     }
   }
   drawForestLightFixtures(ctx, scene, frame.options.showBuildings);

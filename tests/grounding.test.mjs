@@ -109,6 +109,7 @@ test("every real pose and direction puts its opaque sole at ground level at any 
       bottom, left: Math.min(...sole.map(([x]) => x)), right: Math.max(...sole.map(([x]) => x)) + 1,
     });
     const reads = sprite.reads;
+    assert.equal(reads, 0, "generated poses must not synchronously read back a GPU canvas");
     for (const size of [24, 60, 103.5]) {
       const ctx = recordingContext();
       drawGroundedHero(ctx, { x: 180, y: 220, size, pose, direction, frame, appearance: { palette: "fern", head: "leaf_cap", neck: "berry_scarf" } });
@@ -122,7 +123,19 @@ test("every real pose and direction puts its opaque sole at ground level at any 
       assert.equal(ctx.ellipses[1].args[1], 220);
       assert.ok(ctx.ellipses.every(({ args }) => args[3] <= size * .04));
     }
-    assert.equal(sprite.reads, reads, "alpha is scanned only once per cached sprite");
+    assert.equal(sprite.reads, reads, "ground contact comes from the rasterized rig rectangles");
+  }
+});
+
+test("gardening crouches retain the exact opaque contact without reading pixels", () => {
+  for (const crouch of [0, 3, 6]) for (const direction of ["front", "back", "left", "right"]) {
+    const sprite = pixelSprite("reach", direction, 2, { palette: "autumn", head: "explorer_cap", neck: "amber_scarf" }, { gardening: true, crouch });
+    const points = [...sprite.pixels.keys()].map(key => key.split(":").map(Number));
+    const bottom = Math.max(...points.map(([, y]) => y)) + 1, sole = points.filter(([, y]) => y >= bottom - 3);
+    assert.deepEqual(heroSpriteContact(sprite, "reach", 2), {
+      bottom, left: Math.min(...sole.map(([x]) => x)), right: Math.max(...sole.map(([x]) => x)) + 1,
+    });
+    assert.equal(sprite.reads, 0);
   }
 });
 

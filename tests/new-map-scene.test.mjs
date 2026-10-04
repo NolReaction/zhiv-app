@@ -55,7 +55,7 @@ async function modules(override) {
 function browser() {
   const saved = new Map(), pending = [], requests = [], timers = new Map(), frames = new Map(), observers = [];
   const documentEvents = new Map();
-  let id = 0;
+  let id = 0, frameTime = 0;
   const install = (key, value) => {
     saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
@@ -88,6 +88,7 @@ function browser() {
       releasePointerCapture: pointer => captured.delete(pointer),
       hasPointerCapture: pointer => captured.has(pointer),
       focus() {},
+      flushFrame() { const current = [...frames.values()]; frames.clear(); frameTime += 34; current.forEach(callback => callback(frameTime)); },
     };
   }
   install("document", { hidden: false, createElement: () => surface(),
@@ -420,6 +421,7 @@ function dragMap(canvas, x, y) {
   canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
   canvas.events.get("pointermove")({ ...event, type: "pointermove", clientX: event.clientX + x, clientY: event.clientY + y });
   canvas.events.get("pointerup")({ ...event, type: "pointerup", clientX: event.clientX + x, clientY: event.clientY + y });
+  canvas.flushFrame();
 }
 
 const approximately = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-8, `${message}: ${actual} ≈ ${expected}`);
@@ -597,16 +599,15 @@ test("visible hero taps take priority over overlapping garden and house menu geo
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
-test("object marker pointer gestures share canvas capture and open only after an uncanceled tap", async () => {
+test("object marker native touch capture opens once and preserves marker-origin drag pinch and cancellation", async () => {
   const site = { ...clearingHome, anchor: { x: 650, y: 700 } };
   const { createMapEngine, worldDevStore } = await modules({ sites: [site] });
   const env = browser(); let engine;
   try {
     worldDevStore.patch(quietClearing);
-    const canvas = env.surface(400), places = [], selections = [], markerEvents = new Map();
-    const marker = { dataset: { objectId: "home", kind: "house" }, style: {},
-      addEventListener: (name, callback) => markerEvents.set(name, callback),
-      removeEventListener: name => markerEvents.delete(name) };
+    const canvas = env.surface(400), places = [], selections = [];
+    const marker = Object.assign(env.surface(), { dataset: { objectId: "home", kind: "house" }, style: {} });
+    const markerEvents = marker.events;
     const loading = createMapEngine(canvas, options, place => places.push(place), [marker], undefined, {},
       { onSelectionChange: selection => selections.push(selection) });
     env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
@@ -623,32 +624,113 @@ test("object marker pointer gestures share canvas capture and open only after an
     assert.deepEqual(places, [], "the marker anchor is deliberately outside the building hit polygon");
     assert.equal(typeof markerEvents.get("pointerdown"), "function");
     markerEvents.get("pointerdown")({ ...first, type: "pointerdown" });
-    assert.equal(canvas.hasPointerCapture(first.pointerId), true, "the canvas owns moves after a marker-origin press");
+    assert.equal(marker.hasPointerCapture(first.pointerId), true, "the original button retains native touch capture");
+    assert.equal(canvas.hasPointerCapture(first.pointerId), false, "touch capture is not transferred to a sibling");
+    markerEvents.get("pointerup")({ ...first, type: "pointerup" });
+    markerEvents.get("lostpointercapture")({ ...first, type: "lostpointercapture" });
     canvas.events.get("pointerup")({ ...first, type: "pointerup" });
-    assert.equal(canvas.hasPointerCapture(first.pointerId), false);
+    assert.equal(marker.hasPointerCapture(first.pointerId), false);
     assert.deepEqual(places, ["house"], "a marker-origin tap activates its ID exactly once outside the polygon");
     assert.equal(selections.at(-1).objectId, "home");
 
     const drag = markerEvent(), beforeDrag = mapProjection(canvas);
     markerEvents.get("pointerdown")({ ...drag, type: "pointerdown" });
-    canvas.events.get("pointermove")({ ...drag, type: "pointermove", clientX: drag.clientX + 25 });
-    canvas.events.get("pointerup")({ ...drag, type: "pointerup", clientX: drag.clientX + 25 });
+    markerEvents.get("pointermove")({ ...drag, type: "pointermove", clientX: drag.clientX + 25 });
+    markerEvents.get("pointerup")({ ...drag, type: "pointerup", clientX: drag.clientX + 25 });
+    canvas.flushFrame();
     assert.notDeepEqual(mapProjection(canvas), beforeDrag, "a marker-origin drag pans the same camera");
     assert.deepEqual(places, ["house"], "dragging from a marker does not activate it");
     const pinch = markerEvent(), second = { ...pinch, pointerId: 2, clientX: pinch.clientX + 30 };
     markerEvents.get("pointerdown")({ ...pinch, type: "pointerdown" });
     canvas.events.get("pointerdown")({ ...second, type: "pointerdown" });
     canvas.events.get("pointermove")({ ...second, type: "pointermove", clientX: second.clientX + 15 });
-    canvas.events.get("pointerup")({ ...pinch, type: "pointerup" });
+    markerEvents.get("pointerup")({ ...pinch, type: "pointerup" });
     canvas.events.get("pointerup")({ ...second, type: "pointerup", clientX: second.clientX + 15 });
     const cancel = markerEvent();
     markerEvents.get("pointerdown")({ ...cancel, type: "pointerdown" });
-    canvas.events.get("pointercancel")({ ...cancel, type: "pointercancel" });
+    markerEvents.get("pointercancel")({ ...cancel, type: "pointercancel" });
+    canvas.flushFrame();
     assert.deepEqual(places, ["house"], "marker-origin pinch and cancellation cannot open a menu");
-    assert.equal(canvas.hasPointerCapture(1), false); assert.equal(canvas.hasPointerCapture(2), false);
+    assert.equal(marker.hasPointerCapture(1), false); assert.equal(canvas.hasPointerCapture(2), false);
     engine.dispose(); engine = null;
     assert.equal(markerEvents.size, 0, "disposing the engine removes marker-origin pointer listeners");
     assert.equal(canvas.events.size, 0);
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("pointer bursts share the next animation frame and read layout once per gesture", async () => {
+  const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(400), samples = [];
+    let rectReads = 0, markerWrites = 0;
+    const readRect = canvas.getBoundingClientRect;
+    canvas.getBoundingClientRect = function () { rectReads++; return readRect.call(this); };
+    const marker = { dataset: { objectId: "home", kind: "house" }, style: new Proxy({}, {
+      set(target, key, value) { markerWrites++; target[key] = value; return true; },
+    }) };
+    const loading = createMapEngine(canvas, options, assert.fail, [marker], undefined, {},
+      { onObjectAnchorsChange: anchors => samples.push(anchors) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.control("home"); canvas.flushFrame();
+    const initial = mapProjection(canvas), paints = () => canvas.calls.filter(call => call.method === "setTransform").length;
+    const before = paints(), beforeSamples = samples.length, beforeWrites = markerWrites;
+    const event = { pointerId: 1, pointerType: "touch", button: 0, clientX: 200, clientY: 200 };
+    canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+    for (let step = 1; step <= 120; step++) canvas.events.get("pointermove")({ ...event, type: "pointermove", clientX: 200 + step / 4 });
+    assert.equal(paints(), before, "120 move packets do not each repaint the world");
+    assert.equal(samples.length, beforeSamples, "construction anchor updates also wait for presentation");
+    assert.equal(markerWrites, beforeWrites, "the high-rate input path does not mutate DOM marker transforms");
+    assert.equal(rectReads, 1, "no synchronous layout read follows marker writes during pan");
+    canvas.flushFrame();
+    assert.equal(paints(), before + 1, "one browser frame paints the latest camera");
+    approximately(mapProjection(canvas).left, initial.left + 30, "the camera keeps all movement rather than discarding input");
+    assert.equal(samples.length, beforeSamples + 1);
+    canvas.events.get("pointermove")({ ...event, type: "pointermove", clientX: 235 });
+    canvas.events.get("pointerup")({ ...event, type: "pointerup", clientX: 235 });
+    assert.equal(rectReads, 1, "pointerup reuses the same gesture viewport");
+    assert.equal(paints(), before + 1);
+    canvas.flushFrame();
+    assert.equal(paints(), before + 2);
+    approximately(mapProjection(canvas).left, initial.left + 35, "the release frame reaches the final camera position");
+    const idleWrites = markerWrites;
+    engine.control("home");
+    const focusedWrites = markerWrites;
+    engine.control("home");
+    assert.equal(markerWrites, focusedWrites, "unchanged projected transforms do not rewrite DOM styles");
+    assert.ok(focusedWrites > idleWrites);
+    canvas.events.get("pointerdown")({ ...event, pointerId: 2, type: "pointerdown" });
+    canvas.events.get("pointercancel")({ ...event, pointerId: 2, type: "pointercancel" });
+    assert.equal(rectReads, 2, "a new gesture refreshes layout for resized or moved viewports");
+    engine.dispose(); engine = null;
+    assert.equal(env.frames.size, 0, "disposing removes the queued interaction frame even with reduced motion");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("construction anchor projection can be suspended until a visible timer or completion effect needs it", async () => {
+  const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(400), samples = [];
+    const loading = createMapEngine(canvas, options, assert.fail, [], undefined, {},
+      { objectAnchorsEnabled: false, onObjectAnchorsChange: anchors => samples.push(anchors) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.control("home"); dragMap(canvas, 25, 30);
+    assert.deepEqual(samples, [], "ordinary camera movement does not notify an unused overlay");
+    engine.setObjectAnchorsEnabled(true); canvas.flushFrame();
+    assert.equal(samples.length, 1);
+    assert.equal(samples[0][0].objectId, "home");
+    const previous = samples[0][0];
+    dragMap(canvas, 12, 18);
+    assert.equal(samples.at(-1)[0].x, previous.x + 12);
+    assert.equal(samples.at(-1)[0].y, previous.y + 18);
+    engine.setObjectAnchorsEnabled(false);
+    assert.deepEqual(samples.at(-1), []);
+    const count = samples.length;
+    dragMap(canvas, 10, 10);
+    assert.equal(samples.length, count, "disabling a completed overlay stops subsequent camera notifications");
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
@@ -768,6 +850,7 @@ test("full map clears the vertical HUD when zoomed in without adding horizontal 
     canvas.events.get("pointermove")({ ...second, type: "pointermove", clientX: 121 });
     canvas.events.get("pointercancel")({ ...first, type: "pointercancel" });
     canvas.events.get("pointercancel")({ ...second, type: "pointercancel", clientX: 121 });
+    canvas.flushFrame();
     assert.deepEqual(mapProjection(canvas), overview, "pinch zoom closes the extra travel just like the overview control");
   } finally { engine?.dispose(); env.restore(); }
 });
@@ -2369,7 +2452,7 @@ test("map selection uses committed house geometry and menu taps preserve a sleep
     env.finishPath("/click-home-2.webp"); await flush();
     assert.equal(selections.at(-1).objectId, "home");
     assert.notEqual(selections.at(-1).x, previousSelection.x, "selection follows the new anchor as its image commits");
-    tap(630, 600); assert.equal(places.length, 2, "the old hit area disappears with old art");
+    tap(630, 600); canvas.flushFrame(); assert.equal(places.length, 2, "the old hit area disappears with old art");
     assert.notEqual(anchor.style.transform, previousAnchor, "the shortcut follows committed geometry");
     tap(730, 600); assert.deepEqual(places, ["house", "house", "house"]);
     worldDevStore.patch({ showBuildings: false }); tap(730, 600);

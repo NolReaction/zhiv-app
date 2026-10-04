@@ -54,8 +54,8 @@ function textureFor(shape: ForestBushSoil): SoilTexture | null {
   if (typeof document === "undefined") return null;
   // The visible bed tucks behind the lower crown. Keep the authored watering lip
   // stable so a visual adjustment cannot move the hand or the stream's destination.
-  const bed = { ...shape, center: { x: shape.center.x, y: shape.center.y + shape.radiusY * .24 },
-    radiusX: shape.radiusX * .70, radiusY: shape.radiusY * .82 };
+  const bed = { ...shape, center: { x: shape.center.x, y: shape.center.y - shape.radiusY * .50 },
+    radiusX: shape.radiusX * .72, radiusY: shape.radiusY * .68 };
   const { center, radiusX, radiusY } = bed, { bounds } = shape;
   const scale = Math.min(3, 256 / Math.max(bounds.width, bounds.height));
   const surface = () => {

@@ -8,6 +8,7 @@
 
 | Задача | Главные файлы | Как менять и проверять |
 |---|---|---|
+| Устранить задержки движения камеры | [`map-engine.ts`](../features/world/map-engine.ts), [`canvas-viewport.ts`](../features/world/canvas-viewport.ts), [`artwork-mip-cache.ts`](../features/world/artwork-mip-cache.ts), [`grounding.ts`](../features/world/grounding.ts) | [Кэш рисунков и контакт героя](game/world-foundation.md#как-данные-доходят-до-экрана). Замерять жесты с живыми анимациями, не замораживать мир |
 | Расставить фонари и факелы | [`forest.tmj`](../world/tiled/forest.tmj), слой `Lights` | [Освещение](game/world-lighting.md) |
 | Изменить свет у зданий и лучи маяка | [`forest-building-lights.ts`](../features/world/forest-building-lights.ts), [`forest-lighting.ts`](../features/world/forest-lighting.ts) | [Освещение](game/world-lighting.md). Привязки к активному рисунку учитывают масштаб и поворот |
 | Изменить ночной цвет, световое пятно, пламя, мерцание | [`forest-lighting.ts`](../features/world/forest-lighting.ts) | [Освещение](game/world-lighting.md) |

@@ -10,6 +10,12 @@ const colors = {
 };
 const cache = new Map<string, HTMLCanvasElement>();
 const CACHE_LIMIT = 384;
+export type PixelSpriteContact = { bottom: number; left: number; right: number };
+const contacts = new WeakMap<HTMLCanvasElement, PixelSpriteContact>();
+
+/** The rig paints opaque integer rectangles, so its sole can be recorded while
+ * drawing. Reading the finished GPU canvas would stall every new pose/frame. */
+export const pixelSpriteContact = (sprite: HTMLCanvasElement) => contacts.get(sprite);
 
 export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }, rig?: PixelRigOptions): HTMLCanvasElement {
   frame = Number.isFinite(frame) ? ((Math.trunc(frame) % 4) + 4) % 4 : 0;
@@ -20,8 +26,15 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("2D canvas unavailable");
+  const rowLeft = new Int16Array(48).fill(48), rowRight = new Int16Array(48);
   const rect = (x: number, y: number, w: number, h: number, color: string) => {
-    ctx.fillStyle = color; ctx.fillRect(Math.round(x), Math.round(y), w, h);
+    const left = Math.round(x), top = Math.round(y);
+    ctx.fillStyle = color; ctx.fillRect(left, top, w, h);
+    const clippedLeft = Math.max(0, left), clippedRight = Math.min(48, left + w);
+    if (clippedRight <= clippedLeft) return;
+    for (let row = Math.max(0, top); row < Math.min(48, top + h); row++) {
+      rowLeft[row] = Math.min(rowLeft[row], clippedLeft); rowRight[row] = Math.max(rowRight[row], clippedRight);
+    }
   };
   const oval = (x: number, y: number, rx: number, ry: number, color: string) => {
     for (let row = -ry; row <= ry; row++) {
@@ -141,6 +154,15 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       rect(14, 7 + headOffset, 22, 3, "#514d32"); rect(16, 5 + headOffset, 18, 4, cap);
       rect(20, capTop, 11, 5 + headOffset - capTop + 1, cap); rect(20, 5 + headOffset, 11, 1, "#78613b");
     }
+  }
+  let bottom = 48;
+  while (bottom > 0 && rowRight[bottom - 1] === 0) bottom--;
+  if (bottom > 0) {
+    let left = 48, right = 0;
+    for (let row = Math.max(0, bottom - 3); row < bottom; row++) {
+      left = Math.min(left, rowLeft[row]); right = Math.max(right, rowRight[row]);
+    }
+    contacts.set(canvas, { bottom, left, right });
   }
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!);
   cache.set(key, canvas);

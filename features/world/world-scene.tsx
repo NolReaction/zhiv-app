@@ -1,6 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { LocateFixed, Minus, Plus, LoaderCircle, Scan } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { LocateFixed, LoaderCircle, Scan } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
 import { habitatLighting } from "@/features/mochlik/lighting";
@@ -15,9 +15,9 @@ import { MAP_PLACES } from "./map-layout";
 import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { interactiveMapObjects } from "./site-interactions";
 import type { EconomyController } from "@/features/economy/use-economy";
-import type { MapObjectScreenAnchor } from "./construction-map-anchor";
 import { WorldConstructionStatus } from "./world-construction-status";
-import { WorldUpgradeEffects } from "./world-upgrade-effects";
+import { WorldUpgradeEffects, UPGRADE_CELEBRATION_MS } from "./world-upgrade-effects";
+import { createMapAnchorStore } from "./map-anchor-store";
 import styles from "./world.module.css";
 
 type Props = { hideJourneyStatus?: boolean; hideMapControls?: boolean; economyJourney?: EconomySceneJourney | null; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
@@ -42,7 +42,21 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
     if (object && engine.current?.activateObject(object.id)) handledObjectRequest.current = request.id;
   }, []);
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
-  const [objectAnchors, setObjectAnchors] = useState<readonly MapObjectScreenAnchor[]>([]);
+  const [anchorStore] = useState(createMapAnchorStore);
+  const constructionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "construction"));
+  const completions = constructionEconomy?.completedConstructions;
+  const anchorTracking = useRef({ enabled: constructionActive, seen: new Set(completions?.map(event => event.id)), until: 0 });
+  useLayoutEffect(() => {
+    const tracker = anchorTracking.current;
+    const fresh = completions?.some(event => !tracker.seen.has(event.id));
+    tracker.seen = new Set(completions?.map(event => event.id));
+    if (fresh) tracker.until = performance.now() + UPGRADE_CELEBRATION_MS + 100;
+    tracker.enabled = constructionActive || performance.now() < tracker.until;
+    engine.current?.setObjectAnchorsEnabled(tracker.enabled);
+    if (constructionActive || !tracker.enabled) return;
+    const timer = setTimeout(() => { tracker.enabled = false; engine.current?.setObjectAnchorsEnabled(false); }, Math.max(0, tracker.until - performance.now()));
+    return () => clearTimeout(timer);
+  }, [constructionActive, completions]);
   const [reload, setReload] = useState(0);
   useEffect(() => {
     latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, economyJourney, economyBuildings };
@@ -64,12 +78,13 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
       return module.createMapEngine(canvas.current!, options(), (place, selection) => latest.current.onPlace(place, selection), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), abort.signal,
         { top: topHud.current, bottom: bottomHud.current }, {
           onSelectionChange: value => selection.current.onObjectSelection?.(value),
-          onObjectAnchorsChange: values => { if (!disposed) setObjectAnchors(values); },
+          objectAnchorsEnabled: anchorTracking.current.enabled,
+          onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
         });
     }).then(value => {
       if (!value) return;
       if (disposed) { value.dispose(); return; }
-      engine.current = value; value.update(options()); value.setTime(time.current); value.setSelectedObject(selection.current.selectedObjectId ?? null);
+      engine.current = value; value.setObjectAnchorsEnabled(anchorTracking.current.enabled); value.update(options()); value.setTime(time.current); value.setSelectedObject(selection.current.selectedObjectId ?? null);
       applyObjectRequest();
       for (let i = 0; i < pendingWake.current; i++) value.notice(); pendingWake.current = 0;
       setReady(true); setError(null);
@@ -82,7 +97,7 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
     });
     const change = () => engine.current?.update(options()); media.addEventListener("change", change);
     return () => { disposed = true; abort.abort(); media.removeEventListener("change", change); engine.current?.dispose(); engine.current = null; };
-  }, [reload, topHud, bottomHud, applyObjectRequest]);
+  }, [reload, topHud, bottomHud, applyObjectRequest, anchorStore]);
   useEffect(() => {
     const taps = Math.max(0, wakeSignal - previousWake.current); previousWake.current = wakeSignal;
     if (engine.current) { for (let i = 0; i < taps; i++) engine.current.notice(); }
@@ -103,12 +118,8 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
       <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />
       <button data-map-anchor data-kind="fishing" data-x={MAP_PLACES.fishing.marker.x} data-y={MAP_PLACES.fishing.marker.y} onClick={() => onPlace("fishing")} aria-label="Открыть рыбалку" title="Рыбалка" />
     </div>}
-    {ready && constructionEconomy && onOpenConstruction && <WorldConstructionStatus economy={constructionEconomy}
-      anchors={objectAnchors} onOpen={onOpenConstruction} hidden={hideConstructionStatus} />}
-    {constructionEconomy && <WorldUpgradeEffects economy={constructionEconomy} anchors={objectAnchors} ready={ready} />}
+    <MapFeedback anchorStore={anchorStore} economy={constructionEconomy} onOpen={onOpenConstruction} ready={ready} hidden={hideConstructionStatus} />
     <div className={styles.cameraControls} hidden={hideMapControls} aria-label="Управление картой">
-      <button onClick={() => control("in")} disabled={!ready} aria-label="Приблизить карту"><Plus size={19} /></button>
-      <button onClick={() => control("out")} disabled={!ready} aria-label="Отдалить карту"><Minus size={19} /></button>
       <button onClick={() => control("overview")} disabled={!ready} aria-label="Показать всю карту" title="Вся карта"><Scan size={19} /></button>
       <button onClick={() => control("pet")} disabled={!ready} aria-label="Найти Мохлика" title="Найти Мохлика"><LocateFixed size={19} /></button>
     </div>
@@ -117,4 +128,16 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
     </button>}
     {!hideJourneyStatus && !economyJourney && journey && <button className={styles.away} onClick={() => onPlace("journeys")} aria-label="Открыть текущее путешествие"><JourneyProgress journey={journey} equipment={state.equipment} now={now} /></button>}
   </div>;
+}
+
+/** Only the small map overlays subscribe to camera movement; the scene stays mounted. */
+function MapFeedback({ anchorStore, economy, onOpen, ready, hidden }: {
+  anchorStore: ReturnType<typeof createMapAnchorStore>; economy?: EconomyController;
+  onOpen?: (stationId: string) => void; ready: boolean; hidden: boolean;
+}) {
+  const anchors = useSyncExternalStore(anchorStore.subscribe, anchorStore.getSnapshot, anchorStore.getSnapshot);
+  return <>
+    {ready && economy && onOpen && <WorldConstructionStatus economy={economy} anchors={anchors} onOpen={onOpen} hidden={hidden} />}
+    {economy && <WorldUpgradeEffects economy={economy} anchors={anchors} ready={ready} />}
+  </>;
 }

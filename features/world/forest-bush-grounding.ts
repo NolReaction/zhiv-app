@@ -108,14 +108,14 @@ function shadowFor(bush: WorldBush, terrain: WorldImage, image: HTMLImageElement
       ctx.putImageData(pixels, 0, 0);
     } catch { /* Browser without pixel access retains the short native blurred silhouette. */ }
   };
-  // A short cast to the lower right matches the painted upper-left daylight.
-  // Contact stays immediately beneath the foliage, even when daylight fades.
-  project(castCtx, .18, .82, size * .037, size * .025, size * .023);
-  project(contactCtx, .14, .74, 0, size * .02, size * .009);
+  // Tuck both projections behind the lower leaves. A separate soft oval below
+  // this round cutout reads as a levitating crown, even if a thin contact joins it.
+  project(castCtx, .10, .76, size * .01, -size * .027, size * .013);
+  project(contactCtx, .07, .67, 0, -size * .020, size * .005);
   if (alphaMask) {
     try {
       const pixels = contactCtx.getImageData(0, 0, mask.width, mask.height);
-      attachForestBushContact(alphaMask, pixels.data, mask.width, mask.height, size * .14 * scale, size * .033 * scale);
+      attachForestBushContact(alphaMask, pixels.data, mask.width, mask.height, size * .09 * scale, size * .019 * scale);
       contactCtx.putImageData(pixels, 0, 0);
     } catch { /* Keep the projected contact if pixel readback is unavailable. */ }
   }
@@ -136,7 +136,7 @@ export function drawForestBushGrounding(ctx: CanvasRenderingContext2D, scene: Fi
   const { bounds } = shadow;
   ctx.save();
   const alpha = ctx.globalAlpha;
-  ctx.globalAlpha = alpha * .12 * (1 - darkness * .68);
+  ctx.globalAlpha = alpha * .045 * (1 - darkness * .68);
   ctx.drawImage(shadow.cast, bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.globalAlpha = alpha * .57 * (1 - darkness * .18);
   ctx.drawImage(shadow.contact, bounds.x, bounds.y, bounds.width, bounds.height);

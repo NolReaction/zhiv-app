@@ -1,4 +1,4 @@
-import { pixelSprite, type PixelDirection, type PixelPose, type PixelRigOptions } from "@/features/mochlik/pixel-sprite";
+import { pixelSprite, pixelSpriteContact, type PixelDirection, type PixelPose, type PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedSite, WorldBounds } from "./tiled/types";
 import { drawSiteImage } from "./tiled/site-image";
 
@@ -9,6 +9,8 @@ const spriteContacts = new WeakMap<HTMLCanvasElement, SpriteContact | null>();
 
 /** Source-space contact follows the opaque paws, including alternating walk frames. */
 export function heroSpriteContact(sprite: HTMLCanvasElement, pose: PixelPose, frame: number): SpriteContact {
+  const generated = pixelSpriteContact(sprite);
+  if (generated) return generated;
   if (!spriteContacts.has(sprite)) {
     let contact: SpriteContact | null = null;
     try {
