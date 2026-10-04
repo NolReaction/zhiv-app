@@ -7,8 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { pleskSprite, pleskSpriteRig, PLESK_SPRITE_CACHE_LIMIT } = await vite.ssrLoadModule("/features/world/plesk-sprite.ts");
-const { drawPleskResident } = await vite.ssrLoadModule("/features/world/plesk-painter.ts");
-const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { drawPleskResident, pleskFishingAnchors } = await vite.ssrLoadModule("/features/world/plesk-painter.ts");
+const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, fishingBasketHandle, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 function canvas() {
   const result = { width: 0, height: 0, pixels: new Map() }; let offset = 0, scale = 1;
@@ -102,7 +102,7 @@ function context() {
     save() { stack.push({ imageSmoothingEnabled: this.imageSmoothingEnabled }); }, restore() { Object.assign(this, stack.pop()); },
     drawImage(...args) { draws.push({ args, smoothing: this.imageSmoothingEnabled }); },
     beginPath() { path = []; }, moveTo(x, y) { path.push({ x, y }); }, lineTo(x, y) { path.push({ x, y }); },
-    quadraticCurveTo() {}, ellipse() {}, arc() {}, closePath() {}, fill() {}, stroke() { paths.push(path); events.push("prop"); },
+    quadraticCurveTo() {}, ellipse() {}, arc() {}, closePath() {}, fill() {}, clip() {}, stroke() { paths.push(path); events.push("prop"); },
     fillRect(...args) { palms.push(args); events.push("palm"); },
     translate(x, y) { translations.push({ x, y }); }, rotate() {}, scale() {},
   };
@@ -249,5 +249,109 @@ test("Pleska keeps her rod in the same paw and supports the fish below its outli
           `${direction} ${action} supporting paw follows the rotated underside`);
       }
     }
+  }
+});
+
+
+test("a carried basket hangs from Pleska's paw, sways with her step, and has its own cached pose", () => {
+  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet"]) {
+    const positions = new Set();
+    for (let frame = 0; frame < 8; frame++) {
+      const empty = pleskSprite(action, direction, frame, frame / 7);
+      const carried = pleskSprite(action, direction, frame, frame / 7, false, { carryingBasket: true });
+      assert.notStrictEqual(carried, empty, "carrying a basket cannot reuse the rod-holding raster");
+      assert.strictEqual(carried, pleskSprite(action, direction, frame, frame / 7, false, { carryingBasket: true }));
+      const rig = pleskSpriteRig(carried), handle = fishingBasketHandle(rig.basket, 48), hand = rig.palms[0].position;
+      assert.ok(Math.hypot(hand.x - handle.x, hand.y - handle.y) <= .51, `${direction}/${action}/${frame} clasps the handle within pixel rounding`);
+      assert.equal(rig.contact.bottom, 45);
+      assert.ok(rig.basket.y + 48 * .27 * .43 < rig.contact.bottom, "a carried basket clears the ground");
+      if (action !== "greet") assert.ok(rig.arms[1].palm.y > rig.arms[1].shoulder.y, "the empty opposite paw hangs naturally");
+      for (const arm of rig.arms) {
+        assert.ok(Math.hypot(arm.elbow.x - arm.shoulder.x, arm.elbow.y - arm.shoulder.y) <= 7.1);
+        assert.ok(Math.hypot(arm.palm.x - arm.elbow.x, arm.palm.y - arm.elbow.y) <= 7.1);
+      }
+      positions.add(JSON.stringify(rig.basket));
+    }
+    assert.equal(positions.size > 1, action === "walk", "only actual steps swing the carried basket");
+    const still = pleskSprite(action, direction, 0, 0, true, { carryingBasket: true });
+    for (const frame of [2, 7, 10000]) assert.strictEqual(pleskSprite(action, direction, frame, .9, true, { carryingBasket: true }), still);
+  }
+  assert.strictEqual(pleskSprite("fish", "front", 3, .5, false, { carryingBasket: true }),
+    pleskSprite("fish", "front", 3, .5), "the carrying flag does not replace an active fishing pose");
+});
+
+test("Pleska carries only the basket and paints small fingers over its actual handle in each direction", () => {
+  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet"]) {
+    const frame = { x: 100, y: 160, size: 36, direction, action, phase: .4, frame: 3,
+      carryingFish: true, basketFilled: true };
+    const ctx = context(); drawPleskResident(ctx, frame, false);
+    const [sprite, x, y] = ctx.draws[0].args, body = pleskSpriteRig(sprite), scale = frame.size / 48;
+    const grip = { x: x + body.grip.x * scale, y: y + body.grip.y * scale };
+    const basket = { x: x + body.basket.x * scale, y: y + body.basket.y * scale };
+    const handle = fishingBasketHandle(basket, frame.size);
+    assert.equal(ctx.translations.some(point => Math.hypot(point.x - grip.x, point.y - grip.y) < .01), false,
+      "the carried basket suppresses rod painting instead of leaving a pole in the other paw");
+    assert.equal(ctx.palms.length, 2, "only the two basket-gripping fingers overlay props");
+    assert.ok(ctx.palms.every(([left, top, width, height]) => Math.abs(left - handle.x) <= scale * 1.01
+      && width === scale && top < handle.y && top + height > handle.y));
+    assert.equal(ctx.events.at(-1), "palm", "fingers clasp the painted handle from the foreground");
+    assert.equal(fishingTackleFrame(frame, false, { grip, basket, hideRod: true }).visible, false);
+  }
+});
+
+
+function recordedFish(frame, still = false) {
+  const ctx = context(), fish = [], transforms = []; let matrix = [1, 0, 0, 1, 0, 0];
+  const save = ctx.save, restore = ctx.restore;
+  ctx.save = function () { transforms.push([...matrix]); save.call(this); };
+  ctx.restore = function () { matrix = transforms.pop(); restore.call(this); };
+  ctx.translate = (x, y) => { matrix[4] += matrix[0] * x + matrix[2] * y; matrix[5] += matrix[1] * x + matrix[3] * y; };
+  ctx.scale = (x, y) => { matrix[0] *= x; matrix[1] *= x; matrix[2] *= y; matrix[3] *= y; };
+  ctx.rotate = angle => {
+    const [a, b, c, d] = matrix, cos = Math.cos(angle), sin = Math.sin(angle);
+    matrix[0] = a * cos + c * sin; matrix[1] = b * cos + d * sin;
+    matrix[2] = c * cos - a * sin; matrix[3] = d * cos - b * sin;
+  };
+  ctx.ellipse = (x, y, rx, ry) => {
+    if (x === 0 && y === 0 && rx === .5 && ry === .24) {
+      fish.push({ x: matrix[4], y: matrix[5], size: Math.hypot(matrix[0], matrix[1]), angle: Math.atan2(matrix[1], matrix[0]) });
+    }
+  };
+  drawPleskResident(ctx, frame, still);
+  return { fish, rig: pleskSpriteRig(ctx.draws[0].args[0]) };
+}
+
+test("the actual Pleska painter moves smoothly into the exact basket center at every size and facing", () => {
+  const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  for (const direction of ["front", "right", "back", "left"]) for (const size of [36, 50, 120]) {
+    const base = { x: 200, y: 220, size, direction, frame: 0, carryingFish: true, basketFilled: false,
+      species: "fish", catchScale: 1, outcome: "small", waterTarget: { x: direction === "left" ? 145 : 255, y: 185 } };
+    const caught = recordedFish({ ...base, action: "catch", phase: 1 }).fish[0];
+    const packedStart = recordedFish({ ...base, action: "pack", phase: 0 }).fish[0];
+    assert.ok(gap(caught, packedStart) < 1e-10, "catch1 → pack0 has no position jump");
+    assert.ok(Math.abs(caught.angle - packedStart.angle) < 1e-10);
+    assert.ok(Math.abs(caught.size - packedStart.size) < 1e-10);
+    let beforeRelease;
+    for (const phase of [0, .123, .314, .4, .4001, .6123, FISHING_PACK_RELEASE - 1e-8, FISHING_PACK_RELEASE, .73, 1]) {
+      const frame = { ...base, action: "pack", phase, basketFilled: phase >= FISHING_PACK_RELEASE };
+      const painted = recordedFish(frame), anchors = pleskFishingAnchors(frame, painted.rig, false);
+      assert.equal(painted.fish.length, 1, "the deposited fish replaces the held fish exactly once");
+      const endpoint = fishingBasketFishCenter(anchors.basket, size);
+      const part = Math.min(1, phase / FISHING_PACK_RELEASE), eased = part * part * (3 - 2 * part);
+      const expected = { x: packedStart.x + (endpoint.x - packedStart.x) * eased,
+        y: packedStart.y + (endpoint.y - packedStart.y) * eased };
+      assert.ok(gap(painted.fish[0], expected) < 1e-10, `${direction}/H${size}/phase${phase} uses continuous raw phase`);
+      assert.ok(gap(painted.fish[0], fishingCatchFrame(frame, false, anchors).center) < 1e-10,
+        "painted fish and supporting fingers share the same center");
+      if (phase === FISHING_PACK_RELEASE - 1e-8) beforeRelease = painted.fish[0];
+      if (phase === FISHING_PACK_RELEASE) {
+        assert.ok(gap(painted.fish[0], beforeRelease) < 1e-9, "held → stored fish shares its exact position even when mirrored");
+        assert.ok(Math.abs(painted.fish[0].size - beforeRelease.size) < 1e-9);
+        assert.ok(Math.abs(painted.fish[0].angle - beforeRelease.angle) < 1e-9);
+      }
+    }
+    const stillFirst = recordedFish({ ...base, action: "pack", phase: .12 }, true).fish[0];
+    const stillLater = recordedFish({ ...base, action: "pack", phase: .93, frame: 7 }, true).fish[0];
+    assert.deepEqual(stillFirst, stillLater, "reduced motion freezes the same continuous pose");
   }
 });

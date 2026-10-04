@@ -13,14 +13,16 @@ export type FishingMotion = {
   species?: FishSpeciesId;
   basketSpecies?: FishSpeciesId;
   rodId?: string;
+  carryingBasket?: boolean;
 };
 export const FISHING_PACK_RELEASE = .68;
+export const FISHING_REEL_HANDOFF = .78;
 /** Shared tackle follows the hands of either resident rig, without an image or AI dependency. */
 export type FishingPropFrame = WorldPoint & FishingMotion & {
   size: number; direction: PixelDirection; action: FishingAction; phase: number; frame: number;
   carryingFish: boolean; basketFilled?: boolean; waterTarget?: WorldPoint;
 };
-export type FishingPropAnchors = { grip?: WorldPoint; heldFish?: WorldPoint; basket?: WorldPoint; drawBasket?: boolean };
+export type FishingPropAnchors = { grip?: WorldPoint; heldFish?: WorldPoint; basket?: WorldPoint; drawBasket?: boolean; hideRod?: boolean };
 const tau = Math.PI * 2;
 const boundedPhase = (frame: FishingPropFrame) => Math.max(0, Math.min(1, Number.isFinite(frame.phase) ? frame.phase : 0));
 const waterAction = (frame: FishingPropFrame) => ["cast", "fish", "bite", "reel"].includes(frame.action)
@@ -28,9 +30,18 @@ const waterAction = (frame: FishingPropFrame) => ["cast", "fish", "bite", "reel"
 const between = (a: WorldPoint, b: WorldPoint, part: number): WorldPoint => ({ x: a.x + (b.x - a.x) * part, y: a.y + (b.y - a.y) * part });
 const smooth = (value: number) => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 const catchScale = (frame: FishingPropFrame) => Math.max(.7, Math.min(1.5, Number.isFinite(frame.catchScale) ? frame.catchScale! : frame.outcome === "large" ? 1.35 : 1));
+const reelCrank = (frame: FishingPropFrame, still: boolean) => still ? 0
+  : Math.min(1, boundedPhase(frame) / FISHING_REEL_HANDOFF) * tau * (frame.outcome === "large" ? 6 : 3);
 
 export const fishingBasketFishCenter = (basket: WorldPoint, size: number): WorldPoint =>
   ({ x: basket.x + size * .0135, y: basket.y - size * .1026 });
+export const fishingBasketHandle = (basket: WorldPoint, size: number): WorldPoint =>
+  ({ x: basket.x, y: basket.y - size * .1944 });
+
+/** Land below the face before unhooking. Reeling never pulls a hooked fish
+ * across the body toward the far paw or the basket. */
+const fishingLandingCenter = (frame: FishingPropFrame, side: number): WorldPoint =>
+  ({ x: frame.x + side * frame.size * .045, y: frame.y - frame.size * .22 });
 
 /** A supporting wrist touches the lower outline, never the middle of a fish.
  * Reel and catch use the same size and vertical pose at their shared boundary. */
@@ -39,9 +50,13 @@ export function fishingCatchFrame(frame: FishingPropFrame, still: boolean, ancho
   const basket = anchors.basket ?? { x: frame.x + side * frame.size * .4, y: frame.y - frame.size * .08 };
   const resting = anchors.heldFish ?? { x: frame.x + side * frame.size * .24, y: frame.y - frame.size * .45 };
   const placing = frame.action === "pack" ? smooth(phase / FISHING_PACK_RELEASE) : 0;
-  const center = anchors.heldFish || frame.action !== "pack" ? resting : between(resting, fishingBasketFishCenter(basket, frame.size), placing);
+  const landingSide = frame.direction === "left" || anchors.grip && anchors.grip.x < frame.x ? -1 : 1;
+  const lifting = smooth((phase - .2) / .55);
+  const center = frame.action === "reel" ? fishingLandingCenter(frame, landingSide)
+    : frame.action === "catch" ? between(fishingLandingCenter(frame, landingSide), resting, lifting)
+      : anchors.heldFish || frame.action !== "pack" ? resting : between(resting, fishingBasketFishCenter(basket, frame.size), placing);
   const horizontal = side > 0 ? -.12 : -Math.PI + .12;
-  const angle = frame.action === "catch" ? -Math.PI / 2 + (horizontal + Math.PI / 2) * smooth(phase / .55)
+  const angle = frame.action === "catch" ? -Math.PI / 2 + (horizontal + Math.PI / 2) * lifting
     : frame.action === "pack" ? horizontal + ((side > 0 ? -.2 : -Math.PI + .2) - horizontal) * placing : -Math.PI / 2;
   const size = frame.size * (.26 * catchScale(frame) * (1 - placing) + .243 * placing);
   const underside = side;
@@ -49,7 +64,7 @@ export function fishingCatchFrame(frame: FishingPropFrame, still: boolean, ancho
     y: center.y + Math.cos(angle) * size * .22 * underside };
   return { center, angle, size, wrist,
     visible: frame.outcome !== "miss" && (frame.action === "catch" || frame.action === "pack" && frame.carryingFish && phase < FISHING_PACK_RELEASE),
-    attached: frame.action === "catch" && phase < .28 };
+    attached: frame.action === "catch" && phase < .2 };
 }
 
 /** Contains both a 48 px body and the complete cast/float arc, including rods
@@ -71,13 +86,31 @@ function drawFish(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   drawFishSprite(ctx, { x, y, size, angle, species, tailSwing });
 }
 
+/** Only the catch is clipped: the basket's sides hide a long tail while the
+ * recognisable head and back remain visible above the opening. */
+function clipBasketFish(ctx: CanvasRenderingContext2D, basket: WorldPoint, size: number, part = 1) {
+  const basketSize = size * .27, margin = size * 2 * (1 - smooth(part));
+  ctx.beginPath();
+  ctx.moveTo(basket.x - basketSize * .44 - margin, basket.y - basketSize * .8 - margin);
+  ctx.lineTo(basket.x + basketSize * .44 + margin, basket.y - basketSize * .8 - margin);
+  ctx.lineTo(basket.x + basketSize * .44 + margin, basket.y - basketSize * .3);
+  ctx.lineTo(basket.x + basketSize * .32 + margin, basket.y + basketSize * .3 + margin);
+  ctx.lineTo(basket.x - basketSize * .32 - margin, basket.y + basketSize * .3 + margin);
+  ctx.lineTo(basket.x - basketSize * .44 - margin, basket.y - basketSize * .3);
+  ctx.closePath(); ctx.clip();
+}
+
 function drawBasket(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, filled: boolean, species?: FishSpeciesId, foreground = false, side = 1) {
   ctx.save(); ctx.translate(x, y);
   ctx.strokeStyle = "#715035"; ctx.lineWidth = size * .09; ctx.lineCap = "round";
   if (!foreground) {
     ctx.beginPath(); ctx.ellipse(0, -size * .38, size * .3, size * .34, 0, Math.PI, tau); ctx.stroke();
     ctx.fillStyle = "#705239"; ctx.beginPath(); ctx.ellipse(0, -size * .33, size * .5, size * .18, 0, 0, tau); ctx.fill();
-    if (filled) drawFish(ctx, size * .05, -size * .38, size * .9, side > 0 ? -.2 : -Math.PI + .2, species);
+    if (filled) {
+      ctx.save(); clipBasketFish(ctx, { x: 0, y: 0 }, size / .27);
+      drawFish(ctx, size * .05, -size * .38, size * .9, side > 0 ? -.2 : -Math.PI + .2, species);
+      ctx.restore();
+    }
   } else {
     ctx.fillStyle = "#bd925c";
     ctx.beginPath(); ctx.moveTo(-size * .48, -size * .3); ctx.lineTo(size * .48, -size * .3);
@@ -108,7 +141,7 @@ export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anch
   const side = frame.direction === "left" || anchors.grip && anchors.grip.x < frame.x ? -1 : 1;
   const grip = anchors.grip ?? { x: frame.x + side * size * .3, y: frame.y - size * .28 };
   const active = Boolean(waterAction(frame));
-  const visible = !["rest", "trade"].includes(frame.action);
+  const visible = !anchors.hideRod && !["rest", "trade"].includes(frame.action);
   const large = frame.outcome === "large" || frame.variation === "struggle";
   const missed = frame.outcome === "miss";
   const casting = frame.action === "cast", reeling = frame.action === "reel";
@@ -159,16 +192,15 @@ export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anch
     }
     if (!still && frame.action === "bite") bobber.y += (1 - Math.cos(phase * tau * (large ? 4 : 3))) * size * (large ? .043 : .03);
     if (reeling) {
-      const held = anchors.heldFish ?? { x: frame.x + side * size * .29, y: frame.y - size * .34 };
+      const held = fishingLandingCenter(frame, side);
       bobber = between(water, { x: held.x, y: held.y - size * .13 * catchScale(frame) }, smooth(phase));
       if (!still && large) bobber.x += Math.sin(phase * tau * 4) * size * .075 * Math.sin(phase * Math.PI);
       if (missed) splash = Math.max(0, Math.sin(Math.PI * Math.max(0, Math.min(1, (phase - .25) / .55))));
     } else if (landing) {
-      const fish = fishingCatchFrame(frame, still, anchors);
-      const mouth = { x: fish.center.x + Math.cos(fish.angle) * fish.size * .5,
-        y: fish.center.y + Math.sin(fish.angle) * fish.size * .5 };
       const stowed = { x: tip.x - side * size * .035, y: tip.y + size * .25 };
-      bobber = frame.action === "catch" ? between(mouth, stowed, smooth((phase - .28) / .32)) : stowed;
+      const landingPoint = fishingLandingCenter(frame, side);
+      const unhooked = { x: landingPoint.x, y: landingPoint.y - size * .13 * catchScale(frame) };
+      bobber = frame.action === "catch" ? between(unhooked, stowed, smooth((phase - .2) / .45)) : stowed;
     }
   }
   const length = Math.max(1, Math.hypot(tip.x - grip.x, tip.y - grip.y));
@@ -179,20 +211,31 @@ export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anch
     hookedFish: active && reeling && !missed && phase > .16, splash };
 }
 
+/** The winding paw follows the actual crank drawn by the selected rod model. */
+export function fishingReelHand(frame: FishingPropFrame, still: boolean, anchors: FishingPropAnchors = {}): WorldPoint {
+  const rig = fishingTackleFrame(frame, still, anchors), crank = reelCrank(frame, still);
+  const length = Math.max(1, Math.hypot(rig.tip.x - rig.grip.x, rig.tip.y - rig.grip.y));
+  const dx = (rig.tip.x - rig.grip.x) / length, dy = (rig.tip.y - rig.grip.y) / length;
+  const local = frame.rodId === "river_rod" ? { x: .043 + Math.cos(crank) * .05, y: rig.side * (.02 + Math.sin(crank) * .04) }
+    : frame.rodId === "willow_rod" ? { x: Math.cos(crank) * .09, y: Math.sin(crank) * .09 }
+      : { x: Math.cos(crank) * .035, y: Math.sin(crank) * .025 };
+  return { x: rig.reel.x + frame.size * (local.x * dx - local.y * dy),
+    y: rig.reel.y + frame.size * (local.x * dy + local.y * dx) };
+}
+
 function drawTackle(ctx: CanvasRenderingContext2D, frame: FishingPropFrame, phase: number, still: boolean, anchors: FishingPropAnchors) {
   const size = frame.size, rig = fishingTackleFrame(frame, still, anchors);
   if (!rig.visible) return;
   const { tip, bobber, tension, active, cast } = rig;
-  const crank = !still && (frame.action === "reel" || frame.variation === "check") ? phase * tau * (frame.outcome === "large" ? 6 : 3) : .5;
+  const crank = frame.action === "reel" ? reelCrank(frame, still)
+    : !still && frame.variation === "check" ? phase * tau * 3 : 0;
   drawFishingRod(ctx, { ...rig, size, crank, rodId: frame.rodId });
   ctx.strokeStyle = active ? "#e4e3c4c0" : "#d4d4bda0"; ctx.lineWidth = size * .018;
   ctx.beginPath(); ctx.moveTo(tip.x, tip.y);
-  if ((frame.action === "reel" || frame.action === "catch" && phase < .6) && !still) {
-    // Keep the hanging line beside the rod until chest height, then bring it
-    // toward the free paw. It must not cut diagonally across the eyes.
-    const turn = { x: rig.grip.x + rig.side * size * .13, y: Math.max(rig.grip.y + size * .03, bobber.y) };
-    ctx.quadraticCurveTo(tip.x + rig.side * size * .025, turn.y, turn.x, turn.y);
-    ctx.quadraticCurveTo((turn.x + bobber.x) / 2, Math.max(turn.y, bobber.y) + size * .035, bobber.x, bobber.y);
+  if (frame.action === "reel" || frame.action === "catch" && phase < .65) {
+    // A single tensioned curve shortens toward the landing point. After the
+    // fish is unhooked the float retracts up this line, not into the free paw.
+    ctx.quadraticCurveTo(tip.x + rig.side * size * .025, bobber.y, bobber.x, bobber.y);
   } else ctx.quadraticCurveTo((tip.x + bobber.x) / 2, Math.max(tip.y, bobber.y) + size * .07 * (1 - tension), bobber.x, bobber.y);
   ctx.stroke();
   if (active && cast >= .99 && frame.action !== "reel") {
@@ -210,8 +253,17 @@ function drawTackle(ctx: CanvasRenderingContext2D, frame: FishingPropFrame, phas
       ctx.lineTo(water.x + offset * size * .11, water.y - rig.splash * size * (.08 + (offset ? .02 : .07))); ctx.stroke();
     }
   }
-  ctx.fillStyle = "#f7e6b9"; ctx.beginPath(); ctx.ellipse(bobber.x, bobber.y, size * .035, size * .05, 0, 0, tau); ctx.fill();
-  ctx.fillStyle = "#d76c42"; ctx.beginPath(); ctx.ellipse(bobber.x, bobber.y - size * .035, size * .032, size * .028, 0, 0, tau); ctx.fill();
+  // A float sits above the hook along the line, not on the fish's mouth or the
+  // resident's chin. It reaches the short stowed line after unhooking.
+  let float = bobber;
+  if (frame.action === "reel" || frame.action === "catch" && phase < .65) {
+    const t = frame.action === "reel" ? 1 - .35 * smooth(phase / .45)
+      : .65 + .35 * smooth((phase - .2) / .45), before = 1 - t;
+    float = { x: before * before * tip.x + 2 * before * t * (tip.x + rig.side * size * .025) + t * t * bobber.x,
+      y: before * before * tip.y + (2 * before * t + t * t) * bobber.y };
+  }
+  ctx.fillStyle = "#f7e6b9"; ctx.beginPath(); ctx.ellipse(float.x, float.y, size * .035, size * .05, 0, 0, tau); ctx.fill();
+  ctx.fillStyle = "#d76c42"; ctx.beginPath(); ctx.ellipse(float.x, float.y - size * .035, size * .032, size * .028, 0, 0, tau); ctx.fill();
   if (rig.hookedFish) drawFish(ctx, bobber.x, bobber.y + size * .13 * catchScale(frame), size * .26 * catchScale(frame),
     -Math.PI / 2 + (still ? 0 : Math.sin(phase * tau * 3) * .22 * (1 - smooth((phase - .75) / .25))),
     frame.species, still ? 0 : Math.sin(phase * tau * 5) * (1 - smooth((phase - .75) / .25)));
@@ -235,8 +287,13 @@ export function drawFishingProps(ctx: CanvasRenderingContext2D, frame: FishingPr
   if (showBasket) drawBasket(ctx, basket.x, basket.y, size * .27,
     frame.basketFilled ?? (frame.carryingFish && (frame.action !== "pack" || phase >= FISHING_PACK_RELEASE)), frame.basketSpecies ?? frame.species, false, side);
   const fish = fishingCatchFrame(frame, still, { ...anchors, basket });
-  if (fish.visible) drawFish(ctx, fish.center.x, fish.center.y, fish.size, fish.angle, frame.species,
-    still || frame.action === "pack" ? 0 : Math.sin(phase * tau * 4) * .35);
+  if (fish.visible) {
+    ctx.save();
+    if (frame.action === "pack") clipBasketFish(ctx, basket, size, (phase / FISHING_PACK_RELEASE - .55) / .45);
+    drawFish(ctx, fish.center.x, fish.center.y, fish.size, fish.angle, frame.species,
+      still || frame.action === "pack" ? 0 : Math.sin(phase * tau * 4) * .35);
+    ctx.restore();
+  }
   if (showBasket) drawBasket(ctx, basket.x, basket.y, size * .27, false, undefined, true);
   ctx.restore();
 }

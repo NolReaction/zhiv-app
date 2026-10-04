@@ -1,5 +1,5 @@
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
-import { drawFishingProps, FISHING_PACK_RELEASE, fishingTackleFrame, fishingCatchFrame, fishingBasketFishCenter } from "./fishing-props";
+import { drawFishingProps, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, fishingTackleFrame, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand } from "./fishing-props";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { drawGroundedHero } from "./grounding";
 import type { WorldPoint } from "./tiled/types";
@@ -31,17 +31,18 @@ export function forestFishingHeroRig(frame: ForestFishingFrame, still: boolean) 
   const heldFish = { x: x - side * size * .31, y: y - size * (.3 + (action === "catch" && !still ? Math.sin(phase * Math.PI) * .025 : 0)) };
   const traveling = action === "walk" || action === "idle" && !frame.waterTarget;
   const basket = { x: x - side * size * (traveling ? .27 : .43), y: y - size * (traveling ? .15 : .04) };
-  const farShoulder = { x: x - side * size * .2, y: y - size * .255 };
+  const handoff = smooth((phase - FISHING_REEL_HANDOFF) / (1 - FISHING_REEL_HANDOFF));
+  const farShoulder = { x: x - side * size * (pulling ? .1 + .1 * handoff : .2), y: y - size * .255 };
   const nearShoulder = { x: x + side * size * .2, y: y - size * .255 };
   const placing = mix(heldFish, fishingBasketFishCenter(basket, size), smooth(phase / FISHING_PACK_RELEASE));
   const actualFish = packing ? placing : heldFish;
-  const catchFrame = fishingCatchFrame(frame, still, { heldFish: actualFish, basket });
+  const catchFrame = fishingCatchFrame(frame, still, { grip, heldFish: actualFish, basket });
   const relaxed = { x: x - side * size * (.23 - check * .05), y: y - size * (.18 + check * .13) };
   const nearHand = action === "rest" ? { x: x + side * size * .24, y: y - size * .18 } : grip;
   const farHand = traveling && frame.carryingFish ? { x: basket.x, y: basket.y - size * .15 }
     : action === "catch" ? catchFrame.wrist : packing ? mix(catchFrame.wrist, relaxed, smooth((phase - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE)))
-      : pulling && !escape && phase > .7 ? mix(relaxed, catchFrame.wrist, smooth((phase - .7) / .3))
-      : pulling && struggle ? { x: x + side * size * .12, y: y - size * (.19 + effort * .03) }
+      : pulling ? mix(mix(relaxed, fishingReelHand(frame, still, { grip }), still ? 1 : smooth(phase / .12)),
+        escape ? relaxed : catchFrame.wrist, escape ? smooth((phase - .65) / .35) : handoff)
         : relaxed;
   const pose: PixelPose = action === "walk" ? "fishing-walk" : escape && action === "rest" ? "blink"
     : action === "rest" || traveling ? "idle" : action === "bite" || pulling && escape && phase < .6 ? "wonder"

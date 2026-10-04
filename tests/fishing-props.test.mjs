@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingTackleFrame, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
 const base = { x: 200, y: 200, size: 50, direction: "front", action: "fish", phase: .5, frame: 0,
   waterTarget: { x: 204, y: 247 }, carryingFish: false };
@@ -111,6 +111,66 @@ test("packing transfers one fish from hand to basket at the exact release point"
   assert.equal(fishBodies({ ...packing, phase: FISHING_PACK_RELEASE, basketFilled: true }).length, 1);
   assert.equal(fishBodies({ ...packing, phase: .9, basketFilled: true }).length, 1);
   assert.equal(fishBodies({ ...packing, action: "catch", outcome: "miss", basketFilled: false }).length, 0);
+});
+
+test("reeling winds beside the rod before handing off the unhooked fish", () => {
+  for (const direction of ["front", "left", "right", "back"]) for (const rodId of ["reed_rod", "river_rod", "willow_rod"]) {
+    const frame = { ...base, action: "reel", direction, rodId, phase: .4, outcome: "small", carryingFish: false };
+    const hands = forestFishingHeroRig(frame, false), tackle = fishingTackleFrame(frame, false, hands);
+    const crank = fishingReelHand(frame, false, hands);
+    assert.deepEqual(hands.farHand, crank, "the free paw winds at the chosen rod's actual crank");
+    assert.ok(Math.hypot(crank.x - tackle.reel.x, crank.y - tackle.reel.y) < frame.size * .15);
+    const landing = fishingCatchFrame({ ...frame, phase: 1 }, false, forestFishingHeroRig({ ...frame, phase: 1 }, false));
+    assert.ok(Math.abs(landing.center.x - frame.x) < frame.size * .1, "a hooked fish lands at the waist before being passed to the basket side");
+    assert.ok(landing.center.y > frame.y - frame.size * .3, "the landing line stays below the face");
+    const crankOffset = phase => {
+      const settled = { ...frame, phase }, rig = forestFishingHeroRig(settled, false);
+      const pole = fishingTackleFrame(settled, false, rig), point = fishingReelHand(settled, false, rig);
+      const length = Math.hypot(pole.tip.x - pole.grip.x, pole.tip.y - pole.grip.y);
+      const dx = (pole.tip.x - pole.grip.x) / length, dy = (pole.tip.y - pole.grip.y) / length;
+      return [(point.x - pole.reel.x) * dx + (point.y - pole.reel.y) * dy,
+        -(point.x - pole.reel.x) * dy + (point.y - pole.reel.y) * dx];
+    };
+    for (const phase of [FISHING_REEL_HANDOFF, .9, 1]) {
+      crankOffset(phase).forEach((value, axis) => assert.ok(Math.abs(value - crankOffset(1)[axis]) < 1e-9,
+        "the crank stops relative to the pole before the free paw leaves it"));
+    }
+    const caught = { ...frame, action: "catch", phase: .5, carryingFish: true }, rig = forestFishingHeroRig(caught, false);
+    assert.equal(fishingCatchFrame(caught, false, rig).attached, false);
+    assert.ok(Math.hypot(fishingTackleFrame(caught, false, rig).bobber.x - rig.farHand.x,
+      fishingTackleFrame(caught, false, rig).bobber.y - rig.farHand.y) > frame.size * .2,
+    "the released float retracts to the rod instead of following the fish into the paw");
+  }
+});
+
+test("basket sides mask all species and the same mask settles before pack release", () => {
+  const record = (frame, anchors) => {
+    const clips = [], fishes = [], basketWalls = [], stack = [];
+    let clipped = false, path = [];
+    const ctx = new Proxy({}, { get: (_target, key) => (...args) => {
+      if (key === "save") stack.push(clipped);
+      if (key === "restore") clipped = stack.pop();
+      if (key === "beginPath") path = [];
+      if (key === "moveTo" || key === "lineTo") path.push(args);
+      if (key === "clip") { clipped = true; clips.push(path); }
+      if (key === "scale") fishes.push(clipped);
+      if (key === "quadraticCurveTo" && args[3] > 0 && args[0] === 0) basketWalls.push(clipped);
+    }, set: () => true });
+    drawFishingProps(ctx, frame, false, anchors); return { clips, fishes, basketWalls };
+  };
+  for (const direction of ["front", "left", "right", "back"]) for (const species of ["fish", "fish_silverfin", "fish_reedperch", "fish_mooncarp"]) {
+    const frame = { ...base, direction, species, action: "pack", carryingFish: true, phase: FISHING_PACK_RELEASE, basketFilled: true };
+    const basket = { x: 0, y: 0 }, anchors = { basket, hideRod: true };
+    const released = record(frame, anchors), entering = record({ ...frame, phase: FISHING_PACK_RELEASE - 1e-7, basketFilled: false }, anchors);
+    assert.equal(released.fishes.length, 1); assert.deepEqual(released.fishes, [true]);
+    assert.deepEqual(entering.fishes, [true], "only the single entering fish is masked");
+    assert.ok(released.basketWalls.every(value => !value), "the basket wall itself is never clipped");
+    const xs = released.clips[0].map(point => point[0]);
+    assert.ok(Math.max(...xs) - Math.min(...xs) < base.size * .27, "no fish tail can paint outside either basket side");
+    assert.equal(entering.clips[0].length, released.clips[0].length);
+    entering.clips[0].forEach((point, index) => point.forEach((value, axis) =>
+      assert.ok(Math.abs(value - released.clips[0][index][axis]) < 1e-8, "mask has no jump at release")));
+  }
 });
 
 
