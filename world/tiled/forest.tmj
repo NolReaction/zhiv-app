@@ -20339,7 +20339,8 @@
                 {
                  "height":0,
                  "id":391,
-                 "name":"occ-1",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"home-north-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -20860,7 +20861,8 @@
                 {
                  "height":0,
                  "id":392,
-                 "name":"occ-2",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"eastern-passage-north-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -21005,7 +21007,8 @@
                 {
                  "height":0,
                  "id":393,
-                 "name":"occ-3",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"eastern-passage-south-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -21158,7 +21161,8 @@
                 {
                  "height":0,
                  "id":395,
-                 "name":"occ-4",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"workshop-north-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -21551,7 +21555,8 @@
                 {
                  "height":0,
                  "id":396,
-                 "name":"occ-5",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"western-fork-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -21756,7 +21761,8 @@
                 {
                  "height":0,
                  "id":399,
-                 "name":"occ-6",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"home-west-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -22037,7 +22043,8 @@
                 {
                  "height":0,
                  "id":400,
-                 "name":"occ-7",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"home-south-boulder",
                  "opacity":1,
                  "polygon":[
                         {
@@ -22110,7 +22117,8 @@
                 {
                  "height":0,
                  "id":404,
-                 "name":"occ-8",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"workshop-south-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -22335,7 +22343,8 @@
                 {
                  "height":0,
                  "id":406,
-                 "name":"occ-9",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"quarry-west-approach-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -22552,7 +22561,8 @@
                 {
                  "height":0,
                  "id":408,
-                 "name":"occ-10",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"quarry-east-approach-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -22769,7 +22779,8 @@
                 {
                  "height":0,
                  "id":410,
-                 "name":"occ-11",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"woodlot-east-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -22922,7 +22933,8 @@
                 {
                  "height":0,
                  "id":413,
-                 "name":"occ-12",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"northeast-trail-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -23243,7 +23255,8 @@
                 {
                  "height":0,
                  "id":414,
-                 "name":"occ-13",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"eastern-clearing-south-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -23520,7 +23533,8 @@
                 {
                  "height":0,
                  "id":415,
-                 "name":"occ-14",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"eastern-clearing-north-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -23649,7 +23663,8 @@
                 {
                  "height":0,
                  "id":416,
-                 "name":"occ-15",
+                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
+                 "name":"northern-entry-canopy",
                  "opacity":1,
                  "polygon":[
                         {
@@ -23788,7 +23803,7 @@
         {
          "name":"navigationCellSize",
          "type":"float",
-         "value":4
+         "value":5
         }, 
         {
          "name":"worldId",

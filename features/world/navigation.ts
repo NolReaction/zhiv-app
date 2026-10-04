@@ -364,8 +364,8 @@ export function findWorldPath(nav: WorldNavigation, start: WorldPoint, end: Worl
       if (nx < 0 || ny < 0 || nx >= columns || ny >= rows) continue;
       const next = ny * columns + nx;
       if (!walkable[next] || closed[next]) continue;
-      // Both cardinal neighbours must be clear; the swept diagonal is checked as well.
-      if (dx && dy && (!walkable[y * columns + nx] || !walkable[ny * columns + x])) continue;
+      // Side cells can be blocked beside a valid narrow diagonal passage. The
+      // swept disk below checks the actual edge and still rejects corner cuts.
       const target = gridPoint(nav, next), bit = 1 << direction;
       if (!(data.edgeKnown[id] & bit)) {
         const reverse = 1 << opposite[direction];

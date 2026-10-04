@@ -128,6 +128,25 @@ test("touching corners cannot connect disconnected regions by diagonal grid step
   assert.equal(findWorldPath(pointNav, p(15, 15), p(85, 85)), null, "zero-radius profile cannot cut a boundary corner either");
 });
 
+test("a narrow diagonal corridor uses safe grid edges even when both side cells are blocked", () => {
+  const source = scene({ cellSize: 10, areas: [polygon(rect(0, 0, 20, 30), "entry"),
+    polygon([p(10, 15), p(15, 10), p(85, 80), p(80, 85)], "diagonal"),
+    polygon(rect(75, 75, 25, 25), "exit")] });
+  const nav = createWorldNavigation(source, 2), start = p(15, 5), end = p(85, 95);
+  assert.equal(isWalkable(nav, p(35, 45)), false);
+  assert.equal(isWalkable(nav, p(45, 35)), false);
+  assert.ok(canTraverse(nav, p(35, 35), p(45, 45)), "the complete foot disk fits between the blocked side cells");
+  assert.equal(canTraverse(nav, start, end), false, "the entry and exit require A* to negotiate turns");
+  pathSafe(nav, findWorldPath(nav, start, end), start, end);
+  assert.equal(nav.stats.lastSearch.reason, "found");
+
+  const blocked = createWorldNavigation({ ...source, navigation: { ...source.navigation,
+    obstacles: [polygon(rect(39, 39, 2, 2), "corridor-stone")] } }, 2);
+  assert.ok(isWalkable(blocked, p(35, 35)) && isWalkable(blocked, p(45, 45)));
+  assert.equal(canTraverse(blocked, p(35, 35), p(45, 45)), false, "walkable endpoints cannot jump an intervening obstacle");
+  assert.equal(findWorldPath(blocked, start, end), null, "a real diagonal obstruction stays closed");
+});
+
 test("passage width respects actor radius and smoothing never clips obstacle corners", () => {
   const source = scene({ cellSize: 3, obstacles: [polygon(rect(40, 0, 20, 44), "north"),
     polygon(rect(40, 56, 20, 44), "south")] });
