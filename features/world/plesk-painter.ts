@@ -15,7 +15,7 @@ export const pleskRenderBounds = fishingPropsBounds;
  * painter. Only local limb geometry changes; feet do not bounce off the shore. */
 export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskResidentFrame, still: boolean) {
   if (![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0) return;
-  const sprite = pleskSprite(frame.action, frame.direction, frame.frame, frame.phase, still);
+  const sprite = pleskSprite(frame.action, frame.direction, frame.frame, frame.phase, still, frame);
   const rig = pleskSpriteRig(sprite)!;
   const size = frame.size, scale = size / PLESK_SPRITE_SIZE;
   const origin = { x: frame.x - size / 2, y: frame.y - rig.contact.bottom * scale };
@@ -28,5 +28,16 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprite, origin.x, origin.y, size, size);
   drawFishingProps(ctx, frame, still, { grip: world(rig.grip), heldFish: world(rig.heldFish), basket: world(rig.basket) });
+  // Foreground fingers wrap the rod handle/catch. The original arm remains in
+  // the cached sprite, so neither the rod nor its reel floats above a flat paw.
+  for (const palm of rig.palms) {
+    const at = world(palm.position);
+    ctx.fillStyle = palm.near ? "#9ab7bb" : "#74949c";
+    ctx.fillRect(at.x - scale * 2, at.y - scale, scale * 4, scale * 3);
+    ctx.fillStyle = palm.near ? "#b8cecd" : "#9ab7bb";
+    ctx.fillRect(at.x - scale, at.y - scale * 2, scale * 3, scale * 2);
+    ctx.fillStyle = "#536f78";
+    ctx.fillRect(at.x + scale, at.y + scale, scale, scale);
+  }
   ctx.restore();
 }

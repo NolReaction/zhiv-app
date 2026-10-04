@@ -9,6 +9,7 @@ import { createBirdReactions } from "./forest-bird-reactions";
 import { createForestMemory, forestSceneFingerprint, type ForestMemoryEnvironment, type ForestMemoryStatus } from "./forest-memory";
 import { forgetForestObservation } from "./forest-observer";
 import { createForestMemorySync, type ForestMemorySyncEnvironment, type ForestMemoryTransport } from "./forest-memory-sync";
+import { createPleskMind, type PleskMind } from "./plesk-mind";
 import type { ForestJourneyTravel } from "./forest-journey-travel";
 
 type View = "circle" | "world";
@@ -20,6 +21,8 @@ export type ForestSessionState = {
   clearing: ReturnType<typeof createClearingActivity>;
   fauna: ReturnType<typeof createForestFauna>;
   director: ReturnType<typeof createForestDirector>;
+  /** Resident autonomy shares the visible session clock, never economic inventory. */
+  pleskMind: PleskMind | null;
   birdReactions: ReturnType<typeof createBirdReactions>;
   lastBirdStimulus: number;
   pendingLife: ForestDirective | null;
@@ -55,7 +58,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   let shared = identity === undefined ? undefined : sessions.get(identity);
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
-      fauna: createForestFauna(scene), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
+      fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
       pendingLife: null, pendingAttention: false,
       reaction: 0, animation: null, birdStarted: null, birdSeed: -1,
       memory: { mode: "ephemeral", restored: false, reconciled: false, lastSavedAt: null, enabled: false } };
@@ -74,7 +77,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
         apply(payload) {
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
           Object.assign(state, { elapsed: 0, wetness: 0, clearing: createClearingActivity(scene), life: createForestLife(scene),
-            fauna: createForestFauna(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
+            fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
             lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));

@@ -29,7 +29,7 @@ export function PleskConversation({ economy, onFishing, onOpenPantry }: Resident
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   return <div className={styles.conversation} aria-busy={economy.busy || undefined}>
     <blockquote>«Удочку держи крепко, а день не торопи. Хорошая рыба любит терпеливых!»</blockquote>
-    <p className={styles.story}>Плёск знает тихие места на берегу, проверяет снасти и скупает улов. Его место — у деревянного пирса выше по берегу.</p>
+    <p className={styles.story}>Плёска знает тихие места на берегу, проверяет снасти и скупает улов. Её место — у деревянного пирса выше по берегу.</p>
     {(economy.error || economy.uncertain) && <div className={styles.recovery} role="alert">
       <p>{economy.uncertain ? "Проверяем последнюю продажу. Дождитесь подтверждения, прежде чем торговать снова." : economy.error}</p>
       <button type="button" disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={14} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>
@@ -53,8 +53,8 @@ export function WorldResidentDialog({ open, onClose, onCloseAutoFocus, ...action
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={onCloseAutoFocus}>
         <header className={styles.header}>
           <PleskPortrait />
-          <div><DialogTitle className={styles.name}>Плёск</DialogTitle><DialogDescription className={styles.role}>Главный рыбак · торговец</DialogDescription></div>
-          <button type="button" onClick={onClose} aria-label="Попрощаться с Плёском"><X size={20} aria-hidden="true" /></button>
+          <div><DialogTitle className={styles.name}>Плёска</DialogTitle><DialogDescription className={styles.role}>Рыбачка · торговка</DialogDescription></div>
+          <button type="button" onClick={onClose} aria-label="Попрощаться с Плёской"><X size={20} aria-hidden="true" /></button>
         </header>
         <PleskConversation {...actions} />
       </DialogPrimitive.Content>

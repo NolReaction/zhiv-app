@@ -1,7 +1,7 @@
 import { clearingActivityFrame, isClearingAtPoint, releaseClearingPoint, requestClearingOutside, requestClearingPoint } from "./clearing-activity";
 import { economyJourneyAway, type EconomySceneJourney } from "./economy-scene-state";
 import { cancelForestDirector } from "./forest-director";
-import { fishingActionFrame, fishingDirection, fishingWaterTarget, FOREST_FISHING_FIRST_CATCH_SECONDS, type ForestFishingFrame } from "./forest-fishing";
+import { fishingActionFrame, fishingDirection, fishingWaterTarget, forestFishingCatchState, type ForestFishingFrame } from "./forest-fishing";
 import type { ForestSessionState } from "./forest-session";
 import { forestTrailDestination } from "./forest-trails";
 import { isWalkable } from "./navigation";
@@ -9,6 +9,8 @@ import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type ForestJourneyTravel = {
   jobId: string;
+  finishesAt: number;
+  cancelled?: boolean;
   phase: "leaving" | "fishing" | "away" | "returning";
   shore: WorldPoint;
   home: WorldPoint;
@@ -74,9 +76,16 @@ export function forestJourneyFishingFrame(state: ForestSessionState, scene: Fixe
  * inventory or rewards. Reloading an ongoing shore job restores its visible
  * fishing place; newly confirmed jobs use the existing collision-safe walker. */
 export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedWorldScene,
-  journey: EconomySceneJourney | null | undefined, now: number, still: boolean) {
+  journey: EconomySceneJourney | null | undefined, now: number, still: boolean, cancelledExplorations: readonly string[] = []) {
   const active = economyJourneyAway(journey, now), id = active ? journey!.id : null;
   const observed = state.explorationId !== undefined, previous = state.explorationId;
+  const current = state.journeyTravel;
+  if (current && (cancelledExplorations.includes(current.jobId)
+    || !active && !journey && now < current.finishesAt && !current.jobId.startsWith("dev-fishing:"))) {
+    // A confirmed removal before its deadline forfeits the trip on every view.
+    // Local cancellation receipts also cover ready jobs already walking home.
+    current.cancelled = true; current.carryingFish = false;
+  }
   if (id !== previous) {
     state.explorationId = id;
     if (id) {
@@ -87,7 +96,7 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
       if (shore && state.clearing.navigationEnabled && state.clearing.navigation
         && isWalkable(state.clearing.navigation, shore) && !state.life.garden.basket?.held) {
         const restoring = !observed || still;
-        const travel: ForestJourneyTravel = { jobId: id, phase: "leaving", shore,
+        const travel: ForestJourneyTravel = { jobId: id, finishesAt: Date.parse(journey!.finishesAt), phase: "leaving", shore,
           home: { ...state.clearing.home }, beganAt: state.clearing.elapsed, requested: false,
           scene, waterTarget: fishingWaterTarget(scene, shore, state.clearing.size) };
         state.journeyTravel = travel;
@@ -97,15 +106,15 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
     } else if (previous) {
       const travel = state.journeyTravel;
       if (travel && !still && distance(state.clearing.position, travel.home) > .5) {
-        travel.carryingFish = Boolean(travel.waterTarget && travel.fishingAt !== undefined
-          && state.director.elapsed - travel.fishingAt >= FOREST_FISHING_FIRST_CATCH_SECONDS);
+        travel.carryingFish = Boolean(!travel.cancelled && travel.waterTarget && travel.fishingAt !== undefined
+          && forestFishingCatchState(state.director.elapsed - travel.fishingAt).caught > 0);
         travel.phase = "returning"; travel.requested = false; travel.beganAt = state.clearing.elapsed;
         releaseClearingPoint(state.clearing); requestClearingOutside(state.clearing);
       } else {
         state.journeyTravel = undefined; releaseClearingPoint(state.clearing);
       }
       state.clearing.idleSeconds = 0;
-      state.director.reason = "Вернулся из исследования";
+      state.director.reason = travel?.cancelled ? "Вылазка отменена — возвращается без добычи" : "Вернулся из исследования";
       state.director.nextDecisionAt = state.director.elapsed + 7;
     }
   }
@@ -139,7 +148,7 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
     if (travel.phase === "leaving") beginFishing(state, travel);
     else {
       state.journeyTravel = undefined; releaseClearingPoint(state.clearing);
-      state.director.reason = "Вернулся домой с берега"; state.director.nextDecisionAt = state.director.elapsed + 7;
+      state.director.reason = travel.cancelled ? "Вернулся домой без добычи" : "Вернулся домой с берега"; state.director.nextDecisionAt = state.director.elapsed + 7;
     }
     return;
   }
@@ -160,5 +169,6 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
     if (active) travel.phase = "away"; else state.journeyTravel = undefined;
     return;
   }
-  state.director.reason = travel.phase === "leaving" ? "Идёт по тропинке к берегу" : "Возвращается с берега домой";
+  state.director.reason = travel.phase === "leaving" ? "Идёт по тропинке к берегу"
+    : travel.cancelled ? "Возвращается с берега без добычи" : "Возвращается с берега домой";
 }

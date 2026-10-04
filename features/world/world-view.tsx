@@ -205,7 +205,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : "Ещё";
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus hideMapControls={quickMenu !== null || selection !== null || residentOpen} onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -253,7 +253,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} />}
         {quickMenu === "more" && <div className={hudStyles.moreActions}>
-          <button onClick={openResident} aria-haspopup="dialog"><Fish size={18} aria-hidden="true" />Плёск · рыбак и торговец</button>
+          <button onClick={openResident} aria-haspopup="dialog"><Fish size={18} aria-hidden="true" />Плёска · рыбачка и торговка</button>
           <button onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" />Рынок</button>
           <button onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" />Гардероб</button>
           <button onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" />Коллекции</button>

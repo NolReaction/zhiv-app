@@ -6,7 +6,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
 const { forestObservationFrame, getForestObservation, getServerForestObservation, publishForestObservation, subscribeForestObservation } =
@@ -223,5 +223,22 @@ test("birdwatch transitions publish immediately and do not claim an insect encou
     state.director.birdwatch = null;
     publishForestObservation("observer-birdwatch", state, { now: 2 });
     assert.notEqual(getForestObservation("observer-birdwatch").activity, "Наблюдает за птицей");
+  } finally { session.release(); }
+});
+
+
+test("resident observation exposes detached needs and decisions without economic ownership", () => {
+  const session = connect("observer-resident");
+  try {
+    assert.ok(session.state.pleskMind);
+    const snapshot = forestObservationFrame(session.state).resident;
+    assert.ok(snapshot); assert.ok(Object.isFrozen(snapshot)); assert.ok(Object.isFrozen(snapshot.needs));
+    const previous = snapshot.needs.energy;
+    session.state.pleskMind.observation.needs.energy = .01;
+    session.state.pleskMind.observation.catchCount = 2;
+    assert.equal(snapshot.needs.energy, previous);
+    assert.equal(snapshot.catchCount, 0);
+    assert.equal(forestObservationFrame(session.state).resident.catchCount, 2);
+    assert.equal("inventory" in snapshot, false);
   } finally { session.release(); }
 });

@@ -327,6 +327,127 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { economy.snapshot(p.hash) }.code)
     }
 
+    @Test fun `concurrent exploration cancellation retries persist one forfeiture and cannot affect a later trip`() = runBlocking<Unit> {
+        for (ready in listOf(false, true)) {
+            val p = player()
+            economy.snapshot(p.hash)
+            val stored = source.connection.use { readEconomyProfile(it, p.id).state }
+            val route = EconomyRules.catalog.explorations.single { it.id == "deep_cave" }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stored.copy(
+                wallet = EconomyWallet(73, 2), inventory = route.cost.items + ("fish" to 3L),
+                buildings = stored.buildings + ("home" to route.requiredHomeLevel))), p.id)
+            val started = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_exploration", route.id)).state
+            assertNotEquals(route.cost.items + ("fish" to 3L), started.inventory)
+            if (ready) finish(p, started)
+            val before = economy.snapshot(p.hash)
+            val trip = before.jobs.single()
+            val cancel = command(p, before, "cancel_exploration", trip.id)
+            val responses = coroutineScope { List(2) {
+                async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, cancel) }
+            }.awaitAll() }
+            assertEquals(1, responses.count { it.replayed })
+            val cancelled = JdbcEconomyRepository(source).snapshot(p.hash)
+            assertTrue(cancelled.jobs.isEmpty(), "removal survives a fresh repository and JSONB read")
+            assertEquals(before.inventory, cancelled.inventory)
+            assertEquals(before.wallet, cancelled.wallet)
+            assertEquals(before.completedExplorations, cancelled.completedExplorations)
+            assertEquals(before.revision + 1, cancelled.revision)
+            assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_exploration'", p.id))
+            assertEquals("0", scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND kind='cancel_exploration'", p.id))
+            assertEquals("0", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='cancel_exploration'", p.id))
+            assertEquals("{}", scalar("SELECT items FROM economy_ledger WHERE user_id=? AND kind='cancel_exploration'", p.id))
+            assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
+                economy.command(p.hash, command(p, cancelled, "claim_job", trip.id))
+            }.code)
+            val next = economy.command(p.hash, command(p, cancelled, "start_exploration", "shore")).state
+            val replay = economy.command(p.hash, cancel)
+            assertTrue(replay.replayed)
+            assertEquals(cancelled.revision, replay.acceptedRevision)
+            assertEquals(next.jobs, replay.state.jobs)
+            assertEquals(next.revision, replay.state.revision)
+            assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
+                economy.command(p.hash, cancel.copy(targetId = next.jobs.single().id))
+            }.code)
+            assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
+                economy.command(p.hash, cancel.copy(requestId = UUID.randomUUID().toString()))
+            }.code)
+        }
+    }
+
+    @Test fun `claim racing cancellation commits exactly one terminal outcome with one receipt and ledger entry`() = runBlocking<Unit> {
+        val p = player()
+        val started = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_exploration", "shore")).state
+        finish(p, started)
+        val before = economy.snapshot(p.hash)
+        val trip = before.jobs.single()
+        val requests = listOf(command(p, before, "claim_job", trip.id), command(p, before, "cancel_exploration", trip.id))
+        val responses = coroutineScope { requests.map { request ->
+            async(Dispatchers.IO) { request to runCatching { JdbcEconomyRepository(source).command(p.hash, request) } }
+        }.awaitAll() }
+        assertEquals(1, responses.count { it.second.isSuccess })
+        val winner = responses.single { it.second.isSuccess }.first
+        val loser = responses.single { it.second.isFailure }
+        assertEquals("ECONOMY_REVISION_CONFLICT", (loser.second.exceptionOrNull() as AuthFailure).code)
+        val after = economy.snapshot(p.hash)
+        assertTrue(after.jobs.isEmpty())
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(before.wallet, after.wallet)
+        assertEquals(if (winner.action == "claim_job") trip.rewards else before.inventory, after.inventory)
+        assertEquals(if (winner.action == "claim_job") 1L else 0L, after.completedExplorations)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind IN ('claim_job','cancel_exploration')", p.id))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(loser.first.requestId)))
+        assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, loser.first.copy(expectedRevision = after.revision))
+        }.code)
+        val retry = economy.command(p.hash, winner)
+        assertTrue(retry.replayed)
+        assertEquals(after.inventory, retry.state.inventory)
+        assertEquals(after.revision, retry.state.revision)
+    }
+
+    @Test fun `cancellation rejects foreign and production jobs without changing owner state or recording receipts`() = runBlocking<Unit> {
+        val p = player()
+        val stranger = player()
+        val grown = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_production", "grow_berries")).state
+        val before = economy.command(p.hash, command(p, grown, "start_exploration", "shore")).state
+        val job = before.jobs.single { it.kind == "exploration" }
+        val ownCancel = command(p, before, "cancel_exploration", job.id)
+        assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, ownCancel) }.code)
+        assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
+            economy.command(stranger.hash, command(stranger, economy.snapshot(stranger.hash), "cancel_exploration", job.id))
+        }.code)
+        assertEquals("ECONOMY_CANCEL_KIND", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, before, "cancel_exploration", grown.jobs.single().id))
+        }.code)
+        assertEquals(before, economy.snapshot(p.hash).copy(serverTime = before.serverTime))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_exploration'", p.id))
+        val cancelled = economy.command(p.hash, ownCancel).state
+        assertEquals(grown.jobs, cancelled.jobs)
+        assertEquals(before.inventory, cancelled.inventory)
+    }
+
+    @Test fun `HTTP cancellation forfeits a fishing trip and repeats its acknowledgement without minting rewards`() = testApplication {
+        application { installZhivApi(identities, identities, config, tokens, economy = economy) }
+        val p = player()
+        val started = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_exploration", "shore")).state
+        val cancel = command(p, started, "cancel_exploration", started.jobs.single().id)
+        suspend fun post(body: String, origin: String = "http://localhost") = client.post("/api/v1/economy/commands") {
+            cookie(config.cookieName, p.raw); header(HttpHeaders.Origin, origin); contentType(ContentType.Application.Json); setBody(body)
+        }
+        val body = economyJson.encodeToString(cancel)
+        assertEquals(HttpStatusCode.Forbidden, post(body, "https://foreign.example").status)
+        assertEquals(HttpStatusCode.BadRequest, post(body.dropLast(1) + ",\"refund\":true}").status)
+        assertEquals(HttpStatusCode.OK, post(body).status)
+        assertEquals(HttpStatusCode.OK, post(body).status)
+        val cancelled = economy.snapshot(p.hash)
+        assertTrue(cancelled.jobs.isEmpty())
+        assertEquals(started.inventory, cancelled.inventory)
+        assertEquals(started.wallet, cancelled.wallet)
+        assertEquals(started.completedExplorations, cancelled.completedExplorations)
+        assertEquals(started.revision + 1, cancelled.revision)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_exploration'", p.id))
+    }
+
     @Test fun `HTTP rejects foreign origins forged fields quoted quantities and large requests`() = testApplication {
         application { installZhivApi(identities, identities, config, tokens, economy = economy) }
         val p = player()

@@ -13,6 +13,7 @@ const { connectForestSession } = await vite.ssrLoadModule("/features/world/fores
 const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { requestClearingSleep, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
 const { forestJourneyWalking, forestJourneyActorAway, forestJourneyFishingFrame, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/forest-journey-travel.ts");
+const { FOREST_FISHING_FIRST_CATCH_SECONDS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
 const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
@@ -67,6 +68,57 @@ test("a restored active coastal job reconstructs one visible shore position with
   syncForestJourneyTravel(state, scene, job, start + 600_000, false);
   assert.equal(state.journeyTravel.phase, "returning"); assert.deepEqual(state.clearing.position, before);
   session.release();
+});
+
+test("an active trip removed by the server returns from its actual feet with all caught fish forfeited", () => {
+  const session = create(), state = session.state, job = journey();
+  try {
+    syncForestJourneyTravel(state, scene, job, start + 60_000, false);
+    state.director.elapsed += FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+    assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, true, "there is visible caught fish before cancellation");
+    const feet = { ...state.clearing.position };
+    syncForestJourneyTravel(state, scene, null, start + 90_000, false);
+    assert.equal(state.journeyTravel.phase, "returning");
+    assert.equal(state.journeyTravel.cancelled, true, "server removal before the deadline also covers cancellation on another device");
+    assert.deepEqual(state.clearing.position, feet);
+    assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, false);
+    const request = state.clearing.requestedPoint, beganAt = state.journeyTravel.beganAt;
+    for (const timestamp of [start + 90_000, start + 95_000, start + 600_000]) {
+      syncForestJourneyTravel(state, scene, null, timestamp, false, [job.id]);
+      assert.deepEqual(state.clearing.position, feet);
+      assert.strictEqual(state.clearing.requestedPoint, request);
+      assert.equal(state.journeyTravel.beganAt, beganAt, "retry snapshots do not restart the return");
+      assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, false);
+    }
+    advance(state, null, start + 600_000, 110, () => !state.journeyTravel);
+    assert.equal(state.journeyTravel, undefined);
+    assert.deepEqual(state.clearing.position, state.clearing.home);
+  } finally { session.release(); }
+});
+
+test("natural completion keeps caught fish but cancellation of a ready returning trip clears it without restarting motion", () => {
+  for (const cancel of [false, true]) {
+    const session = create(), state = session.state, job = journey();
+    try {
+      syncForestJourneyTravel(state, scene, job, start + 60_000, false);
+      state.director.elapsed += FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+      syncForestJourneyTravel(state, scene, job, start + 600_000, false);
+      assert.equal(state.journeyTravel.phase, "returning");
+      assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, true);
+      advance(state, job, start + 600_000, 2);
+      const feet = { ...state.clearing.position }, request = state.clearing.requestedPoint, beganAt = state.journeyTravel.beganAt;
+      for (const timestamp of [start + 602_000, start + 620_000, start + 620_000]) {
+        syncForestJourneyTravel(state, scene, null, timestamp, false, cancel ? [job.id] : ["other-trip"]);
+        assert.deepEqual(state.clearing.position, feet);
+        assert.strictEqual(state.clearing.requestedPoint, request);
+        assert.equal(state.journeyTravel.beganAt, beganAt);
+        assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, !cancel);
+        assert.equal(Boolean(state.journeyTravel.cancelled), cancel);
+      }
+      advance(state, null, start + 620_000, 110, () => !state.journeyTravel);
+      assert.deepEqual(state.clearing.position, state.clearing.home);
+    } finally { session.release(); }
+  }
 });
 
 test("circle to map handoff preserves the exact feet, route and transient departure owner", () => {

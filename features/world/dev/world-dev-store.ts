@@ -8,7 +8,7 @@ export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" |
 export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "water-bush" | "harvest-berries" | "grow-berries" | "watch-birds" | "campfire" | "idle";
 
 export const WORLD_DEV_SCENARIOS = [
-  { id: "plesk", label: "Плёск у пирса", description: "Рыбак готовит снасти, забрасывает, ждёт поклёвку и складывает улов; затем продолжает свой распорядок." },
+  { id: "plesk", label: "Плёска у пирса", description: "Плёска показывает снасти, заброс, ожидание, улов и отдых. Свободное поведение выбирает её внутренний AI." },
   { id: "fishing", label: "Мохлик на рыбалке", description: "Полный тестовый выход: путь к берегу, заброс, поклёвка, улов и возвращение. Без заданий и наград аккаунта." },
   { id: "birds", label: "Птицы на полянке", description: "Ясный день и пара птиц: посадка, реакция на близкие шаги, взлёт." },
   { id: "ground-birds", label: "Птицы на земле", description: "Посадка на свободную землю, короткие прыжки, поиск корма и настороженность рядом с Мохликом." },

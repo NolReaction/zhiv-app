@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyJob, EconomyView } from "./model";
@@ -37,16 +37,61 @@ function Findings({ state, rewards, compact = false }: { state: EconomyView; rew
   return <span className={styles.findings} data-compact={compact || undefined} role="list" aria-label="Находки">{Object.entries(rewards).map(([id, quantity]) => <span role="listitem" key={id} title={itemName(state, id)}><ProductIcon itemId={id} size={18} /><span className={styles.resourceName}>{itemName(state, id)}</span><strong>×{number(quantity)}</strong></span>)}</span>;
 }
 
-function ActiveExpedition({ economy, state, job, onOpenPantry }: Pick<WorldExpeditionsMenuProps, "economy" | "onOpenPantry"> & { state: EconomyView; job: EconomyJob }) {
+/** Confirmation belongs to this owner and the exact saved job, not a route or
+ * a timer tick. An updated/replaced job needs another deliberate approval. */
+export function expeditionCancellationKey(owner: string, job: EconomyJob) {
+  const entries = (value: Record<string, number>) => Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify([owner, job.id, job.kind, job.targetId, job.recipeId, job.targetLevel, job.startedAt, job.finishesAt,
+    entries(job.rewards), job.cost.coins, entries(job.cost.items), job.catalogVersion, job.collection ?? null]);
+}
+
+export function ActiveExpedition({ economy, state, job, onOpenPantry, confirmationKey, onConfirmation, onCancellationSent }: Pick<WorldExpeditionsMenuProps, "economy" | "onOpenPantry"> & {
+  state: EconomyView; job: EconomyJob; confirmationKey: string | null; onConfirmation: (key: string | null) => void;
+  onCancellationSent: (jobId: string) => void;
+}) {
+  const id = useId(), recall = useRef<HTMLButtonElement>(null), keep = useRef<HTMLButtonElement>(null), card = useRef<HTMLElement>(null);
+  const wasConfirming = useRef(false), sentForKey = useRef<string | null>(null);
+  const key = expeditionCancellationKey(state.ownerPublicId, job);
+  const confirming = confirmationKey === key;
   const route = state.catalog.explorations.find(entry => entry.id === job.targetId);
   const title = routeName(route?.name ?? "Вылазка Мохлика");
   const status = worldJobProgress(state, job, economy.now);
-  return <section className={styles.active} aria-label={`Текущая вылазка: ${title}`} data-ready={status.ready || undefined}>
+  const current = economy.snapshot?.jobs.find(entry => entry.id === job.id && entry.kind === "exploration");
+  const currentJob = Boolean(current && economy.snapshot?.ownerPublicId === state.ownerPublicId
+    && expeditionCancellationKey(state.ownerPublicId, current) === key);
+  const blocked = locked(economy) || !currentJob;
+  useEffect(() => {
+    if (confirming && !wasConfirming.current) { sentForKey.current = null; keep.current?.focus({ preventScroll: true }); }
+    else if (!confirming && wasConfirming.current) (blocked ? card : recall).current?.focus({ preventScroll: true });
+    else if (!confirming && !blocked && document.activeElement === card.current) recall.current?.focus({ preventScroll: true });
+    wasConfirming.current = confirming;
+  }, [confirming, blocked]);
+  const claimBlocked = !status.ready || status.storageShortfall > 0 || blocked || confirming;
+  const paid = job.cost.coins > 0 || Object.values(job.cost.items).some(quantity => quantity > 0);
+  function cancel() {
+    if (!confirming || blocked || sentForKey.current === key) return;
+    sentForKey.current = key;
+    onCancellationSent(job.id);
+    onConfirmation(null);
+    void economy.act("cancel_exploration", job.id);
+  }
+  return <section ref={card} tabIndex={-1} className={styles.active} aria-label={`Текущая вылазка: ${title}`} aria-busy={economy.busy || undefined} data-ready={status.ready || undefined}>
     <div className={styles.activeTitle}><Compass size={18} aria-hidden="true" /><div><span>{status.ready ? "Мохлик вернулся" : "Мохлик в пути"}</span><strong>{title}</strong></div></div>
     <Findings state={state} rewards={job.rewards} />
     <progress className={styles.progress} value={status.progress} max={1} aria-label={`Готовность вылазки: ${title}`} />
-    <div className={styles.actions}><span className={styles.time}>{status.ready ? <Check size={13} aria-hidden="true" /> : <Clock3 size={13} aria-hidden="true" />}{status.ready ? "Находки ждут" : `Ещё ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span><button type="button" className={styles.primary} disabled={!status.ready || status.storageShortfall > 0 || locked(economy)} onClick={() => void economy.act("claim_job", job.id)} aria-label={`Забрать находки: ${title}`}>Забрать</button></div>
+    <div className={styles.actions}><span className={styles.time}>{status.ready ? <Check size={13} aria-hidden="true" /> : <Clock3 size={13} aria-hidden="true" />}{status.ready ? "Находки ждут" : `Ещё ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span><button type="button" className={styles.primary} disabled={claimBlocked} onClick={() => { if (!claimBlocked) void economy.act("claim_job", job.id); }} aria-label={`Забрать находки: ${title}`}>Забрать</button></div>
     {status.ready && status.storageShortfall > 0 && <div className={styles.warning}><p>Нужно освободить {number(status.storageShortfall)} мест. Находки сохранятся до получения.</p><button type="button" className={styles.link} onClick={onOpenPantry}><Package size={13} aria-hidden="true" />Открыть кладовую<ArrowRight size={12} aria-hidden="true" /></button></div>}
+    <button ref={recall} type="button" className={`${styles.link} ${styles.recall}`} disabled={blocked}
+      aria-expanded={confirming} aria-controls={confirming ? `${id}-cancel` : undefined}
+      onClick={() => { if (!blocked) onConfirmation(confirming ? null : key); }}>{status.ready ? "Отказаться от находок" : "Вернуть Мохлика"}</button>
+    {confirming && <div className={styles.cancelConfirmation} id={`${id}-cancel`} role="group" aria-labelledby={`${id}-cancel-title`} aria-describedby={`${id}-cancel-cost`}>
+      <strong id={`${id}-cancel-title`}>{status.ready ? "Отказаться от этой добычи?" : "Прервать вылазку?"}</strong>
+      <p id={`${id}-cancel-cost`}>Все награды этой вылазки будут потеряны.{paid ? " Потраченные монеты и припасы не возвращаются." : " Мохлик вернётся без добычи."}</p>
+      <div className={styles.cancelActions}>
+        <button ref={keep} type="button" className={styles.keepExpedition} onClick={() => onConfirmation(null)}>{status.ready ? "Оставить находки" : "Продолжить вылазку"}</button>
+        <button type="button" className={styles.cancelExpedition} disabled={blocked} onClick={cancel}>Вернуться без добычи</button>
+      </div>
+    </div>}
   </section>;
 }
 
@@ -62,7 +107,7 @@ function RouteDetails({ route, state, economy, exploring, onOpenPantry, onNaviga
     {route.cost.coins > 0 || Object.keys(route.cost.items).length > 0 ? <div className={styles.provisions}><span className={styles.caption}>С собой</span><ul aria-label="Припасы для вылазки">{route.cost.coins > 0 && <li data-missing={state.wallet.coins < route.cost.coins || undefined}><ItemIcon itemId="coins" size={16} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(route.cost.coins)}</strong></li>}{Object.entries(route.cost.items).map(([id, quantity]) => <li key={id} data-missing={(state.inventory[id] ?? 0) < quantity || undefined}><ProductIcon itemId={id} size={18} /><span>{itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(quantity)}</strong></li>)}</ul></div> : <p className={styles.free}><Check size={12} aria-hidden="true" />Без затрат</p>}
     {tooLarge ? <div className={styles.warning}><p>Находки займут {number(findings)} мест, вместимость — {number(state.storage.capacity)}.</p><button type="button" className={styles.link} onClick={onNavigateStation ? () => onNavigateStation("warehouse") : onOpenPantry}>Расширить кладовую<ArrowRight size={12} aria-hidden="true" /></button></div> : state.storage.available < findings && <button type="button" className={styles.storageHint} onClick={onOpenPantry}><Package size={13} aria-hidden="true" /><span>К возвращению нужно {number(findings)} мест · свободно {number(state.storage.available)}</span><ArrowRight size={12} aria-hidden="true" /></button>}
     {collecting && <p className={styles.caption}>Мохлик собирает урожай. Сначала дождитесь доставки в кладовую.</p>}
-    {exploring ? <p className={styles.caption}>Следующая вылазка — после получения находок.</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || locked(economy)} onClick={() => void economy.act("start_exploration", route.id)} aria-label={`Отправиться: ${route.name}`}>Отправиться · {worldDuration(route.seconds)}<ArrowRight size={13} aria-hidden="true" /></button></div>}
+    {exploring ? <p className={styles.caption}>Сначала заберите находки или отмените текущую вылазку.</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || locked(economy)} onClick={() => void economy.act("start_exploration", route.id)} aria-label={`Отправиться: ${route.name}`}>Отправиться · {worldDuration(route.seconds)}<ArrowRight size={13} aria-hidden="true" /></button></div>}
   </div>;
 }
 
@@ -94,15 +139,23 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
 export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, initialSector = "forest" }: WorldExpeditionsMenuProps) {
   const [selectedSector, setSelectedSector] = useState<SectorId>(initialSector);
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
+  const [confirmationKey, setConfirmationKey] = useState<string | null>(null);
+  const cancellationSent = useRef<string | null>(null), selectedSectorButton = useRef<HTMLButtonElement>(null);
   const state = economy.snapshot;
+  useEffect(() => {
+    if (!state || !cancellationSent.current || state.jobs.some(job => job.id === cancellationSent.current)) return;
+    cancellationSent.current = null;
+    if (document.activeElement === document.body) selectedSectorButton.current?.focus({ preventScroll: true });
+  }, [state]);
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const jobs = state?.jobs.filter(job => job.kind === "exploration") ?? [];
-  const retry = <button type="button" className={styles.link} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>;
+  const retry = <button type="button" className={styles.link} disabled={economy.busy || cooldown > 0} onClick={() => { if (!economy.busy && cooldown <= 0) void economy.retry(); }}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>;
   return <div className={styles.content}>
     {!state ? <div className={styles.loading}><Compass size={18} aria-hidden="true" /><p>{economy.error ?? "Открываем маршруты…"}</p>{economy.error && retry}</div> : <>
-      {(economy.error || economy.uncertain || cooldown > 0) && <div className={styles.warning} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новая вылазка доступна после подтверждения." : economy.error ?? "Подождите перед следующим действием."}</p>{retry}</div>}
-      {jobs.map(job => <ActiveExpedition key={job.id} economy={economy} state={state} job={job} onOpenPantry={onOpenPantry} />)}
-      <div className={styles.sectors} role="group" aria-label="Секторы вылазок">{expeditionSectors.map(({ id, name, icon: Icon }) => <button type="button" key={id} data-sector-select={id} aria-pressed={selectedSector === id} onClick={() => { setSelectedSector(id); setSelectedRoute(null); }}><Icon size={21} aria-hidden="true" /><span>{name}</span></button>)}</div>
+      {(economy.error || economy.uncertain || cooldown > 0) && <div className={styles.warning} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения, прежде чем продолжать." : economy.error ?? "Подождите перед следующим действием."}</p>{retry}</div>}
+      {jobs.map(job => <ActiveExpedition key={job.id} economy={economy} state={state} job={job} onOpenPantry={onOpenPantry}
+        confirmationKey={confirmationKey} onConfirmation={setConfirmationKey} onCancellationSent={jobId => { cancellationSent.current = jobId; }} />)}
+      <div className={styles.sectors} role="group" aria-label="Секторы вылазок">{expeditionSectors.map(({ id, name, icon: Icon }) => <button ref={selectedSector === id ? selectedSectorButton : undefined} type="button" key={id} data-sector-select={id} aria-pressed={selectedSector === id} onClick={() => { setSelectedSector(id); setSelectedRoute(null); setConfirmationKey(null); }}><Icon size={21} aria-hidden="true" /><span>{name}</span></button>)}</div>
       <WorldExpeditionSector sectorId={selectedSector} selectedRoute={selectedRoute} onSelectRoute={id => setSelectedRoute(value => value === id ? null : id)} state={state} economy={economy} exploring={jobs.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} />
     </>}
   </div>;

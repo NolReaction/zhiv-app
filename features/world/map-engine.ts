@@ -286,7 +286,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         const markerObject = touch.objectId ? objects.find(object => object.id === touch.objectId) : null;
         const object = mapObjectAt(objects, world);
         const resident = interactions.onResident ? habitat.hitResident?.(world.x, world.y) : null;
-        if (resident) { setSelectedObject(null); interactions.onResident?.(resident); }
+        if (resident) { setSelectedObject(null); habitat.noticeResident?.(resident); interactions.onResident?.(resident); }
         else if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); habitat.notice(); }
         else if (markerObject) activateObject(markerObject.id);
         else if (object) activateObject(object.id);

@@ -160,3 +160,71 @@ test("uncertain pearl speedup restores the exact maximum price and request ID", 
   assert.equal(next.getSnapshot().uncertain, false);
   assert.equal(cache.data.size, 0);
 });
+
+const explorationJob = (id = crypto.randomUUID()) => ({ id, kind: "exploration", targetId: "shore", recipeId: null, targetLevel: null,
+  startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 1000).toISOString(), rewards: { fish: 4 },
+  cost: { coins: 0, items: {} }, catalogVersion: 2 });
+
+test("confirmed cancellation emits a bounded cosmetic event only after the job is absent", async () => {
+  const saved = explorationJob(), wait = deferred();
+  const initial = { ...state(), jobs: [saved] }, sent = [];
+  const session = createEconomySession(owner, transport({ get: async () => initial, send: command => { sent.push(command); return wait.promise; } }), () => assert.fail());
+  session.activate(); await session.refresh(); session.act("cancel_exploration", saved.id);
+  assert.equal(session.getSnapshot().cancelledExplorations, undefined);
+  assert.equal(session.getSnapshot().snapshot.jobs[0], saved);
+  wait.resolve(result(state(1))); await flush();
+  assert.deepEqual(session.getSnapshot().cancelledExplorations, [saved.id]);
+  assert.ok(Object.isFrozen(session.getSnapshot().cancelledExplorations));
+  assert.deepEqual(session.getSnapshot().snapshot.inventory, {});
+  assert.deepEqual(session.getSnapshot().completedConstructions, []);
+  assert.equal(sent[0].action, "cancel_exploration");
+});
+
+test("lost cancellation response preserves its receipt and restored replay reports cancellation once", async () => {
+  const cache = storage(), saved = explorationJob(), sent = [];
+  let latest = { ...state(), jobs: [saved] };
+  const t = transport({ get: async () => latest, send: async command => {
+    sent.push(structuredClone(command)); latest = state(1);
+    if (sent.length === 1) throw Error("response lost after cancellation");
+    return { ...result(latest), replayed: true };
+  } });
+  const first = createEconomySession(owner, t, () => assert.fail(), cache), stop = first.activate();
+  await first.refresh(); first.act("cancel_exploration", saved.id); await flush();
+  assert.equal(first.getSnapshot().uncertain, true); assert.equal(first.getSnapshot().cancelledExplorations, undefined);
+  assert.equal(first.getSnapshot().snapshot.jobs.length, 1); stop();
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache); restored.activate(); await restored.refresh();
+  assert.equal(restored.getSnapshot().cancelledExplorations, undefined, "polling an absent job is not a cancellation acknowledgement");
+  await restored.retry();
+  assert.deepEqual(sent[0], sent[1]);
+  assert.deepEqual(restored.getSnapshot().cancelledExplorations, [saved.id]);
+  assert.equal(restored.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
+  await restored.retry();
+  assert.deepEqual(restored.getSnapshot().cancelledExplorations, [saved.id]);
+});
+
+test("foreign, obsolete or incomplete cancellation responses cannot mark a live job cancelled", async () => {
+  const saved = explorationJob(), initial = { ...state(5), jobs: [saved] };
+  for (const answer of [state(6, other), state(4), { ...state(6), jobs: [saved] }]) {
+    let lost = 0;
+    const session = createEconomySession(owner, transport({ get: async () => initial, send: async () => result(answer) }), () => lost++);
+    session.activate(); await session.refresh(); session.act("cancel_exploration", saved.id); await flush();
+    assert.equal(session.getSnapshot().cancelledExplorations, undefined);
+    assert.equal(session.getSnapshot().snapshot.jobs[0].id, saved.id);
+    assert.equal(lost, answer.ownerPublicId === other ? 1 : 0);
+  }
+});
+
+test("cancellation notifications deduplicate acknowledgements and retain at most eight jobs", async () => {
+  let latest = state(), revision = 0;
+  const ids = Array.from({ length: 10 }, () => crypto.randomUUID());
+  const session = createEconomySession(owner, transport({ get: async () => latest,
+    send: async () => { latest = state(++revision); return result(latest); } }), () => assert.fail());
+  session.activate();
+  for (const id of ids) {
+    latest = { ...state(revision), jobs: [explorationJob(id)] }; await session.refresh();
+    session.act("cancel_exploration", id); await flush();
+  }
+  assert.deepEqual(session.getSnapshot().cancelledExplorations, ids.slice(-8));
+  session.act("cancel_exploration", ids.at(-1)); await flush();
+  assert.deepEqual(session.getSnapshot().cancelledExplorations, ids.slice(-8));
+});

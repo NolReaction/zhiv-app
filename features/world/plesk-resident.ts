@@ -1,4 +1,5 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
+import { FISHING_PACK_RELEASE, type FishingMotion } from "./fishing-props";
 import { fishingWaterTarget } from "./forest-fishing";
 import { forestDestinations, type ForestTrail } from "./forest-trails";
 import { createWorldNavigation, findWorldPath, type WorldNavigation } from "./navigation";
@@ -6,7 +7,7 @@ import { prepareSteeringPath } from "./steering";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type PleskAction = "walk" | "idle" | "cast" | "fish" | "bite" | "reel" | "catch" | "pack" | "trade" | "rest" | "greet";
-export type PleskResidentFrame = WorldPoint & {
+export type PleskResidentFrame = WorldPoint & FishingMotion & {
   id: "plesk";
   size: number;
   direction: PixelDirection;
@@ -22,12 +23,13 @@ export type PleskResidentFrame = WorldPoint & {
 };
 
 export const PLESK = {
-  id: "plesk", name: "Плёск", title: "Рыбак и торговец", size: 36, speed: 16,
+  id: "plesk", name: "Плёска", title: "Рыбачка и торговка", size: 36, speed: 16,
   fishingDestination: "plesk-fishing", tradingDestination: "plesk-trade", restingDestination: "plesk-rest",
 } as const;
 export const PLESK_LIMITS = { pathSearches: 3, routineVariants: 3 } as const;
 
-type Stop = { id: string; position: WorldPoint };
+export type PleskStop = { id: string; position: WorldPoint };
+type Stop = PleskStop;
 type Stage = {
   action: PleskAction; start: number; end: number; destination: Stop;
   carryingFish: boolean; basketFilled?: boolean; direction: PixelDirection; trail?: ForestTrail;
@@ -37,7 +39,7 @@ const cache = new WeakMap<FixedWorldScene, Routine | null>();
 const facing = (dx: number, dy: number): PixelDirection => Math.abs(dx) > Math.abs(dy)
   ? dx > 0 ? "right" : "left" : dy > 0 ? "front" : "back";
 
-function measuredTrail(points: readonly WorldPoint[]): ForestTrail {
+export function measurePleskTrail(points: readonly WorldPoint[]): ForestTrail {
   const distances = [0];
   for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y));
   return { id: "plesk-local-route", points, distances, length: distances.at(-1)! };
@@ -55,11 +57,33 @@ function connectingTrail(nav: WorldNavigation, from: Stop, to: Stop | undefined)
   const points = findWorldPath(nav, from.position, to.position);
   if (!points || points.length < 2) return;
   const rounded = prepareSteeringPath(nav, points, PLESK.size);
-  return rounded && rounded.length > 1 ? measuredTrail(rounded.points) : undefined;
+  return rounded && rounded.length > 1 ? measurePleskTrail(rounded.points) : undefined;
 }
-const reverseTrail = (trail: ForestTrail) => measuredTrail([...trail.points].reverse());
+export const reversePleskTrail = (trail: ForestTrail) => measurePleskTrail([...trail.points].reverse());
 function rampTime(trail: ForestTrail) { return Math.min(.7, trail.length / PLESK.speed); }
-function travelTime(trail: ForestTrail) { return trail.length / PLESK.speed + rampTime(trail); }
+export function pleskTravelTime(trail: ForestTrail) { return trail.length / PLESK.speed + rampTime(trail); }
+
+export type PleskPlaces = {
+  base: PleskStop; trade?: PleskStop; rest?: PleskStop; nav: WorldNavigation;
+  waterTarget?: WorldPoint; direction: PixelDirection;
+  toTrade?: ForestTrail; toRest?: ForestTrail; tradeToRest?: ForestTrail;
+};
+const placeCache = new WeakMap<FixedWorldScene, PleskPlaces | null>();
+/** One prepared personal territory is shared by live decisions and DEV playback. */
+export function pleskLocalPlaces(scene: FixedWorldScene): PleskPlaces | null {
+  if (placeCache.has(scene)) return placeCache.get(scene)!;
+  const base = authoredStop(scene, PLESK.fishingDestination);
+  const nav = base && createWorldNavigation(scene, (scene.actor?.size ?? 50) * .1);
+  if (!base || !nav) { placeCache.set(scene, null); return null; }
+  const waterTarget = fishingWaterTarget(scene, base.position, PLESK.size);
+  const direction: PixelDirection = waterTarget ? facing(waterTarget.x - base.position.x, waterTarget.y - base.position.y) : "front";
+  const trade = authoredStop(scene, PLESK.tradingDestination), rest = authoredStop(scene, PLESK.restingDestination);
+  const toTrade = connectingTrail(nav, base, trade), toRest = connectingTrail(nav, base, rest);
+  const tradeToRest = toTrade && toRest && trade ? connectingTrail(nav, trade, rest) : undefined;
+  const result = { base, nav, waterTarget, direction, trade: toTrade ? trade : undefined,
+    rest: toRest ? rest : undefined, toTrade, toRest, tradeToRest };
+  placeCache.set(scene, result); return result;
+}
 
 /** Scene identity owns three local routine variants and at most three searches.
  * Short walks are real swept-footprint routes between the pier, trading spot
@@ -67,20 +91,15 @@ function travelTime(trail: ForestTrail) { return trail.length / PLESK.speed + ra
  * pathfinding, timers, inventory or account state. */
 function routine(scene: FixedWorldScene): Routine | null {
   if (cache.has(scene)) return cache.get(scene)!;
-  const base = authoredStop(scene, PLESK.fishingDestination);
-  const nav = base && createWorldNavigation(scene, (scene.actor?.size ?? 50) * .1);
-  if (!base || !nav) { cache.set(scene, null); return null; }
-  const waterTarget = fishingWaterTarget(scene, base.position, PLESK.size);
-  const direction: PixelDirection = waterTarget ? facing(waterTarget.x - base.position.x, waterTarget.y - base.position.y) : "front";
-  const trade = authoredStop(scene, PLESK.tradingDestination), rest = authoredStop(scene, PLESK.restingDestination);
-  const toTrade = connectingTrail(nav, base, trade), toRest = connectingTrail(nav, base, rest);
-  const tradeToRest = toTrade && toRest && trade ? connectingTrail(nav, trade, rest) : undefined;
+  const places = pleskLocalPlaces(scene);
+  if (!places) { cache.set(scene, null); return null; }
+  const { base, waterTarget, direction, trade, rest, toTrade, toRest, tradeToRest } = places;
   const stages: Stage[] = []; let time = 0;
   const stay = (action: PleskAction, seconds: number, carryingFish = false, destination = base, look = direction, basketFilled?: boolean) => {
     stages.push({ action, start: time, end: time + seconds, destination, carryingFish, basketFilled, direction: look }); time += seconds;
   };
   const walk = (trail: ForestTrail, destination: Stop, carryingFish: boolean) => {
-    const duration = travelTime(trail);
+    const duration = pleskTravelTime(trail);
     stages.push({ action: "walk", start: time, end: time + duration, destination, carryingFish, direction, trail }); time += duration;
   };
   const catchFish = (wait: number, carryingFish: boolean, escapedBite: boolean) => {
@@ -98,7 +117,7 @@ function routine(scene: FixedWorldScene): Routine | null {
       catchFish(19 + variant * 3, true, variant === 1);
       stay("greet", 3, true, base, "front");
       // A future distant market should not turn the fisherman into a courier.
-      const trip = toTrade ? travelTime(toTrade) * 2 : 0;
+      const trip = toTrade ? pleskTravelTime(toTrade) * 2 : 0;
       if (trip > 55) catchFish(trip - 35, true, false);
     } else {
       // Edited/disabled water leaves honest shore activities, never dry casting.
@@ -111,14 +130,14 @@ function routine(scene: FixedWorldScene): Routine | null {
       stay("greet", 3, loaded, trade, "front"); stay("trade", 18 + variant * 4, loaded, trade, "front");
       stay("pack", 3, false, trade, "front"); stay("idle", 4, false, trade, variant === 1 ? "left" : "front");
       if (rest && tradeToRest) { walk(tradeToRest, rest, false); atRest = true; }
-      else walk(reverseTrail(toTrade), base, false);
+      else walk(reversePleskTrail(toTrade), base, false);
     }
     if (rest && toRest) {
       if (!atRest) walk(toRest, rest, trade && toTrade ? false : loaded);
       stay("rest", 12 + variant * 4, false, rest, "front");
       stay("pack", 4, false, rest, "front");
       stay("idle", 3, false, rest, variant === 2 ? "back" : "left");
-      walk(reverseTrail(toRest), base, false);
+      walk(reversePleskTrail(toRest), base, false);
     }
     stay("rest", 8);
   }
@@ -126,8 +145,8 @@ function routine(scene: FixedWorldScene): Routine | null {
   cache.set(scene, result); return result;
 }
 
-function walkingFrame(stage: Stage, age: number) {
-  const trail = stage.trail!, ramp = rampTime(trail), duration = stage.end - stage.start;
+export function samplePleskTrail(trail: ForestTrail, age: number) {
+  const ramp = rampTime(trail), duration = pleskTravelTime(trail);
   const distance = age < ramp ? PLESK.speed * age * age / (2 * ramp)
     : age > duration - ramp ? trail.length - PLESK.speed * (duration - age) ** 2 / (2 * ramp)
       : PLESK.speed * (age - ramp * .5);
@@ -150,12 +169,12 @@ export function pleskResidentFrame(scene: FixedWorldScene, elapsed: number, stil
   const clock = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0), time = clock % schedule.duration;
   const stage = schedule.stages.find(candidate => time < candidate.end) ?? schedule.stages.at(-1)!;
   const age = Math.max(0, time - stage.start), phase = Math.min(1, age / (stage.end - stage.start));
-  const position = stage.trail ? walkingFrame(stage, age)
+  const position = stage.trail ? samplePleskTrail(stage.trail, age)
     : { ...stage.destination.position, direction: stage.direction, frame: Math.floor(age * 8) % 32 };
   return { id: "plesk", ...position, size: PLESK.size, action: stage.action, phase, destinationId: stage.destination.id,
     carryingFish: stage.carryingFish,
     basketFilled: stage.action === "pack"
-      ? Boolean(stage.basketFilled || stage.carryingFish && phase > .65)
+      ? Boolean(stage.basketFilled || stage.carryingFish && phase >= FISHING_PACK_RELEASE)
       : stage.basketFilled ?? stage.carryingFish,
     ...(schedule.waterTarget && stage.destination.id === schedule.base.id && !stage.trail
       ? { waterTarget: { ...schedule.waterTarget } } : {}) };

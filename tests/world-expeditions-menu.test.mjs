@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { createElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldExpeditionsMenu, WorldExpeditionSector, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
+const { WorldExpeditionsMenu, WorldExpeditionSector, ActiveExpedition, expeditionCancellationKey, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
@@ -187,4 +187,102 @@ test("initial loading and failure have no fabricated routes; unrelated DEV notic
   assert.equal(disabled(button(html, "Попробовать ещё раз")), false);
   html = render(controller({ notice: "Выдано 10000 монет в DEV" }));
   assert.doesNotMatch(html, /Выдано 10000/);
+});
+
+function activeView(savedJob = job(), options = {}) {
+  const calls = [], confirmations = [], cancellations = [];
+  const state = options.state ?? snapshot({ jobs: [savedJob] });
+  const economy = controller({ snapshot: state, act: (...args) => calls.push(args), ...options.economy });
+  const key = expeditionCancellationKey(state.ownerPublicId, savedJob);
+  const props = { economy, state, job: savedJob, onOpenPantry() {},
+    confirmationKey: options.confirmed ? key : options.confirmationKey ?? null,
+    onConfirmation: value => confirmations.push(value), onCancellationSent: value => cancellations.push(value) };
+  let tree;
+  function Probe() { tree = ActiveExpedition(props); return tree; }
+  const html = renderToStaticMarkup(createElement(Probe));
+  const elements = [];
+  function walk(element) {
+    if (!isValidElement(element)) return;
+    elements.push(element); Children.forEach(element.props.children, walk);
+  }
+  walk(tree);
+  const control = label => elements.find(element => element.type === "button"
+    && (element.props["aria-label"] === label || Children.toArray(element.props.children).filter(child => typeof child === "string").join("") === label));
+  return { html, elements, control, calls, confirmations, cancellations, props, key };
+}
+
+test("recall requires a second explicit decision and never removes a job optimistically", () => {
+  const saved = job({ targetId: "shore", rewards: { fish: 4 } });
+  const first = activeView(saved);
+  assert.doesNotMatch(first.html, /Вернуться без добычи|Все награды этой вылазки/);
+  first.control("Вернуть Мохлика").props.onClick();
+  assert.deepEqual(first.confirmations, [first.key]);
+  assert.deepEqual(first.calls, []);
+  const confirm = activeView(saved, { confirmationKey: first.key });
+  assert.match(confirm.html, /Все награды этой вылазки будут потеряны/);
+  assert.match(confirm.html, /role="group" aria-labelledby="[^"]+" aria-describedby="[^"]+"/);
+  assert.ok(confirm.html.indexOf("Продолжить вылазку") < confirm.html.indexOf("Вернуться без добычи"), "safe action is first in tab order");
+  const discard = confirm.control("Вернуться без добычи");
+  assert.equal(discard.props.disabled, false);
+  discard.props.onClick(); discard.props.onClick();
+  assert.deepEqual(confirm.calls, [["cancel_exploration", saved.id]], "double clicking cannot issue another cancellation");
+  assert.deepEqual(confirm.cancellations, [saved.id]);
+  assert.deepEqual(confirm.confirmations, [null]);
+  assert.equal(confirm.props.state.jobs[0], saved, "the card uses the confirmed snapshot until the response arrives");
+  assert.deepEqual(confirm.props.state.inventory, {});
+});
+
+test("continuing a paid expedition sends no command and explains already-spent supplies", () => {
+  const view = activeView(job({ targetId: "deep_cave", cost: { coins: 7, items: { smoked_fish: 1 } } }), { confirmed: true });
+  assert.match(view.html, /Потраченные монеты и припасы не возвращаются/);
+  view.control("Продолжить вылазку").props.onClick();
+  assert.deepEqual(view.confirmations, [null]);
+  assert.deepEqual(view.calls, []); assert.deepEqual(view.cancellations, []);
+});
+
+test("unclaimed ready finds can be discarded without a claim, even if the pantry is full", () => {
+  const ready = job({ finishesAt: new Date(now).toISOString() });
+  const state = snapshot({ jobs: [ready], storage: { capacity: 200, used: 200, reserved: 0, available: 0, overflow: 0 } });
+  const first = activeView(ready, { state });
+  assert.equal(first.control("Отказаться от находок").props.disabled, false);
+  const view = activeView(ready, { state, confirmed: true });
+  assert.match(view.html, /Отказаться от этой добычи/);
+  assert.ok(view.control("Оставить находки"));
+  const claim = view.control("Забрать находки: Лесная разведка");
+  assert.equal(claim.props.disabled, true); claim.props.onClick();
+  view.control("Вернуться без добычи").props.onClick();
+  assert.deepEqual(view.calls, [["cancel_exploration", ready.id]]);
+});
+
+test("busy, uncertain, cooldown and stale snapshots block both recall steps and handler dispatch", () => {
+  const saved = job();
+  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5000 },
+    { snapshot: snapshot({ jobs: [] }) }, { snapshot: snapshot({ ownerPublicId: "OTHER", jobs: [saved] }) }]) {
+    const view = activeView(saved, { confirmed: true, economy: flags });
+    const recall = view.control("Вернуть Мохлика"), confirm = view.control("Вернуться без добычи");
+    assert.equal(recall.props.disabled, true); assert.equal(confirm.props.disabled, true);
+    recall.props.onClick(); confirm.props.onClick();
+    assert.deepEqual(view.calls, []); assert.deepEqual(view.confirmations, []);
+    const keep = view.control("Продолжить вылазку");
+    assert.notEqual(keep.props.disabled, true); keep.props.onClick();
+    assert.deepEqual(view.confirmations, [null], "backing out remains possible while the receipt is being checked");
+  }
+});
+
+test("cancellation approval is scoped to the exact job and owner, while timer ticks preserve it", () => {
+  const original = job(), key = expeditionCancellationKey("ME", original);
+  for (const changed of [job({ id: crypto.randomUUID() }), job({ targetId: "shore" }),
+    job({ finishesAt: new Date(now + 31_000).toISOString() }), job({ rewards: { fish: 40 } }),
+    job({ cost: { coins: 3, items: {} } })]) {
+    const view = activeView(changed, { confirmationKey: key });
+    assert.doesNotMatch(view.html, /Вернуться без добычи/);
+    assert.equal(view.control("Вернуть Мохлика").props["aria-expanded"], false);
+  }
+  const other = activeView(original, { confirmationKey: key, state: snapshot({ ownerPublicId: "OTHER", jobs: [original] }) });
+  assert.doesNotMatch(other.html, /Вернуться без добычи/);
+  const tick = activeView(original, { confirmationKey: key, economy: { now: now + 1000 } });
+  assert.match(tick.html, /Вернуться без добычи/);
+  assert.equal(tick.control("Вернуть Мохлика").props["aria-expanded"], true);
+  assert.equal(expeditionCancellationKey("ME", job({ rewards: { fiber: 4, wood: 5, stone: 3 } })), key,
+    "map key ordering does not create a different job approval");
 });

@@ -45,7 +45,7 @@ const POSE_LABELS: Record<PixelPose, string> = {
   carry: "Нести", toss: "Подбросить", present: "Показать находку", fish: "Рыбачить", "fishing-walk": "Идти с удочкой",
 };
 const RESIDENT_LABELS: Record<PleskAction | "routine", string> = {
-  routine: "Распорядок у пирса", idle: "Осмотреться", walk: "Шаги", cast: "Забросить удочку", fish: "Ждать поклёвку",
+  routine: "Демонстрация занятий", idle: "Осмотреться", walk: "Шаги", cast: "Забросить удочку", fish: "Ждать поклёвку",
   bite: "Поклёвка", reel: "Вытянуть рыбу", catch: "Показать улов", pack: "Уложить рыбу", trade: "Предложить улов",
   rest: "Отдохнуть", greet: "Помахать лапой",
 };
@@ -127,7 +127,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
   </details>;
 }
 
-const DEV_TABS = [["mochlik", "Мохлик"], ["plesk", "Плёск"], ["world", "Мир"], ["buildings", "Здания"], ["cheats", "Читы"], ["ai", "AI"], ["debug", "Отладка"]] as const;
+const DEV_TABS = [["mochlik", "Мохлик"], ["plesk", "Плёска"], ["world", "Мир"], ["buildings", "Здания"], ["cheats", "Читы"], ["ai", "AI"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenarios", "Сценарии"], ["scenes", "Сценки"], ["activities", "Занятия"], ["animation", "Анимации"], ["appearance", "Внешность"]] as const;
 const DEBUG_TABS = [["overlays", "Разметка"], ["routes", "Пути"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
@@ -225,7 +225,7 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
   }
   const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
   const repeatLabel = lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
-    : lastAction?.kind === "resident" ? `Плёск: ${RESIDENT_LABELS[lastAction.action]}`
+    : lastAction?.kind === "resident" ? `Плёска: ${RESIDENT_LABELS[lastAction.action]}`
     : lastAction?.kind === "life" ? lifeActionLabel(lastAction.action) : "Сценарий с птицами";
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   function change(patch: Partial<WorldDevState>, message = "Предпросмотр обновлён") {
@@ -243,7 +243,7 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
       setFeedback(`${WORLD_DEV_SCENARIOS.find(item => item.id === action.scenario)!.label}: условия применены. Память аккаунта отключена для тестовой сессии.`);
     } else if (action.kind === "resident") {
       worldDevStore.triggerResident(action.action, action.repeat ?? false);
-      setFeedback(`Плёск: ${RESIDENT_LABELS[action.action].toLowerCase()}${action.repeat ? " · повтор" : ""}. Камера направлена к пирсу; панель остаётся открытой.`);
+      setFeedback(`Плёска: ${RESIDENT_LABELS[action.action].toLowerCase()}${action.repeat ? " · повтор" : ""}. Камера направлена к пирсу; панель остаётся открытой.`);
     } else if (action.kind === "birds") {
       worldDevStore.triggerBirds(); setFeedback("Птицы: новый визит на деревья или землю и последующий взлёт");
     } else if (action.kind === "life") {
@@ -349,20 +349,30 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       <p className={styles.hint}>Уменьшенное движение сохраняется: для анимаций проверьте эту настройку в разделе «Мир». Сценарии отключают сохранение тестовой сессии; после проверки перезагрузите страницу для обычной игры.</p>
     </>}
     {page === "plesk" && <>
-      <h3 className={styles.pageTitle}>Плёск · рыбак и торговец</h3>
-      <p className={styles.hint}>Программный персонаж у верхнего пирса. Проверки меняют только его показ; Мохлик продолжает свои занятия.</p>
+      <h3 className={styles.pageTitle}>Плёска · рыбачка и торговка</h3>
+      <p className={styles.hint}>Программная жительница верхнего пирса. Проверки меняют только её показ; Мохлик продолжает свои занятия.</p>
+      {observation?.resident && <section className={styles.aiIntention} aria-label="Внутреннее состояние Плёски">
+        <strong>{RESIDENT_LABELS[observation.resident.action as PleskAction] ?? "Выбирает занятие"}</strong>
+        <p>{observation.resident.reason}</p>
+        <div className={styles.aiNeeds}>{([["energy", "Энергия"], ["patience", "Терпение"], ["social", "Желание общаться"]] as const).map(([key, label]) =>
+          <label className={styles.aiNeed} key={key}><span>{label} · {Math.round(observation.resident!.needs[key] * 100)}%</span>
+            <meter aria-label={`Плёска: ${label}`} min={0} max={1} value={observation.resident!.needs[key]} /></label>)}</div>
+        <p>Свой улов: {observation.resident.catchCount} · Выборов занятия: {observation.resident.decisions}</p>
+        {state.residentPreview && <p>Включён показ анимаций. «Свободное поведение» вернёт на экран её текущее занятие.</p>}
+      </section>}
       <div className={styles.shortcuts}>
-        <button type="button" onClick={() => play({ kind: "scenario", scenario: "plesk" })}>Весь распорядок у пирса</button>
-        <button type="button" onClick={() => { worldDevStore.triggerCamera("plesk"); onFeedback("Камера направлена к Плёску"); }}>Найти Плёска</button>
+        <button type="button" onClick={() => { change({ residentPreview: null }, "Плёска сама выбирает занятие по своему состоянию"); worldDevStore.triggerCamera("plesk"); }}>Свободное поведение</button>
+        <button type="button" onClick={() => play({ kind: "scenario", scenario: "plesk" })}>Показать все занятия</button>
+        <button type="button" onClick={() => { worldDevStore.triggerCamera("plesk"); onFeedback("Камера направлена к Плёске"); }}>Найти Плёску</button>
       </div>
       {!worldView && <p className={styles.hint}>Пирс находится за пределами домашнего круга. Откройте большую карту, чтобы увидеть проверку.</p>}
-      <fieldset className={styles.fieldset}><legend>Поворот Плёска</legend><div className={styles.directions}>
+      <fieldset className={styles.fieldset}><legend>Поворот Плёски</legend><div className={styles.directions}>
         {DIRECTIONS.map(([direction, label]) => <button key={direction} type="button" aria-pressed={state.residentDirection === direction}
           onClick={() => change({ residentDirection: direction })}>{label}</button>)}
       </div></fieldset>
-      <Select label="Повторять действие Плёска" value={state.residentPreview?.repeat ? state.residentPreview.action : "auto"}
+      <Select label="Повторять действие Плёски" value={state.residentPreview?.repeat ? state.residentPreview.action : "auto"}
         values={[["auto", "Свободное поведение"], ["routine", RESIDENT_LABELS.routine], ...WORLD_DEV_RESIDENT_ACTIONS.map(action => [action, RESIDENT_LABELS[action]] as const)]}
-        onChange={action => { if (action === "auto") change({ residentPreview: null }, "Плёск вернулся к своему распорядку");
+        onChange={action => { if (action === "auto") change({ residentPreview: null }, "Плёска вернулась к своему распорядку");
           else if (!unavailable({ kind: "resident", action })) play({ kind: "resident", action, repeat: true }); }} />
       {unavailable({ kind: "resident", action: "idle" }) && <p id={`${id}-resident-reason`} className={styles.hint}>{unavailable({ kind: "resident", action: "idle" })}</p>}
       <div className={styles.lifeActions}>
@@ -373,10 +383,10 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
         })}
       </div>
       <div className={styles.shortcuts}>
-        <button type="button" onClick={() => change({ residentPreview: null }, "Проверка Плёска отменена; обычный распорядок продолжен")}>Отменить проверку</button>
-        <button type="button" onClick={() => change({ residentPreview: null, residentDirection: "front" }, "Показ Плёска сброшен")}>Сброс Плёска</button>
+        <button type="button" onClick={() => change({ residentPreview: null }, "Проверка Плёски отменена; обычный распорядок продолжен")}>Отменить проверку</button>
+        <button type="button" onClick={() => change({ residentPreview: null, residentDirection: "front" }, "Показ Плёски сброшен")}>Сброс Плёски</button>
       </div>
-      <p className={styles.hint}>Кнопка проигрывает действие один раз; «Повторить» сверху запускает его заново. Поворот относится к отдельным действиям — в распорядке Плёск сам смотрит по ходу движения и на воду. Улов здесь не пополняет кладовую и не изменяет задания.</p>
+      <p className={styles.hint}>Кнопка проигрывает действие один раз; «Повторить» сверху запускает его заново. Поворот относится к отдельным действиям — в распорядке Плёска сама смотрит по ходу движения и на воду. Улов здесь не пополняет кладовую и не изменяет задания.</p>
     </>}
     {page === "scenes" && <>
       <h3 className={styles.pageTitle}>Лесные сценки</h3>
@@ -515,7 +525,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
     {page === "app" && <>
       <h3 className={styles.pageTitle}>Приложение и тесты</h3>
       {worldView && <fieldset className={styles.fieldset}><legend>Камера карты</legend><div className={styles.shortcuts}>
-        {([["in", "Приблизить"], ["out", "Отдалить"], ["overview", "Вся карта"], ["pet", "Найти Мохлика"], ["plesk", "Найти Плёска"], ["fishing", "Рыбацкий берег"]] as const).map(([action, label]) =>
+        {([["in", "Приблизить"], ["out", "Отдалить"], ["overview", "Вся карта"], ["pet", "Найти Мохлика"], ["plesk", "Найти Плёску"], ["fishing", "Рыбацкий берег"]] as const).map(([action, label]) =>
           <button type="button" key={action} onClick={() => { worldDevStore.triggerCamera(action); onFeedback(`Камера: ${label.toLowerCase()}`); }}>{label}</button>)}
       </div></fieldset>}
       <div className={styles.shortcuts}>

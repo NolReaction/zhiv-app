@@ -41,6 +41,7 @@ import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from
 import { interactiveMapObjects } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
 
+import { advancePleskMind, pleskMindFrame, noticePleskMind } from "./plesk-mind";
 import { previewForestResidents } from "./dev/forest-resident-preview";
 import { drawForestFishingHero } from "./forest-fishing-painter";
 import type { ForestFishingFrame } from "./forest-fishing";
@@ -269,12 +270,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (!session.isOwner()) return;
     if (economyJourneyAway(options.economyJourney, explorationNow())) state.fishingPreview = undefined;
     const { journey, now } = displayedJourney();
-    syncForestJourneyTravel(state, world, journey, now, reducedMotion(options, dev));
+    syncForestJourneyTravel(state, world, journey, now, reducedMotion(options, dev), options.cancelledExplorations);
   }
   function residentFrames() {
     const rehearsal = dev?.residentPreview;
+    const natural = state.pleskMind ? pleskMindFrame(state.pleskMind, world, reducedMotion(options, dev)) : null;
     return previewForestResidents(world, state.elapsed, reducedMotion(options, dev), rehearsal ?? null,
-      rehearsal && rehearsal.id === state.residentPreview?.id ? state.residentPreview.startedAt : state.elapsed);
+      rehearsal && rehearsal.id === state.residentPreview?.id ? state.residentPreview.startedAt : state.elapsed, natural ? [natural] : []);
   }
   function stopFishingPreview() {
     if (!state.fishingPreview) return false;
@@ -444,6 +446,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       state.reaction = Math.max(0, state.reaction - step);
       const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
+      if (state.pleskMind) {
+        const resident = pleskMindFrame(state.pleskMind, world, false);
+        advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk,
+          playerNear: Boolean(resident && !actorAway() && dev?.showHero !== false
+            && Math.hypot(resident.x - state.clearing.position.x, resident.y - state.clearing.position.y) < 90) });
+      }
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
       syncExploration();
       syncGarden();
@@ -663,6 +671,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (actor.y > resident.y && hitVisiblePet((x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width,
         (y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) return null;
       return forestResidentAt(world, state.elapsed, still, point, residents);
+    },
+    noticeResident(id) {
+      if (disposed || id !== "plesk" || !state.pleskMind || !session.isOwner()) return;
+      noticePleskMind(state.pleskMind); updateObservation(true); session.publish();
     },
     inspectPoint(target) {
       if (disposed || !art) return null;

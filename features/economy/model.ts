@@ -52,7 +52,7 @@ const commandBase = {
   quantity: z.number().int().min(1).max(10_000).default(1), totalPrice: balance.default(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_collection", "start_exploration", "start_construction", "speedup_construction", "claim_job", "sell"]),
+  action: z.enum(["start_production", "start_collection", "start_exploration", "cancel_exploration", "start_construction", "speedup_construction", "claim_job", "sell"]),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing"]),

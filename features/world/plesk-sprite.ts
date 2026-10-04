@@ -1,5 +1,5 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
-import type { FishingAction } from "./fishing-props";
+import type { FishingAction, FishingMotion } from "./fishing-props";
 import type { WorldPoint } from "./tiled/types";
 
 /** The resident is built from the same opaque integer-pixel primitives as
@@ -9,6 +9,8 @@ export type PleskSpriteRig = {
   contact: { bottom: number; left: number; right: number };
   grip: WorldPoint; heldFish: WorldPoint; basket: WorldPoint;
   head: WorldPoint; tail: WorldPoint; feet: readonly WorldPoint[];
+  palms: readonly { position: WorldPoint; near: boolean }[];
+  flower: WorldPoint;
 };
 export const PLESK_SPRITE_SIZE = 48;
 export const PLESK_SPRITE_CACHE_LIMIT = 256;
@@ -16,8 +18,9 @@ const cache = new Map<string, HTMLCanvasElement>();
 const rigs = new WeakMap<HTMLCanvasElement, PleskSpriteRig>();
 export const pleskSpriteRig = (sprite: HTMLCanvasElement) => rigs.get(sprite);
 const c = {
-  outline: "#344950", dark: "#48656c", fur: "#64878c", light: "#86a5a5", shine: "#a2bbba",
-  cream: "#e7dbb7", pale: "#f6e9c7", shade: "#c0b38e", ear: "#b9b0a0", nose: "#624837", eye: "#25373c",
+  outline: "#3c5258", dark: "#536f78", fur: "#74949c", light: "#9ab7bb", shine: "#b8cecd",
+  cream: "#eee2c4", pale: "#fff0d0", shade: "#c8bba0", ear: "#c7b5ad", nose: "#765746", eye: "#2b3a42",
+  blush: "#d6b6ab", petal: "#efb5bb", petalLight: "#ffe1d7", petalShade: "#bd858f", pollen: "#e9c371", leaf: "#779882",
 };
 const actions: readonly FishingAction[] = ["walk", "idle", "cast", "fish", "bite", "reel", "catch", "pack", "trade", "rest", "greet"];
 const directions: readonly PixelDirection[] = ["front", "back", "left", "right"];
@@ -27,17 +30,18 @@ const lerp = (a: WorldPoint, b: WorldPoint, t: number) => point(a.x + (b.x - a.x
 /** Eight walking poses; finite phase buckets for deliberate actions. The cache
  * stores raster poses, never the unbounded world clock or actor coordinates. */
 export function pleskSprite(action: FishingAction, direction: PixelDirection, frame: number,
-  phase = 0, still = false): HTMLCanvasElement {
+  phase = 0, still = false, motion?: FishingMotion): HTMLCanvasElement {
   action = actions.includes(action) ? action : "idle";
   direction = directions.includes(direction) ? direction : "front";
   const clockFrame = still ? 0 : Number.isFinite(frame) ? ((Math.trunc(frame) % 32) + 32) % 32 : 0;
   const index = clockFrame % 8;
   const progress = Math.round(Math.max(0, Math.min(1, Number.isFinite(phase) ? phase : 0)) * 12);
-  const staged = ["cast", "bite", "reel", "catch", "pack", "greet"].includes(action);
+  const variation = still || !["check", "nibble", "struggle", "escape"].includes(motion?.variation ?? "") ? "calm" : motion!.variation!;
+  const staged = ["cast", "bite", "reel", "catch", "pack", "greet"].includes(action) || variation !== "calm";
   const stage = still ? 6 : staged ? progress : 0;
   const blink = !still && clockFrame === 30 && !["cast", "bite", "reel", "catch"].includes(action);
   const closedEyes = blink || action === "rest" && (still || clockFrame >= 4);
-  const key = `${action}:${direction}:${index}:${stage}:${closedEyes}`;
+  const key = `${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}`;
   const saved = cache.get(key);
   if (saved) { cache.delete(key); cache.set(key, saved); return saved; }
 
@@ -59,8 +63,8 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
       const at = lerp(a, b, step / steps); oval(at.x, at.y, radius, radius, color);
     }
   };
-  // Left is mirrored through source coordinates, including the prop anchors.
-  // Front/back have their own muzzle, shoulder and tail depth, not a flipped face.
+  // Left mirrors the skeleton, not the flower: the little lily remains on her
+  // anatomical left ear, with a partly hidden far-side view when she turns left.
   const sideView = direction === "left" || direction === "right";
   const back = direction === "back";
   const mirror = (p: WorldPoint) => point(direction === "left" ? 48 - p.x : p.x, p.y);
@@ -71,13 +75,15 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const rise = walking ? [0, 0, -1, -1, 0, 0, -1, -1][index] : 0;
   const phasePart = stage / 12;
   const pulling = action === "bite" || action === "reel";
-  const lean = action === "cast" ? Math.round(-2 + phasePart * 4)
+  const lean = variation === "struggle" ? -3 + (index > 3 ? 1 : 0) : variation === "escape" ? phasePart > .5 ? 1 : -2
+    : variation === "check" ? 1 : action === "cast" ? Math.round(-2 + phasePart * 4)
     : pulling ? -Math.round(phasePart * 2) : action === "pack" ? Math.round(Math.sin(phasePart * Math.PI) * 3) : 0;
   const crouch = resting ? 5 : action === "pack" ? Math.round(Math.sin(phasePart * Math.PI) * 3)
     : pulling && index % 4 > 1 ? 1 : 0;
   const breath = !still && !walking && (action === "idle" || action === "fish") && index > 4 ? -1 : 0;
   const body = point(24 + (sideView ? lean : 0), 33 + rise + Math.min(2, crouch) + breath);
-  const head = point((sideView ? 28 : 24) + (sideView ? lean : 0), 18 + rise + crouch + breath
+  const head = point((sideView ? 26 : 24) + (sideView ? lean : 0), 18 + rise + crouch + breath
+    + (variation === "check" ? 1 : variation === "nibble" ? -1 : 0)
     + (action === "greet" && phasePart > .35 && phasePart < .7 ? 1 : 0));
   const tail = point(back ? 24 + (walking ? step : index === 4 ? 1 : 0) : sideView ? 9 - step : 9 + (index > 3 ? 1 : 0),
     back ? 38 : resting ? 39 : 37 + (walking ? Math.abs(step) - 1 : 0));
@@ -85,34 +91,40 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     ? [point(19 + step + (walking && index === 4 ? 1 : 0), 42 - (walking && step < 0 ? 1 : 0)),
       point(29 - step - (walking && index === 4 ? 1 : 0), 42 - (walking && step > 0 ? 1 : 0))]
     : [point(18, 42 - (walking && step < 0 ? 2 : 0)), point(30, 42 - (walking && step > 0 ? 2 : 0))];
-  const shoulder = point(sideView ? 29 + lean : 30, 28 + rise + crouch);
-  const farShoulder = point(sideView ? 23 + lean : 17, 29 + rise + crouch);
-  let grip = point(sideView ? 33 : 34, 32 + rise + crouch);
+  const shoulder = point(sideView ? 29 + lean : 30, 30 + rise + Math.min(crouch, 3));
+  const farShoulder = point(sideView ? 24 + lean : 17, 31 + rise + Math.min(crouch, 3));
+  let grip = point(36, 34 + rise + Math.min(crouch, 3));
   let otherHand = point(sideView ? 29 : 16, 35 + rise + crouch);
   if (action === "cast") {
-    grip = lerp(point(sideView ? 21 : 24, 20), point(37, 29), phasePart);
+    grip = lerp(point(33, 29), point(39, 32), phasePart);
     otherHand = point(grip.x - 4, grip.y + 3);
   } else if (action === "fish" || pulling) {
-    grip = point((sideView ? 35 : 33) - (pulling ? Math.round(phasePart * 4) : 0),
-      31 + rise + crouch - (pulling ? Math.round(phasePart * 3) : 0));
-    otherHand = point(grip.x - 4 + (action === "reel" ? [0, 1, 2, 1, 0, -1, -2, -1][index] : 0),
-      grip.y + 3 + (action === "reel" ? [0, -1, -2, -1, 0, 1, 2, 1][index] : 0));
+    grip = point(37 - (pulling ? Math.round(phasePart * 2) : 0),
+      33 + rise + Math.min(crouch, 2) - (pulling ? Math.round(phasePart * 2) : 0));
+    otherHand = point(grip.x - 4 + (action === "reel" ? [0, 1, 1, 0, 0, -1, -1, 0][index] : 0),
+      grip.y + 3 + (action === "reel" ? [0, -1, -1, 0, 0, 1, 1, 0][index] : 0));
   } else if (action === "catch") {
-    grip = point(35, 27 - Math.round(Math.sin(phasePart * Math.PI) * 5));
-    otherHand = point(sideView ? 29 : 15, 34);
+    grip = point(37, 30 - Math.round(Math.sin(phasePart * Math.PI) * 2));
+    otherHand = point(sideView ? 37 : 14, 36);
   } else if (action === "pack") {
-    grip = lerp(point(34, 26), point(40, 38), Math.min(1, phasePart / .7));
+    grip = lerp(point(36, 28), point(40, 39), Math.min(1, phasePart / .7));
     otherHand = point(sideView ? 29 : 19, 35 + crouch);
   } else if (action === "trade") {
-    grip = point(35 + (index > 3 ? 1 : 0), 30 + (index > 3 ? -1 : 1));
+    grip = point(35 + (index > 3 ? 1 : 0), 32 + (index > 3 ? -1 : 1));
     otherHand = point(16, 35);
   } else if (action === "greet") {
-    grip = point(37 + [0, 1, 2, 1, 0, -1, -2, -1][index], 18 + (phasePart > .8 ? 5 : 0));
-    otherHand = point(16, 35);
+    grip = point(40 + [0, 0, 1, 1, 0, 0, -1, -1][index], 19 + (phasePart > .8 ? 5 : 0));
+    otherHand = point(sideView ? 37 : 15, 36);
   } else if (resting) {
     grip = point(31, 38); otherHand = point(sideView ? 24 : 18, 38);
   } else if (walking) {
-    grip = point(32, 31 + Math.round(step / 2)); otherHand = point(sideView ? 21 - step : 16, 35 - step);
+    grip = point(36, 34 + Math.round(step / 2)); otherHand = point(sideView ? 21 - step : 16, 35 - step);
+  }
+  if (action === "fish" || pulling) {
+    if (variation === "check") { grip.y -= index > 3 ? 3 : 1; otherHand.y -= index > 3 ? 3 : 1; }
+    if (variation === "nibble") { grip.y -= index % 4 < 2 ? 1 : 0; otherHand.y -= index % 4 < 2 ? 1 : 0; }
+    if (variation === "struggle") { grip.x -= 2; grip.y -= 2; otherHand.x -= 2; otherHand.y -= 1; }
+    if (variation === "escape") { grip.y += Math.round(phasePart * 3); otherHand.y += Math.round(phasePart * 2); }
   }
   const basket = ["walk", "idle", "greet"].includes(action) ? point(otherHand.x, otherHand.y + 5) : point(43, 41);
   const drawTail = () => {
@@ -122,11 +134,11 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     rect(tail.x - 3, tail.y - 3, 4, 1, c.light);
   };
   const drawArm = (from: WorldPoint, to: WorldPoint, near: boolean) => {
-    const elbow = point((from.x + to.x) / 2 - 1, (from.y + to.y) / 2 + 1);
-    segment(from, elbow, 3, c.outline); segment(elbow, to, 3, c.outline);
-    segment(from, elbow, 2, near ? c.fur : c.dark); segment(elbow, to, 2, near ? c.fur : c.dark);
-    oval(to.x, to.y, 3, 2, near ? c.light : c.fur);
-    rect(to.x + 1, to.y, 1, 1, c.dark);
+    const elbow = point((from.x + to.x) / 2 + (to.y < from.y - 5 ? 2 : -1), Math.max(from.y, to.y) + 2);
+    segment(from, elbow, 2, c.outline); segment(elbow, to, 2, c.outline);
+    segment(from, elbow, 1, near ? c.fur : c.dark); segment(elbow, to, 1, near ? c.fur : c.dark);
+    oval(to.x, to.y, 2, 2, near ? c.light : c.fur);
+    rect(to.x, to.y - 1, 2, 1, near ? c.shine : c.light);
   };
   if (!back) drawTail();
   if (sideView) drawArm(farShoulder, otherHand, false);
@@ -147,46 +159,65 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   }
   if (back) drawTail();
   // Round ears distinguish the otter from Mochlik even at world-map scale.
-  const ears = sideView ? [point(head.x - 8, head.y - 9), point(head.x + 6, head.y - 10)]
+  const ears = sideView ? [point(head.x - 7, head.y - 8), point(head.x + 6, head.y - 9)]
     : [point(head.x - 10, head.y - 8), point(head.x + 10, head.y - 8)];
   for (const ear of ears) {
     oval(ear.x, ear.y, 4, 4, c.outline); oval(ear.x, ear.y - 1, 3, 3, c.fur);
     oval(ear.x, ear.y, 2, 2, back ? c.dark : c.ear);
   }
-  oval(head.x, head.y, sideView ? 11 : 12, 10, c.outline);
-  oval(head.x, head.y - 1, sideView ? 10 : 11, 9, c.fur);
+  const flower = sideView ? point(direction === "left" ? head.x + 6 : head.x - 7, head.y - 10)
+    : point(head.x + (back ? -10 : 10), head.y - 10);
+  const drawFlower = () => {
+    oval(flower.x - 2, flower.y + 2, 3, 1, c.leaf);
+    for (const petal of [point(-2, -1), point(1, -2), point(3, 0), point(1, 2), point(-2, 2)]) {
+      oval(flower.x + petal.x, flower.y + petal.y, 2, 2, c.petalShade);
+      oval(flower.x + petal.x, flower.y + petal.y - 1, 1, 1, c.petal);
+      rect(flower.x + petal.x, flower.y + petal.y - 2, 1, 1, c.petalLight);
+    }
+    oval(flower.x, flower.y, 1, 1, c.pollen); rect(flower.x, flower.y - 1, 1, 1, c.pale);
+  };
+  // A far-ear blossom is partially hidden by the head, not pasted onto the
+  // opposite ear when the sprite faces left.
+  if (direction === "left") drawFlower();
+  oval(head.x, head.y, 12, 10, c.outline);
+  oval(head.x, head.y - 1, 11, 9, c.fur);
   oval(head.x - 2, head.y - 4, 8, 5, c.light);
   rect(head.x - 5, head.y - 8, 5, 1, c.shine);
   if (!back) {
-    const muzzleX = head.x + (sideView ? 7 : 0), muzzleY = head.y + 4;
-    oval(muzzleX, muzzleY + 1, sideView ? 7 : 9, 5, c.shade);
-    oval(muzzleX, muzzleY, sideView ? 7 : 9, 4, c.cream);
-    oval(muzzleX - (sideView ? 0 : 3), muzzleY - 1, 4, 2, c.pale);
-    const eyes = sideView ? [head.x + 5] : [head.x - 5, head.x + 5];
+    const muzzleX = head.x + (sideView ? 4 : 0), muzzleY = head.y + 4;
+    // Cream cheeks sit within the round skull; the nose no longer projects as
+    // a long beak. A two-pixel chin joins the muzzle and the chest bib.
+    oval(muzzleX, muzzleY + 1, sideView ? 6 : 9, 4, c.shade);
+    oval(muzzleX, muzzleY, sideView ? 6 : 9, 4, c.cream);
+    oval(muzzleX - 2, muzzleY - 1, sideView ? 4 : 6, 3, c.pale);
+    const eyes = sideView ? [head.x + 4] : [head.x - 5, head.x + 5];
     for (const eyeX of eyes) {
       if (closedEyes) rect(eyeX - 1, head.y, 3, 1, c.eye);
       else {
-        rect(eyeX - 1, head.y - 2, 3, 4, c.eye);
-        rect(eyeX, head.y - 2, 1, 1, c.pale);
+        oval(eyeX, head.y - 1, 2, 3, c.eye);
+        rect(eyeX, head.y - 3, 1, 2, c.pale);
+        rect(eyeX - 1, head.y + 1, 1, 1, c.dark);
       }
     }
-    const noseX = muzzleX + (sideView ? 4 : 0);
-    oval(noseX, muzzleY - 1, 2, 1, c.nose); rect(noseX, muzzleY, 1, 2, c.nose);
-    rect(noseX - 1, muzzleY + 2, 3, 1, c.nose);
+    const noseX = muzzleX + (sideView ? 2 : 0);
+    rect(noseX - 1, muzzleY - 1, 3, 1, c.nose); rect(noseX, muzzleY, 1, 1, c.nose);
+    rect(noseX, muzzleY + 2, 2, 1, c.nose);
     if (sideView) {
-      rect(muzzleX - 3, muzzleY + 1, 1, 1, c.nose);
-      rect(muzzleX - 7, muzzleY + 1, 4, 1, c.shade); rect(muzzleX - 6, muzzleY + 3, 4, 1, c.shade);
+      oval(muzzleX - 4, muzzleY, 2, 1, c.blush);
+      rect(muzzleX - 5, muzzleY + 2, 2, 1, c.shade);
+      rect(muzzleX - 4, muzzleY + 3, 2, 1, c.shade);
     } else {
       for (const sign of [-1, 1]) {
-        rect(muzzleX + sign * 5, muzzleY, 1, 1, c.nose);
-        rect(muzzleX + (sign < 0 ? -12 : 7), muzzleY + 1, 5, 1, c.shade);
-        rect(muzzleX + (sign < 0 ? -11 : 7), muzzleY + 3, 4, 1, c.shade);
+        oval(muzzleX + sign * 6, muzzleY, 2, 1, c.blush);
+        rect(muzzleX + (sign < 0 ? -10 : 8), muzzleY + 2, 3, 1, c.shade);
+        rect(muzzleX + (sign < 0 ? -9 : 7), muzzleY + 3, 3, 1, c.shade);
       }
     }
   } else {
     oval(head.x, head.y + 4, 8, 4, c.fur);
     rect(head.x - 3, head.y + 6, 5, 1, c.dark);
   }
+  if (direction !== "left") drawFlower();
   if (!sideView) drawArm(farShoulder, otherHand, false);
   drawArm(shoulder, grip, true);
 
@@ -194,7 +225,8 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const planted = mappedFeet.filter(foot => foot.y + 3 === bottom);
   rigs.set(canvas, { contact: { bottom, left: Math.min(...planted.map(foot => foot.x - 4)), right: Math.max(...planted.map(foot => foot.x + 5)) },
     grip: mirror(action === "catch" || action === "greet" ? otherHand : grip), heldFish: mirror(point(grip.x, grip.y - 1)), basket: mirror(basket),
-    head: mirror(head), tail: mirror(tail), feet: mappedFeet });
+    head: mirror(head), tail: mirror(tail), feet: mappedFeet, flower: mirror(flower),
+    palms: [{ position: mirror(otherHand), near: false }, { position: mirror(grip), near: true }] });
   cache.set(key, canvas);
   if (cache.size > PLESK_SPRITE_CACHE_LIMIT) cache.delete(cache.keys().next().value!);
   return canvas;

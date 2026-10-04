@@ -132,6 +132,15 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards: { ...route.rewards } }, route.seconds, route.cost);
       return "Мохлик отправился исследовать мир";
     }
+    case "cancel_exploration": {
+      const job = state.jobs.find(item => item.id === command.targetId);
+      if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
+      if (job.kind !== "exploration") return fail("ECONOMY_CANCEL_KIND", "Можно отменить только вылазку Мохлика");
+      // An unclaimed trip may be abandoned even after its timer ends. Its locked
+      // rewards and spent provisions are forfeited; completion is never credited.
+      state.jobs = state.jobs.filter(item => item.id !== job.id);
+      return "Вылазка отменена. Добыча потеряна, потраченные припасы не возвращаются";
+    }
     case "start_construction": {
       const building = economyCatalog.buildings.find(item => item.id === command.targetId);
       if (!building) return fail("ECONOMY_BUILDING", "Постройка не найдена");

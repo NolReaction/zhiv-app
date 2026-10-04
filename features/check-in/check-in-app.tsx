@@ -1481,7 +1481,7 @@ export function CheckInApp() {
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
               <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} activity={currentActivity} />
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} activity={currentActivity} />
             </div>}
             <button
               type="button"

@@ -48,6 +48,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/new-map-scene.ts"),
       ...await vite.ssrLoadModule("/features/world/economy-scene-state.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-observer.ts"),
+      ...await vite.ssrLoadModule("/features/world/forest-journey-travel.ts"),
     };
   } finally { await vite.close(); }
 }
@@ -2851,6 +2852,128 @@ test("restored coastal jobs show static fishing in reduced motion without an ani
     assert.equal(probe.state.journeyTravel, undefined);
     assert.ok(sampleHero(scene, env, pixelSprite).body, "completion leaves a visible safe outdoor actor");
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("confirmed cancellation reaches both mounted cameras and clears caught fish for active and ready trips", async () => {
+  for (const ready of [false, true]) {
+    const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, forestJourneyFishingFrame } = await modules(fishingFixture());
+    const env = browser(), views = []; let probe;
+    try {
+      worldDevStore.patch({ ...quietClearing, autoLife: false });
+      const job = { id: `cancel-mounted-${ready}`, routeId: "shore", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
+      const initial = { ...options, reducedMotion: false, serverNow: 200_000, presenceKey: `cancel-fishing-${ready}`, economyJourney: job };
+      const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+      const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+      env.finish(); await flush();
+      probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 200_000, 0, () => {});
+      const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+      const clock = sceneClock(env); clock.advance(24);
+      assert.equal(forestJourneyFishingFrame(probe.state, TILED_WORLD).carryingFish, true);
+      if (ready) { world.setTime(700_000); clock.advance(1); }
+      const feet = { ...probe.state.clearing.position };
+      const cancelled = { ...initial, economyJourney: null, serverNow: ready ? 701_000 : 224_000, cancelledExplorations: [job.id] };
+      circle.configure(cancelled); world.configure({ ...cancelled, view: "world" });
+      assert.equal(probe.state.journeyTravel.phase, "returning");
+      assert.equal(probe.state.journeyTravel.cancelled, true);
+      assert.deepEqual(probe.state.clearing.position, feet);
+      assert.equal(forestJourneyFishingFrame(probe.state, TILED_WORLD).carryingFish, false);
+      assert.deepEqual(circle.position(), world.position());
+      const beganAt = probe.state.journeyTravel.beganAt;
+      world.configure({ ...cancelled, view: "world" });
+      assert.equal(probe.state.journeyTravel.beganAt, beganAt, "a repeated receipt cannot restart the walk");
+      world.dispose(); await flush();
+      assert.deepEqual(probe.state.clearing.position, feet, "camera handoff preserves the cancelled return");
+      clock.until(() => !probe.state.journeyTravel, "the empty-handed actor returns using the shared collision-safe walker", 500);
+      assert.deepEqual(probe.state.clearing.position, probe.state.clearing.home);
+    } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+  }
+});
+
+test("resident AI advances once across cameras, freezes at actual feet and survives read-only DEV pose overrides", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "resident-mind-handoff" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const mind = probe.state.pleskMind, clock = sceneClock(env);
+    assert.ok(mind);
+    mind.catchCount = 3; // A full local basket gives the real AI a reason to leave its pier.
+    clock.until(() => mind.stage.action === "walk", "the resident chooses a safe delivery walk", 120);
+    clock.advance(.5);
+    assert.notDeepEqual(mind.position, { x: 690, y: 700 });
+    const beforeMount = structuredClone(mind);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+    assert.strictEqual(probe.state.pleskMind, mind);
+    assert.deepEqual(mind, beforeMount, "opening the map cannot reroll the resident's decision or reset her feet");
+    assert.equal(env.frames.size, 1);
+    for (let pass = 0; pass < 4; pass++) for (const view of [circle, world]) {
+      view.paintWorld(env.surface().context);
+      const point = view.inspectPoint("plesk"); view.hitResident(point.x, point.y);
+    }
+    assert.deepEqual(mind, beforeMount, "painting and hit-testing cannot advance needs, RNG or stage clocks");
+    const beforeClock = mind.elapsed, sceneTime = probe.state.elapsed;
+    clock.advance(.4);
+    approximately(mind.elapsed - beforeClock, probe.state.elapsed - sceneTime, "two visible cameras advance one resident clock");
+    const beforePreview = structuredClone(mind);
+    worldDevStore.triggerResident("fish", true);
+    assert.deepEqual(mind, beforePreview, "starting a DEV pose cannot rewind the natural AI");
+    assert.deepEqual(world.inspectPoint("plesk"), { x: 690, y: 682 });
+    clock.advance(.5);
+    assert.ok(mind.elapsed > beforePreview.elapsed, "natural needs and route continue underneath a display-only pose");
+    const afterPreview = structuredClone(mind);
+    worldDevStore.patch({ residentPreview: null });
+    assert.deepEqual(mind, afterPreview);
+    assert.deepEqual(world.inspectPoint("plesk"), { x: mind.position.x, y: mind.position.y - 18 });
+    circle.configure({ ...initial, backgrounded: true });
+    world.configure({ ...initial, view: "world", paused: true });
+    const frozen = structuredClone(mind); clock.advance(2);
+    assert.deepEqual(mind, frozen);
+    world.configure({ ...initial, view: "world", reducedMotion: true }); clock.advance(2);
+    assert.deepEqual(mind, frozen, "reduced motion freezes the actual route position");
+    assert.deepEqual(world.inspectPoint("plesk"), { x: frozen.position.x, y: frozen.position.y - 18 });
+    world.configure({ ...initial, view: "world" }); clock.advance(.5);
+    assert.ok(mind.elapsed > frozen.elapsed);
+    const beforeReturn = structuredClone(mind);
+    world.dispose(); circle.configure(initial);
+    assert.deepEqual(mind, beforeReturn, "handoff back to the circle preserves the same mind");
+    clock.advance(.5); assert.ok(mind.elapsed > beforeReturn.elapsed);
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("only a completed resident tap reaches her AI, while drags, pinch and canceled touches leave it alone", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "resident-attention" };
+    const canvas = env.surface(400), residents = [];
+    const loading = createMapEngine(canvas, initial, assert.fail, [], undefined, {}, { onResident: id => residents.push(id) });
+    env.finish(); await flush(); engine = await loading; engine.control("overview");
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const mind = probe.state.pleskMind, original = structuredClone(mind);
+    const touch = () => { const projection = mapProjection(canvas); return { pointerId: 1, pointerType: "touch", button: 0,
+      clientX: projection.left + 690 * projection.zoom, clientY: projection.top + 682 * projection.zoom }; };
+    const send = (name, point) => canvas.events.get(name)({ ...point, type: name });
+    let first = touch(); send("pointerdown", first); send("pointermove", { ...first, clientX: first.clientX + 30 });
+    send("pointerup", { ...first, clientX: first.clientX + 30 }); engine.control("overview");
+    first = touch(); send("pointerdown", first); send("pointercancel", first);
+    first = touch(); const second = { ...first, pointerId: 2, clientX: first.clientX + 35 };
+    send("pointerdown", first); send("pointerdown", second); send("pointermove", { ...second, clientX: second.clientX + 10 });
+    send("pointerup", first); send("pointerup", { ...second, clientX: second.clientX + 10 }); engine.control("overview");
+    assert.deepEqual(residents, []);
+    assert.deepEqual(mind, original, "camera gestures cannot queue social attention or advance resident AI");
+    first = touch(); send("pointerdown", first); send("pointerup", first);
+    assert.deepEqual(residents, ["plesk"]);
+    assert.equal(mind.noticePending, true);
+    const clock = sceneClock(env); clock.advance(.1);
+    assert.equal(mind.stage.action, "greet");
+    assert.equal(mind.noticePending, false);
+    assert.equal(probe.state.reaction, 0, "the main hero does not receive the resident's tap");
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
 test("DEV fishing rehearses the real trip, stops with a safe return and yields to confirmed jobs", async () => {

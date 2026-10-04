@@ -16,6 +16,8 @@ type View = {
   snapshot: EconomyView | null; market: MarketView | null; marketError: string | null;
   error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number;
   completedConstructions: readonly ConstructionCompletion[];
+  /** Confirmed local cancellations only; used to return the visible actor empty-handed. */
+  cancelledExplorations?: readonly string[];
 };
 type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -122,8 +124,13 @@ export function createEconomySession(owner: string | null, transport: Transport,
         // an already-applied receipt never manufactures a new completion event.
         const completed = value.kind === "economy" && ["claim_job", "speedup_construction"].includes(value.command.action)
           ? constructionCompletions(before, result.state).filter(event => !view.completedConstructions.some(previous => previous.id === event.id)) : [];
+        const cancelled = value.kind === "economy" && value.command.action === "cancel_exploration"
+          && !result.state.jobs.some(job => job.id === value.command.targetId)
+          && !view.snapshot?.jobs.some(job => job.id === value.command.targetId)
+          && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
         remember(null); publish({ notice: result.message, uncertain: false,
-          ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}) });
+          ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
+          ...(cancelled ? { cancelledExplorations: Object.freeze([...(view.cancelledExplorations ?? []), cancelled].slice(-8)) } : {}) });
         reloadMarket = value.kind === "market";
       }
     } catch (error) {

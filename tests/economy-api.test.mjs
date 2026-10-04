@@ -57,6 +57,30 @@ test("cross-site writes and wrong content types cannot change economy", async ()
   const after = economy.getDevEconomy(p.token); assert.equal(after.revision, before.revision); assert.deepEqual(after.inventory, before.inventory);
 });
 
+test("HTTP cancellation confirms the forfeiture once and replay never restores or rewards the trip", async () => {
+  const p = player();
+  const start = { ...command(p), action: "start_exploration", targetId: "shore" };
+  const started = await (await POST(post(start))).json();
+  const cancel = { ...command(p), action: "cancel_exploration", targetId: started.state.jobs[0].id };
+  assert.equal((await POST(post(cancel, { Origin: "https://foreign.example" }))).status, 403);
+  assert.equal((await POST(post({ ...cancel, refund: true }))).status, 400);
+  const response = await POST(post(cancel));
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(model.economyResultSchema.safeParse(result).success, true);
+  assert.deepEqual(result.state.jobs, []);
+  assert.deepEqual(result.state.inventory, started.state.inventory);
+  assert.deepEqual(result.state.wallet, started.state.wallet);
+  assert.equal(result.state.completedExplorations, started.state.completedExplorations);
+  const replay = await (await POST(post(cancel))).json();
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.acceptedRevision, result.acceptedRevision);
+  assert.equal(replay.state.revision, result.state.revision);
+  const claim = await POST(post({ ...command(p), action: "claim_job", targetId: cancel.targetId }));
+  assert.equal(claim.status, 409);
+  assert.equal((await claim.json()).code, "ECONOMY_JOB_GONE");
+});
+
 test("commands reject hostile JSON shape, extra fields, fractions and body overflow", async () => {
   const p = player(), cmd = command(p);
   for (const bad of ["{broken", [], null, { ...cmd, quantity: "2" }, { ...cmd, quantity: 1.5 }, { ...cmd, pearls: 100 }, { ...cmd, action: "buy_pearls" }, { ...cmd, requestId: "not-a-receipt" }])

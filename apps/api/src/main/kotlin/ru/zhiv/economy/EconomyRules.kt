@@ -185,6 +185,14 @@ object EconomyRules {
                 requireRewardCapacity(state, job.rewards)
                 spend(state, exploration.cost).copy(jobs = state.jobs + job) to "Мохлик отправился на исследование"
             }
+            "cancel_exploration" -> {
+                val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
+                if (job.kind != "exploration") economyFailure("ECONOMY_CANCEL_KIND", "Можно отменить только вылазку Мохлика")
+                // Unclaimed rewards and already spent provisions are forfeited,
+                // including after the timer ends. This is not a completed trip.
+                state.copy(jobs = state.jobs.filterNot { it.id == job.id }) to
+                    "Вылазка отменена. Добыча потеряна, потраченные припасы не возвращаются"
+            }
             "start_construction" -> {
                 val building = catalog.buildings.find { it.id == command.targetId } ?: economyFailure("ECONOMY_BUILDING", "Здание не найдено")
                 val next = (state.buildings[building.id] ?: 0) + 1

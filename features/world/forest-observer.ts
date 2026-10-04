@@ -13,8 +13,14 @@ export type ForestGardenObservation = Readonly<{
   waterReason: string | null; harvestReason: string | null;
 }>;
 
+export type ForestResidentObservation = Readonly<{
+  action: string; reason: string; destinationId: string; catchCount: number; decisions: number;
+  needs: Readonly<{ energy: number; patience: number; social: number }>;
+}>;
+
 export type ForestObservation = Readonly<{
   activity: string; detail: string; mood: string;
+  resident?: ForestResidentObservation;
   needs: Readonly<{ energy: number; curiosity: number; comfort: number; attention: number }>;
   sleeping: boolean; paused: boolean;
   memory: Readonly<{ status: "session" | "saved" | "restored" | "unavailable"; savedAt: number | null;
@@ -157,9 +163,13 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
   const motives = forestMindMotives(mind);
   const garden = gardenObservation(state);
   const memory = state.memory;
+  const resident = state.pleskMind?.observation;
   const status = memory?.mode === "unavailable" ? "unavailable" : !memory?.enabled || memory.mode === "ephemeral" ? "session"
     : memory.restored ? "restored" : memory.lastSavedAt !== null ? "saved" : "session";
   return Object.freeze({
+    ...(resident ? { resident: Object.freeze({ action: resident.action, reason: resident.reason,
+      destinationId: resident.destinationId, catchCount: resident.catchCount, decisions: resident.decisions,
+      needs: Object.freeze({ energy: percent(resident.needs.energy), patience: percent(resident.needs.patience), social: percent(resident.needs.social) }) }) } : {}),
     activity: activity.label, detail: `${activity.detail} ${mood.description}`, mood: mood.label,
     needs: Object.freeze({ energy: percent(mind.needs.energy), curiosity: percent(mind.needs.curiosity),
       comfort: percent(mind.needs.comfort), attention: percent(mind.needs.attention) }),
@@ -184,7 +194,7 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
 export function publishForestObservation(key: string | undefined, state: ForestSessionState, options: Options = {}) {
   if (!key) return;
   const now = options.now ?? Date.now(), previous = entries.get(key);
-  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${Boolean(state.director.campfireVisit)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}:${options.exploration ?? ""}`;
+  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${Boolean(state.director.campfireVisit)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}:${options.exploration ?? ""}:${state.pleskMind?.observation.action}:${state.pleskMind?.observation.intent}`;
   if (!options.force && previous?.phase === phase && now < previous.nextAt) return;
   const snapshot = forestObservationFrame(state, options), signature = JSON.stringify(snapshot);
   if (previous?.signature === signature) { previous.nextAt = now + 500; previous.phase = phase; return; }

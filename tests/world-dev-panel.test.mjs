@@ -87,7 +87,7 @@ test("arrow keys wrap, Home and End select and focus; Tab and composing/modifier
 test("each DEV page renders only its controls, with no simulation or account mutation during inspection", () => {
   const snapshot = worldDevStore.getSnapshot();
   const expected = {
-    plesk: "Плёск · рыбак и торговец",
+    plesk: "Плёска · рыбачка и торговка",
     scenarios: "Готовые сценарии", scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
     world: "Погода и живность", buildings: "Постройки", cheats: "Читы хозяйства", ai: "Мышление и память",
     overlays: "Разметка сцены", routes: "Навигация и входы", app: "Приложение и тесты",
@@ -336,12 +336,12 @@ test("Plesk DEV page exposes all actions and turns without closing or touching t
   assert.deepEqual(view.calls.actions, WORLD_DEV_RESIDENT_ACTIONS.map(action => ({ kind: "resident", action })));
   view.elements.find(element => element.type === "button" && labelText(element) === "Спиной").props.onClick();
   assert.deepEqual(view.calls.patches, [{ residentDirection: "back" }]);
-  const loop = view.elements.find(element => element.props.label === "Повторять действие Плёска");
+  const loop = view.elements.find(element => element.props.label === "Повторять действие Плёски");
   loop.props.onChange("cast");
   assert.deepEqual(view.calls.actions.at(-1), { kind: "resident", action: "cast", repeat: true });
   loop.props.onChange("auto");
   assert.deepEqual(view.calls.patches.at(-1), { residentPreview: null });
-  view.elements.find(element => element.type === "button" && labelText(element) === "Весь распорядок у пирса").props.onClick();
+  view.elements.find(element => element.type === "button" && labelText(element) === "Показать все занятия").props.onClick();
   assert.deepEqual(view.calls.actions.at(-1), { kind: "scenario", scenario: "plesk" });
   assert.match(view.markup, /Улов здесь не пополняет кладовую/);
   assert.doesNotMatch(view.markup, /за пределами домашнего круга/);
@@ -357,9 +357,9 @@ test("paused resident previews explain the block while stop and reset remain ava
     button.props.onClick();
   }
   assert.deepEqual(view.calls.actions, []);
-  const loop = view.elements.find(element => element.props.label === "Повторять действие Плёска");
+  const loop = view.elements.find(element => element.props.label === "Повторять действие Плёски");
   loop.props.onChange("reel"); assert.deepEqual(view.calls.actions, []);
-  for (const label of ["Отменить проверку", "Сброс Плёска"]) {
+  for (const label of ["Отменить проверку", "Сброс Плёски"]) {
     const button = view.elements.find(element => element.type === "button" && labelText(element) === label);
     assert.notEqual(button.props.disabled, true); button.props.onClick();
   }
@@ -374,4 +374,21 @@ test("full fishing rehearsal has explicit start and cancel without issuing econo
   assert.deepEqual(view.calls.actions, [{ kind: "scenario", scenario: "fishing" }, { kind: "life", action: "idle" }]);
   assert.match(view.markup, /Без заданий и наград аккаунта/);
   assert.deepEqual(view.calls.patches, []);
+});
+
+
+test("Pleska DEV readout shows her own needs and returns to free behavior without account commands", () => {
+  const resident = { action: "rest", reason: "Устала — пора восстановить силы.", destinationId: "plesk-rest",
+    catchCount: 2, decisions: 7, needs: { energy: .23, patience: .66, social: .4 } };
+  const view = panel("plesk", { observation: { resident }, state: { ...WORLD_DEV_DEFAULTS,
+    residentPreview: { id: 1, action: "fish", direction: "front", repeat: true } } });
+  assert.match(view.markup, /Внутреннее состояние Плёски/);
+  assert.match(view.markup, /Устала — пора восстановить силы/);
+  const meters = view.elements.filter(element => element.type === "meter");
+  assert.deepEqual(meters.map(meter => meter.props.value), [.23, .66, .4]);
+  assert.match(view.markup, /Свой улов: 2/);
+  assert.match(view.markup, /Включён показ анимаций/);
+  view.elements.find(element => element.type === "button" && labelText(element) === "Свободное поведение").props.onClick();
+  assert.deepEqual(view.calls.patches, [{ residentPreview: null }]);
+  assert.deepEqual(view.calls.actions, []);
 });

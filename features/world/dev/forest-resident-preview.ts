@@ -9,8 +9,8 @@ export const RESIDENT_PREVIEW_SECONDS: Record<PleskAction, number> = {
 
 /** DEV samples its own elapsed time; the world's routine clock never jumps. */
 export function previewForestResidents(scene: FixedWorldScene, elapsed: number, still: boolean,
-  preview: WorldDevState["residentPreview"], startedAt = elapsed): PleskResidentFrame[] {
-  const ordinary = () => { const frame = pleskResidentFrame(scene, elapsed, still); return frame ? [frame] : []; };
+  preview: WorldDevState["residentPreview"], startedAt = elapsed, natural?: readonly PleskResidentFrame[]): PleskResidentFrame[] {
+  const ordinary = () => { if (natural) return [...natural]; const frame = pleskResidentFrame(scene, elapsed, still); return frame ? [frame] : []; };
   if (!preview) return ordinary();
   const age = Math.max(0, Number.isFinite(elapsed - startedAt) ? elapsed - startedAt : 0);
   const duration = preview.action === "routine" ? pleskRoutineDuration(scene) : RESIDENT_PREVIEW_SECONDS[preview.action];
