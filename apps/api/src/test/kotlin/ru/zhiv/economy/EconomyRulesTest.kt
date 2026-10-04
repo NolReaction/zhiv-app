@@ -434,6 +434,35 @@ class EconomyRulesTest {
         assertFailsWith<AuthFailure> { EconomyRules.apply(stocked(), command("start_construction", "home", 2), now) }
     }
 
+    /** Fixed-price NPC goods are reachable once a repeatable source can earn coins;
+     * this does not assume a player-market listing supplies a missing material. */
+    private fun fishingMerchantItems(): Set<String> {
+        val fishing = EconomyRules.catalog.fishing ?: return emptySet()
+        val items = EconomyRules.catalog.items.associateBy { it.id }
+        assertTrue(fishing.routeIds.isNotEmpty())
+        assertTrue(fishing.routeIds.all { id -> EconomyRules.catalog.explorations.any { it.id == id && (it.rewards["fish"] ?: 0) > 0 } },
+            "Fishing must refer to real shore routes with fish rewards")
+        assertTrue(fishing.rods.any { it.id == "reed_rod" && it.price == 0L }, "Starter tackle must remain free")
+        assertEquals(fishing.rods.size, fishing.rods.map { it.id }.toSet().size)
+        assertTrue(fishing.rods.all { it.price >= 0 && it.rareBonus >= 0 })
+        assertEquals(fishing.fish.size, fishing.fish.map { it.itemId }.toSet().size)
+        assertEquals(fishing.baits.size, fishing.baits.map { it.itemId }.toSet().size)
+        for (fish in fishing.fish) {
+            val item = assertNotNull(items[fish.itemId], "Unknown fish item: ${fish.itemId}")
+            assertTrue(fish.buyPrice > item.baseSellPrice, "${fish.itemId}: fish buy-sell arbitrage")
+            assertTrue(fish.weight > 0 && fish.affinity >= 0)
+        }
+        for (bait in fishing.baits) {
+            val item = assertNotNull(items[bait.itemId], "Unknown bait item: ${bait.itemId}")
+            assertTrue(bait.price > item.baseSellPrice, "${bait.itemId}: bait buy-sell arbitrage")
+            assertTrue(bait.rareBonus >= 0)
+        }
+        for ((previous, fish) in fishing.fish.zipWithNext())
+            assertTrue(fish.affinity * previous.weight >= previous.affinity * fish.weight,
+                "Stronger tackle must not favour cheaper fish over rarer fish")
+        return (fishing.fish.map { it.itemId } + fishing.baits.map { it.itemId }).toSet()
+    }
+
     @Test fun `catalog dependency graph has obtainable inputs and meaningful processing margins`() {
         val itemIds = EconomyRules.catalog.items.map { it.id }.toSet()
         val buildingIds = EconomyRules.catalog.buildings.map { it.id }.toSet()
@@ -447,12 +476,14 @@ class EconomyRulesTest {
             val value = recipe.rewards.entries.sumOf { itemPrices.getValue(it.key) * it.value }
             assertTrue(value > cost, "${recipe.id} should add value for its station time")
         }
+        val merchantItems = fishingMerchantItems()
         var available = setOf<String>()
         repeat(10) {
             for (expedition in EconomyRules.catalog.explorations)
                 if (expedition.cost.items.keys.all { it in available }) available = available + expedition.rewards.keys
             for (recipe in EconomyRules.catalog.recipes)
                 if (recipe.cost.items.keys.all { it in available }) available = available + recipe.rewards.keys
+            if (EconomyRules.catalog.items.any { it.tradable && it.id in available }) available = available + merchantItems
         }
         assertEquals(itemIds, available)
         assertEquals(0, EconomyRules.catalog.market.feeBps)
@@ -544,6 +575,7 @@ class EconomyRulesTest {
 
     @Test fun `catalog progression can unlock every item and building without a dependency cycle`() {
         val buildings = EconomyRules.initial().buildings.toMutableMap()
+        val merchantItems = fishingMerchantItems()
         val items = mutableSetOf<String>()
         fun unlocked(home: Int, required: Map<String, Int>) = (buildings["home"] ?: 1) >= home && required.all { (id, level) -> (buildings[id] ?: 0) >= level }
         repeat(100) {
@@ -555,6 +587,7 @@ class EconomyRulesTest {
                 if ((buildings[recipe.buildingId] ?: 0) >= recipe.buildingLevel && unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && items.containsAll(recipe.cost.items.keys))
                     items.addAll(recipe.rewards.keys)
             }
+            if (EconomyRules.catalog.items.any { it.tradable && it.id in items }) items.addAll(merchantItems)
             for (building in EconomyRules.catalog.buildings) {
                 val upgrade = building.levels.find { it.level == (buildings[building.id] ?: 0) + 1 } ?: continue
                 if (unlocked(upgrade.requiredHomeLevel, upgrade.requiredBuildings) && items.containsAll(upgrade.cost.items.keys))
