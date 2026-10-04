@@ -322,10 +322,15 @@ function TapCounter({ progress, result, count, isRecord }: {
       className={styles.tapCounter}
       data-urgency={urgency}
       data-state={active ? "active" : "finished"}
+      data-record={!active && isRecord ? "true" : undefined}
       style={timerStyle}
       aria-hidden="true"
     >
-      <strong>{!active && isRecord ? "Рекорд " : ""}×{count.toLocaleString("ru-RU")}</strong>
+      <span className={styles.tapCounterLabel}>
+        {!active && isRecord ? <Trophy size={12} /> : null}
+        {active ? "Серия" : isRecord ? "Рекорд" : "Результат"}
+      </span>
+      <strong>×{count.toLocaleString("ru-RU")}</strong>
       {active ? <small>{seconds}с</small> : null}
       {active ? <i className={styles.tapCounterProgress} /> : null}
     </span>
