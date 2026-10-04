@@ -35,8 +35,8 @@ export type LivingWorldDebugSnapshot = Readonly<{
   encounter?: Readonly<{ entityId: string; phase: string }> | null;
 }>;
 
-const LIMITS = { polygons: 64, vertices: 256, gridSamples: 1024, fauna: 32, anchors: 32 } as const;
-const COLORS = { allowed: "#78edb0", obstacle: "#ff8e86", water: "#72cfff", path: "#ffe184", habitat: "#d4a0ff", fauna: "#ffcaf1" };
+const LIMITS = { polygons: 64, vertices: 256, gridSamples: 1024, fauna: 32, anchors: 32, destinations: 16 } as const;
+const COLORS = { allowed: "#78edb0", obstacle: "#ff8e86", water: "#72cfff", path: "#ffe184", occlusion: "#bc9dff", habitat: "#d4a0ff", fauna: "#ffcaf1" };
 const finitePoint = (point: DebugPoint | null | undefined): point is DebugPoint => Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
 
 function trace(ctx: CanvasRenderingContext2D, points: readonly DebugPoint[], close = false) {
@@ -99,6 +99,33 @@ function grid(ctx: CanvasRenderingContext2D, nav: LivingWorldDebugNavigation, un
   }
 }
 
+function routeAuthoring(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, unit: number) {
+  const masks = scene.occluders ?? [];
+  polygons(ctx, masks, COLORS.occlusion, unit, true);
+  for (let index = 0; index < Math.min(masks.length, LIMITS.polygons); index++) {
+    const mask = masks[index], count = Math.min(mask.points.length, LIMITS.vertices);
+    if (count < 3 || !Number.isFinite(mask.frontY)) continue;
+    let left = Infinity, right = -Infinity;
+    // Use the same bounded contour samples as the outline, even for malformed oversized input.
+    for (let vertex = 0; vertex < count; vertex++) {
+      const point = mask.points[Math.floor(vertex * (mask.points.length - 1) / (count - 1))];
+      if (!finitePoint(point)) continue;
+      left = Math.min(left, point.x); right = Math.max(right, point.x);
+    }
+    if (!Number.isFinite(left) || right <= left) continue;
+    ctx.beginPath(); ctx.moveTo(left, mask.frontY); ctx.lineTo(right, mask.frontY);
+    ctx.setLineDash([2 * unit, 3 * unit]); ctx.strokeStyle = COLORS.occlusion;
+    ctx.lineWidth = 1.5 * unit; ctx.stroke(); ctx.setLineDash([]);
+    label(ctx, `${mask.id} · frontY`, { x: left, y: mask.frontY }, COLORS.occlusion, unit);
+  }
+  const destinations = scene.destinations ?? [];
+  for (let index = 0; index < Math.min(destinations.length, LIMITS.destinations); index++) {
+    const destination = destinations[index];
+    marker(ctx, destination.position, COLORS.path, unit);
+    label(ctx, `место: ${destination.id}`, destination.position, COLORS.path, unit);
+  }
+}
+
 function navigation(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, snapshot: LivingWorldDebugSnapshot, unit: number) {
   polygons(ctx, scene.navigation?.areas ?? [], COLORS.allowed, unit);
   polygons(ctx, scene.navigation?.obstacles ?? [], COLORS.obstacle, unit);
@@ -106,6 +133,7 @@ function navigation(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, snaps
   polygons(ctx, (scene.campfires ?? []).map(fire => ({ id: fire.id, points: campfireFootprint(fire) })), COLORS.obstacle, unit);
   polygons(ctx, scene.water?.surfaces ?? [], COLORS.water, unit);
   if (snapshot.nav) grid(ctx, snapshot.nav, unit);
+  routeAuthoring(ctx, scene, unit);
   if (snapshot.path?.length) {
     ctx.beginPath(); trace(ctx, snapshot.path);
     ctx.strokeStyle = COLORS.path; ctx.lineWidth = 2 * unit; ctx.stroke();

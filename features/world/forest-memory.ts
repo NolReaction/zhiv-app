@@ -36,7 +36,7 @@ export function forestSceneFingerprint(scene: FixedWorldScene): string {
   const cached = fingerprints.get(scene); if (cached) return cached;
   const input = JSON.stringify({ id: scene.id, width: scene.width, height: scene.height, focus: scene.focus,
     actor: scene.actor, navigation: scene.navigation, sites: scene.sites.map(site => ({ id: site.id,
-      entry: site.entry, doorway: site.doorway, collision: site.collision })), paths: scene.paths,
+      entry: site.entry, doorway: site.doorway, collision: site.collision })), paths: scene.paths, destinations: scene.destinations,
     bushes: scene.bushes, campfires: scene.campfires, mushrooms: scene.mushrooms, habitats: scene.habitats, water: scene.water?.surfaces,
     basket: scene.basket });
   let hash = 2166136261;

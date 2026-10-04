@@ -448,7 +448,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       <Toggle label="Границы воды" checked={state.debugWater} onChange={debugWater => change({ debugWater })} />
       {state.debugWater && <p className={styles.hint}>Голубой контур — вода. Коралловый пунктир — исключения: листья, камни и другие предметы над водой.</p>}
       <Toggle label="Проходимость и цель Мохлика" checked={state.debugNavigation} onChange={debugNavigation => change({ debugNavigation })} />
-      {state.debugNavigation && <p className={styles.hint}>Зелёный — разрешённая область и безопасные точки сетки, красный — препятствия, голубой — вода. Жёлтый — путь и цель; круг под лапами показывает радиус обхода.</p>}
+      {state.debugNavigation && <p className={styles.hint}>Зелёный — разрешённая область и безопасные точки сетки, красный — препятствия, голубой — вода. Жёлтый — путь, цель и места назначения; круг под лапами показывает радиус обхода. Фиолетовый пунктир — перекрытие изображения; когда лапы достигают линии frontY или опускаются ниже, персонаж рисуется перед объектом.</p>}
       <Toggle label="Особи и их цели" checked={state.debugFauna} onChange={debugFauna => change({ debugFauna })} />
       {state.debugFauna && <p className={styles.hint}>Подписи показывают постоянный ID, состояние и цель особи. Фиолетовый пунктир — территория, красный — вычтенная из неё область. Подпись встречи указывает участника и фазу. Бабочки активны днём, светлячки — ночью.</p>}
     </>}

@@ -19,6 +19,15 @@ const { requestClearingSleep, requestClearingBush, advanceClearingActivity, noti
 const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const conditions = { enabled: true, blocked: false, homeAvailable: true, dusk: 0, rain: 0 };
 const scene = () => ({ ...withPlacedBushArtwork(TILED_WORLD), paths: [] });
+
+test("moving a destination invalidates saved travel geometry while a visual mask does not", () => {
+  const map = scene(), fingerprint = forestSceneFingerprint(map);
+  const moved = { ...map, destinations: map.destinations.map((destination, index) => index
+    ? destination : { ...destination, position: { x: destination.position.x + 12, y: destination.position.y } }) };
+  assert.notEqual(forestSceneFingerprint(moved), fingerprint);
+  assert.equal(forestSceneFingerprint({ ...map, occluders: [] }), fingerprint);
+});
+
 function environment() {
   const records = new Map(), hooks = new Set();
   let now = 1000, reads = 0, writes = 0, removed = 0;

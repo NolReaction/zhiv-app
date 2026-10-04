@@ -1659,3 +1659,78 @@ test("campfires compile paired ground/seat markers and reject unsafe or orphan a
     ["invalid radius", objects => objects.at(-2).properties.push({ name: "radius", type: "float", value: -4 }), /radius must be/],
   ]) await t.test(label, async () => { const broken = clone(good); mutate(broken.layers[0].objects); await assert.rejects(compile(broken), expected); });
 });
+
+test("destination targets and occlusion silhouettes compile independently from home interests and collision", async t => {
+  const { map, compile } = await fixture(t);
+  const legacy = await compile();
+  assert.equal(legacy.destinations, undefined);
+  assert.equal(legacy.occluders, undefined);
+  map.layers.push(...livingLayers(),
+    objectLayer(30, "Destinations", [livingPoint(300, "kiln", 70, 70, { role: "destination", siteId: "kiln", pauseSeconds: 12 })]),
+    objectLayer(31, "Occluders", [{ ...livingPolygon(301, "tree-crown", "occluder", { frontY: 25 }), x: 40, y: 45,
+      polygon: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }] }]));
+  const before = structuredClone(map), world = await compile();
+  assert.deepEqual(world.destinations, [{ id: "kiln", position: { x: 70, y: 70 }, siteId: "kiln", pauseSeconds: 12 }]);
+  assert.equal(world.occluders[0].frontY, 70);
+  assert.equal(world.navigation.interests.length, 1, "world visits must not expand home wandering interests");
+  assert.equal(world.navigation.obstacles.length, 1, "visual masks do not block a route");
+  assert.deepEqual(map, before);
+  map.layers.at(-2).objects = [];
+  map.layers.at(-1).objects = [];
+  const empty = await compile();
+  assert.deepEqual(empty.destinations, []);
+  assert.deepEqual(empty.occluders, []);
+});
+
+test("occluder depth follows ordinary group offsets and optional level visibility", async t => {
+  const { map, compile } = await fixture(t);
+  const mask = { ...livingPolygon(300, "kiln-roof", "occluder", { frontY: 18, siteId: "kiln", level: 1 }), x: 35, y: 40,
+    polygon: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }] };
+  map.layers.push({ id: 30, name: "Trees", type: "group", offsetx: 5, offsety: 10,
+    layers: [objectLayer(31, "Occluders", [mask])] });
+  const world = await compile();
+  assert.deepEqual(world.occluders[0], { id: "kiln-roof", points: [{ x: 40, y: 50 }, { x: 55, y: 50 }, { x: 55, y: 65 }, { x: 40, y: 65 }],
+    frontY: 68, when: { siteId: "kiln", level: 1 } });
+  mask.properties = props({ role: "occluder" });
+  assert.equal((await compile()).occluders[0].frontY, 65, "omitted frontY follows lowest transformed contour vertex");
+});
+
+test("destination validation rejects unknown owners, unsafe placement, duplicates and unbounded waiting/network size", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(...livingLayers(), objectLayer(30, "Destinations", [livingPoint(300, "kiln", 70, 70, { role: "destination", siteId: "kiln" })]));
+  assert.equal((await compile()).destinations[0].pauseSeconds, 8);
+  for (const [change, error] of [
+    [o => { o.properties = props({ role: "destination", siteId: "missing" }); }, /unknown site missing/],
+    [o => { o.x = 65; o.y = 25; }, /position must not overlap/],
+    [o => { o.x = 99; }, /position must be inside a walk area/],
+    [o => { o.properties = props({ role: "destination", pauseSeconds: 61 }); }, /pauseSeconds must be from 2 to 60/],
+  ]) {
+    const changed = structuredClone(map); change(changed.layers.at(-1).objects[0]);
+    await assert.rejects(compile(changed), error);
+  }
+  const duplicate = structuredClone(map), targets = duplicate.layers.at(-1).objects;
+  targets.push({ ...targets[0], id: 301 });
+  await assert.rejects(compile(duplicate), /duplicate destination ID/);
+  const overflow = structuredClone(map);
+  overflow.layers.at(-1).objects = Array.from({ length: 17 }, (_, i) => livingPoint(300 + i, `visit-${i}`, 70, 70, { role: "destination" }));
+  await assert.rejects(compile(overflow), /at most 16 destinations/);
+  const noAreas = structuredClone(map);
+  noAreas.layers = noAreas.layers.filter(l => l.name !== "WalkAreas" && l.name !== "PointsOfInterest");
+  await assert.rejects(compile(noAreas), /destinations require WalkAreas/);
+});
+
+test("occluder validation rejects bad depth, duplicate IDs and unknown building levels", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(objectLayer(30, "Occluders", [{ ...livingPolygon(300, "tree", "occluder"), x: 10, y: 10 }]));
+  for (const [values, error] of [
+    [{ frontY: 95 }, /frontY must resolve inside world height/],
+    [{ siteId: "kiln" }, /siteId and level together/],
+    [{ siteId: "kiln", level: 9 }, /unknown visual level 9/],
+  ]) {
+    const changed = structuredClone(map);
+    changed.layers.at(-1).objects[0].properties = props({ role: "occluder", ...values });
+    await assert.rejects(compile(changed), error);
+  }
+  map.layers.at(-1).objects.push({ ...map.layers.at(-1).objects[0], id: 301 });
+  await assert.rejects(compile(), /duplicate occluder ID/);
+});

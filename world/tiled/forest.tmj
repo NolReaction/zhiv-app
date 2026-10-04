@@ -8543,7 +8543,62 @@
                  "visible":false,
                  "x":0,
                  "y":0
-                }],
+                },{
+  "id": 119,
+  "name": "Eastern-route",
+  "type": "objectgroup",
+  "draworder": "index",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 382,
+      "name": "eastern-fork-tree-trunk",
+      "type": "",
+      "rotation": 0,
+      "visible": true,
+      "x": 803,
+      "y": 504,
+      "width": 0,
+      "height": 0,
+      "polygon": [
+        {
+          "x": 0,
+          "y": 4
+        },
+        {
+          "x": 6,
+          "y": 0
+        },
+        {
+          "x": 12,
+          "y": 4
+        },
+        {
+          "x": 13,
+          "y": 12
+        },
+        {
+          "x": 6,
+          "y": 17
+        },
+        {
+          "x": 0,
+          "y": 13
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "nav-obstacle"
+        }
+      ]
+    }
+  ]
+}],
          "name":"Obstacles",
          "opacity":1,
          "type":"group",
@@ -18435,7 +18490,182 @@
                  "width":0,
                  "x":800.04126,
                  "y":424.44205
-                }],
+                },{
+  "id": 381,
+  "name": "main-woodlot-approach",
+  "type": "",
+  "rotation": 0,
+  "visible": true,
+  "x": 779,
+  "y": 203,
+  "width": 0,
+  "height": 0,
+  "polygon": [
+    {
+      "x": 0,
+      "y": 206
+    },
+    {
+      "x": 35,
+      "y": 180
+    },
+    {
+      "x": 66,
+      "y": 158
+    },
+    {
+      "x": 86,
+      "y": 136
+    },
+    {
+      "x": 101,
+      "y": 108
+    },
+    {
+      "x": 115,
+      "y": 78
+    },
+    {
+      "x": 130,
+      "y": 50
+    },
+    {
+      "x": 123,
+      "y": 34
+    },
+    {
+      "x": 105,
+      "y": 19
+    },
+    {
+      "x": 105,
+      "y": 3
+    },
+    {
+      "x": 149,
+      "y": 0
+    },
+    {
+      "x": 173,
+      "y": 29
+    },
+    {
+      "x": 175,
+      "y": 48
+    },
+    {
+      "x": 158,
+      "y": 77
+    },
+    {
+      "x": 143,
+      "y": 103
+    },
+    {
+      "x": 134,
+      "y": 130
+    },
+    {
+      "x": 116,
+      "y": 160
+    },
+    {
+      "x": 89,
+      "y": 186
+    },
+    {
+      "x": 59,
+      "y": 206
+    },
+    {
+      "x": 32,
+      "y": 228
+    },
+    {
+      "x": 11,
+      "y": 237
+    }
+  ],
+  "properties": [
+    {
+      "name": "role",
+      "type": "string",
+      "value": "walk-area"
+    }
+  ]
+},{
+  "id": 389,
+  "name": "main-workshop-forecourt",
+  "rotation": 0,
+  "visible": true,
+  "x": 175,
+  "y": 550,
+  "width": 0,
+  "height": 0,
+  "polygon": [
+    {
+      "x": 0,
+      "y": 10
+    },
+    {
+      "x": 45,
+      "y": 0
+    },
+    {
+      "x": 53,
+      "y": 22
+    },
+    {
+      "x": 37,
+      "y": 48
+    },
+    {
+      "x": 5,
+      "y": 42
+    }
+  ],
+  "properties": [
+    {
+      "name": "role",
+      "type": "string",
+      "value": "walk-area"
+    }
+  ]
+},{
+  "id": 390,
+  "name": "main-eastern-passage",
+  "rotation": 0,
+  "visible": true,
+  "x": 839.844582472,
+  "y": 601.422291236,
+  "width": 0,
+  "height": 0,
+  "polygon": [
+    {
+      "x": 0.0,
+      "y": 7.155417528000044
+    },
+    {
+      "x": 14.310835056000087,
+      "y": 0.0
+    },
+    {
+      "x": 28.310835056000087,
+      "y": 28.0
+    },
+    {
+      "x": 14.0,
+      "y": 35.155417528000044
+    }
+  ],
+  "properties": [
+    {
+      "name": "role",
+      "type": "string",
+      "value": "walk-area"
+    }
+  ]
+}],
          "opacity":1,
          "type":"objectgroup",
          "visible":true,
@@ -18535,9 +18765,312 @@
          "visible":false,
          "x":0,
          "y":0
-        }],
- "nextlayerid":117,
- "nextobjectid":381,
+        },{
+  "id": 117,
+  "name": "Destinations",
+  "type": "objectgroup",
+  "draworder": "index",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 384,
+      "name": "home",
+      "type": "",
+      "rotation": 0,
+      "visible": true,
+      "x": 598.491243496739,
+      "y": 690.043232944969,
+      "width": 0,
+      "height": 0,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "destination"
+        },
+        {
+          "name": "pauseSeconds",
+          "type": "float",
+          "value": 10
+        },
+        {
+          "name": "siteId",
+          "type": "string",
+          "value": "home"
+        }
+      ]
+    },
+    {
+      "id": 385,
+      "name": "workshop",
+      "type": "",
+      "rotation": 0,
+      "visible": true,
+      "x": 205,
+      "y": 565,
+      "width": 0,
+      "height": 0,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "destination"
+        },
+        {
+          "name": "pauseSeconds",
+          "type": "float",
+          "value": 12
+        },
+        {
+          "name": "siteId",
+          "type": "string",
+          "value": "workshop"
+        }
+      ]
+    },
+    {
+      "id": 386,
+      "name": "quarry",
+      "type": "",
+      "rotation": 0,
+      "visible": true,
+      "x": 633,
+      "y": 252,
+      "width": 0,
+      "height": 0,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "destination"
+        },
+        {
+          "name": "pauseSeconds",
+          "type": "float",
+          "value": 9
+        },
+        {
+          "name": "siteId",
+          "type": "string",
+          "value": "quarry"
+        }
+      ]
+    },
+    {
+      "id": 387,
+      "name": "fishing",
+      "type": "",
+      "rotation": 0,
+      "visible": true,
+      "x": 1146,
+      "y": 738,
+      "width": 0,
+      "height": 0,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "destination"
+        },
+        {
+          "name": "pauseSeconds",
+          "type": "float",
+          "value": 15
+        }
+      ]
+    },
+    {
+      "id": 388,
+      "name": "woodlot",
+      "type": "",
+      "rotation": 0,
+      "visible": true,
+      "x": 909.391650851367,
+      "y": 218.844995262744,
+      "width": 0,
+      "height": 0,
+      "point": true,
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "destination"
+        },
+        {
+          "name": "pauseSeconds",
+          "type": "float",
+          "value": 12
+        },
+        {
+          "name": "siteId",
+          "type": "string",
+          "value": "woodlot"
+        }
+      ]
+    }
+  ]
+},{
+  "id": 118,
+  "name": "Occluders",
+  "type": "objectgroup",
+  "draworder": "index",
+  "opacity": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "objects": [
+    {
+      "id": 383,
+      "name": "eastern-fork-tree-canopy",
+      "type": "",
+      "rotation": 0,
+      "visible": true,
+      "x": 756,
+      "y": 425,
+      "width": 0,
+      "height": 0,
+      "polygon": [
+        {
+          "x": 50,
+          "y": 5
+        },
+        {
+          "x": 53,
+          "y": 0
+        },
+        {
+          "x": 59,
+          "y": 0
+        },
+        {
+          "x": 63,
+          "y": 5
+        },
+        {
+          "x": 70,
+          "y": 3
+        },
+        {
+          "x": 75,
+          "y": 8
+        },
+        {
+          "x": 74,
+          "y": 15
+        },
+        {
+          "x": 83,
+          "y": 16
+        },
+        {
+          "x": 88,
+          "y": 26
+        },
+        {
+          "x": 92,
+          "y": 40
+        },
+        {
+          "x": 86,
+          "y": 54
+        },
+        {
+          "x": 93,
+          "y": 65
+        },
+        {
+          "x": 87,
+          "y": 81
+        },
+        {
+          "x": 76,
+          "y": 92
+        },
+        {
+          "x": 62,
+          "y": 97
+        },
+        {
+          "x": 43,
+          "y": 93
+        },
+        {
+          "x": 26,
+          "y": 88
+        },
+        {
+          "x": 14,
+          "y": 82
+        },
+        {
+          "x": 5,
+          "y": 76
+        },
+        {
+          "x": 0,
+          "y": 67
+        },
+        {
+          "x": 5,
+          "y": 57
+        },
+        {
+          "x": 2,
+          "y": 50
+        },
+        {
+          "x": 7,
+          "y": 38
+        },
+        {
+          "x": 19,
+          "y": 31
+        },
+        {
+          "x": 25,
+          "y": 26
+        },
+        {
+          "x": 21,
+          "y": 19
+        },
+        {
+          "x": 26,
+          "y": 13
+        },
+        {
+          "x": 34,
+          "y": 17
+        },
+        {
+          "x": 42,
+          "y": 10
+        }
+      ],
+      "properties": [
+        {
+          "name": "role",
+          "type": "string",
+          "value": "occluder"
+        },
+        {
+          "name": "frontY",
+          "type": "float",
+          "value": 105
+        }
+      ]
+    }
+  ]
+}],
+ "nextlayerid":120,
+ "nextobjectid":391,
  "orientation":"orthogonal",
  "properties":[
         {

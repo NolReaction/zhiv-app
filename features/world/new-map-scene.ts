@@ -29,6 +29,7 @@ import { forestBirdwatchFrame, type ForestBirdwatch } from "./forest-birdwatchin
 import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reactions";
 import { drawForestBird, type ForestBird } from "./forest-wildlife";
 import { drawForestResidents } from "./forest-residents";
+import { forestPointOccluded, withForestOcclusion } from "./forest-occlusion";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
 import { publishForestObservation } from "./forest-observer";
@@ -179,13 +180,15 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
-    drawForestGardenProps(context, garden, "behind");
-    drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
-      ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
-      appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
-      rig: garden?.rig ?? routine?.rig });
-    if (routine) drawForestLifePartner(context, routine, elapsed);
-    drawForestGardenProps(context, garden, "front");
+    withForestOcclusion(context, world, actor, () => {
+      drawForestGardenProps(context, garden, "behind");
+      drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
+        ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
+        appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
+        rig: garden?.rig ?? routine?.rig });
+      if (routine) drawForestLifePartner(context, routine, elapsed);
+      drawForestGardenProps(context, garden, "front");
+    });
     context.restore();
   }
   drawForestResidents(context, world, elapsed, still, actor.y, "front");
@@ -536,6 +539,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const size = PET_SIZE * (dev?.heroScale ?? 1), actor = clearingActivityFrame(state.clearing);
     const bush = actor.bush?.occlude && world.bushes?.find(item => item.id === actor.bush!.id);
     if (bush && pointInPolygon(point, bush.points)) return false;
+    if (forestPointOccluded(world, actor.y, point)) return false;
     const feetY = actor.y - (actor.lift ?? 0);
     return actor.opacity > 0 && Math.abs(point.x - actor.x) < size / 2
       && point.y > feetY - size && point.y < feetY;

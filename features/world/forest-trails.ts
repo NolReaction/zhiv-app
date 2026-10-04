@@ -1,15 +1,16 @@
-import { canTraverse, createWorldNavigation, findWorldPath } from "./navigation";
-import type { FixedWorldScene, WorldPoint } from "./tiled/types";
+import { canTraverse, createWorldNavigation, findWorldPath, isWalkable } from "./navigation";
+import type { FixedWorldScene, WorldDestination, WorldPoint } from "./tiled/types";
 
-export type ForestTrailDestination = "workshop" | "quarry" | "fishing";
+export type ForestTrailDestination = WorldDestination["id"];
 export type ForestTrail = { id: string; points: readonly WorldPoint[]; distances: readonly number[]; length: number };
-const destinations: Record<ForestTrailDestination, string> = {
+const legacyDestinations: Partial<Record<ForestTrailDestination, string>> = {
   workshop: "trail-workshop", quarry: "trail-quarry", fishing: "trail-fishing",
 };
 const cache = new WeakMap<FixedWorldScene, ReadonlyMap<string, ForestTrail>>();
+const destinationCache = new WeakMap<FixedWorldScene, ReadonlyMap<string, WorldDestination>>();
 
-/** Authored centre lines and the ordinary WalkAreas share the same collision
- * rules. Invalid/missing roads remain closed; decoration cannot grant passage. */
+/** Authored centre lines are retained for legacy scenes. They never grant
+ * permission to cross an obstacle or the edge of the WalkAreas union. */
 export function forestTrails(scene: FixedWorldScene): ReadonlyMap<string, ForestTrail> {
   const existing = cache.get(scene); if (existing) return existing;
   const trails = new Map<string, ForestTrail>();
@@ -31,8 +32,33 @@ export function forestTrails(scene: FixedWorldScene): ReadonlyMap<string, Forest
   cache.set(scene, trails); return trails;
 }
 
+/** Destinations are exact foot positions. Invalid, ambiguous and blocked points
+ * fail closed; the runtime never silently moves an edited marker onto safe land. */
+export function forestDestinations(scene: FixedWorldScene): ReadonlyMap<string, WorldDestination> {
+  const existing = destinationCache.get(scene); if (existing) return existing;
+  const result = new Map<string, WorldDestination>(), source = scene.destinations;
+  if (Array.isArray(source) && source.length <= 16) {
+    const nav = createWorldNavigation(scene, (scene.actor?.size ?? 50) * .1);
+    if (nav) for (const item of source) {
+      if (!item || typeof item.id !== "string" || !item.id.trim() || !item.position
+        || !Number.isFinite(item.position.x) || !Number.isFinite(item.position.y)
+        || !Number.isFinite(item.pauseSeconds) || item.pauseSeconds < 2 || item.pauseSeconds > 60
+        || source.filter(other => other?.id === item.id).length !== 1
+        || item.siteId !== undefined && !scene.sites.some(site => site.id === item.siteId)
+        || !isWalkable(nav, item.position)) continue;
+      result.set(item.id, { ...item, position: { ...item.position } });
+    }
+  }
+  destinationCache.set(scene, result); return result;
+}
+
 export function forestTrailDestination(scene: FixedWorldScene, destination: ForestTrailDestination): WorldPoint | null {
-  const end = forestTrails(scene).get(destinations[destination])?.points.at(-1);
+  if (scene.destinations !== undefined) {
+    const point = forestDestinations(scene).get(destination)?.position;
+    return point ? { ...point } : null;
+  }
+  const legacyId = legacyDestinations[destination];
+  const end = legacyId ? forestTrails(scene).get(legacyId)?.points.at(-1) : null;
   return end ? { ...end } : null;
 }
 

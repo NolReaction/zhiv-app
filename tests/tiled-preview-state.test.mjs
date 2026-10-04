@@ -129,3 +129,13 @@ test("overlapping hits follow authored Tiled index order rather than anchor heig
   assert.equal(previewSiteAt({ ...scene, sites: [back, front] }, { x: 20, y: 20 })?.id, "front");
   assert.equal(previewSiteAt({ ...scene, sites: [front, back] }, { x: 20, y: 20 })?.id, "back");
 });
+
+test("occlusion visibility follows the selected building state without changing navigation", () => {
+  const mask = { id: "roof", frontY: 30, points: [{ x: 10, y: 10 }, { x: 30, y: 10 }, { x: 20, y: 30 }], when: { siteId: "home", level: 2 } };
+  const authored = { ...scene, occluders: [mask] };
+  assert.deepEqual(previewWorldScene(authored, { home: 1 }).occluders, []);
+  const upgraded = previewWorldScene(authored, { home: 2 });
+  assert.deepEqual(upgraded.occluders, [mask]);
+  assert.equal(upgraded.navigation, authored.navigation);
+  assert.deepEqual(authored.occluders, [mask]);
+});

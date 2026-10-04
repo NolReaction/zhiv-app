@@ -29,6 +29,8 @@
 | Исправить контакт лапы с грибом/листиком и их подъём | [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-director.ts`](../features/world/forest-director.ts), [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts) | [Устройство мира](game/world-foundation.md) |
 | Исправить обход стоящей корзинки и освобождение места при подъёме | [`forest-garden.ts`](../features/world/forest-garden.ts), [`clearing-activity.ts`](../features/world/clearing-activity.ts), [`navigation.ts`](../features/world/navigation.ts) | [Подвижные предметы](game/world-navigation.md#подвижные-предметы) |
 | Изменить проходимость и поиск пути | [`navigation.ts`](../features/world/navigation.ts); `WalkAreas`, `Obstacles`, `PointsOfInterest` в [`forest.tmj`](../world/tiled/forest.tmj) | [Поиск пути: алгоритм, границы, диагностика](game/world-navigation.md) |
+| Разметить назначения и прогулки жителей | `Destinations` в [`forest.tmj`](../world/tiled/forest.tmj); [`forest-trails.ts`](../features/world/forest-trails.ts), [`forest-residents.ts`](../features/world/forest-residents.ts) | [Точки назначения, паузы и совместимость](game/tiled-editor.md#точки-назначения-и-жители). Путь идёт по объединению `WalkAreas` с обходом препятствий |
+| Скрывать персонажей за нарисованными деревьями | `Occluders` и `Obstacles` в [`forest.tmj`](../world/tiled/forest.tmj); [`forest-occlusion.ts`](../features/world/forest-occlusion.ts), [`new-map-scene.ts`](../features/world/new-map-scene.ts), [`living-world-debug.ts`](../features/world/living-world-debug.ts) | [Силуэт кроны, локальный `frontY` и отдельный ствол](game/tiled-editor.md#перекрытие-персонажей-кроной) |
 | Изменить плавность поворотов, скорость и прибытие | [`steering.ts`](../features/world/steering.ts), исполнение — [`clearing-activity.ts`](../features/world/clearing-activity.ts) | [Закругление, торможение и безопасность](game/world-navigation.md#плавные-повороты-и-прибытие) |
 | Изменить выбор занятия, подход к предмету и прерывание | [`forest-director.ts`](../features/world/forest-director.ts), [`forest-behavior.ts`](../features/world/forest-behavior.ts) | [Устройство мира](game/world-foundation.md) |
 | Настроить вечерний костёр и отдых у огня | [`forest-campfire.ts`](../features/world/forest-campfire.ts), [`forest-campfire-painter.ts`](../features/world/forest-campfire-painter.ts), [`forest-director.ts`](../features/world/forest-director.ts) | [Костёр и DEV-сценарии](game/campfire.md) |
@@ -54,7 +56,7 @@
 
 `features/world/tiled/forest.generated.json` — результат `npm run world:export`, его не редактируют вручную. Проверка соответствия: `npm run world:check`.
 
-Реализованная локальная основа, её инварианты и дальнейшие границы: [живой лес](game/living-world-plan.md). Экспортёр поддерживает свободную полянку и территории; первая сеть троп соединяет дом, мастерскую, шахту и рыбацкий берег, по ней ходят два декоративных жителя. Закрытый мост в сеть не включён.
+Реализованная локальная основа, её инварианты и дальнейшие границы: [живой лес](game/living-world-plan.md). Пересекающиеся `WalkAreas` образуют общую территорию. Пять `Destinations` соединяют дом, мастерскую, шахту, рыбацкий берег и лесной участок; два декоративных жителя обходят доступные точки. `Occluders` скрывают персонажей за силуэтом дерева, `Obstacles` задают обход ствола. Авторский `northern-trail` сохранён; закрытый мост в сеть не включён.
 
 ## Интерфейс и правила игры
 

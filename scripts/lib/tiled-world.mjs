@@ -352,7 +352,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const campfires = new Map(), fireSeats = new Map();
   const mushroomIds = new Set(), bushes = new Map(), bushMarkers = new Map(), bushRoutes = [];
   const navigationIds = new Set(), habitats = new Map(), habitatExclusions = [], habitatAnchors = [], anchorIds = new Set();
-  const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
+  const destinationIds = new Set(), occluderIds = new Set();
+  const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Destinations: "destination", Occluders: "occluder", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
   const navigation = () => world.navigation ??= { version: 1, cellSize, areas: [], obstacles: [], interests: [] };
   if (own(mapProperties, "navigationCellSize")) navigation();
   // Group offsets accumulate once; leaf order preserves authored draw order.
@@ -380,6 +381,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (waterKind) world.water ??= { surfaces: [], exclusions: [] };
       if (metadataKind === "lights") world.lights ??= [];
       if (["walk-area", "nav-obstacle", "interest"].includes(livingKind)) navigation();
+      if (livingKind === "destination") world.destinations ??= [];
+      if (livingKind === "occluder") world.occluders ??= [];
       if (["wildlife-habitat", "wildlife-anchor"].includes(livingKind)) world.habitats ??= [];
       if (isLifeLayer && layer.name === "Mushrooms") world.mushrooms ??= [];
       if (isLifeLayer && layer.name === "Bushes") world.bushes ??= [];
@@ -451,6 +454,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const livingAt = `${at} (${object.name || `object ${objectId}`})`;
         const role = livingKind ?? authoredRole;
         const allowed = role === "interest" ? { activity: "string" }
+          : role === "destination" ? { siteId: "string", pauseSeconds: "float" }
+          : role === "occluder" ? { frontY: "float", siteId: "string", level: "int" }
           : role === "wildlife-habitat" ? { species: "string", capacity: "int", excludeHabitatId: "string" }
           : role === "wildlife-anchor" ? { habitatId: "string", kind: "string" }
           : { siteId: "string", level: "int" };
@@ -474,6 +479,32 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
             if (when) visibilityReferences.push({ when, at: livingAt });
             nav[role === "walk-area" ? "areas" : "obstacles"].push({ id, points: vertices(object, "polygon", livingAt, world), ...(when ? { when } : {}) });
           }
+        } else if (role === "destination") {
+          exact(shape, "point", `${livingAt} shape`);
+          exact(object.point, true, `${livingAt}.point`);
+          requireThat(!destinationIds.has(id), livingAt, `duplicate destination ID ${id}`);
+          destinationIds.add(id);
+          const pauseSeconds = props.pauseSeconds ?? 8;
+          requireThat(pauseSeconds >= 2 && pauseSeconds <= 60, livingAt, "pauseSeconds must be from 2 to 60 seconds");
+          world.destinations ??= [];
+          requireThat(world.destinations.length < 16, livingAt, "at most 16 destinations are supported");
+          world.destinations.push({ id, position: point(object, livingAt, world), pauseSeconds,
+            ...(own(props, "siteId") ? { siteId: identifier(props.siteId, `${livingAt}.properties.siteId`) } : {}) });
+        } else if (role === "occluder") {
+          exact(shape, "polygon", `${livingAt} shape`);
+          requireThat(!occluderIds.has(id), livingAt, `duplicate occluder ID ${id}`);
+          occluderIds.add(id);
+          const points = vertices(object, "polygon", livingAt, world);
+          // frontY is a local vertical offset from the object's origin; moving
+          // the object/group carries both its silhouette and depth threshold.
+          const frontY = own(props, "frontY") ? object.y + props.frontY : Math.max(...points.map(p => p.y));
+          requireThat(frontY >= 0 && frontY <= world.height, livingAt, "frontY must resolve inside world height");
+          const when = siteLevelCondition(props, livingAt);
+          if (when) visibilityReferences.push({ when, at: livingAt });
+          world.occluders ??= [];
+          requireThat(world.occluders.length < 256, livingAt, "at most 256 occluders are supported");
+          requireThat(points.length <= 256, livingAt, "at most 256 vertices per occluder are supported");
+          world.occluders.push({ id, points, frontY, ...(when ? { when } : {}) });
         } else if (role === "wildlife-habitat") {
           exact(shape, "polygon", `${livingAt} shape`);
           requireThat(!habitats.has(id), livingAt, `duplicate habitat ID ${id}`);
@@ -732,6 +763,11 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     habitat.anchors.push(anchor);
   }
   if (world.habitats) world.habitats = [...habitats.values()];
+  for (const destination of world.destinations ?? []) {
+    requireThat(!destination.siteId || world.sites.some(site => site.id === destination.siteId),
+      `destination ${destination.id}`, `unknown site ${destination.siteId}`);
+    requireThat(world.navigation?.areas.length, `destination ${destination.id}`, "destinations require WalkAreas");
+  }
   if (world.navigation) {
     const permanentAreas = world.navigation.areas.filter(area => !area.when);
     const blockers = [...world.navigation.obstacles.map(obstacle => obstacle.points),
@@ -743,6 +779,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       requireThat(!blockers.some(polygon => insidePolygon(position, polygon)), at, "position must not overlap an obstacle, site collision or water surface");
     };
     for (const interest of world.navigation.interests) validatePosition(interest.position, `navigation interest ${interest.id}`);
+    for (const destination of world.destinations ?? []) validatePosition(destination.position, `destination ${destination.id}`);
     if (world.navigation.areas.length && world.actor) validatePosition(world.actor.spawn, "navigation spawn");
   }
   return world;

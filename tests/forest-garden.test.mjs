@@ -113,7 +113,10 @@ test("authored basket markers are authoritative, unsafe points fail closed, and 
   const valid = createForestGarden(moved);
   assert.deepEqual(valid.basket.position, moved.basket.position);
   assert.equal(valid.basket.size, 14);
-  for (const position of [{ x: 0, y: 0 }, moved.actor.spawn, { x: NaN, y: 0 }, moved.sites[0].entry]) {
+  // An entrance can become reachable as WalkAreas grow; the solid house boundary remains blocked.
+  const houseBoundary = moved.sites.find(site => site.id === "home").collision[0];
+  assert.equal(isWalkable(createWorldNavigation(moved), houseBoundary), false);
+  for (const position of [{ x: 0, y: 0 }, moved.actor.spawn, { x: NaN, y: 0 }, houseBoundary]) {
     const bad = scene(); bad.basket.position = position;
     const result = createForestGarden(bad);
     assert.equal(result.basket, null);

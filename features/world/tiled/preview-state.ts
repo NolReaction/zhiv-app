@@ -18,7 +18,8 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
   const states = scene.sites.map(site => previewSiteVisual(site, levels));
   const hasGeometry = states.some(state => state?.geometry);
   const hasConditions = scene.terrain.some(image => image.when)
-    || scene.navigation?.areas.some(area => area.when) || scene.navigation?.obstacles.some(obstacle => obstacle.when);
+    || scene.navigation?.areas.some(area => area.when) || scene.navigation?.obstacles.some(obstacle => obstacle.when)
+    || scene.occluders?.some(occluder => occluder.when);
   if (!hasGeometry && !hasConditions) return scene;
   let cache = sceneCache.get(scene);
   if (!cache) { cache = new Map(); sceneCache.set(scene, cache); }
@@ -32,6 +33,7 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
     const geometry = states[index]?.geometry;
     return geometry ? { ...site, imagePlacement: undefined, doorway: undefined, light: undefined, chimney: undefined, window: undefined, ...geometry } : site;
   }) : scene.sites, terrain: filterVisible(scene.terrain),
+    ...(scene.occluders ? { occluders: filterVisible(scene.occluders) } : {}),
     ...(scene.navigation ? { navigation: { ...scene.navigation,
       areas: filterVisible(scene.navigation.areas), obstacles: filterVisible(scene.navigation.obstacles) } } : {}) };
   if (cache.size >= 32) cache.delete(cache.keys().next().value!);

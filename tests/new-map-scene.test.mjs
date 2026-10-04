@@ -599,6 +599,41 @@ test("visible hero taps take priority over overlapping garden and house menu geo
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("foreground contours let hidden hero taps reach buildings while visible portions keep their response", async () => {
+  for (const partial of [false, true]) {
+    const mask = { id: "roof", frontY: 670, points: [
+      { x: 610, y: 600 }, { x: partial ? 630 : 650, y: 600 },
+      { x: partial ? 630 : 650, y: 670 }, { x: 610, y: 670 },
+    ] };
+    const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome], occluders: [mask] });
+    const env = browser(); let engine;
+    try {
+      worldDevStore.patch(quietClearing);
+      const canvas = env.surface(400), places = [], selections = [];
+      const loading = createMapEngine(canvas, options, place => places.push(place), [], undefined, {},
+        { onSelectionChange: selection => selections.push(selection) });
+      env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+      engine.control("overview");
+      const tap = (x, y) => {
+        const projection = mapProjection(canvas), event = { pointerId: 1, pointerType: "touch", button: 0,
+          clientX: projection.left + x * projection.zoom, clientY: projection.top + y * projection.zoom };
+        canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+        canvas.events.get("pointerup")({ ...event, type: "pointerup" });
+      };
+      tap(625, 642);
+      assert.equal(env.timers.size, 0, "a hidden part cannot start the hero's attention response");
+      assert.deepEqual(places, ["house"], "the visible building receives the tap above a hidden hero");
+      assert.equal(selections.at(-1).objectId, "home");
+      if (partial) {
+        tap(635, 642);
+        assert.equal(env.timers.size, 1, "the still-visible part of the body remains tappable");
+        assert.deepEqual(places, ["house"]);
+        assert.equal(selections.at(-1), null, "the hero's visible response takes priority over the building");
+      }
+    } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+  }
+});
+
 test("object marker native touch capture opens once and preserves marker-origin drag pinch and cancellation", async () => {
   const site = { ...clearingHome, anchor: { x: 650, y: 700 } };
   const { createMapEngine, worldDevStore } = await modules({ sites: [site] });

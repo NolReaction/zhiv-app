@@ -140,6 +140,40 @@ test("passage width respects actor radius and smoothing never clips obstacle cor
   assert.deepEqual(findWorldPath(corner, start, end), path, "cached adjacency preserves deterministic path choices");
 });
 
+test("extending WalkAreas keeps existing narrow-corridor cells and routes fixed in world coordinates", () => {
+  const areas = [polygon(rect(20, 20, 6, 56), "vertical"), polygon(rect(20, 70, 60, 6), "horizontal")];
+  const original = createWorldNavigation(scene({ areas }), 2), start = p(22.5, 30), end = p(60, 72.5);
+  assert.equal(canTraverse(original, start, end), false, "the route must negotiate the corner");
+  const path = findWorldPath(original, start, end);
+  pathSafe(original, path, start, end);
+  const corridorCells = nav => Array.from(nav.grid.walkable, (walkable, id) => walkable ? p(
+    nav.grid.origin.x + id % nav.grid.columns * nav.cellSize,
+    nav.grid.origin.y + Math.floor(id / nav.grid.columns) * nav.cellSize,
+  ) : null).filter(point => point && point.x >= 20 && point.x <= 80 && point.y >= 20 && point.y <= 76);
+  for (const remote of [rect(3, 3, 5, 5), rect(-8.2, -7.3, 6, 6), rect(93.1, 92.7, 6, 6)]) {
+    const expanded = createWorldNavigation(scene({ areas: [...areas, polygon(remote, "remote-area")] }), 2);
+    assert.ok(expanded);
+    assert.deepEqual(corridorCells(expanded), corridorCells(original), "distant geometry cannot shift existing samples");
+    const expandedPath = findWorldPath(expanded, start, end);
+    pathSafe(expanded, expandedPath, start, end);
+    assert.deepEqual(expandedPath, path, "the same corridor retains its deterministic path");
+  }
+});
+
+test("world-aligned cells cover fractional bounds while collision bounds and allocation limits stay exact", () => {
+  const nav = createWorldNavigation(scene({ cellSize: 5, areas: [polygon(rect(3.1, 8.4, 24.2, 24.2))] }), 1);
+  assert.equal(nav.bounds.x, 3.1); assert.equal(nav.bounds.y, 8.4);
+  assert.ok(Math.abs(nav.bounds.width - 24.2) < 1e-10 && Math.abs(nav.bounds.height - 24.2) < 1e-10);
+  assert.deepEqual(nav.grid.origin, p(2.5, 7.5));
+  assert.equal(nav.grid.columns, 6); assert.equal(nav.grid.rows, 6);
+  assert.equal(nav.stats.cells, 36);
+  assert.equal(nav.grid.walkable[0], 0, "rounding bounds outward does not authorize outside cells");
+  assert.equal(isWalkable(nav, p(4, 20)), false, "the original boundary still enforces foot radius");
+  assert.equal(isWalkable(nav, p(4.2, 20)), true);
+  // Alignment may add a row/column, and those allocations use the same budget.
+  assert.equal(createWorldNavigation(scene({ cellSize: 1, areas: [polygon(rect(.1, .1, 256, 256))] }), 0), null);
+});
+
 test("scene geometry is copied and cache invalidation uses a new scene snapshot", () => {
   const source = scene({ obstacles: [polygon(rect(45, 35, 10, 30))] }), nav = createWorldNavigation(source);
   assert.equal(canTraverse(nav, p(15, 50), p(85, 50)), false);

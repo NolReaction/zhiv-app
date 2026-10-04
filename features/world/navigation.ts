@@ -233,7 +233,11 @@ function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigatio
   const areaPoints = source.areas.flatMap(area => area.points);
   if (areaPoints.length > WORLD_NAVIGATION_LIMITS.areaEdges) return null;
   const box = bounds(areaPoints), cellSize = source.cellSize;
-  const columns = Math.max(1, Math.ceil(box.width / cellSize)), rows = Math.max(1, Math.ceil(box.height / cellSize));
+  // Keep world-space cell centres fixed when an unrelated WalkArea extends the
+  // bounds. Otherwise a narrow existing passage can lose its sampled cells.
+  const firstColumn = Math.floor(box.x / cellSize), firstRow = Math.floor(box.y / cellSize);
+  const columns = Math.max(1, Math.ceil((box.x + box.width) / cellSize) - firstColumn);
+  const rows = Math.max(1, Math.ceil((box.y + box.height) / cellSize) - firstRow);
   if (!Number.isFinite(columns * rows) || columns * rows > WORLD_NAVIGATION_LIMITS.cells) return null;
   const rowStep = Math.max(24, cellSize * 4), rowOrigin = box.y;
   const rowCount = Math.max(1, Math.ceil(box.height / rowStep) + 1);
@@ -256,7 +260,8 @@ function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigatio
   const boundary = buildIndex(boundaryEdges, indexBounds, rowStep), blocked = buildIndex(blockerEdges, indexBounds, rowStep);
   if (!boundary || !blocked) return null;
   const nav: WorldNavigation = { radius, cellSize, bounds: box,
-    grid: { origin: { x: box.x + cellSize / 2, y: box.y + cellSize / 2 }, columns, rows, walkable: new Uint8Array(columns * rows) },
+    grid: { origin: { x: firstColumn * cellSize + cellSize / 2, y: firstRow * cellSize + cellSize / 2 },
+      columns, rows, walkable: new Uint8Array(columns * rows) },
     debug: { boundary: boundaryEdges.map(({ a, b }) => ({ a: { ...a }, b: { ...b } })), blockers: validBlockers.map(polygon => polygon.points) },
     stats: { cells: columns * rows, walkableCells: 0, boundaryEdges: boundaryEdges.length, blockerEdges: blockerEdges.length, lastSearch: null } };
   geometry.set(nav, { areas: validAreas, blockers: validBlockers, boundary, blocked, rowOrigin, rowStep,

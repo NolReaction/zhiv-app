@@ -88,6 +88,51 @@ test("fauna diagnostics use the same IDs and targets independently of navigation
   });
 });
 
+test("navigation shows destination names and bounded occlusion depth without changing authored data", () => {
+  inEnvironment("development", () => {
+    const authored = { ...scene,
+      destinations: [{ id: "workshop", position: { x: 80, y: 60 }, siteId: "workshop", pauseSeconds: 12 }],
+      occluders: [{ id: "oak-canopy", points: rect(10, 20, 25, 18), frontY: 44 }],
+    };
+    const original = structuredClone(authored);
+    const { ctx, calls } = drawing(2);
+    drawLivingWorldDebug(ctx, authored, { debugNavigation: true });
+    const labels = calls.filter(([name]) => name === "fillText").map(([, text]) => text);
+    assert.deepEqual(labels, ["oak-canopy · frontY", "место: workshop", "Мохлик"]);
+    assert.ok(calls.some(([name, color]) => name === "strokeStyle" && color === "#bc9dff"));
+    assert.ok(calls.some(([name, dash]) => name === "setLineDash" && dash[0] === 2.5 && dash[1] === 2),
+      "mask outline has screen-scaled dashes");
+    assert.ok(calls.some((call, index) => call[0] === "moveTo" && call[1] === 10 && call[2] === 44
+      && calls[index + 1][0] === "lineTo" && calls[index + 1][1] === 35 && calls[index + 1][2] === 44),
+    "frontY line spans only the mask's horizontal bounds");
+    assert.ok(calls.some((call, index) => call[0] === "moveTo" && call[1] === 78 && call[2] === 60
+      && calls[index + 1][0] === "lineTo" && calls[index + 1][1] === 82 && calls[index + 1][2] === 60),
+    "destination marker is centered on its authored position");
+    assert.equal(calls.some(([name]) => ["clip", "drawImage", "getImageData", "putImageData"].includes(name)), false);
+    assert.deepEqual(authored, original);
+    const faunaOnly = drawing();
+    drawLivingWorldDebug(faunaOnly.ctx, authored, { debugFauna: true });
+    assert.equal(faunaOnly.calls.some(([name, text]) => name === "fillText" && /workshop|frontY/.test(text)), false);
+  });
+});
+
+test("route authoring diagnostics cap masks, contour vertices and destination markers", () => {
+  inEnvironment("development", () => {
+    const points = Array.from({ length: 1000 }, (_, index) => ({ x: index % 50, y: Math.floor(index / 50) }));
+    const authored = { sites: [],
+      occluders: Array.from({ length: 100 }, (_, index) => ({ id: `mask-${index}`, points, frontY: 25 })),
+      destinations: Array.from({ length: 100 }, (_, index) => ({ id: `stop-${index}`, position: { x: 80, y: 60 }, pauseSeconds: 8 })),
+    };
+    const { ctx, calls } = drawing();
+    drawLivingWorldDebug(ctx, authored, { debugNavigation: true });
+    assert.equal(calls.filter(([name]) => name === "closePath").length, 64);
+    assert.equal(calls.filter(([name, text]) => name === "fillText" && text.endsWith(" · frontY")).length, 64);
+    assert.equal(calls.filter(([name, text]) => name === "fillText" && text.startsWith("место:")).length, 16);
+    const vertices = calls.filter(([name]) => name === "moveTo" || name === "lineTo");
+    assert.equal(vertices.length, 64 * (256 + 2) + 16 * 4);
+  });
+});
+
 test("long closed boundaries cover the full contour without a false closing chord", () => {
   inEnvironment("development", () => {
     const radius = 100;

@@ -43,6 +43,11 @@ export type WorldPath = {
 };
 export type WorldWaterPolygon = { id: string; points: WorldPoint[] };
 export type WorldNavigationPolygon = { id: string; points: WorldPoint[]; when?: WorldVisibilityCondition };
+/** A visual silhouette, independent of ground collision. Characters behind frontY
+ * are clipped by this polygon; those in front keep their complete sprite. */
+export type WorldOccluder = WorldNavigationPolygon & { frontY: number };
+/** World travel targets deliberately do not enlarge the hero's home interests. */
+export type WorldDestination = { id: string; position: WorldPoint; siteId?: string; pauseSeconds: number };
 export type WorldInterest = {
   id: string;
   position: WorldPoint;
@@ -114,6 +119,9 @@ export type FixedWorldScene = {
   lights?: WorldLight[];
   /** Absent means legacy routes; an explicitly empty area list permits no free walking. */
   navigation?: WorldNavigation;
+  /** Absent keeps legacy Paths; an empty list explicitly disables destination travel. */
+  destinations?: WorldDestination[];
+  occluders?: WorldOccluder[];
   /** Absent retains legacy fauna; [] deliberately contains no inhabitants. */
   habitats?: WorldHabitat[];
 };
