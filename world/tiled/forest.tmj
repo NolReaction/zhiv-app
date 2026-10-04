@@ -20324,6 +20324,54 @@
                  "width":0,
                  "x":957.975313565464,
                  "y":233.461266672494
+                },
+                {
+                 "height":0,
+                 "id":417,
+                 "name":"plesk-fishing",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        { "name":"pauseSeconds", "type":"float", "value":18 },
+                        { "name":"role", "type":"string", "value":"destination" }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1214,
+                 "y":744
+                },
+                {
+                 "height":0,
+                 "id":418,
+                 "name":"plesk-trade",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        { "name":"pauseSeconds", "type":"float", "value":20 },
+                        { "name":"role", "type":"string", "value":"destination" }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1157,
+                 "y":697
+                },
+                {
+                 "height":0,
+                 "id":419,
+                 "name":"plesk-rest",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        { "name":"pauseSeconds", "type":"float", "value":12 },
+                        { "name":"role", "type":"string", "value":"destination" }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":713
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -23797,7 +23845,7 @@
          "y":0
         }],
  "nextlayerid":122,
- "nextobjectid":417,
+ "nextobjectid":420,
  "orientation":"orthogonal",
  "properties":[
         {

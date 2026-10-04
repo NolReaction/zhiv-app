@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldDevTabs, WorldDevPanelContent, gardenDevActionUnavailable } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
-const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
+const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
 const { WorldDevCheats } = await vite.ssrLoadModule("/features/world/dev/world-dev-cheats.tsx");
@@ -87,6 +87,7 @@ test("arrow keys wrap, Home and End select and focus; Tab and composing/modifier
 test("each DEV page renders only its controls, with no simulation or account mutation during inspection", () => {
   const snapshot = worldDevStore.getSnapshot();
   const expected = {
+    plesk: "Плёск · рыбак и торговец",
     scenarios: "Готовые сценарии", scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
     world: "Погода и живность", buildings: "Постройки", cheats: "Читы хозяйства", ai: "Мышление и память",
     overlays: "Разметка сцены", routes: "Навигация и входы", app: "Приложение и тесты",
@@ -325,4 +326,52 @@ test("scenario cards explain conditions and dispatch one explicit choice without
   assert.deepEqual(calls.actions, [{ kind: "scenario", scenario: "campfire" }, { kind: "scenario", scenario: "ground-birds" }]);
   assert.match(markup, /Уменьшенное движение сохраняется/);
   assert.match(markup, /Положение Мохлика/);
+});
+
+test("Plesk DEV page exposes all actions and turns without closing or touching the hero", () => {
+  const view = panel("plesk", { worldView: true, shortcut: () => assert.fail("preview must keep the panel open") });
+  const actions = view.elements.filter(element => element.props["data-resident-action"]);
+  assert.deepEqual(actions.map(element => element.props["data-resident-action"]), [...WORLD_DEV_RESIDENT_ACTIONS]);
+  for (const button of actions) button.props.onClick();
+  assert.deepEqual(view.calls.actions, WORLD_DEV_RESIDENT_ACTIONS.map(action => ({ kind: "resident", action })));
+  view.elements.find(element => element.type === "button" && labelText(element) === "Спиной").props.onClick();
+  assert.deepEqual(view.calls.patches, [{ residentDirection: "back" }]);
+  const loop = view.elements.find(element => element.props.label === "Повторять действие Плёска");
+  loop.props.onChange("cast");
+  assert.deepEqual(view.calls.actions.at(-1), { kind: "resident", action: "cast", repeat: true });
+  loop.props.onChange("auto");
+  assert.deepEqual(view.calls.patches.at(-1), { residentPreview: null });
+  view.elements.find(element => element.type === "button" && labelText(element) === "Весь распорядок у пирса").props.onClick();
+  assert.deepEqual(view.calls.actions.at(-1), { kind: "scenario", scenario: "plesk" });
+  assert.match(view.markup, /Улов здесь не пополняет кладовую/);
+  assert.doesNotMatch(view.markup, /за пределами домашнего круга/);
+  assert.match(panel("plesk").markup, /Откройте большую карту/);
+});
+
+test("paused resident previews explain the block while stop and reset remain available", () => {
+  const reason = "Сцена на паузе";
+  const view = panel("plesk", { unavailable: action => action.kind === "resident" ? reason : null });
+  for (const button of view.elements.filter(element => element.props["data-resident-action"])) {
+    assert.equal(button.props.disabled, true);
+    assert.equal(button.props["aria-describedby"], "dev-test-resident-reason");
+    button.props.onClick();
+  }
+  assert.deepEqual(view.calls.actions, []);
+  const loop = view.elements.find(element => element.props.label === "Повторять действие Плёска");
+  loop.props.onChange("reel"); assert.deepEqual(view.calls.actions, []);
+  for (const label of ["Отменить проверку", "Сброс Плёска"]) {
+    const button = view.elements.find(element => element.type === "button" && labelText(element) === label);
+    assert.notEqual(button.props.disabled, true); button.props.onClick();
+  }
+  assert.deepEqual(view.calls.patches, [{ residentPreview: null }, { residentPreview: null, residentDirection: "front" }]);
+});
+
+test("full fishing rehearsal has explicit start and cancel without issuing economy commands", () => {
+  const view = panel("scenarios", { shortcut: () => assert.fail("fishing preview must keep the panel open") });
+  const buttons = view.elements.filter(element => element.type === "button");
+  buttons.find(button => renderToStaticMarkup(button).includes("Мохлик на рыбалке")).props.onClick();
+  buttons.find(button => labelText(button) === "Остановить тестовую рыбалку Мохлика").props.onClick();
+  assert.deepEqual(view.calls.actions, [{ kind: "scenario", scenario: "fishing" }, { kind: "life", action: "idle" }]);
+  assert.match(view.markup, /Без заданий и наград аккаунта/);
+  assert.deepEqual(view.calls.patches, []);
 });

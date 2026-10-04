@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createWorldDevStore, WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_ENABLED, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
+const { createWorldDevStore, WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_ENABLED, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 
@@ -33,6 +33,7 @@ test("disabled store ignores every mutation and does not register subscribers", 
   store.triggerPose("greet"); store.triggerLife("butterfly"); store.triggerLife("bush"); store.triggerLife("idle");
   for (const kind of ["water-bush", "harvest-berries", "grow-berries"]) store.triggerLife(kind);
   store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
+  store.triggerResident("cast", true); store.triggerScenario("plesk"); store.triggerScenario("fishing");
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
   unsubscribe(); unsubscribe();
@@ -297,7 +298,7 @@ test("selecting a held pose cancels a manual gesture without reusing its event I
 test("camera events validate actions and keep increasing IDs across reset", () => {
   const store = createWorldDevStore(true);
   let previousId = 0;
-  for (const action of ["in", "out", "overview", "pet", "pet"]) {
+  for (const action of ["in", "out", "overview", "pet", "plesk", "fishing", "pet"]) {
     store.triggerCamera(action);
     const event = store.getSnapshot().cameraEvent;
     assert.equal(event.action, action);
@@ -325,4 +326,41 @@ test("art error reporting is transient and reset restores every default", () => 
   store.reset(); assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   store.patch({ equipment: { palette: "moss", head: null, neck: null } });
   store.patch({ equipment: null }); assert.equal(store.getSnapshot().equipment, null);
+});
+
+test("Plesk actions use isolated immutable previews, independent direction and replay IDs", () => {
+  const store = createWorldDevStore(true);
+  store.patch({ direction: "back", residentDirection: "right", pose: "sleep", paused: true, reducedMotion: "on" });
+  let previousId = 0;
+  for (const action of [...WORLD_DEV_RESIDENT_ACTIONS, "routine"]) {
+    let updates = 0; const unsubscribe = store.subscribe(() => updates++);
+    store.triggerResident(action, true);
+    const state = store.getSnapshot();
+    assert.equal(updates, 1, "preview and camera update together"); unsubscribe();
+    assert.equal(state.residentPreview.action, action);
+    assert.equal(state.residentPreview.direction, "right");
+    assert.equal(state.residentPreview.repeat, true);
+    assert.ok(state.residentPreview.id > previousId); previousId = state.residentPreview.id;
+    assert.equal(state.cameraEvent.action, "plesk");
+    assert.equal(state.pose, "sleep"); assert.equal(state.direction, "back");
+    assert.equal(state.paused, true); assert.equal(state.reducedMotion, "on");
+    assert.ok(Object.isFrozen(state.residentPreview));
+  }
+  const active = store.getSnapshot().residentPreview;
+  store.patch({ residentDirection: "left" });
+  assert.equal(store.getSnapshot().residentPreview.id, active.id, "turning never restarts animation time");
+  assert.equal(store.getSnapshot().residentPreview.direction, "left");
+  assert.equal(active.direction, "right", "old snapshots remain unchanged");
+  store.triggerResident("catch");
+  assert.equal(store.getSnapshot().residentPreview.repeat, false);
+  assert.ok(store.getSnapshot().residentPreview.id > previousId);
+  previousId = store.getSnapshot().residentPreview.id;
+  store.patch({ residentPreview: null }); assert.equal(store.getSnapshot().residentPreview, null);
+  store.reset(); store.triggerResident("catch");
+  assert.ok(store.getSnapshot().residentPreview.id > previousId);
+  const beforeInvalid = store.getSnapshot();
+  for (const action of ["dance", "auto", null, undefined, {}, 1]) store.triggerResident(action);
+  store.triggerResident("walk", "yes");
+  store.patch({ residentDirection: "north", residentPreview: { id: 999, action: "cast", direction: "back", repeat: true } });
+  assert.equal(store.getSnapshot(), beforeInvalid, "patching cannot forge an event or unsupported direction");
 });

@@ -101,10 +101,9 @@ test("offscreen residents are culled before sprite creation and need no addition
   Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement() { assert.fail("offscreen sprite must not allocate"); } } });
   try {
     const ctx = { canvas: { width: 100, height: 100 }, getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
-      drawImage() { assert.fail("offscreen resident must not draw its atlas"); } };
-    const loadedAtlas = { naturalWidth: 1024, naturalHeight: 1024 };
-    drawForestResidents(ctx, world(), 0, false, 700, "behind", loadedAtlas);
-    drawForestResidents(ctx, world(), 0, false, 700, "front", loadedAtlas);
+      drawImage() { assert.fail("offscreen resident must not draw its sprite"); } };
+    drawForestResidents(ctx, world(), 0, false, 700, "behind");
+    drawForestResidents(ctx, world(), 0, false, 700, "front");
   } finally { if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document; }
 });
 
@@ -124,7 +123,7 @@ test("explicit empty, ambiguous or malformed destinations never fall back to leg
   const legacy = legacyWorld();
   assert.equal(forestTrails(legacy).size, 2);
   assert.deepEqual(forestTrailDestination(legacy, "workshop"), { x: 80, y: 80 });
-  assert.equal(forestResidentFrames(legacy, 10, false).length, 1);
+  assert.equal(forestResidentFrames(legacy, 10, false).length, 0, "a personal resident never occupies the hero legacy fishing route");
   const empty = { ...legacy, destinations: [] };
   assert.equal(forestTrailDestination(empty, "workshop"), null);
   assert.equal(findForestTrailPath(empty, legacy.actor.spawn, "workshop"), null);

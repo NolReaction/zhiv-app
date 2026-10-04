@@ -28,6 +28,9 @@ export type ForestSessionState = {
   explorationId?: string | null;
   /** Shared cosmetic departure/return; deliberately omitted from saved memory. */
   journeyTravel?: ForestJourneyTravel;
+  /** Isolated DEV playback clocks; never included in forest memory. */
+  residentPreview?: { id: number; startedAt: number };
+  fishingPreview?: { id: number; startedAt: number };
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;

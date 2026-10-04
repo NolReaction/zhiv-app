@@ -17126,6 +17126,30 @@
       },
       "pauseSeconds": 12,
       "siteId": "woodlot"
+    },
+    {
+      "id": "plesk-fishing",
+      "position": {
+        "x": 1214,
+        "y": 744
+      },
+      "pauseSeconds": 18
+    },
+    {
+      "id": "plesk-trade",
+      "position": {
+        "x": 1157,
+        "y": 697
+      },
+      "pauseSeconds": 20
+    },
+    {
+      "id": "plesk-rest",
+      "position": {
+        "x": 1168,
+        "y": 713
+      },
+      "pauseSeconds": 12
     }
   ],
   "occluders": [

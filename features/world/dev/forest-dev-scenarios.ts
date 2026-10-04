@@ -6,6 +6,9 @@ import type { WorldDevScenario } from "./world-dev-store";
 
 /** Caller must suspend account persistence before applying any DEV event. */
 export function applyForestDevScenario(state: ForestSessionState, kind: WorldDevScenario, options: ForestDirectorOptions) {
+  // These dedicated previews are coordinated by the scene/session, not the
+  // clearing director. In particular, an NPC check must not move the hero.
+  if (kind === "plesk" || kind === "fishing") return;
   cancelForestDirector(state);
   state.animation = null; state.reaction = 0;
   if (kind === "birds" || kind === "ground-birds") {

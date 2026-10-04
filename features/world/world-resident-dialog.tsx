@@ -1,11 +1,24 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import { pleskSprite } from "./plesk-sprite";
 import { Fish, Package, RefreshCw, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { PantrySale } from "@/features/economy/world-pantry-menu";
 import styles from "./world-resident-dialog.module.css";
+
+function PleskPortrait() {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const ctx = canvas.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 96, 96); ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(pleskSprite("greet", "front", 0, .3, true), 6, 6, 84, 84);
+  }, []);
+  return <canvas ref={canvas} className={styles.emblem} width={96} height={96} aria-hidden="true" />;
+}
 
 type ResidentActions = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void };
 
@@ -16,7 +29,7 @@ export function PleskConversation({ economy, onFishing, onOpenPantry }: Resident
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   return <div className={styles.conversation} aria-busy={economy.busy || undefined}>
     <blockquote>«Удочку держи крепко, а день не торопи. Хорошая рыба любит терпеливых!»</blockquote>
-    <p className={styles.story}>Плёск знает тихие места на берегу, проверяет снасти и скупает улов. Между делами заглядывает к соседям.</p>
+    <p className={styles.story}>Плёск знает тихие места на берегу, проверяет снасти и скупает улов. Его место — у деревянного пирса выше по берегу.</p>
     {(economy.error || economy.uncertain) && <div className={styles.recovery} role="alert">
       <p>{economy.uncertain ? "Проверяем последнюю продажу. Дождитесь подтверждения, прежде чем торговать снова." : economy.error}</p>
       <button type="button" disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={14} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>
@@ -39,7 +52,7 @@ export function WorldResidentDialog({ open, onClose, onCloseAutoFocus, ...action
       <DialogOverlay className={styles.scrim} />
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={onCloseAutoFocus}>
         <header className={styles.header}>
-          <span className={styles.emblem} aria-hidden="true" />
+          <PleskPortrait />
           <div><DialogTitle className={styles.name}>Плёск</DialogTitle><DialogDescription className={styles.role}>Главный рыбак · торговец</DialogDescription></div>
           <button type="button" onClick={onClose} aria-label="Попрощаться с Плёском"><X size={20} aria-hidden="true" /></button>
         </header>

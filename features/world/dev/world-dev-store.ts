@@ -1,12 +1,15 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
+import type { PleskAction } from "../plesk-resident";
 import { TILED_WORLD } from "../presentation";
 import { initialPreviewLevels } from "../tiled/preview-state";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
-export type WorldDevCameraAction = "in" | "out" | "overview" | "pet";
+export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" | "fishing";
 export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "water-bush" | "harvest-berries" | "grow-berries" | "watch-birds" | "campfire" | "idle";
 
 export const WORLD_DEV_SCENARIOS = [
+  { id: "plesk", label: "Плёск у пирса", description: "Рыбак готовит снасти, забрасывает, ждёт поклёвку и складывает улов; затем продолжает свой распорядок." },
+  { id: "fishing", label: "Мохлик на рыбалке", description: "Полный тестовый выход: путь к берегу, заброс, поклёвка, улов и возвращение. Без заданий и наград аккаунта." },
   { id: "birds", label: "Птицы на полянке", description: "Ясный день и пара птиц: посадка, реакция на близкие шаги, взлёт." },
   { id: "ground-birds", label: "Птицы на земле", description: "Посадка на свободную землю, короткие прыжки, поиск корма и настороженность рядом с Мохликом." },
   { id: "campfire", label: "Вечер у костра", description: "Сухой очаг и ночь: огонь разгорается, Мохлик подходит и отдыхает рядом." },
@@ -14,6 +17,13 @@ export const WORLD_DEV_SCENARIOS = [
   { id: "tired", label: "Уставший Мохлик", description: "Тестовая усталость вечером: наблюдаем выбор отдыха и пути домой." },
 ] as const;
 export type WorldDevScenario = typeof WORLD_DEV_SCENARIOS[number]["id"];
+
+export const WORLD_DEV_RESIDENT_ACTIONS = Object.freeze([
+  "idle", "walk", "cast", "fish", "bite", "reel", "catch", "pack", "trade", "rest", "greet",
+] as const satisfies readonly PleskAction[]);
+export type WorldDevResidentPreview = Readonly<{
+  id: number; action: "routine" | PleskAction; direction: PixelDirection; repeat: boolean;
+}>;
 
 export const WORLD_DEV_POSES = Object.freeze([
   "idle", "walk", "blink", "sleep", "drowsy", "stretch", "crouch", "jump", "groom", "greet",
@@ -34,6 +44,8 @@ export type WorldDevState = Readonly<{
   reducedMotion: "auto" | "on" | "off";
   pose: "auto" | PixelPose;
   direction: PixelDirection;
+  residentDirection: PixelDirection;
+  residentPreview: WorldDevResidentPreview | null;
   heroScale: number;
   showHero: boolean;
   showBuildings: boolean;
@@ -58,6 +70,7 @@ export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   weather: "auto", timeOfDay: "auto", butterflies: "auto", fireflies: "auto", birds: "auto",
   autoLife: true, navigationMode: "auto", puddles: true,
   paused: false, reducedMotion: "auto", pose: "auto", direction: "front", heroScale: 1,
+  residentDirection: "front", residentPreview: null,
   showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true,
   previewBuildings: false,
   debug: false, debugWater: false, debugNavigation: false, debugFauna: false,
@@ -72,16 +85,19 @@ const enumValues = {
   reducedMotion: ["auto", "on", "off"], pose: ["auto", ...WORLD_DEV_POSES],
   navigationMode: ["auto", "routes"],
   direction: ["front", "back", "left", "right"],
+  residentDirection: ["front", "back", "left", "right"],
 } as const;
 const booleanKeys = ["paused", "autoLife", "puddles", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
+const isResidentAction = (value: unknown): value is "routine" | PleskAction => value === "routine"
+  || WORLD_DEV_RESIDENT_ACTIONS.some(action => action === value);
 const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "watch-birds", "campfire", "idle"].some(kind => kind === value);
 
 /** Ephemeral visual overrides only; this store never touches player progress or storage. */
 export function createWorldDevStore(enabled: boolean) {
   let state = WORLD_DEV_DEFAULTS;
-  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0;
+  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0, residentEventId = 0;
   const listeners = new Set<() => void>();
   const publish = (next: WorldDevState) => {
     if (!enabled || next === state) return;
@@ -110,6 +126,10 @@ export function createWorldDevStore(enabled: boolean) {
       }
       // Events may be cancelled here, but only the trigger methods can create them.
       if (patch.animation === null) next.animation = null;
+      if (patch.residentPreview === null) next.residentPreview = null;
+      if (next.residentPreview && next.residentDirection !== state.residentDirection) {
+        next.residentPreview = Object.freeze({ ...next.residentPreview, direction: next.residentDirection });
+      }
       if (patch.lifeEvent === null || isPose(patch.pose)) next.lifeEvent = null;
       if (isRecord(patch.levels)) {
         const levels = Object.fromEntries(TILED_WORLD.sites.map(site => {
@@ -144,17 +164,31 @@ export function createWorldDevStore(enabled: boolean) {
     },
     triggerScenario(kind: WorldDevScenario) {
       if (!enabled || !WORLD_DEV_SCENARIOS.some(item => item.id === kind)) return;
+      if (kind === "plesk") {
+        publish({ ...state, paused: false, weather: "clear", timeOfDay: "day",
+          residentPreview: Object.freeze({ id: ++residentEventId, action: "routine", direction: state.residentDirection, repeat: true }),
+          scenarioEvent: Object.freeze({ id: ++scenarioEventId, kind }),
+          cameraEvent: Object.freeze({ id: ++cameraEventId, action: "plesk" }) });
+        return;
+      }
       publish({ ...state, paused: false, pose: "auto", animation: null, lifeEvent: null,
         autoLife: true, navigationMode: "auto", showHero: true, showBuildings: true,
-        weather: kind === "rain" ? "downpour" : "clear", timeOfDay: kind === "birds" || kind === "ground-birds" ? "day" : "night",
+        weather: kind === "rain" ? "downpour" : "clear", timeOfDay: kind === "birds" || kind === "ground-birds" || kind === "fishing" ? "day" : "night",
         butterflies: "auto", fireflies: "auto", birds: "auto",
+        cameraEvent: kind === "fishing" ? Object.freeze({ id: ++cameraEventId, action: "fishing" as const }) : state.cameraEvent,
         scenarioEvent: Object.freeze({ id: ++scenarioEventId, kind }) });
+    },
+    triggerResident(action: "routine" | PleskAction, repeat = false) {
+      if (!enabled || !isResidentAction(action) || typeof repeat !== "boolean") return;
+      publish({ ...state,
+        residentPreview: Object.freeze({ id: ++residentEventId, action, direction: state.residentDirection, repeat }),
+        cameraEvent: Object.freeze({ id: ++cameraEventId, action: "plesk" }) });
     },
     triggerBirds() {
       if (enabled) publish({ ...state, birdEvent: ++birdEventId });
     },
     triggerCamera(action: WorldDevCameraAction) {
-      if (enabled && ["in", "out", "overview", "pet"].some(option => option === action)) {
+      if (enabled && ["in", "out", "overview", "pet", "plesk", "fishing"].some(option => option === action)) {
         publish({ ...state, cameraEvent: Object.freeze({ id: ++cameraEventId, action }) });
       }
     },

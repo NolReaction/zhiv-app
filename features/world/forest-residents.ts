@@ -13,8 +13,9 @@ export function forestResidentFrames(scene: FixedWorldScene, elapsed: number, st
 }
 
 /** Only the body is interactive; the fishing line never steals water taps. */
-export function forestResidentAt(scene: FixedWorldScene, elapsed: number, still: boolean, point: WorldPoint): "plesk" | null {
-  const resident = pleskResidentFrame(scene, elapsed, still);
+export function forestResidentAt(scene: FixedWorldScene, elapsed: number, still: boolean, point: WorldPoint,
+  frames: readonly ForestResidentFrame[] = forestResidentFrames(scene, elapsed, still)): "plesk" | null {
+  const resident = frames[0];
   if (!resident || !Number.isFinite(point.x) || !Number.isFinite(point.y)
     || forestPointOccluded(scene, resident.y, point)) return null;
   const bounds = pleskHitBounds(resident);
@@ -23,13 +24,13 @@ export function forestResidentAt(scene: FixedWorldScene, elapsed: number, still:
 }
 
 export function drawForestResidents(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, elapsed: number,
-  still: boolean, heroY: number, layer: "behind" | "front", image?: HTMLImageElement) {
-  if (!image?.naturalWidth || !image.naturalHeight) return;
+  still: boolean, heroY: number, layer: "behind" | "front",
+  frames: readonly ForestResidentFrame[] = forestResidentFrames(scene, elapsed, still)) {
   const view = canvasWorldViewport(ctx);
-  for (const resident of forestResidentFrames(scene, elapsed, still)) {
+  for (const resident of frames) {
     if ((resident.y < heroY) !== (layer === "behind")) continue;
     const bounds = pleskRenderBounds(resident);
     if (!boundsInCanvas(view, bounds, 3)) continue;
-    withForestOcclusion(ctx, scene, resident, () => drawPleskResident(ctx, resident, image, still), bounds);
+    withForestOcclusion(ctx, scene, resident, () => drawPleskResident(ctx, resident, still), bounds);
   }
 }

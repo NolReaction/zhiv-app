@@ -29,7 +29,6 @@ import { forestBirdwatchFrame, type ForestBirdwatch } from "./forest-birdwatchin
 import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reactions";
 import { drawForestBird, type ForestBird } from "./forest-wildlife";
 import { drawForestResidents, forestResidentAt, forestResidentFrames } from "./forest-residents";
-import { PLESK_ARTWORK } from "./plesk-painter";
 import { forestPointOccluded, withForestOcclusion } from "./forest-occlusion";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
@@ -38,16 +37,21 @@ import { forestSceneFingerprint } from "./forest-memory";
 import { applyForestDevScenario } from "./dev/forest-dev-scenarios";
 import { forestPersistenceOverridden } from "./forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
-import { accountSceneLevels, economyJourneyAway } from "./economy-scene-state";
+import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from "./economy-scene-state";
 import { interactiveMapObjects } from "./site-interactions";
-import { forestJourneyActorAway, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
+import { forestJourneyActorAway, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
+
+import { previewForestResidents } from "./dev/forest-resident-preview";
+import { drawForestFishingHero } from "./forest-fishing-painter";
+import type { ForestFishingFrame } from "./forest-fishing";
+import { fishingPropsBounds } from "./fishing-props";
+import { forestTrailDestination } from "./forest-trails";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
 const artworkUrls = (scene: FixedWorldScene, visuals: Record<string, SiteVisual>) => [...new Set([
   ...scene.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
-  ...(forestResidentFrames(scene, 0, true).length ? [PLESK_ARTWORK] : []),
 ])];
 
 function pointInPolygon(point: WorldPoint, polygon: WorldPoint[]) {
@@ -92,6 +96,8 @@ export type NewMapPaintPreview = {
   campfireVisit?: CampfireVisit | null;
   livingDebug?: LivingWorldDebugSnapshot;
   actorAway?: boolean;
+  fishing?: ForestFishingFrame | null;
+  residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
 };
 
 function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
@@ -133,20 +139,21 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
   const walking = preview?.clearing;
   const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
+  const fishing = preview?.fishing ? { ...preview.fishing, size: actor.size } : null;
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const birds = atmosphere.birdFrame ?? forestBirdFrame(world, { ...atmosphere, ...forestAtmosphereState(world, atmosphere) });
   atmosphere.birdFrame = birds;
   const groundBirds = birds.filter(bird => bird.groundY !== undefined).sort((a, b) => a.groundY! - b.groundY!);
   const life = preview?.life;
   const heroVisible = dev?.showHero !== false && !(preview?.actorAway ?? economyJourneyAway(options.economyJourney, timestamp));
-  const automatic = heroVisible && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+  const automatic = heroVisible && !fishing && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
   const motion = automatic && walking ? walking : null;
   // A cancelled carry may wait for clear ground; attention cannot hide its basket.
   const garden = automatic || life?.garden.basket?.held ? forestGardenVisualFrame(life?.garden, actor,
     { pose: motion?.pose ?? "idle", frame: motion?.frame ?? 0, direction: motion?.direction ?? "front" }, still) : null;
-  const routine = heroVisible && life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
+  const routine = heroVisible && !fishing && life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, { ...actor, propSize: PET_SIZE }, elapsed) : null;
-  const encounter = heroVisible && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
+  const encounter = heroVisible && !fishing && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
     ? faunaInteractionFrame(preview.fauna) : null;
   const birdwatch = automatic && !still && preview?.birdwatch ? forestBirdwatchFrame(preview.birdwatch, actor) : null;
   const fire = life?.campfires.find(item => item.id === preview?.campfireVisit?.id);
@@ -177,12 +184,16 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestCampfires(context, behindFires, elapsed, still);
   drawForestGardenPlants(context, world, life?.garden);
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined);
-  drawForestResidents(context, world, elapsed, still, actor.y, "behind", images.get(PLESK_ARTWORK));
+  drawForestResidents(context, world, elapsed, still, actor.y, "behind", preview?.residents);
   for (const bird of groundBirds) if (bird.groundY! < actor.y) drawForestBird(context, bird);
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     withForestOcclusion(context, world, actor, () => {
+      if (fishing) {
+        drawForestFishingHero(context, fishing, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
+        return;
+      }
       drawForestGardenProps(context, garden, "behind");
       drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
         ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
@@ -190,10 +201,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
         rig: garden?.rig ?? routine?.rig });
       if (routine) drawForestLifePartner(context, routine, elapsed);
       drawForestGardenProps(context, garden, "front");
-    });
+    }, fishing ? fishingPropsBounds(fishing) : undefined);
     context.restore();
   }
-  drawForestResidents(context, world, elapsed, still, actor.y, "front", images.get(PLESK_ARTWORK));
+  drawForestResidents(context, world, elapsed, still, actor.y, "front", preview?.residents);
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined, "front");
   for (const bird of groundBirds) if (bird.groundY! >= actor.y) drawForestBird(context, bird);
   if (walking?.bush && heroVisible) {
@@ -240,11 +251,35 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
 
   const explorationNow = () => economicTimestamp + Math.max(0, performance.now() - economicReceivedAt);
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
-  const exploring = () => economyJourneyAway(options.economyJourney, explorationNow());
-  const actorAway = () => forestJourneyActorAway(state, options.economyJourney, explorationNow());
+  // DEV rehearsals use the same travel/animation controller with a local clock.
+  // A confirmed account job always owns the hero and its economic deadline.
+  function displayedJourney(): { journey: EconomySceneJourney | null | undefined; now: number } {
+    const now = explorationNow();
+    if (economyJourneyAway(options.economyJourney, now) || !WORLD_DEV_ENABLED || !state.fishingPreview) {
+      return { journey: options.economyJourney, now };
+    }
+    const rehearsal = state.fishingPreview;
+    return { now: state.elapsed * 1000, journey: { id: `dev-fishing:${rehearsal.id}`, routeId: "shore",
+      startedAt: new Date(rehearsal.startedAt * 1000).toISOString(),
+      finishesAt: new Date((rehearsal.startedAt + 120) * 1000).toISOString(), label: "Проверка рыбалки у берега" } };
+  }
+  const exploring = () => { const { journey, now } = displayedJourney(); return economyJourneyAway(journey, now); };
+  const actorAway = () => { const { journey, now } = displayedJourney(); return forestJourneyActorAway(state, journey, now); };
   function syncExploration() {
     if (!session.isOwner()) return;
-    syncForestJourneyTravel(state, world, options.economyJourney, explorationNow(), reducedMotion(options, dev));
+    if (economyJourneyAway(options.economyJourney, explorationNow())) state.fishingPreview = undefined;
+    const { journey, now } = displayedJourney();
+    syncForestJourneyTravel(state, world, journey, now, reducedMotion(options, dev));
+  }
+  function residentFrames() {
+    const rehearsal = dev?.residentPreview;
+    return previewForestResidents(world, state.elapsed, reducedMotion(options, dev), rehearsal ?? null,
+      rehearsal && rehearsal.id === state.residentPreview?.id ? state.residentPreview.startedAt : state.elapsed);
+  }
+  function stopFishingPreview() {
+    if (!state.fishingPreview) return false;
+    state.fishingPreview = undefined; syncExploration();
+    return true;
   }
 
   function syncGarden() {
@@ -312,7 +347,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state))
+    return Boolean(state.pendingLife || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing")
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -335,6 +370,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function preview(): NewMapPaintPreview {
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
     return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
+      residents: residentFrames(), fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
       fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit,
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
@@ -369,12 +405,28 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function updateObservation(force = false) {
     if (!art || !session.isObservationOwner()) return;
     publishForestObservation(options.presenceKey, state, { force,
-      exploration: forestJourneyWalking(state) ? state.director.reason
+      exploration: forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" ? state.director.reason
         : exploring() ? options.economyJourney?.label || "Мохлик исследует окрестности и вернётся после завершения поручения." : null,
       paused: !active() || !session.isSimulationAllowed() || reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue(),
       manual: Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false) });
   }
-  function syncOwner() { session.configure(options.view ?? "circle", active()); syncExploration(); syncGarden(); updateObservation(true); }
+  function startFishingPreview(id: number) {
+    if (!session.consumeEvent("fishing-preview", id) || economyJourneyAway(options.economyJourney, explorationNow())) return;
+    // A rehearsal always demonstrates the approach, including after mounting.
+    if (state.explorationId === undefined) state.explorationId = null;
+    state.fishingPreview = { id, startedAt: state.elapsed };
+  }
+  function syncOwner() {
+    session.configure(options.view ?? "circle", active());
+    if (WORLD_DEV_ENABLED && session.isOwner()) {
+      const resident = dev?.residentPreview;
+      if (resident && state.residentPreview?.id !== resident.id) {
+        state.residentPreview = { id: resident.id, startedAt: state.elapsed };
+      }
+      if (dev?.scenarioEvent?.kind === "fishing" && !dev.lifeEvent) startFishingPreview(dev.scenarioEvent.id);
+    }
+    syncExploration(); syncGarden(); updateObservation(true);
+  }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
   }
@@ -447,12 +499,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     requestedKey = key;
     const version = ++artworkVersion;
     void Promise.all(urls.map(async url => {
-      const image = await loadHabitatImage(url).catch(error => {
-        // A missing resident sprite must not prevent opening the forest.
-        if (url === PLESK_ARTWORK) return null;
-        throw error;
-      });
-      if (!image) return null;
+      const image = await loadHabitatImage(url);
       if (image.naturalWidth <= 0 || image.naturalHeight <= 0) throw new Error("Invalid world artwork dimensions");
       return [url, image] as const;
     })).then(images => {
@@ -472,7 +519,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           session = connect(timestamp, persistence); state = session.state;
         }
       }
-      art = new Map(images.filter((entry): entry is readonly [string, HTMLImageElement] => entry !== null)); visuals = next; syncOwner();
+      art = new Map(images); visuals = next; syncOwner();
       if (WORLD_DEV_ENABLED) worldDevStore.reportArtError(null);
       if (visible()) draw();
       if (first) callbacks.ready();
@@ -513,15 +560,33 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         || state.pendingLife === "butterfly" && dev.butterflies === "off") {
         cancelForestDirector(state);
       }
+      if (dev.residentPreview?.id !== before.residentPreview?.id) {
+        if (!dev.residentPreview) state.residentPreview = undefined;
+        else if (session.consumeEvent("resident", dev.residentPreview.id)) {
+          state.residentPreview = { id: dev.residentPreview.id, startedAt: state.elapsed };
+        }
+      }
       if (dev.lifeEvent?.id !== before.lifeEvent?.id) {
         if (!dev.lifeEvent) { cancelForestDirector(state); }
-        else if (session.consumeEvent("life", dev.lifeEvent.id)) requestLife(dev.lifeEvent.kind);
+        else if (session.consumeEvent("life", dev.lifeEvent.id)) {
+          const stopped = stopFishingPreview();
+          if (!(stopped && dev.lifeEvent.kind === "idle")) requestLife(dev.lifeEvent.kind);
+        }
       }
       if (dev.scenarioEvent?.id !== before.scenarioEvent?.id && dev.scenarioEvent
         && session.consumeEvent("scenario", dev.scenarioEvent.id)) {
-        applyForestDevScenario(state, dev.scenarioEvent.kind, directorOptions());
+        const kind = dev.scenarioEvent.kind;
+        if (kind === "fishing") {
+          startFishingPreview(dev.scenarioEvent.id); syncExploration();
+        } else if (kind !== "plesk") {
+          stopFishingPreview();
+          // DEV scenery cannot cancel a confirmed journey or its safe return.
+          if (!exploring() && !forestJourneyWalking(state)) applyForestDevScenario(state, kind, directorOptions());
+        }
       } else if (!dev.scenarioEvent && before.scenarioEvent) {
-        cancelForestDirector(state); state.birdStarted = null;
+        stopFishingPreview();
+        if (!forestJourneyWalking(state)) cancelForestDirector(state);
+        state.birdStarted = null;
       }
     }
     stop(); syncOwner();
@@ -541,7 +606,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (active()) session.publish(); resume();
   }
   function hitVisiblePet(x: number, y: number) {
-    if (disposed || exploring() || dev?.showHero === false) return false;
+    if (disposed || actorAway() || dev?.showHero === false) return false;
     const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
     const size = PET_SIZE * (dev?.heroScale ?? 1), actor = clearingActivityFrame(state.clearing);
     const bush = actor.bush?.occlude && world.bushes?.find(item => item.id === actor.bush!.id);
@@ -581,7 +646,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     hitPet(x, y) {
       const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
       const actor = clearingActivityFrame(state.clearing);
-      if (disposed || exploring() || dev?.showHero === false) return false;
+      if (disposed || actorAway() || dev?.showHero === false) return false;
       const home = world.sites.find(site => site.id === "home");
       if (actor.residing && home && dev?.showBuildings !== false && pointInPolygon(point, home.hitArea)) return true;
       const bush = actor.bush?.occupied && world.bushes?.find(item => item.id === actor.bush!.id);
@@ -590,14 +655,21 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     hitVisiblePet,
     hitResident(x, y) {
-      if (disposed || !art?.get(PLESK_ARTWORK)) return null;
+      if (disposed || !art) return null;
       const point = { x, y }, still = reducedMotion(options, dev);
-      const resident = forestResidentFrames(world, state.elapsed, still)[0];
+      const residents = residentFrames(), resident = residents[0];
       if (!resident) return null;
       const actor = clearingActivityFrame(state.clearing);
       if (actor.y > resident.y && hitVisiblePet((x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width,
         (y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) return null;
-      return forestResidentAt(world, state.elapsed, still, point);
+      return forestResidentAt(world, state.elapsed, still, point, residents);
+    },
+    inspectPoint(target) {
+      if (disposed || !art) return null;
+      const resident = target === "plesk" ? residentFrames()[0] : null;
+      if (resident) return { x: resident.x, y: resident.y - resident.size / 2 };
+      const shore = target === "fishing" ? forestTrailDestination(world, "fishing") : null;
+      return shore ? { x: shore.x, y: shore.y - PET_SIZE / 2 } : null;
     },
     hitSite(point) {
       if (disposed || !art || dev?.showBuildings === false) return null;

@@ -2,7 +2,7 @@
 .dialog[data-slot='dialog-content'] { position: fixed; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(430px, calc(100vw - 28px)); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #a7c4b946; border-radius: 24px; padding: 22px; color: #e1ece0; background: linear-gradient(150deg, #233f3c, #172b28 75%); box-shadow: 0 20px 70px #020b0c88; outline: none; }
 .header { display: flex; align-items: center; gap: 12px; }
 .header > div { flex: 1; min-width: 0; }
-.emblem { display: block; flex: 0 0 66px; height: 66px; border-radius: 18px; background: #a6c1ab17 url('/world/residents/plesk-atlas.png') 0 0 / 400% 300% no-repeat; border: 1px solid #b8d1c02d; }
+.emblem { display: block; flex: 0 0 66px; height: 66px; border-radius: 18px; background: #a6c1ab17; image-rendering: pixelated; border: 1px solid #b8d1c02d; }
 .name { margin: 0 0 5px; color: #f0edd6; font-size: 1.35rem; font-weight: 650; }
 .role { margin: 0; color: #b7cec1; font-size: .8125rem; line-height: 1.4; }
 .header > button { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border: 0; border-radius: 12px; color: #c5d8cb; background: #b7d3c110; cursor: pointer; }

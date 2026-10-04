@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ configFile: false, appType: "custom", root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ configFile: false, appType: "custom", root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createWorldDevStore, WORLD_DEV_SCENARIOS } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { applyForestDevScenario } = await vite.ssrLoadModule("/features/world/dev/forest-dev-scenarios.ts");
@@ -20,7 +20,7 @@ test("presets publish atomically, preserve artwork and accessibility settings, a
   for (const { id } of WORLD_DEV_SCENARIOS) {
     const count = updates; store.triggerScenario(id); const state = store.getSnapshot();
     assert.equal(updates, count + 1); assert.equal(state.levels, before.levels); assert.equal(state.heroScale, 1.12);
-    assert.equal(state.reducedMotion, "on"); assert.equal(state.paused, false); assert.equal(state.pose, "auto");
+    assert.equal(state.reducedMotion, "on"); assert.equal(state.paused, false); assert.equal(state.pose, id === "plesk" ? before.pose : "auto");
     if (id === "ground-birds") { assert.equal(state.timeOfDay, "day"); assert.equal(state.weather, "clear"); }
     assert.ok(state.scenarioEvent.id > lastId); lastId = state.scenarioEvent.id;
     assert.ok(forestPersistenceOverridden(state, before.levels));
@@ -44,4 +44,31 @@ test("scenarios retain real feet, prepare repeatable birds and let the coordinat
   applyForestDevScenario(state, "rain", { ...options, rain: 1 }); assert.equal(state.director.campfireVisit, null);
   applyForestDevScenario(state, "tired", options); assert.equal(state.clearing.behavior.mind.needs.energy, .18);
   assert.equal(state.clearing.awakeUntil, state.clearing.elapsed); session.release();
+});
+
+test("resident checks preserve hero activity and only active overrides suspend memory", () => {
+  const store = createWorldDevStore(true), levels = store.getSnapshot().levels;
+  store.patch({ residentDirection: "back" }); store.triggerCamera("plesk");
+  assert.equal(forestPersistenceOverridden(store.getSnapshot(), levels), false, "inspection alone does not disable persistence");
+  store.triggerResident("reel");
+  assert.equal(forestPersistenceOverridden(store.getSnapshot(), levels), true);
+  store.patch({ residentPreview: null });
+  assert.equal(forestPersistenceOverridden(store.getSnapshot(), levels), false);
+  store.patch({ pose: "sleep" }); store.triggerLife("butterfly");
+  const heroEvent = store.getSnapshot().lifeEvent;
+  store.triggerScenario("plesk");
+  assert.equal(store.getSnapshot().lifeEvent, heroEvent);
+  assert.equal(store.getSnapshot().residentPreview.action, "routine");
+  assert.equal(store.getSnapshot().cameraEvent.action, "plesk");
+  assert.equal(store.getSnapshot().timeOfDay, "day");
+  store.triggerScenario("fishing");
+  assert.equal(store.getSnapshot().cameraEvent.action, "fishing");
+  assert.equal(store.getSnapshot().timeOfDay, "day");
+  const session = connectForestSession(undefined, source, "circle", 0, 0, () => {}, { persistence: false });
+  session.state.animation = { marker: "untouched" };
+  const feet = { ...session.state.clearing.position }, animation = session.state.animation;
+  for (const kind of ["plesk", "fishing"]) applyForestDevScenario(session.state, kind, options);
+  assert.deepEqual(session.state.clearing.position, feet);
+  assert.equal(session.state.animation, animation, "dedicated scene previews do not run the clearing director");
+  session.release();
 });

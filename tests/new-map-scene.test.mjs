@@ -2728,8 +2728,8 @@ test("garden handoff waits through lease loading and confirmed lease refusal can
 });
 
 const residentFixture = () => ({
-  destinations: [{ id: "fishing", position: { x: 690, y: 700 }, pauseSeconds: 15 },
-    { id: "home", position: { x: 600, y: 700 }, pauseSeconds: 10 }],
+  destinations: [{ id: "plesk-fishing", position: { x: 690, y: 700 }, pauseSeconds: 15 },
+    { id: "plesk-trade", position: { x: 600, y: 700 }, pauseSeconds: 10 }],
   navigation: livingNavigation,
   water: { surfaces: [{ id: "river", points: [{ x: 703, y: 670 }, { x: 780, y: 670 },
     { x: 780, y: 760 }, { x: 703, y: 760 }] }], exclusions: [] },
@@ -2752,9 +2752,7 @@ test("Plesk taps use world coordinates, respect foreground masks and never trigg
       const loading = createMapEngine(canvas, options, place => places.push(place), [], undefined, {},
         { onResident: id => residents.push(id) });
       env.finish(); await flush();
-      const request = env.pending.find(request => request.path.includes("plesk-atlas"));
-      assert.ok(request, "only scenes with a valid resident load his artwork");
-      const sprite = env.finishPath(request.path); sprite.naturalWidth = 1448; sprite.naturalHeight = 1086;
+      assert.equal(env.pending.length, 0, "procedural residents need no downloaded artwork");
       engine = await loading; engine.control("overview");
       const projection = mapProjection(canvas), event = { pointerId: 1, pointerType: "touch", button: 0,
         clientX: projection.left + tapPoint.x * projection.zoom, clientY: projection.top + tapPoint.y * projection.zoom };
@@ -2763,22 +2761,224 @@ test("Plesk taps use world coordinates, respect foreground masks and never trigg
       assert.deepEqual(residents, hidden ? [] : ["plesk"]);
       assert.deepEqual(places, []);
       assert.equal(env.timers.size, 0, "resident taps cannot start the main hero's response");
-      assert.ok(canvas.calls.some(call => call.method === "drawImage" && call.args[0] === sprite));
+      assert.ok(canvas.calls.some(call => call.method === "drawImage" && call.args[0]?.width === 48), "the pixel rig reaches the renderer");
     } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
   }
 });
 
-test("missing resident artwork leaves the forest usable without an invisible tap target", async () => {
+test("procedural resident is ready with the terrain and has no external sprite dependency", async () => {
   const { mountHabitat } = await modules(residentFixture());
   const env = browser(); let scene;
   try {
     let ready = 0;
     scene = mountHabitat(env.surface(), options, { activity() {}, ready: () => ready++, failure: assert.fail });
     env.finish(); await flush();
-    const request = env.pending.find(request => request.path.includes("plesk-atlas"));
-    assert.ok(request); env.finishPath(request.path, true); await flush();
-    assert.equal(ready, 1); assert.equal(scene.hitResident(690, 682), null);
+    assert.equal(ready, 1); assert.equal(scene.hitResident(690, 682), "plesk");
+    assert.deepEqual(env.requests, ["/test-ground.webp"]);
     const canvas = env.surface(); scene.paintWorld(canvas.context);
-    assert.ok(canvas.calls.some(call => call.method === "drawImage"), "the background still paints");
+    assert.ok(canvas.calls.some(call => call.method === "drawImage" && call.args[0]?.width === 48));
   } finally { scene?.dispose(); env.restore(); }
+});
+
+const fishingFixture = () => ({
+  navigation: livingNavigation,
+  destinations: [{ id: "fishing", position: { x: 690, y: 700 }, pauseSeconds: 15 }],
+  water: { surfaces: [{ id: "river", points: [{ x: 705, y: 660 }, { x: 800, y: 660 },
+    { x: 800, y: 760 }, { x: 705, y: 760 }] }], exclusions: [] },
+  occluders: [],
+});
+
+test("coastal jobs keep the real hero visible through walking, fishing, camera handoff and return", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules(fishingFixture());
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "visible-fishing" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const home = { ...probe.state.clearing.position }, clock = sceneClock(env);
+    const job = { id: "visible-shore-job", routeId: "shore", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
+    const traveling = { ...initial, economyJourney: job };
+    circle.configure(traveling);
+    assert.equal(probe.state.journeyTravel.phase, "leaving");
+    clock.until(() => probe.state.journeyTravel.phase === "fishing", "the real actor reaches the shore", 500);
+    assert.deepEqual(probe.state.clearing.position, { x: 690, y: 700 });
+    assert.ok(sampleHero(circle, env, pixelSprite).body, "arrival cannot make the main hero disappear");
+    const touch = circlePoint(circle.position());
+    assert.equal(circle.hitPet(touch.x, touch.y), true, "visible fishing body participates in hit depth");
+    circle.notice(); assert.equal(probe.state.reaction, 0, "a tap cannot interrupt a confirmed job");
+    const world = mountHabitat(env.surface(), { ...traveling, view: "world" }, callbacks); views.push(world); await flush();
+    assert.equal(env.frames.size, 1, "both cameras share the same fisherman clock");
+    const firstPaint = sampleHero(world, env, pixelSprite, true), feet = { ...probe.state.clearing.position };
+    assert.ok(firstPaint.hasPose("fish"), "the main pixel body uses its articulated fishing rig");
+    clock.advance(5);
+    const waiting = sampleHero(world, env, pixelSprite, true);
+    assert.ok(waiting.hasPose("fish")); assert.deepEqual(probe.state.clearing.position, feet);
+    assert.ok(waiting.calls.some(call => call.method === "strokeStyle" && call.args[0] === "#d1b27c"), "the rod is painted in the same scene");
+    world.configure({ ...traveling, view: "world", paused: true }); circle.configure({ ...traveling, backgrounded: true });
+    const paused = probe.state.director.elapsed; clock.advance(10); assert.equal(probe.state.director.elapsed, paused);
+    world.configure({ ...traveling, view: "world" }); clock.advance(1);
+    assert.ok(probe.state.director.elapsed > paused);
+    world.setTime(700_000);
+    assert.equal(probe.state.journeyTravel.phase, "returning");
+    clock.until(() => !probe.state.journeyTravel, "the same walker returns after the server deadline", 500);
+    assert.deepEqual(probe.state.clearing.position, home);
+    assert.ok(sampleHero(world, env, pixelSprite).body);
+    assert.equal(job.finishesAt, new Date(700_000).toISOString(), "cosmetic animation cannot edit server timing");
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("restored coastal jobs show static fishing in reduced motion without an animation loop", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules(fishingFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const job = { id: "restored-shore", routeId: "shore_camp", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
+    scene = mountHabitat(env.surface(), { ...options, serverNow: 200_000, presenceKey: "restored-visible-fishing", economyJourney: job },
+      { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession("restored-visible-fishing", TILED_WORLD, "circle", 200_000, 0, () => {});
+    assert.equal(probe.state.journeyTravel.phase, "fishing");
+    assert.deepEqual(probe.state.clearing.position, { x: 690, y: 700 });
+    assert.ok(sampleHero(scene, env, pixelSprite, true).hasPose("fish"));
+    assert.equal(env.frames.size, 0);
+    const before = sampleHero(scene, env, pixelSprite, true).calls;
+    env.tick(10_000);
+    assert.deepEqual(sampleHero(scene, env, pixelSprite, true).calls, before);
+    scene.setTime(700_000);
+    assert.equal(probe.state.journeyTravel, undefined);
+    assert.ok(sampleHero(scene, env, pixelSprite).body, "completion leaves a visible safe outdoor actor");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("DEV fishing rehearses the real trip, stops with a safe return and yields to confirmed jobs", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules(fishingFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "dev-visible-fishing" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const home = { ...probe.state.clearing.position }, clock = sceneClock(env);
+    worldDevStore.triggerScenario("fishing");
+    assert.ok(probe.state.fishingPreview);
+    assert.equal(probe.state.journeyTravel.phase, "leaving");
+    assert.equal(probe.state.memory.enabled, false, "a rehearsal cannot save simulated account activity");
+    clock.until(() => probe.state.journeyTravel.phase === "fishing", "DEV reaches the same real shore", 500);
+    clock.advance(18);
+    assert.ok(sampleHero(scene, env, pixelSprite, true).hasPose("present", "fish"));
+    const atShore = { ...probe.state.clearing.position };
+    worldDevStore.triggerLife("idle");
+    assert.equal(probe.state.fishingPreview, undefined);
+    assert.equal(probe.state.journeyTravel.phase, "returning");
+    assert.deepEqual(probe.state.clearing.position, atShore, "stop never teleports home");
+    clock.until(() => !probe.state.journeyTravel, "DEV stop completes its return even with autoLife off", 500);
+    assert.deepEqual(probe.state.clearing.position, home);
+    const confirmed = { id: "confirmed-cave", routeId: "cave", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
+    scene.configure({ ...initial, economyJourney: confirmed });
+    worldDevStore.triggerScenario("fishing");
+    assert.equal(probe.state.fishingPreview, undefined, "a local rehearsal cannot steal a server-owned actor");
+    assert.equal(probe.state.explorationId, confirmed.id);
+    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined);
+    scene.configure({ ...initial, economyJourney: confirmed, serverNow: 700_000 });
+    assert.equal(probe.state.fishingPreview, undefined, "a rejected rehearsal is not queued behind a real job");
+    assert.equal(probe.state.explorationId, null);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("Plesk DEV direction previews share time, camera point and body taps without moving the hero", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "dev-plesk-preview" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const home = { ...probe.state.clearing.position }, clock = sceneClock(env);
+    worldDevStore.triggerResident("walk", true);
+    const previewStarted = probe.state.residentPreview.startedAt;
+    const center = circle.inspectPoint("plesk");
+    assert.equal(circle.hitResident(center.x, center.y), "plesk");
+    const paint = view => { const target = env.surface(); view.paintWorld(target.context); return target.calls; };
+    const front = paint(circle);
+    worldDevStore.patch({ residentDirection: "left" });
+    const left = paint(circle);
+    assert.notDeepEqual(left, front, "direction changes the resident's procedural body");
+    assert.equal(probe.state.residentPreview.startedAt, previewStarted, "direction selection preserves the current preview clock");
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+    assert.deepEqual(paint(world), paint(circle));
+    assert.deepEqual(world.inspectPoint("plesk"), center);
+    assert.equal(world.hitResident(center.x, center.y), "plesk");
+    clock.advance(.5);
+    assert.notDeepEqual(paint(world), left, "walking frames advance through the shared renderer");
+    assert.deepEqual(probe.state.clearing.position, home);
+    assert.equal(probe.state.journeyTravel, undefined, "testing a resident does not start a player expedition");
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("premount Plesk preview keeps its camera target and animates after geometry replaces the session", async () => {
+  const site = { id: "home", label: "Дом", bounds: { x: 600, y: 820, width: 120, height: 120 },
+    anchor: { x: 660, y: 940 }, entry: { x: 660, y: 950 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [1, 2].map(level => ({ level, label: `Level ${level}`, image: `/preview-home-${level}.webp` })) };
+  const overrides = residentFixture();
+  overrides.sites = [site];
+  overrides.navigation = { ...livingNavigation, obstacles: [{ id: "level-one-stone", when: { siteId: "home", level: 1 },
+    points: [{ x: 575, y: 615 }, { x: 585, y: 615 }, { x: 585, y: 625 }, { x: 575, y: 625 }] }] };
+  const { createMapEngine, connectForestSession, previewWorldScene, TILED_WORLD, worldDevStore } = await modules(overrides);
+  const env = browser(), probes = []; let engine;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    worldDevStore.triggerResident("walk", true);
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "premount-resident" };
+    const canvas = env.surface(400), loading = createMapEngine(canvas, initial, () => {}, []);
+    env.finishPath("/test-ground.webp"); await flush(); env.finishPath("/preview-home-1.webp"); await flush(); engine = await loading;
+    const currentProbe = level => {
+      const probe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { home: level }), "circle", 100_000, 0, () => {});
+      probes.push(probe); return probe;
+    };
+    let probe = currentProbe(1);
+    assert.ok(probe.state.residentPreview, "a preview selected before mounting gets a persistent start clock");
+    const projection = mapProjection(canvas);
+    approximately(projection.left + 690 * projection.zoom, 200, "the premount resident camera centers its actual x");
+    approximately(projection.top + 682 * projection.zoom, 200, "the premount resident camera centers its body y");
+    const residentSprite = () => canvas.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
+      && call.args[0]?.width === 48 && call.args[0]?.height === 48)?.args[0];
+    const clock = sceneClock(env), first = residentSprite(); clock.advance(.4);
+    assert.notEqual(residentSprite(), first, "premount preview does not stay at frame zero");
+    const previous = probe.state;
+    worldDevStore.patch({ levels: { home: 2 } }); env.finishPath("/preview-home-2.webp"); await flush();
+    probe = currentProbe(2);
+    assert.notEqual(probe.state, previous, "the changed obstacle creates a new scene session");
+    assert.ok(probe.state.residentPreview, "an existing DEV selection receives a start clock in the new geometry");
+    const replaced = residentSprite(); clock.advance(.4);
+    assert.notEqual(residentSprite(), replaced, "a geometry handoff cannot freeze the resident rehearsal");
+  } finally { engine?.dispose(); probes.forEach(probe => probe.release()); worldDevStore.reset(); env.restore(); }
+});
+
+test("premount DEV fishing starts the approach once and preserves the absolute shore camera", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(fishingFixture());
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false }); worldDevStore.triggerScenario("fishing");
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "premount-fishing" };
+    const canvas = env.surface(400), loading = createMapEngine(canvas, initial, () => {}, []);
+    env.finish(); await flush(); engine = await loading;
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    assert.equal(probe.state.journeyTravel.phase, "leaving", "the rehearsal demonstrates walking even on a fresh mount");
+    const jobId = probe.state.journeyTravel.jobId, began = probe.state.fishingPreview.startedAt;
+    const projection = mapProjection(canvas);
+    approximately(projection.left + 690 * projection.zoom, 200, "premount camera centers shore x");
+    approximately(projection.top + 682 * projection.zoom, 200, "premount camera centers shore body y");
+    const clock = sceneClock(env); clock.advance(1);
+    const feet = { ...probe.state.clearing.position };
+    engine.update({ ...initial, paused: true }); engine.update(initial);
+    assert.equal(probe.state.journeyTravel.jobId, jobId);
+    assert.equal(probe.state.fishingPreview.startedAt, began, "resume consumes no second rehearsal event");
+    assert.deepEqual(probe.state.clearing.position, feet);
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

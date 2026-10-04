@@ -12,7 +12,7 @@ const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/f
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
 const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { requestClearingSleep, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { forestJourneyWalking, forestJourneyActorAway, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/forest-journey-travel.ts");
+const { forestJourneyWalking, forestJourneyActorAway, forestJourneyFishingFrame, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/forest-journey-travel.ts");
 const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
@@ -34,16 +34,17 @@ function advance(state, job, now, seconds, until = () => false) {
   syncForestJourneyTravel(state, scene, job, now + seconds * 1000, false);
 }
 
-test("new confirmed shore jobs walk to the real shore, disappear there, then return without owning server rewards", () => {
+test("new confirmed shore jobs walk, fish visibly, then return without owning server rewards", () => {
   for (const route of ["shore", "shore_camp"]) {
     const session = create(), state = session.state, job = journey(route), home = { ...state.clearing.position };
     syncForestJourneyTravel(state, scene, null, start, false);
     syncForestJourneyTravel(state, scene, job, start, false);
     assert.equal(state.journeyTravel.phase, "leaving"); assert.equal(forestJourneyActorAway(state, job, start), false);
-    advance(state, job, start, 110, () => state.journeyTravel.phase === "away");
-    assert.equal(state.journeyTravel.phase, "away");
+    advance(state, job, start, 110, () => state.journeyTravel.phase === "fishing");
+    assert.equal(state.journeyTravel.phase, "fishing");
     assert.deepEqual(state.clearing.position, state.journeyTravel.shore);
-    assert.equal(forestJourneyActorAway(state, job, start + 110_000), true);
+    assert.equal(forestJourneyActorAway(state, job, start + 110_000), false);
+    assert.ok(forestJourneyFishingFrame(state, scene).waterTarget);
     assert.ok(!JSON.stringify(captureForestMemory(state, scene)).includes(job.id), "cosmetic memory does not persist job/travel ownership");
     syncForestJourneyTravel(state, scene, job, start + 600_000, false);
     assert.equal(state.journeyTravel.phase, "returning"); assert.equal(forestJourneyActorAway(state, job, start + 600_000), false);
@@ -53,14 +54,18 @@ test("new confirmed shore jobs walk to the real shore, disappear there, then ret
   }
 });
 
-test("a restored active job stays away and does not replay departure when a camera opens", () => {
-  const session = create(), state = session.state, job = journey(), before = { ...state.clearing.position };
+test("a restored active coastal job reconstructs one visible shore position without replaying departure", () => {
+  const session = create(), state = session.state, job = journey();
   syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-  assert.equal(state.journeyTravel.phase, "away"); assert.equal(forestJourneyWalking(state), false);
+  assert.equal(state.journeyTravel.phase, "fishing"); assert.equal(forestJourneyWalking(state), false);
+  const before = { ...state.clearing.position };
+  assert.deepEqual(before, state.journeyTravel.shore);
+  assert.equal(forestJourneyActorAway(state, job, start + 60_000), false);
   for (let n = 0; n < 5; n++) syncForestJourneyTravel(state, scene, job, start + 60_000, false);
   assert.deepEqual(state.clearing.position, before);
+  assert.ok(forestJourneyFishingFrame(state, scene));
   syncForestJourneyTravel(state, scene, job, start + 600_000, false);
-  assert.equal(state.journeyTravel, undefined); assert.deepEqual(state.clearing.position, before);
+  assert.equal(state.journeyTravel.phase, "returning"); assert.deepEqual(state.clearing.position, before);
   session.release();
 });
 
@@ -92,16 +97,25 @@ test("finishing while walking turns back from current feet; claims do not wait f
   session.release();
 });
 
-test("reduced motion and delayed existing jobs keep the previous static away behaviour without position writes", () => {
-  for (const [still, age] of [[true, 0], [false, 30_000]]) {
-    const session = create(), state = session.state, job = journey(), before = { ...state.clearing.position };
-    syncForestJourneyTravel(state, scene, null, start, still);
-    syncForestJourneyTravel(state, scene, job, start + age, still);
-    assert.equal(state.journeyTravel.phase, "away"); assert.deepEqual(state.clearing.position, before);
-    syncForestJourneyTravel(state, scene, null, start + age + 1, still);
-    assert.equal(state.journeyTravel, undefined); assert.deepEqual(state.clearing.position, before);
-    session.release();
-  }
+test("reduced motion shows a static fisherman and freezes a walk without jumping", () => {
+  const session = create(), state = session.state, job = journey();
+  syncForestJourneyTravel(state, scene, null, start, true);
+  syncForestJourneyTravel(state, scene, job, start, true);
+  assert.equal(state.journeyTravel.phase, "fishing");
+  const frame = forestJourneyFishingFrame(state, scene, true), position = { ...state.clearing.position };
+  assert.equal(frame.action, "fish"); assert.equal(frame.frame, 0);
+  state.director.elapsed += 5;
+  assert.deepEqual(forestJourneyFishingFrame(state, scene, true), frame);
+  syncForestJourneyTravel(state, scene, null, start + 1, true);
+  assert.equal(state.journeyTravel, undefined); assert.deepEqual(state.clearing.position, position);
+  session.release();
+  const moving = create(), other = moving.state;
+  syncForestJourneyTravel(other, scene, null, start, false); advance(other, job, start, 5);
+  const before = { ...other.clearing.position };
+  syncForestJourneyTravel(other, scene, job, start + 5_000, true);
+  assert.equal(other.journeyTravel.phase, "leaving"); assert.deepEqual(other.clearing.position, before);
+  assert.equal(forestJourneyActorAway(other, job, start + 5_000), false);
+  moving.release();
 });
 
 test("a sleeping hero exits the existing doorway before joining the shore road", () => {
@@ -115,8 +129,8 @@ test("a sleeping hero exits the existing doorway before joining the shore road",
   const doorway = { ...state.clearing.position };
   syncForestJourneyTravel(state, scene, job, start, false);
   assert.deepEqual(state.clearing.position, doorway); assert.equal(state.journeyTravel.phase, "leaving");
-  advance(state, job, start, 115, () => state.journeyTravel.phase === "away");
-  assert.equal(state.journeyTravel.phase, "away"); assert.deepEqual(state.clearing.position, state.journeyTravel.shore);
+  advance(state, job, start, 115, () => state.journeyTravel.phase === "fishing");
+  assert.equal(state.journeyTravel.phase, "fishing"); assert.deepEqual(state.clearing.position, state.journeyTravel.shore);
   session.release();
 });
 
@@ -130,4 +144,47 @@ test("return yields to a newly authorized berry collection without cancelling it
   syncForestJourneyTravel(state, scene, null, start + 8_050, false);
   assert.equal(state.journeyTravel, undefined); assert.equal(state.pendingLife, "harvest-berries");
   assert.equal(state.life.garden.harvest.request.jobId, "berries-1"); session.release();
+});
+
+test("a fishing hero uses session time, remains on safe feet and exposes all fishing actions", () => {
+  const session = create(), state = session.state, job = journey();
+  syncForestJourneyTravel(state, scene, job, start + 50_000, false);
+  const position = { ...state.clearing.position }, actions = new Set();
+  for (let index = 0; index < 600; index++) {
+    const frame = forestJourneyFishingFrame(state, scene);
+    actions.add(frame.action);
+    advanceForestDirector(state, .05, { autoLife: true, blocked: true, actorAway: false,
+      explicitTravel: false, homeAvailable: true, dusk: 0, rain: 0, butterflies: "off", fireflies: "off" });
+    assert.deepEqual(state.clearing.position, position);
+  }
+  for (const action of ["cast", "fish", "bite", "reel", "catch", "pack", "rest"]) assert.ok(actions.has(action), action);
+  const paused = forestJourneyFishingFrame(state, scene);
+  for (let index = 0; index < 10; index++) assert.deepEqual(forestJourneyFishingFrame(state, scene), paused);
+  syncForestJourneyTravel(state, scene, job, start + 600_000, false);
+  assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, true);
+  session.release();
+});
+
+test("without nearby water the coastal hero stays visibly at rest instead of casting onto land", () => {
+  const world = { ...scene, water: { ...scene.water, surfaces: [], exclusions: [] } };
+  const session = connectForestSession(undefined, world, "world", start, 0, () => {}, { persistence: false, sync: false });
+  const state = session.state, job = journey();
+  syncForestJourneyTravel(state, world, job, start + 60_000, false);
+  const frame = forestJourneyFishingFrame(state, world);
+  assert.equal(state.journeyTravel.phase, "fishing");
+  assert.equal(forestJourneyActorAway(state, job, start + 60_000), false);
+  assert.equal(frame.action, "rest"); assert.equal(frame.waterTarget, undefined);
+  session.release();
+});
+
+test("non-coastal jobs remain away and a replacement job cannot inherit the old fishing owner", () => {
+  const session = create(), state = session.state, shore = journey(), cave = journey("cave");
+  syncForestJourneyTravel(state, scene, shore, start, false);
+  assert.ok(forestJourneyFishingFrame(state, scene));
+  const position = { ...state.clearing.position };
+  syncForestJourneyTravel(state, scene, cave, start + 1000, false);
+  assert.equal(state.journeyTravel, undefined); assert.equal(forestJourneyFishingFrame(state, scene), null);
+  assert.equal(forestJourneyActorAway(state, cave, start + 1000), true);
+  assert.deepEqual(state.clearing.position, position);
+  session.release();
 });
