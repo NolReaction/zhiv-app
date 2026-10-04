@@ -16,6 +16,7 @@ export class MapLoadError extends Error {
 export type WorldPlace = MapObjectPlace | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
 export type MapObjectSelection = { place: WorldPlace; objectId: string; x: number; y: number; viewportWidth: number; viewportHeight: number };
 export type MapInteractionCallbacks = {
+  onResident?: (id: "plesk") => void;
   objectAnchorsEnabled?: boolean;
   onSelectionChange?: (selection: MapObjectSelection | null) => void;
   onObjectAnchorsChange?: (anchors: readonly MapObjectScreenAnchor[]) => void;
@@ -284,7 +285,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         const objects = habitat.mapObjects?.() ?? [];
         const markerObject = touch.objectId ? objects.find(object => object.id === touch.objectId) : null;
         const object = mapObjectAt(objects, world);
-        if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); habitat.notice(); }
+        const resident = interactions.onResident ? habitat.hitResident?.(world.x, world.y) : null;
+        if (resident) { setSelectedObject(null); interactions.onResident?.(resident); }
+        else if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); habitat.notice(); }
         else if (markerObject) activateObject(markerObject.id);
         else if (object) activateObject(object.id);
         else {

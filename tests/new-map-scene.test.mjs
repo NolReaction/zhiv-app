@@ -8,7 +8,7 @@ const fixture = {
   schemaVersion: 1, id: "test-scene", width: 1254, height: 1254,
   terrain: [{ id: "ground", image: "/test-ground.webp", bounds: { x: 0, y: 0, width: 1254, height: 1254 } }],
   focus: { x: 455, y: 480, width: 350, height: 350 },
-  actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [],
+  actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [], destinations: [],
   water: { surfaces: [], exclusions: [] }, bushes: [], campfires: [], basket: undefined, navigation: undefined, habitats: undefined,
   mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
@@ -2725,4 +2725,60 @@ test("garden handoff waits through lease loading and confirmed lease refusal can
       assert.equal(probe.state.life.garden.harvest.phase, "pending");
     }
   } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); env.restore(); }
+});
+
+const residentFixture = () => ({
+  destinations: [{ id: "fishing", position: { x: 690, y: 700 }, pauseSeconds: 15 },
+    { id: "home", position: { x: 600, y: 700 }, pauseSeconds: 10 }],
+  navigation: livingNavigation,
+  water: { surfaces: [{ id: "river", points: [{ x: 703, y: 670 }, { x: 780, y: 670 },
+    { x: 780, y: 760 }, { x: 703, y: 760 }] }], exclusions: [] },
+  occluders: [],
+});
+
+test("Plesk taps use world coordinates, respect foreground masks and never trigger the main hero", async () => {
+  for (const mode of ["visible", "hidden", "equal-depth"]) {
+    const hidden = mode === "hidden", overrides = residentFixture();
+    const tapPoint = mode === "equal-depth" ? { x: 630, y: 642 } : { x: 690, y: 682 };
+    if (mode === "equal-depth") overrides.destinations[0].position = { x: 630, y: 660 };
+    if (hidden) overrides.occluders.push({ id: "crown", frontY: 720, points: [
+      { x: 670, y: 650 }, { x: 710, y: 650 }, { x: 710, y: 715 }, { x: 670, y: 715 },
+    ] });
+    const { createMapEngine, worldDevStore } = await modules(overrides);
+    const env = browser(); let engine;
+    try {
+      worldDevStore.patch(quietClearing);
+      const canvas = env.surface(400), residents = [], places = [];
+      const loading = createMapEngine(canvas, options, place => places.push(place), [], undefined, {},
+        { onResident: id => residents.push(id) });
+      env.finish(); await flush();
+      const request = env.pending.find(request => request.path.includes("plesk-atlas"));
+      assert.ok(request, "only scenes with a valid resident load his artwork");
+      const sprite = env.finishPath(request.path); sprite.naturalWidth = 1448; sprite.naturalHeight = 1086;
+      engine = await loading; engine.control("overview");
+      const projection = mapProjection(canvas), event = { pointerId: 1, pointerType: "touch", button: 0,
+        clientX: projection.left + tapPoint.x * projection.zoom, clientY: projection.top + tapPoint.y * projection.zoom };
+      canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+      canvas.events.get("pointerup")({ ...event, type: "pointerup" });
+      assert.deepEqual(residents, hidden ? [] : ["plesk"]);
+      assert.deepEqual(places, []);
+      assert.equal(env.timers.size, 0, "resident taps cannot start the main hero's response");
+      assert.ok(canvas.calls.some(call => call.method === "drawImage" && call.args[0] === sprite));
+    } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+  }
+});
+
+test("missing resident artwork leaves the forest usable without an invisible tap target", async () => {
+  const { mountHabitat } = await modules(residentFixture());
+  const env = browser(); let scene;
+  try {
+    let ready = 0;
+    scene = mountHabitat(env.surface(), options, { activity() {}, ready: () => ready++, failure: assert.fail });
+    env.finish(); await flush();
+    const request = env.pending.find(request => request.path.includes("plesk-atlas"));
+    assert.ok(request); env.finishPath(request.path, true); await flush();
+    assert.equal(ready, 1); assert.equal(scene.hitResident(690, 682), null);
+    const canvas = env.surface(); scene.paintWorld(canvas.context);
+    assert.ok(canvas.calls.some(call => call.method === "drawImage"), "the background still paints");
+  } finally { scene?.dispose(); env.restore(); }
 });

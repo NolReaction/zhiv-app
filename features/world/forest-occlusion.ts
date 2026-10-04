@@ -1,4 +1,4 @@
-import type { FixedWorldScene, WorldPoint } from "./tiled/types";
+import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 import { previewPointInPolygon } from "./tiled/preview-state";
 
 type Actor = WorldPoint & { size: number };
@@ -53,14 +53,17 @@ export function forestPointOccluded(scene: FixedWorldScene, feetY: number, point
  * level-specific masks have already been filtered with their site artwork.
  * Ground, buildings and other actors must be painted outside this callback.
  */
-export function withForestOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, actor: Actor, draw: () => void): void {
+export function withForestOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, actor: Actor, draw: () => void,
+  renderBounds?: WorldBounds): void {
   if (!scene.occluders?.length || !Number.isFinite(actor.x) || !Number.isFinite(actor.y)
     || !Number.isFinite(actor.size) || actor.size <= 0) { draw(); return; }
   const area = compiled(scene);
   // Conservative envelope also covers held props, extended arms and a lifted
   // sprite. Only nearby masks reach the canvas; geometry is shared by cameras.
-  const left = actor.x - actor.size * 2, right = actor.x + actor.size * 2;
-  const top = actor.y - actor.size * 2.5, bottom = actor.y + actor.size;
+  const bounds = renderBounds && Object.values(renderBounds).every(Number.isFinite)
+    && renderBounds.width > 0 && renderBounds.height > 0 ? renderBounds : null;
+  const left = bounds?.x ?? actor.x - actor.size * 2, right = bounds ? bounds.x + bounds.width : actor.x + actor.size * 2;
+  const top = bounds?.y ?? actor.y - actor.size * 2.5, bottom = bounds ? bounds.y + bounds.height : actor.y + actor.size;
   let saved = false;
   try {
     for (const mask of area.masks) {

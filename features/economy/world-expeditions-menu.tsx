@@ -13,9 +13,10 @@ export type WorldExpeditionsMenuProps = {
   economy: EconomyController;
   onOpenPantry: () => void;
   onNavigateStation?: (stationId: string) => void;
+  initialSector?: SectorId;
 };
 type Route = EconomyView["catalog"]["explorations"][number];
-type SectorId = "forest" | "shore" | "caves";
+export type SectorId = "forest" | "shore" | "caves";
 export const expeditionSectors: ReadonlyArray<{ id: SectorId; name: string; icon: LucideIcon }> = [
   { id: "forest", name: "Лес", icon: Trees },
   { id: "shore", name: "Побережье", icon: Fish },
@@ -90,8 +91,8 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   </section>;
 }
 
-export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation }: WorldExpeditionsMenuProps) {
-  const [selectedSector, setSelectedSector] = useState<SectorId>("forest");
+export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, initialSector = "forest" }: WorldExpeditionsMenuProps) {
+  const [selectedSector, setSelectedSector] = useState<SectorId>(initialSector);
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const state = economy.snapshot;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));

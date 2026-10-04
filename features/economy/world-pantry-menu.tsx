@@ -16,7 +16,7 @@ export type WorldPantryMenuProps = {
   onOpenMarket?: () => void;
 };
 
-function PantrySale({ economy, itemId, onClose }: { economy: ReadyEconomy; itemId: string; onClose: () => void }) {
+export function PantrySale({ economy, itemId, onClose }: { economy: ReadyEconomy; itemId: string; onClose?: () => void }) {
   const [quantityText, setQuantityText] = useState("1");
   const inputId = useId();
   const sale = useRef<HTMLElement>(null);
@@ -31,11 +31,11 @@ function PantrySale({ economy, itemId, onClose }: { economy: ReadyEconomy; itemI
   const maximum = Math.max(0, Math.min(stock, 10_000, Math.floor((ECONOMY_MAX_BALANCE - economy.snapshot.wallet.coins) / item.baseSellPrice)));
   const quantity = Number(quantityText);
   const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
-  return <section ref={sale} className={styles.sale} aria-label={`Продажа: ${item.name}`}>
+  return <section ref={sale} className={`${styles.pantry} ${styles.sale}`} aria-label={`Продажа: ${item.name}`}>
     <div className={styles.saleHeading}>
       <ProductIcon itemId={item.id} size={18} />
       <h3>{item.name}</h3>
-      <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Свернуть продажу"><ChevronUp size={16} aria-hidden="true" /></button>
+      {onClose && <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Свернуть продажу"><ChevronUp size={16} aria-hidden="true" /></button>}
     </div>
     <p className={styles.muted}>В запасе {number(stock)} · {number(item.baseSellPrice)} монет за штуку</p>
     {item.tradable ? <>

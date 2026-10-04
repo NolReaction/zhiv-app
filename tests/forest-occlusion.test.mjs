@@ -162,3 +162,15 @@ test("immutable scene shares cached paths between cameras and culls remote masks
     if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument); else delete globalThis.document;
   }
 });
+
+test("explicit prop bounds clip a distant float while keeping the actor's own depth", () => {
+  const ctx = surface(), fishingActor = { x: 20, y: 40, size: 10 };
+  const shape = scene([rectangle("bank-leaves", 45, 47, 10, 15, 70)]);
+  withForestOcclusion(ctx, shape, fishingActor, () => {
+    ctx.paint(20, 35, "resident"); ctx.paint(50, 52, "float"); ctx.paint(57, 52, "line");
+  }, { x: 10, y: 10, width: 50, height: 50 });
+  assert.equal(ctx.read(20, 35), "resident");
+  assert.equal(ctx.read(50, 52), undefined, "the float overlaps a mask outside the usual body envelope");
+  assert.equal(ctx.read(57, 52), "line");
+  ctx.paint(50, 52, "later"); assert.equal(ctx.read(50, 52), "later", "clips are restored");
+});

@@ -81,6 +81,16 @@ test("every catalog route belongs to exactly one sector and keeps its actual fin
   assert.deepEqual(seen.sort(), economyCatalog.explorations.map(route => route.id).sort());
 });
 
+test("the fisherman's shortcut opens the shore sector without changing route conditions", () => {
+  const html = render(controller(), { initialSector: "shore" });
+  assert.match(html, /data-sector-select="shore" aria-pressed="true"/);
+  assert.match(html, /data-sector="shore"/);
+  assert.doesNotMatch(html, /data-sector="forest"/);
+  const shore = route(html, "shore");
+  assert.match(shore, /Рыбалка на берегу/);
+  assert.equal(disabled(button(shore, "Отправиться")), false);
+});
+
 test("selected route alone expands and resource labels remain available to assistive technology", () => {
   const html = renderSector("shore", controller(), { selectedRoute: "shore" });
   assert.match(route(html, "shore"), /<details[^>]*\bopen=/);

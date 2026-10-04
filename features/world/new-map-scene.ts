@@ -28,7 +28,8 @@ import { forestBirdFrame } from "./forest-birds";
 import { forestBirdwatchFrame, type ForestBirdwatch } from "./forest-birdwatching";
 import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reactions";
 import { drawForestBird, type ForestBird } from "./forest-wildlife";
-import { drawForestResidents } from "./forest-residents";
+import { drawForestResidents, forestResidentAt, forestResidentFrames } from "./forest-residents";
+import { PLESK_ARTWORK } from "./plesk-painter";
 import { forestPointOccluded, withForestOcclusion } from "./forest-occlusion";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
@@ -46,6 +47,7 @@ const levels = initialPreviewLevels(TILED_WORLD);
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
 const artworkUrls = (scene: FixedWorldScene, visuals: Record<string, SiteVisual>) => [...new Set([
   ...scene.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
+  ...(forestResidentFrames(scene, 0, true).length ? [PLESK_ARTWORK] : []),
 ])];
 
 function pointInPolygon(point: WorldPoint, polygon: WorldPoint[]) {
@@ -175,7 +177,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestCampfires(context, behindFires, elapsed, still);
   drawForestGardenPlants(context, world, life?.garden);
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined);
-  drawForestResidents(context, world, elapsed, still, actor.y, "behind");
+  drawForestResidents(context, world, elapsed, still, actor.y, "behind", images.get(PLESK_ARTWORK));
   for (const bird of groundBirds) if (bird.groundY! < actor.y) drawForestBird(context, bird);
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
@@ -191,7 +193,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     });
     context.restore();
   }
-  drawForestResidents(context, world, elapsed, still, actor.y, "front");
+  drawForestResidents(context, world, elapsed, still, actor.y, "front", images.get(PLESK_ARTWORK));
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined, "front");
   for (const bird of groundBirds) if (bird.groundY! >= actor.y) drawForestBird(context, bird);
   if (walking?.bush && heroVisible) {
@@ -445,7 +447,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     requestedKey = key;
     const version = ++artworkVersion;
     void Promise.all(urls.map(async url => {
-      const image = await loadHabitatImage(url);
+      const image = await loadHabitatImage(url).catch(error => {
+        // A missing resident sprite must not prevent opening the forest.
+        if (url === PLESK_ARTWORK) return null;
+        throw error;
+      });
+      if (!image) return null;
       if (image.naturalWidth <= 0 || image.naturalHeight <= 0) throw new Error("Invalid world artwork dimensions");
       return [url, image] as const;
     })).then(images => {
@@ -465,7 +472,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           session = connect(timestamp, persistence); state = session.state;
         }
       }
-      art = new Map(images); visuals = next; syncOwner();
+      art = new Map(images.filter((entry): entry is readonly [string, HTMLImageElement] => entry !== null)); visuals = next; syncOwner();
       if (WORLD_DEV_ENABLED) worldDevStore.reportArtError(null);
       if (visible()) draw();
       if (first) callbacks.ready();
@@ -582,6 +589,16 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       return hitVisiblePet(x, y);
     },
     hitVisiblePet,
+    hitResident(x, y) {
+      if (disposed || !art?.get(PLESK_ARTWORK)) return null;
+      const point = { x, y }, still = reducedMotion(options, dev);
+      const resident = forestResidentFrames(world, state.elapsed, still)[0];
+      if (!resident) return null;
+      const actor = clearingActivityFrame(state.clearing);
+      if (actor.y > resident.y && hitVisiblePet((x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width,
+        (y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) return null;
+      return forestResidentAt(world, state.elapsed, still, point);
+    },
     hitSite(point) {
       if (disposed || !art || dev?.showBuildings === false) return null;
       return previewSiteAt(world, point)?.id ?? null;

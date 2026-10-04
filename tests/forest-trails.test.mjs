@@ -11,7 +11,7 @@ const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.t
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { createWorldNavigation, canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { forestTrails, forestDestinations, forestTrailDestination, findForestTrailPath } = await vite.ssrLoadModule("/features/world/forest-trails.ts");
-const { forestResidentFrames, drawForestResidents } = await vite.ssrLoadModule("/features/world/forest-residents.ts");
+const { forestResidentFrames, forestResidentAt, drawForestResidents } = await vite.ssrLoadModule("/features/world/forest-residents.ts");
 const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/forest-behavior.ts");
 const world = (level = 1) => previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD),
   home: Math.max(1, level), workshop: level, quarry: level });
@@ -80,29 +80,31 @@ test("unknown or blocked authored roads fail closed instead of moving residents 
     ? { ...path, points: [base.actor.spawn, { x: 108, y: 70 }] } : path) };
   assert.equal(forestTrailDestination(blocked, "fishing"), null);
   assert.equal(findForestTrailPath(blocked, base.actor.spawn, "fishing"), null);
-  assert.deepEqual(forestResidentFrames(blocked, 10, false).map(frame => frame.id), ["forest-carpenter"]);
+  assert.deepEqual(forestResidentFrames(blocked, 10, false), []);
 });
 
-test("two residents follow safe roads, pause and share deterministic time across the circle and map", () => {
-  const scene = world(), nav = createWorldNavigation(scene), poses = new Set();
-  for (let elapsed = 0; elapsed < 240; elapsed += .5) {
+test("the single named resident shares safe deterministic frames across the circle and map", () => {
+  const scene = world(), nav = createWorldNavigation(scene), actions = new Set();
+  for (let elapsed = 0; elapsed < 300; elapsed += .5) {
     const frames = forestResidentFrames(scene, elapsed, false);
-    assert.equal(frames.length, 2); assert.deepEqual(forestResidentFrames(scene, elapsed, false), frames);
-    for (const frame of frames) { assert.ok(isWalkable(nav, frame), frame.id); poses.add(frame.pose); }
-    assert.ok(frames[0].y <= frames[1].y);
+    assert.equal(frames.length, 1); assert.equal(frames[0].id, "plesk");
+    assert.deepEqual(forestResidentFrames(scene, elapsed, false), frames);
+    assert.ok(isWalkable(nav, frames[0])); actions.add(frames[0].action);
   }
-  assert.deepEqual([...poses].sort(), ["idle", "walk"]);
+  for (const action of ["fish", "walk", "trade", "rest"]) assert.ok(actions.has(action));
   assert.deepEqual(forestResidentFrames(scene, 0, true), forestResidentFrames(scene, 10000, true));
-  assert.ok(forestResidentFrames(scene, 10, true).every(frame => frame.pose === "idle" && frame.frame === 0));
+  assert.ok(forestResidentFrames(scene, 10, true).every(frame => frame.action === "fish" && frame.frame === 0));
 });
 
 test("offscreen residents are culled before sprite creation and need no additional canvas or image readback", () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
   Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement() { assert.fail("offscreen sprite must not allocate"); } } });
   try {
-    const ctx = { canvas: { width: 100, height: 100 }, getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }) };
-    drawForestResidents(ctx, world(), 0, false, 700, "behind");
-    drawForestResidents(ctx, world(), 0, false, 700, "front");
+    const ctx = { canvas: { width: 100, height: 100 }, getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+      drawImage() { assert.fail("offscreen resident must not draw its atlas"); } };
+    const loadedAtlas = { naturalWidth: 1024, naturalHeight: 1024 };
+    drawForestResidents(ctx, world(), 0, false, 700, "behind", loadedAtlas);
+    drawForestResidents(ctx, world(), 0, false, 700, "front", loadedAtlas);
   } finally { if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document; }
 });
 
@@ -122,7 +124,7 @@ test("explicit empty, ambiguous or malformed destinations never fall back to leg
   const legacy = legacyWorld();
   assert.equal(forestTrails(legacy).size, 2);
   assert.deepEqual(forestTrailDestination(legacy, "workshop"), { x: 80, y: 80 });
-  assert.equal(forestResidentFrames(legacy, 10, false).length, 2);
+  assert.equal(forestResidentFrames(legacy, 10, false).length, 1);
   const empty = { ...legacy, destinations: [] };
   assert.equal(forestTrailDestination(empty, "workshop"), null);
   assert.equal(findForestTrailPath(empty, legacy.actor.spawn, "workshop"), null);
@@ -144,40 +146,14 @@ test("explicit empty, ambiguous or malformed destinations never fall back to leg
   }
 });
 
-test("both residents tour multiple reachable destinations continuously and cache all path searches", () => {
-  const scene = simpleWorld(), nav = createWorldNavigation(scene);
-  forestResidentFrames(scene, 0, false);
-  const lastSearch = nav.stats.lastSearch, visits = new Map(), previous = new Map();
-  for (let elapsed = 0; elapsed <= 250; elapsed += .25) {
-    const frames = forestResidentFrames(scene, elapsed, false);
-    assert.equal(frames.length, 2);
-    for (const frame of frames) {
-      assert.ok(isWalkable(nav, frame));
-      assert.ok(frame.x < 200, "the isolated destination cannot teleport a resident to another island");
-      const last = previous.get(frame.id);
-      if (last) assert.ok(Math.hypot(frame.x - last.x, frame.y - last.y) <= 9 * .25 + 1e-8,
-        "bounded speed remains continuous at corners, waits and cycle wrap");
-      previous.set(frame.id, frame);
-      const stop = scene.destinations.find(point => Math.hypot(frame.x - point.position.x, frame.y - point.position.y) < 1e-6);
-      if (frame.pose === "idle" && stop) {
-        const visited = visits.get(frame.id) ?? new Set(); visited.add(stop.id); visits.set(frame.id, visited);
-      }
-    }
-  }
-  assert.strictEqual(nav.stats.lastSearch, lastSearch, "render frames never rerun pathfinding");
-  for (const id of ["forest-carpenter", "shore-neighbour"]) assert.deepEqual([...visits.get(id)].sort(), ["home", "quarry", "workshop"]);
-  assert.deepEqual(forestResidentFrames(scene, Number.NaN, false), forestResidentFrames(scene, 0, false));
-  assert.deepEqual(forestResidentFrames(scene, Number.POSITIVE_INFINITY, false), forestResidentFrames(scene, 0, false));
-  assert.deepEqual(forestResidentFrames(scene, 0, true), forestResidentFrames(scene, 10000, true));
-});
-
-test("disconnected or singular destination networks render no walking residents", () => {
-  const base = simpleWorld();
-  for (const destinations of [[], [base.destinations[0]], [base.destinations[0], base.destinations[3]]]) {
-    const scene = { ...base, destinations };
-    assert.deepEqual(forestResidentFrames(scene, 0, false), []);
-    assert.deepEqual(forestResidentFrames(scene, 10000, true), []);
-  }
-  const withoutHome = { ...base, destinations: [base.destinations[3], base.destinations[1], base.destinations[2]] };
-  assert.equal(forestResidentFrames(withoutHome, 10, false).length, 2, "isolated first marker does not hide another usable component");
+test("resident interaction targets the visible body and respects foreground masks", () => {
+  const scene = world(), resident = forestResidentFrames(scene, 10, true)[0];
+  const body = { x: resident.x, y: resident.y - resident.size * .5 };
+  assert.equal(forestResidentAt(scene, 10, true, body), "plesk");
+  assert.equal(forestResidentAt(scene, 10, true, resident.waterTarget), null, "the line and bobber never steal river taps");
+  assert.equal(forestResidentAt(scene, 10, true, { x: Number.NaN, y: body.y }), null);
+  const mask = { ...rectangle("resident-cover", body.x - 10, body.y - 10, 20, 20), frontY: resident.y + 1 };
+  assert.equal(forestResidentAt({ ...scene, occluders: [mask] }, 10, true, body), null);
+  assert.equal(forestResidentAt({ ...scene, occluders: [{ ...mask, frontY: resident.y - 1 }] }, 10, true, body), "plesk");
+  assert.equal(forestResidentAt({ ...scene, destinations: [] }, 10, true, body), null);
 });
