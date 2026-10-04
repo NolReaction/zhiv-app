@@ -77,7 +77,9 @@ export function pleskLocalPlaces(scene: FixedWorldScene): PleskPlaces | null {
   const nav = base && createWorldNavigation(scene, (scene.actor?.size ?? 50) * .1);
   if (!base || !nav) { placeCache.set(scene, null); return null; }
   const waterTarget = fishingWaterTarget(scene, base.position, PLESK.size);
-  const direction: PixelDirection = waterTarget ? facing(waterTarget.x - base.position.x, waterTarget.y - base.position.y) : "front";
+  // She keeps her face toward the viewer while fishing beside the river. Body
+  // facing never relocates the authored float; the tackle still aims at water.
+  const direction: PixelDirection = "front";
   const trade = authoredStop(scene, PLESK.tradingDestination), rest = authoredStop(scene, PLESK.restingDestination);
   const toTrade = connectingTrail(nav, base, trade), toRest = connectingTrail(nav, base, rest);
   const tradeToRest = toTrade && toRest && trade ? connectingTrail(nav, trade, rest) : undefined;

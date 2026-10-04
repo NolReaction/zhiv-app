@@ -35,7 +35,7 @@ class EconomyRulesTest {
         val harvest = apply(collecting, "claim_job", gardenJob.id, at = readyAt.plusSeconds(checkNotNull(gardenJob.collection).seconds))
         val berryCount = gardenJob.rewards.getValue("berries")
         val sold = apply(harvest, "sell", "berries", berryCount)
-        assertEquals(berryCount * EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, sold.wallet.coins)
+        assertEquals(EconomyRules.localSellPrice(EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, berryCount), sold.wallet.coins)
         assertEquals(0L, sold.inventory["berries"] ?: 0)
         assertEquals(1, sold.jobs.size)
     }
@@ -192,8 +192,10 @@ class EconomyRulesTest {
             state = apply(started, "claim_job", job.id, at = at)
         }
 
-        complete("start_production", "grow_berries_overnight")
-        state = apply(state, "sell", "berries", state.inventory.getValue("berries"), at)
+        repeat(2) {
+            complete("start_production", "grow_berries_overnight")
+            state = apply(state, "sell", "berries", state.inventory.getValue("berries"), at)
+        }
         complete("start_exploration", "forest_camp")
         complete("start_construction", "woodlot")
         complete("start_construction", "workshop")
@@ -467,6 +469,9 @@ class EconomyRulesTest {
         val itemIds = EconomyRules.catalog.items.map { it.id }.toSet()
         val buildingIds = EconomyRules.catalog.buildings.map { it.id }.toSet()
         val itemPrices = EconomyRules.catalog.items.associate { it.id to it.baseSellPrice }
+        val specialistFish = EconomyRules.catalog.fishing?.fish?.map { it.itemId }?.toSet().orEmpty()
+        fun cashValue(items: Map<String, Long>) = items.entries.sumOf { (id, quantity) ->
+            if (id in specialistFish) itemPrices.getValue(id) * quantity else EconomyRules.localSellPrice(itemPrices.getValue(id), quantity) }
         for (recipe in EconomyRules.catalog.recipes) {
             assertTrue(recipe.buildingId in buildingIds)
             assertTrue(recipe.seconds > 0)
@@ -475,6 +480,8 @@ class EconomyRulesTest {
             val cost = recipe.cost.coins + recipe.cost.items.entries.sumOf { itemPrices.getValue(it.key) * it.value }
             val value = recipe.rewards.entries.sumOf { itemPrices.getValue(it.key) * it.value }
             assertTrue(value > cost, "${recipe.id} should add value for its station time")
+            assertTrue(cashValue(recipe.rewards) > cashValue(recipe.cost.items) + recipe.cost.coins,
+                "${recipe.id} should preserve a positive margin after local-sale discount and specialist fish offers")
         }
         val merchantItems = fishingMerchantItems()
         var available = setOf<String>()

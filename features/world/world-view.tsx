@@ -27,6 +27,7 @@ import { WorldExpeditionsMenu, type SectorId } from "@/features/economy/world-ex
 import { WorldUpgradeDialog } from "@/features/economy/world-upgrade-dialog";
 import { worldPlaceForStation } from "@/features/economy/world-stations";
 import { WorldWallet } from "./world-wallet";
+import { WorldInventoryGains } from "./world-inventory-gains";
 import hudStyles from "./world-map-hud.module.css";
 import { WorldObjectMenu } from "@/features/economy/world-object-menu";
 import { WorldResidentDialog } from "./world-resident-dialog";
@@ -227,6 +228,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           <button className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
+      <WorldInventoryGains key={ownerPublicId} economy={economy} hud={topHud} />
     </header>
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}
     {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}`} initialStationId={objectStation} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
@@ -250,10 +252,10 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       <header className={hudStyles.quickHeader}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickTitle}</h2><button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick}><X size={18} aria-hidden="true" /></button></header>
       <div className={hudStyles.quickBody}>
         {quickMenu === "profile" && <WorldProfileMenu world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => { setLocalNotice(value => value + 1); closeQuick(); }} />}
-        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} />}
+        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={openResident} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={openResident} />}
         {quickMenu === "more" && <div className={hudStyles.moreActions}>
-          <button onClick={openResident} aria-haspopup="dialog"><Fish size={18} aria-hidden="true" />Плёска · рыбачка и торговка</button>
+          <button onClick={openResident} aria-haspopup="dialog"><Fish size={18} aria-hidden="true" /><span className={hudStyles.moreLabel}><span>Плёска</span><small>Рыбачка и торговка</small></span></button>
           <button onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" />Рынок</button>
           <button onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" />Гардероб</button>
           <button onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" />Коллекции</button>

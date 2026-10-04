@@ -32,20 +32,28 @@
 .primary, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; min-height: 44px; min-width: 0; padding: 10px; border: 1px solid #b4c29a4f; border-radius: 11px; color: #f0e9cf; background: #aab88a25; font-size: .8125rem; font-weight: 550; line-height: 1.4; cursor: pointer; }
 .secondary { color: #c9dacc; background: #a3c9b409; border-color: #aac5b42e; }
 .section { display: grid; gap: 9px; min-width: 0; }
+.tackleTabs { display: flex; gap: 7px; border-bottom: 1px solid #b5c8b027; padding-bottom: 8px; }
+.tackleTabs button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px 13px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #b9c9b7; font-size: .8125rem; cursor: pointer; }
+.tackleTabs button[aria-selected='true'] { border-color: #c4cca742; background: #c4d1a714; color: #e5e6c8; }
+.tackleTabs span { font-size: .625rem; color: #a4b99f; }
+.tacklePanel { display: grid; gap: 10px; min-width: 0; outline: none; }
+.tacklePanel:focus-visible { outline: 2px solid #e1d7a1; outline-offset: 3px; }
+.gearChoices { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(96px, 1fr); gap: 7px; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding: 3px 2px 7px; scrollbar-width: thin; scrollbar-color: #adc3a747 transparent; }
+.gearChoices button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 100px; padding: 10px 7px; border: 1px solid #b7cab82c; border-radius: 12px; background: #bdd1af07; color: #c7d7c0; scroll-snap-align: start; cursor: pointer; }
+.gearChoices button[aria-pressed='true'] { border-color: #c7c99d86; background: #bdc48f1a; }
+.gearChoices strong { font-size: .75rem; line-height: 1.3; font-weight: 500; }
+.gearChoices small { color: #acbfa7; font-size: .625rem; }
+.equipRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 9px; border-top: 1px solid #b1c6ad25; font-size: .6875rem; color: #acbfa9; }
+.equipRow > span { flex: 1; }
+.equipRow > button { min-width: 106px; }
 .section h2, .collectionHeading h2 { margin: 2px 0 1px; font-size: .875rem; font-weight: 600; color: #e6e2c8; }
 .gearCard { display: grid; gap: 10px; padding: 13px; min-width: 0; border: 1px solid #adc9b329; border-radius: 14px; background: #a7bd9e06; }
 .gearCard[data-selected] { border-color: #b9c99563; background: #b6c9930c; }
 .gearHeading { display: flex; align-items: center; gap: 10px; }
 .gearHeading > div { flex: 1; min-width: 0; }
 .gearHeading > svg { color: #c4d0a3; flex: 0 0 auto; }
-.gearIcon { display: grid; place-items: center; width: 41px; height: 41px; flex: 0 0 auto; color: #c8c2a1; border-radius: 10px; background: #c8d1ae0d; }
 .gearHeading h3 { margin: 0; color: #e1e6cb; font-size: .875rem; font-weight: 550; }
 .gearHeading p { margin: 4px 0 0; color: #a8bca9; font-size: .6875rem; line-height: 1.4; }
-.noBait { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 60px; padding: 12px; border: 1px solid #b1c8b633; border-radius: 12px; background: transparent; color: #c2d3c0; text-align: left; cursor: pointer; }
-.noBait strong { display: block; font-size: .8125rem; font-weight: 500; }
-.noBait small { display: block; margin-top: 4px; font-size: .6875rem; color: #a7bdad; }
-.noBait > span:last-child { font-size: .75rem; }
-.noBait[aria-pressed='true'] { border-color: #b9c99563; background: #b6c9930c; opacity: 1; }
 .collectionHeading { display: flex; gap: 10px; align-items: center; color: #d0c3a0; }
 .collectionHeading p { margin: 5px 0 0; color: #b4cbb8; font-size: .75rem; }
 .collection { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }

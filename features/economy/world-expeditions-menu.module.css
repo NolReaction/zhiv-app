@@ -48,7 +48,7 @@
 .requirements .link { justify-content: flex-start; color: #d1bf9d; }
 .content .storageHint { justify-content: flex-start; padding: 5px 0; color: #d7b993; text-align: left; font-size: 10px; }
 .actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
-.content .primary { min-height: 35px; padding: 7px 10px; border-color: #9dbb755e; background: #4a643b; color: #eff4dc; font-size: 11px; font-weight: 600; }
+.content.content .primary { min-height: 44px; padding: 7px 10px; border-color: #9dbb755e; background: #4a643b; color: #eff4dc; font-size: 11px; font-weight: 600; }
 .content .primary:hover:not(:disabled) { background: #607b46; }
 .warning { color: #d7b993; font-size: 10px; }
 .content > .warning { padding: 8px; margin-bottom: 9px; background: #ab764617; border: 1px solid #c5955933; border-radius: 8px; }
@@ -79,3 +79,10 @@
 .fishingGear strong { color: #e6e5c8; font-weight: 600; }
 .fishingGear p { margin: 0; color: #aebfaf; font-size: .75rem; }
 .fishingGear > button { min-height: 44px; justify-self: start; text-align: left; }
+.loadoutRow { display: grid; grid-template-columns: 43px minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0; }
+.loadoutRow > svg { justify-self: center; }
+.loadoutRow label { display: grid; gap: 3px; min-width: 0; color: #b0c5ad; font-size: .6875rem; }
+.loadoutRow select { display: block; width: 100%; min-width: 0; min-height: 44px; padding: 7px 22px 7px 8px; border: 1px solid #abc7b047; border-radius: 8px; background: #21372c; color: #e1e5ca; font: inherit; font-size: .75rem; text-overflow: ellipsis; }
+.loadoutRow select:focus-visible { outline: 2px solid #d4dfb3; outline-offset: 2px; }
+.loadoutRow select:disabled { opacity: .55; }
+.content .fishingGear > .link { min-height: 44px; font-size: .75rem; }

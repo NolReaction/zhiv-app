@@ -1,5 +1,5 @@
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
-import { drawFishingProps, FISHING_PACK_RELEASE, fishingTackleFrame } from "./fishing-props";
+import { drawFishingProps, FISHING_PACK_RELEASE, fishingTackleFrame, fishingCatchFrame, fishingBasketFishCenter } from "./fishing-props";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { drawGroundedHero } from "./grounding";
 import type { WorldPoint } from "./tiled/types";
@@ -24,24 +24,29 @@ export function forestFishingHeroRig(frame: ForestFishingFrame, still: boolean) 
   const recoil = pulling && escape ? Math.sin(smooth((phase - .25) / .75) * Math.PI) : 0;
   const crouch = packing ? Math.round(Math.sin(phase * Math.PI) * 4)
     : pulling ? Math.round(effort * 3 + recoil) : action === "fish" ? frame.variation === "nibble" ? 1 : 2 : 0;
-  const grip = { x: x + side * size * (casting ? .42 - .08 * smooth(phase) : pulling ? .34 - .04 * smooth(phase) - effort * .022 : .34),
+  const landing = action === "catch" || packing;
+  const grip = { x: x + side * size * (landing ? .3 : casting ? .42 - .08 * smooth(phase) : pulling ? .34 - .04 * smooth(phase) - effort * .022 : .34),
     y: y - size * (casting ? .25 - .05 * smooth(phase) : pulling ? .2 + .12 * smooth(phase) + effort * .035 - recoil * .025
-      : action === "bite" ? .22 + Math.abs(swing) * .013 : .2 + check * .035) };
-  const heldFish = { x: x - side * size * .28, y: y - size * (.3 + (action === "catch" && !still ? Math.sin(phase * Math.PI) * .035 : 0)) };
+      : landing ? .32 : action === "bite" ? .22 + Math.abs(swing) * .013 : .2 + check * .035) };
+  const heldFish = { x: x - side * size * .31, y: y - size * (.3 + (action === "catch" && !still ? Math.sin(phase * Math.PI) * .025 : 0)) };
   const traveling = action === "walk" || action === "idle" && !frame.waterTarget;
   const basket = { x: x - side * size * (traveling ? .27 : .43), y: y - size * (traveling ? .15 : .04) };
   const farShoulder = { x: x - side * size * .2, y: y - size * .255 };
   const nearShoulder = { x: x + side * size * .2, y: y - size * .255 };
-  const placing = mix(heldFish, { x: basket.x, y: basket.y - size * .14 }, smooth(phase / FISHING_PACK_RELEASE));
-  const nearHand = packing || action === "rest" ? { x: x + side * size * .24, y: y - size * .18 } : grip;
+  const placing = mix(heldFish, fishingBasketFishCenter(basket, size), smooth(phase / FISHING_PACK_RELEASE));
+  const actualFish = packing ? placing : heldFish;
+  const catchFrame = fishingCatchFrame(frame, still, { heldFish: actualFish, basket });
+  const relaxed = { x: x - side * size * (.23 - check * .05), y: y - size * (.18 + check * .13) };
+  const nearHand = action === "rest" ? { x: x + side * size * .24, y: y - size * .18 } : grip;
   const farHand = traveling && frame.carryingFish ? { x: basket.x, y: basket.y - size * .15 }
-    : action === "catch" ? heldFish : packing ? placing
+    : action === "catch" ? catchFrame.wrist : packing ? mix(catchFrame.wrist, relaxed, smooth((phase - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE)))
+      : pulling && !escape && phase > .7 ? mix(relaxed, catchFrame.wrist, smooth((phase - .7) / .3))
       : pulling && struggle ? { x: x + side * size * .12, y: y - size * (.19 + effort * .03) }
-        : { x: x - side * size * (.23 - check * .05), y: y - size * (.18 + check * .13) };
+        : relaxed;
   const pose: PixelPose = action === "walk" ? "fishing-walk" : escape && action === "rest" ? "blink"
     : action === "rest" || traveling ? "idle" : action === "bite" || pulling && escape && phase < .6 ? "wonder"
       : action === "catch" ? "present" : "fish";
-  return { grip, heldFish: packing ? placing : heldFish, basket, nearShoulder, farShoulder, nearHand, farHand,
+  return { grip, heldFish: actualFish, basket, nearShoulder, farShoulder, nearHand, farHand,
     pose, crouch, phase, side, traveling };
 }
 
@@ -57,9 +62,9 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   function arm(shoulder: WorldPoint, hand: WorldPoint) {
     const elbow = { x: shoulder.x + (hand.x - shoulder.x) * .48, y: Math.max(shoulder.y, hand.y) + size * .035 };
     ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.strokeStyle = armShade; ctx.lineWidth = size * .1;
+    ctx.strokeStyle = armShade; ctx.lineWidth = size * .082;
     ctx.beginPath(); ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y); ctx.stroke();
-    ctx.strokeStyle = armLight; ctx.lineWidth = size * .065;
+    ctx.strokeStyle = armLight; ctx.lineWidth = size * .052;
     ctx.beginPath(); ctx.moveTo(shoulder.x, shoulder.y - size * .013); ctx.lineTo(elbow.x, elbow.y - size * .013);
     ctx.lineTo(hand.x, hand.y - size * .013); ctx.stroke();
   }
@@ -72,17 +77,24 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   if (direction !== "back") { arm(farShoulder, farHand); arm(nearShoulder, nearHand); drawProps(); }
   if (action !== "rest") {
     const tackle = fishingTackleFrame(props, still, rig);
-    ctx.fillStyle = armLight;
-    for (const hand of [nearHand, farHand]) {
-      ctx.beginPath(); ctx.ellipse(hand.x, hand.y, size * .034, size * .035, 0, 0, Math.PI * 2); ctx.fill();
-    }
     if (tackle.visible) {
       // A short finger crosses the cylindrical handle, while its dark end stays
       // visible on both sides of the paw and identifies a real grip.
       const dx = tackle.tip.x - rig.grip.x, dy = tackle.tip.y - rig.grip.y, length = Math.max(1, Math.hypot(dx, dy));
-      ctx.strokeStyle = armShade; ctx.lineWidth = size * .021; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(rig.grip.x - dy / length * size * .029, rig.grip.y + dx / length * size * .029);
-      ctx.lineTo(rig.grip.x + dy / length * size * .029, rig.grip.y - dx / length * size * .029); ctx.stroke();
+      ctx.strokeStyle = armLight; ctx.lineWidth = size * .017; ctx.lineCap = "round";
+      for (const along of [-.013, .014]) {
+        const at = { x: rig.grip.x + dx / length * size * along, y: rig.grip.y + dy / length * size * along };
+        ctx.beginPath(); ctx.moveTo(at.x - dy / length * size * .025, at.y + dx / length * size * .025);
+        ctx.lineTo(at.x + dy / length * size * .025, at.y - dx / length * size * .025); ctx.stroke();
+      }
+    }
+    const fish = fishingCatchFrame(props, still, rig);
+    if (fish.visible && (action === "pack" || phase >= .18)) {
+      ctx.strokeStyle = armLight; ctx.lineWidth = size * .013; ctx.lineCap = "round";
+      for (const offset of [-.014, .014]) {
+        ctx.beginPath(); ctx.moveTo(fish.wrist.x + offset * size, fish.wrist.y + size * .012);
+        ctx.lineTo(fish.wrist.x + offset * size, fish.wrist.y - size * .007); ctx.stroke();
+      }
     }
   }
   ctx.restore();

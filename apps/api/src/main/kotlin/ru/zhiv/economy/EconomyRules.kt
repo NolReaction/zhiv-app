@@ -41,6 +41,7 @@ object EconomyRules {
 
     init {
         require(catalog.version == 2 && catalog.maxBatch in 1..10)
+        require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
             catalog.market.maxPriceMultiplier in 1L..5L && catalog.market.feeBps == 0)
@@ -154,9 +155,15 @@ object EconomyRules {
         return weights.last().first.itemId
     }
 
+    /** Floor one whole stack; splitting cannot improve the payout. */
+    fun localSellPrice(basePrice: Long, quantity: Long = 1, config: EconomyLocalBuyer = catalog.localBuyer): Long {
+        val total = basePrice * quantity
+        return total / 10_000 * config.payoutBps + total % 10_000 * config.payoutBps / 10_000
+    }
+
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "sell") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "start_production" -> {
@@ -323,7 +330,11 @@ object EconomyRules {
                 if (command.action == "sell_fish" && catalog.fishing?.fish?.none { it.itemId == command.targetId } != false)
                     economyFailure("ECONOMY_FISHING_ITEM", "Плёска принимает здесь только рыбу")
                 val item = catalog.items.find { it.id == command.targetId && it.tradable } ?: economyFailure("ECONOMY_ITEM", "Этот предмет нельзя продать")
-                val amount = item.baseSellPrice * command.quantity
+                val amount = if (command.action == "sell_fish") item.baseSellPrice * command.quantity
+                    else localSellPrice(item.baseSellPrice, command.quantity)
+                if (amount == 0L) economyFailure("ECONOMY_SALE_QUANTITY", "Для продажи добавьте предметы в партию: выручка должна быть хотя бы одна монета")
+                if (command.action == "sell" && amount < command.totalPrice)
+                    economyFailure("ECONOMY_SALE_PRICE_CHANGED", "Выручка изменилась. Проверьте цену продажи и подтвердите снова")
                 if (amount > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк достиг предела")
                 val spent = spend(state, EconomyCost(items = mapOf(item.id to command.quantity)))
                 spent.copy(wallet = spent.wallet.copy(coins = spent.wallet.coins + amount)) to "Товары проданы за $amount монет"

@@ -348,7 +348,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val duplicate = command(p, "sell", quantity = 1).copy(requestId = fresh.requestId)
         assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> { economy.command(p.hash, duplicate) }.code)
         assertEquals(18L, economy.snapshot(p.hash).inventory["berries"])
-        assertEquals(103L, economy.snapshot(p.hash).wallet.coins)
+        assertEquals(100L + EconomyRules.localSellPrice(3), economy.snapshot(p.hash).wallet.coins)
     }
 
     @Test fun `HTTP market requires auth trusted origin and strict numeric command payloads`() = testApplication {

@@ -18,7 +18,7 @@ const stored = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publ
 const command = (p, action, targetId, extra = {}, at = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
   expectedRevision: read(p, at).revision, action, targetId, quantity: 1, totalPrice: 0, ...extra });
 const issue = (p, action, targetId, extra = {}, at = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, extra, at), at).state;
-const fund = p => { read(p); stored(p).wallet.coins = 1000; };
+const fund = p => { read(p); stored(p).wallet.coins = 10_000; };
 
 test("old snapshots and profiles receive a free starter rod, never retroactive catch records", () => {
   const p = player(), snapshot = read(p);
@@ -55,26 +55,26 @@ test("changing rods cannot turn a completed random draw into a better fish by do
 
 test("purchases charge authoritative prices once, durable rods are unique and buying fish never opens collection", () => {
   const p = player(); fund(p);
-  const buy = command(p, "buy_fishing_item", "river_rod", { totalPrice: 125 });
+  const buy = command(p, "buy_fishing_item", "river_rod", { totalPrice: 1805 });
   const result = economy.commandDevEconomy(p.token, buy, now);
-  assert.equal(result.state.wallet.coins, 880);
+  assert.equal(result.state.wallet.coins, 8200);
   assert.deepEqual(result.state.fishing.ownedRods, ["reed_rod", "river_rod"]);
   assert.equal(result.state.storage.used, 0, "durable rods are not warehouse stacks");
   assert.equal(economy.commandDevEconomy(p.token, buy, now).replayed, true);
-  assert.throws(() => issue(p, "buy_fishing_item", "river_rod", { totalPrice: 120 }), { code: "ECONOMY_FISHING_OWNED" });
+  assert.throws(() => issue(p, "buy_fishing_item", "river_rod", { totalPrice: 1800 }), { code: "ECONOMY_FISHING_OWNED" });
   const bought = issue(p, "buy_fishing_item", "fish_mooncarp", { quantity: 2, totalPrice: 128 });
   assert.equal(bought.inventory.fish_mooncarp, 2);
   assert.deepEqual(bought.fishing.catches, {});
   const sold = issue(p, "sell_fish", "fish_mooncarp", { quantity: 2 });
-  assert.equal(sold.wallet.coins, 816);
+  assert.equal(sold.wallet.coins, 8136);
   assert.deepEqual(sold.fishing.catches, {});
 });
 
 test("stale quotes, unsupported items, bulk rods, full escrow storage and insufficient coins leave snapshots unchanged", () => {
   const p = player(); fund(p);
   const before = read(p);
-  for (const [target, extra, code] of [["river_rod", { totalPrice: 119 }, "ECONOMY_FISHING_PRICE_CHANGED"],
-    ["wood", { totalPrice: 100 }, "ECONOMY_FISHING_ITEM"], ["river_rod", { quantity: 2, totalPrice: 240 }, "INVALID_ECONOMY_COMMAND"],
+  for (const [target, extra, code] of [["river_rod", { totalPrice: 1799 }, "ECONOMY_FISHING_PRICE_CHANGED"],
+    ["wood", { totalPrice: 100 }, "ECONOMY_FISHING_ITEM"], ["river_rod", { quantity: 2, totalPrice: 3600 }, "INVALID_ECONOMY_COMMAND"],
     ["crumb_bait", { quantity: 11, totalPrice: 33 }, "INVALID_ECONOMY_COMMAND"]]) {
     assert.throws(() => issue(p, "buy_fishing_item", target, extra), { code });
     assert.deepEqual(read(p), before);
@@ -86,10 +86,10 @@ test("stale quotes, unsupported items, bulk rods, full escrow storage and insuff
   const full = read(p);
   assert.throws(() => issue(p, "buy_fishing_item", "crumb_bait", { totalPrice: 3 }), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p), full);
-  assert.equal(issue(p, "buy_fishing_item", "river_rod", { totalPrice: 120 }).storage.available, 0, "a rod does not consume storage");
+  assert.equal(issue(p, "buy_fishing_item", "river_rod", { totalPrice: 1800 }).storage.available, 0, "a rod does not consume storage");
   stored(p).wallet.coins = 0;
   const poor = read(p);
-  assert.throws(() => issue(p, "buy_fishing_item", "willow_rod", { totalPrice: 360 }), { code: "ECONOMY_RESOURCES" });
+  assert.throws(() => issue(p, "buy_fishing_item", "willow_rod", { totalPrice: 7200 }), { code: "ECONOMY_RESOURCES" });
   assert.deepEqual(read(p), poor);
 });
 
@@ -97,7 +97,7 @@ test("loadout is validated, fishing spends one bait and locks catch before later
   const p = player(); fund(p);
   assert.throws(() => issue(p, "equip_fishing_rod", "willow_rod"), { code: "ECONOMY_FISHING_ROD" });
   assert.throws(() => issue(p, "equip_fishing_bait", "worm_bait"), { code: "ECONOMY_RESOURCES" });
-  issue(p, "buy_fishing_item", "river_rod", { totalPrice: 120 }); issue(p, "equip_fishing_rod", "river_rod");
+  issue(p, "buy_fishing_item", "river_rod", { totalPrice: 1800 }); issue(p, "equip_fishing_rod", "river_rod");
   issue(p, "buy_fishing_item", "worm_bait", { quantity: 2, totalPrice: 14 }); issue(p, "equip_fishing_bait", "worm_bait");
   assert.deepEqual(fishingTripCost({ coins: 0, items: {} }, read(p)), { coins: 0, items: { worm_bait: 1 } });
   assert.throws(() => issue(p, "start_fishing", "forest"), { code: "ECONOMY_FISHING_ROUTE" });

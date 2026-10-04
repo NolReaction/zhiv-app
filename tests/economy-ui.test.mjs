@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { EconomyPanel, EconomyBalances, economyDuration } = await vite.ssrLoadModule("/features/economy/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
@@ -274,4 +274,26 @@ test("placed workshop and quarry open their own requirements and then their conf
   }
   assert.deepEqual(economyBuildingDestination("home", snapshot({ buildings: { home: 5 } })), { tab: "buildings", focusId: "home" });
   assert.deepEqual(economyBuildingDestination("workshop", null), { tab: "buildings", focusId: "workshop" });
+});
+
+test("inventory guide and sale consistently show the actual discounted payout", () => {
+  const state = snapshot({ inventory: { fish: 3 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  const html = render("inventory", controller({ snapshot: state }), "fish");
+  assert.match(html, /Быстрая продажа с уценкой 40%/);
+  assert.match(html, /Быстрая продажа торговцу: 60% базовой цены/);
+  assert.match(html, /Плёска купит дороже: 8 монет за штуку/);
+  assert.equal(disabled(button(html, "Продать 1 шт. за 4 монет")), false);
+  assert.doesNotMatch(html, /Продать 1 шт. за 8 монет|Торговец покупает сразу по 8/);
+  state.wallet.coins = 1_000_000_000;
+  assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish"), "Продать — шт.")), true);
+});
+
+test("legacy inventory sale keeps full price; tiny stock cannot disappear for zero proceeds", () => {
+  const state = snapshot({ inventory: { crumb_bait: 1 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  let html = render("inventory", controller({ snapshot: state }), "crumb_bait");
+  assert.match(html, /нужно хотя бы 2 шт/); assert.equal(disabled(button(html, "Продать — шт.")), true);
+  delete state.catalog.localBuyer;
+  html = render("inventory", controller({ snapshot: state }), "crumb_bait");
+  assert.doesNotMatch(html, /уценкой|округляется/);
+  assert.equal(disabled(button(html, "Продать 1 шт. за 1 монет")), false);
 });

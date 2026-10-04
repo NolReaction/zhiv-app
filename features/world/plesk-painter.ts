@@ -1,5 +1,5 @@
 import type { PleskResidentFrame } from "./plesk-resident";
-import { drawFishingProps, fishingPropsBounds } from "./fishing-props";
+import { drawFishingProps, fishingPropsBounds, fishingCatchFrame, fishingTackleFrame } from "./fishing-props";
 import { pleskSprite, pleskSpriteRig, PLESK_SPRITE_SIZE } from "./plesk-sprite";
 import type { WorldBounds, WorldPoint } from "./tiled/types";
 
@@ -27,18 +27,23 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   ctx.ellipse(frame.x, frame.y, size * .2, size * .035, 0, 0, Math.PI * 2); ctx.fill();
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprite, origin.x, origin.y, size, size);
-  drawFishingProps(ctx, { ...frame, rodId: "willow_rod" }, still,
-    { grip: world(rig.grip), heldFish: world(rig.heldFish), basket: world(rig.basket) });
-  // Foreground fingers wrap the rod handle/catch. The original arm remains in
-  // the cached sprite, so neither the rod nor its reel floats above a flat paw.
-  for (const palm of rig.palms) {
-    const at = world(palm.position);
-    ctx.fillStyle = palm.near ? "#9ab7bb" : "#74949c";
-    ctx.fillRect(at.x - scale * 2, at.y - scale, scale * 4, scale * 3);
-    ctx.fillStyle = palm.near ? "#b8cecd" : "#9ab7bb";
-    ctx.fillRect(at.x - scale, at.y - scale * 2, scale * 3, scale * 2);
-    ctx.fillStyle = "#536f78";
-    ctx.fillRect(at.x + scale, at.y + scale, scale, scale);
+  const props = { ...frame, rodId: "willow_rod" };
+  const anchors = { grip: world(rig.grip), heldFish: world(rig.heldFish), basket: world(rig.basket) };
+  drawFishingProps(ctx, props, still, anchors);
+  // Full paws belong behind props. Only two small fingers overlap the handle
+  // or lower fish outline, leaving the fish's head and body readable.
+  const tackle = fishingTackleFrame(props, still, anchors);
+  if (tackle.visible) {
+    const at = anchors.grip;
+    ctx.fillStyle = "#b8cecd";
+    ctx.fillRect(at.x - scale, at.y - scale, scale * 3, scale);
+    ctx.fillRect(at.x - scale, at.y + scale, scale * 3, scale);
+  }
+  const fish = fishingCatchFrame(props, still, anchors);
+  if (fish.visible && (frame.action === "pack" || frame.phase >= .18)) {
+    ctx.fillStyle = "#9ab7bb";
+    ctx.fillRect(fish.wrist.x - scale, fish.wrist.y, scale, scale);
+    ctx.fillRect(fish.wrist.x + scale, fish.wrist.y, scale, scale);
   }
   ctx.restore();
 }

@@ -58,6 +58,11 @@ export function auditEconomyProgression(catalog) {
       }
     }
   }
+  const payoutBps = catalog.localBuyer?.payoutBps ?? 10_000;
+  assert(Number.isInteger(payoutBps) && payoutBps > 0 && payoutBps <= 10_000, "Invalid local buyer payout");
+  const specialistFish = new Set((catalog.fishing?.fish ?? []).map(fish => fish.itemId));
+  const cashValue = quantities => Object.entries(quantities).reduce((sum, [id, amount]) => sum +
+    (specialistFish.has(id) ? items.get(id).baseSellPrice * amount : Math.floor(items.get(id).baseSellPrice * amount * payoutBps / 10_000)), 0);
   const production = [...catalog.recipes, ...catalog.explorations];
   const npcValue = quantities => Object.entries(quantities).reduce((sum, [item, amount]) => sum + items.get(item).baseSellPrice * amount, 0);
   for (const definition of production) {
@@ -70,6 +75,7 @@ export function auditEconomyProgression(catalog) {
       assert(nodes.has(`${definition.buildingId}:${definition.buildingLevel}`), `${definition.id}: unknown producer`);
       const inputValue = npcValue(definition.cost.items) + definition.cost.coins;
       assert(npcValue(definition.rewards) > inputValue, `${definition.id}: crafting destroys NPC value`);
+      assert(cashValue(definition.rewards) > cashValue(definition.cost.items) + definition.cost.coins, `${definition.id}: crafting destroys actual sale proceeds`);
     }
   }
   const merchantItems = [];

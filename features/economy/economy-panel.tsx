@@ -7,6 +7,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { canAffordEconomy } from "./rules";
+import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 import { ConstructionSpeedup } from "./construction-speedup";
 import { useGardenCollection } from "./garden-collection-context";
 import { berryCollectionStatus } from "./garden-collection";
@@ -293,13 +294,22 @@ function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; na
 }
 
 function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
-  const { snapshot: state, busy, uncertain } = economy;
-  const [value, setValue] = useState("1");
-  const inputId = useId(), stock = state.inventory[item.id] ?? 0, maximum = Math.min(10_000, stock), quantity = integer(value, maximum);
-  return <div className={styles.card}><h3>Продать торговцу: {item.name.toLocaleLowerCase("ru-RU")}</h3><p className={styles.muted}>Торговец покупает сразу по {number(item.baseSellPrice)} монет за штуку. На прилавке можно предложить свою цену другим игрокам.</p>
-    <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={1} max={maximum} step={1} value={value} disabled={busy || uncertain} onChange={event => setValue(event.target.value)} /></label>
-    <button className={styles.primary} disabled={!quantity || busy || uncertain} onClick={() => { if (quantity) void economy.act("sell", item.id, quantity); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "—"} шт. за {quantity ? number(quantity * item.baseSellPrice) : "—"} монет</button>
-    {!quantity && <p className={styles.hint}>Укажите целое количество от 1 до {number(maximum)}.</p>}
+  const { snapshot: state } = economy;
+  const buyer = state.catalog.localBuyer, minimum = economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer);
+  const [value, setValue] = useState(() => String(minimum));
+  const inputId = useId(), stock = state.inventory[item.id] ?? 0;
+  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
+  const parsed = integer(value, maximum), quantity = parsed && parsed >= minimum ? parsed : null;
+  const total = quantity ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
+  const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
+  const unavailable = economy.busy || economy.uncertain || economy.retryAt > economy.now;
+  return <div className={styles.card}><h3>Продать торговцу: {item.name.toLocaleLowerCase("ru-RU")}</h3>
+    <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
+    {discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === item.id) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
+    <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
+    <button className={styles.primary} disabled={!quantity || unavailable} onClick={() => { if (quantity && !unavailable) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "—"} шт. за {quantity ? number(total) : "—"} монет</button>
+    {maximum < minimum ? <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>
+      : !quantity && <p className={styles.hint}>Укажите целое количество от {number(minimum)} до {number(maximum)}.</p>}
   </div>;
 }
 
@@ -320,7 +330,9 @@ function ItemGuide({ economy, item, navigate }: { economy: ReadyEconomy; item: I
       {ingredients.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name} · нужно {number(recipe.cost.items[item.id])}<ChevronRight size={14} aria-hidden /></button></li>)}
       {buildings.map(building => <li key={building.id}><button className={styles.textButton} onClick={() => navigate("buildings", building.id)}><House size={15} aria-hidden />Стройка: {building.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {provisions.map(route => <li key={route.id}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />Припасы: {route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
-    </ul>{item.tradable && <p className={styles.muted}>Можно продать торговцу по {number(item.baseSellPrice)} монет за штуку или предложить другим игрокам.</p>}</div>
+    </ul>{item.tradable && <p className={styles.muted}>{state.catalog.localBuyer && state.catalog.localBuyer.payoutBps < 10_000
+      ? `Быстрая продажа торговцу: ${number(state.catalog.localBuyer.payoutBps / 100)}% базовой цены, с округлением итоговой суммы вниз.`
+      : `Можно продать торговцу по ${number(item.baseSellPrice)} монет за штуку.`} На рынке игроков вы назначаете цену сами.</p>}</div>
   </div>;
 }
 

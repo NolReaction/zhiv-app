@@ -79,7 +79,7 @@
       "id": "smoked_fish",
       "name": "Копчёная рыба",
       "category": "provisions",
-      "baseSellPrice": 24,
+      "baseSellPrice": 34,
       "tradable": true
     },
     {
@@ -2140,14 +2140,14 @@
         "id": "river_rod",
         "name": "Речная удочка",
         "description": "Чувствительный кончик повышает шанс необычной рыбы.",
-        "price": 120,
+        "price": 1800,
         "rareBonus": 2
       },
       {
         "id": "willow_rod",
         "name": "Ивовая удочка",
         "description": "Гибкая снасть Плёски лучше замечает осторожные поклёвки.",
-        "price": 360,
+        "price": 7200,
         "rareBonus": 5
       }
     ],
@@ -2165,5 +2165,8 @@
         "rareBonus": 3
       }
     ]
+  },
+  "localBuyer": {
+    "payoutBps": 6000
   }
 }

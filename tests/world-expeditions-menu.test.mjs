@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldExpeditionsMenu, WorldExpeditionSector, ActiveExpedition, expeditionCancellationKey, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
+const { WorldExpeditionsMenu, WorldExpeditionSector, ExpeditionRouteDetails, ActiveExpedition, expeditionCancellationKey, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
@@ -298,9 +298,12 @@ function sectorView(sectorId, state, overrides = {}, props = {}) {
   function walk(element) {
     if (!isValidElement(element)) return;
     elements.push(element);
-    // RouteDetails is a pure child component; inspect its actual handlers in
-    // addition to SSR markup without reimplementing departure decisions.
-    if (typeof element.type === "function" && element.props.route && element.props.economy) walk(element.type(element.props));
+    // Render the real route component under React so its equipment/receipt hooks
+    // and handlers are inspected without reimplementing departure decisions.
+    if (element.type === ExpeditionRouteDetails) {
+      function Probe() { const detail = ExpeditionRouteDetails(element.props); walk(detail); return detail; }
+      renderToStaticMarkup(createElement(Probe));
+    }
     Children.forEach(element.props.children, walk);
   }
   walk(tree);
@@ -322,7 +325,7 @@ test("fishing departure shows equipped gear, charges one bait per trip and guard
   missing.depart("shore").props.onClick(); assert.deepEqual(missing.calls, []);
   const ready = sectorView("shore", snapshot({ ...state, inventory: { worm_bait: 1 } }));
   assert.equal(ready.depart("shore").props.disabled, false);
-  ready.depart("shore").props.onClick(); assert.deepEqual(ready.calls, [["start_fishing", "shore"]]);
+  ready.depart("shore").props.onClick(); assert.deepEqual(ready.calls, [["start_fishing", "shore", 1, 0]]);
   assert.deepEqual(state, before, "rendering and choosing a trip cannot deduct supplies optimistically");
   const bare = sectorView("shore", snapshot({ fishing: fishingGear({ equippedBaitId: null }), inventory: {} }));
   assert.match(route(bare.html, "shore"), /Без наживки/);
@@ -337,13 +340,13 @@ test("fishing consumes the dedicated action only for declared routes and preserv
     assert.equal(coastal.depart(routeId).props.disabled, false);
     coastal.depart(routeId).props.onClick();
   }
-  assert.deepEqual(coastal.calls, [["start_fishing", "shore"], ["start_fishing", "shore_camp"], ["start_exploration", "coastal_deposits"]]);
+  assert.deepEqual(coastal.calls, [["start_fishing", "shore", 1, 0], ["start_fishing", "shore_camp", 1, 0], ["start_exploration", "coastal_deposits", 1, 0]]);
   const forest = sectorView("forest", state); forest.depart("forest").props.onClick();
-  assert.deepEqual(forest.calls, [["start_exploration", "forest"]]);
+  assert.deepEqual(forest.calls, [["start_exploration", "forest", 1, 0]]);
   const legacy = structuredClone(state); delete legacy.catalog.fishing; delete legacy.fishing;
   const fallback = sectorView("shore", legacy); fallback.depart("shore").props.onClick();
-  assert.deepEqual(fallback.calls, [["start_exploration", "shore"]]);
-  assert.doesNotMatch(route(fallback.html, "shore"), /Рыбный улов|Выбрать снасти/);
+  assert.deepEqual(fallback.calls, [["start_exploration", "shore", 1, 0]]);
+  assert.doesNotMatch(route(fallback.html, "shore"), /Рыбный улов|Купить снасти/);
   assert.match(route(fallback.html, "shore"), new RegExp(economyCatalog.items.find(item => item.id === "fish").name));
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 1000 }]) {
     const locked = sectorView("shore", state, flags);
@@ -355,11 +358,11 @@ test("fishing consumes the dedicated action only for declared routes and preserv
 test("shore gear shortcuts open Pleska without spending and fishing keeps each route's advertised capacity", () => {
   const view = sectorView("shore", snapshot());
   const shops = view.elements.filter(element => element.type === "button"
-    && Children.toArray(element.props.children).some(child => child === "Выбрать снасти у Плёски"));
+    && Children.toArray(element.props.children).some(child => child === "Купить снасти у Плёски"));
   assert.equal(shops.length, economyCatalog.fishing.routeIds.length);
   shops[0].props.onClick(); assert.deepEqual(view.visits, ["plesk"]); assert.deepEqual(view.calls, []);
   const without = sectorView("shore", snapshot(), {}, { onOpenFishingShop: undefined });
-  assert.doesNotMatch(without.html, /Выбрать снасти у Плёски/);
+  assert.doesNotMatch(without.html, /Купить снасти у Плёски/);
   for (const routeId of economyCatalog.fishing.routeIds) {
     const entry = economyCatalog.explorations.find(route => route.id === routeId);
     const quantity = Object.values(entry.rewards).reduce((sum, count) => sum + count, 0);
@@ -386,4 +389,65 @@ test("an active fishing job shows its saved species and forfeits the exact resul
   const changed = { ...saved, fishing: { ...saved.fishing, rodId: "river_rod" } };
   assert.notEqual(expeditionCancellationKey(state.ownerPublicId, changed), view.key,
     "a cancellation confirmation cannot survive replacement of a saved fishing result");
+});
+
+function fishingDepartureView(state = snapshot(), overrides = {}) {
+  const calls = [], elements = [];
+  const economy = controller({ snapshot: state, act(...args) { calls.push(args); }, ...overrides });
+  let tree;
+  function Probe() {
+    tree = ExpeditionRouteDetails({ state, economy, route: state.catalog.explorations.find(route => route.id === "shore"), exploring: false, onOpenPantry() {} });
+    return tree;
+  }
+  const html = renderToStaticMarkup(createElement(Probe));
+  function walk(element) { if (!isValidElement(element)) return; elements.push(element); Children.forEach(element.props.children, walk); }
+  walk(tree);
+  const [rod, bait] = elements.filter(element => element.type === "select");
+  const start = elements.find(element => element.type === "button" && element.props["aria-label"]?.startsWith("Отправиться:"));
+  return { calls, html, rod, bait, start, elements };
+}
+
+test("departure offers only owned rods and allows bait from stock or explicitly no bait", () => {
+  const state = snapshot({ fishing: fishingGear({ ownedRods: ["reed_rod", "river_rod"], equippedRodId: "reed_rod" }), inventory: { worm_bait: 2 } });
+  const view = fishingDepartureView(state);
+  const rodOptions = Children.toArray(view.rod.props.children).filter(isValidElement);
+  assert.deepEqual(rodOptions.map(option => option.props.value), ["reed_rod", "river_rod"]);
+  const baitOptions = Children.toArray(view.bait.props.children).filter(isValidElement);
+  assert.equal(baitOptions.find(option => option.props.value === "crumb_bait").props.disabled, true);
+  assert.equal(baitOptions.find(option => option.props.value === "worm_bait").props.disabled, false);
+  assert.notEqual(baitOptions.find(option => option.props.value === "none").props.disabled, true);
+  view.rod.props.onChange({ target: { value: "willow_rod" } });
+  view.bait.props.onChange({ target: { value: "crumb_bait" } });
+  view.bait.props.onChange({ target: { value: "unknown_bait" } });
+  assert.deepEqual(view.calls, [], "forged unowned selections cannot issue an equipment command");
+  view.bait.props.onChange({ target: { value: "none" } });
+  assert.deepEqual(view.calls, [["equip_fishing_bait", "none", 1, 0]]);
+  assert.equal(state.fishing.equippedBaitId, "worm_bait", "selection is not applied optimistically");
+});
+
+test("equipping then immediately departing waits for a confirmed snapshot and never auto-starts", () => {
+  const state = snapshot({ fishing: fishingGear({ equippedRodId: "reed_rod", equippedBaitId: null }) });
+  const before = fishingDepartureView(state);
+  before.rod.props.onChange({ target: { value: "river_rod" } });
+  before.start.props.onClick(); before.start.props.onClick();
+  assert.deepEqual(before.calls, [["equip_fishing_rod", "river_rod", 1, 0]], "equip and departure share the same synchronous receipt latch");
+  const pending = fishingDepartureView(state, { busy: true });
+  assert.equal(pending.rod.props.disabled, true); assert.equal(pending.bait.props.disabled, true); assert.equal(pending.start.props.disabled, true);
+  pending.start.props.onClick(); assert.deepEqual(pending.calls, []);
+  const confirmed = fishingDepartureView({ ...state, revision: state.revision + 1, fishing: { ...state.fishing, equippedRodId: "river_rod" } });
+  assert.equal(confirmed.rod.props.value, "river_rod"); assert.equal(confirmed.start.props.disabled, false);
+  assert.deepEqual(confirmed.calls, [], "confirmation only updates the loadout; it does not start a trip");
+  confirmed.start.props.onClick(); confirmed.start.props.onClick();
+  assert.deepEqual(confirmed.calls, [["start_fishing", "shore", 1, 0]]);
+});
+
+test("equipment selectors and departure honor receipt recovery, cooldown and stale owner/revision", () => {
+  const state = snapshot({ fishing: fishingGear({ equippedRodId: "reed_rod", equippedBaitId: null }), inventory: { worm_bait: 2 } });
+  for (const flags of [{ uncertain: true }, { busy: true }, { retryAt: now + 5000 },
+    { snapshot: { ...state, ownerPublicId: "OTHER" } }, { snapshot: { ...state, revision: state.revision + 1 } }]) {
+    const view = fishingDepartureView(state, flags);
+    assert.equal(view.rod.props.disabled, true); assert.equal(view.bait.props.disabled, true); assert.equal(view.start.props.disabled, true);
+    view.rod.props.onChange({ target: { value: "river_rod" } }); view.bait.props.onChange({ target: { value: "worm_bait" } }); view.start.props.onClick();
+    assert.deepEqual(view.calls, []);
+  }
 });

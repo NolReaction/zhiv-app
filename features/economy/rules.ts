@@ -1,6 +1,8 @@
 import { ECONOMY_MAX_BALANCE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 
 import { fishingState, fishingTripCost, selectFishingCatch } from "./fishing";
+import { economyLocalSellPrice } from "./local-sale";
+export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
@@ -82,7 +84,7 @@ function requireBuildings(state: EconomyState, required: Record<string, number>)
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}): string {
-  if (!["speedup_construction", "buy_fishing_item"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  if (!["speedup_construction", "buy_fishing_item", "sell"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing">, seconds: number, cost: EconomyCost, id = jobId()) => {
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
@@ -256,7 +258,11 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       const item = economyCatalog.items.find(item => item.id === command.targetId && item.tradable);
       if (!item) return fail("ECONOMY_ITEM", "Этот предмет нельзя продать");
       if ((state.inventory[item.id] ?? 0) < command.quantity) fail("ECONOMY_RESOURCES", "Не хватает предметов для продажи");
-      const coins = command.quantity * item.baseSellPrice;
+      const coins = command.action === "sell_fish" ? command.quantity * item.baseSellPrice
+        : economyLocalSellPrice(item.baseSellPrice, command.quantity, economyCatalog.localBuyer);
+      if (coins === 0) return fail("ECONOMY_SALE_QUANTITY", "Для продажи добавьте предметы в партию: выручка должна быть хотя бы одна монета");
+      if (command.action === "sell" && coins < command.totalPrice)
+        return fail("ECONOMY_SALE_PRICE_CHANGED", "Выручка изменилась. Проверьте цену продажи и подтвердите снова");
       if (state.wallet.coins + coins > ECONOMY_MAX_BALANCE) fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
       state.inventory[item.id] -= command.quantity; state.wallet.coins += coins;
       if (!state.inventory[item.id]) delete state.inventory[item.id];

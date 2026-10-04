@@ -28,6 +28,8 @@
 .capacity[data-full="true"] progress::-webkit-progress-value { background: #d2ac78; }
 .capacity[data-full="true"] progress::-moz-progress-bar { background: #d2ac78; }
 .muted { color: #aabda0; font-size: 10px; }
+.fishBuyer { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 7px; color: #c3d6b4; font-size: 11px; }
+.pantry .fishBuyer .textButton { min-height: 36px; white-space: nowrap; }
 .hint { color: #e1bd90; font-size: 11px; }
 .items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .pantry .item { display: flex; flex-direction: column; gap: 4px; min-height: 76px; padding: 7px 3px; border-color: #9bb5802b; border-radius: 9px; background: #a5bd7a09; }

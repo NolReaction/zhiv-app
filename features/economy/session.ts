@@ -3,6 +3,7 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { economyCommandSchema, marketCommandSchema, type EconomyCommand, type EconomyResult, type EconomyView, type MarketCommand, type MarketView } from "./model";
 import { economyDevCommandSchema, type EconomyDevCommand } from "./dev-model";
 import { constructionCompletions, type ConstructionCompletion } from "./construction-completion";
+import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryGain } from "./inventory-gain";
 
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
@@ -18,18 +19,21 @@ type View = {
   completedConstructions: readonly ConstructionCompletion[];
   /** Confirmed local cancellations only; used to return the visible actor empty-handed. */
   cancelledExplorations?: readonly string[];
+  /** Local accepted inventory additions only; never inferred by polling. */
+  inventoryGains?: readonly InventoryGain[];
 };
 type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 /** Account-scoped session, independent of map/panel lifetime. An uncertain command keeps its exact receipt. */
 export function createEconomySession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: ReceiptStorage) {
-  let view: View = { snapshot: null, market: null, marketError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [] };
+  let view: View = { snapshot: null, market: null, marketError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [], inventoryGains: [] };
   let pending: Pending | null = null, active = false, epoch = 0, readSequence = 0, marketSequence = 0;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null;
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
   const storageKey = `zhiv:economy:pending:v1:${owner}`;
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
+  const inventoryReceipts = new Set<string>();
   const publish = (patch: Partial<View>) => { view = { ...view, ...patch }; listeners.forEach(listener => listener()); };
   const valid = (generation: number) => active && generation === epoch;
   const now = () => serverClock + performance.now() - localClock;
@@ -128,9 +132,16 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !result.state.jobs.some(job => job.id === value.command.targetId)
           && !view.snapshot?.jobs.some(job => job.id === value.command.targetId)
           && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
+        const gain = value.kind !== "dev" && view.snapshot?.revision === result.state.revision
+          && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(before, result, value.command) : null;
+        if (gain) {
+          inventoryReceipts.add(gain.id);
+          if (inventoryReceipts.size > 64) inventoryReceipts.delete(inventoryReceipts.values().next().value!);
+        }
         remember(null); publish({ notice: result.message, uncertain: false,
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
-          ...(cancelled ? { cancelledExplorations: Object.freeze([...(view.cancelledExplorations ?? []), cancelled].slice(-8)) } : {}) });
+          ...(cancelled ? { cancelledExplorations: Object.freeze([...(view.cancelledExplorations ?? []), cancelled].slice(-8)) } : {}),
+          ...(gain ? { inventoryGains: Object.freeze([...(view.inventoryGains ?? []), gain].slice(-INVENTORY_GAIN_HISTORY_LIMIT)) } : {}) });
         reloadMarket = value.kind === "market";
       }
     } catch (error) {

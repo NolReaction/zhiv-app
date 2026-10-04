@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronUp, Clock3, Compass, Hammer, Package, RefreshCw, Store } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
-import { ECONOMY_MAX_BALANCE } from "./model";
+import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 import type { EconomyController } from "./use-economy";
 import { ProductIcon, locked, number, type ReadyEconomy } from "./world-economy-parts";
 import { worldDuration, worldJobProgress } from "./world-stations";
@@ -14,10 +14,14 @@ export type WorldPantryMenuProps = {
   onUpgrade: () => void;
   onExplore: () => void;
   onOpenMarket?: () => void;
+  onOpenFishingShop?: () => void;
 };
 
-export function PantrySale({ economy, itemId, onClose }: { economy: ReadyEconomy; itemId: string; onClose?: () => void }) {
-  const [quantityText, setQuantityText] = useState("1");
+export function PantrySale({ economy, itemId, onClose, onOpenFishingShop }: { economy: ReadyEconomy; itemId: string; onClose?: () => void; onOpenFishingShop?: () => void }) {
+  const state = economy.snapshot, buyer = state.catalog.localBuyer;
+  const item = state.catalog.items.find(entry => entry.id === itemId);
+  const minimum = item ? economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer) : 1;
+  const [quantityText, setQuantityText] = useState(() => String(minimum));
   const inputId = useId();
   const sale = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -25,34 +29,38 @@ export function PantrySale({ economy, itemId, onClose }: { economy: ReadyEconomy
     // controls visible without moving the menu again when a server snapshot arrives.
     sale.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [itemId]);
-  const item = economy.snapshot.catalog.items.find(entry => entry.id === itemId);
   if (!item) return null;
-  const stock = economy.snapshot.inventory[itemId] ?? 0;
-  const maximum = Math.max(0, Math.min(stock, 10_000, Math.floor((ECONOMY_MAX_BALANCE - economy.snapshot.wallet.coins) / item.baseSellPrice)));
+  const stock = state.inventory[itemId] ?? 0;
+  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
+  const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
+  const betterFishPrice = discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === itemId);
   const quantity = Number(quantityText);
-  const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
+  const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= minimum && quantity <= maximum;
+  const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
   return <section ref={sale} className={`${styles.pantry} ${styles.sale}`} aria-label={`Продажа: ${item.name}`}>
     <div className={styles.saleHeading}>
       <ProductIcon itemId={item.id} size={18} />
       <h3>{item.name}</h3>
       {onClose && <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Свернуть продажу"><ChevronUp size={16} aria-hidden="true" /></button>}
     </div>
-    <p className={styles.muted}>В запасе {number(stock)} · {number(item.baseSellPrice)} монет за штуку</p>
+    <p className={styles.muted}>В запасе {number(stock)} · {discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%` : `${number(item.baseSellPrice)} монет за штуку`}</p>
+    {discount > 0 && <p className={styles.muted}>Сумма за всё количество округляется вниз до целой монеты.</p>}
+    {betterFishPrice && <p className={styles.fishBuyer}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку.{onOpenFishingShop && <button type="button" className={styles.textButton} onClick={onOpenFishingShop}>К Плёске<ArrowRight size={13} aria-hidden="true" /></button>}</p>}
     {item.tradable ? <>
       <div className={styles.saleControls}>
         <label htmlFor={inputId}>Количество</label>
-        <input id={inputId} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={locked(economy) || maximum === 0} onChange={event => setQuantityText(event.target.value)} />
-        <button type="button" className={styles.textButton} disabled={locked(economy) || maximum === 0} onClick={() => setQuantityText(String(maximum))}>{maximum < stock ? `До ${number(maximum)}` : "Всё"}</button>
+        <input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={quantityText} disabled={locked(economy) || maximum < minimum} onChange={event => setQuantityText(event.target.value)} />
+        <button type="button" className={styles.textButton} disabled={locked(economy) || maximum < minimum} onClick={() => setQuantityText(String(maximum))}>{maximum < stock ? `До ${number(maximum)}` : "Всё"}</button>
       </div>
-      <button type="button" className={styles.sellButton} disabled={!valid || locked(economy)} onClick={() => void economy.act("sell", item.id, quantity)}>Продать торговцу · {valid ? number(quantity * item.baseSellPrice) : "—"}<ItemIcon itemId="coins" size={16} /></button>
-      {maximum === 0 && <p className={styles.hint}>{stock === 0 ? "Эти запасы уже закончились." : "В кошельке нет места для продажи."}</p>}
-      {!valid && maximum > 0 && <p className={styles.hint}>Укажите от 1 до {number(maximum)}.</p>}
+      <button type="button" className={styles.sellButton} disabled={!valid || locked(economy)} onClick={() => { if (valid && !locked(economy)) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}>Продать торговцу · {valid ? number(total) : "—"}<ItemIcon itemId="coins" size={16} /></button>
+      {maximum < minimum && <p className={styles.hint}>{stock === 0 ? "Эти запасы уже закончились." : stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>}
+      {!valid && maximum >= minimum && <p className={styles.hint}>Укажите от {number(minimum)} до {number(maximum)}.</p>}
     </> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}
   </section>;
 }
 
 /** Content only: the map provides the shared menu frame, heading and focus handling. */
-export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket }: WorldPantryMenuProps) {
+export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, onOpenFishingShop }: WorldPantryMenuProps) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const state = economy.snapshot;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
@@ -81,7 +89,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket }:
     {overflow > 0 && <p className={styles.hint}>Сверх вместимости: {number(overflow)}. Запасы сохранены. Продайте или используйте часть вещей, чтобы получать новые.</p>}
     {reserved > 0 && <p className={styles.muted}>Товары на рынке тоже занимают место до продажи.</p>}
 
-    {selectedItemId && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} onClose={() => setSelectedItemId(null)} />}
+    {selectedItemId && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} onClose={() => setSelectedItemId(null)} onOpenFishingShop={onOpenFishingShop} />}
     {ownedItems.length > 0 ? <>
       <div className={styles.items} aria-label="Предметы в кладовой">
         {ownedItems.map(item => <button key={item.id} type="button" className={styles.item} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id} onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>

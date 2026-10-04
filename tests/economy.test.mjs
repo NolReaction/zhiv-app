@@ -46,7 +46,7 @@ test("fresh account starts empty with free garden and exploration, cosmetic memo
   for (const [item, amount] of Object.entries(walking.rewards)) expected[item] = (expected[item] ?? 0) + amount;
   assert.deepEqual(collected.inventory, expected);
   assert.equal(collected.completedExplorations, 1);
-  assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: expected.berries * model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, pearls: 0 });
+  assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: rules.economyLocalSellPrice(model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, expected.berries, model.economyCatalog.localBuyer), pearls: 0 });
 });
 
 test("new quarry and workshop furnace need home two before spending, while starter gathering stays free", () => {
@@ -79,8 +79,10 @@ test("an empty account reaches home two with bush and forest goods before openin
     return issue(p, "claim_job", job.id, 1, clock).state;
   };
   assert.deepEqual(read(p).inventory, {});
-  const harvest = complete("start_production", "grow_berries_overnight");
-  issue(p, "sell", "berries", harvest.inventory.berries, clock);
+  for (let cycle = 0; cycle < 2; cycle++) {
+    const harvest = complete("start_production", "grow_berries_overnight");
+    issue(p, "sell", "berries", harvest.inventory.berries, clock);
+  }
   complete("start_exploration", "forest_camp");
   complete("start_construction", "woodlot");
   complete("start_construction", "workshop");
@@ -233,7 +235,7 @@ test("commands reject public minting, untrusted counts and unknown fields", () =
   const p = player(), base = command(p, "sell", "berries");
   for (const quantity of [0, -1, 1.5, "2", 10001, NaN, Infinity])
     assert.throws(() => economy.commandDevEconomy(p.token, { ...base, quantity }, now), { code: "INVALID_ECONOMY_COMMAND" });
-  for (const patch of [{ action: "grant_pearls" }, { coins: 1000 }, { rewards: { berries: 999 } }, { totalPrice: 10 }, { action: "claim_job", quantity: 2 }])
+  for (const patch of [{ action: "grant_pearls" }, { coins: 1000 }, { rewards: { berries: 999 } }, { totalPrice: -1 }, { action: "claim_job", quantity: 2 }])
     assert.throws(() => economy.commandDevEconomy(p.token, { ...base, ...patch }, now), { code: "INVALID_ECONOMY_COMMAND" });
   assert.deepEqual(read(p).wallet, { coins: 0, pearls: 0 });
   assert.throws(() => economy.getDevEconomy(undefined, now), { code: "UNAUTHORIZED" });

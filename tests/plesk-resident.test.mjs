@@ -9,6 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { PLESK, pleskResidentFrame, pleskRoutineDuration } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
 const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
+const { fishingWaterTarget } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
 const { isForestWater } = await vite.ssrLoadModule("/features/world/forest-water.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
@@ -186,6 +187,10 @@ test("the authored island keeps Плёск at the upper wooden pier, separate fr
     assert.ok(frames.every(frame => Math.hypot(frame.x - base.x, frame.y - base.y) < 90), "all regular activities belong to the pier area");
     assert.ok(frames.every(frame => Math.hypot(frame.x - heroFishing.x, frame.y - heroFishing.y) > 200), "the main hero keeps his lower fishing clearing");
     const bobber = frames.find(frame => frame.waterTarget).waterTarget;
+    assert.deepEqual(bobber, fishingWaterTarget(world, base, PLESK.size), "facing changes never relocate the real water anchor");
+    const fishing = frames.filter(frame => ["cast", "fish", "bite", "reel", "catch"].includes(frame.action));
+    assert.ok(fishing.every(frame => frame.direction === "front"), "her face stays visible throughout fishing at the upper pier");
+    assert.equal(pleskResidentFrame(world, 42, true).direction, "front");
     for (let sample = 0; sample < 64; sample++) {
       const angle = sample * Math.PI / 32;
       assert.ok(isForestWater(world, { x: bobber.x + Math.cos(angle) * PLESK.size * .225,

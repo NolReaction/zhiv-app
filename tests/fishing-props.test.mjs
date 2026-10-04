@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingTackleFrame, drawFishingProps, fishingRodAppearance, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
 const base = { x: 200, y: 200, size: 50, direction: "front", action: "fish", phase: .5, frame: 0,
   waterTarget: { x: 204, y: 247 }, carryingFish: false };
@@ -34,7 +34,10 @@ test("rod profiles are immutable paint-only variants with safe defaults and no c
       set: (_target, key, value) => { if (key === "fillStyle" || key === "strokeStyle") painted.add(value); return true; } });
     drawFishingProps(ctx, { ...base, rodId }, false, { drawBasket: false });
     const appearance = fishingRodAppearance(rodId);
-    for (const color of Object.values(appearance).filter(Boolean)) assert.ok(painted.has(color));
+    for (const color of [appearance.shaft, appearance.highlight, appearance.handle, appearance.metal, appearance.wrap].filter(Boolean)) {
+      assert.ok(painted.has(color), `${rodId} uses its own material colors`);
+    }
+    if (rodId !== "reed_rod") assert.ok(painted.has(appearance.reel));
     for (const other of ids.filter(id => id !== rodId)) {
       const otherWrap = fishingRodAppearance(other).wrap;
       if (otherWrap) assert.equal(painted.has(otherWrap), false);
@@ -65,9 +68,13 @@ test("carried rods stay outside the face and caught fish use the opposite free p
       const inFace = ((x - frame.x) / (frame.size * .3)) ** 2 + ((y - frame.y + frame.size * .56) / (frame.size * .25)) ** 2 < 1;
       assert.equal(inFace, false, "the idle pole cannot pass through eyes or muzzle");
     }
-    const caught = forestFishingHeroRig({ ...frame, action: "catch", carryingFish: true }, false);
+    const catchFrame = { ...frame, action: "catch", carryingFish: true };
+    const caught = forestFishingHeroRig(catchFrame, false);
     assert.ok((caught.grip.x - frame.x) * (caught.heldFish.x - frame.x) < 0);
-    assert.deepEqual(caught.farHand, caught.heldFish);
+    const fish = fishingCatchFrame(catchFrame, false, caught);
+    assert.deepEqual(caught.farHand, fish.wrist);
+    assert.ok(Math.hypot(caught.farHand.x - fish.center.x, caught.farHand.y - fish.center.y) >= fish.size * .219,
+      "the paw supports the outline rather than covering the center of the fish");
   }
 });
 
@@ -104,4 +111,36 @@ test("packing transfers one fish from hand to basket at the exact release point"
   assert.equal(fishBodies({ ...packing, phase: FISHING_PACK_RELEASE, basketFilled: true }).length, 1);
   assert.equal(fishBodies({ ...packing, phase: .9, basketFilled: true }).length, 1);
   assert.equal(fishBodies({ ...packing, action: "catch", outcome: "miss", basketFilled: false }).length, 0);
+});
+
+
+test("the last reel frame lands continuously in the supporting hand and the same rod stays held while packing", () => {
+  for (const direction of ["front", "left", "right", "back"]) for (const catchScale of [.7, 1, 1.35, 1.5]) {
+    const frame = { ...base, direction, catchScale, carryingFish: true, outcome: "small" };
+    const end = { ...frame, action: "reel", phase: 1 }, start = { ...frame, action: "catch", phase: 0 };
+    const reelHands = forestFishingHeroRig(end, false), catchHands = forestFishingHeroRig(start, false);
+    const reel = fishingTackleFrame(end, false, reelHands), caught = fishingCatchFrame(start, false, catchHands);
+    assert.deepEqual(reelHands.nearHand, catchHands.nearHand);
+    assert.deepEqual(reelHands.farHand, catchHands.farHand);
+    assert.ok(Math.abs(reel.bobber.x - caught.center.x) < 1e-9);
+    assert.ok(Math.abs(reel.bobber.y + caught.size / 2 - caught.center.y) < 1e-9);
+    assert.equal(caught.angle, -Math.PI / 2);
+    assert.equal(caught.attached, true);
+    const landed = { ...frame, action: "catch", phase: 1 }, packing = { ...frame, action: "pack", phase: 0 };
+    const landedHands = forestFishingHeroRig(landed, false), packHands = forestFishingHeroRig(packing, false);
+    assert.deepEqual(fishingCatchFrame(landed, false, landedHands).center, fishingCatchFrame(packing, false, packHands).center);
+    assert.deepEqual(landedHands.grip, packHands.grip);
+    for (const phase of [0, .3, FISHING_PACK_RELEASE - .0001, FISHING_PACK_RELEASE, 1]) {
+      const pack = { ...packing, phase }, hands = forestFishingHeroRig(pack, false);
+      const tackle = fishingTackleFrame(pack, false, hands), fish = fishingCatchFrame(pack, false, hands);
+      assert.equal(tackle.visible, true, "packing cannot make the occupied rod disappear");
+      assert.deepEqual(tackle.grip, hands.nearHand);
+      if (phase >= FISHING_PACK_RELEASE) {
+        assert.deepEqual(fish.center, fishingBasketFishCenter(hands.basket, frame.size));
+        assert.equal(fish.visible, false);
+        assert.ok(Math.abs(fish.angle - (direction === "left" ? -Math.PI + .2 : -.2)) < 1e-9);
+        assert.ok(Math.abs(fish.size - frame.size * .243) < 1e-9);
+      }
+    }
+  }
 });

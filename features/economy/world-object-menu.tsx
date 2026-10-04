@@ -4,7 +4,8 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/map-engine";
-import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
+import type { EconomyView } from "./model";
+import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 import type { EconomyController } from "./use-economy";
 import { worldBatchLimit, worldDuration, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldMissingRequirements, worldPlaceForStation, worldProductionReason, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "./world-stations";
 import { Cost, Requirements, Work, ProductIcon, stationIcons, itemName, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
@@ -81,16 +82,26 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse }: {
   </section>;
 }
 
-function Sale({ economy, itemId, onCollapse }: { economy: ReadyEconomy; itemId: string; onCollapse: () => void }) {
-  const [quantityText, setQuantityText] = useState("1");
-  const inputId = useId();
-  const item = economy.snapshot.catalog.items.find(entry => entry.id === itemId);
-  const stock = economy.snapshot.inventory[itemId] ?? 0;
+export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: ReadyEconomy; itemId: string; onCollapse: () => void }) {
+  const state = economy.snapshot, buyer = state.catalog.localBuyer;
+  const item = state.catalog.items.find(entry => entry.id === itemId);
+  const minimum = item ? economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer) : 1;
+  const [quantityText, setQuantityText] = useState(() => String(minimum));
+  const inputId = useId(), stock = state.inventory[itemId] ?? 0;
   if (!item) return null;
-  const maximum = Math.max(0, Math.min(stock, 10_000, Math.floor((ECONOMY_MAX_BALANCE - economy.snapshot.wallet.coins) / item.baseSellPrice)));
+  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
   const quantity = Number(quantityText);
-  const valid = Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
-  return <section className={styles.detail} aria-label={`Продажа: ${item.name}`}><div className={styles.detailTitle}><h3>{item.name}</h3><button type="button" className={styles.iconButton} aria-label="Свернуть продажу" onClick={onCollapse}><ChevronUp size={16} aria-hidden="true" /></button></div><p className={styles.small}>На складе {number(stock)} · торговец даёт {number(item.baseSellPrice)} монет за штуку</p>{item.tradable ? <div className={styles.sale}><label htmlFor={inputId}>Количество</label><input id={inputId} type="number" inputMode="numeric" min={1} max={maximum} step={1} value={quantityText} disabled={locked(economy)} onChange={event => setQuantityText(event.target.value)} /><button type="button" className={styles.primary} disabled={!valid || locked(economy)} onClick={() => void economy.act("sell", item.id, quantity)}>Продать · {valid ? number(quantity * item.baseSellPrice) : "—"}<ItemIcon itemId="coins" size={16} /></button></div> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}</section>;
+  const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= minimum && quantity <= maximum;
+  const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
+  const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
+  return <section className={styles.detail} aria-label={`Продажа: ${item.name}`}>
+    <div className={styles.detailTitle}><h3>{item.name}</h3><button type="button" className={styles.iconButton} aria-label="Свернуть продажу" onClick={onCollapse}><ChevronUp size={16} aria-hidden="true" /></button></div>
+    <p className={styles.small}>На складе {number(stock)} · {discount > 0 ? `быстрая продажа с уценкой ${number(discount)}%. Итог округляется вниз до целой монеты.` : `торговец даёт ${number(item.baseSellPrice)} монет за штуку`}</p>
+    {discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === item.id) && <p className={styles.hint}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
+    {item.tradable ? <div className={styles.sale}><label htmlFor={inputId}>Количество</label><input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={quantityText} disabled={locked(economy) || maximum < minimum} onChange={event => setQuantityText(event.target.value)} /><button type="button" className={styles.primary} disabled={!valid || locked(economy)} onClick={() => { if (valid && !locked(economy)) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}>Продать · {valid ? number(total) : "—"}<ItemIcon itemId="coins" size={16} /></button></div> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}
+    {item.tradable && maximum < minimum && <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>}
+    {item.tradable && !valid && maximum >= minimum && <p className={styles.hint}>Укажите от {number(minimum)} до {number(maximum)}.</p>}
+  </section>;
 }
 
 function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId }: WorldObjectMenuProps) {
@@ -182,7 +193,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {readyEconomy && job && <Work economy={readyEconomy} job={job} openPantry={onOpenPantry ?? (selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => onNavigate("house", "warehouse") : undefined)} />}
-        {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <Sale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : <>
+        {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : <>
           <div className={styles.recipeCatalog} hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
           {readyEconomy && selectedRecipe && <WorldRecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={closeRecipe} />}
         </>}

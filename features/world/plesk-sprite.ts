@@ -1,5 +1,5 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
-import type { FishingAction, FishingMotion } from "./fishing-props";
+import { fishingCatchFrame, fishingBasketFishCenter, FISHING_PACK_RELEASE, type FishingAction, type FishingMotion } from "./fishing-props";
 import type { WorldPoint } from "./tiled/types";
 
 /** The resident is built from the same opaque integer-pixel primitives as
@@ -42,7 +42,8 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const stage = still ? 6 : staged ? progress : 0;
   const blink = !still && clockFrame === 30 && !["cast", "bite", "reel", "catch"].includes(action);
   const closedEyes = blink || action === "rest" && (still || clockFrame >= 4);
-  const key = `${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}`;
+  const fishScale = Math.round(Math.max(.7, Math.min(1.5, (Number.isFinite(motion?.catchScale) ? motion!.catchScale! : motion?.outcome === "large" ? 1.35 : 1))) * 20) / 20;
+  const key = `${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}:${fishScale}:${motion?.outcome === "miss"}`;
   const saved = cache.get(key);
   if (saved) { cache.delete(key); cache.set(key, saved); return saved; }
 
@@ -78,9 +79,9 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const pulling = action === "bite" || action === "reel";
   const lean = variation === "struggle" ? -3 + (index > 3 ? 1 : 0) : variation === "escape" ? phasePart > .5 ? 1 : -2
     : variation === "check" ? 1 : action === "cast" ? Math.round(-2 + phasePart * 4)
-    : pulling ? -Math.round(phasePart * 2) : action === "pack" ? Math.round(Math.sin(phasePart * Math.PI) * 3) : 0;
+    : pulling ? -Math.round(phasePart * 2) : action === "pack" ? -Math.round(Math.sin(phasePart * Math.PI) * 2) : 0;
   const crouch = resting ? 5 : action === "pack" ? Math.round(Math.sin(phasePart * Math.PI) * 3)
-    : pulling && index % 4 > 1 ? 1 : 0;
+    : pulling && phasePart < 1 && index % 4 > 1 ? 1 : 0;
   const breath = !still && !walking && (action === "idle" || action === "fish") && index > 4 ? -1 : 0;
   const body = point(24 + (sideView ? lean : 0), 33 + rise + Math.min(2, crouch) + breath);
   const head = point((sideView ? 26 : 24) + (sideView ? lean : 0), 18 + rise + crouch + breath
@@ -96,6 +97,9 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const farShoulder = point(sideView ? 24 + lean : 17, 31 + rise + Math.min(crouch, 3));
   let grip = point(36, 34 + rise + Math.min(crouch, 3));
   let otherHand = point(sideView ? 29 : 16, 35 + rise + crouch);
+  const basket = ["walk", "idle", "greet"].includes(action) ? point(sideView ? 21 - step : 16, 40 - step)
+    : point(sideView ? 14 : 7, 41);
+  let heldFish = point(sideView ? 18 : 13, 33 - (action === "catch" ? Math.round(Math.sin(phasePart * Math.PI) * 2) : 0));
   if (action === "cast") {
     grip = lerp(point(33, 29), point(39, 32), phasePart);
     otherHand = point(grip.x - 4, grip.y + 3);
@@ -105,11 +109,11 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     otherHand = point(grip.x - 4 + (action === "reel" ? [0, 1, 1, 0, 0, -1, -1, 0][index] : 0),
       grip.y + 3 + (action === "reel" ? [0, -1, -1, 0, 0, 1, 1, 0][index] : 0));
   } else if (action === "catch") {
-    grip = point(37, 30 - Math.round(Math.sin(phasePart * Math.PI) * 2));
-    otherHand = point(sideView ? 37 : 14, 36);
+    grip = point(35, 31);
   } else if (action === "pack") {
-    grip = lerp(point(36, 27), point(40, 39), Math.min(1, phasePart / .7));
-    otherHand = point(sideView ? 29 : 19, 35 + crouch);
+    grip = point(35, 31);
+    const t = Math.min(1, phasePart / FISHING_PACK_RELEASE), eased = t * t * (3 - 2 * t);
+    heldFish = lerp(heldFish, fishingBasketFishCenter(basket, 48), eased);
   } else if (action === "trade") {
     grip = point(35 + (index > 3 ? 1 : 0), 32 + (index > 3 ? -1 : 1));
     otherHand = point(16, 35);
@@ -126,15 +130,26 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   if (action === "fish" || pulling) {
     if (variation === "check") { grip.y -= index > 3 ? 3 : 1; otherHand.y -= index > 3 ? 3 : 1; }
     if (variation === "nibble") { grip.y -= index % 4 < 2 ? 1 : 0; otherHand.y -= index % 4 < 2 ? 1 : 0; }
-    if (variation === "struggle") { grip.x -= 2; grip.y -= 2; otherHand.x -= 2; otherHand.y -= 1; }
+    if (variation === "struggle") {
+      const effort = action === "reel" ? Math.round(2 * Math.sin(phasePart * Math.PI)) : 2;
+      grip.x -= effort; grip.y -= effort; otherHand.x -= effort; otherHand.y -= Math.round(effort / 2);
+    }
     if (variation === "escape") { grip.y += Math.round(phasePart * 3); otherHand.y += Math.round(phasePart * 2); }
+  }
+  if (action === "catch" || action === "pack" || action === "reel" && motion?.outcome !== "miss" && phasePart > .7) {
+    const fish = fishingCatchFrame({ x: 24, y: 45, size: 48, direction,
+      action, phase: phasePart, frame: index, carryingFish: true, ...motion, catchScale: fishScale }, still, { heldFish: mirror(heldFish), basket: mirror(basket) });
+    const wrist = mirror(fish.wrist);
+    if (action === "reel") otherHand = lerp(otherHand, wrist, Math.min(1, (phasePart - .7) / .3));
+    else if (action === "pack" && phasePart > FISHING_PACK_RELEASE) otherHand = lerp(wrist, point(sideView ? 23 : 16, 35),
+      (phasePart - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE));
+    else otherHand = wrist;
   }
   const reachable = (from: WorldPoint, to: WorldPoint) => {
     const distance = Math.hypot(to.x - from.x, to.y - from.y);
     return distance > 12.5 ? lerp(from, to, 12.5 / distance) : to;
   };
   grip = reachable(shoulder, grip); otherHand = reachable(farShoulder, otherHand);
-  const basket = ["walk", "idle", "greet"].includes(action) ? point(otherHand.x, otherHand.y + 5) : point(42, 41);
   const drawTail = () => {
     oval(tail.x, tail.y, back ? 6 : 8, back ? 6 : 4, c.outline);
     oval(tail.x, tail.y - 1, back ? 5 : 7, back ? 5 : 3, c.dark);
@@ -242,7 +257,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const mappedFeet = feet.map(mirror), bottom = Math.max(...mappedFeet.map(foot => foot.y + 3));
   const planted = mappedFeet.filter(foot => foot.y + 3 === bottom);
   rigs.set(canvas, { contact: { bottom, left: Math.min(...planted.map(foot => foot.x - 4)), right: Math.max(...planted.map(foot => foot.x + 5)) },
-    grip: mirror(action === "catch" || action === "greet" ? otherHand : grip), heldFish: mirror(point(grip.x, grip.y - 1)), basket: mirror(basket),
+    grip: mirror(action === "greet" ? otherHand : grip), heldFish: mirror(heldFish), basket: mirror(basket),
     head: mirror(head), tail: mirror(tail), feet: mappedFeet, arms, ears: ears.map(mirror), flower: mirror(flower),
     palms: [{ position: mirror(otherHand), near: false }, { position: mirror(grip), near: true }] });
   cache.set(key, canvas);

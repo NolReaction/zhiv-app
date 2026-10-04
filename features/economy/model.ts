@@ -28,6 +28,7 @@ export const economyFishingCatalogSchema = z.object({
 });
 export const economyCatalogSchema = z.object({
   fishing: economyFishingCatalogSchema.optional(),
+  localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
   version: z.literal(2), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400) }),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000) }),

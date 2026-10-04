@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { createElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldPantryMenu } = await vite.ssrLoadModule("/features/economy/world-pantry-menu.tsx");
+const { WorldPantryMenu, PantrySale } = await vite.ssrLoadModule("/features/economy/world-pantry-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
@@ -122,4 +122,67 @@ test("maximum warehouse level has no further expansion action", () => {
   const html = render(controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: maximum } }) }));
   assert.match(html, /Максимальная вместимость/);
   assert.doesNotMatch(html, /Расширить кладовую/);
+});
+
+function inspectSale(state, props = {}, flags = {}) {
+  const calls = [], economy = controller({ snapshot: state, act(...args) { calls.push(args); }, ...flags });
+  let tree;
+  function Probe() { tree = PantrySale({ economy, itemId: "wood", ...props }); return tree; }
+  const html = renderToStaticMarkup(createElement(Probe)), elements = [];
+  function walk(element) { if (!isValidElement(element)) return; elements.push(element); Children.forEach(element.props.children, walk); }
+  walk(tree);
+  const text = element => Children.toArray(element.props.children).map(child => typeof child === "string" || typeof child === "number" ? String(child) : isValidElement(child) ? text(child) : "").join("");
+  const control = label => elements.find(element => element.type === "button" && text(element).includes(label));
+  return { html, elements, control, calls };
+}
+
+test("quick sale shows catalog markdown and sends the displayed minimum quote without mutating stock", () => {
+  const state = snapshot(); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "wood").baseSellPrice = 3;
+  const view = inspectSale(state);
+  assert.match(view.html, /уценкой 40%/);
+  assert.match(view.html, /Сумма за всё количество округляется вниз/);
+  assert.match(button(view.html, "Продать торговцу").text, /· 1$/);
+  view.control("Продать торговцу").props.onClick();
+  assert.deepEqual(view.calls, [["sell", "wood", 1, 1]]);
+  assert.equal(state.inventory.wood, 20);
+});
+
+test("penny stock starts at a payable batch, and wallet limits use the whole-stack rounded price", () => {
+  const state = snapshot({ inventory: { crumb_bait: 10 }, wallet: { coins: 999_999_999, pearls: 0 } });
+  state.catalog.localBuyer = { payoutBps: 6000 };
+  const view = inspectSale(state, { itemId: "crumb_bait" });
+  const input = view.elements.find(element => element.type === "input");
+  assert.equal(input.props.min, 2); assert.equal(input.props.max, 3); assert.equal(input.props.value, "2");
+  assert.match(button(view.html, "Продать торговцу").text, /· 1$/);
+  view.control("Продать торговцу").props.onClick();
+  assert.deepEqual(view.calls, [["sell", "crumb_bait", 2, 1]]);
+  state.inventory.crumb_bait = 1;
+  const empty = inspectSale(state, { itemId: "crumb_bait" });
+  assert.equal(empty.control("Продать торговцу").props.disabled, true);
+  empty.control("Продать торговцу").props.onClick(); assert.deepEqual(empty.calls, []);
+  assert.match(empty.html, /нужно хотя бы 2 шт/);
+});
+
+test("fish points to Pleska's full price and an available navigation callback", () => {
+  const state = snapshot({ inventory: { fish: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  let opened = 0;
+  const view = inspectSale(state, { itemId: "fish", onOpenFishingShop() { opened++; } });
+  assert.match(view.html, /Плёска купит дороже: 8 монет за штуку/);
+  assert.match(button(view.html, "Продать торговцу").text, /· 4$/);
+  view.control("К Плёске").props.onClick(); assert.equal(opened, 1); assert.deepEqual(view.calls, []);
+  assert.doesNotMatch(inspectSale(state, { itemId: "fish" }).html, />К Плёске/);
+});
+
+test("old catalogs keep full sale prices and zero quote, while blocked handlers cannot dispatch", () => {
+  const state = snapshot(); delete state.catalog.localBuyer;
+  const item = state.catalog.items.find(item => item.id === "wood");
+  const view = inspectSale(state);
+  assert.doesNotMatch(view.html, /уценкой|округляется|Плёска купит дороже/);
+  assert.ok(button(view.html, "Продать торговцу").text.endsWith(`· ${item.baseSellPrice}`));
+  view.control("Продать торговцу").props.onClick(); assert.deepEqual(view.calls, [["sell", "wood", 1, 0]]);
+  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5000 }]) {
+    const blocked = inspectSale(state, {}, flags); assert.equal(blocked.control("Продать торговцу").props.disabled, true);
+    blocked.control("Продать торговцу").props.onClick(); assert.deepEqual(blocked.calls, []);
+  }
 });

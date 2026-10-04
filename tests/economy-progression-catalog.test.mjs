@@ -58,3 +58,13 @@ test("fishing shop cannot introduce buy-sell arbitrage or reverse tackle progres
   invalid.fishing.fish[0].affinity = 100;
   assert.throws(() => auditEconomyProgression(invalid), /Stronger tackle/);
 });
+
+
+test("local-sale audit protects processing margins and rejects a zero recovery payout", () => {
+  const lowSmokedPrice = readEconomyCatalog();
+  lowSmokedPrice.items.find(item => item.id === "smoked_fish").baseSellPrice = 24;
+  assert.throws(() => auditEconomyProgression(lowSmokedPrice), /actual sale proceeds/);
+  const unavailableRecovery = readEconomyCatalog();
+  unavailableRecovery.localBuyer.payoutBps = 0;
+  assert.throws(() => auditEconomyProgression(unavailableRecovery), /Invalid local buyer payout/);
+});

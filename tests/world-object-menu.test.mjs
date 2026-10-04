@@ -7,9 +7,9 @@ import { Dialog } from "radix-ui";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const helpers = await vite.ssrLoadModule("/features/economy/world-stations.ts");
-const { WorldObjectMenu } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
+const { WorldObjectMenu, WorldObjectSale } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
@@ -214,4 +214,22 @@ test("navigation to house storage preserves the requested station instead of ope
   assert.match(html, /Пока пусто/);
   assert.equal(disabled(button(html, "Расширить кладовую")), false);
   assert.doesNotMatch(render("house", controller(), { initialStationId: "kiln" }), /aria-modal="false"/);
+});
+
+test("embedded warehouse sale quotes the same markdown and preserves legacy catalog prices", () => {
+  const state = snapshot({ inventory: { fish: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "fish", onCollapse() {} }));
+  let html = sale();
+  assert.match(html, /быстрая продажа с уценкой 40%/); assert.match(html, /Плёска купит дороже: 8 монет/);
+  assert.match(html, /Продать · 4/); assert.doesNotMatch(html, /торговец даёт 8/);
+  delete state.catalog.localBuyer;
+  html = sale(); assert.match(html, /торговец даёт 8 монет за штуку/); assert.match(html, /Продать · 8/);
+});
+
+test("embedded warehouse sale rejects zero-value stock and uses the aggregate wallet cap", () => {
+  const state = snapshot({ inventory: { crumb_bait: 1 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "crumb_bait", onCollapse() {} }));
+  let html = sale(); assert.match(html, /нужно хотя бы 2 шт/); assert.match(html, /disabled=""[^>]*>Продать · —/);
+  state.inventory.crumb_bait = 10; state.wallet.coins = 999_999_999;
+  html = sale(); assert.match(html, /min="2" max="3"/); assert.match(html, /Продать · 1/);
 });

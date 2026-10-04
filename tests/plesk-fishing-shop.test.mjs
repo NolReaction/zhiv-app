@@ -7,13 +7,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskBaitOffer, PleskFishingCollection, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
+const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskBaitOffer, PleskTackleCounter, PleskFishingCollection, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
 const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-04T20:00:00Z");
 function snapshot(overrides = {}) {
-  const state = { ownerPublicId: "ME", revision: 3, serverTime: new Date(now).toISOString(), wallet: { coins: 1000, pearls: 0 }, inventory: { fish: 5, fish_silverfin: 2, worm_bait: 3 },
+  const state = { ownerPublicId: "ME", revision: 3, serverTime: new Date(now).toISOString(), wallet: { coins: 10000, pearls: 0 }, inventory: { fish: 5, fish_silverfin: 2, worm_bait: 3 },
     buildings: { home: 1, warehouse: 1 }, jobs: [], completedExplorations: 0, fishing: economyFishingSchema.parse(undefined),
     migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: structuredClone(economyCatalog), ...overrides };
   return { ...state, storage: overrides.storage ?? economyStorage(state) };
@@ -57,7 +57,7 @@ test("buying quotes the complete price and the same offer cannot dispatch twice"
   view.control("Купить Серебринка: 1").props.onClick();
   view.control("Продать Серебринка: 1").props.onClick();
   assert.deepEqual(view.calls, [["buy_fishing_item", "fish_silverfin", 1, offer.buyPrice]]);
-  assert.equal(view.state.wallet.coins, 1000);
+  assert.equal(view.state.wallet.coins, 10000);
   assert.deepEqual(view.state.fishing.catches, {});
 });
 
@@ -126,7 +126,7 @@ test("bait purchases quote price, selection needs stock, and missing selected ba
   view.control("Использовать").props.onClick();
   assert.deepEqual(calls, [["equip_fishing_bait", "worm_bait", 1, 0]]);
   state.inventory.worm_bait = 0; calls.length = 0;
-  view = inspect(PleskBaitOffer, props); view.control("Использовать").props.onClick();
+  view = inspect(PleskBaitOffer, props); assert.doesNotMatch(view.html, /Использовать/);
   assert.deepEqual(calls, []);
   state.fishing.equippedBaitId = "worm_bait";
   view = inspect(PleskBaitOffer, props);
@@ -156,4 +156,26 @@ test("shop provides keyboard tab navigation and fishing/pantry navigation withou
   assert.deepEqual(nav, ["fish", "pantry"]); assert.deepEqual(calls, []);
   assert.match(view.html, /role="tabpanel"/);
   assert.doesNotMatch(view.html, /Обновление через|Ежедневные|Бесплатный улов/);
+});
+
+test("tackle counter separates rods and bait and renders just one selected offer", () => {
+  const state = snapshot(), calls = [];
+  const props = { state, catalog: state.catalog.fishing, economy: controller(state, { act(...args) { calls.push(args); } }) };
+  const rods = inspect(PleskTackleCounter, props);
+  assert.match(rods.html, /role="tablist" aria-label="Виды снастей"/);
+  assert.equal((rods.html.match(/<article\b/g) ?? []).length, 1);
+  assert.match(rods.html, /Выбрать удочку на прилавке/);
+  assert.doesNotMatch(rods.html, /Купить штук|Купить наживку:/);
+  rods.control("Речная").props.onClick(); assert.deepEqual(calls, [], "browsing a rod does not buy or equip it");
+  const baits = inspect(PleskTackleCounter, { ...props, initialCategory: "baits" });
+  assert.equal((baits.html.match(/<article\b/g) ?? []).length, 1);
+  assert.match(baits.html, /Выбрать наживку на прилавке/);
+  assert.doesNotMatch(baits.html, /Выбрать удочку на прилавке|Купить удочку/);
+  assert.match(baits.html, /Купить наживку:/);
+  baits.control("Без наживки").props.onClick(); assert.deepEqual(calls, [], "the tile only opens details; choosing equipment is a separate explicit action");
+  const tabs = rods.elements.filter(element => element.props.role === "tab");
+  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1]);
+  for (const key of ["ArrowLeft", "ArrowRight", "Home", "End"]) {
+    let prevented = false; tabs[0].props.onKeyDown({ key, preventDefault() { prevented = true; } }); assert.equal(prevented, true);
+  }
 });
