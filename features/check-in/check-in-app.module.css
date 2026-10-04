@@ -286,6 +286,7 @@
 .buttonStage {
   position: relative;
   display: grid;
+  width: 100%;
   place-items: center;
   isolation: isolate;
   transition: transform 90ms cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -442,25 +443,25 @@
 
 .tapCounter {
   --series-remaining: 1;
-  position: absolute;
-  z-index: 3;
-  top: calc(50% + clamp(34px, 7vw, 54px));
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
   display: inline-flex;
   width: max-content;
-  min-width: 68px;
-  min-height: 30px;
-  max-width: 75%;
+  min-width: 90px;
+  min-height: 34px;
+  max-width: 100%;
   align-items: center;
   justify-content: center;
   gap: 7px;
   overflow: hidden;
   isolation: isolate;
-  color: rgba(255, 255, 255, 0.88);
-  padding: 0 0 6px;
+  border: 1px solid #b8ce962b;
+  border-radius: 12px;
+  background: #17231bd9;
+  color: #e2ecd8;
+  padding: 6px 14px 8px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  line-height: 1;
   pointer-events: none;
   contain: layout paint;
 }
@@ -474,16 +475,18 @@
 
 .tapCounter strong {
   overflow: hidden;
-  font-size: clamp(16px, 3.8vw, 20px);
+  font-size: clamp(13px, 3.4vw, 16px);
   font-weight: 650;
   text-overflow: ellipsis;
 }
 
 .tapCounter small {
   color: rgba(255, 255, 255, 0.72);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
 }
+
+.tapCounter[data-state="finished"] { border-color: #c7d9a943; }
 
 .tapCounterProgress {
   position: absolute;
@@ -1262,7 +1265,7 @@
     gap: 20px;
   }
 
-  .buttonOrbit {
+  .buttonGroup {
     width: min(64vh, 68vw);
   }
 }
@@ -1324,24 +1327,27 @@
     align-self: stretch;
     grid-template-rows: auto minmax(0, 1fr);
   }
-  .shell[data-active-view="check-in"] .buttonStage {
+  .shell[data-active-view="check-in"] .buttonLayout {
     min-height: 0;
     align-self: stretch;
     justify-self: stretch;
     container-type: size;
   }
-  .shell[data-active-view="check-in"] .buttonOrbit {
-    width: min(82vw, 100cqh, 380px);
+  .shell[data-active-view="check-in"] .buttonGroup {
+    width: min(82vw, calc(100cqh - 44px), 380px);
   }
   .shell[data-active-view="check-in"] .statusBlock { position: relative; z-index: 3; }
 }
 
 /* All circular effects share the button's square geometry, not the flexible stage. */
+.buttonLayout { display: grid; place-items: center; min-height: 0; }
+.buttonGroup { display: grid; justify-items: center; gap: 10px; width: clamp(248px, min(78vw, 58vh), 430px); }
+.seriesPanel { display: flex; justify-content: center; width: 100%; min-height: 34px; }
 .buttonOrbit {
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(248px, min(78vw, 58vh), 430px);
+  width: 100%;
   aspect-ratio: 1;
   min-height: 0;
   isolation: isolate;
@@ -1364,7 +1370,7 @@
   from { opacity: .35; transform: translateX(calc(var(--view-direction, 1) * 10px)); }
   to { opacity: 1; transform: none; }
 }
-@media (max-height: 640px) { .buttonOrbit { width: min(64vh, 68vw); } }
+@media (max-height: 640px) { .buttonGroup { width: min(64vh, 68vw); } }
 
 
 /* Only the alternate button appearance differs from the master interface. */
@@ -1374,7 +1380,6 @@
 .mochlikButton:active { transform: none; }
 .mochlikButton::before { --check-in-color: inherit; z-index: 4; inset: 0; border: 1px solid color-mix(in srgb, var(--check-in-color), transparent 50%); pointer-events: none; background: none !important; }
 .mochlikButton .checkInTitle { position: absolute; z-index: 3; top: 14%; left: 50%; transform: translateX(-50%); padding: 10px 17px; border-radius: 20px; background: #0e1c12a8; border: 1px solid #e4ecd429; font-size: clamp(18px, 4.5vw, 28px); font-weight: 750; letter-spacing: -.035em; line-height: 1; text-shadow: 0 2px 12px #07130b; backdrop-filter: blur(6px); transition: background 110ms ease, border-color 110ms ease; }
-.mochlikButton .tapCounter { top: auto; bottom: 9%; padding: 3px 10px 8px; border-radius: 12px; background: #07140a8c; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .buttonStageActive .mochlikButton .checkInTitle { background: #30482bdf; border-color: #e8f5c77a; }
 .mochlikButton[data-pulse='odd'] .checkInTitle { animation: mochlik-press-a 260ms ease-out; }
 .mochlikButton[data-pulse='even'] .checkInTitle { animation: mochlik-press-b 260ms ease-out; }

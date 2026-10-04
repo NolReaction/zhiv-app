@@ -1464,6 +1464,8 @@ export function CheckInApp() {
               <Trophy size={18} aria-hidden="true" /><strong>Рейтинг</strong>
             </button>
             </div>
+            <div className={styles.buttonLayout}>
+            <div className={styles.buttonGroup}>
             <div
               className={`${styles.buttonStage} ${mochlikVisible ? styles.habitatStage : ""} ${tapActive ? styles.buttonStageActive : ""} ${
                 seriesBreakBurst !== null && !mochlikVisible ? styles.seriesBreaking : ""
@@ -1489,8 +1491,6 @@ export function CheckInApp() {
               aria-describedby={[visualTapCount >= 1 ? "clicker-total" : null, mochlikVisible && currentActivity ? "mochlik-activity-status" : null].filter(Boolean).join(" ") || undefined}
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
-              <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
-                isRecord={isConfirmedRecord} />
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
@@ -1600,6 +1600,12 @@ export function CheckInApp() {
                 100 000
               </span>
             ) : null}
+            </div>
+            </div>
+            <div className={styles.seriesPanel}>
+              <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
+                isRecord={isConfirmedRecord} />
+            </div>
             </div>
             </div>
           </div>
