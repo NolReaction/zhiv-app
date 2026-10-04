@@ -280,9 +280,16 @@ test("repeated grass samples and authored ID collisions keep one candidate and o
   chooseForestGoal(navigation, [], sampled, context);
   assert.equal(sampled.mind.candidates.length, 1);
   assert.equal(sampled.mind.candidates.filter(item => item.selected).length, 1);
-  const id = sampled.mind.candidates[0].key;
-  const authored = createForestBehavior(), first = { id, activity: "look", position: { x: 250, y: 210 } };
-  const result = chooseForestGoal(navigation, [first, { id, activity: "rest", position: { x: 200, y: 250 } }], authored, context);
+  // Grass sampling now follows the authored neighbourhood. Probe the same
+  // landmarks before assigning their colliding ID, keeping those bounds fixed.
+  const landmarks = [{ id: "first", activity: "look", position: { x: 250, y: 210 } },
+    { id: "second", activity: "rest", position: { x: 200, y: 250 } }];
+  const nearby = createForestBehavior();
+  chooseForestGoal(navigation, landmarks, nearby, context);
+  const id = nearby.mind.candidates.find(item => item.key.startsWith("grass-"))?.key;
+  assert.ok(id, "the fixture samples grass beside these landmarks");
+  const authored = createForestBehavior(), first = { ...landmarks[0], id };
+  const result = chooseForestGoal(navigation, [first, { ...landmarks[1], id }], authored, context);
   assert.equal(authored.mind.candidates.length, 1);
   assert.equal(authored.mind.candidates.filter(item => item.selected).length, 1);
   assert.deepEqual(result.position, first.position, "the authored landmark owns its identity over later duplicates and grass samples");

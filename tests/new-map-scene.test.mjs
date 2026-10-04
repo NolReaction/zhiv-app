@@ -1600,7 +1600,11 @@ test("a DEV mushroom interaction cannot consume a prop while its hero is hidden"
     worldDevStore.patch({ showHero: true });
     worldDevStore.triggerLife("mushroom");
     clock.advance(3);
-    assert.equal(probe.state.life.routine?.picked, true, "the visible requested interaction still picks its prop normally");
+    assert.equal(probe.state.life.routine?.picked, true, `the visible requested interaction still picks its prop normally: ${JSON.stringify({
+      routine: probe.state.life.routine, pendingLife: probe.state.pendingLife, reason: probe.state.director.reason,
+      stage: probe.state.clearing.stage, lifeElapsed: probe.state.life.elapsed, stageElapsed: probe.state.clearing.stageElapsed,
+      elapsed: probe.state.elapsed, frames: env.frames.size, seed: probe.state.clearing.seed,
+    })}`);
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 

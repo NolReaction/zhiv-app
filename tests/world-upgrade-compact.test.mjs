@@ -91,13 +91,36 @@ test("insufficient pearls explain the shortfall and the server catalog supplies 
 });
 
 test("a paid production order remains claimable before upgrading its station", () => {
-  const job = construction({ kind: "production", targetId: "garden", recipeId: "grow_berries", targetLevel: null, rewards: { berries: 6 }, finishesAt: new Date(now).toISOString() });
-  const html = render("garden", { snapshot: state({ buildings: { home: 2, warehouse: 1, garden: 1 }, jobs: [job] }) });
+  const recipe = economyCatalog.recipes.find(entry => entry.id === "make_planks");
+  const job = construction({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
+    rewards: recipe.rewards, cost: recipe.cost, finishesAt: new Date(now).toISOString() });
+  const html = render("workshop", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1 }, jobs: [job] }) });
   assert.match(html, /Сначала заберите заказ/);
   const collect = buttons(html).find(button => /aria-label="Забрать:/.test(button.attributes));
   assert.ok(collect);
   assert.doesNotMatch(collect.attributes, /disabled/);
   assert.match(buttons(html).find(button => /Улучшить до ур\./.test(button.text)).attributes, /disabled/);
+});
+
+test("legacy and new berry orders retain gathering access and block upgrades until claimed", () => {
+  const recipe = economyCatalog.recipes.find(entry => entry.id === "grow_berries");
+  const collection = { ...recipe.collection, startedAt: null, finishesAt: null };
+  for (const stage of [
+    { collection: undefined, label: "Собрать", disabled: false },
+    { collection, label: "Собрать", disabled: false },
+    { collection: { ...collection, startedAt: new Date(now - 4_000).toISOString(), finishesAt: new Date(now + 4_000).toISOString() }, label: "Собирает…", disabled: true },
+    { collection: { ...collection, startedAt: new Date(now - 8_000).toISOString(), finishesAt: new Date(now).toISOString() }, label: "В кладовую", disabled: false },
+  ]) {
+    const job = construction({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
+      rewards: recipe.rewards, cost: recipe.cost, finishesAt: new Date(now - 8_000).toISOString(), collection: stage.collection });
+    const html = render("garden", { snapshot: state({ buildings: { home: 2, warehouse: 1, garden: 1 }, jobs: [job] }) });
+    const actions = buttons(html), collect = actions.find(button => button.attributes.includes(`aria-label="${stage.label}:`));
+    assert.ok(collect, stage.label);
+    assert.equal(/disabled/.test(collect.attributes), stage.disabled, stage.label);
+    assert.match(actions.find(button => /Улучшить до ур\./.test(button.text)).attributes, /disabled/);
+    assert.match(html, /Сначала заберите заказ/);
+    assert.ok(!actions.some(button => /aria-label="Забрать:/.test(button.attributes)), "Berry orders must use the gathering flow instead of direct claiming");
+  }
 });
 
 test("a maximum-level pantry reports real capacity and does not offer another upgrade", () => {

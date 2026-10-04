@@ -86,6 +86,22 @@ test("circle shows an item or route dial and exposes a separate accessible progr
   assert.match(html, /aria-hidden="true"[\s\S]*data-world-activity="fishing"[\s\S]*<\/div><span id="mochlik-activity-status"/);
 });
 
+test("harvesting is accessible as ongoing work before and after the server minimum, without a countdown", () => {
+  const value = economySceneActivity(economy([production({ collection: {
+    kind: "berry_harvest", seconds: 8, startedAt: time(-4_000), finishesAt: time(4_000),
+  } })]));
+  for (const checkedAt of [now, now + 30_000]) {
+    const status = worldActivity(value, undefined, checkedAt);
+    const badge = renderToStaticMarkup(createElement(WorldActivityBadge, { activity: status }));
+    assert.match(badge, /Сбор ягод/);
+    assert.doesNotMatch(badge, /Готово|Ещё|\d+ с<|data-ready="true"/);
+    const description = renderToStaticMarkup(createElement(WorldActivityDescription, { activity: status, id: "activity" }));
+    assert.match(description, /role="progressbar" aria-label="Ягодный куст"/);
+    assert.match(description, /aria-valuetext="Собирает ягоды"/);
+    assert.doesNotMatch(description, /aria-valuenow=|Откройте мир, чтобы забрать/);
+  }
+});
+
 test("ready expeditions are explicit in the keyboard-accessible map dock", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshop: false, journeys: [], collection: [], inventory: [], equipment: {}, completedJourneys: 0 };

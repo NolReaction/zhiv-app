@@ -136,17 +136,26 @@ test("starter stone sources use an available forest exploration instead of the l
   assert.equal(helpers.worldMaterialSource(state, "stone").stationId, "quarry");
 });
 
-test("claim uses the server clock and construction can finish with a full pantry", () => {
+test("berry collection uses the server clock and pantry space while construction can finish with a full pantry", () => {
   const state = snapshot({ storage: { capacity: 200, used: 197, reserved: 0, available: 3, overflow: 0 } });
-  assert.equal(helpers.worldJobProgress(state, job(), now).ready, false);
-  const ready = job({ finishesAt: new Date(now).toISOString() });
+  const growing = job({ collection: { kind: "berry_harvest", seconds: 8, startedAt: null, finishesAt: null } });
+  assert.equal(helpers.worldJobProgress(state, growing, now).ready, false);
+  assert.equal(disabled(button(render("garden", controller({ snapshot: snapshot({ jobs: [growing] }) })), "Растут")), true);
+  const ready = { ...growing, finishesAt: new Date(now).toISOString() };
   assert.deepEqual(helpers.worldJobProgress(state, ready, now), { ready: true, progress: 1, seconds: 0, storageShortfall: 3 });
-  assert.equal(helpers.worldJobProgress(state, { ...ready, kind: "construction", rewards: {} }, now).storageShortfall, 0);
   let html = render("garden", controller({ snapshot: { ...state, jobs: [ready] } }));
-  assert.equal(disabled(button(html, "Забрать")), true);
+  assert.equal(disabled(button(html, "Собрать")), true);
   assert.match(html, /освободить 3 мест/);
   html = render("garden", controller({ snapshot: snapshot({ jobs: [ready] }) }));
-  assert.equal(disabled(button(html, "Забрать")), false);
+  assert.equal(disabled(button(html, "Собрать")), false);
+  const collected = { ...ready, collection: { ...ready.collection, startedAt: new Date(now - 8_000).toISOString(), finishesAt: new Date(now).toISOString() } };
+  assert.equal(disabled(button(render("garden", controller({ snapshot: { ...state, jobs: [collected] } })), "В кладовую")), true);
+  assert.equal(disabled(button(render("garden", controller({ snapshot: snapshot({ jobs: [collected] }) })), "В кладовую")), false);
+
+  const construction = job({ kind: "construction", targetId: "home", recipeId: null, targetLevel: 2, rewards: {}, finishesAt: new Date(now).toISOString() });
+  const full = snapshot({ storage: { capacity: 200, used: 200, reserved: 0, available: 0, overflow: 0 }, jobs: [construction] });
+  assert.equal(helpers.worldJobProgress(full, construction, now).storageShortfall, 0);
+  assert.equal(disabled(button(renderUpgrade("home", controller({ snapshot: full })), "Завершить")), false);
 });
 
 test("map menu is compact and nonmodal with place-specific production rather than all stations", () => {

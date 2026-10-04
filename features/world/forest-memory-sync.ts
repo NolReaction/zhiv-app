@@ -182,7 +182,9 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
       // A replay may describe a later owner. Never treat its old receipt as permission to write.
       const currentReceipt = result.acceptedRevision === result.state.revision;
       accept(result.state, sent.action !== "save" || result.replayed || !currentReceipt || !result.state.lease.owned, requestStarted);
-      if (sent.action === "save" && currentReceipt) lastAppliedRevision = result.state.revision;
+      // A retiring save may finish after reactivation. Its acknowledgement must
+      // not suppress the pending read's hydration (or its explicit live handoff).
+      if (sent.action === "save" && currentReceipt && !needsRead) lastAppliedRevision = result.state.revision;
       if (sent.action === "acquire") takeOverRequested = false;
       if (sent.action === "release") { retiring = false; finalSnapshot = null; needsRead = true; if (active) schedule(0); return; }
       due = env.now() + SAVE_MS;

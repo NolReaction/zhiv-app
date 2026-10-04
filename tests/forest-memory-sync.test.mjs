@@ -204,6 +204,98 @@ test("server hydration resets a live route and reconciles changed geometry while
   a.release(); b.release(); await settle();
 });
 
+for (const authority of ["same", "changed-token", "expired", "foreign", "conflict", "read-error"]) {
+  test(`visible camera handoff retains live delivery only with the same active lease: ${authority}`, async () => {
+    const env = clock(), remote = server(env, payload(.61));
+    const read = remote.transport.read, command = remote.transport.command;
+    let handingOff = false, failed = false;
+    remote.transport.read = async (...args) => {
+      const result = await read(...args);
+      if (!handingOff) return result;
+      if (authority === "read-error" && !failed) { failed = true; throw Error("connection interrupted"); }
+      if (authority === "changed-token") result.lease.token = uuid();
+      if (authority === "expired") result.lease.expiresAt = new Date(env.now() - 1).toISOString();
+      if (authority === "foreign") result.lease = { owned: false, token: null, expiresAt: new Date(env.now() + 90_000).toISOString() };
+      return result;
+    };
+    remote.transport.command = async value => {
+      if (handingOff && authority === "conflict" && value.action === "save" && !failed) {
+        failed = true;
+        throw new ApiError("changed", 409, { code: "FOREST_MEMORY_REVISION_CONFLICT", message: "changed" });
+      }
+      return command(value);
+    };
+    const key = `zhiv:mochlik:presence:${OWNER}`;
+    const session = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, { environment: null,
+      sync: { environment: env, transport: remote.transport } });
+    try {
+      session.configure("circle", true); await env.advance();
+      const garden = session.state.life.garden, clearing = session.state.clearing;
+      assert.ok(garden.basket);
+      garden.routine = { kind: "harvest-berries", bushId: TILED_WORLD.bushes[0].id, phase: "return-basket",
+        elapsed: 1, totalElapsed: 8, carryingBasket: true };
+      garden.basket.position = { x: garden.basket.homePosition.x + 10, y: garden.basket.homePosition.y + 10 };
+      clearing.position = { x: TILED_WORLD.actor.spawn.x + 1, y: TILED_WORLD.actor.spawn.y };
+      const feet = { ...clearing.position }, carriedBasket = { ...garden.basket.position };
+      handingOff = true;
+      session.configure("circle", false); session.configure("world", true);
+      assert.equal(session.isOwner(), false, "lease loading pauses the scene");
+      await env.advance(1000);
+      if (authority === "same") {
+        assert.equal(session.state.life.garden, garden);
+        assert.equal(session.state.clearing, clearing);
+        assert.equal(garden.routine.phase, "return-basket");
+        assert.deepEqual(clearing.position, feet);
+        assert.deepEqual(garden.basket.position, carriedBasket);
+      } else {
+        assert.notEqual(session.state.life.garden, garden, "untrusted continuity must hydrate instead of retaining the trip");
+        assert.notEqual(session.state.clearing, clearing);
+        assert.equal(session.state.life.garden.routine, null);
+        assert.deepEqual(session.state.life.garden.basket.position, session.state.life.garden.basket.homePosition);
+      }
+      assert.equal(session.isOwner(), authority !== "foreign");
+      assert.equal(session.state.memory.sync.mode, authority === "foreign" ? "other-device" : "synced");
+    } finally { session.release(); await settle(); }
+  });
+}
+
+test("hidden resume and a new session never replay an unfinished basket delivery", async () => {
+  const env = clock(), remote = server(env, payload(.52)), key = `zhiv:mochlik:presence:${OWNER}`;
+  const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+  const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const document = { hidden: false };
+  Object.defineProperty(globalThis, "document", { value: document, configurable: true });
+  let session = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options);
+  try {
+    session.configure("circle", true); await env.advance();
+    for (const resume of ["hidden", "reload"]) {
+      const garden = session.state.life.garden;
+      garden.routine = { kind: "harvest-berries", bushId: TILED_WORLD.bushes[0].id, phase: "return-basket",
+        elapsed: 1, totalElapsed: 8, carryingBasket: true };
+      garden.basket.position = { x: garden.basket.homePosition.x + 10, y: garden.basket.homePosition.y + 10 };
+      if (resume === "reload") {
+        session.release(); await settle();
+        session = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options);
+      } else {
+        document.hidden = true;
+        session.configure("circle", false);
+        // Visibility can return before the retirement save is acknowledged.
+        // The same lease does not make a hidden page a live camera handoff.
+        document.hidden = false;
+      }
+      session.configure("circle", true); await env.advance();
+      assert.equal(session.isOwner(), true);
+      assert.notEqual(session.state.life.garden, garden);
+      assert.equal(session.state.life.garden.routine, null);
+      assert.deepEqual(session.state.life.garden.basket.position, session.state.life.garden.basket.homePosition);
+    }
+  } finally {
+    session.release(); await settle();
+    if (documentDescriptor) Object.defineProperty(globalThis, "document", documentDescriptor);
+    else delete globalThis.document;
+  }
+});
+
 test("capture expires old activity records even when a long action has not yet ended", () => {
   const session = connectForestSession(undefined, TILED_WORLD, "circle", 0, 0, () => {}, { persistence: false });
   session.state.clearing.behavior.mind.elapsed = 400;

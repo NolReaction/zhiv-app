@@ -22,6 +22,6 @@ export function WorldActivityBadge({ activity }: { activity: WorldActivity }) {
 
 export function WorldActivityDescription({ activity, id }: { activity: WorldActivity; id: string }) {
   return <span id={id} className={styles.sr} role="progressbar" aria-label={activity.label}
-    aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(activity.progress * 100)}
+    aria-valuemin={0} aria-valuemax={100} aria-valuenow={activity.collectionPhase === "harvesting" ? undefined : Math.round(activity.progress * 100)}
     aria-valuetext={activityStatus(activity)}>{activity.label}. {activityStatus(activity)}. {activity.ready ? "Откройте мир, чтобы забрать." : ""}</span>;
 }
