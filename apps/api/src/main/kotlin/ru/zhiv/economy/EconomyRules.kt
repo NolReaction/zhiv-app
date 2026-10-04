@@ -7,6 +7,7 @@ import ru.zhiv.http.parseCanonicalUuidV4
 import ru.zhiv.http.parsePublicId
 import java.time.Instant
 import java.time.Duration
+import java.util.UUID
 import kotlin.math.floor
 import kotlin.math.sqrt
 
@@ -46,6 +47,16 @@ object EconomyRules {
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
+        catalog.fishing?.let { fishing ->
+            require(fishing.routeIds.isNotEmpty() && fishing.routeIds.all { id -> catalog.explorations.any { it.id == id && (it.rewards["fish"] ?: 0) > 0 } })
+            require(fishing.fish.isNotEmpty() && fishing.fish.map { it.itemId }.distinct().size == fishing.fish.size)
+            require(fishing.fish.all { fish -> fish.weight in 1..1000 && fish.affinity in 0..10 && fish.rarity in setOf("common", "uncommon", "rare") &&
+                catalog.items.any { it.id == fish.itemId && it.baseSellPrice < fish.buyPrice } })
+            require(fishing.rods.map { it.id }.distinct().size == fishing.rods.size && fishing.rods.any { it.id == "reed_rod" && it.price == 0L })
+            require(fishing.rods.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 })
+            require(fishing.baits.map { it.itemId }.distinct().size == fishing.baits.size && fishing.baits.all { bait ->
+                bait.price in 1..ECONOMY_MAX_BALANCE && bait.rareBonus in 0..100 && catalog.items.any { it.id == bait.itemId && it.baseSellPrice < bait.price } })
+        }
     }
 
     /** Square-root conversion preserves a modest head start without importing beta-scale balances. */
@@ -130,10 +141,23 @@ object EconomyRules {
         return remaining.seconds / interval + if (remaining.seconds % interval != 0L || remaining.nano > 0) 1 else 0
     }
 
+    /** FNV-1a on a server UUID; integer weights are shared with the browser's odds display. */
+    fun selectFishingCatch(serverJobId: String, rodId: String, baitId: String?): String {
+        val spec = checkNotNull(catalog.fishing)
+        val bonus = (spec.rods.find { it.id == rodId }?.rareBonus ?: 0) + (spec.baits.find { it.itemId == baitId }?.rareBonus ?: 0)
+        val weights = spec.fish.map { it to (it.weight + it.affinity * bonus) }
+        var hash = 2166136261L
+        for (character in serverJobId) hash = ((hash xor character.code.toLong()) * 16777619L) and 0xffffffffL
+        // Keep the quantile stable when tackle changes; modulo would create free equipment rerolls.
+        var roll = (hash * weights.sumOf { it.second } / 4294967296L).toInt()
+        for ((fish, weight) in weights) { if (roll < weight) return fish.itemId; roll -= weight }
+        return weights.last().first.itemId
+    }
+
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action != "speedup_construction" && command.totalPrice != 0L) invalidEconomy()
-        if (command.action !in setOf("start_production", "sell") && command.quantity != 1L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "start_production" -> {
                 if (command.quantity > catalog.maxBatch) invalidEconomy()
@@ -173,17 +197,41 @@ object EconomyRules {
                     now.toString(), now.plusSeconds(spec.seconds).toString()))
                 state.copy(jobs = state.jobs.map { if (it.id == job.id) collecting else it }) to "Мохлик отправился собирать урожай"
             }
-            "start_exploration" -> {
+            "start_exploration", "start_fishing" -> {
                 val exploration = catalog.explorations.find { it.id == command.targetId } ?: economyFailure("ECONOMY_EXPLORATION", "Место исследования не найдено")
                 requireHome(state, exploration.requiredHomeLevel)
                 requireBuildings(state, exploration.requiredBuildings)
                 if (state.jobs.any { it.collection?.startedAt != null })
                     economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
                 if (state.jobs.any { it.kind == "exploration" }) economyFailure("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Сначала получите результат вылазки.")
-                val job = EconomyJob(command.requestId, "exploration", exploration.id, startedAt = now.toString(),
-                    finishesAt = now.plusSeconds(exploration.seconds).toString(), rewards = exploration.rewards, cost = exploration.cost, catalogVersion = catalog.version)
+                val special = command.action == "start_fishing"
+                val tackle = state.fishing
+                val spec = catalog.fishing
+                if (special) {
+                    if (spec == null || exploration.id !in spec.routeIds || (exploration.rewards["fish"] ?: 0) <= 0)
+                        economyFailure("ECONOMY_FISHING_ROUTE", "Здесь нельзя рыбачить со снастями Плёски")
+                    if (tackle.equippedRodId !in tackle.ownedRods || spec.rods.none { it.id == tackle.equippedRodId })
+                        economyFailure("ECONOMY_FISHING_ROD", "Сначала выберите свою удочку")
+                    if (tackle.equippedBaitId != null && spec.baits.none { it.itemId == tackle.equippedBaitId })
+                        economyFailure("ECONOMY_FISHING_BAIT", "Наживка не найдена")
+                }
+                // Fishing randomness is server-owned, unlike the client idempotency request ID.
+                val id = if (special) UUID.randomUUID().toString() else command.requestId
+                val seed = if (special) state.fishingCastSeed ?: UUID.randomUUID().toString() else state.fishingCastSeed
+                val fishingCatch = if (special) EconomyFishingCatch(tackle.equippedRodId, tackle.equippedBaitId,
+                    selectFishingCatch(checkNotNull(seed), tackle.equippedRodId, tackle.equippedBaitId)) else null
+                val rewards = exploration.rewards.toMutableMap()
+                fishingCatch?.let {
+                    rewards["fish"] = rewards.getValue("fish") - 1
+                    rewards[it.fishId] = (rewards[it.fishId] ?: 0) + 1
+                }
+                val cost = if (special && tackle.equippedBaitId != null) exploration.cost.copy(items = exploration.cost.items +
+                    (tackle.equippedBaitId to ((exploration.cost.items[tackle.equippedBaitId] ?: 0) + 1))) else exploration.cost
+                val job = EconomyJob(id, "exploration", exploration.id, startedAt = now.toString(),
+                    finishesAt = now.plusSeconds(exploration.seconds).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
+                    catalogVersion = catalog.version, fishing = fishingCatch)
                 requireRewardCapacity(state, job.rewards)
-                spend(state, exploration.cost).copy(jobs = state.jobs + job) to "Мохлик отправился на исследование"
+                spend(state, cost).copy(jobs = state.jobs + job, fishingCastSeed = seed) to if (special) "Мохлик отправился рыбачить. Снасти и наживка подготовлены" else "Мохлик отправился на исследование"
             }
             "cancel_exploration" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
@@ -228,13 +276,52 @@ object EconomyRules {
                 }
                 val buildings = if (job.kind == "construction") state.buildings + (job.targetId to checkNotNull(job.targetLevel)) else state.buildings
                 val next = state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
-                    completedExplorations = if (job.kind == "exploration") minOf(ECONOMY_MAX_BALANCE, state.completedExplorations + 1) else state.completedExplorations)
+                    completedExplorations = if (job.kind == "exploration") minOf(ECONOMY_MAX_BALANCE, state.completedExplorations + 1) else state.completedExplorations,
+                    fishing = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) {
+                        val catches = state.fishing.catches.toMutableMap()
+                        catalog.fishing.fish.forEach { fish -> if ((job.rewards[fish.itemId] ?: 0) > 0)
+                            catches[fish.itemId] = minOf(ECONOMY_MAX_BALANCE, (catches[fish.itemId] ?: 0) + job.rewards.getValue(fish.itemId)) }
+                        state.fishing.copy(catches = catches)
+                    } else state.fishing,
+                    fishingCastSeed = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) null else state.fishingCastSeed)
                 addItems(next.inventory, reservedItems)
                 assertStorageTransition(state, next, reservedItems)
                 next to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"
             }
-            "sell" -> {
+            "buy_fishing_item" -> {
+                val spec = catalog.fishing ?: economyFailure("ECONOMY_FISHING_ITEM", "Лавка Плёски пока недоступна")
+                val rod = spec.rods.find { it.id == command.targetId }
+                val fish = spec.fish.find { it.itemId == command.targetId }
+                val bait = spec.baits.find { it.itemId == command.targetId }
+                if (rod == null && fish == null && bait == null) economyFailure("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет")
+                if (command.quantity > catalog.maxBatch || rod != null && command.quantity != 1L) invalidEconomy()
+                if (rod != null && rod.id in state.fishing.ownedRods) economyFailure("ECONOMY_FISHING_OWNED", "Эта удочка уже есть в коллекции")
+                val price = (rod?.price ?: fish?.buyPrice ?: checkNotNull(bait).price) * command.quantity
+                if (price > command.totalPrice) economyFailure("ECONOMY_FISHING_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Плёски")
+                val spent = spend(state, EconomyCost(coins = price))
+                val next = if (rod != null) spent.copy(fishing = state.fishing.copy(ownedRods = state.fishing.ownedRods + rod.id))
+                    else spent.copy(inventory = addItems(spent.inventory, mapOf(command.targetId to command.quantity)))
+                addItems(next.inventory, reservedItems)
+                assertStorageTransition(state, next, reservedItems)
+                next to if (rod != null) "Удочка добавлена в коллекцию" else "Покупка у Плёски отправлена на склад"
+            }
+            "equip_fishing_rod" -> {
+                if (catalog.fishing?.rods?.none { it.id == command.targetId } != false || command.targetId !in state.fishing.ownedRods)
+                    economyFailure("ECONOMY_FISHING_ROD", "Сначала приобретите эту удочку")
+                state.copy(fishing = state.fishing.copy(equippedRodId = command.targetId)) to "Удочка выбрана для следующих вылазок"
+            }
+            "equip_fishing_bait" -> {
+                val baitId = command.targetId.takeUnless { it == "none" }
+                if (baitId != null && catalog.fishing?.baits?.none { it.itemId == baitId } != false)
+                    economyFailure("ECONOMY_FISHING_BAIT", "Наживка не найдена")
+                if (baitId != null && (state.inventory[baitId] ?: 0) <= 0) economyFailure("ECONOMY_RESOURCES", "Сначала приобретите эту наживку")
+                state.copy(fishing = state.fishing.copy(equippedBaitId = baitId)) to
+                    if (baitId == null) "Выбрана рыбалка без наживки" else "Наживка выбрана: одна порция на следующую вылазку"
+            }
+            "sell", "sell_fish" -> {
+                if (command.action == "sell_fish" && catalog.fishing?.fish?.none { it.itemId == command.targetId } != false)
+                    economyFailure("ECONOMY_FISHING_ITEM", "Плёска принимает здесь только рыбу")
                 val item = catalog.items.find { it.id == command.targetId && it.tradable } ?: economyFailure("ECONOMY_ITEM", "Этот предмет нельзя продать")
                 val amount = item.baseSellPrice * command.quantity
                 if (amount > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк достиг предела")

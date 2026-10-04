@@ -10,7 +10,8 @@ export type PleskSpriteRig = {
   grip: WorldPoint; heldFish: WorldPoint; basket: WorldPoint;
   head: WorldPoint; tail: WorldPoint; feet: readonly WorldPoint[];
   palms: readonly { position: WorldPoint; near: boolean }[];
-  flower: WorldPoint;
+  arms: readonly { shoulder: WorldPoint; elbow: WorldPoint; palm: WorldPoint }[];
+  ears: readonly WorldPoint[]; flower: WorldPoint;
 };
 export const PLESK_SPRITE_SIZE = 48;
 export const PLESK_SPRITE_CACHE_LIMIT = 256;
@@ -63,8 +64,8 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
       const at = lerp(a, b, step / steps); oval(at.x, at.y, radius, radius, color);
     }
   };
-  // Left mirrors the skeleton, not the flower: the little lily remains on her
-  // anatomical left ear, with a partly hidden far-side view when she turns left.
+  // Left mirrors the skeleton, not the clip: the little lily remains on her
+  // anatomical left temple, partly hidden when she turns left.
   const sideView = direction === "left" || direction === "right";
   const back = direction === "back";
   const mirror = (p: WorldPoint) => point(direction === "left" ? 48 - p.x : p.x, p.y);
@@ -107,13 +108,15 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     grip = point(37, 30 - Math.round(Math.sin(phasePart * Math.PI) * 2));
     otherHand = point(sideView ? 37 : 14, 36);
   } else if (action === "pack") {
-    grip = lerp(point(36, 28), point(40, 39), Math.min(1, phasePart / .7));
+    grip = lerp(point(36, 27), point(40, 39), Math.min(1, phasePart / .7));
     otherHand = point(sideView ? 29 : 19, 35 + crouch);
   } else if (action === "trade") {
     grip = point(35 + (index > 3 ? 1 : 0), 32 + (index > 3 ? -1 : 1));
     otherHand = point(16, 35);
   } else if (action === "greet") {
-    grip = point(40 + [0, 0, 1, 1, 0, 0, -1, -1][index], 19 + (phasePart > .8 ? 5 : 0));
+    // A small paw waves beside the cheek; lifting the whole forearm above the
+    // head made her short otter limb look like a long human arm.
+    grip = point(36 + [0, 0, 1, 1, 0, 0, -1, -1][index], 25 + (phasePart > .8 ? 4 : 0));
     otherHand = point(sideView ? 37 : 15, 36);
   } else if (resting) {
     grip = point(31, 38); otherHand = point(sideView ? 24 : 18, 38);
@@ -126,15 +129,29 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     if (variation === "struggle") { grip.x -= 2; grip.y -= 2; otherHand.x -= 2; otherHand.y -= 1; }
     if (variation === "escape") { grip.y += Math.round(phasePart * 3); otherHand.y += Math.round(phasePart * 2); }
   }
-  const basket = ["walk", "idle", "greet"].includes(action) ? point(otherHand.x, otherHand.y + 5) : point(43, 41);
+  const reachable = (from: WorldPoint, to: WorldPoint) => {
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    return distance > 12.5 ? lerp(from, to, 12.5 / distance) : to;
+  };
+  grip = reachable(shoulder, grip); otherHand = reachable(farShoulder, otherHand);
+  const basket = ["walk", "idle", "greet"].includes(action) ? point(otherHand.x, otherHand.y + 5) : point(42, 41);
   const drawTail = () => {
     oval(tail.x, tail.y, back ? 6 : 8, back ? 6 : 4, c.outline);
     oval(tail.x, tail.y - 1, back ? 5 : 7, back ? 5 : 3, c.dark);
     oval(tail.x - 1, tail.y - 2, back ? 3 : 5, 2, c.fur);
     rect(tail.x - 3, tail.y - 3, 4, 1, c.light);
   };
+  const arms: { shoulder: WorldPoint; elbow: WorldPoint; palm: WorldPoint }[] = [];
   const drawArm = (from: WorldPoint, to: WorldPoint, near: boolean) => {
-    const elbow = point((from.x + to.x) / 2 + (to.y < from.y - 5 ? 2 : -1), Math.max(from.y, to.y) + 2);
+    const dx = to.x - from.x, dy = to.y - from.y, distance = Math.hypot(dx, dy);
+    const segmentLength = Math.max(6, distance / 2);
+    const bend = Math.sqrt(Math.max(0, segmentLength * segmentLength - distance * distance / 4));
+    const sign = dx < 0 ? -1 : 1;
+    // Two similarly short bones share the bend. In particular, a raised palm
+    // now raises its elbow instead of stretching down to a fixed low elbow.
+    const elbow = distance > 0 ? point((from.x + to.x) / 2 - dy / distance * bend * sign,
+      (from.y + to.y) / 2 + dx / distance * bend * sign) : point(from.x + 4, from.y + 4);
+    arms.push({ shoulder: mirror(from), elbow: mirror(elbow), palm: mirror(to) });
     segment(from, elbow, 2, c.outline); segment(elbow, to, 2, c.outline);
     segment(from, elbow, 1, near ? c.fur : c.dark); segment(elbow, to, 1, near ? c.fur : c.dark);
     oval(to.x, to.y, 2, 2, near ? c.light : c.fur);
@@ -159,25 +176,26 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   }
   if (back) drawTail();
   // Round ears distinguish the otter from Mochlik even at world-map scale.
-  const ears = sideView ? [point(head.x - 7, head.y - 8), point(head.x + 6, head.y - 9)]
+  const ears = sideView ? [point(head.x - 8, head.y - 10), point(head.x + 6, head.y - 10)]
     : [point(head.x - 10, head.y - 8), point(head.x + 10, head.y - 8)];
   for (const ear of ears) {
     oval(ear.x, ear.y, 4, 4, c.outline); oval(ear.x, ear.y - 1, 3, 3, c.fur);
     oval(ear.x, ear.y, 2, 2, back ? c.dark : c.ear);
   }
-  const flower = sideView ? point(direction === "left" ? head.x + 6 : head.x - 7, head.y - 10)
-    : point(head.x + (back ? -10 : 10), head.y - 10);
+  const flower = sideView ? point(direction === "left" ? head.x + 10 : head.x - 11, head.y - 4)
+    : point(head.x + (back ? -12 : 12), head.y - 2);
   const drawFlower = () => {
-    oval(flower.x - 2, flower.y + 2, 3, 1, c.leaf);
-    for (const petal of [point(-2, -1), point(1, -2), point(3, 0), point(1, 2), point(-2, 2)]) {
-      oval(flower.x + petal.x, flower.y + petal.y, 2, 2, c.petalShade);
-      oval(flower.x + petal.x, flower.y + petal.y - 1, 1, 1, c.petal);
-      rect(flower.x + petal.x, flower.y + petal.y - 2, 1, 1, c.petalLight);
+    rect(flower.x - 2, flower.y + 2, 3, 1, c.leaf);
+    rect(flower.x - 2, flower.y - 1, 5, 3, c.petalShade);
+    rect(flower.x - 1, flower.y - 2, 3, 5, c.petalShade);
+    for (const petal of [point(-1, -1), point(1, -1), point(-1, 1), point(1, 1)]) {
+      oval(flower.x + petal.x, flower.y + petal.y, 1, 1, c.petal);
+      rect(flower.x + petal.x, flower.y + petal.y - 1, 1, 1, c.petalLight);
     }
-    oval(flower.x, flower.y, 1, 1, c.pollen); rect(flower.x, flower.y - 1, 1, 1, c.pale);
+    rect(flower.x, flower.y, 1, 1, c.pollen);
   };
-  // A far-ear blossom is partially hidden by the head, not pasted onto the
-  // opposite ear when the sprite faces left.
+  // The far-side clip disappears naturally behind the head. Neither clip
+  // replaces an ear; the ear silhouette and its inner fur remain visible.
   if (direction === "left") drawFlower();
   oval(head.x, head.y, 12, 10, c.outline);
   oval(head.x, head.y - 1, 11, 9, c.fur);
@@ -225,7 +243,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const planted = mappedFeet.filter(foot => foot.y + 3 === bottom);
   rigs.set(canvas, { contact: { bottom, left: Math.min(...planted.map(foot => foot.x - 4)), right: Math.max(...planted.map(foot => foot.x + 5)) },
     grip: mirror(action === "catch" || action === "greet" ? otherHand : grip), heldFish: mirror(point(grip.x, grip.y - 1)), basket: mirror(basket),
-    head: mirror(head), tail: mirror(tail), feet: mappedFeet, flower: mirror(flower),
+    head: mirror(head), tail: mirror(tail), feet: mappedFeet, arms, ears: ears.map(mirror), flower: mirror(flower),
     palms: [{ position: mirror(otherHand), near: false }, { position: mirror(grip), near: true }] });
   cache.set(key, canvas);
   if (cache.size > PLESK_SPRITE_CACHE_LIMIT) cache.delete(cache.keys().next().value!);

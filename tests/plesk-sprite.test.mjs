@@ -104,7 +104,7 @@ function context() {
     translate() {}, rotate() {},
   };
 }
-test("Plesk paints at his recorded ground contact and the rod starts at the articulated hand", () => {
+test("Pleska paints at her recorded ground contact and the rod starts at the articulated hand", () => {
   const frame = { x: 100, y: 160, size: 36, direction: "right", action: "cast", phase: .6, frame: 4,
     carryingFish: false, waterTarget: { x: 165, y: 180 } };
   const ctx = context(); drawPleskResident(ctx, frame, false);
@@ -122,7 +122,7 @@ test("Plesk paints at his recorded ground contact and the rod starts at the arti
   assert.ok(bounds.y + bounds.height >= frame.waterTarget.y + frame.size * .2);
 });
 
-test("the round face keeps its short muzzle inside the skull and its lily on one anatomical ear", () => {
+test("the round face keeps its short muzzle inside the skull and its clip on one anatomical temple", () => {
   const front = pleskSpriteRig(pleskSprite("idle", "front", 0));
   const back = pleskSpriteRig(pleskSprite("idle", "back", 0));
   assert.ok(front.flower.x > front.head.x && back.flower.x < back.head.x);
@@ -138,7 +138,54 @@ test("the round face keeps its short muzzle inside the skull and its lily on one
   const right = pleskSpriteRig(pleskSprite("idle", "right", 0));
   const left = pleskSpriteRig(pleskSprite("idle", "left", 0));
   assert.ok(right.flower.x < right.head.x && left.flower.x < left.head.x,
-    "the blossom moves to the far ear when she turns, rather than mirroring to the other anatomical ear");
+    "the clip moves to the far side when she turns, rather than mirroring to the other anatomical temple");
+});
+
+test("raising a paw bends two short arm segments instead of stretching a low elbow to the face", () => {
+  const check = sprite => {
+    const rig = pleskSpriteRig(sprite);
+    assert.equal(rig.arms.length, 2);
+    for (const { shoulder, elbow, palm } of rig.arms) {
+      const upperArm = Math.hypot(elbow.x - shoulder.x, elbow.y - shoulder.y);
+      const forearm = Math.hypot(palm.x - elbow.x, palm.y - elbow.y);
+      assert.ok(upperArm <= 7.1, `upper arm remains compact: ${upperArm}`);
+      assert.ok(forearm <= 7.1, `forearm remains compact: ${forearm}`);
+      assert.ok(Math.abs(upperArm - forearm) <= 1.5, "a joint cannot trade one short bone for an elongated forearm");
+      assert.ok(rig.palms.some(hand => hand.position.x === palm.x && hand.position.y === palm.y),
+        "props and foreground fingers use the actual reachable hand");
+    }
+  };
+  for (const direction of ["front", "back", "left", "right"]) {
+    for (const action of actions) for (let frame = 0; frame < 8; frame++) {
+      const sprite = pleskSprite(action, direction, frame, frame / 7); check(sprite);
+      if (action === "greet") {
+        const rig = pleskSpriteRig(sprite), waving = rig.arms.at(-1);
+        assert.ok(waving.palm.y >= rig.head.y + 5, "the paw waves beside the lower cheek, not above the head");
+      }
+    }
+    for (const variation of ["check", "nibble", "struggle", "escape"]) for (let frame = 0; frame < 8; frame++) {
+      check(pleskSprite("reel", direction, frame, frame / 7, false, { variation }));
+    }
+  }
+});
+
+test("the small temple flower leaves both complete inner ears visible in every facing", () => {
+  const petals = new Set(["#efb5bb", "#ffe1d7", "#bd858f", "#e9c371"]);
+  for (const direction of ["front", "back", "left", "right"]) for (const action of actions) {
+    const sprite = pleskSprite(action, direction, 4, .5), rig = pleskSpriteRig(sprite);
+    const flowerPixels = [...sprite.pixels].filter(([, color]) => petals.has(color));
+    assert.ok(flowerPixels.length > 0 && flowerPixels.length <= 26, "a small clip, not an ear-sized blossom");
+    for (const ear of rig.ears) {
+      const x = ear.x - Number(direction === "left");
+      let innerEar = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const color = sprite.pixels.get(`${x + dx}:${ear.y + dy}`);
+        if (color === (direction === "back" ? "#536f78" : "#c7b5ad")) innerEar++;
+        assert.equal(petals.has(color), false, "the flower never substitutes for the ear opening");
+      }
+      assert.ok(innerEar >= 5, `${action}/${direction} preserves a visible inner ear`);
+    }
+  }
 });
 
 test("line checking, timid nibbles, struggle and an escaped catch have their own grounded joint poses", () => {

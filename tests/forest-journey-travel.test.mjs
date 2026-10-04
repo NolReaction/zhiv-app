@@ -240,3 +240,55 @@ test("non-coastal jobs remain away and a replacement job cannot inherit the old 
   assert.deepEqual(state.clearing.position, position);
   session.release();
 });
+
+test("confirmed tackle remains locked to its trip and the selected species survives the return and cancellation", () => {
+  const session = create(), state = session.state;
+  const job = { ...journey(), fishing: { rodId: "river_rod", fishId: "fish_mooncarp" } };
+  try {
+    syncForestJourneyTravel(state, scene, job, start + 60_000, false);
+    assert.equal(state.journeyTravel.rodId, "river_rod"); assert.equal(state.journeyTravel.catchSpecies, "fish_mooncarp");
+    assert.equal(forestJourneyFishingFrame(state, scene).rodId, "river_rod");
+    const beforeReading = structuredClone(state.journeyTravel);
+    forestJourneyFishingFrame(state, scene); forestJourneyFishingFrame(state, scene, true);
+    assert.deepEqual(state.journeyTravel, beforeReading, "sampling props does not mutate the selected result");
+    state.director.elapsed = state.journeyTravel.fishingAt + FOREST_FISHING_FIRST_CATCH_SECONDS + .01;
+    const firstCatch = forestJourneyFishingFrame(state, scene);
+    assert.equal(firstCatch.action, "catch"); assert.equal(firstCatch.species, "fish_mooncarp");
+    assert.equal(firstCatch.basketFilled, false); assert.equal(firstCatch.basketSpecies, undefined);
+    state.director.elapsed = state.journeyTravel.fishingAt + 22;
+    const firstPacked = forestJourneyFishingFrame(state, scene);
+    assert.equal(firstPacked.action, "pack"); assert.equal(firstPacked.basketSpecies, "fish_mooncarp");
+    const still = forestJourneyFishingFrame(state, scene, true);
+    assert.equal(still.species, "fish_mooncarp"); assert.equal(still.carryingFish, false); assert.equal(still.basketFilled, false);
+    // A later profile refresh can alter current equipment; only a new job ID
+    // may acquire different tackle for this ongoing physical scene.
+    syncForestJourneyTravel(state, scene, { ...job, fishing: { rodId: "willow_rod", fishId: "fish_silverfin" } }, start + 61_000, false);
+    assert.equal(state.journeyTravel.rodId, "river_rod"); assert.equal(state.journeyTravel.catchSpecies, "fish_mooncarp");
+    state.director.elapsed += FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+    syncForestJourneyTravel(state, scene, job, start + 600_000, false);
+    assert.equal(state.journeyTravel.phase, "returning");
+    const returning = forestJourneyFishingFrame(state, scene);
+    assert.equal(returning.carryingFish, true); assert.equal(returning.basketSpecies, "fish_mooncarp");
+    assert.equal(returning.rodId, "river_rod");
+    const feet = { ...state.clearing.position };
+    syncForestJourneyTravel(state, scene, null, start + 600_001, false, [job.id]);
+    assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, false);
+    assert.deepEqual(state.clearing.position, feet);
+    assert.ok(!JSON.stringify(captureForestMemory(state, scene)).includes("fish_mooncarp"), "economic catch ownership never enters visual memory");
+  } finally { session.release(); }
+});
+
+test("new trip identities replace old gear while pre-fishing jobs retain the original visual fallback", () => {
+  const session = create(), state = session.state;
+  try {
+    const first = { ...journey(), fishing: { rodId: "river_rod", fishId: "fish_reedperch" } };
+    syncForestJourneyTravel(state, scene, first, start + 60_000, false);
+    const next = { ...journey(), id: "next-shore", fishing: { rodId: "willow_rod", fishId: "fish_silverfin" } };
+    syncForestJourneyTravel(state, scene, next, start + 61_000, true);
+    assert.equal(state.journeyTravel.jobId, next.id); assert.equal(forestJourneyFishingFrame(state, scene).rodId, "willow_rod");
+    assert.equal(state.journeyTravel.catchSpecies, "fish_silverfin");
+    syncForestJourneyTravel(state, scene, { ...journey(), id: "legacy-shore" }, start + 62_000, true);
+    assert.equal(state.journeyTravel.rodId, undefined); assert.equal(state.journeyTravel.catchSpecies, undefined);
+    assert.equal(forestJourneyFishingFrame(state, scene).rodId, undefined);
+  } finally { session.release(); }
+});

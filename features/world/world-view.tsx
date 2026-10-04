@@ -251,7 +251,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       <div className={hudStyles.quickBody}>
         {quickMenu === "profile" && <WorldProfileMenu world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => { setLocalNotice(value => value + 1); closeQuick(); }} />}
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} />}
-        {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} />}
+        {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={openResident} />}
         {quickMenu === "more" && <div className={hudStyles.moreActions}>
           <button onClick={openResident} aria-haspopup="dialog"><Fish size={18} aria-hidden="true" />Плёска · рыбачка и торговка</button>
           <button onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" />Рынок</button>

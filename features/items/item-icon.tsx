@@ -3,6 +3,29 @@ import { naturalItemArt } from "./art-natural";
 import { craftedItemArt } from "./art-crafted";
 import { collectionArt } from "./art-collection";
 import { equipmentArt } from "./art-equipment";
+import { FishArt } from "@/features/world/fish-icon";
+import { FISH_SPECIES_IDS } from "@/features/world/fish-species";
+
+const fishingArt: Record<string, ReactNode> = {
+  ...Object.fromEntries(FISH_SPECIES_IDS.map(species => [species,
+    <g key={species} transform="translate(27 25) scale(27)"><FishArt species={species} /></g>])),
+  crumb_bait: <>
+    <path d="M13 19c-2 5-7 14-4 19 4 6 27 6 31-1 2-5-4-14-6-19Z" fill="#bda370" />
+    <path d="m15 9 5 2 5-3 7 2-1 8H17Z" fill="#dfca96" />
+    <path d="M15 19c6 2 15 2 19-1" stroke="#776745" strokeWidth="3" />
+    <path d="m22 20 3 7 5-1m-5-5-5 6" stroke="#78654b" strokeWidth="1.6" />
+    <path d="m18 30 4-2 3 4-3 3-5-2Zm11 3 4-1 2 4-5 2Z" fill="#e4c578" stroke="#91754c" strokeWidth="1.3" />
+    <circle cx="13" cy="39" r="2" fill="#e7d395" stroke="none" />
+  </>,
+  worm_bait: <>
+    <path d="M9 23h30v13c0 8-30 8-30 0Z" fill="#819b86" />
+    <ellipse cx="24" cy="23" rx="15" ry="6" fill="#526d5b" />
+    <path d="M16 24c-3-6 5-5 4-10-1-4 5-6 8-2 4 5-4 6-2 11" stroke="#d59680" strokeWidth="4.5" />
+    <path d="m20 15 3 1m1-6 1 3m0 5 3 1" stroke="#ac6f60" strokeWidth="1.2" />
+    <path d="M10 30c7 4 21 4 28 0" stroke="#b9c6a3" strokeWidth="2" />
+    <path d="M15 36h18" stroke="#607560" strokeWidth="1.5" />
+  </>,
+};
 
 const currencyArt: Record<string, ReactNode> = {
   coins: <>
@@ -17,7 +40,7 @@ const currencyArt: Record<string, ReactNode> = {
   pearls: collectionArt.river_pearl,
 };
 
-const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...equipmentArt, ...currencyArt };
+const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...equipmentArt, ...currencyArt, ...fishingArt };
 export const itemIconIds: readonly string[] = Object.keys(itemArt);
 export const collectionIconIds: readonly string[] = Object.keys(collectionArt);
 

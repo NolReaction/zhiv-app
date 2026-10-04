@@ -172,6 +172,41 @@
       "category": "crafted",
       "baseSellPrice": 12,
       "tradable": true
+    },
+    {
+      "id": "fish_silverfin",
+      "name": "Серебринка",
+      "category": "produce",
+      "baseSellPrice": 12,
+      "tradable": true
+    },
+    {
+      "id": "fish_reedperch",
+      "name": "Камышовый окунёк",
+      "category": "produce",
+      "baseSellPrice": 18,
+      "tradable": true
+    },
+    {
+      "id": "fish_mooncarp",
+      "name": "Лунный карасик",
+      "category": "produce",
+      "baseSellPrice": 32,
+      "tradable": true
+    },
+    {
+      "id": "crumb_bait",
+      "name": "Хлебная наживка",
+      "category": "fishing",
+      "baseSellPrice": 1,
+      "tradable": true
+    },
+    {
+      "id": "worm_bait",
+      "name": "Лесной червячок",
+      "category": "fishing",
+      "baseSellPrice": 2,
+      "tradable": true
     }
   ],
   "buildings": [
@@ -2053,5 +2088,82 @@
     "maxLotQuantity": 99,
     "maxPriceMultiplier": 5,
     "feeBps": 0
+  },
+  "fishing": {
+    "routeIds": [
+      "shore",
+      "shore_camp"
+    ],
+    "fish": [
+      {
+        "itemId": "fish",
+        "description": "Знакомая речная рыба. Подходит для старых рецептов копчения.",
+        "rarity": "common",
+        "weight": 55,
+        "affinity": 0,
+        "buyPrice": 16
+      },
+      {
+        "itemId": "fish_silverfin",
+        "description": "Быстрая стайная рыбка с серебристой спинкой и голубыми плавниками.",
+        "rarity": "common",
+        "weight": 30,
+        "affinity": 1,
+        "buyPrice": 24
+      },
+      {
+        "itemId": "fish_reedperch",
+        "description": "Полосатый лесной окунёк прячется у камышей. Любит хорошую наживку.",
+        "rarity": "uncommon",
+        "weight": 12,
+        "affinity": 2,
+        "buyPrice": 36
+      },
+      {
+        "itemId": "fish_mooncarp",
+        "description": "Редкий округлый карасик с лунным пятнышком. Тонкая снасть помогает его заметить.",
+        "rarity": "rare",
+        "weight": 3,
+        "affinity": 3,
+        "buyPrice": 64
+      }
+    ],
+    "rods": [
+      {
+        "id": "reed_rod",
+        "name": "Камышовая удочка",
+        "description": "Простая надёжная удочка. Есть у каждого начинающего рыбака.",
+        "price": 0,
+        "rareBonus": 0
+      },
+      {
+        "id": "river_rod",
+        "name": "Речная удочка",
+        "description": "Чувствительный кончик повышает шанс необычной рыбы.",
+        "price": 120,
+        "rareBonus": 2
+      },
+      {
+        "id": "willow_rod",
+        "name": "Ивовая удочка",
+        "description": "Гибкая снасть Плёски лучше замечает осторожные поклёвки.",
+        "price": 360,
+        "rareBonus": 5
+      }
+    ],
+    "baits": [
+      {
+        "itemId": "crumb_bait",
+        "description": "Одна порция на всю вылазку. Немного повышает шанс необычной рыбы.",
+        "price": 3,
+        "rareBonus": 1
+      },
+      {
+        "itemId": "worm_bait",
+        "description": "Одна порция на всю вылазку. Особенно привлекает редкую рыбу.",
+        "price": 7,
+        "rareBonus": 3
+      }
+    ]
   }
 }

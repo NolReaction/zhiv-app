@@ -72,7 +72,9 @@ test("every catalog route belongs to exactly one sector and keeps its actual fin
       assert.match(content, /<summary>/);
       assert.doesNotMatch(content, /<details[^>]*\bopen=/);
       for (const [itemId, count] of Object.entries(entry.rewards)) {
-        assert.ok(content.includes(economyCatalog.items.find(item => item.id === itemId).name));
+        const name = itemId === "fish" && economyCatalog.fishing.routeIds.includes(id)
+          ? "Рыбный улов" : economyCatalog.items.find(item => item.id === itemId).name;
+        assert.ok(content.includes(name));
         assert.ok(content.includes(`×${count}`));
       }
       assert.ok(!content.includes(entry.description), "descriptive prose should not obscure route choices");
@@ -285,4 +287,103 @@ test("cancellation approval is scoped to the exact job and owner, while timer ti
   assert.equal(tick.control("Вернуть Мохлика").props["aria-expanded"], true);
   assert.equal(expeditionCancellationKey("ME", job({ rewards: { fiber: 4, wood: 5, stone: 3 } })), key,
     "map key ordering does not create a different job approval");
+});
+
+function sectorView(sectorId, state, overrides = {}, props = {}) {
+  const calls = [], visits = [], elements = [];
+  const economy = controller({ snapshot: state, act: (...args) => calls.push(args), ...overrides });
+  const tree = WorldExpeditionSector({ sectorId, selectedRoute: null, onSelectRoute() {}, economy, state,
+    exploring: state.jobs.some(entry => entry.kind === "exploration"), onOpenPantry() {},
+    onOpenFishingShop: () => visits.push("plesk"), ...props });
+  function walk(element) {
+    if (!isValidElement(element)) return;
+    elements.push(element);
+    // RouteDetails is a pure child component; inspect its actual handlers in
+    // addition to SSR markup without reimplementing departure decisions.
+    if (typeof element.type === "function" && element.props.route && element.props.economy) walk(element.type(element.props));
+    Children.forEach(element.props.children, walk);
+  }
+  walk(tree);
+  const depart = routeId => elements.find(element => element.type === "button"
+    && element.props["aria-label"] === `Отправиться: ${state.catalog.explorations.find(entry => entry.id === routeId).name}`);
+  return { html: renderToStaticMarkup(tree), elements, calls, visits, depart };
+}
+const fishingGear = (overrides = {}) => ({ ownedRods: ["reed_rod", "river_rod", "willow_rod"], equippedRodId: "willow_rod",
+  equippedBaitId: "worm_bait", catches: {}, ...overrides });
+
+test("fishing departure shows equipped gear, charges one bait per trip and guards a missing-bait handler", () => {
+  const state = snapshot({ fishing: fishingGear(), inventory: {} });
+  const before = structuredClone(state);
+  const missing = sectorView("shore", state);
+  const shore = route(missing.html, "shore");
+  assert.match(shore, /Ивовая удочка/); assert.match(shore, /1 на вылазку/);
+  assert.match(shore, /Не хватает припасов/); assert.match(shore, /<strong>0 \/ 1<\/strong>/);
+  assert.equal(missing.depart("shore").props.disabled, true);
+  missing.depart("shore").props.onClick(); assert.deepEqual(missing.calls, []);
+  const ready = sectorView("shore", snapshot({ ...state, inventory: { worm_bait: 1 } }));
+  assert.equal(ready.depart("shore").props.disabled, false);
+  ready.depart("shore").props.onClick(); assert.deepEqual(ready.calls, [["start_fishing", "shore"]]);
+  assert.deepEqual(state, before, "rendering and choosing a trip cannot deduct supplies optimistically");
+  const bare = sectorView("shore", snapshot({ fishing: fishingGear({ equippedBaitId: null }), inventory: {} }));
+  assert.match(route(bare.html, "shore"), /Без наживки/);
+  assert.equal(bare.depart("shore").props.disabled, false);
+});
+
+test("fishing consumes the dedicated action only for declared routes and preserves legacy-backend departures", () => {
+  const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])),
+    inventory: { worm_bait: 1, smoked_fish: 3, dried_berries: 3 }, fishing: fishingGear() });
+  const coastal = sectorView("shore", state);
+  for (const routeId of ["shore", "shore_camp", "coastal_deposits"]) {
+    assert.equal(coastal.depart(routeId).props.disabled, false);
+    coastal.depart(routeId).props.onClick();
+  }
+  assert.deepEqual(coastal.calls, [["start_fishing", "shore"], ["start_fishing", "shore_camp"], ["start_exploration", "coastal_deposits"]]);
+  const forest = sectorView("forest", state); forest.depart("forest").props.onClick();
+  assert.deepEqual(forest.calls, [["start_exploration", "forest"]]);
+  const legacy = structuredClone(state); delete legacy.catalog.fishing; delete legacy.fishing;
+  const fallback = sectorView("shore", legacy); fallback.depart("shore").props.onClick();
+  assert.deepEqual(fallback.calls, [["start_exploration", "shore"]]);
+  assert.doesNotMatch(route(fallback.html, "shore"), /Рыбный улов|Выбрать снасти/);
+  assert.match(route(fallback.html, "shore"), new RegExp(economyCatalog.items.find(item => item.id === "fish").name));
+  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 1000 }]) {
+    const locked = sectorView("shore", state, flags);
+    assert.equal(locked.depart("shore").props.disabled, true);
+    locked.depart("shore").props.onClick(); assert.deepEqual(locked.calls, []);
+  }
+});
+
+test("shore gear shortcuts open Pleska without spending and fishing keeps each route's advertised capacity", () => {
+  const view = sectorView("shore", snapshot());
+  const shops = view.elements.filter(element => element.type === "button"
+    && Children.toArray(element.props.children).some(child => child === "Выбрать снасти у Плёски"));
+  assert.equal(shops.length, economyCatalog.fishing.routeIds.length);
+  shops[0].props.onClick(); assert.deepEqual(view.visits, ["plesk"]); assert.deepEqual(view.calls, []);
+  const without = sectorView("shore", snapshot(), {}, { onOpenFishingShop: undefined });
+  assert.doesNotMatch(without.html, /Выбрать снасти у Плёски/);
+  for (const routeId of economyCatalog.fishing.routeIds) {
+    const entry = economyCatalog.explorations.find(route => route.id === routeId);
+    const quantity = Object.values(entry.rewards).reduce((sum, count) => sum + count, 0);
+    const full = sectorView("shore", snapshot({ storage: { capacity: quantity - 1, available: quantity - 1, used: 0, reserved: 0, overflow: 0 } }));
+    assert.equal(full.depart(routeId).props.disabled, true);
+    assert.match(route(full.html, routeId), new RegExp(`Находки займут ${quantity} мест`));
+    assert.match(route(view.html, routeId), /Рыбный улов/);
+    assert.match(route(view.html, routeId), new RegExp(`×${entry.rewards.fish}`));
+  }
+});
+
+test("an active fishing job shows its saved species and forfeits the exact result and bait on cancellation", () => {
+  const saved = job({ targetId: "shore", rewards: { fish: 3, fish_mooncarp: 1 }, cost: { coins: 0, items: { worm_bait: 1 } },
+    fishing: { rodId: "willow_rod", baitId: "worm_bait", fishId: "fish_mooncarp" } });
+  const state = snapshot({ jobs: [saved], fishing: fishingGear({ equippedRodId: "reed_rod", equippedBaitId: null }) });
+  const view = activeView(saved, { state, confirmed: true });
+  assert.doesNotMatch(view.html, /Рыбный улов/);
+  for (const fishId of ["fish", "fish_mooncarp"]) assert.match(view.html, new RegExp(economyCatalog.items.find(item => item.id === fishId).name));
+  assert.match(view.html, /×3/); assert.match(view.html, /×1/);
+  assert.match(view.html, /Потраченные монеты и припасы не возвращаются/);
+  view.control("Вернуться без добычи").props.onClick();
+  assert.deepEqual(view.calls, [["cancel_exploration", saved.id]]);
+  assert.deepEqual(state.jobs[0].rewards, { fish: 3, fish_mooncarp: 1 }); assert.deepEqual(state.inventory, {});
+  const changed = { ...saved, fishing: { ...saved.fishing, rodId: "river_rod" } };
+  assert.notEqual(expeditionCancellationKey(state.ownerPublicId, changed), view.key,
+    "a cancellation confirmation cannot survive replacement of a saved fishing result");
 });

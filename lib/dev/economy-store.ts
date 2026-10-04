@@ -4,6 +4,7 @@ import { consumeDevLegacyEconomy, hasDevLegacyJourney } from "@/lib/dev/world-st
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
+import { fishingState } from "@/features/economy/fishing";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number };
@@ -26,12 +27,15 @@ function profile(token: string | undefined, now: number) {
     value = { revision: 0, state: newEconomyState(legacy), receipts: new Map(), legacyJourneys: new Set() };
     store().profiles.set(owner, value);
   }
+  value.state.fishing ??= fishingState({});
   value.state.buildings.warehouse ??= 1;
   value.state.buildings.kiln ??= 0;
   return { owner, value };
 }
 function view(owner: string, value: Profile, now: number): EconomyView {
-  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...structuredClone(value.state),
+  const state = structuredClone(value.state);
+  delete state.fishingCastSeed;
+  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state,
     storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
@@ -81,10 +85,10 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const command = parsed.data, { owner, value } = profile(token, now);
   const replay = receipt(value, owner, command, now);
   if (replay) return replay;
-  if (["start_exploration", "start_collection"].includes(command.action) && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
+  if (["start_exploration", "start_fishing", "start_collection"].includes(command.action) && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
   const next = structuredClone(value.state);
   const reserved = escrowItems(owner);
-  const message = applyEconomyCommand(next, command, now, () => command.requestId, reserved);
+  const message = applyEconomyCommand(next, command, now, () => command.action === "start_fishing" ? crypto.randomUUID() : command.requestId, reserved);
   assertEconomyStorageTransition(value.state, next, reserved);
   return commit(owner, value, next, command, message, now);
 }

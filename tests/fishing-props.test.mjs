@@ -7,10 +7,40 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingTackleFrame, drawFishingProps, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, drawFishingProps, fishingRodAppearance, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
 const base = { x: 200, y: 200, size: 50, direction: "front", action: "fish", phase: .5, frame: 0,
   waterTarget: { x: 204, y: 247 }, carryingFish: false };
+
+test("rod profiles are immutable paint-only variants with safe defaults and no cross-frame color leakage", () => {
+  const ids = ["reed_rod", "river_rod", "willow_rod"];
+  assert.strictEqual(fishingRodAppearance(), fishingRodAppearance("reed_rod"));
+  for (const unknown of ["unknown", "__proto__", "constructor"]) {
+    assert.strictEqual(fishingRodAppearance(unknown), fishingRodAppearance("reed_rod"));
+  }
+  const profiles = ids.map(fishingRodAppearance);
+  assert.equal(new Set(profiles.map(item => item.shaft)).size, 3);
+  assert.equal(profiles[0].wrap, null); assert.ok(profiles[1].wrap); assert.ok(profiles[2].wrap);
+  for (const appearance of profiles) assert.equal(Object.isFrozen(appearance), true);
+  for (const action of ["walk", "cast", "fish", "bite", "reel", "catch"]) {
+    for (const direction of ["front", "left", "right", "back"]) for (const phase of [0, .3, .7, 1]) {
+      const frame = { ...base, action, direction, phase }, reference = fishingTackleFrame(frame, false);
+      for (const rodId of ids) assert.deepEqual(fishingTackleFrame({ ...frame, rodId }, false), reference,
+        "changing tackle colors cannot alter the newly corrected hand/rod geometry");
+    }
+  }
+  for (const rodId of [...ids, ...ids.toReversed()]) {
+    const painted = new Set(), ctx = new Proxy({}, { get: () => () => {},
+      set: (_target, key, value) => { if (key === "fillStyle" || key === "strokeStyle") painted.add(value); return true; } });
+    drawFishingProps(ctx, { ...base, rodId }, false, { drawBasket: false });
+    const appearance = fishingRodAppearance(rodId);
+    for (const color of Object.values(appearance).filter(Boolean)) assert.ok(painted.has(color));
+    for (const other of ids.filter(id => id !== rodId)) {
+      const otherWrap = fishingRodAppearance(other).wrap;
+      if (otherWrap) assert.equal(painted.has(otherWrap), false);
+    }
+  }
+});
 
 test("the rod stays attached to its hand with a real length through every downward casting frame", () => {
   for (const direction of ["front", "left", "right", "back"]) {
@@ -38,6 +68,18 @@ test("carried rods stay outside the face and caught fish use the opposite free p
     const caught = forestFishingHeroRig({ ...frame, action: "catch", carryingFish: true }, false);
     assert.ok((caught.grip.x - frame.x) * (caught.heldFish.x - frame.x) < 0);
     assert.deepEqual(caught.farHand, caught.heldFish);
+  }
+});
+
+test("close front and back water targets cannot swing the pole inward across a resident's head", () => {
+  for (const side of [-1, 1]) for (const action of ["cast", "fish", "bite", "reel"]) {
+    const grip = { x: base.x + side * base.size * .25, y: base.y - base.size * .27 };
+    for (let index = 0; index <= 40; index++) {
+      const tackle = fishingTackleFrame({ ...base, action, direction: side < 0 ? "back" : "front",
+        phase: index / 40, waterTarget: { x: base.x, y: base.y + 10 } }, false, { grip });
+      assert.ok((tackle.tip.x - grip.x) * side > 0, "the entire pole stays on the outside of its gripping paw");
+      assert.deepEqual(tackle.grip, grip);
+    }
   }
 });
 

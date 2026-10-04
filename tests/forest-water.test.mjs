@@ -6,7 +6,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { forestWaterFrame, isForestWater, FOREST_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-water.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
@@ -96,7 +96,7 @@ test("maps with no authored water or empty surfaces do not inherit the forest ma
   assert.ok(omitted);
   for (const edited of [withoutWater, { ...scene, water: { surfaces: [], exclusions: scene.water.exclusions } }]) {
     assert.equal(isForestWater(edited, { x: 1200, y: 900 }), false);
-    assert.deepEqual(forestWaterFrame(edited, options), { currents: [], impacts: [] });
+    assert.deepEqual(forestWaterFrame(edited, options), { currents: [], impacts: [], fish: [], splashes: [], breeze: [] });
   }
 });
 

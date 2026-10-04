@@ -2,7 +2,8 @@ import type { FixedWorldScene, PreviewLevels } from "./tiled/types";
 import { initialPreviewLevels } from "./tiled/preview-state";
 
 /** Server-owned exploration; the scene neither completes it nor awards its goods. */
-export type EconomySceneJourney = { id: string; startedAt: string; finishesAt: string; label?: string; routeId?: string };
+export type EconomySceneJourney = { id: string; startedAt: string; finishesAt: string; label?: string; routeId?: string;
+  fishing?: { rodId: string; fishId: string } };
 
 /** A home-circle status can show work without making the character leave home. */
 export type EconomySceneActivity = EconomySceneJourney & {

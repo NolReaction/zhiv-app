@@ -46,6 +46,9 @@ import { previewForestResidents } from "./dev/forest-resident-preview";
 import { drawForestFishingHero } from "./forest-fishing-painter";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { fishingPropsBounds } from "./fishing-props";
+import { forestCookingBounds, type ForestCookingFrame } from "./forest-cooking";
+import { drawForestCookingHero } from "./forest-cooking-painter";
+import { startCookingPreview, advanceCookingPreview, cookingPreviewFrame } from "./dev/forest-cooking-preview";
 import { forestTrailDestination } from "./forest-trails";
 
 const REACTION_SECONDS = .9;
@@ -98,6 +101,7 @@ export type NewMapPaintPreview = {
   livingDebug?: LivingWorldDebugSnapshot;
   actorAway?: boolean;
   fishing?: ForestFishingFrame | null;
+  cooking?: ForestCookingFrame | null;
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
 };
 
@@ -141,13 +145,14 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const walking = preview?.clearing;
   const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
   const fishing = preview?.fishing ? { ...preview.fishing, size: actor.size } : null;
+  const cooking = !fishing && preview?.cooking ? { ...preview.cooking, size: actor.size } : null;
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const birds = atmosphere.birdFrame ?? forestBirdFrame(world, { ...atmosphere, ...forestAtmosphereState(world, atmosphere) });
   atmosphere.birdFrame = birds;
   const groundBirds = birds.filter(bird => bird.groundY !== undefined).sort((a, b) => a.groundY! - b.groundY!);
   const life = preview?.life;
   const heroVisible = dev?.showHero !== false && !(preview?.actorAway ?? economyJourneyAway(options.economyJourney, timestamp));
-  const automatic = heroVisible && !fishing && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+  const automatic = heroVisible && !fishing && !cooking && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
   const motion = automatic && walking ? walking : null;
   // A cancelled carry may wait for clear ground; attention cannot hide its basket.
   const garden = automatic || life?.garden.basket?.held ? forestGardenVisualFrame(life?.garden, actor,
@@ -174,7 +179,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     paintGround: ground => {
       const weather = { ...forestAtmosphereState(world, atmosphere), reducedMotion: still };
       const groundExclusions = life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 }));
-      drawForestWater(ground, world, weather);
+      drawForestWater(ground, world, { ...weather, waterFish: dev?.waterFish, waterBreeze: dev?.waterBreeze });
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions });
@@ -195,6 +200,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
         drawForestFishingHero(context, fishing, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
         return;
       }
+      if (cooking) {
+        drawForestCookingHero(context, cooking, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
+        return;
+      }
       drawForestGardenProps(context, garden, "behind");
       drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
         ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
@@ -202,7 +211,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
         rig: garden?.rig ?? routine?.rig });
       if (routine) drawForestLifePartner(context, routine, elapsed);
       drawForestGardenProps(context, garden, "front");
-    }, fishing ? fishingPropsBounds(fishing) : undefined);
+    }, fishing ? fishingPropsBounds(fishing) : cooking ? forestCookingBounds(cooking) : undefined);
     context.restore();
   }
   drawForestResidents(context, world, elapsed, still, actor.y, "front", preview?.residents);
@@ -283,6 +292,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     state.fishingPreview = undefined; syncExploration();
     return true;
   }
+  function syncCooking() {
+    if (!session.isOwner()) return;
+    const selection = dev?.cookingPreview;
+    const context = { blocked: exploring() || forestJourneyWalking(state) || dev?.showHero === false,
+      still: reducedMotion(options, dev) };
+    if (selection && session.consumeEvent("cooking-preview", selection.id)) startCookingPreview(state, selection, context);
+    advanceCookingPreview(state, selection, context);
+  }
 
   function syncGarden() {
     // One visible camera supplies account presentation to the shared session.
@@ -315,6 +332,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           garden.harvestEvent = { ...request, status: "unavailable", reason: "Сбор продолжается без анимации на этом устройстве" };
           garden.harvest = null;
         } else {
+          advanceCookingPreview(state, null);
           state.reaction = 0; state.animation = null;
           requestForestGardenHarvest(state, request, directorOptions());
           if (dev?.paused || options.paused || dev?.showHero === false || dev?.pose && dev.pose !== "auto") {
@@ -349,7 +367,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing")
+    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing")
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -364,15 +382,19 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function directorOptions(blocked = false): ForestDirectorOptions {
     const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
-    return { autoLife: dev?.autoLife !== false, blocked: blocked || exploring() || forestJourneyWalking(state), actorAway: actorAway(),
-      explicitTravel: !blocked && forestJourneyWalking(state), dusk: environment.dusk, rain: environment.rain,
+    const cooking = state.cookingPreview;
+    return { autoLife: !cooking && dev?.autoLife !== false, blocked: blocked || exploring() || forestJourneyWalking(state)
+      || Boolean(cooking && cooking.startedAt !== null), actorAway: actorAway(),
+      explicitTravel: !blocked && (forestJourneyWalking(state) || Boolean(cooking && cooking.startedAt === null)), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
       reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds() };
   }
   function preview(): NewMapPaintPreview {
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
+    const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       residents: residentFrames(), fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
+      cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit,
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
@@ -410,7 +432,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       exploration: forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" ? state.director.reason
         : exploring() ? options.economyJourney?.label || "Мохлик исследует окрестности и вернётся после завершения поручения." : null,
       paused: !active() || !session.isSimulationAllowed() || reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue(),
-      manual: Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false) });
+      manual: Boolean(state.animation || state.cookingPreview || dev?.pose && dev.pose !== "auto" || dev?.showHero === false) });
   }
   function startFishingPreview(id: number) {
     if (!session.consumeEvent("fishing-preview", id) || economyJourneyAway(options.economyJourney, explorationNow())) return;
@@ -427,7 +449,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       }
       if (dev?.scenarioEvent?.kind === "fishing" && !dev.lifeEvent) startFishingPreview(dev.scenarioEvent.id);
     }
-    syncExploration(); syncGarden(); updateObservation(true);
+    syncExploration(); syncGarden(); syncCooking(); updateObservation(true);
   }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
@@ -455,6 +477,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
       syncExploration();
       syncGarden();
+      syncCooking();
       advanceForestDirector(state, step, directorOptions(manual));
       const stimulus = state.director.stimulus;
       advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
@@ -607,6 +630,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   prepareArtwork();
   function notice() {
     if (disposed || exploring() || !session.isSimulationAllowed()) return;
+    advanceCookingPreview(state, null);
     const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
     noticeForestDirector(state, still || manualPose);
     // Static accessibility / explicit DEV poses use a bounded feedback timer.

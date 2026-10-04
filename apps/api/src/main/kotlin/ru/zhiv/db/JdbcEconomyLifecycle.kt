@@ -72,7 +72,11 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     val inventory = (a.inventory.keys + b.inventory.keys).associateWith { add(a.inventory[it] ?: 0, b.inventory[it] ?: 0) }
     val buildings = (a.buildings.keys + b.buildings.keys).associateWith { maxOf(a.buildings[it] ?: 0, b.buildings[it] ?: 0) }
     saveEconomyProfile(c, target, a.copy(wallet=a.wallet.copy(coins=add(a.wallet.coins,b.wallet.coins), pearls=add(a.wallet.pearls,b.wallet.pearls)),
-        inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations)))
+        inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations),
+        fishing=a.fishing.copy(ownedRods=(a.fishing.ownedRods+b.fishing.ownedRods).distinct(),
+            catches=(a.fishing.catches.keys+b.fishing.catches.keys).associateWith {
+                minOf(ECONOMY_MAX_BALANCE,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
+        fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed))
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
         SELECT ?,request_id,signature,message,accepted_revision FROM economy_commands WHERE user_id=? ON CONFLICT DO NOTHING""", target, source)

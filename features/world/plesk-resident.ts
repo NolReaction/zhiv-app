@@ -1,6 +1,7 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import { FISHING_PACK_RELEASE, type FishingMotion } from "./fishing-props";
 import { fishingWaterTarget } from "./forest-fishing";
+import { FISH_SPECIES_IDS, type FishSpeciesId } from "./fish-species";
 import { forestDestinations, type ForestTrail } from "./forest-trails";
 import { createWorldNavigation, findWorldPath, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath } from "./steering";
@@ -30,7 +31,7 @@ export const PLESK_LIMITS = { pathSearches: 3, routineVariants: 3 } as const;
 
 export type PleskStop = { id: string; position: WorldPoint };
 type Stop = PleskStop;
-type Stage = {
+type Stage = FishingMotion & {
   action: PleskAction; start: number; end: number; destination: Stop;
   carryingFish: boolean; basketFilled?: boolean; direction: PixelDirection; trail?: ForestTrail;
 };
@@ -94,20 +95,25 @@ function routine(scene: FixedWorldScene): Routine | null {
   const places = pleskLocalPlaces(scene);
   if (!places) { cache.set(scene, null); return null; }
   const { base, waterTarget, direction, trade, rest, toTrade, toRest, tradeToRest } = places;
-  const stages: Stage[] = []; let time = 0;
+  const stages: Stage[] = []; let time = 0, fishIndex = 0;
+  let species: FishSpeciesId = "fish", basketSpecies: FishSpeciesId | undefined;
   const stay = (action: PleskAction, seconds: number, carryingFish = false, destination = base, look = direction, basketFilled?: boolean) => {
-    stages.push({ action, start: time, end: time + seconds, destination, carryingFish, basketFilled, direction: look }); time += seconds;
+    if (!carryingFish) basketSpecies = undefined;
+    stages.push({ action, start: time, end: time + seconds, destination, carryingFish, basketFilled, direction: look, species, basketSpecies }); time += seconds;
   };
   const walk = (trail: ForestTrail, destination: Stop, carryingFish: boolean) => {
     const duration = pleskTravelTime(trail);
-    stages.push({ action: "walk", start: time, end: time + duration, destination, carryingFish, direction, trail }); time += duration;
+    if (!carryingFish) basketSpecies = undefined;
+    stages.push({ action: "walk", start: time, end: time + duration, destination, carryingFish, direction, trail, species, basketSpecies }); time += duration;
   };
   const catchFish = (wait: number, carryingFish: boolean, escapedBite: boolean) => {
+    species = FISH_SPECIES_IDS[fishIndex++ % FISH_SPECIES_IDS.length];
     stay("cast", 1.8, carryingFish); stay("fish", wait, carryingFish);
     if (escapedBite) { stay("bite", 1, carryingFish); stay("fish", 7, carryingFish); }
     stay("bite", 1.5, carryingFish); stay("reel", 3, carryingFish);
     stay("catch", 4, true, base, direction, carryingFish);
     stay("pack", 3, true, base, direction, carryingFish);
+    basketSpecies = species;
   };
   for (let variant = 0; variant < PLESK_LIMITS.routineVariants; variant++) {
     stay("pack", 2);
@@ -172,7 +178,8 @@ export function pleskResidentFrame(scene: FixedWorldScene, elapsed: number, stil
   const position = stage.trail ? samplePleskTrail(stage.trail, age)
     : { ...stage.destination.position, direction: stage.direction, frame: Math.floor(age * 8) % 32 };
   return { id: "plesk", ...position, size: PLESK.size, action: stage.action, phase, destinationId: stage.destination.id,
-    carryingFish: stage.carryingFish,
+    carryingFish: stage.carryingFish, species: stage.species,
+    basketSpecies: stage.action === "pack" && stage.carryingFish && phase >= FISHING_PACK_RELEASE ? stage.species : stage.basketSpecies,
     basketFilled: stage.action === "pack"
       ? Boolean(stage.basketFilled || stage.carryingFish && phase >= FISHING_PACK_RELEASE)
       : stage.basketFilled ?? stage.carryingFish,

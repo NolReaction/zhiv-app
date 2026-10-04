@@ -17,7 +17,7 @@ import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
 import { useForestObservation } from "../use-forest-observation";
 import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
-import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario } from "./world-dev-store";
+import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
 
 export type WorldDevPanelProps = {
@@ -35,6 +35,7 @@ export type WorldDevPanelProps = {
   onOpenObject?: (place: MapObjectPlace) => void;
 };
 type ManualAction = { kind: "scenario"; scenario: WorldDevScenario } | { kind: "pose"; pose: PixelPose }
+  | { kind: "cooking"; action: WorldDevCookingPreview["action"]; repeat?: boolean }
   | { kind: "resident"; action: "routine" | PleskAction; repeat?: boolean } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
 
 const POSE_LABELS: Record<PixelPose, string> = {
@@ -48,6 +49,9 @@ const RESIDENT_LABELS: Record<PleskAction | "routine", string> = {
   routine: "Демонстрация занятий", idle: "Осмотреться", walk: "Шаги", cast: "Забросить удочку", fish: "Ждать поклёвку",
   bite: "Поклёвка", reel: "Вытянуть рыбу", catch: "Показать улов", pack: "Уложить рыбу", trade: "Предложить улов",
   rest: "Отдохнуть", greet: "Помахать лапой",
+};
+const COOKING_LABELS: Record<WorldDevCookingPreview["action"], string> = {
+  sequence: "Приготовить обед", prepare: "Подготовить продукты", stir: "Помешать в котелке", taste: "Попробовать суп", serve: "Подать обед",
 };
 const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], ["drizzle", "Морось"], ["rain", "Дождь"], ["downpour", "Ливень"]] as const;
 const TIME = [["auto", "По времени профиля"], ["day", "День"], ["night", "Ночь"]] as const;
@@ -209,6 +213,9 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
     if (action.kind === "scenario") return null;
     if (action.kind === "resident") return motionUnavailable;
     if (action.kind === "birds") return birdsUnavailable;
+    if (action.kind === "cooking") return heroUnavailable ?? (economy?.snapshot?.jobs.some(job =>
+      job.kind === "exploration" && economy.now < Date.parse(job.finishesAt) || job.collection?.startedAt)
+      ? "Мохлик занят поручением. Дождитесь его возвращения и доставки припасов." : null);
     if (action.kind === "pose") return heroUnavailable;
     if (action.action === "idle") return null;
     if (action.action === "grow-mushrooms") return motionUnavailable;
@@ -225,6 +232,7 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
   }
   const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
   const repeatLabel = lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
+    : lastAction?.kind === "cooking" ? COOKING_LABELS[lastAction.action]
     : lastAction?.kind === "resident" ? `Плёска: ${RESIDENT_LABELS[lastAction.action]}`
     : lastAction?.kind === "life" ? lifeActionLabel(lastAction.action) : "Сценарий с птицами";
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
@@ -244,6 +252,9 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
     } else if (action.kind === "resident") {
       worldDevStore.triggerResident(action.action, action.repeat ?? false);
       setFeedback(`Плёска: ${RESIDENT_LABELS[action.action].toLowerCase()}${action.repeat ? " · повтор" : ""}. Камера направлена к пирсу; панель остаётся открытой.`);
+    } else if (action.kind === "cooking") {
+      worldDevStore.triggerCooking(action.action, action.repeat ?? false);
+      setFeedback(`${COOKING_LABELS[action.action]}${action.repeat ? " · повтор" : ""}. Проверка начнётся на свободном месте; продукты аккаунта не расходуются.`);
     } else if (action.kind === "birds") {
       worldDevStore.triggerBirds(); setFeedback("Птицы: новый визит на деревья или землю и последующий взлёт");
     } else if (action.kind === "life") {
@@ -332,6 +343,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
     ? [...new Set(LIFE_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   const gardenReasons = page === "activities"
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
+  const cookingReason = page === "animation" ? unavailable({ kind: "cooking", action: "sequence" }) : null;
   return <div className={styles.pageContent}>
     {page === "cheats" && <>
       <h3 className={styles.pageTitle}>Читы хозяйства</h3>
@@ -435,6 +447,18 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       </div>
       {heroUnavailable && <p id={`${id}-pose-reason`} className={styles.hint}>{heroUnavailable}</p>}
       <p className={styles.hint}>Ручная поза проигрывается на текущем месте. Для прогулок выберите «Обычное поведение» и включите автоматические сценки. Линии проверяются в редакторе карты.</p>
+      <Section title="Приготовление еды" initiallyOpen>
+        <p className={styles.hint}>Подготовка продуктов, котелок, проба и подача. Пока это проверка анимаций: еда не расходуется и не выдаётся.</p>
+        <div className={styles.lifeActions}>{WORLD_DEV_COOKING_ACTIONS.map(action => <button key={action} type="button"
+          data-cooking-action={action} disabled={Boolean(cookingReason)} aria-describedby={cookingReason ? `${id}-cooking-reason` : undefined}
+          onClick={() => { if (!cookingReason) play({ kind: "cooking", action }); }}>{COOKING_LABELS[action]}</button>)}</div>
+        {cookingReason && <p id={`${id}-cooking-reason`} className={styles.hint}>{cookingReason}</p>}
+        <Select label="Повторять приготовление" value={state.cookingPreview?.repeat ? state.cookingPreview.action : "off"}
+          values={[["off", "Не повторять"], ...WORLD_DEV_COOKING_ACTIONS.map(action => [action, COOKING_LABELS[action]] as const)]}
+          onChange={action => { if (action === "off") change({ cookingPreview: null }, "Проверка готовки отменена");
+            else if (!cookingReason) play({ kind: "cooking", action, repeat: true }); }} />
+        <button type="button" onClick={() => change({ cookingPreview: null }, "Проверка готовки отменена")}>Отменить приготовление</button>
+      </Section>
     </>}
     {page === "appearance" && <>
       <h3 className={styles.pageTitle}>Внешность Мохлика</h3>
@@ -463,6 +487,9 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
         <Select label="Светлячки" value={state.fireflies} values={MODES} onChange={fireflies => change({ fireflies })} />
       </div>
       <Select label="Птицы" value={state.birds} values={MODES} onChange={birds => change({ birds })} />
+      <Select label="Рыбы в воде" value={state.waterFish} values={[["auto", "Естественное поведение"], ["on", "Показать плавание и всплески"], ["off", "Выключить"]]}
+        onChange={waterFish => change({ waterFish })} />
+      <Toggle label="Бриз на воде" checked={state.waterBreeze} onChange={waterBreeze => change({ waterBreeze })} />
       <Toggle label="Лужи после дождя" checked={state.puddles} onChange={puddles => change({ puddles })} />
       <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Сценарий с птицами</button>
       {birdsUnavailable && <p className={styles.hint}>{birdsUnavailable}</p>}

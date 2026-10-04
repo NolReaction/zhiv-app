@@ -63,7 +63,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     val row = readEconomyProfile(c, user)
     val s = row.state
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs, s.migration,
-        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations)
+        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing)
 }
 
 class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository {
@@ -113,7 +113,7 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
                 economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
             val before = readEconomyProfile(c, actor.id)
             if (before.revision != command.expectedRevision) economyFailure("ECONOMY_REVISION_CONFLICT", "Хозяйство уже изменилось. Обновите состояние и повторите действие.")
-            if (command.action in setOf("start_exploration", "start_collection") && c.economyRows(
+            if (command.action in setOf("start_exploration", "start_fishing", "start_collection") && c.economyRows(
                 "SELECT jsonb_array_length(coalesce(state->'journeys','[]'::jsonb))>0 FROM world_profiles WHERE user_id=?", actor.id
             ) { it.getBoolean(1) }.firstOrNull() == true)
                 economyFailure("ECONOMY_EXPLORER_BUSY", "Сначала завершите прежнее путешествие Мохлика")

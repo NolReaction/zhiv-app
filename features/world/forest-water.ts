@@ -1,9 +1,11 @@
 import { drawForestWaterImpact, type ForestWaterImpact } from "./forest-rain";
+import { createWaterLifeLayout, drawWaterBreeze, drawWaterFish, drawWaterSplash, waterLifeFrame, type WaterLifeLayout } from "./forest-water-life";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 
-export const FOREST_WATER_LIMITS = { currents: 38, impacts: 640 } as const;
-type WaterOptions = { elapsed: number; rain: number; dusk: number; reducedMotion: boolean };
+export const FOREST_WATER_LIMITS = { currents: 38, impacts: 640, breeze: 24, fish: 24, splashes: 12 } as const;
+export type WaterOptions = { elapsed: number; rain: number; dusk: number; reducedMotion: boolean;
+  waterFish?: "auto" | "on" | "off"; waterBreeze?: boolean };
 type WaterPolygon = { points: WorldPoint[]; bounds: WorldBounds };
 type WaterEdge = { a: WorldPoint; b: WorldPoint; bounds: WorldBounds };
 type WaterSeed = WorldPoint & { sizeScale: number };
@@ -11,7 +13,7 @@ type WaterCell = { key: number; points: WaterSeed[] };
 type WaterGeometry = {
   surfaces: WaterPolygon[]; exclusions: WaterPolygon[]; edges: WaterEdge[];
   bounds: WorldBounds; scale: number;
-  layout?: { cells: WaterCell[]; currents: WaterSeed[] };
+  layout?: { cells: WaterCell[]; currents: WaterSeed[]; life: WaterLifeLayout };
 };
 const cache = new WeakMap<FixedWorldScene, WaterGeometry | null>();
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -56,8 +58,11 @@ export function isForestWater(scene: FixedWorldScene, point: WorldPoint) {
  * holes inside it. With the center inside water and no boundary crossing, the
  * entire ellipse is water. This replaces per-stroke clipping without a raster mask. */
 function footprintFits(point: WaterSeed, water: WaterGeometry, edges: WaterEdge[]) {
+  return ellipseFits(point, 11 * water.scale * point.sizeScale + .6, 6 * water.scale * point.sizeScale + .6, water, edges);
+}
+
+function ellipseFits(point: WorldPoint, rx: number, ry: number, water: WaterGeometry, edges = water.edges) {
   if (!inside(point, water)) return false;
-  const rx = 11 * water.scale * point.sizeScale + .6, ry = 6 * water.scale * point.sizeScale + .6;
   for (const { a, b, bounds: box } of edges) {
     if (point.x + rx < box.x || point.x - rx > box.x + box.width
       || point.y + ry < box.y || point.y - ry > box.y + box.height) continue;
@@ -100,7 +105,9 @@ function layout(water: WaterGeometry) {
   cells.sort((a, b) => noise(a.key + 7201) - noise(b.key + 7201));
   const bounded = cells.slice(0, FOREST_WATER_LIMITS.impacts / 2);
   const currents = bounded.slice(0, FOREST_WATER_LIMITS.currents).map(cell => cell.points[0]);
-  water.layout = { cells: bounded, currents }; return water.layout;
+  const life = createWaterLifeLayout(bounded, water.scale,
+    (point, rx, ry) => ellipseFits(point, rx, ry, water));
+  water.layout = { cells: bounded, currents, life }; return water.layout;
 }
 
 /** Shared active time makes rain reproducible across cameras and pauses. Only a
@@ -108,7 +115,7 @@ function layout(water: WaterGeometry) {
 export function forestWaterFrame(scene: FixedWorldScene, options: WaterOptions) {
   const water = geometry(scene), rain = clamp(options.rain), dusk = clamp(options.dusk);
   const elapsed = options.reducedMotion || !Number.isFinite(options.elapsed) ? 0 : Math.max(0, options.elapsed);
-  if (!water) return { currents: [], impacts: [] };
+  if (!water) return { currents: [], impacts: [], fish: [], splashes: [], breeze: [] };
   const samples = layout(water);
   const currents = samples.currents.map((point, index) => {
     const age = phase(elapsed / (4.8 + noise(index + 81) * 4) + noise(index + 45)), scale = water.scale * point.sizeScale;
@@ -129,7 +136,7 @@ export function forestWaterFrame(scene: FixedWorldScene, options: WaterOptions) 
       radiusY: (2.6 + noise(stream + cycle * 97 + 191) * 1.7) * scale,
       opacity: (.5 + rain * .32) * (1 - dusk * .5), dusk });
   }
-  return { currents, impacts };
+  return { currents, impacts, ...waterLifeFrame(samples.life, { ...options, elapsed, rain, dusk }) };
 }
 
 /** Complete footprints are checked once against exact Tiled edges. No repeated
@@ -151,6 +158,8 @@ export function drawForestWater(ctx: CanvasRenderingContext2D, scene: FixedWorld
       && point.y * transform.d + transform.f <= ctx.canvas.height + margin * Math.abs(transform.d);
   const frame = forestWaterFrame(scene, options);
   ctx.save(); ctx.strokeStyle = "#b0e1dc"; ctx.lineCap = "round";
+  for (const fish of frame.fish) if (visible(fish, 12 * water.scale)) drawWaterFish(ctx, fish);
+  for (const breeze of frame.breeze) if (visible(breeze, 42 * water.scale)) drawWaterBreeze(ctx, breeze);
   for (const current of frame.currents) {
     if (!visible(current, 12 * water.scale)) continue;
     ctx.globalAlpha = current.opacity; ctx.lineWidth = .48 * current.scale;
@@ -158,6 +167,7 @@ export function drawForestWater(ctx: CanvasRenderingContext2D, scene: FixedWorld
     ctx.beginPath(); ctx.moveTo(x - w / 2, y);
     ctx.bezierCurveTo(x - w * .2, y - current.scale * .75, x + w * .15, y + current.scale * .75, x + w / 2, y); ctx.stroke();
   }
+  for (const splash of frame.splashes) if (visible(splash, 12 * water.scale)) drawWaterSplash(ctx, splash);
   for (const impact of frame.impacts) if (visible(impact, 11 * water.scale)) drawForestWaterImpact(ctx, impact);
   ctx.restore();
 }

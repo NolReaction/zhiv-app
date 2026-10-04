@@ -49,6 +49,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/economy-scene-state.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-observer.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-journey-travel.ts"),
+      ...await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts"),
     };
   } finally { await vite.close(); }
 }
@@ -3104,4 +3105,145 @@ test("premount DEV fishing starts the approach once and preserves the absolute s
     assert.equal(probe.state.fishingPreview.startedAt, began, "resume consumes no second rehearsal event");
     assert.deepEqual(probe.state.clearing.position, feet);
   } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("DEV cooking shares one clock across cameras and read-only renders, control edits and pauses never restart it", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, cookingPreviewFrame } = await modules({ navigation: livingNavigation });
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "cooking-two-cameras" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const clock = sceneClock(env), feet = { ...probe.state.clearing.position };
+    worldDevStore.triggerCooking("sequence", true);
+    assert.ok(probe.state.cookingPreview);
+    assert.notEqual(probe.state.cookingPreview.startedAt, null);
+    const started = { ...probe.state.cookingPreview };
+    clock.advance(1);
+    const first = cookingPreviewFrame(probe.state, worldDevStore.getSnapshot().cookingPreview);
+    assert.equal(first.action, "prepare"); assert.ok(first.phase > 0);
+    const paint = view => { const target = env.surface(); view.paintWorld(target.context); return target.calls; };
+    const beforeRead = structuredClone(probe.state);
+    const firstPaint = paint(circle); paint(circle); circle.position(); circle.inspectPoint("pet"); circle.hitPet(.5, .5);
+    assert.deepEqual(probe.state, beforeRead, "rendering and inspecting cannot consume or finish a cooking gesture");
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+    assert.deepEqual(probe.state.cookingPreview, started, "opening a second camera preserves the rehearsal start");
+    assert.deepEqual(paint(world), firstPaint);
+    worldDevStore.patch({ waterBreeze: false, waterFish: "off" });
+    assert.deepEqual(probe.state.cookingPreview, started, "unrelated DEV preferences cannot replay the event");
+    clock.step();
+    const beforeClock = probe.state.elapsed;
+    clock.advance(.5);
+    approximately(probe.state.elapsed - beforeClock, .5, "two cameras advance a single shared cooking clock");
+    assert.deepEqual(paint(world), paint(circle));
+    assert.deepEqual(probe.state.clearing.position, feet, "cooking stays at the actual outdoor feet");
+    worldDevStore.patch({ paused: true });
+    const frozen = structuredClone(probe.state); clock.advance(2);
+    assert.deepEqual(probe.state, frozen); assert.equal(env.frames.size, 0);
+    worldDevStore.patch({ paused: false, reducedMotion: "on" });
+    const still = structuredClone(probe.state); clock.advance(2);
+    assert.deepEqual(probe.state, still); assert.equal(env.frames.size, 0);
+    const stillPaint = paint(world); assert.deepEqual(paint(circle), stillPaint);
+    worldDevStore.patch({ reducedMotion: "off", cookingPreview: null });
+    assert.equal(probe.state.cookingPreview, undefined);
+    assert.equal(probe.state.clearing.frozen, false);
+    assert.deepEqual(probe.state.clearing.position, feet, "cancel releases the visible actor without teleporting");
+    assert.equal(cookingPreviewFrame(probe.state, worldDevStore.getSnapshot().cookingPreview), null);
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("DEV cooking finishes once, repeats only explicitly and cannot create inventory or expedition progress", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, cookingPreviewFrame } = await modules({ navigation: livingNavigation });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "cooking-one-shot",
+      onGardenHarvestEvent() { assert.fail("a cooking rehearsal cannot claim production"); } };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const clock = sceneClock(env), basketBefore = structuredClone(probe.state.life.garden.basket);
+    worldDevStore.triggerCooking("prepare");
+    const firstId = probe.state.cookingPreview.id;
+    assert.equal(probe.state.memory.enabled, false, "a rehearsal cannot save fake meals to account memory");
+    clock.advance(7.5);
+    assert.equal(probe.state.cookingPreview, undefined);
+    assert.equal(probe.state.clearing.frozen, true, "automatic life remains deliberately disabled after the rehearsal ends");
+    assert.equal(cookingPreviewFrame(probe.state, worldDevStore.getSnapshot().cookingPreview), null);
+    scene.configure({ ...initial, paused: true }); scene.configure(initial);
+    assert.equal(probe.state.cookingPreview, undefined, "a consumed one-shot does not restart on resuming the view");
+    worldDevStore.triggerCooking("prepare", true);
+    assert.ok(probe.state.cookingPreview.id > firstId);
+    clock.advance(15);
+    assert.ok(probe.state.cookingPreview); assert.equal(probe.state.clearing.frozen, true);
+    assert.equal(probe.state.journeyTravel, undefined); assert.ok(!probe.state.explorationId);
+    assert.deepEqual(probe.state.life.garden.basket, basketBefore, "preview utensils cannot consume or refill the real berry basket");
+    worldDevStore.triggerPose("greet");
+    assert.equal(probe.state.cookingPreview, undefined, "a selected hero gesture immediately removes cooking props");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("confirmed expeditions interrupt cooking and a rejected rehearsal is never queued behind the real job", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, cookingPreviewFrame } = await modules(fishingFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "cooking-job-priority" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const clock = sceneClock(env);
+    worldDevStore.triggerCooking("stir", true); clock.advance(.5);
+    assert.ok(probe.state.cookingPreview);
+    const confirmed = { id: "cooking-interrupted-by-shore", routeId: "shore", startedAt: new Date(100_000).toISOString(),
+      finishesAt: new Date(700_000).toISOString() };
+    scene.configure({ ...initial, economyJourney: confirmed });
+    assert.equal(probe.state.cookingPreview, undefined, "the server-owned departure removes local props immediately");
+    assert.equal(probe.state.journeyTravel.jobId, confirmed.id);
+    assert.equal(cookingPreviewFrame(probe.state, worldDevStore.getSnapshot().cookingPreview), null);
+    const travel = probe.state.journeyTravel, feet = { ...probe.state.clearing.position };
+    worldDevStore.triggerCooking("serve");
+    assert.equal(probe.state.cookingPreview, undefined);
+    assert.equal(probe.state.journeyTravel, travel); assert.deepEqual(probe.state.clearing.position, feet);
+    scene.configure({ ...initial, economyJourney: null, cancelledExplorations: [confirmed.id] });
+    clock.until(() => !probe.state.journeyTravel, "real cancellation completes its safe return", 500);
+    assert.equal(probe.state.cookingPreview, undefined, "rejected cooking never starts after the expedition releases the actor");
+    assert.equal(cookingPreviewFrame(probe.state, worldDevStore.getSnapshot().cookingPreview), null);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("cooking waits for a sleeping actor to walk outside and a real tap stops it without replaying the request", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, cookingPreviewFrame, clearingActivityFrame } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "cooking-indoor-exit" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    worldDevStore.triggerLife("home-sleep");
+    const clock = sceneClock(env);
+    clock.until(() => probe.state.clearing.stage === "home-sleep", "the actor reaches indoor sleep", 500);
+    worldDevStore.patch({ autoLife: false });
+    const indoorFeet = { ...probe.state.clearing.position };
+    worldDevStore.triggerCooking("sequence", true);
+    assert.ok(probe.state.cookingPreview);
+    assert.equal(probe.state.cookingPreview.startedAt, null, "no utensils appear while the actor is indoors");
+    assert.deepEqual(probe.state.clearing.position, indoorFeet, "the rehearsal requests the existing doorway exit without teleporting");
+    assert.equal(cookingPreviewFrame(probe.state, worldDevStore.getSnapshot().cookingPreview), null);
+    clock.until(() => Boolean(probe.state.cookingPreview && probe.state.cookingPreview.startedAt !== null),
+      "explicit doorway travel continues even with automatic life disabled", 300);
+    const frame = cookingPreviewFrame(probe.state, worldDevStore.getSnapshot().cookingPreview);
+    const actor = clearingActivityFrame(probe.state.clearing);
+    assert.ok(frame); assert.equal(actor.opacity, 1); assert.ok(!actor.residing && !actor.lift);
+    assert.ok(distanceBetween(probe.state.clearing.position, indoorFeet) > 0, "the actor actually left the indoor position");
+    assert.deepEqual({ x: frame.x, y: frame.y }, probe.state.clearing.position);
+    scene.notice();
+    assert.equal(probe.state.cookingPreview, undefined);
+    clock.advance(1);
+    assert.equal(probe.state.cookingPreview, undefined, "a tap does not leave the consumed preview queued for another start");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

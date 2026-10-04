@@ -31,24 +31,27 @@ function button(html, label) {
 }
 const disabled = value => /\bdisabled=/.test(value.attributes);
 
-test("Plesk trades only the player's saved fish using the current catalog price", () => {
+test("Pleska opens a dedicated fish shop using the player's stock and current prices", () => {
   const state = snapshot();
   state.catalog.items.find(item => item.id === "fish").baseSellPrice = 17;
   const html = render(controller({ snapshot: state }));
-  assert.match(html, /Продажа: Речная рыба/);
-  assert.match(html, /В запасе 5 · 17 монет за штуку/);
-  assert.equal(disabled(button(html, "Продать торговцу · 17")), false);
+  assert.match(html, /Торговля: Речная рыба/);
+  assert.match(html, /В запасе <strong>5<\/strong>/);
+  assert.match(html, /Плёска платит[\s\S]+17/);
+  assert.equal(disabled(button(html, "Продать")), false);
   assert.match(html, /min="1" max="5"/);
+  assert.match(html, /role="tablist" aria-label="Лавка Плёски"/);
+  assert.match(html, /Коллекция/);
   assert.doesNotMatch(html, /Свернуть продажу|Забрать улов|Бесплатно/);
 });
 
 test("missing or empty inventory cannot sell the resident's ambient catch", () => {
   let html = render(controller({ snapshot: null }));
   assert.match(html, /Проверяем ваши запасы/);
-  assert.doesNotMatch(html, /Продать торговцу|В запасе/);
+  assert.doesNotMatch(html, /Торговля:|В запасе/);
   html = render(controller({ snapshot: snapshot({ inventory: { wood: 5 } }) }));
-  assert.match(html, /В вашей кладовой пока нет речной рыбы/);
-  assert.doesNotMatch(html, /Продать торговцу|В запасе/);
+  assert.match(html, /В запасе <strong>0<\/strong>/);
+  assert.equal(disabled(button(html, "Продать")), true);
   assert.equal(disabled(button(html, "На рыбалку")), false);
   assert.equal(disabled(button(html, "Другие запасы")), false);
 });
@@ -56,7 +59,7 @@ test("missing or empty inventory cannot sell the resident's ambient catch", () =
 test("trading respects in-flight, uncertain and cooldown locks with receipt recovery", () => {
   for (const change of [{ busy: true }, { uncertain: true }, { retryAt: now + 5_000 }]) {
     const html = render(controller(change));
-    assert.equal(disabled(button(html, "Продать торговцу")), true);
+    assert.equal(disabled(button(html, "Продать")), true);
   }
   const html = render(controller({ uncertain: true, retryAt: now + 5_000 }));
   assert.match(html, /role="alert"/);
@@ -68,5 +71,13 @@ test("a failed inventory fetch offers retry without inventing a sale", () => {
   const html = render(controller({ snapshot: null, error: "Нет связи" }));
   assert.match(html, /Нет связи/);
   assert.equal(disabled(button(html, "Попробовать ещё раз")), false);
-  assert.doesNotMatch(html, /Продать торговцу/);
+  assert.doesNotMatch(html, /Торговля:/);
+});
+
+test("a pre-fishing backend retains the previous sale without offering unsupported commands", () => {
+  const state = snapshot(); delete state.catalog.fishing;
+  const html = render(controller({ snapshot: state }));
+  assert.match(html, /Продажа: Речная рыба/);
+  assert.equal(disabled(button(html, "Продать торговцу")), false);
+  assert.doesNotMatch(html, /role="tablist"|Купить удочку|Купить наживку/);
 });

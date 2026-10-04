@@ -156,6 +156,57 @@ test("all one-shot poses remain available and selecting a preview does not launc
   assert.deepEqual(calls.patches, [{ pose: "sleep", animation: null }]);
 });
 
+test("cooking DEV offers every stage, an explicit repeat and cancellation without account commands", () => {
+  const actions = ["sequence", "prepare", "stir", "taste", "serve"];
+  const view = panel("animation");
+  const buttons = view.elements.filter(element => element.props["data-cooking-action"]);
+  assert.deepEqual(buttons.map(button => button.props["data-cooking-action"]), actions);
+  assert.match(view.markup, /Приготовление еды/);
+  assert.match(view.markup, /еда не расходуется и не выдаётся/);
+  for (const button of buttons) button.props.onClick();
+  assert.deepEqual(view.calls.actions, actions.map(action => ({ kind: "cooking", action })));
+  const repeat = view.elements.find(element => element.props.label === "Повторять приготовление");
+  assert.deepEqual(repeat.props.values.map(([action]) => action), ["off", ...actions]);
+  repeat.props.onChange("taste");
+  assert.deepEqual(view.calls.actions.at(-1), { kind: "cooking", action: "taste", repeat: true });
+  repeat.props.onChange("off");
+  assert.deepEqual(view.calls.patches.at(-1), { cookingPreview: null });
+  const cancel = view.elements.find(element => element.type === "button" && labelText(element) === "Отменить приготовление");
+  cancel.props.onClick(); assert.deepEqual(view.calls.patches.at(-1), { cookingPreview: null });
+  assert.equal(view.calls.notices.length, 0);
+  const selected = panel("animation", { state: { ...WORLD_DEV_DEFAULTS, cookingPreview: { id: 4, action: "serve", repeat: true } } });
+  assert.equal(selected.elements.find(element => element.props.label === "Повторять приготовление").props.value, "serve");
+});
+
+test("busy cooking controls explain their block and cannot dispatch while stop remains usable", () => {
+  const reason = "Мохлик занят поручением. Дождитесь возвращения.";
+  const view = panel("animation", { unavailable: action => action.kind === "cooking" ? reason : null });
+  for (const button of view.elements.filter(element => element.props["data-cooking-action"])) {
+    assert.equal(button.props.disabled, true);
+    assert.equal(typeof button.props["aria-describedby"], "string");
+    const description = view.elements.find(element => element.props.id === button.props["aria-describedby"]);
+    assert.ok(description); assert.equal(labelText(description), reason);
+    button.props.onClick();
+  }
+  const repeat = view.elements.find(element => element.props.label === "Повторять приготовление");
+  repeat.props.onChange("stir"); assert.deepEqual(view.calls.actions, []);
+  repeat.props.onChange("off"); assert.deepEqual(view.calls.patches.at(-1), { cookingPreview: null });
+  const cancel = view.elements.find(element => element.type === "button" && labelText(element) === "Отменить приготовление");
+  assert.ok(!cancel.props.disabled); cancel.props.onClick();
+  assert.deepEqual(view.calls.patches.at(-1), { cookingPreview: null });
+});
+
+test("water DEV controls separate fish behaviour from surface breeze and affect no account state", () => {
+  const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, waterFish: "off", waterBreeze: false } });
+  const fish = view.elements.find(element => element.props.label === "Рыбы в воде");
+  const breeze = view.elements.find(element => element.props.label === "Бриз на воде");
+  assert.equal(fish.props.value, "off"); assert.equal(breeze.props.checked, false);
+  assert.deepEqual(fish.props.values.map(([value]) => value), ["auto", "on", "off"]);
+  fish.props.onChange("on"); breeze.props.onChange(true);
+  assert.deepEqual(view.calls.patches, [{ waterFish: "on" }, { waterBreeze: true }]);
+  assert.deepEqual(view.calls.actions, []);
+});
+
 test("blocked scenes and animations retain explanatory labels, while cancellation stays available", () => {
   const reason = "Сцена на паузе. Снимите паузу для проигрывания событий.";
   const { elements } = panel("scenes", { unavailable: action => action.action === "idle" ? null : reason });

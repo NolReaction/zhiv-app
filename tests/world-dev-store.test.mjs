@@ -17,6 +17,9 @@ test("development store starts from authored scene defaults with stable server s
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getSnapshot().autoLife, true);
   assert.equal(store.getSnapshot().puddles, true);
+  assert.equal(store.getSnapshot().waterBreeze, true);
+  assert.equal(store.getSnapshot().waterFish, "auto");
+  assert.equal(store.getSnapshot().cookingPreview, null);
   assert.equal(store.getSnapshot().lifeEvent, null);
   assert.deepEqual(store.getSnapshot().levels, initialPreviewLevels(TILED_WORLD));
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
@@ -34,6 +37,7 @@ test("disabled store ignores every mutation and does not register subscribers", 
   for (const kind of ["water-bush", "harvest-berries", "grow-berries"]) store.triggerLife(kind);
   store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
   store.triggerResident("cast", true); store.triggerScenario("plesk"); store.triggerScenario("fishing");
+  store.triggerCooking("sequence", true);
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
   unsubscribe(); unsubscribe();
@@ -67,14 +71,14 @@ test("snapshots are immutable and only real changes notify subscribed listeners"
 
 test("visual controls accept valid options and ignore malformed values", () => {
   const store = createWorldDevStore(true);
-  const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off",
+  const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off", waterFish: "on", waterBreeze: false,
     paused: true, autoLife: false, puddles: false, reducedMotion: "on", pose: "fishing-walk", direction: "back", showHero: false, showBuildings: false,
     heroShadow: false, buildingShadow: false, debug: true, debugWater: true,
     debugNavigation: true, debugFauna: true, navigationMode: "routes" };
   store.patch(controls);
   for (const [key, value] of Object.entries(controls)) assert.equal(store.getSnapshot()[key], value);
   const before = store.getSnapshot();
-  store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, paused: "yes",
+  store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, waterFish: true, waterBreeze: "yes", paused: "yes",
     reducedMotion: false, autoLife: "yes", puddles: 1, pose: "dance", direction: "north", showHero: 0, showBuildings: null, heroShadow: "off",
     buildingShadow: 1, debug: undefined, debugWater: "true", debugNavigation: 1, debugFauna: "on", navigationMode: "free",
     equipment: { palette: "fern", head: 0, neck: null }, unknown: true });
@@ -363,4 +367,55 @@ test("Plesk actions use isolated immutable previews, independent direction and r
   store.triggerResident("walk", "yes");
   store.patch({ residentDirection: "north", residentPreview: { id: 999, action: "cast", direction: "back", repeat: true } });
   assert.equal(store.getSnapshot(), beforeInvalid, "patching cannot forge an event or unsupported direction");
+});
+
+test("cooking previews replace competing hero actions atomically and validate replay events", () => {
+  const store = createWorldDevStore(true);
+  store.patch({ paused: true, reducedMotion: "on", pose: "sleep", autoLife: false });
+  store.triggerScenario("fishing");
+  store.triggerPose("greet");
+  let previousId = 0;
+  for (const action of ["sequence", "prepare", "stir", "taste", "serve"]) {
+    let updates = 0;
+    const unsubscribe = store.subscribe(() => updates++);
+    store.triggerCooking(action, true);
+    const state = store.getSnapshot();
+    unsubscribe(); assert.equal(updates, 1, "the preview and camera change in one publish");
+    assert.deepEqual(state.cookingPreview, { id: state.cookingPreview.id, action, repeat: true });
+    assert.ok(state.cookingPreview.id > previousId); previousId = state.cookingPreview.id;
+    assert.ok(Object.isFrozen(state.cookingPreview));
+    assert.equal(state.pose, "auto"); assert.equal(state.animation, null);
+    assert.equal(state.lifeEvent, null); assert.equal(state.scenarioEvent, null);
+    assert.equal(state.cameraEvent.action, "pet");
+  }
+  const valid = store.getSnapshot();
+  for (const action of ["fish", "auto", "", null, undefined, {}, 1]) store.triggerCooking(action);
+  store.triggerCooking("prepare", "yes");
+  store.patch({ cookingPreview: { id: 999, action: "stir", repeat: true } });
+  assert.equal(store.getSnapshot(), valid, "patches cannot forge a clock or invalid cooking action");
+  store.patch({ cookingPreview: null }); assert.equal(store.getSnapshot().cookingPreview, null);
+  store.triggerCooking("serve"); assert.equal(store.getSnapshot().cookingPreview.repeat, false);
+  for (const replace of [() => store.triggerPose("greet"), () => store.triggerLife("idle"),
+    () => store.patch({ pose: "sleep" }), () => store.triggerScenario("fishing")]) {
+    store.triggerCooking("sequence"); replace();
+    assert.equal(store.getSnapshot().cookingPreview, null, "another explicit hero action cancels cooking");
+  }
+  store.reset(); store.triggerCooking("stir");
+  assert.ok(store.getSnapshot().cookingPreview.id > previousId, "reset cannot reuse an already consumed event ID");
+});
+
+test("water fish and breeze controls are independent validated visual preferences", () => {
+  const store = createWorldDevStore(true);
+  for (const waterFish of ["off", "on", "auto"]) {
+    store.patch({ waterFish, waterBreeze: false });
+    assert.equal(store.getSnapshot().waterFish, waterFish);
+    assert.equal(store.getSnapshot().waterBreeze, false);
+    assert.equal(store.getSnapshot().birds, "auto");
+    assert.equal(store.getSnapshot().weather, "auto");
+  }
+  const valid = store.getSnapshot();
+  for (const waterFish of [true, false, "many", null, 3]) store.patch({ waterFish });
+  for (const waterBreeze of ["off", null, 1]) store.patch({ waterBreeze });
+  assert.equal(store.getSnapshot(), valid);
+  store.reset(); assert.equal(store.getSnapshot().waterFish, "auto"); assert.equal(store.getSnapshot().waterBreeze, true);
 });

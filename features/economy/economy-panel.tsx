@@ -28,7 +28,7 @@ const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "inventory", label: "Склад", Icon: Package },
 ];
 const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame };
-const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы" };
+const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары" };
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
 const buildingName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const number = (value: number) => value.toLocaleString("ru-RU");

@@ -4,7 +4,7 @@ import { auditEconomyProgression, readEconomyCatalog } from "../scripts/audit-ec
 
 test("economy catalog has useful chains, reachable upgrades, sufficient storage and a market-proof pacing floor", () => {
   const report = auditEconomyProgression(readEconomyCatalog());
-  assert.equal(report.itemCount, 24);
+  assert.equal(report.itemCount, 29);
   assert.equal(report.buildingCount, 8);
   assert.equal(report.constructionOrder.length, 37);
 });
@@ -47,4 +47,14 @@ test("catalog audit rejects compression of the long-term construction floor", ()
   const catalog = readEconomyCatalog();
   for (const building of catalog.buildings) for (const level of building.levels) level.seconds = Math.floor(level.seconds / 10);
   assert.throws(() => auditEconomyProgression(catalog), /four weeks|seven weeks/);
+});
+
+
+test("fishing shop cannot introduce buy-sell arbitrage or reverse tackle progression", () => {
+  const catalog = readEconomyCatalog();
+  catalog.fishing.fish.find(fish => fish.itemId === "fish_mooncarp").buyPrice = 1;
+  assert.throws(() => auditEconomyProgression(catalog), /arbitrage/);
+  const invalid = readEconomyCatalog();
+  invalid.fishing.fish[0].affinity = 100;
+  assert.throws(() => auditEconomyProgression(invalid), /Stronger tackle/);
 });

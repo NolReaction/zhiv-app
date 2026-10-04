@@ -223,7 +223,8 @@ test("material guide includes zero-stock goods, production sources, construction
   assert.match(html, /Для чего пригодится/);
   assert.ok(button(html, "Стройка: Дом Мохлика"));
   assert.ok(button(html, "Доски"));
-  assert.match(html, /Все товары · 24/);
+  assert.ok(html.includes(`Все товары · ${economyCatalog.items.length}`));
+  assert.match(html, /<option value="fishing">Рыболовные товары<\/option>/);
   assert.match(html, /Сырьё/);
   const state = snapshot({ inventory: { planks: 8 } });
   state.catalog.items.find(item => item.id === "planks").tradable = false;

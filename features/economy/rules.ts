@@ -1,5 +1,7 @@
 import { ECONOMY_MAX_BALANCE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 
+import { fishingState, fishingTripCost, selectFishingCatch } from "./fishing";
+
 export class EconomyRuleError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
 }
@@ -52,7 +54,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     inventory: { ...(migration.woodGranted ? { wood: migration.woodGranted } : {}), ...(migration.stoneGranted ? { stone: migration.stoneGranted } : {}) },
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
-    jobs: [], migration, completedExplorations: 0 };
+    jobs: [], migration, completedExplorations: 0, fishing: fishingState({}) };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
   if (!canAffordEconomy(state, cost)) fail("ECONOMY_RESOURCES", "Не хватает монет или материалов");
@@ -80,14 +82,14 @@ function requireBuildings(state: EconomyState, required: Record<string, number>)
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}): string {
-  if (command.action !== "speedup_construction" && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
-  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection">, seconds: number, cost: EconomyCost) => {
+  if (!["speedup_construction", "buy_fishing_item"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing">, seconds: number, cost: EconomyCost, id = jobId()) => {
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
     debit(state, cost);
-    state.jobs.push({ ...job, id: jobId(), startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost, catalogVersion: economyCatalog.version });
+    state.jobs.push({ ...job, id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost, catalogVersion: economyCatalog.version });
   };
-  if (!["start_production", "sell"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
+  if (!["start_production", "sell", "sell_fish", "buy_fishing_item"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
     case "start_production": {
       if (command.quantity > economyCatalog.maxBatch) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Слишком большая партия", 400);
@@ -122,6 +124,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         startedAt: new Date(now).toISOString(), finishesAt: new Date(now + spec.seconds * 1000).toISOString() };
       return "Мохлик отправился собирать урожай";
     }
+    case "start_fishing":
     case "start_exploration": {
       const route = economyCatalog.explorations.find(item => item.id === command.targetId);
       if (!route) return fail("ECONOMY_EXPLORATION", "Место исследования не найдено");
@@ -129,6 +132,24 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       requireBuildings(state, route.requiredBuildings);
       if (state.jobs.some(job => job.collection?.startedAt)) fail("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов");
       if (state.jobs.some(job => job.kind === "exploration")) fail("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Заберите его находки");
+      if (command.action === "start_fishing") {
+        const catalog = economyCatalog.fishing, tackle = fishingState(state);
+        if (!catalog?.routeIds.includes(route.id) || !(route.rewards.fish > 0)) return fail("ECONOMY_FISHING_ROUTE", "Здесь нельзя рыбачить со снастями Плёски");
+        if (!tackle.ownedRods.includes(tackle.equippedRodId) || !catalog.rods.some(rod => rod.id === tackle.equippedRodId))
+          return fail("ECONOMY_FISHING_ROD", "Сначала выберите свою удочку");
+        if (tackle.equippedBaitId && !catalog.baits.some(bait => bait.itemId === tackle.equippedBaitId))
+          return fail("ECONOMY_FISHING_BAIT", "Наживка не найдена");
+        // Generated by the authenticated server adapter, independently of requestId.
+        const id = jobId(), seed = state.fishingCastSeed ?? jobId();
+        const fishId = selectFishingCatch(seed, tackle.equippedRodId, tackle.equippedBaitId, catalog);
+        const rewards: Record<string, number> = { ...route.rewards, fish: route.rewards.fish - 1 };
+        rewards[fishId] = (rewards[fishId] ?? 0) + 1;
+        if (!rewards.fish) delete rewards.fish;
+        createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards,
+          fishing: { rodId: tackle.equippedRodId, baitId: tackle.equippedBaitId, fishId } }, route.seconds, fishingTripCost(route.cost, state), id);
+        state.fishingCastSeed = seed;
+        return "Мохлик отправился рыбачить. Снасти и наживка подготовлены";
+      }
       createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards: { ...route.rewards } }, route.seconds, route.cost);
       return "Мохлик отправился исследовать мир";
     }
@@ -182,10 +203,56 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         creditEconomyItems(state, job.rewards);
       }
       if (job.kind === "exploration") state.completedExplorations = Math.min(ECONOMY_MAX_BALANCE, state.completedExplorations + 1);
+      if (job.kind === "exploration" && economyCatalog.fishing?.routeIds.includes(job.targetId)) {
+        const current = fishingState(state), catches = { ...current.catches };
+        for (const fish of economyCatalog.fishing.fish) if (job.rewards[fish.itemId])
+          catches[fish.itemId] = Math.min(ECONOMY_MAX_BALANCE, (catches[fish.itemId] ?? 0) + job.rewards[fish.itemId]);
+        state.fishing = { ...current, catches };
+        state.fishingCastSeed = null;
+      }
       state.jobs = state.jobs.filter(item => item.id !== job.id);
       return job.kind === "construction" ? "Постройка готова" : "Результат получен";
     }
+    case "buy_fishing_item": {
+      const catalog = economyCatalog.fishing, current = fishingState(state);
+      if (!catalog) return fail("ECONOMY_FISHING_ITEM", "Лавка Плёски пока недоступна");
+      const rod = catalog.rods.find(item => item.id === command.targetId);
+      const fish = catalog.fish.find(item => item.itemId === command.targetId);
+      const bait = catalog.baits.find(item => item.itemId === command.targetId);
+      if (!rod && !fish && !bait) return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
+      if (command.quantity > economyCatalog.maxBatch || rod && command.quantity !== 1)
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Проверьте количество товара", 400);
+      if (rod && current.ownedRods.includes(rod.id)) return fail("ECONOMY_FISHING_OWNED", "Эта удочка уже есть в коллекции");
+      const price = (rod?.price ?? fish?.buyPrice ?? bait!.price) * command.quantity;
+      if (price > command.totalPrice) return fail("ECONOMY_FISHING_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Плёски");
+      if (!rod) {
+        const inventory = { ...state.inventory, [command.targetId]: (state.inventory[command.targetId] ?? 0) + command.quantity };
+        assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      }
+      debit(state, { coins: price, items: {} });
+      if (rod) state.fishing = { ...current, ownedRods: [...current.ownedRods, rod.id] };
+      else creditEconomyItems(state, { [command.targetId]: command.quantity });
+      return rod ? "Удочка добавлена в коллекцию" : "Покупка у Плёски отправлена на склад";
+    }
+    case "equip_fishing_rod": {
+      const current = fishingState(state);
+      if (!economyCatalog.fishing?.rods.some(rod => rod.id === command.targetId) || !current.ownedRods.includes(command.targetId))
+        return fail("ECONOMY_FISHING_ROD", "Сначала приобретите эту удочку");
+      state.fishing = { ...current, equippedRodId: command.targetId };
+      return "Удочка выбрана для следующих вылазок";
+    }
+    case "equip_fishing_bait": {
+      const baitId = command.targetId === "none" ? null : command.targetId;
+      if (baitId && !economyCatalog.fishing?.baits.some(bait => bait.itemId === baitId))
+        return fail("ECONOMY_FISHING_BAIT", "Наживка не найдена");
+      if (baitId && !(state.inventory[baitId] > 0)) return fail("ECONOMY_RESOURCES", "Сначала приобретите эту наживку");
+      state.fishing = { ...fishingState(state), equippedBaitId: baitId };
+      return baitId ? "Наживка выбрана: одна порция на следующую вылазку" : "Выбрана рыбалка без наживки";
+    }
+    case "sell_fish":
     case "sell": {
+      if (command.action === "sell_fish" && !economyCatalog.fishing?.fish.some(fish => fish.itemId === command.targetId))
+        return fail("ECONOMY_FISHING_ITEM", "Плёска принимает здесь только рыбу");
       const item = economyCatalog.items.find(item => item.id === command.targetId && item.tradable);
       if (!item) return fail("ECONOMY_ITEM", "Этот предмет нельзя продать");
       if ((state.inventory[item.id] ?? 0) < command.quantity) fail("ECONOMY_RESOURCES", "Не хватает предметов для продажи");

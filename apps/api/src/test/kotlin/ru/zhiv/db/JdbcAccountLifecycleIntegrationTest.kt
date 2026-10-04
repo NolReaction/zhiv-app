@@ -458,6 +458,29 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { world.snapshot(a.session) }.code)
     }
 
+    @Test fun `merge unions fishing tackle and caught records while preserving target loadout and a pending draw`() = runBlocking<Unit> {
+        val a=account(); val b=account(); val browser=tokens.issue().hash
+        val repo=JdbcEconomyRepository(source)
+        repo.snapshot(a.session); repo.snapshot(b.session)
+        val seed=UUID.randomUUID().toString()
+        for ((owner, fishing) in listOf(
+            a to EconomyFishing(ownedRods=listOf("reed_rod","river_rod"), equippedRodId="river_rod", catches=mapOf("fish" to 4L)),
+            b to EconomyFishing(ownedRods=listOf("reed_rod","willow_rod"), equippedRodId="willow_rod", catches=mapOf("fish" to 6L,"fish_mooncarp" to 2L)))) {
+            val persisted=source.connection.use { readEconomyProfile(it,owner.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(persisted.copy(
+                fishing=fishing, fishingCastSeed=if(owner.id==b.id) seed else null)),owner.id)
+        }
+        val key=readyMerge(a,b,browser); auth.confirmMerge(a.session,browser,key)
+        val merged=repo.snapshot(a.session)
+        assertEquals(setOf("reed_rod","river_rod","willow_rod"),merged.fishing.ownedRods.toSet())
+        assertEquals("river_rod",merged.fishing.equippedRodId)
+        assertEquals(mapOf("fish" to 10L,"fish_mooncarp" to 2L),merged.fishing.catches)
+        assertEquals(seed,source.connection.use { readEconomyProfile(it,a.id).state.fishingCastSeed })
+        assertFalse(economyJson.encodeToString(merged).contains("fishingCastSeed"))
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(merged.fishing,repo.snapshot(a.session).fishing,"merge receipt cannot award records twice")
+    }
+
     @Test fun `merge review blocks pending economy work and never consumes its materials`() = runBlocking<Unit> {
         val a=account();val b=account();val browser=tokens.issue().hash
         val repo=JdbcEconomyRepository(source);val state=repo.snapshot(a.session)

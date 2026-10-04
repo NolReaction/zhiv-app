@@ -112,11 +112,16 @@ test("first and later catches have distinct held and packed states, and a missed
   until(success, mind => mind.stage.action === "catch");
   let frame = pleskMindFrame(success, world, false);
   assert.equal(frame.carryingFish, true); assert.equal(frame.basketFilled, false); assert.equal(success.catchCount, 0);
+  const caughtSpecies = frame.species;
+  assert.ok(["fish", "fish_silverfin", "fish_reedperch", "fish_mooncarp"].includes(caughtSpecies));
+  assert.equal(frame.basketSpecies, undefined);
   until(success, mind => mind.stage.action === "pack" && mind.stage.deposit && mind.age / mind.stage.duration > .75);
   frame = pleskMindFrame(success, world, false);
   assert.equal(frame.basketFilled, true);
+  assert.equal(frame.basketSpecies, caughtSpecies);
   until(success, mind => mind.catchCount === 1);
   assert.equal(pleskMindFrame(success, world, false).basketFilled, true);
+  assert.equal(pleskMindFrame(success, world, false).basketSpecies, caughtSpecies);
   until(success, mind => mind.stage.action === "catch" && mind.catchCount > 0);
   assert.equal(pleskMindFrame(success, world, false).basketFilled, true, "earlier fish remain stored while showing a later catch");
   const decisions = miss.decisions;

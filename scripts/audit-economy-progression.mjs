@@ -6,7 +6,7 @@ const catalogPath = new URL("../apps/api/src/main/resources/world/economy-catalo
 const startingBuildings = { home: 1, garden: 1, warehouse: 1 };
 const day = 86_400;
 
-/** Audits the actual catalog, including free-start reachability without market purchases.
+/** Audits the actual catalog, including free-start reachability without player-market purchases.
  * Timing bounds deliberately assume unlimited money/materials and instant collection:
  * A fresh single profile cannot beat them while construction uses one non-accelerated
  * slot. Imported legacy progress and account merges deliberately retain earned levels
@@ -72,7 +72,34 @@ export function auditEconomyProgression(catalog) {
       assert(npcValue(definition.rewards) > inputValue, `${definition.id}: crafting destroys NPC value`);
     }
   }
-  assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction or exploration");
+  const merchantItems = [];
+  if (catalog.fishing) {
+    const fishing = catalog.fishing;
+    unique(fishing.rods, "rod");
+    assert.equal(new Set(fishing.fish.map(fish => fish.itemId)).size, fishing.fish.length, "Duplicate fish ID");
+    assert.equal(new Set(fishing.baits.map(bait => bait.itemId)).size, fishing.baits.length, "Duplicate bait ID");
+    assert(fishing.routeIds.length > 0 && fishing.routeIds.every(id => catalog.explorations.some(route => route.id === id && route.rewards.fish > 0)), "Fishing needs a real fish route");
+    assert(fishing.rods.some(rod => rod.id === "reed_rod" && rod.price === 0), "Starter rod must remain free");
+    for (const rod of fishing.rods) assert(Number.isSafeInteger(rod.price) && rod.price >= 0 && Number.isSafeInteger(rod.rareBonus) && rod.rareBonus >= 0, "Invalid rod price or bonus");
+    for (const fish of fishing.fish) {
+      assert(items.has(fish.itemId), `Fishing: unknown item ${fish.itemId}`);
+      assert(Number.isSafeInteger(fish.buyPrice) && fish.buyPrice > items.get(fish.itemId).baseSellPrice, "Fish buy-sell arbitrage");
+      assert(Number.isSafeInteger(fish.weight) && fish.weight > 0 && Number.isSafeInteger(fish.affinity) && fish.affinity >= 0, "Invalid fishing weight");
+      itemUses.add(fish.itemId); // Sold at Pleska's shop and recorded permanently in the catch collection.
+      merchantItems.push(fish.itemId);
+    }
+    for (const bait of fishing.baits) {
+      assert(items.has(bait.itemId), `Fishing: unknown bait ${bait.itemId}`);
+      assert(Number.isSafeInteger(bait.price) && bait.price > items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
+      itemUses.add(bait.itemId); // One stack unit is consumed by a special fishing departure.
+      merchantItems.push(bait.itemId);
+    }
+    for (let index = 1; index < fishing.fish.length; index++) {
+      const previous = fishing.fish[index - 1], fish = fishing.fish[index];
+      assert(fish.affinity * previous.weight >= previous.affinity * fish.weight, "Stronger tackle must not improve cheaper fish over rarer fish");
+    }
+  }
+  assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration or fishing");
 
   const closure = (target, visiting = new Set(), result = new Set()) => {
     assert(!visiting.has(target), `Construction dependency cycle at ${target}`);
@@ -120,6 +147,11 @@ export function auditEconomyProgression(catalog) {
       for (const item of Object.keys(definition.rewards)) {
         if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
       }
+    }
+    // Repeatable free produce supplies coins, so fixed-price NPC stock is reachable.
+    // This does not assume another player supplies a missing progression material.
+    if ([...obtainable].some(id => items.get(id)?.tradable)) for (const item of merchantItems) {
+      if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
     }
     for (const building of buildings.values()) {
       const next = building.levels.find(level => level.level === (completed[building.id] ?? 0) + 1);

@@ -34,6 +34,7 @@ export type ForestSessionState = {
   /** Isolated DEV playback clocks; never included in forest memory. */
   residentPreview?: { id: number; startedAt: number };
   fishingPreview?: { id: number; startedAt: number };
+  cookingPreview?: { id: number; startedAt: number | null; requestedAt: number };
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;
@@ -78,7 +79,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
           Object.assign(state, { elapsed: 0, wetness: 0, clearing: createClearingActivity(scene), life: createForestLife(scene),
             fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
-            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, reaction: 0, animation: null,
+            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
           memory.apply(payload);

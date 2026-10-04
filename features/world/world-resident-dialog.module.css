@@ -1,28 +1,13 @@
 .scrim[data-slot='dialog-overlay'] { z-index: 90; background: #071c1c75; }
-.dialog[data-slot='dialog-content'] { position: fixed; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(430px, calc(100vw - 28px)); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #a7c4b946; border-radius: 24px; padding: 22px; color: #e1ece0; background: linear-gradient(150deg, #233f3c, #172b28 75%); box-shadow: 0 20px 70px #020b0c88; outline: none; }
+.dialog[data-slot='dialog-content'] { position: fixed; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(510px, calc(100vw - 24px)); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #a7c4b946; border-radius: 24px; padding: 22px; color: #e1ece0; background: linear-gradient(150deg, #233f3c, #172b28 75%); box-shadow: 0 20px 70px #020b0c88; outline: none; }
 .header { display: flex; align-items: center; gap: 12px; }
 .header > div { flex: 1; min-width: 0; }
 .emblem { display: block; flex: 0 0 66px; height: 66px; border-radius: 18px; background: #a6c1ab17; image-rendering: pixelated; border: 1px solid #b8d1c02d; }
 .name { margin: 0 0 5px; color: #f0edd6; font-size: 1.35rem; font-weight: 650; }
 .role { margin: 0; color: #b7cec1; font-size: .8125rem; line-height: 1.4; }
-.header > button { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border: 0; border-radius: 12px; color: #c5d8cb; background: #b7d3c110; cursor: pointer; }
-.conversation { display: grid; gap: 16px; margin-top: 18px; }
-.conversation blockquote { margin: 0; padding: 14px 16px; border-left: 2px solid #d6c79b; border-radius: 0 12px 12px 0; background: #cedab20b; color: #eee4c9; font-size: .9375rem; line-height: 1.65; }
-.story, .hint { margin: 0; color: #b9cbbd; font-size: .8125rem; line-height: 1.6; }
-.empty { display: flex; gap: 11px; align-items: center; padding: 14px; border: 1px dashed #abcab235; border-radius: 14px; color: #cbdcc6; }
-.empty > svg { flex: 0 0 auto; color: #a2c4b8; }
-.empty p { margin: 0; font-size: .875rem; line-height: 1.5; }
-.empty span { display: block; margin-top: 4px; font-size: .75rem; color: #adbdaf; }
-.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.actions button { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 60px; padding: 11px 8px; border: 1px solid #aecab540; border-radius: 14px; color: #e0e9d4; background: #9fbe9b12; cursor: pointer; }
-.actions button > svg { flex: 0 0 auto; }
-.actions span { text-align: left; font-size: .8125rem; line-height: 1.4; }
-.actions small { display: block; margin-top: 3px; color: #b4c5b4; font-size: .6875rem; }
-.recovery { padding: 12px; border: 1px solid #d4b58b40; border-radius: 12px; background: #d7a77c0a; font-size: .8125rem; line-height: 1.55; }
-.recovery p { margin: 0 0 8px; color: #e3c69f; }
-.recovery button { display: flex; gap: 6px; align-items: center; min-height: 36px; color: #e3d1b7; background: none; border: 0; cursor: pointer; }
+.header > button { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border: 0; border-radius: 12px; color: #c5d8cb; background: #b7d3c110; cursor: pointer; }
 .dialog button:focus-visible { outline: 2px solid #e1d7a1; outline-offset: 3px; }
 .dialog button:disabled { opacity: .5; cursor: default; }
-.actions button:hover, .header > button:hover { background: #c5d7b927; }
-@media (max-width: 359px) { .dialog[data-slot='dialog-content'] { padding: 17px; }.header { gap: 9px; }.emblem { flex-basis: 44px; height: 44px; }.role { font-size: .75rem; }.actions { grid-template-columns: 1fr; }.actions button { justify-content: flex-start; padding-left: 15px; } }
+.header > button:hover { background: #c5d7b927; }
+@media (max-width: 359px) { .dialog[data-slot='dialog-content'] { padding: 17px; }.header { gap: 9px; }.emblem { flex-basis: 44px; height: 44px; }.role { font-size: .75rem; }}
 @media (prefers-reduced-motion: reduce) { .scrim[data-state] { animation: none; } }

@@ -27,7 +27,8 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   ctx.ellipse(frame.x, frame.y, size * .2, size * .035, 0, 0, Math.PI * 2); ctx.fill();
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprite, origin.x, origin.y, size, size);
-  drawFishingProps(ctx, frame, still, { grip: world(rig.grip), heldFish: world(rig.heldFish), basket: world(rig.basket) });
+  drawFishingProps(ctx, { ...frame, rodId: "willow_rod" }, still,
+    { grip: world(rig.grip), heldFish: world(rig.heldFish), basket: world(rig.basket) });
   // Foreground fingers wrap the rod handle/catch. The original arm remains in
   // the cached sprite, so neither the rod nor its reel floats above a flat paw.
   for (const palm of rig.palms) {

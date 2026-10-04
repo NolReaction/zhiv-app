@@ -1,6 +1,7 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import { FISHING_PACK_RELEASE, type FishingMotion } from "./fishing-props";
 import type { ForestTrail } from "./forest-trails";
+import type { FishSpeciesId } from "./fish-species";
 import { canTraverse, isWalkable } from "./navigation";
 import { PLESK, measurePleskTrail, pleskLocalPlaces, pleskTravelTime, reversePleskTrail, samplePleskTrail,
   type PleskAction, type PleskPlaces, type PleskResidentFrame, type PleskStop } from "./plesk-resident";
@@ -19,6 +20,7 @@ export type PleskMind = {
   elapsed: number; position: WorldPoint; stopId: string; needs: PleskNeeds; catchCount: number;
   intent: PleskIntent; reason: string; decisions: number; recent: PleskIntent[]; seed: number;
   stage: MindStage; age: number; queue: MindStage[]; noticePending: boolean; greetAfter: number;
+  basketSpecies?: FishSpeciesId;
   scene: FixedWorldScene; available: boolean; observation: PleskObservation;
 };
 export const PLESK_MIND_LIMITS = { maxDelta: 1, transitions: 8, recent: 6, basket: 3 } as const;
@@ -94,7 +96,8 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
   const add = (action: PleskAction, duration: number, extra: Partial<MindStage> = {}) => stages.push({ action, duration, target, ...extra });
   if (choice.intent === "fish") {
     const draw = random(mind), outcome = draw < .19 ? "miss" : draw > .79 ? "large" : "small";
-    const motion: FishingMotion = { outcome, catchScale: outcome === "large" ? 1.35 : 1 };
+    const species: FishSpeciesId = outcome === "large" ? "fish_mooncarp" : draw < .4 ? "fish" : draw < .6 ? "fish_silverfin" : "fish_reedperch";
+    const motion: FishingMotion = { outcome, catchScale: outcome === "large" ? 1.35 : 1, species };
     add("pack", 1.5); add("cast", 1.8, motion);
     add("fish", 9 + random(mind) * 12 + (1 - mind.needs.patience) * 3, { ...motion, variation: random(mind) < .5 ? "check" : "calm" });
     add("bite", 1.1 + random(mind) * .5, { ...motion, variation: "nibble" });
@@ -116,8 +119,8 @@ function startNext(mind: PleskMind) { mind.stage = mind.queue.shift()!; mind.age
 function finishStage(mind: PleskMind) {
   const stage = mind.stage;
   if (stage.trail) { mind.position = { ...stage.target.position }; mind.stopId = stage.target.id; }
-  if (stage.deposit) { mind.catchCount = Math.min(PLESK_MIND_LIMITS.basket, mind.catchCount + 1); mind.needs.patience = clamp(mind.needs.patience + .25); }
-  if (stage.sell) { mind.catchCount = 0; mind.needs.social = clamp(mind.needs.social - .65); }
+  if (stage.deposit) { mind.catchCount = Math.min(PLESK_MIND_LIMITS.basket, mind.catchCount + 1); mind.basketSpecies = stage.species; mind.needs.patience = clamp(mind.needs.patience + .25); }
+  if (stage.sell) { mind.catchCount = 0; mind.basketSpecies = undefined; mind.needs.social = clamp(mind.needs.social - .65); }
   if (stage.action === "greet") mind.needs.social = clamp(mind.needs.social - .5);
   if (stage.action === "idle" && stage.outcome === "miss") mind.needs.patience = clamp(mind.needs.patience - .15);
 }
@@ -186,6 +189,8 @@ export function pleskMindFrame(mind: PleskMind | null, scene: FixedWorldScene, s
     frame: still ? 0 : walk?.frame ?? Math.floor(mind.age * 8) % 32,
     destinationId: stage.target.id, carryingFish: mind.catchCount > 0 || Boolean(stage.caught),
     basketFilled: mind.catchCount > 0 || Boolean(stage.deposit && phase >= FISHING_PACK_RELEASE),
+    species: stage.species ?? mind.basketSpecies,
+    basketSpecies: stage.deposit && phase >= FISHING_PACK_RELEASE ? stage.species : mind.basketSpecies,
     ...(stage.variation ? { variation: stage.variation } : {}), ...(stage.outcome ? { outcome: stage.outcome } : {}),
     ...(stage.catchScale ? { catchScale: stage.catchScale } : {}),
     ...(places.waterTarget && stage.target.id === places.base.id && !stage.trail ? { waterTarget: { ...places.waterTarget } } : {}) };
