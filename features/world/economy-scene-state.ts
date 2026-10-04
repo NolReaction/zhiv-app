@@ -2,7 +2,13 @@ import type { FixedWorldScene, PreviewLevels } from "./tiled/types";
 import { initialPreviewLevels } from "./tiled/preview-state";
 
 /** Server-owned exploration; the scene neither completes it nor awards its goods. */
-export type EconomySceneJourney = { id: string; startedAt: string; finishesAt: string; label?: string };
+export type EconomySceneJourney = { id: string; startedAt: string; finishesAt: string; label?: string; routeId?: string };
+
+/** A home-circle status can show work without making the character leave home. */
+export type EconomySceneActivity = EconomySceneJourney & {
+  kind: "exploration" | "production"; itemId?: string;
+  collection?: { kind: "berry_harvest"; seconds: number; startedAt: string | null; finishesAt: string | null } | null;
+};
 
 /** Confirmed account levels, separate from cosmetic memory and legacy WorldState. */
 export type EconomySceneBuildings = Readonly<Record<string, number>>;

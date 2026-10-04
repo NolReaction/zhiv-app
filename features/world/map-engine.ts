@@ -127,6 +127,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     selectedObjectId = objectId;
     const selection = updateSelection();
     if (!selection) return false;
+    // A deliberate house activation reaches the resident even behind its PNG,
+    // while retaining the same building menu. Camera changes never take this path.
+    if (object.place === "house") habitat.wakeHomeResident?.();
     draw();
     onPlace(selection.place, selection);
     return true;

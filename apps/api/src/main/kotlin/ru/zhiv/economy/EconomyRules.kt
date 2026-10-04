@@ -130,7 +130,7 @@ object EconomyRules {
         return remaining.seconds / interval + if (remaining.seconds % interval != 0L || remaining.nano > 0) 1 else 0
     }
 
-    fun apply(state: EconomyState, command: EconomyCommand, now: Instant): Pair<EconomyState, String> {
+    fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.action != "speedup_construction" && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell") && command.quantity != 1L) invalidEconomy()
@@ -147,14 +147,38 @@ object EconomyRules {
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(recipe.seconds * command.quantity).toString(),
-                    rewards = recipe.rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version)
+                    rewards = recipe.rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version,
+                    collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) })
                 requireRewardCapacity(state, job.rewards)
                 spend(state, cost).copy(jobs = state.jobs + job) to "Производство началось. Результат дождётся вас."
+            }
+            "start_collection" -> {
+                val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
+                val spec = job.collection?.let { EconomyCollectionSpec(it.kind, it.seconds) }
+                    ?: catalog.recipes.find { it.id == job.recipeId }?.collection
+                if (job.kind != "production" || job.targetId != "garden" || (job.rewards["berries"] ?: 0L) <= 0L || spec == null)
+                    economyFailure("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется")
+                if (job.collection?.startedAt != null) economyFailure("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай")
+                if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел")
+                if (state.jobs.any { it.kind == "exploration" && now.isBefore(Instant.parse(it.finishesAt)) })
+                    economyFailure("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в вылазке. Дождитесь его возвращения")
+                if (state.jobs.any { it.collection?.startedAt != null })
+                    economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите текущий сбор припасов")
+                // Check the eventual delivery, including escrow, before sending the hero.
+                // This reserves no goods and credits nothing; claim checks capacity again.
+                val projected = state.copy(inventory = addItems(state.inventory, job.rewards))
+                addItems(projected.inventory, reservedItems)
+                assertStorageTransition(state, projected, reservedItems)
+                val collecting = job.copy(collection = EconomyCollection(spec.kind, spec.seconds,
+                    now.toString(), now.plusSeconds(spec.seconds).toString()))
+                state.copy(jobs = state.jobs.map { if (it.id == job.id) collecting else it }) to "Мохлик отправился собирать урожай"
             }
             "start_exploration" -> {
                 val exploration = catalog.explorations.find { it.id == command.targetId } ?: economyFailure("ECONOMY_EXPLORATION", "Место исследования не найдено")
                 requireHome(state, exploration.requiredHomeLevel)
                 requireBuildings(state, exploration.requiredBuildings)
+                if (state.jobs.any { it.collection?.startedAt != null })
+                    economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
                 if (state.jobs.any { it.kind == "exploration" }) economyFailure("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Сначала получите результат вылазки.")
                 val job = EconomyJob(command.requestId, "exploration", exploration.id, startedAt = now.toString(),
                     finishesAt = now.plusSeconds(exploration.seconds).toString(), rewards = exploration.rewards, cost = exploration.cost, catalogVersion = catalog.version)
@@ -188,10 +212,17 @@ object EconomyRules {
             "claim_job" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
                 if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Работа ещё не завершена")
+                job.collection?.let { collection ->
+                    if (collection.startedAt == null || collection.finishesAt == null)
+                        economyFailure("ECONOMY_COLLECTION_REQUIRED", "Сначала отправьте Мохлика собрать урожай")
+                    if (now.isBefore(Instant.parse(collection.finishesAt)))
+                        economyFailure("ECONOMY_COLLECTION_NOT_READY", "Мохлик ещё собирает урожай")
+                }
                 val buildings = if (job.kind == "construction") state.buildings + (job.targetId to checkNotNull(job.targetLevel)) else state.buildings
                 val next = state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
                     completedExplorations = if (job.kind == "exploration") minOf(ECONOMY_MAX_BALANCE, state.completedExplorations + 1) else state.completedExplorations)
-                assertStorageTransition(state, next)
+                addItems(next.inventory, reservedItems)
+                assertStorageTransition(state, next, reservedItems)
                 next to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"
             }

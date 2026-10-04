@@ -1,6 +1,6 @@
 import type { EconomyView } from "./model";
 import type { WorldState } from "@/features/world/model";
-import type { EconomySceneJourney } from "@/features/world/economy-scene-state";
+import type { EconomySceneActivity, EconomySceneJourney } from "@/features/world/economy-scene-state";
 
 /** A scene click selects existing economy UI; it never upgrades a local site. */
 export function economyBuildingDestination(buildingId: string, economy: EconomyView | null | undefined): { tab: "buildings" | "production"; focusId: string } {
@@ -21,6 +21,18 @@ export function economyWorldState(state: WorldState | undefined, economy: Econom
 
 export function economySceneJourney(economy: EconomyView | null | undefined): EconomySceneJourney | null {
   const job = economy?.jobs.find(job => job.kind === "exploration");
-  return job ? { id: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt,
+  return job ? { id: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt, routeId: job.targetId,
     label: economy?.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Исследование" } : null;
+}
+
+/** Keep a returned exploration visible until claimed; otherwise show the first work to finish. */
+export function economySceneActivity(economy: EconomyView | null | undefined): EconomySceneActivity | null {
+  const journey = economySceneJourney(economy);
+  if (journey) return { ...journey, kind: "exploration" };
+  const job = economy?.jobs.filter(entry => entry.kind === "production")
+    .sort((left, right) => Date.parse(left.finishesAt) - Date.parse(right.finishesAt))[0];
+  if (!job) return null;
+  return { id: job.id, kind: "production", startedAt: job.startedAt, finishesAt: job.finishesAt,
+    label: economy?.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Работа в мастерской",
+    itemId: Object.keys(job.rewards)[0], collection: job.collection };
 }

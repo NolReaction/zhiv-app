@@ -16,7 +16,12 @@
 .dock button[aria-expanded="true"], .level[aria-expanded="true"] { border-color: #c0d595; background: #3a5130; }
 .dock button[data-full="true"] { border-color: #c49b66; }
 .journeyDot { width: 6px; height: 6px; border-radius: 50%; background: #c1d094; flex: 0 0 auto; }
-.journeyDot[data-ready="true"] { background: #f0d592; box-shadow: 0 0 0 2px #e3c97825; }
+.dock button[data-expedition-ready="true"] { border-color: #ebcd84a6; background: #354127f5; box-shadow: 0 0 0 2px #e3c97814, 0 3px 14px #06100755; }
+.expeditionIcon { position: relative; display: flex; flex: 0 0 auto; }
+.expeditionCheck { position: absolute; right: -5px; bottom: -4px; display: grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; background: #efd28b; border: 1px solid #39472a; }
+.dock .expeditionCheck svg { color: #26331a; }
+.expeditionLabel { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; gap: 3px; }
+.expeditionLabel small { color: #efd99f; font-size: 8px; white-space: nowrap; }
 .quickMenu { position: absolute; z-index: 15; bottom: var(--quick-bottom, 70px); left: 50%; transform: translateX(-50%); width: min(390px, calc(100% - 24px)); max-height: min(520px, calc(100% - var(--quick-top, 80px) - var(--quick-bottom, 70px) - 8px)); display: flex; flex-direction: column; overflow: hidden; color: #e7eed7; background: linear-gradient(145deg, #203124fc, #12231afb); border: 1px solid #adbf8559; border-radius: 17px; box-shadow: 0 12px 35px #05130980; outline: none; }
 .quickMenu:focus-visible { outline: 2px solid #c6dba0; outline-offset: 2px; }
 .quickMenu[data-kind="profile"] { top: var(--quick-top, 80px); bottom: auto; left: max(12px, env(safe-area-inset-left)); transform: none; width: min(350px, calc(100% - 24px)); }

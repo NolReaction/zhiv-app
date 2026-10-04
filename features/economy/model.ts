@@ -9,6 +9,12 @@ const quantities = z.record(id, balance);
 const requiredBuildings = z.record(id, count.positive().max(100)).default({});
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 export const economyCostSchema = z.object({ coins: balance, items: quantities });
+export const economyCollectionSpecSchema = z.object({ kind: z.literal("berry_harvest"), seconds: count.positive().max(120) });
+export const economyCollectionSchema = economyCollectionSpecSchema.extend({
+  startedAt: z.string().datetime().nullable(), finishesAt: z.string().datetime().nullable(),
+}).refine(value => (value.startedAt === null) === (value.finishesAt === null), "Collection timestamps must be paired")
+  .refine(value => !value.startedAt || !value.finishesAt || Date.parse(value.finishesAt) >= Date.parse(value.startedAt) + value.seconds * 1000,
+    "Collection cannot finish before its required duration");
 export const economyCatalogSchema = z.object({
   version: z.literal(2), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400) }),
@@ -19,7 +25,9 @@ export const economyCatalogSchema = z.object({
     requiredBuildings, warehouseCapacity: count.positive().nullish(),
   })).max(100) })).max(100),
   recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), requiredHomeLevel: count.positive(),
-    requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
+    requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
+    .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && (recipe.rewards.berries ?? 0) > 0,
+      "Berry collection requires a garden recipe with berries")).max(1000),
   explorations: z.array(z.object({ id, name: z.string(), description: z.string(), requiredHomeLevel: count.positive(),
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
 });
@@ -29,7 +37,9 @@ export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
   rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2)]),
-});
+  collection: economyCollectionSchema.nullish(),
+}).refine(job => !job.collection || job.kind === "production" && job.targetId === "garden" && (job.rewards.berries ?? 0) > 0,
+  "Berry collection requires a garden production order");
 export const economyStorageSchema = z.object({ capacity: count, used: count, reserved: count, available: count, overflow: count });
 export const economyViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40), revision: count, serverTime: z.string().datetime(),
@@ -42,7 +52,7 @@ const commandBase = {
   quantity: z.number().int().min(1).max(10_000).default(1), totalPrice: balance.default(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_exploration", "start_construction", "speedup_construction", "claim_job", "sell"]),
+  action: z.enum(["start_production", "start_collection", "start_exploration", "start_construction", "speedup_construction", "claim_job", "sell"]),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing"]),

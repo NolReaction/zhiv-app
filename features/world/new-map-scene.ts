@@ -19,7 +19,8 @@ import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { drawForestGardenGround, drawForestGardenPlants, drawForestGardenProps, forestGardenVisualFrame } from "./forest-garden-painter";
 import { drawWaterDebug } from "./dev/water-debug";
 import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity } from "./clearing-activity";
-import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, type ForestDirectorOptions } from "./forest-director";
+import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, requestForestGardenHarvest, type ForestDirectorOptions } from "./forest-director";
+import { syncForestGardenProduction } from "./forest-garden";
 import { faunaInteractionFrame, faunaRenderFrame, type ForestFaunaState } from "./forest-fauna";
 import { campfireVisitFrame, type CampfireVisit } from "./forest-campfire";
 import { drawForestCampfires, drawForestCampfireGlow } from "./forest-campfire-painter";
@@ -27,6 +28,7 @@ import { forestBirdFrame } from "./forest-birds";
 import { forestBirdwatchFrame, type ForestBirdwatch } from "./forest-birdwatching";
 import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reactions";
 import { drawForestBird, type ForestBird } from "./forest-wildlife";
+import { drawForestResidents } from "./forest-residents";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
 import { publishForestObservation } from "./forest-observer";
@@ -36,6 +38,7 @@ import { forestPersistenceOverridden } from "./forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 import { accountSceneLevels, economyJourneyAway } from "./economy-scene-state";
 import { interactiveMapObjects } from "./site-interactions";
+import { forestJourneyActorAway, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
@@ -171,6 +174,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestCampfires(context, behindFires, elapsed, still);
   drawForestGardenPlants(context, world, life?.garden);
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined);
+  drawForestResidents(context, world, elapsed, still, actor.y, "behind");
   for (const bird of groundBirds) if (bird.groundY! < actor.y) drawForestBird(context, bird);
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
@@ -184,6 +188,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     drawForestGardenProps(context, garden, "front");
     context.restore();
   }
+  drawForestResidents(context, world, elapsed, still, actor.y, "front");
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined, "front");
   for (const bird of groundBirds) if (bird.groundY! >= actor.y) drawForestBird(context, bird);
   if (walking?.bush && heroVisible) {
@@ -231,19 +236,61 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const explorationNow = () => economicTimestamp + Math.max(0, performance.now() - economicReceivedAt);
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
   const exploring = () => economyJourneyAway(options.economyJourney, explorationNow());
+  const actorAway = () => forestJourneyActorAway(state, options.economyJourney, explorationNow());
   function syncExploration() {
     if (!session.isOwner()) return;
-    const id = exploring() ? options.economyJourney!.id : null;
-    if (id === (state.explorationId ?? null)) return;
-    state.explorationId = id;
-    if (id) {
-      cancelForestDirector(state, "Отправился исследовать окрестности");
-      state.reaction = 0; state.animation = null; state.director.stimulus = null;
-      state.director.reason = options.economyJourney?.label || "Исследует окрестности";
-    } else {
-      state.clearing.idleSeconds = 0;
-      state.director.reason = "Вернулся из исследования";
-      state.director.nextDecisionAt = state.director.elapsed + 7;
+    syncForestJourneyTravel(state, world, options.economyJourney, explorationNow(), reducedMotion(options, dev));
+  }
+
+  function syncGarden() {
+    // One visible camera supplies account presentation to the shared session.
+    // A background circle may still receive the preceding React snapshot while
+    // the world is taking over; it must not overwrite an accepted delivery.
+    if (options.economyGarden === undefined || !session.isObservationOwner()) return;
+    const garden = state.life.garden, request = options.gardenHarvestRequest;
+    if (session.isOwner()) {
+      const unmanagedHarvest = garden.production === undefined && (garden.routine?.kind === "harvest-berries" || state.pendingLife === "harvest-berries");
+      const managedWork = garden.production !== undefined && (garden.routine?.kind === "harvest-berries" || state.pendingLife === "harvest-berries");
+      const interrupted = (garden.harvest || managedWork) && (!garden.harvest
+        || garden.harvest.request.jobId !== options.economyGarden?.jobId
+        || !request || request.requestId !== garden.harvest.request.requestId);
+      if (unmanagedHarvest || interrupted) cancelForestDirector(state, "Урожай синхронизирован с хозяйством");
+    }
+    syncForestGardenProduction(garden, options.economyGarden, explorationNow());
+    // Observation ownership identifies the visible surface even when another
+    // browser owns the simulation lease. Background cameras must never veto a
+    // live delivery, but an unavailable lease must not leave the UI waiting.
+    // A camera handoff can briefly reload the same lease. That is a pause, not
+    // permission to finish a live crop before its basket reaches the ground.
+    const leaseMode = state.memory.sync?.mode;
+    const leaseBlocked = active() && !session.isSimulationAllowed() && (leaseMode === "other-device" || leaseMode === "error");
+    if (!session.isOwner() && !leaseBlocked) return;
+    if (request && Number.isSafeInteger(request.requestId) && request.requestId > 0) {
+      const fresh = session.consumeEvent("garden-harvest", request.requestId);
+      if (fresh || leaseBlocked && garden.harvest?.request.requestId === request.requestId) {
+        if (leaseBlocked) {
+          cancelForestDirector(state, "Сбор продолжается без анимации на этом устройстве");
+          garden.harvestEvent = { ...request, status: "unavailable", reason: "Сбор продолжается без анимации на этом устройстве" };
+          garden.harvest = null;
+        } else {
+          state.reaction = 0; state.animation = null;
+          requestForestGardenHarvest(state, request, directorOptions());
+          if (dev?.paused || options.paused || dev?.showHero === false || dev?.pose && dev.pose !== "auto") {
+            cancelForestDirector(state, "Сбор продолжается без анимации");
+          }
+        }
+      }
+    }
+    const event = garden.harvestEvent;
+    if (event && options.onGardenHarvestEvent && session.consumeEvent(
+      event.status === "started" ? "garden-harvest-started" : "garden-harvest-result", event.requestId)) {
+      const deliver = options.onGardenHarvestEvent;
+      // A snapshot may arrive inside React configuration. Emit outside that
+      // stack, once for the shared session rather than once per camera.
+      // A camera can unmount during this microtask (world → circle). The
+      // account controller still receives its completed, already-authorized
+      // request; disposing a canvas must not swallow the delivery event.
+      queueMicrotask(() => deliver(event));
     }
   }
 
@@ -260,7 +307,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length)
+    return Boolean(state.pendingLife || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state))
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -275,13 +322,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function directorOptions(blocked = false): ForestDirectorOptions {
     const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
-    return { autoLife: dev?.autoLife !== false, blocked: blocked || exploring(), actorAway: exploring(), dusk: environment.dusk, rain: environment.rain,
+    return { autoLife: dev?.autoLife !== false, blocked: blocked || exploring() || forestJourneyWalking(state), actorAway: actorAway(),
+      explicitTravel: !blocked && forestJourneyWalking(state), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
       reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds() };
   }
   function preview(): NewMapPaintPreview {
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
-    return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: exploring(),
+    return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit,
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
@@ -293,7 +341,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       birdSeed: state.birdStarted === null ? undefined : state.birdSeed };
   }
   function paintWorld(target: CanvasRenderingContext2D) {
-    if (!disposed && art) paintNewMap(target, art, options, state.elapsed, state.reaction > 0, state.timestamp, state.dusk, preview());
+    if (!disposed && art) {
+      syncGarden();
+      paintNewMap(target, art, options, state.elapsed, state.reaction > 0, state.timestamp, state.dusk, preview());
+    }
   }
   function draw() {
     if (disposed || !art) return;
@@ -313,11 +364,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function updateObservation(force = false) {
     if (!art || !session.isObservationOwner()) return;
     publishForestObservation(options.presenceKey, state, { force,
-      exploration: exploring() ? options.economyJourney?.label || "Мохлик исследует окрестности и вернётся после завершения поручения." : null,
+      exploration: forestJourneyWalking(state) ? state.director.reason
+        : exploring() ? options.economyJourney?.label || "Мохлик исследует окрестности и вернётся после завершения поручения." : null,
       paused: !active() || !session.isSimulationAllowed() || reducedMotion(options, dev) || dev?.autoLife === false && !clearingMustContinue(),
       manual: Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false) });
   }
-  function syncOwner() { session.configure(options.view ?? "circle", active()); syncExploration(); updateObservation(true); }
+  function syncOwner() { session.configure(options.view ?? "circle", active()); syncExploration(); syncGarden(); updateObservation(true); }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
   }
@@ -337,11 +389,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
       syncExploration();
+      syncGarden();
       advanceForestDirector(state, step, directorOptions(manual));
       const stimulus = state.director.stimulus;
       advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
         ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength }
-        : undefined, world, exploring() || dev?.showHero === false || clearingActivityFrame(state.clearing).residing ? undefined
+        : undefined, world, actorAway() || dev?.showHero === false || clearingActivityFrame(state.clearing).residing ? undefined
           : { ...state.clearing.position, size: state.clearing.size * (dev?.heroScale ?? 1), moving: clearingActivityFrame(state.clearing).pose === "walk" },
         { rain: environment.rain, dusk: environment.dusk, forced: state.birdStarted !== null || dev?.birds === "on" });
       if (stimulus) state.lastBirdStimulus = stimulus.id;
@@ -469,6 +522,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     resume();
   });
   prepareArtwork();
+  function notice() {
+    if (disposed || exploring() || !session.isSimulationAllowed()) return;
+    const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
+    noticeForestDirector(state, still || manualPose);
+    // Static accessibility / explicit DEV poses use a bounded feedback timer.
+    if ((still || manualPose) && state.reaction <= 0) state.reaction = REACTION_SECONDS;
+    if (active()) session.publish(); resume();
+  }
   function hitVisiblePet(x: number, y: number) {
     if (disposed || exploring() || dev?.showHero === false) return false;
     const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };
@@ -499,13 +560,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (active()) applyPendingTime();
       prepareArtwork(); resize(); if (active()) draw(); resume();
     },
-    notice() {
-      if (disposed || exploring() || !session.isSimulationAllowed()) return;
-      const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
-      noticeForestDirector(state, still || manualPose);
-      // Static accessibility / explicit DEV poses use a bounded feedback timer.
-      if ((still || manualPose) && state.reaction <= 0) state.reaction = REACTION_SECONDS;
-      if (active()) session.publish(); resume();
+    notice,
+    wakeHomeResident() {
+      if (disposed || exploring() || dev?.showHero === false || dev?.showBuildings === false
+        || !session.isSimulationAllowed() || !["entering", "home-sleep"].includes(state.clearing.stage)) return false;
+      notice();
+      return true;
     },
     hitPet(x, y) {
       const point = { x: NEW_MAP_FOCUS.x + x * NEW_MAP_FOCUS.width, y: NEW_MAP_FOCUS.y + y * NEW_MAP_FOCUS.height };

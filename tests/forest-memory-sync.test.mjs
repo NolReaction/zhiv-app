@@ -289,3 +289,33 @@ test("a valid near-limit server snapshot hydrates even with local cache metadata
   assert.equal(a.state.clearing.behavior.mind.needs.energy, .28); assert.equal(a.state.memory.restored, true);
   a.release(); await settle();
 });
+
+test("visible handoff preserves only an unchanged live lease; foreign, replaced or expired authority hydrates", async () => {
+  for (const mode of ["same", "foreign", "replaced", "expired"]) {
+    const env = clock(), remote = server(env, payload(.8)), local = client(env, remote);
+    local.sync.setActive(true); await env.advance();
+    local.value.mind.needs.energy = .42;
+    const originalRead = remote.transport.read;
+    remote.transport.read = async (...args) => {
+      const value = await originalRead(...args);
+      if (mode === "foreign") value.lease = { owned: false, token: null, expiresAt: new Date(env.now() + 90_000).toISOString() };
+      if (mode === "replaced") value.lease = { ...value.lease, token: uuid() };
+      if (mode === "expired") value.lease = { ...value.lease, owned: true, expiresAt: new Date(env.now() - 1).toISOString() };
+      return value;
+    };
+    // Resume while the previous owner's save receipt is still in flight.
+    local.sync.setActive(false);
+    local.value.mind.needs.energy = .71;
+    local.sync.setActive(true, true);
+    const before = local.applied.length;
+    await env.advance();
+    if (mode === "same") {
+      assert.equal(local.applied.length, before, "our own save acknowledgement cannot discard the handoff flag before the read");
+      assert.equal(local.value.mind.needs.energy, .71);
+    } else {
+      assert.ok(local.applied.length > before, `${mode} authority must apply its snapshot`);
+      assert.equal(local.value.mind.needs.energy, .42);
+    }
+    local.sync.release(); await settle();
+  }
+});

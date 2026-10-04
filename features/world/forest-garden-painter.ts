@@ -29,6 +29,7 @@ export type ForestGardenVisualFrame = {
 
 function harvestProgress(garden: ForestGardenState) {
   const routine = garden.routine, count = FOREST_GARDEN_LIMITS.harvest;
+  if (garden.harvest?.phase === "completed") return { picked: count, putAway: 0, fade: 1 };
   if (!routine || routine.kind !== "harvest-berries") return { picked: 0, putAway: 0, fade: 0 };
   if (routine.phase === "return-basket" || routine.phase === "deposit") return { picked: count, putAway: count, fade: 1 };
   if (routine.phase !== "collect") return { picked: 0, putAway: 0, fade: 0 };
@@ -45,7 +46,7 @@ export function forestGardenBerries(scene: FixedWorldScene, garden: ForestGarden
   for (const plant of garden.bushes) {
     const bush = scene.bushes?.find(item => item.id === plant.id), growth = unit(plant.growth);
     if (!bush || !forestBushArtworkAvailable(scene, bush) || growth <= .01) continue;
-    const selected = garden.routine?.bushId === plant.id;
+    const selected = garden.routine?.bushId === plant.id || garden.harvest?.phase === "completed";
     forestGardenBerryLayout(bush, bush.entry).forEach((berry, index) => result.push({ ...berry, growth, clusterIndex: index, foliage: bush.points,
       picked: selected && index === 0 ? harvest.picked : 0,
       opacity: selected && index !== 0 ? 1 - harvest.fade : 1 }));
@@ -179,7 +180,7 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
       grounded = t >= COLLECT.lowerEnd && t <= COLLECT.liftStart;
     }
     basket = { ...position, size: basketSize, berries: Math.min(garden.basket.capacity,
-      garden.basket.berries + harvestProgress(garden).putAway), behind: grounded ? position.y < actor.y : direction === "back", grounded };
+      (garden.production === undefined ? garden.basket.berries : 0) + harvestProgress(garden).putAway), behind: grounded ? position.y < actor.y : direction === "back", grounded };
     hands = basketHands(position);
     if (routine.phase === "take-basket" && t < .24) hands = rests.map((rest, index) => mixPoint(rest, hands[index], t / .24));
     if (routine.phase === "deposit" && t > 1.2) hands = hands.map((hand, index) => mixPoint(hand, rests[index], (t - 1.2) / .3));
@@ -279,7 +280,8 @@ export function drawForestGardenGround(ctx: CanvasRenderingContext2D, garden: Fo
   if (garden.routine?.carryingBasket || garden.basket.held) return;
   const inFront = actor && garden.basket.position.y >= actor.y;
   if (Boolean(inFront) !== (layer === "front")) return;
-  drawBasket(ctx, { ...garden.basket.position, size: garden.basket.size ?? size * .28, berries: garden.basket.berries, behind: false, grounded: true });
+  drawBasket(ctx, { ...garden.basket.position, size: garden.basket.size ?? size * .28,
+    berries: garden.production === undefined ? garden.basket.berries : 0, behind: false, grounded: true });
 }
 
 export function drawForestGardenProps(ctx: CanvasRenderingContext2D, frame: ForestGardenVisualFrame | null, layer: "behind" | "front") {

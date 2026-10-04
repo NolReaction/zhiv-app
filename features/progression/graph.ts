@@ -38,7 +38,7 @@ export const buildingLabels: Record<string, string> = {
 };
 export const progressionLocations = [
   { id: "place:home", title: "Дом", icon: "🏠", buildingIds: ["home", "warehouse"], description: "Дом на полянке. Уровень дома открывает новые возможности хозяйства; кладовая расширяется отдельно внутри дома." },
-  { id: "bush", title: "Ягодный куст", icon: "🫐", buildingIds: ["garden"], description: "Существующий куст открывает ягодное хозяйство. Рост, полив и перенос корзинки остаются жизнью полянки; серверные ягоды выдаются за отдельные производственные заказы." },
+  { id: "bush", title: "Ягодный куст", icon: "🫐", buildingIds: ["garden"], description: "Закажите выращивание: ягоды на кусте созревают по таймеру. По нажатию «Собрать» Мохлик принесёт урожай в корзинке, затем он поступит в кладовую. Полив сохраняет влажность, но не сокращает срок заказа." },
   { id: "place:woodlot", title: "Лесной участок", icon: "🌲", buildingIds: ["woodlot"], description: "Лес и существующий навес. Здесь обустраиваются лесозаготовки: сначала древесина и волокно, затем твёрдая древесина и смола." },
   { id: "place:workshop", title: "Мастерская", icon: "🛠️", buildingIds: ["workshop", "kiln"], description: "Одно здание мастерской: внутри отдельно развиваются верстак и печь. У каждого оборудования свои условия обустройства и рецепты." },
   { id: "campfire", title: "Костёр", icon: "🏕️", buildingIds: ["dryer"], description: "Существующий костёр служит местом отдыха и приготовления запасов. Заготовки еды развиваются здесь, без отдельного здания сушилки." },
@@ -173,7 +173,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
           buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
           rewards: { ...recipe.rewards }, requirements, children: [],
-          description: `${recipe.seconds >= 14400 ? "Длинный цикл: можно реже забирать результат. " : ""}Заказ идёт по серверному таймеру; Мохлику не нужно всё время стоять у производства. Готовый результат нужно забрать.`,
+          description: recipe.collection ? "Ягоды растут по таймеру заказа. После созревания нажмите «Собрать»: Мохлик принесёт урожай, и он поступит в кладовую." : `${recipe.seconds >= 14400 ? "Длинный цикл: можно реже забирать результат. " : ""}Заказ идёт по серверному таймеру; Мохлику не нужно всё время стоять у производства. Готовый результат нужно забрать.`,
         });
         node.children.push(child.id);
         edge(node.id, child.id, "unlock");

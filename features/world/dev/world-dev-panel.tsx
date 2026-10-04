@@ -81,6 +81,8 @@ const lifeActionLabel = (action: WorldDevLifeAction) => [...LIFE_ACTIONS, ...GAR
 export function gardenDevActionUnavailable(action: WorldDevLifeAction, garden: ForestGardenObservation | undefined, state: WorldDevState) {
   if (!["water-bush", "harvest-berries", "grow-berries"].includes(action)) return null;
   if (!garden) return "Дождитесь загрузки ягодного куста и корзинки.";
+  if (garden.managed && action === "grow-berries") return "Рост задан таймером хозяйства. Для проверки: Читы → Таймеры заданий → Только производство → Убрать ожидание, затем «Собрать» в меню куста.";
+  if (garden.managed && action === "harvest-berries") return "Запустите сбор кнопкой «Собрать» в меню куста. Этот DEV-показ не завершает задание хозяйства.";
   if (!garden.bushes.length) return "Нет ягодного куста с точкой подхода. Проверьте Bushes в Tiled.";
   if (action === "grow-berries") return null;
   if (state.navigationMode === "routes") return "Для занятий с кустом выберите Отладка → Пути → Свободная полянка.";

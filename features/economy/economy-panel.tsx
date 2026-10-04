@@ -8,6 +8,8 @@ import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from 
 import type { EconomyController } from "./use-economy";
 import { canAffordEconomy } from "./rules";
 import { ConstructionSpeedup } from "./construction-speedup";
+import { useGardenCollection } from "./garden-collection-context";
+import { berryCollectionStatus } from "./garden-collection";
 import styles from "./economy-panel.module.css";
 
 export type EconomyTab = "overview" | "buildings" | "production" | "exploration" | "market" | "inventory";
@@ -110,6 +112,8 @@ function jobTitle(state: EconomyView, job: EconomyJob) {
 
 function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: EconomyJob; navigate: Navigate }) {
   const { snapshot: state, now, busy, uncertain } = economy;
+  const collection = useGardenCollection();
+  const berry = berryCollectionStatus(job, state, now, collection);
   const start = Date.parse(job.startedAt), end = Date.parse(job.finishesAt), ready = now >= end;
   const progress = Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
   const Icon = job.kind === "construction" ? Hammer : job.kind === "exploration" ? Compass : Sprout;
@@ -121,13 +125,17 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
     {Object.keys(job.rewards).length > 0 && <Rewards state={state} value={job.rewards} />}
     {!ready && <progress className={styles.progress} value={progress} max={1} aria-label={`${jobTitle(state, job)}: выполнено ${Math.floor(progress * 100)}%`} />}
     <div className={styles.jobFooter}>
-      <span className={styles.duration}>{ready ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? "Можно забрать" : `Ещё ${economyDuration((end - now) / 1000)}`}</span>
-      <button className={ready ? styles.primary : undefined} disabled={!ready || storageBlocked || busy || uncertain} onClick={() => void economy.act("claim_job", job.id)}>
-        {job.kind === "construction" ? "Завершить" : "Забрать"}<span className={styles.sr}>: {jobTitle(state, job)}</span>
+      <span className={styles.duration}>{ready && !berry?.collecting ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? berry?.label ?? "Можно забрать" : `Ещё ${economyDuration((end - now) / 1000)}`}</span>
+      <button className={ready ? styles.primary : undefined} disabled={!ready || storageBlocked || busy || uncertain || berry?.disabled} onClick={() => {
+        if (berry && collection) collection.start(job.id);
+        else economy.act(berry && !berry.started ? "start_collection" : "claim_job", job.id);
+      }}>
+        {berry?.button ?? (job.kind === "construction" ? "Завершить" : "Забрать")}<span className={styles.sr}>: {jobTitle(state, job)}</span>
       </button>
     </div>
     {job.kind === "construction" && <ConstructionSpeedup key={job.id} economy={economy} job={job} />}
     {job.kind === "construction" && !ready && <p className={styles.muted}>Материалы уже внесены. Прежний уровень продолжает действовать.</p>}
+    {berry?.away && ready && <p className={styles.muted}>Сначала дождитесь возвращения Мохлика из вылазки.</p>}
     {ready && storageBlocked && <div className={styles.notice}><Package size={18} aria-hidden /><div><p>Для результата нужно {number(rewardCount)} мест, свободно {number(state.storage.available)}. Готовые вещи ждут и не портятся.</p><button onClick={() => navigate(rewardCount > state.storage.capacity ? "buildings" : "inventory", rewardCount > state.storage.capacity ? "warehouse" : undefined)}>{rewardCount > state.storage.capacity ? "Расширить склад" : "Освободить место"}<ArrowRight size={15} aria-hidden /></button></div></div>}
   </article>;
 }
@@ -142,7 +150,7 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: Navi
     <div className={styles.heading}><div><span className={styles.eyebrow}>Своя жизнь в лесу</span><h2>{ready ? "Пора забрать результаты" : "Хозяйство Мохлика"}</h2><p className={styles.muted}>Постройки работают параллельно. Мохлик отправляется в одну вылазку за раз.</p></div></div>
     <div className={styles.shortcuts}>
       <button onClick={() => navigate("production")}><Sprout size={22} aria-hidden /><span><strong>Производство</strong><small>Урожай и материалы</small></span><ChevronRight size={14} aria-hidden /></button>
-      <button onClick={() => navigate("exploration")}><Compass size={22} aria-hidden /><span><strong>Вылазки</strong><small>{state.jobs.some(job => job.kind === "exploration") ? "Мохлик занят" : "Можно отправляться"}</small></span><ChevronRight size={14} aria-hidden /></button>
+      <button onClick={() => navigate("exploration")}><Compass size={22} aria-hidden /><span><strong>Вылазки</strong><small>{state.jobs.some(job => job.kind === "exploration" || job.collection?.startedAt) ? "Мохлик занят" : "Можно отправляться"}</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("buildings")}><House size={22} aria-hidden /><span><strong>Постройки</strong><small>Обустроено: {owned}</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("inventory")}><Package size={22} aria-hidden /><span><strong>Склад</strong><small>Свободно: {number(state.storage.available)}</small></span><ChevronRight size={14} aria-hidden /></button>
     </div>
@@ -271,7 +279,7 @@ function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; na
     {routes.map(exploration => {
       const required = requirements(exploration), rewardCount = Object.values(exploration.rewards).reduce((sum, amount) => sum + amount, 0);
       const tooLarge = rewardCount > state.storage.capacity;
-      const reason = unmetRequirement(state, required) ?? (tooLarge ? "Для этих находок нужно расширить склад" : job ? "Сначала завершите текущую вылазку" : !canAffordEconomy(state, exploration.cost) ? "Не хватает припасов" : null);
+      const reason = unmetRequirement(state, required) ?? (tooLarge ? "Для этих находок нужно расширить склад" : job ? "Сначала завершите текущую вылазку" : state.jobs.some(entry => entry.collection?.startedAt) ? "Сначала завершите сбор урожая" : !canAffordEconomy(state, exploration.cost) ? "Не хватает припасов" : null);
       const Icon = exploration.id.includes("cave") ? Mountain : exploration.id === "shore" ? Fish : Compass;
       return <article key={exploration.id} className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{exploration.name}</h3><p className={styles.muted}>{exploration.description}</p></div></div>
         <Rewards state={state} value={exploration.rewards} /><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={exploration.cost} />

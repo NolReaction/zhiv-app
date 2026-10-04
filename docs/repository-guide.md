@@ -23,6 +23,7 @@
 | Разметить территории и посадки насекомых | `Habitats`, `WildlifeAnchors` в [`forest.tmj`](../world/tiled/forest.tmj) | [Посадки в Tiled](game/tiled-editor.md#территории-и-посадки-насекомых) |
 | Изменить реакцию сидящих птиц на шаги/куст | [`forest-bird-reactions.ts`](../features/world/forest-bird-reactions.ts), события в [`forest-director.ts`](../features/world/forest-director.ts) | [Атмосфера](game/world-atmosphere.md) |
 | Расставить грибы в Tiled, изменить их рост и общие часы | `Mushrooms` в `world/tiled/forest.tmj`, [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-session.ts`](../features/world/forest-session.ts) | [Устройство мира](game/world-foundation.md) |
+| Связать урожай с производством и сбором | [`garden-collection.ts`](../features/economy/garden-collection.ts), [`economy-garden-state.ts`](../features/world/economy-garden-state.ts), [`forest-garden.ts`](../features/world/forest-garden.ts), TS/Kotlin EconomyRules | [Ягодный цикл](game/clearing-garden.md). Предметы выдаёт только серверный `claim_job` после сохранённой стадии collection |
 | Настроить рост ягод, полив, сбор и корзинку (`Garden → berry-basket` в Tiled) | [`forest-garden.ts`](../features/world/forest-garden.ts), [`forest-director.ts`](../features/world/forest-director.ts), [`forest-garden-painter.ts`](../features/world/forest-garden-painter.ts) | [Ягодный куст и корзинка](game/clearing-garden.md) |
 | Изменить вид плодов, землю, влажность и тень куста | [`forest-fruit-appearance.ts`](../features/world/forest-fruit-appearance.ts), [`forest-bush-soil.ts`](../features/world/forest-bush-soil.ts), [`forest-bush-grounding.ts`](../features/world/forest-bush-grounding.ts), [`tiled/renderer.ts`](../features/world/tiled/renderer.ts) | [Размещение и рисунок](game/clearing-garden.md#размещение-и-рисунок) |
 | Исправить контакт лапы с грибом/листиком и их подъём | [`forest-life.ts`](../features/world/forest-life.ts), [`forest-life-painter.ts`](../features/world/forest-life-painter.ts), [`forest-director.ts`](../features/world/forest-director.ts), [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts) | [Устройство мира](game/world-foundation.md) |
@@ -53,7 +54,7 @@
 
 `features/world/tiled/forest.generated.json` — результат `npm run world:export`, его не редактируют вручную. Проверка соответствия: `npm run world:check`.
 
-Реализованная локальная основа, её инварианты и дальнейшие границы: [живой лес](game/living-world-plan.md). Экспортёр поддерживает свободную полянку и территории; сеть дальних переходов и новые путешествия остаются отдельным этапом.
+Реализованная локальная основа, её инварианты и дальнейшие границы: [живой лес](game/living-world-plan.md). Экспортёр поддерживает свободную полянку и территории; первая сеть троп соединяет дом, мастерскую, шахту и рыбацкий берег, по ней ходят два декоративных жителя. Закрытый мост в сеть не включён.
 
 ## Интерфейс и правила игры
 

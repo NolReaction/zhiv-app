@@ -931,6 +931,10 @@
       },
       "rewards": {
         "berries": 6
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
       }
     },
     {
@@ -947,6 +951,10 @@
       },
       "rewards": {
         "berries": 160
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
       }
     },
     {
@@ -963,6 +971,10 @@
       },
       "rewards": {
         "berries": 20
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
       }
     },
     {
@@ -996,6 +1008,10 @@
       "rewards": {
         "berries": 160,
         "fiber": 30
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
       }
     },
     {
@@ -1013,6 +1029,10 @@
       "rewards": {
         "berries": 240,
         "fiber": 60
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
       }
     },
     {
@@ -1030,6 +1050,10 @@
       "rewards": {
         "berries": 360,
         "fiber": 100
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
       }
     },
     {

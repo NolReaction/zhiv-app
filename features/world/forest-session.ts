@@ -9,6 +9,7 @@ import { createBirdReactions } from "./forest-bird-reactions";
 import { createForestMemory, forestSceneFingerprint, type ForestMemoryEnvironment, type ForestMemoryStatus } from "./forest-memory";
 import { forgetForestObservation } from "./forest-observer";
 import { createForestMemorySync, type ForestMemorySyncEnvironment, type ForestMemoryTransport } from "./forest-memory-sync";
+import type { ForestJourneyTravel } from "./forest-journey-travel";
 
 type View = "circle" | "world";
 type Member = { view: View; active: boolean; changed: (ownerChanged: boolean) => void };
@@ -25,11 +26,13 @@ export type ForestSessionState = {
   pendingAttention: boolean;
   /** Transient display state only; economic jobs are restored from the economy API. */
   explorationId?: string | null;
+  /** Shared cosmetic departure/return; deliberately omitted from saved memory. */
+  journeyTravel?: ForestJourneyTravel;
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;
   key: string | undefined; sync?: ReturnType<typeof createForestMemorySync>; removeLifecycle?: () => void;
-  members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object };
+  members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object; visibleHandoff?: boolean };
 const sessions = new Map<string, Session>();
 
 export type ForestSessionOptions = { persistence?: boolean; environment?: ForestMemoryEnvironment | null;
@@ -69,7 +72,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
           Object.assign(state, { elapsed: 0, wetness: 0, clearing: createClearingActivity(scene), life: createForestLife(scene),
             fauna: createForestFauna(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
-            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: null, reaction: 0, animation: null,
+            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
           memory.apply(payload);
@@ -81,7 +84,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
       });
       state.memory.sync = current.sync.getStatus();
       if (typeof window !== "undefined") {
-        const leave = () => current.sync?.setActive(false);
+        const leave = () => { current.visibleHandoff = false; current.sync?.setActive(false); };
         const resume = () => current.sync?.setActive(current.owner !== null && !document.hidden);
         window.addEventListener("pagehide", leave); window.addEventListener("pageshow", resume);
         current.removeLifecycle = () => { window.removeEventListener("pagehide", leave); window.removeEventListener("pageshow", resume); };
@@ -98,8 +101,11 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
     const eligible = [...session.members].filter(item => item.active);
     const next = eligible.find(item => item.view === "world") ?? eligible[0] ?? null;
     if (next === session.owner) return;
+    const previous = session.owner, visible = typeof document === "undefined" || !document.hidden;
+    const preserveLiveScene = Boolean(next && visible && (previous || session.visibleHandoff));
+    session.visibleHandoff = !next && visible && Boolean(previous);
     session.owner = next;
-    session.sync?.setActive(next !== null && (typeof document === "undefined" || !document.hidden));
+    session.sync?.setActive(next !== null && visible, preserveLiveScene);
     // Ownership is immediate; loop changes are deferred until newly mounted handles exist.
     queueMicrotask(() => { for (const item of session.members) item.changed(true); });
   }

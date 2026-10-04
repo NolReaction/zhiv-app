@@ -49,6 +49,7 @@ const eventKind = (type: string) => EVENT_KINDS[type] ?? { label: "Событи�
 
 function gardenReport(garden: ForestGardenObservation) {
   return {
+    ...(garden.managed ? { managed: true } : {}),
     bushes: garden.bushes.slice(0, 32).map(bush => ({ id: text(bush.id), growth: percent(bush.growth) / 100,
       moisture: percent(bush.moisture) / 100, waterIn: count(bush.waterIn, 3600) })),
     basket: garden.basket ? { berries: count(garden.basket.berries, 12), capacity: count(garden.basket.capacity, 12) } : null,
@@ -58,13 +59,13 @@ function gardenReport(garden: ForestGardenObservation) {
   };
 }
 
-/** Garden progress is scenery state, separate from the character's needs. */
+/** Crop progress and cosmetic care are separate from the character's needs. */
 export function ForestGardenDiagnostics({ garden }: { garden?: ForestGardenObservation }) {
   if (!garden) return <p className={styles.hint}>Состояние ягодного куста появится после загрузки сцены.</p>;
   const snapshot = gardenReport(garden);
   return <div className={styles.gardenDiagnostics} aria-label="Ягодный куст и корзинка">
     <dl className={styles.gardenSummary}>
-      <div><dt>Корзинка</dt><dd>{snapshot.basket ? `${snapshot.basket.berries} / ${snapshot.basket.capacity} ягод` : "Место не найдено"}</dd></div>
+      <div><dt>Корзинка</dt><dd>{snapshot.basket ? snapshot.managed ? "Реквизит сбора" : `${snapshot.basket.berries} / ${snapshot.basket.capacity} ягод` : "Место не найдено"}</dd></div>
       <div><dt>Занятие</dt><dd>{snapshot.activity ? GARDEN_PHASES[snapshot.activity.phase] ?? "Заботится о кусте" : "Свободен"}</dd></div>
     </dl>
     {snapshot.bushes.length ? <ul className={styles.gardenBushes}>
@@ -75,7 +76,9 @@ export function ForestGardenDiagnostics({ garden }: { garden?: ForestGardenObser
         </label>)}
       </div>{bush.waterIn > 0 && <p className={styles.hint}>Отдых после полива: {Math.ceil(bush.waterIn / 60)} мин.</p>}</li>)}
     </ul> : <p className={styles.hint}>На карте нет подходящих ягодных кустов.</p>}
-    <p className={styles.hint}>Ягоды растут во время жизни сцены. Дождь увлажняет почву; сухой куст растёт медленнее и не погибает. Корзинка пока хранит урожай без наград в инвентарь.</p>
+    <p className={styles.hint}>{snapshot.managed
+      ? "Рост следует таймеру хозяйства; дождь и полив меняют только влажность. Для проверки завершите ожидание производства во вкладке «Читы», затем нажмите «Собрать» в меню куста. Новая фаза сбора длится минимум 8 секунд; урожай поступает в кладовую после подтверждения сервера."
+      : "Изолированная декоративная сцена: ягоды растут во время симуляции, а корзинка не выдаёт предметы. В игре рост и получение урожая определяются заданиями хозяйства."}</p>
   </div>;
 }
 

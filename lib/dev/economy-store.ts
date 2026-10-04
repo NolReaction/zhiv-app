@@ -81,7 +81,7 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const command = parsed.data, { owner, value } = profile(token, now);
   const replay = receipt(value, owner, command, now);
   if (replay) return replay;
-  if (command.action === "start_exploration" && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
+  if (["start_exploration", "start_collection"].includes(command.action) && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
   const next = structuredClone(value.state);
   const reserved = escrowItems(owner);
   const message = applyEconomyCommand(next, command, now, () => command.requestId, reserved);

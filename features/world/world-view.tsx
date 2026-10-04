@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowLeft, BookOpen, Compass, X, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -185,6 +185,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   if (!snapshot) return <section className={styles.loading} aria-live="polite"><button id="world-exit" onClick={onClose}><ArrowLeft size={18} />Назад</button><Compass size={32} /><h1>Лес Мохлика</h1>
     <p>{world.error ?? "Открываем вашу полянку…"}</p>{world.error && <button onClick={() => void world.retry()}>Попробовать ещё раз</button>}</section>;
   const state = renderedState ?? snapshot.state;
+  const expeditionReady = Boolean(economicJourney && economy.now >= Date.parse(economicJourney.finishesAt));
   const locked = busy || uncertain;
   const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
   const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : "Ещё";
@@ -222,8 +223,10 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           data-full={economy.snapshot && economy.snapshot.storage.available <= 0 || undefined} onClick={() => toggleQuick("pantry")}>
           <Package size={18} aria-hidden="true" /><span>Кладовая</span>
         </button>
-        <button data-world-quick="expeditions" aria-haspopup="dialog" aria-expanded={quickMenu === "expeditions"} aria-controls={quickMenu === "expeditions" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("expeditions")}>
-          <Compass size={18} aria-hidden="true" /><span>В путь</span>{economicJourney && <span className={hudStyles.journeyDot} data-ready={economy.now >= Date.parse(economicJourney.finishesAt) || undefined} aria-label={economy.now >= Date.parse(economicJourney.finishesAt) ? "Вылазка завершена" : "Мохлик в пути"} />}
+        <button data-world-quick="expeditions" data-expedition-ready={expeditionReady || undefined} aria-haspopup="dialog" aria-expanded={quickMenu === "expeditions"} aria-controls={quickMenu === "expeditions" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("expeditions")}
+          aria-label={expeditionReady ? "В путь. Вылазка завершена — забрать находки" : economicJourney ? "В путь. Мохлик в пути" : "В путь"}>
+          <span className={hudStyles.expeditionIcon}><Compass size={18} aria-hidden="true" />{expeditionReady && <span className={hudStyles.expeditionCheck}><Check size={9} aria-hidden="true" /></span>}</span>
+          <span className={hudStyles.expeditionLabel}>В путь{expeditionReady && <small>Находки ждут</small>}</span>{economicJourney && !expeditionReady && <span className={hudStyles.journeyDot} aria-hidden="true" />}
         </button>
         <button data-world-quick="more" aria-haspopup="dialog" aria-expanded={quickMenu === "more"} aria-controls={quickMenu === "more" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("more")}><MoreHorizontal size={19} aria-hidden="true" /><span>Ещё</span></button>
       </nav>

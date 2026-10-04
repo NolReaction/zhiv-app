@@ -133,6 +133,10 @@ test("garden buttons explain unavailable state without inventing ripe berries or
   assert.match(gardenDevActionUnavailable("grow-berries", undefined, WORLD_DEV_DEFAULTS), /Дождитесь загрузки/);
   assert.match(gardenDevActionUnavailable("grow-berries", { ...garden, bushes: [] }, WORLD_DEV_DEFAULTS), /Нет ягодного куста/);
   assert.equal(gardenDevActionUnavailable("idle", undefined, WORLD_DEV_DEFAULTS), null);
+  const managed = { ...garden, managed: true };
+  assert.match(gardenDevActionUnavailable("grow-berries", managed, WORLD_DEV_DEFAULTS), /Читы.*Только производство.*Убрать ожидание/);
+  assert.match(gardenDevActionUnavailable("harvest-berries", managed, WORLD_DEV_DEFAULTS), /меню куста/);
+  assert.equal(gardenDevActionUnavailable("water-bush", managed, WORLD_DEV_DEFAULTS), null, "watering remains a cosmetic care check");
 });
 
 test("all one-shot poses remain available and selecting a preview does not launch it", () => {

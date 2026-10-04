@@ -81,7 +81,7 @@ function requireBuildings(state: EconomyState, required: Record<string, number>)
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}): string {
   if (command.action !== "speedup_construction" && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
-  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards">, seconds: number, cost: EconomyCost) => {
+  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection">, seconds: number, cost: EconomyCost) => {
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
     debit(state, cost);
@@ -98,15 +98,36 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       requireBuildings(state, recipe.requiredBuildings);
       if (state.jobs.some(job => job.targetId === recipe.buildingId && ["production", "construction"].includes(job.kind))) fail("ECONOMY_BUILDING_BUSY", "Здание уже занято. Заберите готовый результат");
       createJob({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
+        ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}),
         rewards: Object.fromEntries(Object.entries(recipe.rewards).map(([item, amount]) => [item, amount * command.quantity])) },
       recipe.seconds * command.quantity, scaledEconomyCost(recipe.cost, command.quantity));
       return "Производство запущено";
+    }
+    case "start_collection": {
+      const job = state.jobs.find(item => item.id === command.targetId);
+      if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
+      const spec = job.collection ?? economyCatalog.recipes.find(recipe => recipe.id === job.recipeId)?.collection;
+      if (job.kind !== "production" || job.targetId !== "garden" || !(job.rewards.berries > 0) || !spec)
+        return fail("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется");
+      if (job.collection?.startedAt) return fail("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай");
+      if (now < Date.parse(job.finishesAt)) return fail("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел");
+      if (state.jobs.some(item => item.kind === "exploration" && now < Date.parse(item.finishesAt)))
+        return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в вылазке. Дождитесь его возвращения");
+      if (state.jobs.some(item => item.collection?.startedAt))
+        return fail("ECONOMY_COLLECTOR_BUSY", "Сначала завершите текущий сбор припасов");
+      const inventory = { ...state.inventory };
+      for (const [item, quantity] of Object.entries(job.rewards)) inventory[item] = (inventory[item] ?? 0) + quantity;
+      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      job.collection = { kind: spec.kind, seconds: spec.seconds,
+        startedAt: new Date(now).toISOString(), finishesAt: new Date(now + spec.seconds * 1000).toISOString() };
+      return "Мохлик отправился собирать урожай";
     }
     case "start_exploration": {
       const route = economyCatalog.explorations.find(item => item.id === command.targetId);
       if (!route) return fail("ECONOMY_EXPLORATION", "Место исследования не найдено");
       requireHome(state, route.requiredHomeLevel);
       requireBuildings(state, route.requiredBuildings);
+      if (state.jobs.some(job => job.collection?.startedAt)) fail("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов");
       if (state.jobs.some(job => job.kind === "exploration")) fail("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Заберите его находки");
       createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards: { ...route.rewards } }, route.seconds, route.cost);
       return "Мохлик отправился исследовать мир";
@@ -140,6 +161,10 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
       if (now < Date.parse(job.finishesAt)) fail("ECONOMY_JOB_NOT_READY", "Работа ещё не закончена");
+      if (job.collection) {
+        if (!job.collection.startedAt || !job.collection.finishesAt) fail("ECONOMY_COLLECTION_REQUIRED", "Сначала отправьте Мохлика собрать урожай");
+        if (now < Date.parse(job.collection.finishesAt!)) fail("ECONOMY_COLLECTION_NOT_READY", "Мохлик ещё собирает урожай");
+      }
       if (job.kind === "construction") state.buildings[job.targetId] = job.targetLevel!;
       else {
         const inventory = { ...state.inventory };

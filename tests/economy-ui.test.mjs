@@ -73,17 +73,17 @@ test("construction checks materials together with coins and only opens when the 
   assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
 });
 
-test("uncollected production owns its station and rewards are claimable only after the server deadline", () => {
+test("berry production owns its station and collection opens only after the server deadline", () => {
   const state = snapshot({ jobs: [job()] });
   let html = render("production", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Начать · 10 мин")), true);
-  assert.equal(disabled(button(html, "Забрать: Вырастить ягоды")), true);
+  assert.equal(disabled(button(html, "Растут: Вырастить ягоды")), true);
   assert.match(html, /Здание занято текущим заказом/);
   state.jobs[0].finishesAt = new Date(now).toISOString();
   html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Забрать: Вырастить ягоды")), false);
+  assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), false);
   assert.equal(disabled(button(html, "Начать · 10 мин")), true);
-  assert.match(html, /Можно забрать/);
+  assert.match(html, /Ягоды созрели/);
 });
 
 test("an active house build keeps the current level and does not offer a second construction", () => {
@@ -99,7 +99,7 @@ test("an active house build keeps the current level and does not offer a second 
 test("uncertain commands and retry cooldown prevent duplicate actions while navigation remains usable", () => {
   const state = snapshot({ jobs: [job({ finishesAt: new Date(now - 1).toISOString() })] });
   let html = render("overview", controller({ snapshot: state, uncertain: true, error: "No response" }));
-  assert.equal(disabled(button(html, "Забрать: Вырастить ягоды")), true);
+  assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), true);
   assert.equal(disabled(button(html, "Проверить результат")), false);
   assert.equal(disabled(button(html, "Производство")), false);
   html = render("production", controller({ snapshot: snapshot(), retryAt: now + 15_000, error: "Повторите позже" }));
@@ -183,7 +183,7 @@ test("full storage leaves ready rewards safe and offers recovery without prevent
   const readyJob = job({ finishesAt: new Date(now).toISOString() });
   const state = snapshot({ inventory: { wood: 197 }, jobs: [readyJob], storage: { capacity: 200, used: 197, reserved: 0, available: 3, overflow: 0 } });
   let html = render("overview", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Забрать: Вырастить ягоды")), true);
+  assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), true);
   assert.match(html, /нужно 6 мест, свободно 3/);
   assert.match(html, /не портятся/);
   assert.ok(button(html, "Освободить место"));

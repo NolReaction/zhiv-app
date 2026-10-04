@@ -39,9 +39,20 @@ export function chooseForestGoal(navigation: WorldNavigation, interests: readonl
   }
   // A few fresh grass positions keep the named landmarks from becoming another fixed loop.
   // The bounded sample/path budgets also keep a disconnected region inexpensive.
+  // World roads do not turn a casual sniff into a walk across the whole island.
+  // Authored local interests define its neighbourhood; explicit trips still
+  // search the complete navigation network through requestClearingPoint.
+  const centres = interests.length ? interests.slice(0, 24).map(interest => interest.position) : [position];
+  const margin = size * 1.2;
+  const sample = {
+    left: Math.max(navigation.bounds.x, Math.min(...centres.map(point => point.x)) - margin),
+    top: Math.max(navigation.bounds.y, Math.min(...centres.map(point => point.y)) - margin),
+    right: Math.min(navigation.bounds.x + navigation.bounds.width, Math.max(...centres.map(point => point.x)) + margin),
+    bottom: Math.min(navigation.bounds.y + navigation.bounds.height, Math.max(...centres.map(point => point.y)) + margin),
+  };
   for (let attempt = 0, accepted = 0; attempt < 24 && accepted < 4; attempt++) {
-    const point = { x: navigation.bounds.x + random() * navigation.bounds.width,
-      y: navigation.bounds.y + random() * navigation.bounds.height };
+    const point = { x: sample.left + random() * (sample.right - sample.left),
+      y: sample.top + random() * (sample.bottom - sample.top) };
     if (distance(position, point) < size * .35 || !isWalkable(navigation, point)) continue;
     const id = `grass-${Math.round(point.x / size)}-${Math.round(point.y / size)}`;
     if (choiceIds.has(id)) continue;

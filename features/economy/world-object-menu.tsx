@@ -9,6 +9,7 @@ import type { EconomyController } from "./use-economy";
 import { worldBatchLimit, worldDuration, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldMissingRequirements, worldPlaceForStation, worldProductionReason, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "./world-stations";
 import { Cost, Requirements, Work, ProductIcon, stationIcons, itemName, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
 import { WorldUpgradeDialog } from "./world-upgrade-dialog";
+import { useGardenCollection } from "./garden-collection-context";
 import styles from "./world-object-menu.module.css";
 
 export type WorldObjectMenuProps = {
@@ -93,6 +94,13 @@ function Sale({ economy, itemId, onCollapse }: { economy: ReadyEconomy; itemId: 
 }
 
 function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId }: WorldObjectMenuProps) {
+  const collection = useGardenCollection();
+  const seenHarvest = useRef(collection?.request?.requestId);
+  useEffect(() => {
+    const fresh = collection?.request && collection.request.requestId !== seenHarvest.current;
+    seenHarvest.current = collection?.request?.requestId;
+    if (fresh && selection.place === "garden" && collection?.phase === "walking") onClose();
+  }, [collection?.request, collection?.phase, selection.place, onClose]);
   const definition = worldStations[selection.place] ?? { label: selection.objectId, stationIds: [] };
   const initialStation = initialStationId && definition.stationIds.includes(initialStationId) ? initialStationId : definition.stationIds[0] ?? "";
   const [stationId, setStationId] = useState(initialStation);

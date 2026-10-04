@@ -97,6 +97,12 @@ test("garden diagnostics isolate plant progress from care needs and export only 
   assert.equal(bounded.bushes.length, 32); assert.equal(bounded.bushes[0].growth, 0);
   assert.equal(bounded.bushes[0].moisture, 1); assert.equal(bounded.bushes[0].waterIn, 0); assert.equal(bounded.basket.berries, 12);
   assert.match(renderToStaticMarkup(ForestGardenDiagnostics({})), /после загрузки сцены/);
+  snapshot.diagnostics.garden.managed = true;
+  const managed = renderToStaticMarkup(ForestGardenDiagnostics({ garden: snapshot.diagnostics.garden }));
+  assert.match(managed, /Реквизит сбора/);
+  assert.match(managed, /8 секунд/);
+  assert.match(managed, /«Читы»/);
+  assert.doesNotMatch(managed, /12 ягод|без наград|сухой куст растёт медленнее/);
 });
 
 test("DEV shows a harmless loading state, paused state and unavailable local memory", () => {

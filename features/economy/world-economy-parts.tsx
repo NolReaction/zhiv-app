@@ -5,6 +5,8 @@ import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { worldDuration, worldJobProgress, worldMaterialSource, worldMissingRequirements } from "./world-stations";
+import { useGardenCollection } from "./garden-collection-context";
+import { berryCollectionStatus } from "./garden-collection";
 import styles from "./world-object-menu.module.css";
 
 export type ReadyEconomy = EconomyController & { snapshot: EconomyView };
@@ -37,12 +39,18 @@ export function Requirements({ state, required, navigation }: { state: EconomyVi
 }
 
 export function Work({ economy, job, openPantry }: { economy: ReadyEconomy; job: EconomyJob; openPantry?: () => void }) {
+  const collection = useGardenCollection();
+  const berry = berryCollectionStatus(job, economy.snapshot, economy.now, collection);
   const status = worldJobProgress(economy.snapshot, job, economy.now);
   const title = job.kind === "construction" ? `Обустройство · ур. ${job.targetLevel}` : economy.snapshot.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Производство";
   const itemId = Object.keys(job.rewards)[0];
   return <div className={styles.work} data-ready={status.ready || undefined}>
-    <div className={styles.workTop}><span className={styles.workIcon}>{job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span></div><button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || status.storageShortfall > 0} onClick={() => void economy.act("claim_job", job.id)} aria-label={`${job.kind === "construction" ? "Завершить" : "Забрать"}: ${title}`}>{status.ready ? <Check size={15} aria-hidden="true" /> : <Clock3 size={15} aria-hidden="true" />}{status.ready ? job.kind === "construction" ? "Завершить" : "Забрать" : "В работе"}</button></div>
-    <progress className={styles.progress} value={status.progress} max={1} aria-label={`Готовность: ${title}`} />
+    <div className={styles.workTop}><span className={styles.workIcon}>{job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span></div><button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled} onClick={() => {
+      if (berry && collection) collection.start(job.id);
+      else economy.act(berry && !berry.started ? "start_collection" : "claim_job", job.id);
+    }} aria-label={`${berry?.button ?? (job.kind === "construction" ? "Завершить" : "Забрать")}: ${title}`}>{status.ready && !berry?.collecting ? <Check size={15} aria-hidden="true" /> : <Clock3 size={15} aria-hidden="true" />}{berry?.button ?? (status.ready ? job.kind === "construction" ? "Завершить" : "Забрать" : "В работе")}</button></div>
+    <progress className={styles.progress} value={berry?.collecting ? undefined : status.progress} max={1} aria-label={berry?.collecting ? "Сбор урожая" : `Готовность: ${title}`} />
+    {berry?.away && status.ready && <p className={styles.hint}>Мохлик соберёт ягоды, когда вернётся из вылазки.</p>}
     {status.storageShortfall > 0 && status.ready && <p className={styles.hint}>Нужно освободить {number(status.storageShortfall)} мест.{openPantry && <button type="button" className={styles.textButton} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
   </div>;
 }

@@ -86,6 +86,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   let timer: ReturnType<typeof setTimeout> | null = null, requestController: AbortController | null = null;
   let needsRead = true, takeOverRequested = false, failures = 0, lastAppliedRevision: number | null = null;
   let due = 0, leaseDeadline = 0, finalSnapshot: ForestMemoryPayload | null = null;
+  let preserveLiveScene = false;
   let status: ForestMemorySyncStatus = Object.freeze({ mode: "loading", revision: null, serverSavedAt: null, canTakeOver: false });
   const clone = (snapshot: ForestMemoryPayload): ForestMemoryPayload => JSON.parse(JSON.stringify(snapshot));
   const isLive = () => !disposed && !disabled;
@@ -105,11 +106,20 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   }
   function accept(state: ForestMemoryView, apply: boolean, requestStarted = env.now()) {
     if (state.ownerPublicId !== options.ownerPublicId) throw new ApiError("Аккаунт изменился", 409, { code: "FOREST_MEMORY_ACCOUNT_CHANGED", message: "Аккаунт изменился" });
-    view = state;
-    leaseDeadline = state.lease.expiresAt
+    // The same live lease has no other writer. A visible camera handoff may
+    // re-read our own snapshot without resetting the in-flight actor and props.
+    // Hidden/reloaded, expired and foreign sessions always hydrate normally.
+    const nextDeadline = state.lease.expiresAt
       ? requestStarted + Math.max(0, Date.parse(state.lease.expiresAt) - Date.parse(state.serverTime)) : 0;
-    if (apply && state.snapshot && lastAppliedRevision !== state.revision) {
-      options.apply(clone(state.snapshot)); lastAppliedRevision = state.revision;
+    const preserveRequested = preserveLiveScene;
+    const retain = preserveRequested && ownsLease() && state.lease.owned && env.now() < nextDeadline
+      && state.lease.token === view?.lease.token;
+    if (apply) preserveLiveScene = false;
+    view = state;
+    leaseDeadline = nextDeadline;
+    if (apply && state.snapshot && (lastAppliedRevision !== state.revision || preserveRequested && !retain)) {
+      if (!retain) options.apply(clone(state.snapshot));
+      lastAppliedRevision = state.revision;
     }
   }
   function command(action: ForestMemoryCommand["action"], snapshot?: ForestMemoryPayload): ForestMemoryCommand {
@@ -126,6 +136,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   function stopWithError() { disabled = true; pending = null; retiring = false; clearTimer(); publish("error"); }
   function handleError(error: unknown) {
     if (!isLive()) return;
+    preserveLiveScene = false;
     const api = error instanceof ApiError ? error : null;
     const code = api?.body && "code" in api.body ? api.body.code : undefined;
     if (api?.status === 401 || api?.status === 403 || code === "FOREST_MEMORY_ACCOUNT_CHANGED") { stopWithError(); return; }
@@ -197,15 +208,18 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   return {
     getStatus: () => status,
     isSimulationAllowed: () => disabled && status.mode === "disabled" || active && ownsLease() && (status.mode === "synced" || status.mode === "saving"),
-    setActive(value: boolean) {
+    setActive(value: boolean, preserveCurrentScene = false) {
+      if (!value) preserveLiveScene = false;
       if (!isLive() || active === value) return;
       active = value; clearTimer();
       if (active) {
         // Offline/hidden changes never overwrite an existing server snapshot on reconnect.
         retiring = false; finalSnapshot = null;
+        preserveLiveScene = preserveCurrentScene;
         needsRead = true; lastAppliedRevision = null; publish("loading");
         schedule(0);
       } else {
+        preserveLiveScene = false;
         finalSnapshot = ownsLease() ? clone(options.capture()) : null; retiring = true;
         if (!busy) void pump();
       }

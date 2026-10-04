@@ -4,6 +4,7 @@ import { compileWorldInteractions } from "./interaction-navigation";
 import { isForestGroundClear } from "./forest-ground-weather";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { forestGardenBerryLayout } from "./forest-garden-layout";
+import { economyGardenGrowth, type EconomySceneGarden, type GardenHarvestEvent, type GardenHarvestRequest } from "./economy-garden-state";
 
 export type ForestGardenAction = "water-bush" | "harvest-berries";
 export type ForestGardenPhase = "approach-basket" | "take-basket" | "approach-bush" | "water" | "collect"
@@ -25,6 +26,10 @@ export type ForestGardenState = {
   basketUnavailable?: boolean;
   basketCorridors: WorldPoint[][];
   routine: ForestGardenRoutine | null; nextActionAt: number;
+  /** Undefined retains legacy/DEV growth; null is a managed empty bush. Never persisted. */
+  production?: EconomySceneGarden | null;
+  harvest?: { request: GardenHarvestRequest; phase: "pending" | "running" | "completed" } | null;
+  harvestEvent?: GardenHarvestEvent | null;
 };
 export const FOREST_GARDEN_LIMITS = { harvest: 3, capacity: 12, basketSize: 14, waterCooldown: 600, maxBushes: 32 } as const;
 const unit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
@@ -119,7 +124,7 @@ export function createForestGarden(scene: FixedWorldScene): ForestGardenState {
   return state;
 }
 
-/** The director is the sole active clock. A suspended tab never catches up growth. */
+/** Only the cosmetic garden uses the active clock. Economic crops use server dates. */
 export function advanceForestGarden(state: ForestGardenState, delta: number, options: { rain: number }) {
   if (!Number.isFinite(delta) || delta <= 0) return;
   const dt = Math.min(delta, .1), rain = unit(options.rain);
@@ -129,8 +134,15 @@ export function advanceForestGarden(state: ForestGardenState, delta: number, opt
     bush.moisture = unit(bush.moisture + dt * (rain > .1 ? rain / 90 : -1 / 1500));
     bush.waterIn = Math.max(0, bush.waterIn - dt);
     // A watered bush takes 30 minutes; a dry bush still grows in 60. Nothing dies.
-    bush.growth = unit(bush.growth + dt * (1 + bush.moisture) / 3600);
+    if (state.production === undefined) bush.growth = unit(bush.growth + dt * (1 + bush.moisture) / 3600);
   }
+}
+
+/** Server dates are transient and progress is independent of simulation speed. */
+export function syncForestGardenProduction(state: ForestGardenState, crop: EconomySceneGarden | null, now: number) {
+  state.production = crop;
+  const growth = economyGardenGrowth(crop, now);
+  for (const bush of state.bushes) bush.growth = growth;
 }
 
 /** DEV can resize only the rendered rig. Do not stretch it toward a stale work point. */
@@ -150,7 +162,12 @@ export function gardenActionAvailable(state: ForestGardenState, kind: ForestGard
 }
 export function gardenEligibleBushes(state: ForestGardenState, kind: ForestGardenAction): ForestBerryBush[] {
   if (kind === "water-bush" && state.basket?.held) return [];
-  if (kind === "harvest-berries" && (!state.basket || state.basket.berries + FOREST_GARDEN_LIMITS.harvest > state.basket.capacity)) return [];
+  if (kind === "harvest-berries") {
+    if (!state.basket) return [];
+    if (state.production !== undefined) {
+      if (!state.production || state.harvest?.request.jobId !== state.production.jobId || state.harvest.phase === "completed") return [];
+    } else if (state.basket.berries + FOREST_GARDEN_LIMITS.harvest > state.basket.capacity) return [];
+  }
   return state.bushes.filter(bush => bush.workPosition && (kind === "water-bush"
     ? bush.growth < .98 && bush.moisture < .58 && bush.waterIn <= 0 : bush.growth >= .98));
 }
@@ -201,6 +218,10 @@ export function cancelForestGarden(state: ForestGardenState, foot?: WorldPoint, 
   if ((state.routine?.carryingBasket || state.basket?.held) && state.basket && foot && finitePoint(foot))
     parkForestGardenBasket(state, foot, nav);
   state.routine = null;
+  if (state.harvest && state.harvest.phase !== "completed") state.harvestEvent = {
+    ...state.harvest.request, status: "interrupted", reason: "Сбор остановлен — готовый урожай сохранён",
+  };
+  state.harvest = null;
   state.nextActionAt = state.elapsed + 30;
 }
 /** Explicit DEV command; the caller suspends account persistence before requesting it. */

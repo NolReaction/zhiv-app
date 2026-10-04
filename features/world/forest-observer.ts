@@ -5,6 +5,7 @@ import type { ForestMemorySyncStatus } from "./forest-memory-sync";
 import { FOREST_GARDEN_LIMITS, gardenEligibleBushes } from "./forest-garden";
 
 export type ForestGardenObservation = Readonly<{
+  managed?: boolean;
   bushes: ReadonlyArray<Readonly<{ id: string; growth: number; moisture: number; waterIn: number }>>;
   basket: Readonly<{ berries: number; capacity: number }> | null;
   activity: Readonly<{ kind: "water-bush" | "harvest-berries"; phase: string; carryingBasket: boolean }> | null;
@@ -75,7 +76,8 @@ function currentActivity(state: ForestSessionState, options: Options) {
       "approach-basket": "Идёт за корзинкой, чтобы собрать спелые ягоды.",
       "take-basket": "Поднимает корзинку перед сбором ягод.",
       "approach-bush": routine.kind === "water-bush" ? "Идёт к сухому кусту с лейкой." : "Несёт корзинку к спелым ягодам.",
-      water: "Осторожно поливает землю у корней. Влажная почва помогает ягодам расти.",
+      water: life.garden.production === undefined ? "Осторожно поливает землю у корней. Влажная почва помогает ягодам расти."
+        : "Осторожно поливает землю у корней. Срок созревания задан рецептом.",
       collect: "Аккуратно снимает спелые ягоды и складывает их в корзинку.",
       "return-basket": "Возвращает корзинку с урожаем на её место.",
       deposit: "Ставит собранные ягоды рядом с домом.",
@@ -125,10 +127,13 @@ function gardenObservation(state: ForestSessionState): ForestGardenObservation |
     : !garden.bushes.some(bush => bush.workPosition) ? "Нет безопасной точки подхода к кусту. Проверьте свободное место рядом с контуром и WalkAreas в Tiled." : null;
   const waterReason = commonReason ?? (gardenEligibleBushes(garden, "water-bush").length ? null
     : "Полив пока не нужен: куст влажный, недавно полит или ягоды уже созрели.");
-  const harvestReason = commonReason ?? (!garden.basket ? "Для корзинки не найдено свободное место рядом с домом."
+  const managed = garden.production !== undefined;
+  const harvestReason = managed ? "Соберите готовый урожай кнопкой в меню куста. Результат поступит в кладовую после подтверждения сервера."
+    : commonReason ?? (!garden.basket ? "Для корзинки не найдено свободное место рядом с домом."
     : garden.basket.berries + FOREST_GARDEN_LIMITS.harvest > garden.basket.capacity ? "Корзинка заполнена. Новый урожай пока остаётся на кусте."
     : gardenEligibleBushes(garden, "harvest-berries").length ? null : "Ягоды ещё растут. Для проверки нажмите «Созреть ягодам · DEV».");
   return Object.freeze({
+    ...(managed ? { managed: true } : {}),
     bushes: Object.freeze(garden.bushes.slice(0, FOREST_GARDEN_LIMITS.maxBushes).map(bush => Object.freeze({
       id: bush.id.slice(0, 128), growth: percent(bush.growth), moisture: percent(bush.moisture), waterIn: seconds(bush.waterIn),
     }))),

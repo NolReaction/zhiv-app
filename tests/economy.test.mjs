@@ -38,8 +38,10 @@ test("fresh account starts empty with free garden and exploration, cosmetic memo
   const grown = issue(p, "start_production", "grow_berries").state.jobs[0];
   const walking = issue(p, "start_exploration", "forest").state.jobs.find(job => job.kind === "exploration");
   assert.deepEqual(read(p).inventory, {});
-  issue(p, "claim_job", grown.id, 1, Date.parse(grown.finishesAt));
-  const collected = issue(p, "claim_job", walking.id, 1, Date.parse(walking.finishesAt)).state;
+  const returnedAt = Date.parse(walking.finishesAt);
+  issue(p, "claim_job", walking.id, 1, returnedAt);
+  const collecting = issue(p, "start_collection", grown.id, 1, returnedAt).state.jobs[0];
+  const collected = issue(p, "claim_job", grown.id, 1, Date.parse(collecting.collection.finishesAt)).state;
   const expected = { ...grown.rewards };
   for (const [item, amount] of Object.entries(walking.rewards)) expected[item] = (expected[item] ?? 0) + amount;
   assert.deepEqual(collected.inventory, expected);
@@ -70,6 +72,10 @@ test("an empty account reaches home two with bush and forest goods before openin
     const started = issue(p, action, targetId, quantity, clock).state;
     const job = started.jobs.at(-1);
     clock = Date.parse(job.finishesAt);
+    if (job.collection) {
+      const collecting = issue(p, "start_collection", job.id, 1, clock).state.jobs.find(item => item.id === job.id);
+      clock = Date.parse(collecting.collection.finishesAt);
+    }
     return issue(p, "claim_job", job.id, 1, clock).state;
   };
   assert.deepEqual(read(p).inventory, {});
@@ -298,7 +304,7 @@ test("escrow reserves return capacity, so harvesting cannot prevent cancellation
   const lot = trade(p, "create_listing", "berries", 10, 30).listing;
   const job = issue(p, "start_production", "grow_berries").state.jobs[0];
   const before = read(p);
-  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_CAPACITY" });
+  assert.throws(() => issue(p, "start_collection", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_CAPACITY" });
   assert.deepEqual(read(p), before);
   trade(p, "cancel_listing", lot.id);
   assert.equal(row.state.inventory.berries, model.ECONOMY_MAX_BALANCE);
@@ -318,10 +324,11 @@ test("warehouse counts mixed goods and an unsuccessful harvest keeps the ready j
   const job = issue(p, "start_production", "grow_berries").state.jobs[0];
   assert.deepEqual(read(p).storage, { capacity: 200, used: 199, reserved: 0, available: 1, overflow: 0 });
   const before = read(p);
-  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_STORAGE_FULL" });
+  assert.throws(() => issue(p, "start_collection", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p), before);
   issue(p, "sell", "wood", Object.values(job.rewards).reduce((a, b) => a + b, 0));
-  const claimed = issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)).state;
+  const collecting = issue(p, "start_collection", job.id, 1, Date.parse(job.finishesAt)).state.jobs.find(item => item.id === job.id);
+  const claimed = issue(p, "claim_job", job.id, 1, Date.parse(collecting.collection.finishesAt)).state;
   assert.equal(claimed.jobs.length, 0); assert.equal(claimed.storage.used, 199);
 });
 
@@ -330,7 +337,7 @@ test("market escrow occupies shared storage across item types and cancellation n
   const lot = trade(p, "create_listing", "wood", 50, 200).listing;
   assert.deepEqual(read(p).storage, { capacity: 200, used: 150, reserved: 50, available: 0, overflow: 0 });
   const job = issue(p, "start_production", "grow_berries").state.jobs[0];
-  assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_STORAGE_FULL" });
+  assert.throws(() => issue(p, "start_collection", job.id, 1, Date.parse(job.finishesAt)), { code: "ECONOMY_STORAGE_FULL" });
   const cancelled = trade(p, "cancel_listing", lot.id).state;
   assert.deepEqual(cancelled.storage, { capacity: 200, used: 200, reserved: 0, available: 0, overflow: 0 });
   assert.equal(cancelled.inventory.wood, 100); assert.equal(cancelled.jobs.length, 1);

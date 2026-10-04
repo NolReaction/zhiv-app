@@ -1645,7 +1645,7 @@ test("tapping a held mushroom finishes putting it back before greeting and repea
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
-test("only visible inactivity sends the hero indoors and the house menu leaves explicit waking available", async () => {
+test("only visible inactivity sends the hero indoors and a house tap wakes him while opening its menu", async () => {
   const { mountHabitat, createMapEngine, worldDevStore, pixelSprite } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
   const env = browser(); let scene, engine;
   try {
@@ -1682,10 +1682,9 @@ test("only visible inactivity sends the hero indoors and the house menu leaves e
     map.events.get("pointerdown")({ ...tap, type: "pointerdown" });
     map.events.get("pointerup")({ ...tap, type: "pointerup" });
     assert.deepEqual(places, ["house"], "the house tap opens its object menu while the resident sleeps");
-    assert.equal(sample().body, undefined, "opening the menu does not wake or reveal the resident");
-    engine.notice();
+    assert.equal(sample().body, undefined, "the resident exits through the door rather than appearing instantly");
     engine.dispose(); engine = null;
-    clock.until(() => Boolean(sample().body), "explicit attention starts the resident's exit", 100);
+    clock.until(() => Boolean(sample().body), "the house tap alone starts the resident's exit", 100);
     let previous = scene.position();
     const awakePoses = new Set();
     for (let i = 0; i < 240; i++) {
@@ -1728,11 +1727,101 @@ test("indoor sleep survives circle/world ownership handoff and a circle tap wake
     await flush();
     assert.deepEqual(circle.position(), sleepingAt); assert.equal(circle.ambience().elapsed, elapsed);
     assert.equal(sampleHero(circle, env, pixelSprite).body, undefined, "returning to the circle preserves indoor sleep");
+    const homeTouch = circlePoint({ x: 675, y: 610 });
+    assert.equal(circle.hitPet(homeTouch.x, homeTouch.y), true, "the home in the circle remains a reachable wake target");
     circle.notice();
     clock.until(() => Boolean(sampleHero(circle, env, pixelSprite).body), "tapping the circle brings its resident outside", 100);
     clock.advance(4);
     assert.equal(sampleHero(circle, env, pixelSprite).hasPose("sleep"), false);
   } finally { scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
+});
+
+test("a home marker wakes its sleeping resident once, while camera movement and canceled gestures leave him asleep", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, presenceKey: "home-marker-wake" };
+    const canvas = env.surface(400), places = [], marker = Object.assign(env.surface(), {
+      dataset: { objectId: "home", kind: "house" }, style: {},
+    });
+    const loading = createMapEngine(canvas, initial, place => places.push(place), [marker]);
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const clock = sceneClock(env);
+    worldDevStore.triggerLife("home-sleep");
+    clock.until(() => probe.state.clearing.stage === "home-sleep", "the resident sleeps behind the home artwork", 600);
+    engine.control("home"); engine.setSelectedObject("home");
+    dragMap(canvas, 15, -10);
+    assert.equal(probe.state.clearing.stage, "home-sleep", "camera controls, selection tracking and pan cannot wake the resident");
+    const event = (pointerId = 1) => {
+      const projection = mapProjection(canvas);
+      return { pointerId, pointerType: "touch", button: 0,
+        clientX: projection.left + clearingHome.anchor.x * projection.zoom,
+        clientY: projection.top + clearingHome.anchor.y * projection.zoom };
+    };
+    let touch = event();
+    marker.events.get("pointerdown")({ ...touch, type: "pointerdown" });
+    marker.events.get("pointermove")({ ...touch, type: "pointermove", clientX: touch.clientX + 20 });
+    marker.events.get("pointerup")({ ...touch, type: "pointerup", clientX: touch.clientX + 20 });
+    canvas.flushFrame();
+    touch = event();
+    marker.events.get("pointerdown")({ ...touch, type: "pointerdown" });
+    marker.events.get("pointercancel")({ ...touch, type: "pointercancel" });
+    const second = { ...touch, pointerId: 2, clientX: touch.clientX + 40 };
+    marker.events.get("pointerdown")({ ...touch, type: "pointerdown" });
+    canvas.events.get("pointerdown")({ ...second, type: "pointerdown" });
+    marker.events.get("pointerup")({ ...touch, type: "pointerup" });
+    canvas.events.get("pointerup")({ ...second, type: "pointerup" });
+    assert.equal(probe.state.clearing.stage, "home-sleep", "marker drag, cancellation and pinch cannot wake him");
+    assert.deepEqual(places, []);
+    touch = event();
+    marker.events.get("pointerdown")({ ...touch, type: "pointerdown" });
+    marker.events.get("pointerup")({ ...touch, type: "pointerup" });
+    marker.events.get("lostpointercapture")({ ...touch, type: "lostpointercapture" });
+    assert.deepEqual(places, ["house"], "the same deliberate tap opens the building exactly once");
+    assert.equal(probe.state.clearing.stage, "exiting");
+    clock.step();
+    const progress = probe.state.clearing.doorProgress;
+    engine.activateObject("home");
+    assert.equal(probe.state.clearing.doorProgress, progress, "another activation cannot restart the exit");
+    clock.until(() => probe.state.clearing.routeKind !== "home", "the resident finishes leaving the house", 600);
+    const stage = probe.state.clearing.stage;
+    engine.activateObject("home");
+    assert.equal(probe.state.clearing.stage, stage, "an ordinary house menu does not interrupt an outdoor resident");
+    assert.deepEqual(places, ["house", "house", "house"]);
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("home waking interrupts entry, respects hidden heroes, and supports a still circle without teleporting on ordinary menu reads", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, presenceKey: "home-entry-wake" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "world", 0, 0, () => {});
+    const clock = sceneClock(env);
+    assert.equal(scene.wakeHomeResident(), false, "opening a home while its resident is outdoors has no attention side effect");
+    worldDevStore.triggerLife("home-sleep");
+    clock.until(() => probe.state.clearing.stage === "entering", "the resident starts crossing the doorway", 600);
+    const entering = scene.position();
+    assert.equal(scene.wakeHomeResident(), true);
+    assert.equal(probe.state.clearing.stage, "exiting");
+    assert.deepEqual(scene.position(), entering, "an interrupted entry reverses at its current position");
+    clock.until(() => probe.state.clearing.routeKind !== "home", "the interrupted entry returns outside", 600);
+    worldDevStore.triggerLife("home-sleep");
+    clock.until(() => probe.state.clearing.stage === "home-sleep", "the resident can later sleep normally", 600);
+    worldDevStore.patch({ showHero: false });
+    assert.equal(scene.wakeHomeResident(), false);
+    assert.equal(probe.state.clearing.stage, "home-sleep", "a hidden DEV hero is not moved by the building API");
+    worldDevStore.patch({ showHero: true });
+    scene.configure({ ...initial, reducedMotion: true });
+    assert.equal(scene.wakeHomeResident(), true);
+    assert.notEqual(probe.state.clearing.stage, "home-sleep", "reduced motion still brings the resident outside");
+    assert.equal(scene.wakeHomeResident(), false, "an already-awake resident cannot restart a static response");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
 test("hiding the home returns its sleeping resident outside even when automatic life is disabled", async () => {
@@ -2403,7 +2492,7 @@ test("exploration server clock corrects backwards independently of the monotonic
   } finally { scene?.dispose(); env.restore(); }
 });
 
-test("map selection uses committed house geometry and menu taps preserve a sleeping resident", async () => {
+test("map selection uses committed house geometry and home activation wakes a sleeping resident", async () => {
   const geometry = offset => ({
     bounds: { ...clearingHome.bounds, x: clearingHome.bounds.x + offset },
     anchor: { ...clearingHome.anchor, x: clearingHome.anchor.x + offset },
@@ -2437,9 +2526,7 @@ test("map selection uses committed house geometry and menu taps preserve a sleep
     clock.until(() => probe.state.clearing.stage === "home-sleep", "the hero reaches the authored home", 600);
     tap(630, 600);
     assert.deepEqual(places, ["house", "house"], "the same target opens the house menu while its resident sleeps");
-    assert.equal(probe.state.clearing.stage, "home-sleep", "menu activation preserves indoor sleep");
-    engine.notice();
-    assert.notEqual(probe.state.clearing.stage, "home-sleep", "attention remains an explicit wake-up action");
+    assert.equal(probe.state.clearing.stage, "exiting", "house activation wakes the resident without blocking construction");
     clock.until(() => probe.state.clearing.routeKind !== "home", "waking finishes the real exit", 600);
     const previousAnchor = anchor.style.transform;
     const previousSelection = selections.at(-1), selectionCount = selections.length;
@@ -2462,4 +2549,141 @@ test("map selection uses committed house geometry and menu taps preserve a sleep
     assert.equal(places.length, 3);
     assert.equal(anchor.style.visibility, "hidden");
   } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("economic garden uses wall time in both cameras and emits one harvest fallback across handoff", async () => {
+  const bushes = [{ id: "economic-bush", points: [{ x: 602, y: 617 }, { x: 642, y: 617 }, { x: 642, y: 647 }, { x: 602, y: 647 }],
+    entry: { x: 591, y: 650 }, hide: { x: 622, y: 643 } }];
+  const { mountHabitat, connectForestSession, TILED_WORLD } = await modules({ bushes, navigation: livingNavigation });
+  const env = browser(), views = [], events = [];
+  let probe;
+  try {
+    const end = Date.parse("2026-10-04T12:00:00Z");
+    const crop = { jobId: "crop-scene", startedAt: new Date(end - 600000).toISOString(), finishesAt: new Date(end).toISOString() };
+    const request = { requestId: 1, jobId: crop.jobId };
+    const initial = { ...options, serverNow: end, presenceKey: "garden-controller-account", economyGarden: crop,
+      gardenHarvestRequest: request, onGardenHarvestEvent: event => events.push(event) };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world);
+    env.finishPath("/test-ground.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", end, 0, () => {});
+    assert.equal(probe.state.life.garden.bushes[0].growth, 1);
+    assert.equal(events.length, 1, "reduced motion emits once for the shared session");
+    assert.equal(events[0].status, "unavailable");
+    for (const view of views) view.paintWorld(env.surface().context);
+    world.dispose(); await flush();
+    circle.paintWorld(env.surface().context); await flush();
+    assert.equal(events.length, 1, "camera handoff cannot restart the same request");
+    circle.configure({ ...initial, serverNow: end - 300000, gardenHarvestRequest: null });
+    assert.ok(Math.abs(probe.state.life.garden.bushes[0].growth - .49) < .0001, "a corrected server sample owns the displayed growth");
+    circle.configure({ ...initial, economyGarden: null, gardenHarvestRequest: null });
+    assert.equal(probe.state.life.garden.bushes[0].growth, 0, "claimed crop cannot survive as decorative berries");
+  } finally { probe?.release(); views.forEach(view => view.dispose()); env.restore(); }
+});
+
+test("background garden snapshots cannot cancel the owner's delivery and a removed job stops pending work", async () => {
+  const bushes = [{ id: "economic-bush", points: [{ x: 602, y: 617 }, { x: 642, y: 617 }, { x: 642, y: 647 }, { x: 602, y: 647 }],
+    entry: { x: 591, y: 650 }, hide: { x: 622, y: 643 } }];
+  const { mountHabitat, connectForestSession, TILED_WORLD } = await modules({ bushes, navigation: livingNavigation });
+  const env = browser(), views = [], events = []; let probe;
+  try {
+    const end = Date.parse("2026-10-04T12:00:00Z");
+    const crop = { jobId: "crop-live", startedAt: new Date(end - 600000).toISOString(), finishesAt: new Date(end).toISOString() };
+    const initial = { ...options, reducedMotion: false, serverNow: end, presenceKey: "garden-live-handoff", economyGarden: crop,
+      gardenHarvestRequest: { requestId: 1, jobId: crop.jobId }, onGardenHarvestEvent: event => events.push(event) };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finishPath("/test-ground.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", end, 0, () => {});
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+    assert.deepEqual(events.map(event => event.status), ["started"]);
+    const garden = probe.state.life.garden;
+    assert.equal(garden.harvest.phase, "pending");
+    circle.configure({ ...initial, economyGarden: null, gardenHarvestRequest: null });
+    circle.paintWorld(env.surface().context);
+    assert.equal(garden.production.jobId, crop.jobId);
+    assert.equal(garden.harvest.phase, "pending", "a background camera cannot invalidate its owner's accepted request");
+    assert.equal(probe.state.pendingLife, "harvest-berries");
+    // Simulate a persisted old/fallback routine whose transient request is gone.
+    garden.harvest = null;
+    garden.routine = { kind: "harvest-berries", bushId: "economic-bush", phase: "take-basket", elapsed: 0, totalElapsed: 1, carryingBasket: false };
+    world.configure({ ...initial, view: "world", economyGarden: null, gardenHarvestRequest: null });
+    assert.equal(garden.routine, null, "claim response must stop stale visual collection even without its request object");
+    assert.equal(probe.state.pendingLife, null);
+    assert.equal(garden.bushes[0].growth, 0);
+    assert.ok(!events.some(event => event.status === "completed"));
+  } finally { probe?.release(); views.forEach(view => view.dispose()); env.restore(); }
+});
+
+test("garden handoff waits through lease loading and confirmed lease refusal cancels visible work", async () => {
+  const bushes = [{ id: "economic-bush", points: [{ x: 602, y: 617 }, { x: 642, y: 617 }, { x: 642, y: 647 }, { x: 602, y: 647 }],
+    entry: { x: 591, y: 650 }, hide: { x: 622, y: 643 } }];
+  const { mountHabitat, connectForestSession, TILED_WORLD } = await modules({ bushes, navigation: livingNavigation });
+  const env = browser(), views = [], probes = [];
+  try {
+    for (const refused of [false, true]) {
+      const timers = new Map(), events = []; let serial = 0, reads = 0, revision = 0, owned = false, delayedRead, savedSnapshot = null;
+      const owner = refused ? "1234-ABCD-EFGJ" : "1234-ABCD-EFGH";
+      const key = `zhiv:mochlik:presence:${owner}`, end = Date.parse("2026-10-04T12:00:00Z");
+      const crop = { jobId: `crop-${owner}`, startedAt: new Date(end - 600000).toISOString(), finishesAt: new Date(end).toISOString() };
+      const serverView = () => ({ ownerPublicId: owner, revision, snapshot: savedSnapshot, serverTime: new Date(end).toISOString(), updatedAt: null,
+        lease: { owned: !refused && owned, token: !refused && owned ? "test-lease" : null,
+          expiresAt: refused || owned ? new Date(end + 90_000).toISOString() : null } });
+      const environment = { now: () => end, randomUUID: () => `00000000-0000-4000-8000-${(++serial).toString().padStart(12, "0")}`,
+        setTimeout(callback, delay) { const id = ++serial; timers.set(id, { callback, delay }); return id; }, clearTimeout(id) { timers.delete(id); } };
+      const transport = { async read() {
+        if (++reads > 1 && !refused) return new Promise(resolve => { delayedRead = resolve; });
+        return serverView();
+      }, async command(command) {
+        if (command.action === "acquire") owned = true;
+        if (command.action === "save") savedSnapshot = command.snapshot;
+        if (command.action === "release") owned = false;
+        revision++; return { state: serverView(), acceptedRevision: revision, replayed: false };
+      } };
+      const pump = async () => {
+        for (let iteration = 0; iteration < 8; iteration++) {
+          const next = [...timers].find(([, timer]) => timer.delay === 0);
+          if (!next) break;
+          timers.delete(next[0]); next[1].callback(); await flush();
+        }
+      };
+      const probe = connectForestSession(key, TILED_WORLD, "circle", end, 0, () => {}, { sync: { environment, transport } }); probes.push(probe);
+      if (refused) {
+        probe.state.life.garden.production = crop;
+        probe.state.life.garden.harvest = { request: { requestId: 1, jobId: crop.jobId }, phase: "running" };
+        probe.state.life.garden.routine = { kind: "harvest-berries", bushId: "economic-bush", phase: "take-basket", elapsed: 0, totalElapsed: 1, carryingBasket: false };
+      }
+      const initial = { ...options, reducedMotion: false, serverNow: end, presenceKey: key, economyGarden: crop,
+        gardenHarvestRequest: { requestId: 1, jobId: crop.jobId }, onGardenHarvestEvent: event => events.push(event) };
+      const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+      const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+      if (!refused) env.finishPath("/test-ground.webp"); await flush();
+      assert.deepEqual(events, [], "loading the lease cannot release an economic claim");
+      await pump(); await flush();
+      if (refused) {
+        assert.equal(probe.state.memory.sync.mode, "other-device");
+        assert.deepEqual(events.map(event => event.status), ["unavailable"]);
+        assert.equal(probe.state.life.garden.routine, null, "real fallback cannot leave a basket pickup running");
+        continue;
+      }
+      assert.deepEqual(events.map(event => event.status), ["started"]);
+      const sameGarden = probe.state.life.garden, sameClearing = probe.state.clearing;
+      const actualFeet = { ...sameClearing.position };
+      circle.configure({ ...initial, backgrounded: true });
+      const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+      assert.equal(probe.state.memory.sync.mode, "loading");
+      assert.deepEqual(events.map(event => event.status), ["started"], "visible camera handoff is not an unavailable event");
+      await pump();
+      assert.equal(typeof delayedRead, "function");
+      assert.ok(savedSnapshot, "handoff rereads a real saved forest snapshot");
+      delayedRead(serverView()); await flush(); await pump(); await flush();
+      assert.equal(probe.state.memory.sync.mode, "synced");
+      assert.deepEqual(events.map(event => event.status), ["started"]);
+      assert.equal(probe.state.life.garden, sameGarden, "same live lease preserves the actual delivery, not a restarted substitute");
+      assert.equal(probe.state.clearing, sameClearing);
+      assert.deepEqual(probe.state.clearing.position, actualFeet, "camera handoff never resets the feet");
+      assert.equal(probe.state.life.garden.harvest.phase, "pending");
+    }
+  } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); env.restore(); }
 });

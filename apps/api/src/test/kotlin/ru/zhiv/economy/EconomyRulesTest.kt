@@ -30,12 +30,140 @@ class EconomyRulesTest {
         val travelling = apply(garden, "start_exploration", "forest")
         assertEquals(2, travelling.jobs.size)
         val gardenJob = travelling.jobs.first { it.kind == "production" }
-        val harvest = apply(travelling, "claim_job", gardenJob.id, at = Instant.parse(gardenJob.finishesAt))
+        val readyAt = travelling.jobs.maxOf { Instant.parse(it.finishesAt) }
+        val collecting = apply(travelling, "start_collection", gardenJob.id, at = readyAt)
+        val harvest = apply(collecting, "claim_job", gardenJob.id, at = readyAt.plusSeconds(checkNotNull(gardenJob.collection).seconds))
         val berryCount = gardenJob.rewards.getValue("berries")
         val sold = apply(harvest, "sell", "berries", berryCount)
         assertEquals(berryCount * EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, sold.wallet.coins)
         assertEquals(0L, sold.inventory["berries"] ?: 0)
         assertEquals(1, sold.jobs.size)
+    }
+
+    @Test fun `berry recipes snapshot a separate server timed collection and deliver locked rewards only after it finishes`() {
+        val berryRecipes = EconomyRules.catalog.recipes.filter { it.buildingId == "garden" && (it.rewards["berries"] ?: 0L) > 0L }
+        assertEquals(6, berryRecipes.size)
+        for (recipe in berryRecipes) assertEquals(EconomyCollectionSpec("berry_harvest", 8), recipe.collection)
+        val started = apply(EconomyRules.initial(), "start_production", "grow_berries", 2)
+        val job = started.jobs.single()
+        assertEquals(EconomyCollection("berry_harvest", 8, null, null), job.collection)
+        val ripeAt = Instant.parse(job.finishesAt)
+        assertEquals("ECONOMY_JOB_NOT_READY", assertFailsWith<AuthFailure> {
+            apply(started, "start_collection", job.id, at = ripeAt.minusNanos(1))
+        }.code)
+        assertEquals("ECONOMY_COLLECTION_REQUIRED", assertFailsWith<AuthFailure> {
+            apply(started, "claim_job", job.id, at = ripeAt.plusSeconds(3600))
+        }.code)
+        val collecting = apply(started, "start_collection", job.id, at = ripeAt)
+        val collection = checkNotNull(collecting.jobs.single().collection)
+        assertEquals(ripeAt.toString(), collection.startedAt)
+        assertEquals(ripeAt.plusSeconds(8).toString(), collection.finishesAt)
+        assertEquals(started.wallet, collecting.wallet)
+        assertEquals(started.inventory, collecting.inventory)
+        assertEquals(job.rewards, collecting.jobs.single().rewards)
+        assertEquals("ECONOMY_COLLECTION_STARTED", assertFailsWith<AuthFailure> {
+            apply(collecting, "start_collection", job.id, at = ripeAt.plusSeconds(9))
+        }.code)
+        assertEquals("ECONOMY_COLLECTION_NOT_READY", assertFailsWith<AuthFailure> {
+            apply(collecting, "claim_job", job.id, at = ripeAt.plusSeconds(8).minusNanos(1))
+        }.code)
+        val claimed = apply(collecting, "claim_job", job.id, at = ripeAt.plusSeconds(8))
+        assertEquals(job.rewards, claimed.inventory)
+        assertTrue(claimed.jobs.isEmpty())
+        assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
+            apply(claimed, "claim_job", job.id, at = ripeAt.plusSeconds(8))
+        }.code)
+    }
+
+    @Test fun `harvest and exploration cannot use the hero together but returned journeys no longer block collection`() {
+        val growing = apply(EconomyRules.initial(), "start_production", "grow_berries")
+        val job = growing.jobs.single()
+        val ripeAt = Instant.parse(job.finishesAt)
+        val exploration = EconomyJob(UUID.randomUUID().toString(), "exploration", "forest", startedAt = now.toString(),
+            finishesAt = ripeAt.plusSeconds(60).toString())
+        assertEquals("ECONOMY_EXPLORER_BUSY", assertFailsWith<AuthFailure> {
+            apply(growing.copy(jobs = growing.jobs + exploration), "start_collection", job.id, at = ripeAt)
+        }.code)
+        val returned = growing.copy(jobs = growing.jobs + exploration.copy(finishesAt = ripeAt.toString()))
+        val collecting = apply(returned, "start_collection", job.id, at = ripeAt)
+        assertNotNull(collecting.jobs.first().collection?.startedAt)
+        for (at in listOf(ripeAt, ripeAt.plusSeconds(60))) assertEquals("ECONOMY_COLLECTOR_BUSY", assertFailsWith<AuthFailure> {
+            apply(collecting, "start_exploration", "forest", at = at)
+        }.code, "an unclaimed collection retains ownership after its minimum duration")
+        val other = job.copy(id = UUID.randomUUID().toString())
+        assertEquals("ECONOMY_COLLECTOR_BUSY", assertFailsWith<AuthFailure> {
+            apply(collecting.copy(jobs = collecting.jobs + other), "start_collection", other.id, at = ripeAt.plusSeconds(60))
+        }.code)
+    }
+
+    @Test fun `collection preflight includes market escrow and claim rechecks capacity without consuming the harvest`() {
+        val started = apply(EconomyRules.initial(), "start_production", "grow_berries")
+        val job = started.jobs.single()
+        val readyAt = Instant.parse(job.finishesAt)
+        val nearlyFull = started.copy(inventory = mapOf("wood" to 190L))
+        val request = command("start_collection", job.id)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
+            EconomyRules.apply(nearlyFull, request, readyAt, mapOf("stone" to 10L))
+        }.code)
+        assertEquals("ECONOMY_CAPACITY", assertFailsWith<AuthFailure> {
+            EconomyRules.apply(started, request, readyAt, mapOf("berries" to ECONOMY_MAX_BALANCE))
+        }.code)
+        assertNull(started.jobs.single().collection?.startedAt)
+        val collecting = EconomyRules.apply(started, request, readyAt).first
+        val filled = collecting.copy(inventory = mapOf("wood" to 200L))
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
+            apply(filled, "claim_job", job.id, at = readyAt.plusSeconds(8))
+        }.code)
+        assertEquals(collecting.jobs, filled.jobs)
+        val freed = apply(filled, "sell", "wood", job.rewards.values.sum(), readyAt.plusSeconds(8))
+        val claimed = apply(freed, "claim_job", job.id, at = readyAt.plusSeconds(8))
+        assertEquals(200L, EconomyRules.storage(claimed).used)
+    }
+
+    @Test fun `legacy berry jobs without collection remain directly claimable and can opt in without replacing rewards`() {
+        val legacy = EconomyJob(UUID.randomUUID().toString(), "production", "garden", "grow_berries", startedAt = now.minusSeconds(60).toString(),
+            finishesAt = now.toString(), rewards = mapOf("berries" to 7L), catalogVersion = 1)
+        val encoded = economyJson.encodeToJsonElement(legacy).jsonObject
+        val restored = economyJson.decodeFromJsonElement<EconomyJob>(JsonObject(encoded - "collection"))
+        assertNull(restored.collection)
+        val initial = EconomyRules.initial().copy(jobs = listOf(restored))
+        assertEquals(7L, apply(initial, "claim_job", legacy.id).inventory["berries"])
+        val collecting = apply(initial, "start_collection", legacy.id)
+        assertEquals(legacy.rewards, collecting.jobs.single().rewards)
+        assertEquals(8L, collecting.jobs.single().collection?.seconds)
+        assertEquals(7L, apply(collecting, "claim_job", legacy.id, at = now.plusSeconds(8)).inventory["berries"])
+        val locked = legacy.copy(recipeId = "retired-berry-recipe", collection = EconomyCollection("berry_harvest", 11, null, null))
+        val original = initial.copy(jobs = listOf(locked))
+        assertEquals(now.plusSeconds(11).toString(), apply(original, "start_collection", locked.id).jobs.single().collection?.finishesAt)
+    }
+
+    @Test fun `collection validates job kind command fields and persisted timing pairs`() {
+        val started = apply(EconomyRules.initial(), "start_production", "grow_berries")
+        val job = started.jobs.single()
+        val at = Instant.parse(job.finishesAt)
+        val request = command("start_collection", job.id)
+        for (invalid in listOf(request.copy(quantity = 2), request.copy(totalPrice = 1)))
+            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(started, invalid, at) }.code)
+        for (invalid in listOf(job.copy(kind = "construction", collection = null), job.copy(targetId = "workshop", collection = null), job.copy(rewards = mapOf("wood" to 1L), collection = null)))
+            assertEquals("ECONOMY_COLLECTION_KIND", assertFailsWith<AuthFailure> { EconomyRules.apply(started.copy(jobs = listOf(invalid)), request, at) }.code)
+        assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { EconomyRules.apply(started, request.copy(targetId = UUID.randomUUID().toString()), at) }.code)
+        val persistedJob = economyJson.encodeToJsonElement(job).jsonObject
+        for (patch in listOf(mapOf("kind" to JsonPrimitive("construction")), mapOf("targetId" to JsonPrimitive("workshop")),
+            mapOf("rewards" to buildJsonObject { put("wood", 1) })))
+            assertFails { economyJson.decodeFromJsonElement<EconomyJob>(JsonObject(persistedJob + patch)) }
+        val recipe = EconomyRules.catalog.recipes.single { it.id == "grow_berries" }
+        val persistedRecipe = economyJson.encodeToJsonElement(recipe).jsonObject
+        for (patch in listOf(mapOf("buildingId" to JsonPrimitive("workshop")), mapOf("rewards" to JsonObject(emptyMap()))))
+            assertFails { economyJson.decodeFromJsonElement<EconomyRecipe>(JsonObject(persistedRecipe + patch)) }
+        val json = economyJson.encodeToJsonElement(request).jsonObject
+        for (field in listOf("collection", "startedAt", "finishesAt", "rewards"))
+            assertFailsWith<AuthFailure> { decodeEconomyCommand(JsonObject(json + (field to JsonPrimitive(8)))) }
+        for (raw in listOf(
+            """{"kind":"berry_harvest","seconds":8,"startedAt":"2026-10-01T00:00:00Z","finishesAt":null}""",
+            """{"kind":"berry_harvest","seconds":8,"startedAt":"2026-10-01T00:00:00Z","finishesAt":"2026-10-01T00:00:07Z"}""",
+            """{"kind":"berry_harvest","seconds":0,"startedAt":null,"finishesAt":null}""",
+            """{"kind":"free_items","seconds":8,"startedAt":null,"finishesAt":null}""",
+        )) assertFails { economyJson.decodeFromString<EconomyCollection>(raw) }
     }
 
     @Test fun `new quarry and kiln construction waits for home two even with enough materials`() {
@@ -54,9 +182,13 @@ class EconomyRulesTest {
         var state = EconomyRules.initial()
         var at = now
         fun complete(action: String, target: String, quantity: Long = 1) {
-            val started = apply(state, action, target, quantity, at)
+            var started = apply(state, action, target, quantity, at)
             val job = started.jobs.single()
             at = Instant.parse(job.finishesAt)
+            job.collection?.let {
+                started = apply(started, "start_collection", job.id, at = at)
+                at = at.plusSeconds(it.seconds)
+            }
             state = apply(started, "claim_job", job.id, at = at)
         }
 
@@ -282,7 +414,7 @@ class EconomyRulesTest {
     @Test fun `inventory and wallet caps fail without losing job or resources`() {
         val initial = EconomyRules.initial()
         val started = apply(initial, "start_production", "grow_berries").copy(inventory = mapOf("berries" to ECONOMY_MAX_BALANCE))
-        assertEquals("ECONOMY_CAPACITY", assertFailsWith<AuthFailure> { apply(started, "claim_job", started.jobs.single().id, at = Instant.parse(started.jobs.single().finishesAt)) }.code)
+        assertEquals("ECONOMY_CAPACITY", assertFailsWith<AuthFailure> { apply(started, "start_collection", started.jobs.single().id, at = Instant.parse(started.jobs.single().finishesAt)) }.code)
         assertEquals(1, started.jobs.size)
         val fullWallet = stocked().copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE))
         assertEquals("ECONOMY_CAPACITY", assertFailsWith<AuthFailure> { apply(fullWallet, "sell", "berries") }.code)
@@ -342,10 +474,11 @@ class EconomyRulesTest {
         val started = apply(EconomyRules.initial().copy(inventory = mapOf("wood" to 200L)), "start_production", "grow_berries")
         val job = started.jobs.single()
         val readyAt = Instant.parse(job.finishesAt)
-        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { apply(started, "claim_job", job.id, at = readyAt) }.code)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { apply(started, "start_collection", job.id, at = readyAt) }.code)
         assertEquals(job, started.jobs.single())
         val sold = apply(started, "sell", "wood", job.rewards.values.sum())
-        val claimed = apply(sold, "claim_job", job.id, at = readyAt)
+        val collecting = apply(sold, "start_collection", job.id, at = readyAt)
+        val claimed = apply(collecting, "claim_job", job.id, at = Instant.parse(checkNotNull(collecting.jobs.single().collection?.finishesAt)))
         assertTrue(claimed.jobs.isEmpty())
         assertEquals(job.rewards.getValue("berries"), claimed.inventory["berries"])
         assertEquals(0L, EconomyRules.storage(claimed).available)

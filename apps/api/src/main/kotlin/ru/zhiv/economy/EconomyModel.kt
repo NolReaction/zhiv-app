@@ -2,6 +2,7 @@ package ru.zhiv.economy
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.time.Instant
 
 internal val economyJson = Json { encodeDefaults = true; ignoreUnknownKeys = false }
 const val ECONOMY_MAX_BALANCE = 1_000_000_000L
@@ -10,11 +11,27 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 @Serializable data class EconomyWallet(val coins: Long = 0, val pearls: Long = 0)
 @Serializable data class EconomyCost(val coins: Long = 0, val items: Map<String, Long> = emptyMap())
 @Serializable data class EconomyMigration(val version: Int = 1, val coinsGranted: Long, val woodGranted: Long, val stoneGranted: Long)
+@Serializable data class EconomyCollectionSpec(val kind: String, val seconds: Long) {
+    init { require(kind == "berry_harvest" && seconds in 1L..120L) }
+}
+@Serializable data class EconomyCollection(
+    val kind: String, val seconds: Long, val startedAt: String?, val finishesAt: String?,
+) {
+    init {
+        require(kind == "berry_harvest" && seconds in 1L..120L)
+        require((startedAt == null) == (finishesAt == null))
+        if (startedAt != null && finishesAt != null)
+            require(!Instant.parse(finishesAt).isBefore(Instant.parse(startedAt).plusSeconds(seconds)))
+    }
+}
 @Serializable data class EconomyJob(
     val id: String, val kind: String, val targetId: String, val recipeId: String? = null,
     val targetLevel: Int? = null, val startedAt: String, val finishesAt: String,
     val rewards: Map<String, Long> = emptyMap(), val cost: EconomyCost = EconomyCost(), val catalogVersion: Int = 1,
-)
+    val collection: EconomyCollection? = null,
+) {
+    init { require(collection == null || kind == "production" && targetId == "garden" && (rewards["berries"] ?: 0L) > 0L) }
+}
 @Serializable data class EconomyState(
     val schemaVersion: Int = 1, val wallet: EconomyWallet, val inventory: Map<String, Long>,
     val buildings: Map<String, Int>, val jobs: List<EconomyJob> = emptyList(), val migration: EconomyMigration,
@@ -29,8 +46,10 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 @Serializable data class EconomyRecipe(
     val id: String, val name: String, val buildingId: String, val buildingLevel: Int = 1,
     val requiredHomeLevel: Int = 1, val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
-    val requiredBuildings: Map<String, Int> = emptyMap(),
-)
+    val requiredBuildings: Map<String, Int> = emptyMap(), val collection: EconomyCollectionSpec? = null,
+) {
+    init { require(collection == null || buildingId == "garden" && (rewards["berries"] ?: 0L) > 0L) }
+}
 @Serializable data class EconomyExploration(
     val id: String, val name: String, val description: String, val requiredHomeLevel: Int = 1,
     val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,

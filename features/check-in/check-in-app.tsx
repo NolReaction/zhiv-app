@@ -79,7 +79,9 @@ import { useSimpleView } from "@/features/check-in/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useWorld } from "@/features/world/use-world";
 import { useEconomy } from "@/features/economy/use-economy";
-import { economySceneJourney, economyWorldState } from "@/features/economy/world-adapter";
+import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/garden-collection-context";
+import { economySceneActivity, economySceneJourney, economyWorldState } from "@/features/economy/world-adapter";
+import { worldActivity } from "@/features/world/world-activity";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
 import styles from "./check-in-app.module.css";
@@ -588,8 +590,12 @@ export function CheckInApp() {
   const recordGameTap = game.recordTap;
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
   const economy = useEconomy(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const gardenCollection = useGardenCollectionController(economy, screen === "home" ? me?.user.publicId ?? null : null,
+    worldPortal.open || (activeView === "check-in" && mochlikVisible && !calendarOpen && !gameOpen && !statusOpen));
   const renderedWorldState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
+  const economicActivity = useMemo(() => economySceneActivity(economy.snapshot), [economy.snapshot]);
+  const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
   const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
   const worldEntryButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -1396,6 +1402,7 @@ export function CheckInApp() {
   }
 
   return (
+    <GardenCollectionContext.Provider value={gardenCollection}>
     <main className={styles.shell} data-active-view={activeView}>
       <AuthReturnNotice />
       <TransientNotice message={notice} />
@@ -1467,7 +1474,7 @@ export function CheckInApp() {
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
               <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} />
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} economyBuildings={economy.snapshot?.buildings} activity={currentActivity} />
             </div>}
             <button
               type="button"
@@ -1479,7 +1486,7 @@ export function CheckInApp() {
               onClick={handleGameClick}
               aria-busy={isSending}
               aria-label="Я живой — отметиться и поиграть"
-              aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
+              aria-describedby={[visualTapCount >= 1 ? "clicker-total" : null, mochlikVisible && currentActivity ? "mochlik-activity-status" : null].filter(Boolean).join(" ") || undefined}
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
               <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
@@ -1698,5 +1705,6 @@ export function CheckInApp() {
         }}
       />
     </main>
+    </GardenCollectionContext.Provider>
   );
 }

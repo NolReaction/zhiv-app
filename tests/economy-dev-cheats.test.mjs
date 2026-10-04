@@ -29,7 +29,7 @@ const command = (p, action = "grant_currency", targetId = "coins", quantity = 10
   requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, expectedRevision: read(p).revision, action, targetId, quantity, totalPrice: 0,
 });
 const cheat = (p, action, targetId, quantity = 1) => economy.commandDevEconomyCheat(p.token, command(p, action, targetId, quantity), now);
-const normal = (p, action, targetId, quantity = 1) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity), now);
+const normal = (p, action, targetId, quantity = 1, at = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity), at);
 function post(body, headers = {}) {
   return new Request("http://localhost:3000/api/v1/economy/dev", { method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
@@ -188,7 +188,8 @@ test("finishing jobs preserves paid snapshots and requires ordinary claims for r
   const all = cheat(p, "finish_jobs", "all").state;
   assert.equal(all.completedExplorations, 0); assert.equal(all.jobs.length, 2);
   assert.ok(all.jobs.every(job => job.finishesAt === new Date(now).toISOString()));
-  normal(p, "claim_job", production.id);
+  const collecting = normal(p, "start_collection", production.id).state.jobs.find(job => job.id === production.id);
+  normal(p, "claim_job", production.id, 1, Date.parse(collecting.collection.finishesAt));
   const claimed = normal(p, "claim_job", exploration.id).state;
   assert.equal(claimed.completedExplorations, 1); assert.equal(claimed.jobs.length, 0);
   for (const [item, amount] of Object.entries(exploration.rewards)) assert.ok(claimed.inventory[item] >= amount);
