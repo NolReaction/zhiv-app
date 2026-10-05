@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingTackleFrame, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, fishingLineFrame, fishingPropsBounds, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
 const base = { x: 200, y: 200, size: 50, direction: "front", action: "fish", phase: .5, frame: 0,
   waterTarget: { x: 204, y: 247 }, carryingFish: false };
@@ -196,20 +196,111 @@ test("the last reel frame lands continuously in the supporting hand and the same
       assert.equal(tackle.visible, true, "packing cannot make the occupied rod disappear");
       assert.deepEqual(tackle.grip, hands.nearHand);
       if (phase >= FISHING_PACK_RELEASE) {
-        assert.deepEqual(fish.center, fishingBasketFishCenter(hands.basket, frame.size));
+        assert.deepEqual(fish.center, fishingBasketFishCenter(hands.basket, frame.size, hands.basketScale));
         assert.equal(fish.visible, false);
         assert.ok(Math.abs(fish.angle - (direction === "left" ? -Math.PI + .2 : -.2)) < 1e-9);
-        assert.ok(Math.abs(fish.size - frame.size * .22) < 1e-9);
+        assert.ok(Math.abs(fish.size - frame.size * .22 * hands.basketScale) < 1e-9);
       }
     }
   }
 });
 
-test("Mochlik carries the enlarged basket by the same physical handle in every facing", async () => {
+test("Mochlik carries his compact basket by the same physical handle in every facing", async () => {
   const {fishingBasketHandle}=await vite.ssrLoadModule('/features/world/fishing-props.ts');
   for(const direction of ['left','right','front','back'])for(const size of [36,56,120]){
     const frame={...base,size,direction,action:'walk',carryingFish:true,waterTarget:undefined};
     const rig=forestFishingHeroRig(frame,false);
-    assert.deepEqual(rig.farHand,fishingBasketHandle(rig.basket,size));
+    assert.deepEqual(rig.farHand,fishingBasketHandle(rig.basket,size,rig.basketScale));
   }
+});
+
+test("Mochlik's shore rod stays elevated through the backswing, strike and winding even with water below his feet", () => {
+  for (const direction of ["front", "left", "right", "back"]) for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) {
+    for (let phase = 0; phase <= 1; phase += .025) {
+      const frame = { ...base, direction, action, phase, waterTarget: { x: base.x, y: base.y + 60 } };
+      const hands = forestFishingHeroRig(frame, false), rod = fishingTackleFrame(frame, false, hands);
+      assert.deepEqual(rod.grip, hands.nearHand, "the winding/holding paw is never below an unattached handle");
+      assert.ok(rod.tip.y < rod.grip.y - frame.size * .4, "close water cannot turn the pole into a downward stick");
+      assert.ok((rod.tip.x - rod.grip.x) * hands.side > 0, "the elevated pole remains outside the face");
+      const line = fishingLineFrame(frame, false, hands, rod);
+      assert.ok(line.width <= frame.size * .006, "the line remains lighter than the rod at every zoom");
+      assert.ok(line.control.y - (rod.tip.y + rod.bobber.y) / 2 <= frame.size * .055 + 1e-9,
+        "the waiting line cannot sag down like a rope");
+    }
+  }
+});
+
+test("Mochlik keeps his hands, rod and float continuous across every fishing gesture boundary", () => {
+  const stages = ["rest", "idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"];
+  for (const direction of ["front", "left", "right", "back"]) for (const rodId of ["reed_rod", "river_rod", "willow_rod"]) {
+    for (let index = 1; index < stages.length; index++) {
+      const before = { ...base, direction, rodId, action: stages[index - 1], phase: 1, carryingFish: true };
+      const after = { ...before, action: stages[index], phase: 0 };
+      const first = forestFishingHeroRig(before, false), next = forestFishingHeroRig(after, false);
+      for (const key of ["nearHand", "farHand", "basket"]) {
+        assert.ok(Math.hypot(first[key].x - next[key].x, first[key].y - next[key].y) < 1e-8,
+          `${before.action} → ${after.action}: ${key} must not jump`);
+      }
+      const a = fishingTackleFrame(before, false, first), b = fishingTackleFrame(after, false, next);
+      for (const key of ["tip", "bobber", "reel"]) {
+        assert.ok(Math.hypot(a[key].x - b[key].x, a[key].y - b[key].y) < 1e-8,
+          `${before.action} → ${after.action}: ${key} must not jump`);
+      }
+      const floatA = fishingLineFrame(before, false, first, a).float, floatB = fishingLineFrame(after, false, next, b).float;
+      assert.ok(Math.hypot(floatA.x - floatB.x, floatA.y - floatB.y) < 1e-8,
+        `${before.action} → ${after.action}: the float remains on its line`);
+    }
+  }
+});
+
+test("the winding float lies on the exact curve painted for the thin shore line", () => {
+  for (const action of ["reel", "catch"]) for (let phase = 0; phase < 1; phase += .025) {
+    const frame = { ...base, action, phase }, hands = forestFishingHeroRig(frame, false);
+    let recordingLine = false, fillStyle, start, control, end, float;
+    const ctx = new Proxy({}, { get: (_target, key) => (...args) => {
+      if (recordingLine) {
+        if (key === "moveTo") start = args;
+        if (key === "quadraticCurveTo") { control = args.slice(0, 2); end = args.slice(2); }
+        if (key === "stroke") recordingLine = false;
+      }
+      if (key === "ellipse" && fillStyle === "#f7e6b9") float = args.slice(0, 2);
+    }, set: (_target, key, value) => { if (key === "strokeStyle") recordingLine = value === "#cbd9cba8";
+      if (key === "fillStyle") fillStyle = value; return true; } });
+    drawFishingProps(ctx, frame, false, { ...hands, drawBasket: false });
+    assert.ok(start && control && end && float, "the real painter must draw a line and its float");
+    let closest = Infinity;
+    for (let index = 0; index <= 1000; index++) {
+      const t = index / 1000;
+      const s = 1 - t;
+      closest = Math.min(closest, Math.hypot(float[0] - (s * s * start[0] + 2 * s * t * control[0] + t * t * end[0]),
+        float[1] - (s * s * start[1] + 2 * s * t * control[1] + t * t * end[1])));
+    }
+    assert.ok(closest < frame.size * .002, "the visible float cannot drift away from the painted fishing line");
+  }
+});
+
+test("shore culling and occlusion bounds include the raised pole, airborne float and compact ground basket", () => {
+  for (const direction of ["front", "back", "left", "right"]) for (const still of [false, true]) {
+    for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) {
+      for (let phase = 0; phase <= 1; phase += .05) {
+        const frame = { ...base, direction, action, phase, carryingFish: true };
+        const hands = forestFishingHeroRig(frame, still), rod = fishingTackleFrame(frame, still, hands);
+        const line = fishingLineFrame(frame, still, hands, rod), bounds = fishingPropsBounds(frame);
+        const points = [rod.tip, rod.reel, rod.bobber, line.float, line.control, hands.nearHand, hands.farHand,
+          { x: hands.basket.x - frame.size * .4 * hands.basketScale, y: hands.basket.y - frame.size * .4 * hands.basketScale },
+          { x: hands.basket.x + frame.size * .4 * hands.basketScale, y: hands.basket.y + frame.size * .2 * hands.basketScale }];
+        for (const point of points) assert.ok(point.x >= bounds.x + frame.size * .04 && point.x <= bounds.x + bounds.width - frame.size * .04
+          && point.y >= bounds.y + frame.size * .04 && point.y <= bounds.y + bounds.height - frame.size * .04,
+        `${direction}/${action}/${phase}/${still}: prop must remain within the camera/occluder bounds with paint padding`);
+      }
+    }
+  }
+});
+
+test("a new cast's small water offset cannot swap Mochlik's occupied hands at rest → preparation", () => {
+  const resting = { ...base, action: "rest", phase: 1, carryingFish: true, waterTarget: { x: base.x - 7, y: base.y + 60 } };
+  const preparing = { ...resting, action: "idle", phase: 0, waterTarget: { x: base.x + 7, y: base.y + 60 } };
+  const before = forestFishingHeroRig(resting, false), after = forestFishingHeroRig(preparing, false);
+  for (const key of ["nearHand", "farHand", "basket"]) assert.deepEqual(before[key], after[key]);
+  assert.deepEqual(fishingTackleFrame(resting, false, before).bobber, fishingTackleFrame(preparing, false, after).bobber);
 });

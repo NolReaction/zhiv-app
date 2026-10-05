@@ -1,17 +1,19 @@
 import type { WorldPoint } from "./tiled/types";
 import { drawFishSprite } from "./fish-sprite";
 import type { FishSpeciesId } from "./fish-species";
+import { forestWaterWind } from "./forest-water-surface";
 
 type WaterLifeOptions = { elapsed: number; rain: number; dusk: number; reducedMotion: boolean;
-  waterFish?: "auto" | "on" | "off"; waterBreeze?: boolean };
+  waterFish?: "auto" | "on" | "off"; waterBreeze?: boolean; wind?: number };
 type SafeEllipse = (point: WorldPoint, radiusX: number, radiusY: number) => boolean;
 type Habitat = WorldPoint & { key: number; scale: number; radiusX: number; radiusY: number; count: number };
 type BreezeSeed = WorldPoint & { key: number; scale: number; width: number };
 export type WaterLifeLayout = { habitats: Habitat[]; breeze: BreezeSeed[] };
 export type WaterFishFrame = WorldPoint & { id: string; angle: number; tail: number; size: number;
   species: FishSpeciesId; opacity: number; jump: number };
-export type WaterSplashFrame = WorldPoint & { id: string; phase: number; scale: number; opacity: number };
-export type WaterBreezeFrame = WorldPoint & { width: number; scale: number; phase: number; opacity: number };
+export type WaterSplashFrame = WorldPoint & { id: string; phase: number; scale: number; opacity: number; variation: number };
+export type WaterBreezeFrame = WorldPoint & { width: number; scale: number; phase: number; opacity: number;
+  elapsed: number; key: number; wind: number; dusk: number };
 
 const TAU = Math.PI * 2;
 const WATER_SPECIES = ["fish_silverfin", "fish_reedperch", "fish_mooncarp"] as const;
@@ -27,7 +29,7 @@ export function createWaterLifeLayout(cells: Array<{ key: number; points: WorldP
   for (const cell of cells) {
     if (breeze.length < 24) for (const point of cell.points.slice(0, 6)) {
       const width = (22 + noise(cell.key + 202) * 17) * scale;
-      if (!fits(point, width * .65 + scale, 9 * scale + 1)) continue;
+      if (!fits(point, width * .77 + 6 * scale + 1, 12 * scale + 1)) continue;
       breeze.push({ ...point, key: cell.key, scale, width }); break;
     }
     if (habitats.length >= 12) continue;
@@ -58,18 +60,22 @@ function fishPosition(habitat: Habitat, seconds: number, member: number) {
  * No account items, random draws, timers or persistent population are created. */
 export function waterLifeFrame(layout: WaterLifeLayout, options: WaterLifeOptions) {
   const { elapsed, rain, dusk, reducedMotion } = options;
+  const wind = forestWaterWind(options);
   const fish: WaterFishFrame[] = [], splashes: WaterSplashFrame[] = [];
   if (options.waterFish !== "off") for (const habitat of layout.habitats) {
     const period = (options.waterFish === "on" ? 13 : 34) + noise(habitat.key + 824) * 14;
     const clock = elapsed + noise(habitat.key + 826) * period, cycle = Math.floor(clock / period);
     const age = phase(clock / period) * period;
-    const active = !reducedMotion && rain < .65 && dusk < .8 && age < 2.4;
-    // Keep a splash anchored at the point of emergence, while the same fish
+    const lifetime = 2.1 + noise(habitat.key + cycle * 19 + 843) * .7;
+    const active = !reducedMotion && rain < .65 && dusk < .8 && age < .75 + lifetime;
+    // Keep a splash anchored at the point of landing, while the same fish
     // continues its swim. Rain/night leave quieter submerged silhouettes.
-    if (active) {
-      const anchor = fishPosition(habitat, elapsed - age, 0);
+    if (active && age >= .75) {
+      const anchor = fishPosition(habitat, elapsed - age + .75, 0);
       splashes.push({ x: anchor.x, y: anchor.y, id: `${habitat.key}:${cycle}`,
-        phase: age / 2.4, scale: habitat.scale, opacity: (1 - dusk * .5) * (1 - rain * .65) });
+        phase: (age - .75) / lifetime, scale: habitat.scale,
+        variation: noise(habitat.key + cycle * 83 + 845),
+        opacity: (1 - dusk * .5) * (1 - rain * .65) });
     }
     for (let member = 0; member < habitat.count; member++) {
       const point = fishPosition(habitat, elapsed, member);
@@ -85,10 +91,12 @@ export function waterLifeFrame(layout: WaterLifeLayout, options: WaterLifeOption
   }
   const breeze: WaterBreezeFrame[] = options.waterBreeze === false ? [] : layout.breeze.map(seed => {
     const age = phase(elapsed / (7 + noise(seed.key + 937) * 5) + noise(seed.key + 973));
-    const gust = .6 + .4 * Math.sin(elapsed * .13 + seed.y * .018) ** 2;
-    return { x: seed.x + (age - .5) * seed.scale * 4, y: seed.y + (age - .5) * seed.scale * 4,
+    const gust = .64 + .36 * Math.sin(elapsed * .19 + seed.key) ** 2;
+    return { x: seed.x + (age - .5) * seed.scale * (2 + wind * 4),
+      y: seed.y + (age - .5) * seed.scale * (1.2 + wind * 1.8),
       width: seed.width, scale: seed.scale, phase: age,
-      opacity: Math.sin(age * Math.PI) ** 2 * (.19 + rain * .04) * gust * (1 - dusk * .42) };
+      elapsed, key: seed.key, wind, dusk,
+      opacity: Math.sin(age * Math.PI) ** 2 * (.16 + wind * .17) * gust * (1 - dusk * .52) * (1 - rain * .15) };
   });
   return { fish, splashes, breeze };
 }
@@ -103,16 +111,20 @@ export function drawWaterFish(ctx: CanvasRenderingContext2D, fish: WaterFishFram
   ctx.restore();
 }
 
-/** Three broken wavelets travel together, fade at both ends and swell with the
- * breeze. The base artwork remains visible; there is no blue overlay or blur. */
+/** Each crest has its own slow swell and bend. The group's envelope hides its
+ * drift reset; independent rows avoid a rigid three-line stamp moving together. */
 export function drawWaterBreeze(ctx: CanvasRenderingContext2D, wave: WaterBreezeFrame) {
-  ctx.save(); ctx.strokeStyle = "#b8e6df"; ctx.lineCap = "round";
+  ctx.save(); ctx.strokeStyle = wave.dusk > .55 ? "#9dc5da" : "#b8e6df"; ctx.lineCap = "round";
   for (let row = 0; row < 3; row++) {
-    const width = wave.width * (1 - row * .19), x = wave.x + row * wave.scale * 2;
-    const y = wave.y + (row - 1) * wave.scale * 2.1;
-    ctx.globalAlpha = wave.opacity * (1 - row * .2); ctx.lineWidth = wave.scale * (row ? .48 : .68);
+    const swell = Math.sin(wave.elapsed * (.35 + row * .071) + noise(wave.key + row * 11) * TAU);
+    const width = wave.width * (1 - row * .19) * (.86 + swell * .1), x = wave.x + row * wave.scale * 1.6;
+    const y = wave.y + (row - 1) * wave.scale * 2.1 + swell * wave.scale * .65;
+    const bend = (Math.sin(wave.elapsed * .43 + row * 2.3 + wave.key) * .7 + .7) * (.65 + wave.wind * .55);
+    ctx.globalAlpha = wave.opacity * (1 - row * .23) * (.68 + swell * .25);
+    ctx.lineWidth = wave.scale * (row ? .4 : .54 + wave.wind * .24);
     ctx.beginPath(); ctx.moveTo(x - width / 2, y);
-    ctx.bezierCurveTo(x - width * .22, y - wave.scale * .9, x + width * .05, y + wave.scale * .9, x + width * .24, y);
+    ctx.bezierCurveTo(x - width * .22, y - wave.scale * bend,
+      x + width * .05, y + wave.scale * bend, x + width * .24, y);
     ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x + width * .32, y - wave.scale * .15);
     ctx.quadraticCurveTo(x + width * .42, y - wave.scale * .4, x + width / 2, y - wave.scale * .15); ctx.stroke();
@@ -124,19 +136,22 @@ export function drawWaterSplash(ctx: CanvasRenderingContext2D, splash: WaterSpla
   const { phase: age, scale } = splash;
   ctx.save(); ctx.strokeStyle = "#c7e9df"; ctx.lineWidth = .7 * scale;
   ctx.globalAlpha = splash.opacity * (1 - smooth(age)) * .66;
-  const radius = (1.7 + age * 7) * scale;
+  const radius = (1.4 + Math.sqrt(age) * 7.1) * scale;
   ctx.beginPath(); ctx.ellipse(splash.x, splash.y, radius, radius * .34, 0, .12, Math.PI * 1.85); ctx.stroke();
-  if (age > .26) {
-    ctx.globalAlpha *= .5; ctx.beginPath();
-    ctx.ellipse(splash.x, splash.y, radius * .64, radius * .21, 0, Math.PI * .6, Math.PI * 2.25); ctx.stroke();
+  if (age > .16) {
+    const echo = (age - .16) / .84;
+    ctx.globalAlpha *= .5 * (1 - smooth(echo)); ctx.beginPath();
+    ctx.ellipse(splash.x, splash.y + .15 * scale, (1.1 + Math.sqrt(echo) * 5.7) * scale,
+      (.45 + Math.sqrt(echo) * 1.8) * scale, 0, Math.PI * .6, Math.PI * 2.25); ctx.stroke();
   }
   if (age < .3) {
-    const lift = Math.sin(age / .3 * Math.PI) * 5 * scale;
     ctx.globalAlpha = splash.opacity * (1 - age / .3) * .75;
     ctx.fillStyle = "#d5ece2";
-    for (const side of [-1, 1]) {
-      ctx.beginPath(); ctx.ellipse(splash.x + side * age * 12 * scale, splash.y - lift,
-        .65 * scale, 1.1 * scale, side * .4, 0, TAU); ctx.fill();
+    for (const [index, side] of [-1, .25, 1].entries()) {
+      const flight = Math.min(1, age / (.22 + index * .035));
+      const lift = 4 * flight * (1 - flight) * (3.6 + splash.variation * 1.2 - index * .25) * scale;
+      ctx.beginPath(); ctx.ellipse(splash.x + side * flight * (2 + splash.variation) * scale,
+        splash.y - lift, (.42 + index * .06) * scale, .7 * scale, side * .4, 0, TAU); ctx.fill();
     }
   }
   ctx.restore();

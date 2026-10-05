@@ -196,14 +196,19 @@ test("busy cooking controls explain their block and cannot dispatch while stop r
   assert.deepEqual(view.calls.patches.at(-1), { cookingPreview: null });
 });
 
-test("water DEV controls separate fish behaviour from surface breeze and affect no account state", () => {
-  const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, waterFish: "off", waterBreeze: false } });
+test("water DEV controls separate wildlife, surface, breeze and wind without affecting account state", () => {
+  const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, waterFish: "off", waterBreeze: false, waterSurface: false, waterWind: "calm" } });
   const fish = view.elements.find(element => element.props.label === "Рыбы в воде");
   const breeze = view.elements.find(element => element.props.label === "Бриз на воде");
+  const surface = view.elements.find(element => element.props.label === "Течение и блики");
+  const wind = view.elements.find(element => element.props.label === "Ветер над водой");
   assert.equal(fish.props.value, "off"); assert.equal(breeze.props.checked, false);
+  assert.equal(surface.props.checked, false); assert.equal(wind.props.value, "calm");
   assert.deepEqual(fish.props.values.map(([value]) => value), ["auto", "on", "off"]);
+  assert.deepEqual(wind.props.values.map(([value]) => value), ["auto", "calm", "breeze", "windy"]);
   fish.props.onChange("on"); breeze.props.onChange(true);
-  assert.deepEqual(view.calls.patches, [{ waterFish: "on" }, { waterBreeze: true }]);
+  surface.props.onChange(true); wind.props.onChange("windy");
+  assert.deepEqual(view.calls.patches, [{ waterFish: "on" }, { waterBreeze: true }, { waterSurface: true }, { waterWind: "windy" }]);
   assert.deepEqual(view.calls.actions, []);
 });
 

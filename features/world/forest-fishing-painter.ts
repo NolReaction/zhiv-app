@@ -15,40 +15,64 @@ export function forestFishingHeroRig(frame: ForestFishingFrame, still: boolean) 
   const { x, size, action, direction } = frame, phase = still ? .5 : clamp(frame.phase);
   const walking = action === "walk" && !still;
   const y = frame.y - (walking && frame.frame % 2 ? size / 24 : 0);
-  const side = direction === "left" || direction === "front" && frame.waterTarget && frame.waterTarget.x < x ? -1 : 1;
+  // A small per-cast water offset must not swap the occupied paws or basket.
+  const side = direction === "left" ? -1 : 1;
   const swing = still ? 0 : Math.sin(phase * Math.PI * 6);
   const casting = action === "cast", pulling = action === "reel", packing = action === "pack";
   const struggle = frame.variation === "struggle", escape = frame.outcome === "miss";
   const check = frame.variation === "check" ? Math.sin(phase * Math.PI) : 0;
   const effort = pulling && struggle ? (.5 + swing * .5) * Math.sin(phase * Math.PI) : 0;
   const recoil = pulling && escape ? Math.sin(smooth((phase - .25) / .75) * Math.PI) : 0;
-  const crouch = packing ? Math.round(Math.sin(phase * Math.PI) * 4)
-    : pulling ? Math.round(effort * 3 + recoil) : action === "fish" ? frame.variation === "nibble" ? 1 : 2 : 0;
+  const preparing = action === "idle" && Boolean(frame.waterTarget);
+  const castStroke = smooth((phase - .22) / .42);
+  const hookSet = action === "bite" ? smooth(phase / .32) : 0;
+  const lean = packing ? -side * Math.sin(phase * Math.PI) * 2 : casting ? side * (-1 + castStroke * 2)
+    : preparing ? -side * smooth(phase) : pulling ? -side * (1 - smooth(phase)) * (1 + effort * 2)
+      : action === "bite" ? side * (1 - hookSet * 3 + smooth((phase - .5) / .5)) : action === "fish" ? side : 0;
+  const crouch = packing ? Math.round(Math.sin(phase * Math.PI) * 3)
+    : pulling ? Math.round(effort * 2 + recoil) : action === "fish" ? 1 : casting ? Math.round(castStroke)
+      : action === "bite" ? Math.round(1 - hookSet) : 0;
   const landing = action === "catch" || packing;
-  const grip = { x: x + side * size * (landing ? .3 : casting ? .42 - .08 * smooth(phase) : pulling ? .34 - .04 * smooth(phase) - effort * .022 : .34),
-    y: y - size * (casting ? .25 - .05 * smooth(phase) : pulling ? .2 + .12 * smooth(phase) + effort * .035 - recoil * .025
-      : landing ? .32 : action === "bite" ? .22 + Math.abs(swing) * .013 : .2 + check * .035) };
+  const waiting = { x: x + side * size * .36, y: y - size * .29 };
+  const raised = { x: x + side * size * .42, y: y - size * .43 };
+  const landed = { x: x + side * size * .3, y: y - size * .32 };
+  const biteGrip = { x: x + side * size * .35, y: y - size * .37 };
+  const restingGrip = { x: x + side * size * .31, y: y - size * .22 };
+  const grip = landing ? landed : action === "rest" ? mix(landed, restingGrip, smooth(phase / .4)) : casting ? mix(raised, waiting, castStroke)
+    : preparing ? mix(restingGrip, raised, smooth(phase))
+      : pulling ? mix(biteGrip, landed, smooth(phase)) : action === "bite" ? mix(waiting, biteGrip, hookSet)
+        : { ...waiting, y: waiting.y - size * check * .025 };
   const heldFish = { x: x - side * size * .31, y: y - size * (.3 + (action === "catch" && !still ? Math.sin(phase * Math.PI) * .025 : 0)) };
   const traveling = action === "walk" || action === "idle" && !frame.waterTarget;
-  const basket = { x: x - side * size * (traveling ? .27 : .43), y: y - size * (traveling ? .15 : .04) };
+  const basketScale = .775;
+  const basket = { x: x - side * size * (traveling ? .3 : .49), y: y - size * (traveling ? .17 : .134) };
   const handoff = smooth((phase - FISHING_REEL_HANDOFF) / (1 - FISHING_REEL_HANDOFF));
-  const farShoulder = { x: x - side * size * (pulling ? .1 + .1 * handoff : .2), y: y - size * .255 };
-  const nearShoulder = { x: x + side * size * .2, y: y - size * .255 };
-  const placing = fishingPackCenter(heldFish, basket, size, phase);
+  const working = preparing || casting || action === "fish" || action === "bite" || pulling;
+  const bodyOffset = Math.round(lean) * size / 48;
+  const farShoulder = { x: x + bodyOffset + side * size * (working ? .045 * (1 - handoff) - .2 * handoff : -.2), y: y - size * .255 };
+  const nearShoulder = { x: x + bodyOffset + side * size * .2, y: y - size * .255 };
+  const placing = fishingPackCenter(heldFish, basket, size, phase, basketScale);
   const actualFish = packing ? placing : heldFish;
-  const catchFrame = fishingCatchFrame(frame, still, { grip, heldFish: actualFish, basket });
+  let pitch = landing ? 1.2 : action === "rest" ? 1.2 - .46 * smooth(phase / .4) : pulling ? .96 + .24 * smooth(phase) : action === "bite" ? .48 + .48 * hookSet
+    : casting ? 1.22 - .74 * castStroke : preparing ? .74 + .48 * smooth(phase) : .48;
+  if (action === "fish" && !still) pitch += check * .07 + (frame.variation === "nibble" ? Math.sin(phase * Math.PI * 6) * .025 : 0);
+  const rodAngle = side > 0 ? -pitch : -Math.PI + pitch;
+  const tackleAnchors = { grip, heldFish: actualFish, basket, basketScale, rodAngle, rodLength: .96, tautLine: true, keepRod: true };
+  const catchFrame = fishingCatchFrame(frame, still, tackleAnchors);
   const relaxed = { x: x - side * size * (.23 - check * .05), y: y - size * (.18 + check * .13) };
-  const nearHand = action === "rest" ? { x: x + side * size * .24, y: y - size * .18 } : grip;
-  const farHand = traveling && frame.carryingFish ? fishingBasketHandle(basket, size)
+  const nearHand = grip;
+  const farHand = traveling && frame.carryingFish ? fishingBasketHandle(basket, size, basketScale)
     : action === "catch" ? catchFrame.wrist : packing ? mix(catchFrame.wrist, relaxed, smooth((phase - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE)))
-      : pulling ? mix(mix(relaxed, fishingReelHand(frame, still, { grip }), still ? 1 : smooth(phase / .12)),
+      : pulling ? mix(fishingReelHand(frame, still, tackleAnchors),
         escape ? relaxed : catchFrame.wrist, escape ? smooth((phase - .65) / .35) : handoff)
-        : relaxed;
+        : preparing ? mix(relaxed, fishingReelHand(frame, true, tackleAnchors), smooth(phase / .45))
+          : working ? fishingReelHand(frame, true, tackleAnchors) : relaxed;
   const pose: PixelPose = action === "walk" ? "fishing-walk" : escape && action === "rest" ? "blink"
     : action === "rest" || traveling ? "idle" : action === "bite" || pulling && escape && phase < .6 ? "wonder"
       : action === "catch" ? "present" : "fish";
-  return { grip, heldFish: actualFish, basket, nearShoulder, farShoulder, nearHand, farHand,
-    pose, crouch, phase, side, traveling };
+  return { ...tackleAnchors, nearShoulder, farShoulder, nearHand, farHand,
+    pose, crouch, lean, phase, side, traveling,
+    bodyDirection: direction === "front" && frame.waterTarget ? side > 0 ? "right" as const : "left" as const : direction };
 }
 
 /** Continuous compact arms replace cached arms; the palm is repainted over the
@@ -73,10 +97,11 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   const props = { ...frame, basketFilled: frame.basketFilled ?? (frame.carryingFish && action !== "catch" && (action !== "pack" || phase >= FISHING_PACK_RELEASE)) };
   const drawProps = () => drawFishingProps(ctx, props, still, { ...rig, drawBasket: Boolean(frame.waterTarget || frame.carryingFish) });
   if (direction === "back") { arm(farShoulder, farHand); arm(nearShoulder, nearHand); drawProps(); }
-  drawGroundedHero(ctx, { x, y, size, pose: rig.pose, direction, frame: still ? 0 : frame.frame, appearance, shadow,
-    rig: { gardening: true, crouch: rig.crouch }, breathe: still ? 0 : Math.sin(phase * Math.PI * 2) * .004 });
+  drawGroundedHero(ctx, { x, y, size, pose: rig.pose, direction: rig.bodyDirection, frame: still ? 0 : frame.frame, appearance, shadow,
+    rig: { gardening: true, crouch: rig.crouch, lean: rig.lean, fishingStance: Boolean(frame.waterTarget) },
+    breathe: still ? 0 : Math.sin(phase * Math.PI * 2) * .004 });
   if (direction !== "back") { arm(farShoulder, farHand); arm(nearShoulder, nearHand); drawProps(); }
-  if (action !== "rest") {
+  {
     const tackle = fishingTackleFrame(props, still, rig);
     if (tackle.visible) {
       // A short finger crosses the cylindrical handle, while its dark end stays

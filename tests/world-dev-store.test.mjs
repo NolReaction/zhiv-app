@@ -18,6 +18,8 @@ test("development store starts from authored scene defaults with stable server s
   assert.equal(store.getSnapshot().autoLife, true);
   assert.equal(store.getSnapshot().puddles, true);
   assert.equal(store.getSnapshot().waterBreeze, true);
+  assert.equal(store.getSnapshot().waterSurface, true);
+  assert.equal(store.getSnapshot().waterWind, "auto");
   assert.equal(store.getSnapshot().waterFish, "auto");
   assert.equal(store.getSnapshot().cookingPreview, null);
   assert.equal(store.getSnapshot().lifeEvent, null);
@@ -71,14 +73,14 @@ test("snapshots are immutable and only real changes notify subscribed listeners"
 
 test("visual controls accept valid options and ignore malformed values", () => {
   const store = createWorldDevStore(true);
-  const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off", waterFish: "on", waterBreeze: false,
+  const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off", waterFish: "on", waterBreeze: false, waterSurface: false, waterWind: "windy",
     paused: true, autoLife: false, puddles: false, reducedMotion: "on", pose: "fishing-walk", direction: "back", showHero: false, showBuildings: false,
     heroShadow: false, buildingShadow: false, debug: true, debugWater: true,
     debugNavigation: true, debugFauna: true, navigationMode: "routes" };
   store.patch(controls);
   for (const [key, value] of Object.entries(controls)) assert.equal(store.getSnapshot()[key], value);
   const before = store.getSnapshot();
-  store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, waterFish: true, waterBreeze: "yes", paused: "yes",
+  store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, waterFish: true, waterBreeze: "yes", waterSurface: 1, waterWind: "storm", paused: "yes",
     reducedMotion: false, autoLife: "yes", puddles: 1, pose: "dance", direction: "north", showHero: 0, showBuildings: null, heroShadow: "off",
     buildingShadow: 1, debug: undefined, debugWater: "true", debugNavigation: 1, debugFauna: "on", navigationMode: "free",
     equipment: { palette: "fern", head: 0, neck: null }, unknown: true });

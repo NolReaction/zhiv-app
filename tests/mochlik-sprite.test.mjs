@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
-const { pixelSprite } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
+const { pixelSprite, pixelSpriteContact } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 globalThis.document = {
   createElement(tag) {
@@ -107,4 +107,20 @@ test('the garden rig keeps a calm cached body and fixed feet while external arms
   assert.deepEqual(eyes(garden), eyes(normal), 'external garden arms preserve the normal eye shape and gaze');
   assert.equal(normal.pixels.get('11:32'), '#d8bf83');
   assert.equal(garden.pixels.get('11:32'), '#f4e4ae', 'external arm replaces the cached arm, exposing the original cream torso');
+});
+
+test("a fishing lean turns the gaze and torso while both planted paws retain their exact contact", () => {
+  for (const direction of ["left", "right", "front", "back"]) for (const crouch of [0, 1, 3]) {
+    const ordinary = pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch });
+    const sole = sprite => [...sprite.pixels].filter(([point]) => Number(point.split(":")[1]) >= 44)
+      .sort(([a], [b]) => a.localeCompare(b));
+    for (const lean of [-3, -2, 0, 2, 3]) {
+      const fishing = pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch, lean, fishingStance: true });
+      assert.deepEqual(sole(fishing), sole(ordinary), "casting cannot translate the toes across the shore");
+      assert.deepEqual(pixelSpriteContact(fishing), pixelSpriteContact(ordinary), "the shadow shares the same opaque sole");
+      assert.notEqual(fishing, ordinary, "the fishing pose must not reuse or poison the ordinary sprite");
+      assert.equal(fishing, pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch, lean, fishingStance: true }));
+    }
+    assert.equal(pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch }), ordinary);
+  }
 });

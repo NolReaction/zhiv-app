@@ -42,6 +42,8 @@ export type WorldDevState = Readonly<{
   birds: "auto" | "on" | "off";
   waterFish: "auto" | "on" | "off";
   waterBreeze: boolean;
+  waterSurface: boolean;
+  waterWind: "auto" | "calm" | "breeze" | "windy";
   autoLife: boolean;
   navigationMode: "auto" | "routes";
   puddles: boolean;
@@ -74,6 +76,7 @@ export type WorldDevState = Readonly<{
 
 export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   weather: "auto", timeOfDay: "auto", butterflies: "auto", fireflies: "auto", birds: "auto", waterFish: "auto", waterBreeze: true,
+  waterSurface: true, waterWind: "auto",
   autoLife: true, navigationMode: "auto", puddles: true,
   paused: false, reducedMotion: "auto", pose: "auto", direction: "front", heroScale: 1,
   residentDirection: "front", residentPreview: null, cookingPreview: null,
@@ -89,12 +92,13 @@ const enumValues = {
   timeOfDay: ["auto", "day", "night"],
   butterflies: ["auto", "on", "off"], fireflies: ["auto", "on", "off"], birds: ["auto", "on", "off"],
   waterFish: ["auto", "on", "off"],
+  waterWind: ["auto", "calm", "breeze", "windy"],
   reducedMotion: ["auto", "on", "off"], pose: ["auto", ...WORLD_DEV_POSES],
   navigationMode: ["auto", "routes"],
   direction: ["front", "back", "left", "right"],
   residentDirection: ["front", "back", "left", "right"],
 } as const;
-const booleanKeys = ["paused", "autoLife", "puddles", "waterBreeze", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
+const booleanKeys = ["paused", "autoLife", "puddles", "waterBreeze", "waterSurface", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
 const isResidentAction = (value: unknown): value is "routine" | PleskAction => value === "routine"

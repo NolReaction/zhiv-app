@@ -3,7 +3,7 @@ export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretc
   | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
 /** Interaction painters own continuous arms outside the cached body sprite. */
-export type PixelRigOptions = { gardening?: boolean; crouch?: number };
+export type PixelRigOptions = { gardening?: boolean; crouch?: number; lean?: number; fishingStance?: boolean };
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
   moss: "#7c8845", mossLight: "#a5ad58", mossDark: "#58683b", eye: "#30291d",
@@ -20,15 +20,17 @@ export const pixelSpriteContact = (sprite: HTMLCanvasElement) => contacts.get(sp
 export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }, rig?: PixelRigOptions): HTMLCanvasElement {
   frame = Number.isFinite(frame) ? ((Math.trunc(frame) % 4) + 4) % 4 : 0;
   const rigCrouch = Number.isFinite(rig?.crouch) ? Math.max(0, Math.min(6, Math.round(rig!.crouch!))) : undefined;
-  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}`;
+  const rigLean = Number.isFinite(rig?.lean) ? Math.max(-3, Math.min(3, Math.round(rig!.lean!))) : 0;
+  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}:${rigLean}:${Boolean(rig?.fishingStance)}`;
   const existing = cache.get(key);
   if (existing) { cache.delete(key); cache.set(key, existing); return existing; }
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("2D canvas unavailable");
   const rowLeft = new Int16Array(48).fill(48), rowRight = new Int16Array(48);
+  let leanOffset = rigLean;
   const rect = (x: number, y: number, w: number, h: number, color: string) => {
-    const left = Math.round(x), top = Math.round(y);
+    const left = Math.round(x + leanOffset), top = Math.round(y);
     ctx.fillStyle = color; ctx.fillRect(left, top, w, h);
     const clippedLeft = Math.max(0, left), clippedRight = Math.min(48, left + w);
     if (clippedRight <= clippedLeft) return;
@@ -84,10 +86,12 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(24, 32 + bob, 13, 11, c.outline); oval(24, 31 + bob, 12, 11, c.shade);
     oval(direction === "back" ? 24 : side > 0 ? 21 : 28, 29 + bob, 10, 9, c.moss);
     if (direction !== "back") oval(side > 0 ? 26 : side < 0 ? 20 : 22, 32 + bob, 9, 9, c.cream);
+    leanOffset = 0;
     for (const [x, offset] of [[17, step], [31, -step]]) {
       oval(x, 42 + offset, 5, 2, c.outline); oval(x, 41 + offset, 4, 2, c.shade);
       rect(x - 2, 40 + offset, 5, 1, c.light);
     }
+    leanOffset = rigLean;
     const earOffset = walking ? (frame % 2 ? 1 : 0) : pose === "greet" ? (frame % 2 ? -1 : 0)
       : pose === "shake" ? [-3, 2, 3, -2][frame % 4] : pose === "scratch" ? [0, 1, 2, 1][frame % 4] : 0;
     oval(9, faceY + 1 + earOffset, 7, 10, c.shade); oval(9, faceY + earOffset, 6, 9, c.cream);
@@ -101,10 +105,11 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       oval(22 + side * 2, faceY - 1, 9, 8, c.light);
       rect(19, faceY - 12, 9, 5, c.moss); rect(17, faceY - 10, 12, 3, c.moss);
       rect(21, faceY - 13, 3, 2, c.mossLight); rect(24, faceY - 8, 3, 2, c.moss);
-      const look = direction === "left" ? -3 : direction === "right" ? 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
+      const look = direction === "left" ? rig?.fishingStance ? -5 : -3 : direction === "right" ? rig?.fishingStance ? 5 : 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
       for (const x of [19 + look, 29 + look]) {
         if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
-        else { oval(x, faceY, 2, pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
+        else { oval(x, faceY, rig?.fishingStance && (side > 0 ? x === 19 + look : x === 29 + look) ? 1 : 2,
+          pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
       }
       rect(23 + look, faceY + 3, 3, 2, c.outline); rect(24 + look, faceY + 5, 1, 2, c.outline);
       if (pose === "yawn") {

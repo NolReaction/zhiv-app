@@ -490,6 +490,11 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       <Select label="Рыбы в воде" value={state.waterFish} values={[["auto", "Естественное поведение"], ["on", "Показать плавание и всплески"], ["off", "Выключить"]]}
         onChange={waterFish => change({ waterFish })} />
       <Toggle label="Бриз на воде" checked={state.waterBreeze} onChange={waterBreeze => change({ waterBreeze })} />
+      <Toggle label="Течение и блики" checked={state.waterSurface} onChange={waterSurface => change({ waterSurface })} />
+      <Select label="Ветер над водой" value={state.waterWind}
+        values={[["auto", "По погоде"], ["calm", "Штиль"], ["breeze", "Лёгкий ветер"], ["windy", "Сильный ветер"]]}
+        onChange={waterWind => change({ waterWind })} />
+      <p className={styles.hint}>Сравните воду днём и ночью, в штиль и под дождём. Пауза и «Меньше движения» останавливают движение поверхности. Границы и исключения воды видны в «Разметке».</p>
       <Toggle label="Лужи после дождя" checked={state.puddles} onChange={puddles => change({ puddles })} />
       <button type="button" disabled={Boolean(birdsUnavailable)} onClick={() => play({ kind: "birds" })}>Сценарий с птицами</button>
       {birdsUnavailable && <p className={styles.hint}>{birdsUnavailable}</p>}

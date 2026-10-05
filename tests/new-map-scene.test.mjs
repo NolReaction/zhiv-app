@@ -49,6 +49,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/economy-scene-state.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-observer.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-journey-travel.ts"),
+      ...await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts"),
     };
   } finally { await vite.close(); }
@@ -1393,6 +1394,30 @@ function sampleHero(scene, env, pixelSprite, withInteractionRig = false) {
         [0, 1, 2, 3].some(frame => rigs.some(rig => body.args[0] === pixelSprite(pose, direction, frame, undefined, rig)))));
     },
   };
+}
+
+function sampleFishingHero(scene, env, loaded, state, world, still = false) {
+  const frame = loaded.forestJourneyFishingFrame(state, world, still);
+  assert.ok(frame, "the coastal job supplies a visible fishing frame");
+  const rig = loaded.forestFishingHeroRig(frame, still);
+  const sprite = loaded.pixelSprite(rig.pose, rig.bodyDirection, still ? 0 : frame.frame, undefined,
+    { gardening: true, crouch: rig.crouch, lean: rig.lean, fishingStance: Boolean(frame.waterTarget) });
+  const sample = sampleHero(scene, env, loaded.pixelSprite);
+  assert.ok(sample.body, "the scene draws the coastal hero's body");
+  assert.strictEqual(sample.body.args[0], sprite, "the visible body uses the exact current fishing stance and lean");
+  assert.ok(sprite.calls.some(call => call.method === "fillRect" && call.args[2] > 0 && call.args[3] > 0),
+    "the generated body contains opaque pixels");
+  const [, left, top, width, height] = sample.body.args;
+  assert.equal(width, frame.size, "the real actor retains its displayed size");
+  assert.ok(height > 0);
+  assert.ok(Math.abs(left + width / 2 - frame.x) < 1e-8, "the fishing body remains at the real actor's horizontal position");
+  const contact = loaded.pixelSpriteContact(sprite);
+  assert.ok(contact);
+  assert.ok(Math.abs(top + contact.bottom / 48 * height - frame.y) < 1e-8,
+    "the rendered soles remain on the real actor's ground position");
+  // Match the known frame directly. Enumerating every crouch/lean combination
+  // could evict the original canvas from the sprite's bounded LRU cache.
+  return { ...sample, hasPose: (...poses) => poses.includes(rig.pose) };
 }
 
 function bushMaskAfterBody(sample, bush = clearingBush) {
@@ -2791,7 +2816,8 @@ const fishingFixture = () => ({
 });
 
 test("coastal jobs keep the real hero visible through walking, fishing, camera handoff and return", async () => {
-  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules(fishingFixture());
+  const loaded = await modules(fishingFixture());
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = loaded;
   const env = browser(), views = []; let probe;
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: false });
@@ -2813,10 +2839,10 @@ test("coastal jobs keep the real hero visible through walking, fishing, camera h
     circle.notice(); assert.equal(probe.state.reaction, 0, "a tap cannot interrupt a confirmed job");
     const world = mountHabitat(env.surface(), { ...traveling, view: "world" }, callbacks); views.push(world); await flush();
     assert.equal(env.frames.size, 1, "both cameras share the same fisherman clock");
-    const firstPaint = sampleHero(world, env, pixelSprite, true), feet = { ...probe.state.clearing.position };
+    const firstPaint = sampleFishingHero(world, env, loaded, probe.state, TILED_WORLD), feet = { ...probe.state.clearing.position };
     assert.ok(firstPaint.hasPose("fish"), "the main pixel body uses its articulated fishing rig");
     clock.advance(5);
-    const waiting = sampleHero(world, env, pixelSprite, true);
+    const waiting = sampleFishingHero(world, env, loaded, probe.state, TILED_WORLD);
     assert.ok(waiting.hasPose("fish")); assert.deepEqual(probe.state.clearing.position, feet);
     assert.ok(waiting.calls.some(call => call.method === "strokeStyle" && call.args[0] === "#d1b27c"), "the rod is painted in the same scene");
     world.configure({ ...traveling, view: "world", paused: true }); circle.configure({ ...traveling, backgrounded: true });
@@ -2833,7 +2859,8 @@ test("coastal jobs keep the real hero visible through walking, fishing, camera h
 });
 
 test("restored coastal jobs show static fishing in reduced motion without an animation loop", async () => {
-  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules(fishingFixture());
+  const loaded = await modules(fishingFixture());
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = loaded;
   const env = browser(); let scene, probe;
   try {
     worldDevStore.patch(quietClearing);
@@ -2844,11 +2871,11 @@ test("restored coastal jobs show static fishing in reduced motion without an ani
     probe = connectForestSession("restored-visible-fishing", TILED_WORLD, "circle", 200_000, 0, () => {});
     assert.equal(probe.state.journeyTravel.phase, "fishing");
     assert.deepEqual(probe.state.clearing.position, { x: 690, y: 700 });
-    assert.ok(sampleHero(scene, env, pixelSprite, true).hasPose("fish"));
+    assert.ok(sampleFishingHero(scene, env, loaded, probe.state, TILED_WORLD, true).hasPose("fish"));
     assert.equal(env.frames.size, 0);
-    const before = sampleHero(scene, env, pixelSprite, true).calls;
+    const before = sampleFishingHero(scene, env, loaded, probe.state, TILED_WORLD, true).calls;
     env.tick(10_000);
-    assert.deepEqual(sampleHero(scene, env, pixelSprite, true).calls, before);
+    assert.deepEqual(sampleFishingHero(scene, env, loaded, probe.state, TILED_WORLD, true).calls, before);
     scene.setTime(700_000);
     assert.equal(probe.state.journeyTravel, undefined);
     assert.ok(sampleHero(scene, env, pixelSprite).body, "completion leaves a visible safe outdoor actor");
@@ -2978,7 +3005,8 @@ test("only a completed resident tap reaches her AI, while drags, pinch and cance
 });
 
 test("DEV fishing rehearses the real trip, stops with a safe return and yields to confirmed jobs", async () => {
-  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = await modules(fishingFixture());
+  const loaded = await modules(fishingFixture());
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, pixelSprite } = loaded;
   const env = browser(); let scene, probe;
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: false });
@@ -2993,7 +3021,7 @@ test("DEV fishing rehearses the real trip, stops with a safe return and yields t
     assert.equal(probe.state.memory.enabled, false, "a rehearsal cannot save simulated account activity");
     clock.until(() => probe.state.journeyTravel.phase === "fishing", "DEV reaches the same real shore", 500);
     clock.advance(18);
-    assert.ok(sampleHero(scene, env, pixelSprite, true).hasPose("present", "fish"));
+    assert.ok(sampleFishingHero(scene, env, loaded, probe.state, TILED_WORLD).hasPose("present", "fish"));
     const atShore = { ...probe.state.clearing.position };
     worldDevStore.triggerLife("idle");
     assert.equal(probe.state.fishingPreview, undefined);

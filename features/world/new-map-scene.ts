@@ -180,7 +180,9 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     paintGround: ground => {
       const weather = { ...forestAtmosphereState(world, atmosphere), reducedMotion: still };
       const groundExclusions = life?.mushrooms.map(mushroom => ({ x: mushroom.x, y: mushroom.y, radius: PET_SIZE * .14 }));
-      drawForestWater(ground, world, { ...weather, waterFish: dev?.waterFish, waterBreeze: dev?.waterBreeze });
+      drawForestWater(ground, world, { ...weather, waterFish: dev?.waterFish, waterBreeze: dev?.waterBreeze,
+        waterSurface: dev?.waterSurface,
+        wind: dev?.waterWind === "calm" ? 0 : dev?.waterWind === "breeze" ? .45 : dev?.waterWind === "windy" ? 1 : undefined });
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions });

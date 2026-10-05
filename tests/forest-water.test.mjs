@@ -96,7 +96,7 @@ test("maps with no authored water or empty surfaces do not inherit the forest ma
   assert.ok(omitted);
   for (const edited of [withoutWater, { ...scene, water: { surfaces: [], exclusions: scene.water.exclusions } }]) {
     assert.equal(isForestWater(edited, { x: 1200, y: 900 }), false);
-    assert.deepEqual(forestWaterFrame(edited, options), { currents: [], impacts: [], fish: [], splashes: [], breeze: [] });
+    assert.deepEqual(forestWaterFrame(edited, options), { currents: [], glints: [], impacts: [], fish: [], splashes: [], breeze: [] });
   }
 });
 

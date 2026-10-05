@@ -1,11 +1,12 @@
 import { drawForestWaterImpact, type ForestWaterImpact } from "./forest-rain";
 import { createWaterLifeLayout, drawWaterBreeze, drawWaterFish, drawWaterSplash, waterLifeFrame, type WaterLifeLayout } from "./forest-water-life";
+import { createWaterSurfaceLayout, drawWaterCurrent, drawWaterGlint, waterSurfaceFrame, WATER_SURFACE_LIMITS, type WaterSurfaceLayout } from "./forest-water-surface";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 
-export const FOREST_WATER_LIMITS = { currents: 38, impacts: 640, breeze: 24, fish: 24, splashes: 12 } as const;
+export const FOREST_WATER_LIMITS = { ...WATER_SURFACE_LIMITS, impacts: 640, breeze: 24, fish: 24, splashes: 12, layoutCells: 4096 } as const;
 export type WaterOptions = { elapsed: number; rain: number; dusk: number; reducedMotion: boolean;
-  waterFish?: "auto" | "on" | "off"; waterBreeze?: boolean };
+  waterFish?: "auto" | "on" | "off"; waterBreeze?: boolean; waterSurface?: boolean; wind?: number };
 type WaterPolygon = { points: WorldPoint[]; bounds: WorldBounds };
 type WaterEdge = { a: WorldPoint; b: WorldPoint; bounds: WorldBounds };
 type WaterSeed = WorldPoint & { sizeScale: number };
@@ -13,7 +14,7 @@ type WaterCell = { key: number; points: WaterSeed[] };
 type WaterGeometry = {
   surfaces: WaterPolygon[]; exclusions: WaterPolygon[]; edges: WaterEdge[];
   bounds: WorldBounds; scale: number;
-  layout?: { cells: WaterCell[]; currents: WaterSeed[]; life: WaterLifeLayout };
+  layout?: { cells: WaterCell[]; surface: WaterSurfaceLayout; life: WaterLifeLayout };
 };
 const cache = new WeakMap<FixedWorldScene, WaterGeometry | null>();
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -78,7 +79,13 @@ function ellipseFits(point: WorldPoint, rx: number, ry: number, water: WaterGeom
  * cell supplies a new location on each birth; particles never move during a ripple. */
 function layout(water: WaterGeometry) {
   if (water.layout) return water.layout;
-  const size = 36 * water.scale, { x, y, width, height } = water.bounds;
+  const { x, y, width, height } = water.bounds;
+  let size = 36 * water.scale;
+  const cellCount = () => (Math.floor((x + width) / size) - Math.floor(x / size) + 1)
+    * (Math.floor((y + height) / size) - Math.floor(y / size) + 1);
+  // Ordinary maps keep the authored 36-unit sampling. Very long custom maps
+  // coarsen only their sample grid, bounding preparation as well as frame cost.
+  while (cellCount() > FOREST_WATER_LIMITS.layoutCells) size *= Math.max(1.1, Math.sqrt(cellCount() / FOREST_WATER_LIMITS.layoutCells));
   const cells: WaterCell[] = [];
   for (let row = Math.floor(y / size); row <= Math.floor((y + height) / size); row++) {
     for (let column = Math.floor(x / size); column <= Math.floor((x + width) / size); column++) {
@@ -104,10 +111,11 @@ function layout(water: WaterGeometry) {
   // Bound huge custom maps without preferring the first rows or one river arm.
   cells.sort((a, b) => noise(a.key + 7201) - noise(b.key + 7201));
   const bounded = cells.slice(0, FOREST_WATER_LIMITS.impacts / 2);
-  const currents = bounded.slice(0, FOREST_WATER_LIMITS.currents).map(cell => cell.points[0]);
+  const surface = createWaterSurfaceLayout(bounded, water.scale,
+    (point, rx, ry) => ellipseFits(point, rx, ry, water));
   const life = createWaterLifeLayout(bounded, water.scale,
     (point, rx, ry) => ellipseFits(point, rx, ry, water));
-  water.layout = { cells: bounded, currents, life }; return water.layout;
+  water.layout = { cells: bounded, surface, life }; return water.layout;
 }
 
 /** Shared active time makes rain reproducible across cameras and pauses. Only a
@@ -115,14 +123,10 @@ function layout(water: WaterGeometry) {
 export function forestWaterFrame(scene: FixedWorldScene, options: WaterOptions) {
   const water = geometry(scene), rain = clamp(options.rain), dusk = clamp(options.dusk);
   const elapsed = options.reducedMotion || !Number.isFinite(options.elapsed) ? 0 : Math.max(0, options.elapsed);
-  if (!water) return { currents: [], impacts: [], fish: [], splashes: [], breeze: [] };
+  if (!water) return { currents: [], glints: [], impacts: [], fish: [], splashes: [], breeze: [] };
   const samples = layout(water);
-  const currents = samples.currents.map((point, index) => {
-    const age = phase(elapsed / (4.8 + noise(index + 81) * 4) + noise(index + 45)), scale = water.scale * point.sizeScale;
-    return { x: point.x + (age - .5) * scale * 4, y: point.y + (age - .5) * scale,
-      width: (3.5 + noise(index + 33) * 6) * scale, scale, phase: age,
-      opacity: (.07 + Math.sin(age * Math.PI) ** 2 * .17) * (1 - dusk * .55) * (1 - rain * .6) };
-  });
+  const surface = options.waterSurface === false ? { currents: [], glints: [] }
+    : waterSurfaceFrame(samples.surface, { ...options, elapsed, rain, dusk });
   const impacts: Array<ForestWaterImpact & { eventId: string }> = [];
   if (!options.reducedMotion && rain > .01) for (const cell of samples.cells) for (let slot = 0; slot < 2; slot++) {
     const stream = cell.key * 7 + slot * 571;
@@ -136,7 +140,7 @@ export function forestWaterFrame(scene: FixedWorldScene, options: WaterOptions) 
       radiusY: (2.6 + noise(stream + cycle * 97 + 191) * 1.7) * scale,
       opacity: (.5 + rain * .32) * (1 - dusk * .5), dusk });
   }
-  return { currents, impacts, ...waterLifeFrame(samples.life, { ...options, elapsed, rain, dusk }) };
+  return { ...surface, impacts, ...waterLifeFrame(samples.life, { ...options, elapsed, rain, dusk }) };
 }
 
 /** Complete footprints are checked once against exact Tiled edges. No repeated
@@ -157,16 +161,11 @@ export function drawForestWater(ctx: CanvasRenderingContext2D, scene: FixedWorld
       && point.y * transform.d + transform.f >= -margin * Math.abs(transform.d)
       && point.y * transform.d + transform.f <= ctx.canvas.height + margin * Math.abs(transform.d);
   const frame = forestWaterFrame(scene, options);
-  ctx.save(); ctx.strokeStyle = "#b0e1dc"; ctx.lineCap = "round";
+  ctx.save(); ctx.lineCap = "round";
+  for (const current of frame.currents) if (visible(current, 32 * water.scale)) drawWaterCurrent(ctx, current);
   for (const fish of frame.fish) if (visible(fish, 12 * water.scale)) drawWaterFish(ctx, fish);
   for (const breeze of frame.breeze) if (visible(breeze, 42 * water.scale)) drawWaterBreeze(ctx, breeze);
-  for (const current of frame.currents) {
-    if (!visible(current, 12 * water.scale)) continue;
-    ctx.globalAlpha = current.opacity; ctx.lineWidth = .48 * current.scale;
-    const x = current.x, y = current.y, w = current.width;
-    ctx.beginPath(); ctx.moveTo(x - w / 2, y);
-    ctx.bezierCurveTo(x - w * .2, y - current.scale * .75, x + w * .15, y + current.scale * .75, x + w / 2, y); ctx.stroke();
-  }
+  for (const glint of frame.glints) if (visible(glint, 9 * water.scale)) drawWaterGlint(ctx, glint);
   for (const splash of frame.splashes) if (visible(splash, 12 * water.scale)) drawWaterSplash(ctx, splash);
   for (const impact of frame.impacts) if (visible(impact, 11 * water.scale)) drawForestWaterImpact(ctx, impact);
   ctx.restore();
