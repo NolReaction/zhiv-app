@@ -27,6 +27,18 @@ test("rod identities have different physical sections, grips and reel silhouette
   assert.deepEqual(fishingRodShapes("unknown"), fishingRodShapes("reed_rod"));
 });
 
+test("river and tide remain different solid silhouettes without decorative wraps, rings or colors", () => {
+  const solids = shapes => shapes.filter(shape => shape.fill && !["wrap", "highlight"].includes(shape.fill))
+    .map(shape => JSON.stringify(Object.fromEntries(Object.entries(shape).filter(([key]) => !["fill", "stroke", "width"].includes(key)))));
+  for (const side of [-1, 1]) for (const detailScale of [.45, 1]) for (const tension of [0, 1]) {
+    const options = { length: .82, reel: { x: -.025, y: .06 * side }, side, detailScale, tension };
+    const river = solids(fishingRodShapes("river_rod", options)), tide = new Set(solids(fishingRodShapes("tide_rod", options)));
+    const different = river.filter(shape => !tide.has(shape));
+    assert.ok(different.length / river.length > .5,
+      "changing only palette or decorative wraps must not make two models count as distinct");
+  }
+});
+
 test("all rod models keep the requested tip and finite bounded details through bending and cranking", () => {
   for (const rodId of FISHING_ROD_IDS) for (const length of [.68, 1, 1.35]) for (const side of [-1, 1]) {
     for (const tension of [0, .8, 1.5, NaN, Infinity]) {

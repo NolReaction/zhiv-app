@@ -38,7 +38,7 @@ export function drawForestMiningHero(ctx: CanvasRenderingContext2D, frame: Fores
 
 export type ForestMiningWorkFrame = Pick<ForestMiningFrame, "working" | "workCue" | "size" | "elapsed">;
 
-/** A persistent, contrasted work sign; only the two tools and one tiny impact
+/** A persistent, contrasted work sign; only the two tools
  * animate. Paint after weather so night never erases the station's status. */
 export function drawForestMiningWork(ctx: CanvasRenderingContext2D, frame: ForestMiningWorkFrame, still: boolean) {
   if (!frame.working || ![frame.workCue.x,frame.workCue.y,frame.size,frame.elapsed].every(Number.isFinite) || frame.size <= 0) return;
@@ -51,10 +51,6 @@ export function drawForestMiningWork(ctx: CanvasRenderingContext2D, frame: Fores
   for (let index=0; index<2; index++) {
     const side = index ? 1 : -1;
     pickaxe(ctx, x+side*size*.10, y+size*.1,size*.60,side*(.75+beat*.13));
-  }
-  if (!still && beat > .72) {
-    ctx.fillStyle="#ffe4a1";
-    ctx.fillRect(x-.6,y-size*.34,1.2,3); ctx.fillRect(x-2,y-size*.28,4,1);
   }
   ctx.restore();
 }

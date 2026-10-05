@@ -1,0 +1,30 @@
+.marker.marker {
+  position: absolute; z-index: 3; width: 124px; height: 44px; min-height: 44px;
+  padding: 5px 7px 8px; display: flex; gap: 5px; align-items: center;
+  border: 1px solid #dbc485a8; border-radius: 12px;
+  background: linear-gradient(160deg, #40503afa, #202f22f5); color: #f6e9c5;
+  box-shadow: 0 3px 0 #0b170e80, 0 5px 14px #07130766, inset 0 1px #f7e7b31f;
+  transform: translate(-50%, -100%); pointer-events: auto; isolation: isolate;
+}
+.marker.marker:hover { border-color: #f5dd9e; background: #43563a; }
+.marker.marker:focus-visible { outline: 2px solid #ffebaf; outline-offset: 3px; }
+.marker::after {
+  content: ""; position: absolute; top: calc(100% - 3px);
+  left: clamp(8px, calc(50% + var(--pointer-offset, 0px)), calc(100% - 8px));
+  width: 7px; height: 7px; border-right: 1px solid #dbc485a8; border-bottom: 1px solid #dbc485a8;
+  background: #243626; transform: translateX(-50%) rotate(45deg); z-index: -1;
+}
+.icon { width: 29px; height: 29px; flex: 0 0 29px; display: grid; place-items: center; position: relative; }
+.caption { display: grid; min-width: 0; gap: 2px; text-align: left; }
+.caption strong { font-size: .72rem; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caption small { font-size: .55rem; line-height: 1.1; color: #d3dbc2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.check { position: absolute; right: -1px; bottom: -1px; border-radius: 50%; background: #36582b; color: #e3f5b8; }
+.count { position: absolute; right: -5px; top: -6px; padding: 2px 4px; border: 1px solid #d8c693; border-radius: 8px; background: #3b4931; font-size: .57rem; line-height: 1; color: #fff0c3; }
+.track { position: absolute; inset: auto 9px 4px; height: 2px; background: #080e0966; border-radius: 2px; overflow: hidden; }
+.track > span { display: block; height: 100%; background: linear-gradient(90deg, #a5bf72, #efd397); transition: width .5s linear; }
+.marker[data-production-status="ready"], .marker[data-production-status="awaiting-gather"] { border-color: #d4efa5; background: linear-gradient(160deg, #4a5e38fa, #2c4028f5); }
+.marker[data-production-status="storage-blocked"], .marker[data-production-status="paused"] { border-color: #e6bc83; color: #ffdda9; }
+.marker[data-production-status="collecting"] .track > span { background: #e9d3a1; }
+.marker[data-production-target="quarry"][data-production-status="working"] .icon > svg { transform-origin: 50% 75%; animation: pick 1.8s ease-in-out infinite; }
+@keyframes pick { 0%, 70%, 100% { transform: rotate(-9deg); } 38% { transform: rotate(12deg); } 48% { transform: rotate(-14deg); } }
+@media (prefers-reduced-motion: reduce) { .track > span { transition: none; } .marker .icon > svg { animation: none !important; } }

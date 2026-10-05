@@ -267,8 +267,9 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestLightEmitters(context, world, lighting);
   drawBuildingDetails(context, world, lighting);
   // Station status stays legible above the roof in both daylight and night.
-  // A real expedition and ordinary production share one sign, never a queue.
-  if (dev?.showBuildings !== false) {
+  // The full map's production badge owns this roof whenever an order exists.
+  // The circle and an expedition without production retain the animated picks.
+  if (dev?.showBuildings !== false && !(options.view === "world" && productions.some(frame => frame.stationId === "quarry"))) {
     const quarryProduction = productions.find(frame => frame.stationId === "quarry" && frame.phase === "working");
     const quarry = quarryProduction && world.sites.find(site => site.id === "quarry");
     const work = mining?.working ? mining : !mining && quarry && quarryProduction ? {

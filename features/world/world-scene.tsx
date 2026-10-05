@@ -18,17 +18,22 @@ import { interactiveMapObjects } from "./site-interactions";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { WorldConstructionStatus } from "./world-construction-status";
 import { WorldUpgradeEffects, UPGRADE_CELEBRATION_MS } from "./world-upgrade-effects";
+import { WorldProductionStatus } from "./world-production-status";
+import { WorldProductionEffects } from "./world-production-effects";
+import { mapProductionGroups } from "./world-production-state";
+import { constructionMapPlace } from "./construction-map-anchor";
+import { INVENTORY_GAIN_MS, INVENTORY_GAIN_QUEUE_LIMIT } from "./inventory-gain-playback";
 import { createMapAnchorStore } from "./map-anchor-store";
 import { useGardenCollection } from "@/features/economy/garden-collection-context";
 import styles from "./world.module.css";
 
 type Props = { hideJourneyStatus?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
-  constructionEconomy?: EconomyController; onOpenConstruction?: (stationId: string) => void; hideConstructionStatus?: boolean;
+  constructionEconomy?: EconomyController; onOpenConstruction?: (stationId: string) => void; onOpenProduction?: (stationId: string) => void; hideConstructionStatus?: boolean;
   selectedObjectId?: string | null; onObjectSelection?: (selection: MapObjectSelection | null) => void;
   onResident?: (id: "plesk") => void;
   openObjectRequest?: { id: number; place: WorldPlace };
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onOpenConstruction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
+export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onOpenConstruction, onOpenProduction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
   const garden = useGardenCollection();
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
@@ -48,19 +53,28 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
   const [anchorStore] = useState(createMapAnchorStore);
   const constructionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "construction"));
+  const productionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "production"));
   const completions = constructionEconomy?.completedConstructions;
-  const anchorTracking = useRef({ enabled: constructionActive, seen: new Set(completions?.map(event => event.id)), until: 0 });
+  const gains = constructionEconomy?.inventoryGains;
+  const anchorTracking = useRef({ enabled: constructionActive || productionActive, production: productionActive, seen: new Set(completions?.map(event => event.id)), gains: new Set(gains?.map(event => event.id)), until: 0 });
   useLayoutEffect(() => {
     const tracker = anchorTracking.current;
     const fresh = completions?.some(event => !tracker.seen.has(event.id));
+    const freshGain = gains?.some(event => event.stationId && !tracker.gains.has(event.id));
+    // Snapshot adoption and its receipt notification are separate publications.
+    // Keep the last job's anchors through that gap; polling alone creates no effect.
+    if (tracker.production && !productionActive) tracker.until = Math.max(tracker.until, performance.now() + INVENTORY_GAIN_MS + 100);
+    tracker.production = productionActive;
     tracker.seen = new Set(completions?.map(event => event.id));
-    if (fresh) tracker.until = performance.now() + UPGRADE_CELEBRATION_MS + 100;
-    tracker.enabled = constructionActive || performance.now() < tracker.until;
+    tracker.gains = new Set(gains?.map(event => event.id));
+    if (fresh) tracker.until = Math.max(tracker.until, performance.now() + UPGRADE_CELEBRATION_MS + 100);
+    if (freshGain) tracker.until = Math.max(tracker.until, performance.now() + INVENTORY_GAIN_MS * (INVENTORY_GAIN_QUEUE_LIMIT + 1) + 100);
+    tracker.enabled = constructionActive || productionActive || performance.now() < tracker.until;
     engine.current?.setObjectAnchorsEnabled(tracker.enabled);
-    if (constructionActive || !tracker.enabled) return;
+    if (constructionActive || productionActive || !tracker.enabled) return;
     const timer = setTimeout(() => { tracker.enabled = false; engine.current?.setObjectAnchorsEnabled(false); }, Math.max(0, tracker.until - performance.now()));
     return () => clearTimeout(timer);
-  }, [constructionActive, completions]);
+  }, [constructionActive, productionActive, completions, gains]);
   const [reload, setReload] = useState(0);
   useEffect(() => {
     latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, garden };
@@ -122,7 +136,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
       <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />
       <button data-map-anchor data-kind="fishing" data-x={MAP_PLACES.fishing.marker.x} data-y={MAP_PLACES.fishing.marker.y} onClick={() => onPlace("fishing")} aria-label="Открыть рыбалку" title="Рыбалка" />
     </div>}
-    <MapFeedback anchorStore={anchorStore} economy={constructionEconomy} onOpen={onOpenConstruction} ready={ready} hidden={hideConstructionStatus} />
+    <MapFeedback key={owner} anchorStore={anchorStore} economy={constructionEconomy} onOpen={onOpenConstruction} onOpenProduction={onOpenProduction} ready={ready} hidden={hideConstructionStatus} />
     {!hideJourneyStatus && economyJourney && <button className={styles.away} onClick={() => onPlace("cave")} aria-label="Открыть исследование Мохлика">
       <span>{economyJourney.label ?? "Исследование"} · {now >= Date.parse(economyJourney.finishesAt) ? "Мохлик вернулся — забрать находки" : `${Math.max(1, Math.ceil((Date.parse(economyJourney.finishesAt) - now) / 60000))} мин до возвращения`}</span>
     </button>}
@@ -131,13 +145,20 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
 }
 
 /** Only the small map overlays subscribe to camera movement; the scene stays mounted. */
-function MapFeedback({ anchorStore, economy, onOpen, ready, hidden }: {
+function MapFeedback({ anchorStore, economy, onOpen, onOpenProduction, ready, hidden }: {
   anchorStore: ReturnType<typeof createMapAnchorStore>; economy?: EconomyController;
-  onOpen?: (stationId: string) => void; ready: boolean; hidden: boolean;
+  onOpen?: (stationId: string) => void; onOpenProduction?: (stationId: string) => void; ready: boolean; hidden: boolean;
 }) {
   const anchors = useSyncExternalStore(anchorStore.subscribe, anchorStore.getSnapshot, anchorStore.getSnapshot);
+  const garden = useGardenCollection();
+  const groups = mapProductionGroups(economy?.snapshot ?? null, economy?.now ?? NaN, garden);
+  const construction = economy?.snapshot?.jobs.find(job => job.kind === "construction");
+  const constructionAnchors = anchors.filter(anchor => !groups.some(group => group.place === anchor.place));
+  const reserved = constructionAnchors.filter(anchor => anchor.place === constructionMapPlace(construction?.targetId ?? ""));
   return <>
-    {ready && economy && onOpen && <WorldConstructionStatus economy={economy} anchors={anchors} onOpen={onOpen} hidden={hidden} />}
+    {ready && economy && onOpen && <WorldConstructionStatus economy={economy} anchors={constructionAnchors} onOpen={onOpen} hidden={hidden} />}
+    {ready && economy && onOpenProduction && <WorldProductionStatus economy={economy} groups={groups} anchors={anchors} reserved={reserved} onOpen={onOpenProduction} onOpenConstruction={onOpen} hidden={hidden} />}
     {economy && <WorldUpgradeEffects economy={economy} anchors={anchors} ready={ready} />}
+    {economy && <WorldProductionEffects economy={economy} anchors={anchors} ready={ready} />}
   </>;
 }

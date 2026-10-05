@@ -3,7 +3,10 @@ package ru.zhiv.db
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
-import org.junit.jupiter.api.*
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -14,7 +17,10 @@ import ru.zhiv.game.*
 import ru.zhiv.security.TokenCodec
 import java.time.OffsetDateTime
 import java.util.UUID
-import kotlin.test.*
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @Testcontainers(disabledWithoutDocker=true)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)

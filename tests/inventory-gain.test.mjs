@@ -33,6 +33,7 @@ test("a claim event contains only this removed job's confirmed inventory increas
   const saved = structuredClone(before), event = inventoryGainFromReceipt(before, result(after), receipt);
   assert.deepEqual(event, { id: receipt.requestId, ownerPublicId: owner, revision: 5, source: "claim",
     items: [{ itemId: "fish", quantity: 3 }, { itemId: "stone", quantity: 2 }] });
+  assert.equal(event.stationId, undefined, "a trip must not invent a production station");
   assert.ok(Object.isFrozen(event) && Object.isFrozen(event.items) && event.items.every(Object.isFrozen));
   assert.deepEqual(before, saved); assert.deepEqual(after.inventory, { fish: 20, wood: 95, stone: 7 });
   const partial = inventoryGainFromReceipt(before, result(state(5, [], { fish: 18, wood: 90, stone: 5 })), receipt);
@@ -63,9 +64,12 @@ test("harvest celebrates on the accepted claim, while rod ownership and resource
   const after = state(1, [], { berries: 14 });
   const accepted = inventoryGainFromReceipt(before, result(after), command("claim_job", harvest.id));
   assert.deepEqual(accepted.items, [{ itemId: "berries", quantity: 12 }]);
+  assert.equal(accepted.stationId, "garden");
+  assert.equal(inventoryGainFromReceipt(before, { ...result(after), replayed: true }, command("claim_job", harvest.id)).stationId, "garden");
   const purchase = command("buy_fishing_item", "shop:worm_bait", 0, 4);
   const offered = { ...state(), fishingShop: { offers: [{ id: "shop:worm_bait", itemId: "worm_bait", kind: "bait", remaining: 5 }] } };
   const bait = inventoryGainFromReceipt(offered, result(state(1, [], { worm_bait: 4 })), purchase);
+  assert.equal(bait.stationId, undefined, "a purchase must not celebrate a building");
   assert.equal(bait.source, "purchase"); assert.deepEqual(bait.items, [{ itemId: "worm_bait", quantity: 4 }]);
   assert.equal(inventoryGainFromReceipt(state(), result(state(1, [], { fish: 99 })), command("buy_fishing_item", "willow_rod")), null);
   assert.equal(inventoryGainFromReceipt(before, result(state(1, [], { berries: 1 })), command("sell", "berries")), null);

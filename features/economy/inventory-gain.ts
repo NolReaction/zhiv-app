@@ -2,6 +2,8 @@ import type { EconomyCommand, EconomyResult, EconomyView, MarketCommand } from "
 
 export type InventoryGain = Readonly<{
   id: string; ownerPublicId: string; revision: number; source: "claim" | "purchase";
+  /** Only an accepted production claim can celebrate at a map station. */
+  stationId?: string;
   items: readonly Readonly<{ itemId: string; quantity: number }>[];
 }>;
 export const INVENTORY_GAIN_HISTORY_LIMIT = 8;
@@ -15,11 +17,12 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
   if (!before || before.ownerPublicId !== after.ownerPublicId || command.ownerPublicId !== after.ownerPublicId
     || command.expectedRevision !== before.revision || result.acceptedRevision !== before.revision + 1
     || after.revision !== result.acceptedRevision || !before.inventory || !after.inventory) return null;
-  let allowed: Record<string, number>, source: InventoryGain["source"];
+  let allowed: Record<string, number>, source: InventoryGain["source"], stationId: string | undefined;
   if (command.action === "claim_job") {
     const job = before.jobs.find(item => item.id === command.targetId);
     if (!job || job.kind === "construction" || after.jobs.some(item => item.id === job.id)) return null;
     allowed = job.rewards; source = "claim";
+    if (job.kind === "production" && after.catalog.buildings.some(station => station.id === job.targetId)) stationId = job.targetId;
   } else if (command.action === "buy_fishing_item") {
     const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && item.kind === "bait");
     if (!offer || !before.catalog.fishing?.baits.some(item => item.itemId === offer.itemId)) return null;
@@ -37,5 +40,5 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     return quantity > 0 ? [Object.freeze({ itemId, quantity })] : [];
   });
   return items.length ? Object.freeze({ id: command.requestId, ownerPublicId: after.ownerPublicId,
-    revision: result.acceptedRevision, source, items: Object.freeze(items) }) : null;
+    revision: result.acceptedRevision, source, ...(stationId ? { stationId } : {}), items: Object.freeze(items) }) : null;
 }

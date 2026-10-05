@@ -3348,9 +3348,9 @@ test("quarry production keeps one visible work sign by day and night, including 
     const production={ownerPublicId:"worker",revision:1,jobs:[{id:"stone",stationId:"quarry",stationLevel:1,
       recipeId:"quarry_stone",startedAt:new Date(100_000).toISOString(),finishesAt:new Date(700_000).toISOString()}]};
     const cue={x:quarry.anchor.x,y:quarry.bounds.y-NEW_MAP_PET_SIZE*.12};
-    const count=(now,still,night,mining=null,showBuildings=true)=>{
+    const count=(now,still,night,mining=null,showBuildings=true,view="circle",jobs=production)=>{
       const surface=env.surface();
-      paintNewMap(surface.context,new Map(),{...options,reducedMotion:still,economyProduction:production},7,false,now,night?1:0,
+      paintNewMap(surface.context,new Map(),{...options,view,reducedMotion:still,economyProduction:jobs},7,false,now,night?1:0,
         {scene:TILED_WORLD,actorAway:true,mining,state:{...WORLD_DEV_DEFAULTS,showBuildings,timeOfDay:night?"night":"day"}});
       return surface.calls.filter(call=>call.method==="ellipse" && call.args[0]===cue.x && call.args[1]===cue.y).length;
     };
@@ -3360,6 +3360,9 @@ test("quarry production keeps one visible work sign by day and night, including 
       assert.equal(count(200_000,still,night),1,"ordinary production has a sign even when another activity owns the hero");
       assert.equal(count(200_000,still,night,mining),1,"the worker and production must not draw duplicate signs");
       assert.equal(count(700_000,still,night),0,"finished jobs stop the work sign without requiring a claim");
+      assert.equal(count(200_000,still,night,mining,true,"world"),0,"the full map has a production badge instead of a duplicate work sign");
+      assert.equal(count(700_000,still,night,mining,true,"world"),0,"a ready production badge is not covered by the expedition's work sign");
+      assert.equal(count(200_000,still,night,mining,true,"world",{...production,jobs:[]}),1,"an expedition without production keeps its map work sign");
     }
     assert.equal(count(99_999,false,false),0,"future jobs do not pretend to work early");
     assert.equal(count(200_000,false,false,mining,false),0,"hidden buildings have no orphan work sign");
@@ -3396,8 +3399,8 @@ test("ordinary quarry production walks from base, shares the miner across camera
     assert.equal(env.frames.size,1,"both cameras share the same worker clock");
     const painted=env.surface(),cue=probe.state.journeyTravel.mining.workCue;
     world.paintWorld(painted.context);
-    assert.equal(painted.calls.filter(call=>call.method==="ellipse" && call.args[0]===cue.x && call.args[1]===cue.y).length,1,
-      "a hidden quarry worker paints one persistent status sign in the real world camera");
+    assert.equal(painted.calls.filter(call=>call.method==="ellipse" && call.args[0]===cue.x && call.args[1]===cue.y).length,0,
+      "the full map delegates this production roof to its screen-space timer badge");
     const expedition={id:"higher-priority-shore",routeId:"shore",startedAt:new Date(100_000).toISOString(),
       finishesAt:new Date(700_000).toISOString(),rewards:{fish:4}};
     const next={...initial,economyJourney:expedition};

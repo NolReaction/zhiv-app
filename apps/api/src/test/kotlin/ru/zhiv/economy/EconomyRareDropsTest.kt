@@ -97,7 +97,8 @@ class EconomyRareDropsTest {
     }
 
     @Test fun `merge cannot choose closer countdown and specials cannot be coin bought or sold`() {
-        val near = clock(500), far = clock(400000, "moon_crystal")
+        val near = clock(500)
+        val far = clock(400000, "moon_crystal")
         assertEquals(far, EconomyRareDrops.merge(near, far)); assertEquals(far, EconomyRareDrops.merge(far, near))
         assertEquals(far, EconomyRareDrops.merge(null, far)); assertEquals(far, EconomyRareDrops.merge(far, null))
         assertNull(EconomyRareDrops.merge(null, null))

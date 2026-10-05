@@ -180,6 +180,7 @@ V32 один раз переводит старые `sparks`, `wood`, `stone`. �
 ## Код и протокол
 
 - `features/economy/`: Zod-контракт, правила локального зеркала, HTTP, сессия повторов, hook, меню объектов, отдельные меню кладовой/исследований/рынка и адаптер состояния мира/исследования. `world-pantry-menu.tsx` и `world-expeditions-menu.tsx` показывают запасы и вылазки без общего обзора. `world-upgrade-dialog.tsx` показывает прямой результат и стоимость следующего уровня, `world-object-menu.tsx` разделяет выбор продукции и оформление заказа. `world-stations.ts` связывает объект с производствами и располагает меню в доступной области экрана. Подтверждённые уровни передаются в сцены как `economyBuildings`; выбор доступной графики — `features/world/economy-scene-state.ts`.
+- `features/world/world-production-state.ts`, `world-production-status.tsx` и `world-production-effects.tsx`: таймеры, готовность и нехватка места над зданиями. `features/economy/inventory-gain.ts` привязывает эффект к станции только после подтверждённого `claim_job` производства; награды исследований и покупки не подсвечивают здания. [Поведение на карте](building-workbench.md#статусы-работы-на-карте).
 - `features/world/world-wallet.tsx` и `wallet-animation.ts`: анимация подтверждённого баланса. `world-construction-status.tsx` и `construction-map-anchor.ts`: таймер на экранной проекции реального объекта Tiled.
 - `lib/dev/economy-store.ts`, `app/api/v1/economy/`: локальный API, данные в памяти.
 - `apps/api/src/main/kotlin/ru/zhiv/economy/`: контракт, каталог, правила, HTTP.
