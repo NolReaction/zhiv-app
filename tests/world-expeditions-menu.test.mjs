@@ -170,6 +170,39 @@ test("construction and production do not hide exploration or occupy the explorer
   assert.equal(disabled(button(route(html, "forest"), "Отправиться")), false);
 });
 
+test("quarry work blocks all departures and gives a way to claim its result", () => {
+  for (const finished of [false, true]) {
+    const saved = job({ kind: "production", targetId: "quarry", recipeId: "quarry_stone", finishesAt: new Date(now + (finished ? 0 : 30_000)).toISOString() });
+    const economy = controller({ snapshot: snapshot({ jobs: [saved], buildings: { home: 3, warehouse: 1 } }) });
+    const html = render(economy, { onNavigateStation() {} });
+    assert.match(html, finished ? /Сначала заберите добычу из каменоломни/ : /Мохлик работает в каменоломне/);
+    assert.equal(disabled(button(html, "Открыть каменоломню")), false);
+    for (const [sector, id] of [["forest", "forest"], ["shore", "shore"], ["caves", "cave"]]) {
+      const content = route(renderSector(sector, economy), id);
+      assert.equal(disabled(button(content, "Отправиться")), true);
+    }
+    assert.doesNotMatch(html, /Можно отправиться/);
+  }
+});
+
+test("the caves control opens the shared mine when map navigation is supplied", () => {
+  let tree, opened = 0;
+  function Probe() { tree = WorldExpeditionsMenu({ economy: controller(), onOpenPantry() {}, onOpenQuarry() { opened++; } }); return tree; }
+  renderToStaticMarkup(createElement(Probe));
+  let caves;
+  function walk(element) {
+    if (!isValidElement(element)) return;
+    if (element.props["data-sector-select"] === "caves") caves = element;
+    Children.forEach(element.props.children, walk);
+  }
+  walk(tree);
+  assert.ok(caves); caves.props.onClick();
+  assert.equal(opened, 1);
+  const embedded = render(controller(), { embeddedCaves: true });
+  assert.match(embedded, /data-sector="caves"/);
+  assert.doesNotMatch(embedded, /Секторы вылазок|data-sector="forest"|data-sector="shore"/);
+});
+
 test("busy, uncertain and cooldown states prevent both spending and reward claims", () => {
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5_000 }]) {
     assert.equal(disabled(button(route(render(controller(flags)), "forest"), "Отправиться")), true);

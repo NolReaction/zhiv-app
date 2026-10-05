@@ -11,8 +11,9 @@ test("elementary materials retain recursive occupied-slot minutes without treati
   near(math.profile("rope").totalSlotMinutes, 17.5);
   const brick = math.profile("bricks");
   near(brick.slotMinutes.kiln, 30); near(brick.slotMinutes.quarry, 8.4375); near(brick.slotMinutes.woodlot, 4);
-  near(math.profile("tools").totalSlotMinutes, 282.5);
-  near(math.profile("reinforced_parts").totalSlotMinutes, 450);
+  near(brick.slotMinutes.mochlik, 8.4375);
+  near(math.profile("tools").totalSlotMinutes, 309.5);
+  near(math.profile("reinforced_parts").totalSlotMinutes, 504);
   assert.equal(math.profile("fiber").sourceHome, 1, "Forest output exists before the dedicated fiber station");
   assert.equal(math.profile("fiber").referenceHome, 2);
   const berry = math.profile("berries");
@@ -23,12 +24,27 @@ test("elementary materials retain recursive occupied-slot minutes without treati
   assert.equal(dry.directHome, 1); assert.equal(dry.referenceHome, 2);
 });
 
+test("quarry batches reserve the same intrinsic minutes of both Mochlik and the mine", () => {
+  const catalog = readEconomyCatalog(), math = economicMath(catalog);
+  for (const recipe of catalog.recipes.filter(r => r.buildingId === "quarry")) {
+    const batch = math.batch(recipe);
+    near(batch.slotMinutes.quarry, recipe.seconds / 60);
+    near(batch.slotMinutes.mochlik, recipe.seconds / 60);
+    near(batch.processMinutes, recipe.seconds / 60);
+  }
+  near(math.profile("stone").slotMinutes.mochlik, 3.75);
+  near(math.profile("ore").slotMinutes.mochlik, 9);
+  near(math.profile("tools").slotMinutes.mochlik, 27);
+  near(math.profile("reinforced_parts").slotMinutes.mochlik, 54);
+  assert.equal(math.profile("wood").slotMinutes.mochlik, undefined, "Passive gathering remains independent");
+});
+
 test("a joint long order is costed once and exposes its output portfolio rather than charging the entire recipe per product", () => {
   const c = readEconomyCatalog(), math = economicMath(c);
   const batch = math.batch(c.recipes.find(r => r.id === "workshop_structures"));
   assert.deepEqual(batch.output, { beams: 2, cut_stone: 2, metal_parts: 2 });
   near(batch.slotMinutes.workshop, 500); near(batch.elementaryOutputMinutes.workshop, 290);
-  for (const id of ["woodlot", "quarry", "kiln"]) near(batch.slotMinutes[id], batch.elementaryOutputMinutes[id]);
+  for (const id of ["woodlot", "quarry", "kiln", "mochlik"]) near(batch.slotMinutes[id], batch.elementaryOutputMinutes[id]);
   assert.equal(batch.coins, 0);
   const cycle = structuredClone(c); cycle.recipes.find(r => r.id === "make_planks").cost.items.planks = 1;
   assert.throws(() => economicMath(cycle).profile("planks"), /Production cycle/);

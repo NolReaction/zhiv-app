@@ -175,3 +175,15 @@ test("crop selection follows the requested or collecting job and status preserve
   assert.equal(berryCollectionStatus(job(), away, now, null).away, true);
   assert.equal(berryCollectionStatus(job(), away, now, null).disabled, true);
 });
+
+test("active quarry blocks starting a harvest but returned unclaimed quarry frees the collector", () => {
+  const quarry = { ...job("quarry"), targetId: "quarry", recipeId: "quarry_stone", rewards: { stone: 8 }, collection: undefined, finishesAt: new Date(now + 1000).toISOString() };
+  const h = harness({ snapshot: snapshot([job(), quarry]) });
+  assert.equal(h.controller.start("crop"), false);
+  assert.deepEqual(h.sent, []);
+  assert.match(berryCollectionStatus(job(), h.input.snapshot, now, null).awayReason, /каменоломне/);
+  h.update({ now: now + 1000 });
+  assert.equal(berryCollectionStatus(job(), h.input.snapshot, now + 1000, null).away, false);
+  assert.equal(h.controller.start("crop"), true);
+  assert.deepEqual(h.sent, [{ action: "start_collection", targetId: "crop" }]);
+});

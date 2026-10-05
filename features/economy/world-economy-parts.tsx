@@ -49,11 +49,12 @@ export function Work({ economy, job, openPantry }: { economy: ReadyEconomy; job:
   const working = productionIsActive(job, economy.now);
   return <div className={styles.work} data-ready={status.ready || undefined}>
     <div className={styles.workTop}><span className={styles.workIcon} data-working={working || undefined}>{working ? <ProductionActivity job={job} now={economy.now} /> : job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon state={economy.snapshot} itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span></div><button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled} onClick={() => {
+      if (locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled) return;
       if (berry && collection) collection.start(job.id);
       else economy.act(berry && !berry.started ? "start_collection" : "claim_job", job.id);
     }} aria-label={`${berry?.button ?? (job.kind === "construction" ? "Завершить" : "Забрать")}: ${title}`}>{status.ready && !berry?.collecting ? <Check size={15} aria-hidden="true" /> : <Clock3 size={15} aria-hidden="true" />}{berry?.button ?? (status.ready ? job.kind === "construction" ? "Завершить" : "Забрать" : "В работе")}</button></div>
     <progress className={styles.progress} value={berry?.collecting ? undefined : status.progress} max={1} aria-label={berry?.collecting ? "Сбор урожая" : `Готовность: ${title}`} />
-    {berry?.away && status.ready && <p className={styles.hint}>Мохлик соберёт ягоды, когда вернётся из вылазки.</p>}
+    {berry?.away && status.ready && <p className={styles.hint}>{berry.awayReason}</p>}
     {status.storageShortfall > 0 && status.ready && <p className={styles.hint}>Нужно освободить {number(status.storageShortfall)} мест.{openPantry && <button type="button" className={styles.textButton} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
   </div>;
 }

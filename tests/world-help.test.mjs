@@ -50,7 +50,8 @@ test("help directs each map action to its focused menu", () => {
   const topics = worldHelpTopics(), text = id => topics.find(topic => topic.id === id).paragraphs.join(" ");
   assert.match(text("level"), /уровень слева сверху.*профиль.*самочувствие/);
   assert.match(text("resources"), /Кладовая.*отдельное меню запасов/);
-  assert.match(text("journeys"), /В путь.*только исследования/);
+  assert.match(text("journeys"), /В путь.*выбор занятий Мохлика/);
+  assert.match(text("journeys"), /Пещеры открывают то же меню каменоломни/);
   assert.match(text("construction"), /Таймер находится над улучшаемым объектом/);
   assert.match(text("construction"), /кладовая — над домом, печь — над мастерской, заготовки — над костром/);
   assert.match(text("journeys"), /сектор «Лес», «Побережье» или «Пещеры»/);

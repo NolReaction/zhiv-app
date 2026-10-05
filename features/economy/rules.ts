@@ -6,6 +6,7 @@ import { fishingState, fishingTripCost, selectFishingCatch } from "./fishing";
 import { advanceEconomyProgression, newEconomyProgression } from "./collection-progress";
 import { prepareRareDrop, settleRareDrop, secureRareInteger, type RareRandomInteger } from "./rare-drops";
 import { economyLocalSellPrice } from "./local-sale";
+import { economyActorConflict } from "./actor-availability";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -86,6 +87,10 @@ function requireBuildings(state: EconomyState, required: Record<string, number>)
   const missing = unmetEconomyBuildings(state, required);
   if (missing.length) fail("ECONOMY_BUILDING_REQUIRED", `Нужны постройки: ${missing.map(item => `${economyCatalog.buildings.find(building => building.id === item.buildingId)?.name ?? item.buildingId} ${item.requiredLevel}`).join(", ")}`);
 }
+function requireActorAvailable(state: EconomyState, intent: "departure" | "collection", now: number) {
+  const conflict = economyActorConflict(state.jobs, intent, now);
+  if (conflict) fail(conflict.code, conflict.message);
+}
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}, rareRandom: RareRandomInteger = secureRareInteger): string {
   if (!["speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
@@ -107,6 +112,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       requireHome(state, recipe.requiredHomeLevel);
       requireBuildings(state, recipe.requiredBuildings);
       if (state.jobs.some(job => job.targetId === recipe.buildingId && ["production", "construction"].includes(job.kind))) fail("ECONOMY_BUILDING_BUSY", "Здание уже занято. Заберите готовый результат");
+      if (recipe.buildingId === "quarry") requireActorAvailable(state, "departure", now);
       createJob({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
         ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}),
         rewards: Object.fromEntries(Object.entries(recipe.rewards).map(([item, amount]) => [item, amount * command.quantity])) },
@@ -121,10 +127,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         return fail("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется");
       if (job.collection?.startedAt) return fail("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай");
       if (now < Date.parse(job.finishesAt)) return fail("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел");
-      if (state.jobs.some(item => item.kind === "exploration" && now < Date.parse(item.finishesAt)))
-        return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в вылазке. Дождитесь его возвращения");
-      if (state.jobs.some(item => item.collection?.startedAt))
-        return fail("ECONOMY_COLLECTOR_BUSY", "Сначала завершите текущий сбор припасов");
+      requireActorAvailable(state, "collection", now);
       const inventory = { ...state.inventory };
       for (const [item, quantity] of Object.entries(job.rewards)) inventory[item] = (inventory[item] ?? 0) + quantity;
       assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
@@ -138,8 +141,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (!route) return fail("ECONOMY_EXPLORATION", "Место исследования не найдено");
       requireHome(state, route.requiredHomeLevel);
       requireBuildings(state, route.requiredBuildings);
-      if (state.jobs.some(job => job.collection?.startedAt)) fail("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов");
-      if (state.jobs.some(job => job.kind === "exploration")) fail("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Заберите его находки");
+      requireActorAvailable(state, "departure", now);
       const rare = economyCatalog.rareDrops && (state.buildings.home ?? 1) >= economyCatalog.rareDrops.requiredHomeLevel
         ? prepareRareDrop(state.rareDropState, route.seconds, economyCatalog.rareDrops, rareRandom) : null;
       if (command.action === "start_fishing") {

@@ -9,6 +9,7 @@ import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandS
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
 import { inheritEconomyCollection } from "@/features/economy/collection-progress";
+import { economyCommandUsesActor } from "@/features/economy/actor-availability";
 import { createFishingShop, fishingShopExpired } from "@/features/economy/fishing-shop";
 import { fishingState } from "@/features/economy/fishing";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
@@ -129,7 +130,7 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const command = parsed.data, { owner, value } = profile(token, now);
   const replay = receipt(value, owner, command, now);
   if (replay) return replay;
-  if (["start_exploration", "start_fishing", "start_collection"].includes(command.action) && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
+  if (economyCommandUsesActor(command) && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
   const next = structuredClone(value.state);
   const reserved = escrowItems(owner);
   const message = applyEconomyCommand(next, command, now, () => command.action === "start_fishing" ? crypto.randomUUID() : command.requestId, reserved, randomInt);

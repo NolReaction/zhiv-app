@@ -21,12 +21,12 @@ test("a simulated empty player reaches home two using actual commands without gr
   } finally { await loaded.close(); }
 });
 
-test("lookahead prepares later upgrades with real commands while the default player policy stays unchanged", async () => {
+test("lookahead prepares later upgrades with real commands while omitted options match the default policy", async () => {
   const loaded = await loadJourneyRules();
   try {
     const original = simulateJourney(loaded, "visits3", 40);
     assert.equal(original.homeDays[2], 2.667);
-    assert.equal(original.homeDays[3], 25.333);
+    assert.equal(original.homeDays[3], 26.333);
     const explicitDefault = simulateJourney(loaded, "visits3", 40, { prepareNextConstruction: false, preserveFutureCraftedStock: false });
     assert.deepEqual(explicitDefault, original);
     const planned = simulateJourney(loaded, "visits3", 40, lookaheadPolicy);
@@ -54,8 +54,9 @@ test("an explicit research pearl balance pays only actual construction speedups 
     simulateJourney(observed, "visits3", 40, lookaheadPolicy);
     const baseline = casts.splice(0);
     const result = simulateJourney(observed, "visits3", 40, { ...lookaheadPolicy, pearlBudget: 1000 });
-    assert(casts.length >= 50 && baseline.length >= 50);
-    assert.deepEqual(casts.slice(0, 50), baseline.slice(0, 50), "The paired scenarios share the same nth-cast seeds");
+    const pairedCasts = Math.min(casts.length, baseline.length);
+    assert(pairedCasts >= 20, "Both policies exercise repeated fishing despite competing quarry work");
+    assert.deepEqual(casts.slice(0, pairedCasts), baseline.slice(0, pairedCasts), "The paired scenarios share the same nth-cast seeds");
     assert(result.actions.speedup_construction > 0);
     assert(result.pearlsSpent > 0 && result.pearlsSpent <= 1000);
     assert.equal(result.pearlsRemaining + result.pearlsSpent, 1000);
@@ -128,5 +129,36 @@ test("joint planning actually starts multi-output orders without unlocking stati
     assert.equal(result.actions.speedup_construction, undefined);
     assert.equal(result.actions.buy_fishing_item, undefined);
     assert(result.saleRevenue > 0);
+  } finally { await loaded.close(); }
+});
+
+test("the player policy shares Mochlik between mining, trips and harvesting without starving required relic trips", async () => {
+  const loaded = await loadJourneyRules();
+  try {
+    const actorSeconds = { quarry: 0, exploration: 0, collection: 0 };
+    const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, jobId, reserved, rareRandom) => {
+      const claimed = command.action === "claim_job" ? structuredClone(state.jobs.find(job => job.id === command.targetId)) : null;
+      const result = loaded.rules.applyEconomyCommand(state, command, now, jobId, reserved, rareRandom);
+      const active = state.jobs.filter(job =>
+        ((job.kind === "exploration" || loaded.actorAvailability.isQuarryProduction(job)) && Date.parse(job.finishesAt) > now)
+        || (job.collection?.startedAt && Date.parse(job.collection.finishesAt) > now));
+      assert(active.length <= 1, "An observed confirmed state must not schedule the same actor twice");
+      if (claimed) {
+        const seconds = (Date.parse(claimed.finishesAt) - Date.parse(claimed.startedAt)) / 1000;
+        if (claimed.kind === "exploration") actorSeconds.exploration += seconds;
+        if (loaded.actorAvailability.isQuarryProduction(claimed)) actorSeconds.quarry += seconds;
+        if (claimed.collection?.startedAt) actorSeconds.collection += claimed.collection.seconds;
+      }
+      return result;
+    } } };
+    const report = simulateJourney(observed, "visits3", 40, jointPlanningPolicy);
+    for (const kind of Object.keys(actorSeconds)) {
+      assert(actorSeconds[kind] > 0);
+      assert.equal(report.actorWorkHours[kind], Number((actorSeconds[kind] / 3600).toFixed(4)));
+    }
+    assert(Object.values(actorSeconds).reduce((sum, seconds) => sum + seconds, 0) <= report.elapsedDays * 86400);
+    for (const code of ["ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
+      assert.equal(report.failures[code], undefined, "Policy availability matches the authoritative rule");
+    assert(report.rareMaterials.finds.length > 0, "Mining filler must leave time for required relic exploration");
   } finally { await loaded.close(); }
 });

@@ -536,12 +536,53 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(EconomyStorage(200, 200, 0, 0, 0), claimed.storage)
     }
 
+    @Test fun `concurrent quarry and cave departures share one actor and retries never recreate finished jobs`() = runBlocking<Unit> {
+        for (miningFirst in listOf(true, false)) {
+            val p = player()
+            economy.snapshot(p.hash)
+            val original = source.connection.use { readEconomyProfile(it, p.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(original.copy(
+                buildings = original.buildings + mapOf("home" to 2, "quarry" to 1))), p.id)
+            val initial = economy.snapshot(p.hash)
+            val mine = command(p, initial, "start_production", "quarry_stone")
+            val cave = command(p, initial, "start_exploration", "cave")
+            val commands = if (miningFirst) listOf(mine, cave) else listOf(cave, mine)
+            val results = coroutineScope { commands.map { request -> async(Dispatchers.IO) {
+                runCatching { JdbcEconomyRepository(source).command(p.hash, request) }
+            } }.awaitAll() }
+            assertEquals(1, results.count { it.isSuccess })
+            assertEquals("ECONOMY_REVISION_CONFLICT", (results.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
+            val winnerIndex = results.indexOfFirst { it.isSuccess }
+            val winner = commands[winnerIndex]; val loser = commands[1 - winnerIndex]
+            val accepted = results[winnerIndex].getOrThrow()
+            assertEquals(1, accepted.state.jobs.size)
+            assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind IN ('start_production','start_exploration')", p.id))
+            assertEquals(if (winner.action == "start_production") "ECONOMY_QUARRY_BUSY" else "ECONOMY_EXPLORER_BUSY",
+                assertFailsWith<AuthFailure> { economy.command(p.hash, command(p, accepted.state, loser.action, loser.targetId)) }.code)
+            assertTrue(economy.command(p.hash, winner).replayed)
+            finish(p, accepted.state)
+            val claimed = economy.command(p.hash, command(p, economy.snapshot(p.hash), "claim_job", accepted.state.jobs.single().id)).state
+            val replacement = economy.command(p.hash, command(p, claimed, loser.action, loser.targetId)).state
+            val replay = economy.command(p.hash, winner)
+            assertTrue(replay.replayed)
+            assertEquals(replacement.jobs, replay.state.jobs)
+            assertEquals(replacement.inventory, replay.state.inventory)
+        }
+    }
+
     @Test fun `owner fences banned accounts and old journeys cannot be bypassed`() = runBlocking<Unit> {
         val p = player()
         val stranger = player()
         val oldTrip = WorldJourney(UUID.randomUUID().toString(), "first_path", Instant.now().toString(), Instant.now().plusSeconds(600).toString(), WorldResources(), emptyList(), true, 3)
         execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)", p.id, worldJson.encodeToString(WorldState(journeys = listOf(oldTrip))))
         val initial = economy.snapshot(p.hash)
+        val stored = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stored.copy(
+            buildings = stored.buildings + ("quarry" to 1))), p.id)
+        val quarry = command(p, initial, "start_production", "quarry_stone")
+        assertEquals("ECONOMY_EXPLORER_BUSY", assertFailsWith<AuthFailure> { economy.command(p.hash, quarry) }.code)
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(quarry.requestId)))
+        assertEquals(stored.inventory, economy.snapshot(p.hash).inventory)
         val start = command(p, initial, "start_exploration", "forest")
         assertEquals("ECONOMY_EXPLORER_BUSY", assertFailsWith<AuthFailure> { economy.command(p.hash, start) }.code)
         assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, start) }.code)

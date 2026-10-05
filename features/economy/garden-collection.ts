@@ -1,5 +1,6 @@
 import type { EconomyCommand, EconomyJob, EconomyView } from "./model";
 import type { EconomySceneGarden, GardenHarvestEvent, GardenHarvestRequest } from "@/features/world/economy-garden-state";
+import { economyActorConflict } from "./actor-availability";
 
 export function isBerryProduction(job: EconomyJob) {
   return job.kind === "production" && job.targetId === "garden" && (job.rewards.berries ?? 0) > 0;
@@ -99,7 +100,7 @@ export function createGardenCollectionController(expectedOwner?: string | null) 
           walk(jobId);
         } else { publish({ jobId, phase: "waiting", request: null }); reconcile(); }
       } else {
-        if (input.snapshot.jobs.some(item => item.kind === "exploration" && Date.parse(item.finishesAt) > input!.now)) return false;
+        if (economyActorConflict(input.snapshot.jobs.filter(item => item.id !== job.id), "collection", input.now)) return false;
         sawBusy = false; publish({ jobId, phase: "starting", request: null }); act("start_collection", jobId);
       }
       return true;
@@ -121,10 +122,11 @@ export function berryCollectionStatus(job: EconomyJob, snapshot: EconomyView, no
   const phase = collection?.jobId === job.id ? collection.phase : "idle";
   const collecting = ["starting", "walking", "waiting", "claiming"].includes(phase)
     || started && phase === "idle" && now < Date.parse(job.collection!.finishesAt!);
-  const away = !started && snapshot.jobs.some(item => item.kind === "exploration" && now < Date.parse(item.finishesAt));
+  const conflict = !started ? economyActorConflict(snapshot.jobs.filter(item => item.id !== job.id), "collection", now) : null;
+  const away = Boolean(conflict);
   const label = phase === "claiming" ? "Урожай отправляется в кладовую" : collecting ? "Мохлик собирает урожай"
     : growing ? "Ягоды растут" : phase === "paused" ? "Сбор приостановлен" : started ? "Урожай собран" : "Ягоды созрели";
-  return { growing, started, collecting, away, label,
+  return { growing, started, collecting, away, awayReason: conflict?.message ?? null, label,
     button: growing ? "Растут" : collecting ? "Собирает…" : phase === "paused" ? "Продолжить" : started ? "В кладовую" : "Собрать",
     disabled: growing || collecting || away };
 }

@@ -6,6 +6,14 @@ const add = (into, values, scale = 1) => {
 const requireLevels = (into, values) => {
   for (const [id, level] of Object.entries(values)) into[id] = Math.max(into[id] ?? 0, level);
 };
+const recipeSlots = recipe => {
+  const slots = { [recipe.buildingId]: (recipe.seconds + (recipe.collection?.seconds ?? 0)) / 60 };
+  // Quarry production uses both the mine and Mochlik for the same interval.
+  // This is resource occupancy, not two consecutive wall-clock intervals.
+  const actorSeconds = (recipe.buildingId === "quarry" ? recipe.seconds : 0) + (recipe.collection?.seconds ?? 0);
+  if (actorSeconds) slots.mochlik = actorSeconds / 60;
+  return slots;
+};
 
 /** Resource work is a vector of minimum intrinsic occupied slot-minutes, not
  * elapsed wall time: compulsory collection is included, waiting to claim is not.
@@ -63,8 +71,7 @@ export function economicMath(catalog) {
     if (r) {
       const output = r.rewards[id]; result.recipeId = r.id; result.referenceHome = definitionHome(r);
       requireLevels(result.producerLevels, { ...r.requiredBuildings, [r.buildingId]: r.buildingLevel, home: r.requiredHomeLevel });
-      add(result.slotMinutes, { [r.buildingId]: (r.seconds + (r.collection?.seconds ?? 0)) / 60 / output }); result.coins += r.cost.coins / output;
-      if (r.collection) add(result.slotMinutes, { mochlik: r.collection.seconds / 60 / output });
+      add(result.slotMinutes, recipeSlots(r), 1 / output); result.coins += r.cost.coins / output;
       if (!Object.keys(r.cost.items).length) result.rawInputs[id] = 1;
       for (const [input, quantity] of Object.entries(r.cost.items)) {
         const p = profile(input, [...path, id]), scale = quantity / output;
@@ -125,9 +132,8 @@ export function economicMath(catalog) {
   }
   function batch(recipe) {
     const stationMinutes = (recipe.seconds + (recipe.collection?.seconds ?? 0)) / 60;
-    const slotMinutes = { [recipe.buildingId]: stationMinutes }, rawInputs = {}, byproducts = {};
+    const slotMinutes = recipeSlots(recipe), rawInputs = {}, byproducts = {};
     let coins = recipe.cost.coins, referenceHome = definitionHome(recipe);
-    if (recipe.collection) add(slotMinutes, { mochlik: recipe.collection.seconds / 60 });
     for (const [id, quantity] of Object.entries(recipe.cost.items)) {
       const p = profile(id); add(slotMinutes, p.slotMinutes, quantity); add(rawInputs, p.rawInputs, quantity); add(byproducts, p.byproducts, quantity); coins += p.coins * quantity;
       referenceHome = Math.max(referenceHome, p.referenceHome);

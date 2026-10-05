@@ -107,3 +107,17 @@ test("storage warning appears only when the selected result will not currently f
   assert.match(renderRecipe("grow_berries", controller({ storage: available })), /Для получения понадобится 4 мест · свободно 2/);
   assert.doesNotMatch(renderRecipe("grow_berries", controller()), /Для получения понадобится|Место понадобится/);
 });
+
+test("quarry recipe cannot start during a trip or collection but passive crafting remains available", () => {
+  const quarry = economyCatalog.recipes.find(recipe => recipe.buildingId === "quarry");
+  const base = { id: "busy", startedAt: new Date(now - 1_000).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: {}, cost: { coins: 0, items: {} } };
+  for (const occupied of [
+    { ...base, kind: "exploration", targetId: "forest" },
+    { ...base, kind: "exploration", targetId: "forest", finishesAt: new Date(now).toISOString() },
+    { ...base, kind: "production", targetId: "garden", collection: { startedAt: new Date(now).toISOString() } },
+  ]) {
+    const economy = controller({ buildings: { home: 2, quarry: 1, workshop: 1, warehouse: 1 }, inventory: { wood: 2 }, jobs: [occupied] });
+    assert.equal(startDisabled(renderRecipe(quarry.id, economy)), true);
+    assert.equal(startDisabled(renderRecipe("make_planks", economy)), false);
+  }
+});

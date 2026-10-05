@@ -174,6 +174,25 @@ object EconomyRules {
         return ECONOMY_CURRENCY_SCALE * (total / 10_000 * config.payoutBps + total % 10_000 * config.payoutBps / 10_000)
     }
 
+    fun commandUsesActor(command: EconomyCommand): Boolean =
+        command.action in setOf("start_exploration", "start_fishing", "start_collection") ||
+            command.action == "start_production" && catalog.recipes.any { it.id == command.targetId && it.buildingId == "quarry" }
+
+    /** Saved jobs retain their promised results. Only new starts compete for the hero. */
+    private fun requireActorAvailable(state: EconomyState, now: Instant, collecting: Boolean = false) {
+        val collection = state.jobs.any { it.collection?.startedAt != null }
+        if (!collecting && collection) economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
+        state.jobs.firstOrNull { it.kind == "exploration" && (!collecting || now.isBefore(Instant.parse(it.finishesAt))) }?.let {
+            economyFailure("ECONOMY_EXPLORER_BUSY", if (now.isBefore(Instant.parse(it.finishesAt)))
+                "Мохлик ещё в вылазке. Дождитесь его возвращения" else "Сначала заберите находки Мохлика")
+        }
+        state.jobs.firstOrNull { it.kind == "production" && it.targetId == "quarry" && (!collecting || now.isBefore(Instant.parse(it.finishesAt))) }?.let {
+            economyFailure("ECONOMY_QUARRY_BUSY", if (now.isBefore(Instant.parse(it.finishesAt)))
+                "Мохлик работает в каменоломне. Дождитесь окончания добычи" else "Сначала заберите добычу из каменоломни")
+        }
+        if (collection) economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите текущий сбор припасов")
+    }
+
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell") && command.totalPrice != 0L) invalidEconomy()
@@ -189,6 +208,7 @@ object EconomyRules {
                 requireBuildings(state, recipe.requiredBuildings)
                 if (state.jobs.any { it.targetId == recipe.buildingId && it.kind in setOf("production", "construction") })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Здание занято. Получите готовый результат или дождитесь окончания работ.")
+                if (recipe.buildingId == "quarry") requireActorAvailable(state, now)
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(recipe.seconds * command.quantity).toString(),
@@ -205,10 +225,7 @@ object EconomyRules {
                     economyFailure("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется")
                 if (job.collection?.startedAt != null) economyFailure("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай")
                 if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел")
-                if (state.jobs.any { it.kind == "exploration" && now.isBefore(Instant.parse(it.finishesAt)) })
-                    economyFailure("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в вылазке. Дождитесь его возвращения")
-                if (state.jobs.any { it.collection?.startedAt != null })
-                    economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите текущий сбор припасов")
+                requireActorAvailable(state, now, collecting = true)
                 // Check the eventual delivery, including escrow, before sending the hero.
                 // This reserves no goods and credits nothing; claim checks capacity again.
                 val projected = state.copy(inventory = addItems(state.inventory, job.rewards))
@@ -222,9 +239,7 @@ object EconomyRules {
                 val exploration = catalog.explorations.find { it.id == command.targetId } ?: economyFailure("ECONOMY_EXPLORATION", "Место исследования не найдено")
                 requireHome(state, exploration.requiredHomeLevel)
                 requireBuildings(state, exploration.requiredBuildings)
-                if (state.jobs.any { it.collection?.startedAt != null })
-                    economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
-                if (state.jobs.any { it.kind == "exploration" }) economyFailure("ECONOMY_EXPLORER_BUSY", "Мохлик уже исследует мир. Сначала получите результат вылазки.")
+                requireActorAvailable(state, now)
                 val special = command.action == "start_fishing"
                 val tackle = state.fishing
                 val spec = catalog.fishing

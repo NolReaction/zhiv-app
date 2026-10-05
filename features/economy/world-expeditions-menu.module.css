@@ -1,5 +1,7 @@
 .content { min-width: 0; padding: 10px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 12px; background: var(--forest-paper, #e6d9b7); color: var(--forest-ink, #394d3e); font-size: 12px; line-height: 1.4; text-align: left; }
 .content, .content * { box-sizing: border-box; }
+.content[data-embedded="true"] { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.content:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
 .content p, .content ul { margin: 0; }
 .content ul { padding: 0; list-style: none; }
 .content svg { flex: 0 0 auto; }

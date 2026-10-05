@@ -39,10 +39,11 @@ export async function loadJourneyRules() {
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
   const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
   const model = await vite.ssrLoadModule("/features/economy/model.ts");
-  return { rules, catalog: model.economyCatalog, close: () => vite.close() };
+  const actorAvailability = await vite.ssrLoadModule("/features/economy/actor-availability.ts");
+  return { rules, actorAvailability, catalog: model.economyCatalog, close: () => vite.close() };
 }
 
-export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy = {}) {
+export function simulateJourney({ rules, actorAvailability, catalog }, mode, maxDays = 1600, policy = {}) {
   const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false, pearlBudget = 0, rareSeed = DEFAULT_JOURNEY_RARE_SEED } = policy;
   assert(Number.isSafeInteger(pearlBudget) && pearlBudget >= 0 && pearlBudget <= 1_000_000_000 * (catalog.pearlScale ?? catalog.currencyScale ?? 1), "Invalid research pearl budget");
   assert(["active16h", "visits2", "visits3"].includes(mode), "Invalid visit policy");
@@ -55,6 +56,7 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
   const relicReceived = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicSpent = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicFinds = []; let eligibleExplorationSeconds = 0;
+  const actorWorkSeconds = { quarry: 0, exploration: 0, collection: 0 };
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
   const uuid = () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}`;
@@ -91,6 +93,12 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
           relicFinds.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), route: previousJob.targetId,
             itemId: id, eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)) });
         }
+      }
+      if (action === "claim_job" && previousJob) {
+        const duration = (Date.parse(previousJob.finishesAt) - Date.parse(previousJob.startedAt)) / 1000;
+        if (previousJob.kind === "exploration") actorWorkSeconds.exploration += duration;
+        if (actorAvailability.isQuarryProduction(previousJob)) actorWorkSeconds.quarry += duration;
+        if (previousJob.collection?.startedAt) actorWorkSeconds.collection += previousJob.collection.seconds;
       }
       if (action === "start_construction") {
         const job = next.jobs.find(j => j.kind === "construction" && j.targetId === targetId);
@@ -196,11 +204,11 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     let target = goal(); if (!target) return;
     let plan = demand(target);
     sellExcess(plan.needed);
-    // Receive an expedition before beginning the required berry collection.
+    // Receive quarry/expedition results before beginning the required collection.
     for (const job of [...state.jobs].sort((a, b) => Number(a.targetId === "garden") - Number(b.targetId === "garden"))) {
       if (clock * 1000 + epoch < Date.parse(job.finishesAt)) continue;
       if (job.collection && !job.collection.startedAt) {
-        if (!state.jobs.some(j => j.kind === "exploration" && Date.parse(j.finishesAt) > epoch + clock * 1000)) command("start_collection", job.id);
+        if (!actorAvailability.economyActorConflict(state.jobs, "collection", epoch + clock * 1000)) command("start_collection", job.id);
         continue;
       }
       if (job.collection && clock * 1000 + epoch < Date.parse(job.collection.finishesAt)) continue;
@@ -229,31 +237,36 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     const busy = new Set(state.jobs.filter(j => ["production", "construction"].includes(j.kind)).map(j => j.targetId));
     const freeDefinitions = [...catalog.recipes, ...catalog.explorations].filter(d => eligible(d) && !Object.keys(d.cost.items).length && !d.cost.coins);
     const candidates = [...catalog.recipes, ...catalog.explorations].filter(d => eligible(d)).sort((a, b) => (plan.recipeWants.get(b.id) ?? 0) - (plan.recipeWants.get(a.id) ?? 0));
+    const actorBusy = () => actorAvailability.economyActorConflict(state.jobs, "departure", epoch + clock * 1000);
     for (const d of candidates) {
       if (!plan.recipeWants.has(d.id)) continue;
-      if (d.buildingId ? busy.has(d.buildingId) : state.jobs.some(j => j.kind === "exploration" || j.collection?.startedAt)) continue;
+      if (d.buildingId && busy.has(d.buildingId)) continue;
+      if ((!d.buildingId || d.buildingId === "quarry") && actorBusy()) continue;
       const wanted = Math.min(d.maxBatch ?? 1, plan.recipeWants.get(d.id));
       const affordable = Array.from({ length: wanted }, (_, i) => wanted - i).find(q => rules.canAffordEconomy(state, d.cost, q));
       if (!affordable) continue;
       if (command(d.buildingId ? "start_production" : "start_exploration", d.id, affordable)) { if (d.buildingId) busy.add(d.buildingId); }
     }
-    // Idle free gathering slots earn sale money; costly processing is reserved
-    // for the next upgrade. This is a simple reproducible policy, not an optimum.
+    // Idle gathering earns sale money; quarry and routes compete for one actor.
+    // Do not let a quarry filler order permanently starve relic expeditions.
+    // Costly processing is reserved for the next upgrade. This is not an optimum.
     const income = d => cash(d.rewards) / (isActive ? d.seconds : Math.max(1, Math.ceil(d.seconds / gap)));
-    for (const id of ["garden", "woodlot", "quarry", null]) {
-      if (id ? busy.has(id) : state.jobs.some(j => j.kind === "exploration" || j.collection?.startedAt)) continue;
-      const d = freeDefinitions.filter(d => id ? d.buildingId === id : !d.buildingId).sort((a, b) => {
+    for (const id of ["garden", "woodlot", null]) {
+      if (id ? busy.has(id) : actorBusy()) continue;
+      const needsRelic = !id && plan.needsRelic && (state.buildings.home ?? 1) >= (catalog.rareDrops?.requiredHomeLevel ?? Infinity);
+      const d = freeDefinitions.filter(d => id ? d.buildingId === id
+        : !d.buildingId || !needsRelic && d.buildingId === "quarry" && !busy.has("quarry")).sort((a, b) => {
         // When a visible upgrade lacks a relic, prefer free routes that bank
         // more authored travel time between visits. Never inspect the private
         // clock or pending type, never skip real costs or building requirements.
-        if (!id && plan.needsRelic && (state.buildings.home ?? 1) >= (catalog.rareDrops?.requiredHomeLevel ?? Infinity)) {
+        if (needsRelic) {
           const travel = route => isActive ? 1 : route.seconds / Math.max(1, Math.ceil(route.seconds / gap));
           const difference = travel(b) - travel(a);
           if (difference) return difference;
         }
         return income(b) - income(a);
       })[0];
-      if (d && command(d.buildingId ? "start_production" : "start_exploration", d.id)) { if (id) busy.add(id); }
+      if (d && command(d.buildingId ? "start_production" : "start_exploration", d.id)) { if (d.buildingId) busy.add(d.buildingId); }
     }
   }
   const nextVisit = at => {
@@ -283,6 +296,7 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     commands, saleRevenue: revenue, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
     ...(pearlBudget > 0 ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
     ...(jointBatchPlanning ? { productionRecipes } : {}),
+    actorWorkHours: Object.fromEntries(Object.entries(actorWorkSeconds).map(([kind, seconds]) => [kind, Number((seconds / hour).toFixed(4))])),
     excludedIncome: ["daily_rewards", "achievement_rewards", "taps", "player_market", "legacy_grants"],
     rareMaterials: { seed: rareSeed, generator: "xorshift32-rejection-v1", draws: rareRandom.draws,
       eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)), received: relicReceived,

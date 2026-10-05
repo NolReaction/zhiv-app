@@ -194,6 +194,51 @@ test("map menu is compact and nonmodal with place-specific production rather tha
   assert.doesNotMatch(html, /Начать ·/);
 });
 
+test("the mine shares production and cave routes while preserving catalogue gates and upgrades", () => {
+  const initial = render("quarry");
+  assert.match(initial, /data-quarry-tab="production" aria-pressed="true"/);
+  assert.match(initial, /data-quarry-tab="caves" aria-pressed="false"/);
+  assert.doesNotMatch(initial, /data-route=/);
+  const locked = render("quarry", controller(), { initialQuarryTab: "caves" });
+  assert.match(locked, /data-sector="caves"/);
+  assert.doesNotMatch(locked, /Секторы вылазок|data-recipe=/);
+  assert.equal(disabled(button(locked, "Отправиться")), true);
+  assert.equal(disabled(button(locked, "Обустроить")), false);
+  const unbuilt = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } }) }), { initialQuarryTab: "caves" });
+  assert.equal(disabled(button(unbuilt, "Отправиться")), false, "the entry cave requires home level 2, not a quarry upgrade");
+  assert.match(unbuilt, /data-route="abandoned_quarry"[^>]*data-locked="true"/);
+});
+
+test("legacy simultaneous quarry and expedition jobs remain claimable from both mine sections", () => {
+  const recipe = economyCatalog.recipes.find(recipe => recipe.buildingId === "quarry");
+  const quarry = job({ targetId: "quarry", recipeId: recipe.id, rewards: recipe.rewards, finishesAt: new Date(now).toISOString() });
+  const expedition = job({ id: "trip", kind: "exploration", targetId: "cave", recipeId: null, rewards: { stone: 8, ore: 4 }, finishesAt: new Date(now).toISOString() });
+  const economy = controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, quarry: 1 }, jobs: [quarry, expedition] }) });
+  for (const initialQuarryTab of ["production", "caves"]) {
+    const html = render("quarry", economy, { initialQuarryTab });
+    assert.equal(disabled(button(html, "Забрать")), false);
+    assert.match(html, /aria-label="Забрать находки: Вход в пещеру"/);
+    assert.match(html, /Отказаться от находок/);
+  }
+  economy.snapshot.storage = { capacity: 200, used: 200, reserved: 0, available: 0, overflow: 0 };
+  const full = render("quarry", economy, { initialQuarryTab: "caves", onOpenPantry() {} });
+  assert.equal(disabled(button(full, "Забрать")), true);
+  assert.equal(disabled(button(full, "К кладовой")), false);
+  assert.equal(disabled(button(full, "Открыть кладовую")), false);
+  assert.equal(disabled(button(full, "Отказаться от находок")), false);
+});
+
+test("berry harvest explains quarry occupation and becomes available when its timer ends", () => {
+  const crop = job({ finishesAt: new Date(now).toISOString(), collection: { kind: "berry_harvest", seconds: 8, startedAt: null, finishesAt: null } });
+  const quarry = job({ id: "quarry", targetId: "quarry", collection: null, finishesAt: new Date(now + 30_000).toISOString() });
+  const economy = controller({ snapshot: snapshot({ jobs: [crop, quarry] }) });
+  const active = render("garden", economy);
+  assert.equal(disabled(button(active, "Собрать")), true);
+  assert.match(active, /Мохлик работает в каменоломне/);
+  quarry.finishesAt = new Date(now).toISOString();
+  assert.equal(disabled(button(render("garden", economy), "Собрать")), false);
+});
+
 test("busy, uncertain and retry cooldown block claims while closing remains available", () => {
   const state = snapshot({ jobs: [job({ kind: "construction", targetId: "home", recipeId: null, targetLevel: 2, rewards: {}, finishesAt: new Date(now).toISOString() })] });
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 10_000 }]) {
