@@ -170,6 +170,136 @@ class JdbcAccountLifecycleIntegrationTest {
         assertFailsWith<AuthFailure>{auth.deleteAccount(a.session,browser,tokens.issue().hash)}
     }
 
+    @Test fun `merged identities cannot allocate another rewarded profile through signup link or email replacement`(): Unit=runBlocking {
+        val a=account();val b=account();val stranger=account();val browser=tokens.issue().hash
+        val emailA="merge-a-${UUID.randomUUID()}@example.com";val emailB="merge-b-${UUID.randomUUID()}@example.com"
+        fun emailFlow(intent: String,subject: String,session: ByteArray?=null)=LoginFlow(
+            tokens.issue().hash,browser,"email",intent,session,"Новый профиль",subject,null,null,tokens.hash("code"))
+        for((owner,email) in listOf(a to emailA,b to emailB))
+            auth.finish(emailFlow("link",email,owner.session),email,tokens.issue().hash,365,"Unused")
+        val rewards=JdbcProgressionRewardsRepository(source);val economy=JdbcEconomyRepository(source)
+        for(owner in listOf(a,b)) {
+            val publicId=checkNotNull(scalar("SELECT public_id FROM app_users WHERE id=?",owner.id))
+            rewards.claim(owner.session,ProgressionRewardClaim(UUID.randomUUID().toString(),publicId,"daily"))
+            rewards.claim(owner.session,ProgressionRewardClaim(UUID.randomUUID().toString(),publicId,"achievement","linked_email",1))
+        }
+        val walletA=economy.snapshot(a.session).wallet;val walletB=economy.snapshot(b.session).wallet
+        auth.confirmMerge(a.session,browser,readyMerge(a,b,browser,MergeChoices(providerChoices=mapOf("vk" to "current","email" to "current"))))
+        val merged=economy.snapshot(a.session)
+        assertEquals(walletA.coins+walletB.coins,merged.wallet.coins)
+        assertEquals(walletA.pearls+walletB.pearls,merged.wallet.pearls,"ordinary merge never confiscates earned rewards")
+        val users=scalar("SELECT count(*) FROM app_users");val sessions=scalar("SELECT count(*) FROM app_sessions")
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("register",emailB),emailB,tokens.issue().hash,365,"Fresh")
+        }.code)
+        assertEquals("AUTH_NOT_LINKED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("login",emailB),emailB,tokens.issue().hash,365,"No alias")
+        }.code,"a discarded identity does not authenticate the survivor")
+        val login=emailFlow("login",emailB);auth.create(login)
+        val verified=auth.verifyEmail(login.tokenHash,browser,checkNotNull(login.codeHash))
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.prepareRegistration(verified,emailB,tokens.issue().hash)
+        }.code)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("link",emailB,stranger.session),emailB,tokens.issue().hash,365,"Foreign link")
+        }.code)
+        execute("UPDATE account_login_flows SET created_at=clock_timestamp()-interval '2 minutes' WHERE provider='email' AND subject=?",emailB)
+        prove(stranger,browser,"email")
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> { proveNewEmail(stranger,browser,emailB) }.code)
+        assertEquals(users,scalar("SELECT count(*) FROM app_users"))
+        assertEquals(sessions,scalar("SELECT count(*) FROM app_sessions"))
+        assertEquals(merged.wallet,economy.snapshot(a.session).wallet)
+
+        // Restoring the method is permitted only after proving the survivor.
+        execute("UPDATE account_login_flows SET created_at=clock_timestamp()-interval '2 minutes' WHERE provider='email' AND subject=?",emailB)
+        prove(a,browser,"email");proveNewEmail(a,browser,emailB)
+        auth.changeEmail(a.session,browser,tokens.issue().hash)
+        assertEquals(emailB,scalar("SELECT subject FROM account_login_identities WHERE user_id=? AND provider='email'",a.id))
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("register",emailA),emailA,tokens.issue().hash,365,"Kept method rotation")
+        }.code,"the formerly kept email cannot restart farming after swapping methods")
+        val restoredSession=tokens.issue().hash
+        assertEquals(a.id,auth.finish(emailFlow("login",emailB),emailB,restoredSession,365,"Restored"))
+        assertEquals(a.id,people.findSessionUserId(restoredSession))
+    }
+
+    @Test fun `registration completion and a previously verified email change recheck a newly merged identity`(): Unit=runBlocking {
+        val owner=account();val stranger=account();val browser=tokens.issue().hash
+        val email="pending-${UUID.randomUUID()}@example.com"
+        prove(stranger,browser,"email");proveNewEmail(stranger,browser,email)
+        val ticket=tokens.issue().hash
+        // A verified proof and a ticket issued by an older API cannot bypass
+        // the allocation check at the final transaction boundary.
+        execute("INSERT INTO account_identity_retirements(provider,subject_hash,merged_into_user_id) VALUES ('email',sha256(convert_to(?, 'UTF8')),?)",email,owner.id)
+        execute("INSERT INTO account_registration_tickets(token_hash,browser_hash,provider,subject) VALUES (?,?,'email',?)",ticket,browser,email)
+        val users=scalar("SELECT count(*) FROM app_users")
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.completeRegistration(ticket,browser,"Новый профиль",tokens.issue().hash,365,"Fresh")
+        }.code)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.changeEmail(stranger.session,browser,tokens.issue().hash)
+        }.code)
+        assertEquals(users,scalar("SELECT count(*) FROM app_users"))
+        assertNull(scalar("SELECT user_id FROM account_login_identities WHERE provider='email' AND subject=?",email))
+        assertTrue(auth.lifecycle(stranger.session,browser).currentEmail,"rejection leaves the confirmed operation unconsumed")
+    }
+
+    @Test fun `merged identity fences follow the final survivor keep bans closed and permit a real deleted profile to rejoin`(): Unit=runBlocking {
+        val a=account();val b=account();val c=account();val browser=tokens.issue().hash
+        auth.confirmMerge(a.session,browser,readyMerge(a,b,browser))
+        auth.confirmMerge(c.session,browser,readyMerge(c,a,browser))
+        for(subject in listOf(a.subject,b.subject,c.subject))
+            assertEquals(c.id.toString(),scalar("SELECT merged_into_user_id FROM account_identity_retirements WHERE provider='vk' AND subject_hash=sha256(convert_to(?, 'UTF8'))",subject))
+        fun register()=LoginFlow(tokens.issue().hash,browser,"vk","register",null,"Новый профиль",null,"pkce",null,null)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(register(),b.subject,tokens.issue().hash,365,"Chain")
+        }.code)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='security regression' WHERE id=?",c.id)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(register(),b.subject,tokens.issue().hash,365,"Banned")
+        }.code)
+        execute("UPDATE app_users SET banned_at=NULL,ban_reason=NULL WHERE id=?",c.id)
+        prove(c,browser,"delete");auth.deleteAccount(c.session,browser,tokens.issue().hash)
+        val freshSession=tokens.issue().hash
+        val fresh=auth.finish(register(),b.subject,freshSession,365,"After real deletion")
+        assertTrue(fresh !in setOf(a.id,b.id,c.id))
+        assertEquals(fresh,people.findSessionUserId(freshSession))
+        assertEquals(EconomyWallet(0),JdbcEconomyRepository(source).snapshot(freshSession).wallet,"rejoin never restores deleted assets")
+    }
+
+    @Test fun `a fence committed while identity insertion waits rolls back the entire signup`(): Unit=runBlocking {
+        val survivor=account();val email="waiting-${UUID.randomUUID()}@example.com";val session=tokens.issue().hash
+        val users=scalar("SELECT count(*) FROM app_users");val lockKey=73429811L
+        // Pause at the insert boundary after prechecks, as a unique-key wait can.
+        // Commit the competing merge fence from another connection before release.
+        execute("""CREATE FUNCTION test_pause_identity_allocation() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'}
+            BEGIN IF NEW.provider='email' AND NEW.subject='$email' THEN PERFORM pg_advisory_xact_lock($lockKey); END IF;
+            RETURN NEW; END; ${'$'}${'$'}""")
+        execute("CREATE TRIGGER test_pause_identity_allocation BEFORE INSERT ON account_login_identities FOR EACH ROW EXECUTE FUNCTION test_pause_identity_allocation()")
+        source.connection.use { blocker ->
+            blocker.economyRows("SELECT pg_advisory_lock(?)",lockKey) { true }
+            try {
+                val attempt=async(Dispatchers.IO) { runCatching {
+                    auth.finish(LoginFlow(tokens.issue().hash,tokens.issue().hash,"email","register",null,"Fresh",email,null,null,null),email,session,365,"Race")
+                } }
+                withTimeout(3000) {
+                    while(!flag("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND objid=?::oid AND NOT granted)",lockKey)) delay(10)
+                }
+                execute("INSERT INTO account_identity_retirements(provider,subject_hash,merged_into_user_id) VALUES ('email',sha256(convert_to(?, 'UTF8')),?)",email,survivor.id)
+                blocker.economyRows("SELECT pg_advisory_unlock(?)",lockKey) { true }
+                val failure=assertIs<AuthFailure>(attempt.await().exceptionOrNull())
+                assertEquals("AUTH_IDENTITY_MERGED",failure.code)
+                assertEquals(users,scalar("SELECT count(*) FROM app_users"))
+                assertNull(scalar("SELECT user_id FROM account_login_identities WHERE provider='email' AND subject=?",email))
+                assertNull(people.findSessionUserId(session))
+            } finally {
+                blocker.economyRows("SELECT pg_advisory_unlock(?)",lockKey) { true }
+                execute("DROP TRIGGER test_pause_identity_allocation ON account_login_identities")
+                execute("DROP FUNCTION test_pause_identity_allocation()")
+            }
+        }
+    }
+
     @Test fun `email change requires two proofs and replay cannot consume a later action`(): Unit=runBlocking {
         val a=account();val browser=tokens.issue().hash;val old="old-${UUID.randomUUID()}@example.com";val fresh="new-${UUID.randomUUID()}@example.com"
         auth.finish(LoginFlow(tokens.issue().hash,browser,"email","link",a.session,null,old,null,null,null),old,tokens.issue().hash,365,"Unused")

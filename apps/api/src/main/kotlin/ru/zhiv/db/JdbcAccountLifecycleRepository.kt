@@ -146,6 +146,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "new-email" -> {
                 if (flow.action != "email" || flow.provider != "email") proofRequired()
                 if (owner != null) fail("ACCOUNT_EMAIL_IN_USE", "Эта почта уже связана с профилем. Для двух профилей используйте объединение.")
+                assertMergedIdentityAllocation(c, flow.provider, subject, id)
             }
             else -> proofRequired()
         }
@@ -192,9 +193,13 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         proof(c,id,sessionHash,browserHash,"email","current") ?: proofRequired()
         val newEmail=proof(c,id,sessionHash,browserHash,"email","new-email") ?: proofRequired()
         if (c.one("SELECT 1 FROM account_login_identities WHERE provider='email' AND subject=?",newEmail.subject) { true } == true) fail("ACCOUNT_EMAIL_IN_USE","Эта почта уже связана с профилем")
+        assertMergedIdentityAllocation(c, "email", newEmail.subject, id)
         clearCapabilities(c,id,sessionHash)
         c.update("DELETE FROM account_login_identities WHERE user_id=? AND provider='email'",id)
         c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('email',?,?)",newEmail.subject,id)
+        // A unique-key wait can finish after another profile's merge; an earlier
+        // preview/check is insufficient. Roll back the entire replacement then.
+        assertMergedIdentityAllocation(c, "email", newEmail.subject, id)
         recordSecurityAchievements(c,id)
         saveReceipt(c,"email",requestHash,id,sessionHash,browserHash)
         Unit
@@ -230,6 +235,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         return MergePreview("",a,b,if(choices.displayNameSource=="current")a.displayName else b.displayName,if(choices.statusSource=="current")a.status else b.status,
             listOf("Монеты, жемчужины и предметы сложатся; лучшие уровни построек, одежда и находки сохранятся. Выставленные товары вернутся на склад. Старые запасы пересчитаются один раз по новым правилам; повторного стартового подарка нет. Одежда останется как в открытом мире; если его ещё нет, перенесётся одежда второго профиля. Старые путешествия сохранятся: ${worldJourneys.size}.",
                 "Сохранится открытый профиль ${a.publicId}; прежний ID ${b.publicId} перестанет работать.",
+                "Способы входа обоих профилей нельзя будет использовать для создания или привязки другого профиля, пока сохранённый профиль существует. Невыбранный способ можно вернуть в его настройках после подтверждения.",
                 "Личная история, число отметок, время последней отметки и серия объединятся. Совпадающие по времени отметки сохранятся; в серии они считаются одним моментом. Исторические аудитории других людей не расширятся.",
                 "Связей второго профиля: $direct; участий в группах: $groups. Новые связи и новые участия начнутся без показа отметок в обе стороны; совпадающие связи сохранят существующие настройки, запрет любой стороны сохранится.",
                 "Ваши группы сохранятся, права владельца второго профиля перейдут сохраняемому профилю. Новые участия начнутся с текущего момента: чужие отметки за время до нового вступления не откроются.",
@@ -400,6 +406,15 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
                 c.update("DELETE FROM account_login_identities WHERE user_id=? AND provider=?",id,provider)
                 c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES (?,?,?)",provider,subject,id)
             }
+        }
+        // Keep historical allocation fences attached to the final survivor, not
+        // the source UUID about to be tombstoned. No balance or login is created.
+        c.update("UPDATE account_identity_retirements SET merged_into_user_id=? WHERE merged_into_user_id=?",id,s.other)
+        // Bind kept methods too: otherwise swapping a kept and a discarded
+        // email could free the kept identity for another reward-bearing profile.
+        (ai.entries+bi.entries).forEach { (provider,subject) ->
+            c.update("""UPDATE account_identity_retirements SET merged_into_user_id=?
+                WHERE provider=? AND subject_hash=sha256(convert_to(?, 'UTF8'))""",id,provider,subject)
         }
         // Both fields must share a timestamp: assignment evaluation order is not guaranteed.
         if(saved.choices.displayNameSource=="other") c.update("UPDATE app_users SET display_name=?,display_name_changed_at=statement_timestamp(),display_name_change_key=uuidv7(),updated_at=statement_timestamp() WHERE id=?",preview.displayName,id)

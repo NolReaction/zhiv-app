@@ -41,6 +41,24 @@ test("auth failures do not recommend an unconfigured email method", () => {
   assert.equal(api.authReturnMessage("profile-required"), "");
 });
 
+test("a merged identity explains how to restore its method without starting another profile", () => {
+  assert.match(api.authReturnMessage("auth_identity_merged"), /сохранённом профиле/);
+  assert.match(api.authReturnMessage("auth_identity_merged"), /Способы входа/);
+});
+
+test("merged identity rejection is never reconciled as a successful signup or link", async t => {
+  const requests = [], message = "Этот способ входа уже участвовал в объединении";
+  t.mock.method(globalThis, "fetch", async url => {
+    requests.push(url);
+    return Response.json({ code: "AUTH_IDENTITY_MERGED", message }, { status: 409 });
+  });
+  for (const attempt of [() => api.verifyEmailLogin("flow", "123456"),
+    () => api.verifyEmailLogin("flow", "123456", true), () => api.completeRegistration("Мохлик")]) {
+    await assert.rejects(attempt, error => error.status === 409 && error.body?.code === "AUTH_IDENTITY_MERGED" && error.message === message);
+  }
+  assert.deepEqual(requests, ["/api/v1/auth/email/verify", "/api/v1/auth/email/verify", "/api/v1/auth/registration"]);
+});
+
 test("sign-in request carries no pre-confirmation registration or display name", async t => {
   let request;
   t.mock.method(globalThis, "fetch", async (url, options) => {

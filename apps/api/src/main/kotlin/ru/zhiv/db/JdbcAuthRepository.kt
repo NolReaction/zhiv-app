@@ -128,6 +128,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             ?: c.query("SELECT clock_timestamp(),clock_timestamp()+interval '10 minutes'"){it.getObject(1,OffsetDateTime::class.java) to it.getObject(2,OffsetDateTime::class.java)}!!
         if(c.query("SELECT ?::timestamptz>clock_timestamp()",times.second){it.getBoolean(1)}!=true)invalid()
         if(c.query("SELECT 1 FROM account_identity_retirements WHERE provider=? AND subject_hash=sha256(convert_to(?, 'UTF8')) AND retired_at>=?",flow.provider,subject,times.first){true}==true)invalid()
+        if (owner == null) assertMergedIdentityAllocation(c, flow.provider, subject)
         c.update("DELETE FROM account_registration_tickets WHERE token_hash IN (SELECT token_hash FROM account_registration_tickets WHERE expires_at<clock_timestamp() LIMIT 100)")
         c.update("INSERT INTO account_registration_tickets(token_hash,browser_hash,provider,subject,created_at,expires_at) VALUES (?,?,?,?,?,?)", ticketHash, flow.browserHash, flow.provider, subject,times.first,times.second)
         Unit
@@ -164,6 +165,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
         val userId = if (flow.intent == "link") {
             val current = lockSessionUser(c, flow.sessionHash ?: unauthorized())
             if (owner != null && owner != current) throw AuthFailure("AUTH_ALREADY_LINKED", "Этот способ входа уже связан с другим профилем", 409)
+            if (owner == null) assertMergedIdentityAllocation(c, flow.provider, subject, current)
             current
         } else if (owner != null) {
             requireUnbannedAccount(c,owner)
@@ -171,6 +173,7 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
             owner
         } else {
             if (flow.intent != "register") throw AuthFailure("AUTH_NOT_LINKED", "Этот способ входа пока не связан с профилем. Привяжите его в прежнем профиле или явно создайте новый.", 409)
+            assertMergedIdentityAllocation(c, flow.provider, subject)
             val name = loginDisplayName(flow.displayName) ?: throw AuthFailure("INVALID_DISPLAY_NAME", "Введите имя")
             var allocated: UUID? = null
             repeat(5) {
@@ -185,8 +188,13 @@ class JdbcAuthRepository(private val source: DataSource) : AuthRepository {
         val freshOwner=c.query("SELECT user_id FROM account_login_identities WHERE provider=? AND subject=?",flow.provider,subject){it.getObject(1,UUID::class.java)}
         if(freshOwner != owner) invalid()
         if (owner == null) {
+            assertMergedIdentityAllocation(c, flow.provider, subject, userId)
             val inserted = c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES (?,?,?) ON CONFLICT DO NOTHING", flow.provider, subject, userId)
             if (inserted != 1) throw AuthFailure("AUTH_ALREADY_LINKED", "В профиле уже привязан другой аккаунт этого сервиса", 409)
+            // The unique identity insert may have waited for a concurrent merge
+            // to remove its former owner. Re-read its committed fence afterwards;
+            // rejecting here rolls back identity and any newly allocated user.
+            assertMergedIdentityAllocation(c, flow.provider, subject, userId)
         }
         if (flow.intent != "link") {
             val count = c.query("SELECT count(*) FROM app_sessions WHERE user_id=? AND revoked_at IS NULL AND expires_at>clock_timestamp()", userId) { it.getInt(1) } ?: 0

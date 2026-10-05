@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Lint
         run: npm run lint
 
@@ -84,7 +87,7 @@ jobs:
             echo "Authentication integration tests must run with PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcEconomyRepositoryIntegrationTest JdbcEconomyMarketRepositoryIntegrationTest JdbcForestMemoryRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest JdbcFeedbackRepositoryIntegrationTest JdbcReleaseUpgradeIntegrationTest; do
+          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedIdentityMigrationIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcEconomyRepositoryIntegrationTest JdbcEconomyMarketRepositoryIntegrationTest JdbcForestMemoryRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest JdbcFeedbackRepositoryIntegrationTest JdbcReleaseUpgradeIntegrationTest; do
             lifecycle_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${lifecycle_report}"
             if grep --quiet '<skipped' "${lifecycle_report}"; then
