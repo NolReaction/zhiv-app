@@ -68,3 +68,15 @@ test("local-sale audit protects processing margins and rejects a zero recovery p
   unavailableRecovery.localBuyer.payoutBps = 0;
   assert.throws(() => auditEconomyProgression(unavailableRecovery), /Invalid local buyer payout/);
 });
+
+test("bulk limits, overnight yield and ingredient conservation cannot silently regress", () => {
+  for (const [id, mutate, pattern] of [
+    ["grow_berries", r => r.maxBatch = 10, /cannot be bulk queued/],
+    ["grow_berries_overnight", r => r.rewards.berries = 160, /unattended output|quarter of storage/],
+    ["quarry_stone_overnight", r => r.rewards.stone = 110, /unattended output|quarter of storage/],
+    ["workshop_overnight", r => r.cost.items.wood = 1, /bulk order invents wood/],
+  ]) {
+    const catalog = readEconomyCatalog(); mutate(catalog.recipes.find(r => r.id === id));
+    assert.throws(() => auditEconomyProgression(catalog), pattern, id);
+  }
+});

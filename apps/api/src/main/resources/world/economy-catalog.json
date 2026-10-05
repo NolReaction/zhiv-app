@@ -959,18 +959,19 @@
       "buildingLevel": 1,
       "requiredHomeLevel": 1,
       "requiredBuildings": {},
-      "seconds": 600,
+      "seconds": 900,
       "cost": {
         "coins": 0,
         "items": {}
       },
       "rewards": {
-        "berries": 6
+        "berries": 4
       },
       "collection": {
         "kind": "berry_harvest",
         "seconds": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "grow_berries_overnight",
@@ -985,12 +986,13 @@
         "items": {}
       },
       "rewards": {
-        "berries": 160
+        "berries": 32
       },
       "collection": {
         "kind": "berry_harvest",
         "seconds": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "grow_berries_large",
@@ -1005,12 +1007,13 @@
         "items": {}
       },
       "rewards": {
-        "berries": 20
+        "berries": 10
       },
       "collection": {
         "kind": "berry_harvest",
         "seconds": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "garden_fiber",
@@ -1019,14 +1022,15 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 2,
       "requiredBuildings": {},
-      "seconds": 3600,
+      "seconds": 1800,
       "cost": {
         "coins": 0,
         "items": {}
       },
       "rewards": {
-        "fiber": 18
-      }
+        "fiber": 8
+      },
+      "maxBatch": 1
     },
     {
       "id": "garden_season",
@@ -1041,13 +1045,14 @@
         "items": {}
       },
       "rewards": {
-        "berries": 160,
-        "fiber": 30
+        "berries": 40,
+        "fiber": 8
       },
       "collection": {
         "kind": "berry_harvest",
         "seconds": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "garden_supply",
@@ -1062,13 +1067,14 @@
         "items": {}
       },
       "rewards": {
-        "berries": 240,
-        "fiber": 60
+        "berries": 60,
+        "fiber": 12
       },
       "collection": {
         "kind": "berry_harvest",
         "seconds": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "garden_abundance",
@@ -1083,13 +1089,14 @@
         "items": {}
       },
       "rewards": {
-        "berries": 360,
-        "fiber": 100
+        "berries": 80,
+        "fiber": 16
       },
       "collection": {
         "kind": "berry_harvest",
         "seconds": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "gather_wood",
@@ -1105,7 +1112,8 @@
       },
       "rewards": {
         "wood": 5
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "gather_wood_overnight",
@@ -1120,8 +1128,9 @@
         "items": {}
       },
       "rewards": {
-        "wood": 100
-      }
+        "wood": 32
+      },
+      "maxBatch": 1
     },
     {
       "id": "gather_fiber",
@@ -1137,7 +1146,8 @@
       },
       "rewards": {
         "fiber": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "woodlot_shift",
@@ -1152,9 +1162,10 @@
         "items": {}
       },
       "rewards": {
-        "wood": 50,
-        "fiber": 48
-      }
+        "wood": 24,
+        "fiber": 24
+      },
+      "maxBatch": 1
     },
     {
       "id": "gather_hardwood",
@@ -1170,7 +1181,8 @@
       },
       "rewards": {
         "hardwood": 6
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "hardwood_shift",
@@ -1185,9 +1197,10 @@
         "items": {}
       },
       "rewards": {
-        "wood": 60,
-        "hardwood": 36
-      }
+        "wood": 24,
+        "hardwood": 12
+      },
+      "maxBatch": 1
     },
     {
       "id": "gather_resin",
@@ -1203,7 +1216,8 @@
       },
       "rewards": {
         "resin": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "woodland_shift",
@@ -1218,10 +1232,11 @@
         "items": {}
       },
       "rewards": {
-        "wood": 80,
-        "hardwood": 40,
-        "resin": 30
-      }
+        "wood": 30,
+        "hardwood": 14,
+        "resin": 8
+      },
+      "maxBatch": 1
     },
     {
       "id": "woodland_supply",
@@ -1236,10 +1251,11 @@
         "items": {}
       },
       "rewards": {
-        "wood": 120,
-        "hardwood": 70,
-        "resin": 50
-      }
+        "wood": 36,
+        "hardwood": 16,
+        "resin": 10
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_stone",
@@ -1255,7 +1271,8 @@
       },
       "rewards": {
         "stone": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_stone_overnight",
@@ -1270,8 +1287,9 @@
         "items": {}
       },
       "rewards": {
-        "stone": 110
-      }
+        "stone": 40
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_ore",
@@ -1287,7 +1305,8 @@
       },
       "rewards": {
         "ore": 5
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_clay",
@@ -1303,7 +1322,8 @@
       },
       "rewards": {
         "clay": 8
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_sand",
@@ -1319,7 +1339,8 @@
       },
       "rewards": {
         "sand": 10
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_shift",
@@ -1334,11 +1355,12 @@
         "items": {}
       },
       "rewards": {
-        "stone": 75,
-        "ore": 35,
-        "clay": 35,
-        "sand": 25
-      }
+        "stone": 24,
+        "ore": 8,
+        "clay": 10,
+        "sand": 10
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_deep_face",
@@ -1353,11 +1375,12 @@
         "items": {}
       },
       "rewards": {
-        "stone": 110,
-        "ore": 50,
-        "clay": 45,
-        "sand": 35
-      }
+        "stone": 32,
+        "ore": 10,
+        "clay": 12,
+        "sand": 12
+      },
+      "maxBatch": 1
     },
     {
       "id": "quarry_supply",
@@ -1372,11 +1395,12 @@
         "items": {}
       },
       "rewards": {
-        "stone": 160,
-        "ore": 80,
-        "clay": 65,
-        "sand": 50
-      }
+        "stone": 36,
+        "ore": 14,
+        "clay": 14,
+        "sand": 14
+      },
+      "maxBatch": 1
     },
     {
       "id": "make_planks",
@@ -1394,7 +1418,8 @@
       },
       "rewards": {
         "planks": 1
-      }
+      },
+      "maxBatch": 8
     },
     {
       "id": "make_rope",
@@ -1412,7 +1437,8 @@
       },
       "rewards": {
         "rope": 1
-      }
+      },
+      "maxBatch": 10
     },
     {
       "id": "make_metal_parts",
@@ -1433,7 +1459,8 @@
       },
       "rewards": {
         "metal_parts": 1
-      }
+      },
+      "maxBatch": 4
     },
     {
       "id": "weave_cloth",
@@ -1452,7 +1479,8 @@
       },
       "rewards": {
         "cloth": 1
-      }
+      },
+      "maxBatch": 3
     },
     {
       "id": "make_beams",
@@ -1473,7 +1501,8 @@
       },
       "rewards": {
         "beams": 1
-      }
+      },
+      "maxBatch": 2
     },
     {
       "id": "cut_stone",
@@ -1491,7 +1520,8 @@
       },
       "rewards": {
         "cut_stone": 1
-      }
+      },
+      "maxBatch": 2
     },
     {
       "id": "make_tools",
@@ -1511,7 +1541,8 @@
       },
       "rewards": {
         "tools": 1
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "make_reinforced_parts",
@@ -1533,7 +1564,8 @@
       },
       "rewards": {
         "reinforced_parts": 1
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "workshop_assembly",
@@ -1546,18 +1578,19 @@
       "cost": {
         "coins": 0,
         "items": {
-          "metal_parts": 8,
-          "planks": 16,
-          "rope": 8,
-          "iron_ingot": 10,
-          "beams": 5,
-          "resin": 15
+          "metal_parts": 2,
+          "planks": 4,
+          "rope": 2,
+          "iron_ingot": 2,
+          "beams": 1,
+          "resin": 3
         }
       },
       "rewards": {
-        "tools": 10,
-        "reinforced_parts": 6
-      }
+        "tools": 2,
+        "reinforced_parts": 1
+      },
+      "maxBatch": 1
     },
     {
       "id": "dry_berries",
@@ -1575,7 +1608,8 @@
       },
       "rewards": {
         "dried_berries": 1
-      }
+      },
+      "maxBatch": 2
     },
     {
       "id": "smoke_fish",
@@ -1594,7 +1628,8 @@
       },
       "rewards": {
         "smoked_fish": 1
-      }
+      },
+      "maxBatch": 4
     },
     {
       "id": "prepare_provisions",
@@ -1607,15 +1642,16 @@
       "cost": {
         "coins": 0,
         "items": {
-          "berries": 30,
-          "fish": 8,
-          "wood": 4
+          "berries": 18,
+          "fish": 4,
+          "wood": 2
         }
       },
       "rewards": {
-        "dried_berries": 6,
-        "smoked_fish": 4
-      }
+        "dried_berries": 3,
+        "smoked_fish": 2
+      },
+      "maxBatch": 1
     },
     {
       "id": "prepare_expedition_provisions",
@@ -1628,15 +1664,16 @@
       "cost": {
         "coins": 0,
         "items": {
-          "berries": 55,
-          "fish": 18,
-          "charcoal": 3
+          "berries": 24,
+          "fish": 8,
+          "wood": 4
         }
       },
       "rewards": {
-        "dried_berries": 12,
-        "smoked_fish": 10
-      }
+        "dried_berries": 4,
+        "smoked_fish": 4
+      },
+      "maxBatch": 1
     },
     {
       "id": "provisions_supply",
@@ -1649,15 +1686,16 @@
       "cost": {
         "coins": 0,
         "items": {
-          "berries": 100,
-          "fish": 32,
-          "charcoal": 5
+          "berries": 36,
+          "fish": 8,
+          "wood": 4
         }
       },
       "rewards": {
-        "dried_berries": 24,
-        "smoked_fish": 20
-      }
+        "dried_berries": 6,
+        "smoked_fish": 4
+      },
+      "maxBatch": 1
     },
     {
       "id": "make_charcoal",
@@ -1675,7 +1713,8 @@
       },
       "rewards": {
         "charcoal": 1
-      }
+      },
+      "maxBatch": 4
     },
     {
       "id": "fire_bricks",
@@ -1694,7 +1733,8 @@
       },
       "rewards": {
         "bricks": 4
-      }
+      },
+      "maxBatch": 2
     },
     {
       "id": "smelt_iron",
@@ -1713,7 +1753,8 @@
       },
       "rewards": {
         "iron_ingot": 2
-      }
+      },
+      "maxBatch": 2
     },
     {
       "id": "make_glass",
@@ -1732,7 +1773,8 @@
       },
       "rewards": {
         "glass": 2
-      }
+      },
+      "maxBatch": 1
     },
     {
       "id": "kiln_shift",
@@ -1745,15 +1787,16 @@
       "cost": {
         "coins": 0,
         "items": {
-          "ore": 70,
-          "clay": 70,
-          "charcoal": 40
+          "ore": 18,
+          "charcoal": 10,
+          "clay": 12
         }
       },
       "rewards": {
-        "iron_ingot": 28,
-        "bricks": 48
-      }
+        "iron_ingot": 6,
+        "bricks": 8
+      },
+      "maxBatch": 1
     },
     {
       "id": "kiln_supply",
@@ -1766,17 +1809,18 @@
       "cost": {
         "coins": 0,
         "items": {
-          "ore": 120,
-          "clay": 120,
-          "sand": 100,
-          "charcoal": 80
+          "ore": 24,
+          "charcoal": 18,
+          "clay": 18,
+          "sand": 12
         }
       },
       "rewards": {
-        "iron_ingot": 50,
-        "bricks": 90,
-        "glass": 40
-      }
+        "iron_ingot": 8,
+        "bricks": 12,
+        "glass": 4
+      },
+      "maxBatch": 1
     },
     {
       "id": "workshop_overnight",
@@ -1789,15 +1833,16 @@
       "cost": {
         "coins": 0,
         "items": {
-          "wood": 38,
-          "fiber": 64
+          "wood": 12,
+          "fiber": 20
         }
       },
       "rewards": {
-        "planks": 20,
-        "rope": 12,
-        "cloth": 4
-      }
+        "planks": 6,
+        "rope": 4,
+        "cloth": 1
+      },
+      "maxBatch": 1
     },
     {
       "id": "workshop_materials",
@@ -1810,15 +1855,16 @@
       "cost": {
         "coins": 0,
         "items": {
-          "wood": 76,
-          "fiber": 150
+          "wood": 16,
+          "fiber": 20
         }
       },
       "rewards": {
-        "planks": 40,
-        "rope": 24,
-        "cloth": 12
-      }
+        "planks": 8,
+        "rope": 4,
+        "cloth": 1
+      },
+      "maxBatch": 1
     },
     {
       "id": "workshop_structures",
@@ -1831,18 +1877,19 @@
       "cost": {
         "coins": 0,
         "items": {
-          "hardwood": 72,
-          "rope": 18,
-          "stone": 66,
-          "iron_ingot": 8,
-          "wood": 8
+          "hardwood": 8,
+          "rope": 2,
+          "stone": 6,
+          "iron_ingot": 2,
+          "wood": 2
         }
       },
       "rewards": {
-        "beams": 20,
-        "cut_stone": 24,
-        "metal_parts": 8
-      }
+        "beams": 2,
+        "cut_stone": 2,
+        "metal_parts": 2
+      },
+      "maxBatch": 1
     },
     {
       "id": "charcoal_batch",
@@ -1855,12 +1902,13 @@
       "cost": {
         "coins": 0,
         "items": {
-          "wood": 40
+          "wood": 8
         }
       },
       "rewards": {
-        "charcoal": 24
-      }
+        "charcoal": 4
+      },
+      "maxBatch": 1
     },
     {
       "id": "charcoal_supply",
@@ -1873,12 +1921,13 @@
       "cost": {
         "coins": 0,
         "items": {
-          "wood": 180
+          "wood": 20
         }
       },
       "rewards": {
-        "charcoal": 120
-      }
+        "charcoal": 10
+      },
+      "maxBatch": 1
     }
   ],
   "explorations": [
@@ -1944,8 +1993,8 @@
         }
       },
       "rewards": {
-        "stone": 30,
-        "ore": 20
+        "stone": 20,
+        "ore": 10
       },
       "requiredBuildings": {}
     },
@@ -1961,9 +2010,9 @@
         "items": {}
       },
       "rewards": {
-        "wood": 40,
-        "stone": 24,
-        "fiber": 32
+        "wood": 12,
+        "stone": 8,
+        "fiber": 12
       }
     },
     {
@@ -1978,8 +2027,8 @@
         "items": {}
       },
       "rewards": {
-        "fish": 36,
-        "wood": 8
+        "fish": 10,
+        "wood": 3
       }
     },
     {
@@ -2000,9 +2049,9 @@
         }
       },
       "rewards": {
-        "hardwood": 30,
-        "resin": 8,
-        "wood": 40
+        "hardwood": 18,
+        "resin": 6,
+        "wood": 18
       }
     },
     {
@@ -2023,9 +2072,9 @@
         }
       },
       "rewards": {
-        "clay": 60,
-        "sand": 70,
-        "ore": 30
+        "clay": 36,
+        "sand": 40,
+        "ore": 20
       }
     },
     {
@@ -2047,10 +2096,10 @@
         }
       },
       "rewards": {
-        "hardwood": 80,
-        "ore": 60,
-        "resin": 35,
-        "stone": 60
+        "hardwood": 40,
+        "ore": 30,
+        "resin": 18,
+        "stone": 30
       }
     },
     {
@@ -2067,17 +2116,17 @@
       "cost": {
         "coins": 0,
         "items": {
-          "tools": 3,
-          "rope": 6,
-          "dried_berries": 6,
-          "smoked_fish": 6
+          "tools": 2,
+          "rope": 4,
+          "dried_berries": 4,
+          "smoked_fish": 4
         }
       },
       "rewards": {
-        "stone": 180,
-        "ore": 110,
-        "sand": 90,
-        "clay": 80
+        "stone": 96,
+        "ore": 60,
+        "sand": 48,
+        "clay": 40
       }
     }
   ],

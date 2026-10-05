@@ -59,6 +59,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val id: String, val name: String, val buildingId: String, val buildingLevel: Int = 1,
     val requiredHomeLevel: Int = 1, val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
     val requiredBuildings: Map<String, Int> = emptyMap(), val collection: EconomyCollectionSpec? = null,
+    val maxBatch: Int? = null,
 ) {
     init { require(collection == null || buildingId == "garden" && (rewards["berries"] ?: 0L) > 0L) }
 }

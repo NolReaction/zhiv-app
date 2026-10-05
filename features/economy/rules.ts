@@ -97,6 +97,8 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (command.quantity > economyCatalog.maxBatch) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Слишком большая партия", 400);
       const recipe = economyCatalog.recipes.find(item => item.id === command.targetId);
       if (!recipe) return fail("ECONOMY_RECIPE", "Рецепт не найден");
+      if (command.quantity > (recipe.maxBatch ?? economyCatalog.maxBatch))
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого заказа превышено число партий", 400);
       if ((state.buildings[recipe.buildingId] ?? 0) < recipe.buildingLevel) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
       requireHome(state, recipe.requiredHomeLevel);
       requireBuildings(state, recipe.requiredBuildings);

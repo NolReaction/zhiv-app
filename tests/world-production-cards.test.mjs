@@ -64,20 +64,20 @@ test("harvest cards distinguish quantity and time while keeping the result name 
   const ordinary = section(html, "Обычные заказы");
   const long = section(html, "На несколько часов");
   assert.match(ordinary, /<strong>Лесные ягоды<\/strong>/);
-  assert.match(ordinary, /×6<\/b>/);
-  assert.match(ordinary, /10 мин/);
+  assert.match(ordinary, /×4<\/b>/);
+  assert.match(ordinary, /15 мин/);
   assert.match(long, /<strong>Лесные ягоды<\/strong>/);
-  assert.match(long, /×160<\/b>/);
+  assert.match(long, /×32<\/b>/);
   assert.match(long, /8 ч/);
 });
 
 test("selected recipe shows actual multi-item rewards and only its own costs", () => {
-  const html = renderRecipe("workshop_overnight", controller({ inventory: { wood: 38, fiber: 64 } }));
+  const html = renderRecipe("workshop_overnight", controller({ inventory: { wood: 12, fiber: 20 } }));
   assert.match(html, /Все рецепты/);
-  for (const amount of [20, 12, 4]) assert.match(html, new RegExp(`×${amount}</b>`));
+  for (const amount of [6, 4, 1]) assert.match(html, new RegExp(`×${amount}</b>`));
   assert.match(html, /Понадобится/);
-  assert.match(html, /38 \/ 38/);
-  assert.match(html, /64 \/ 64/);
+  assert.match(html, /12 \/ 12/);
+  assert.match(html, /20 \/ 20/);
   assert.equal(startDisabled(html), false);
   assert.doesNotMatch(html, /Обычные заказы|На несколько часов|data-recipe=/);
 });
@@ -104,6 +104,6 @@ test("locked recipe explains its prerequisites once and remains unavailable", ()
 
 test("storage warning appears only when the selected result will not currently fit", () => {
   const available = { capacity: 200, used: 198, reserved: 0, available: 2, overflow: 0 };
-  assert.match(renderRecipe("grow_berries", controller({ storage: available })), /Для получения понадобится 6 мест · свободно 2/);
+  assert.match(renderRecipe("grow_berries", controller({ storage: available })), /Для получения понадобится 4 мест · свободно 2/);
   assert.doesNotMatch(renderRecipe("grow_berries", controller()), /Для получения понадобится|Место понадобится/);
 });

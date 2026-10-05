@@ -74,7 +74,7 @@ export function worldCostShortfalls(state: EconomyView, cost: EconomyCost, quant
 }
 export function worldBatchLimit(state: EconomyView, recipe: WorldRecipe) {
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0);
-  return Math.max(0, Math.min(state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, output))));
+  return Math.max(0, Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, output))));
 }
 export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, quantity = 1) {
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));

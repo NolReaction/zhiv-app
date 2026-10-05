@@ -48,6 +48,7 @@ object EconomyRules {
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
+        require(catalog.recipes.all { it.maxBatch == null || it.maxBatch in 1..catalog.maxBatch })
         catalog.fishing?.let { fishing ->
             require(fishing.routeIds.isNotEmpty() && fishing.routeIds.all { id -> catalog.explorations.any { it.id == id && (it.rewards["fish"] ?: 0) > 0 } })
             require(fishing.fish.isNotEmpty() && fishing.fish.map { it.itemId }.distinct().size == fishing.fish.size)
@@ -169,6 +170,7 @@ object EconomyRules {
             "start_production" -> {
                 if (command.quantity > catalog.maxBatch) invalidEconomy()
                 val recipe = catalog.recipes.find { it.id == command.targetId } ?: economyFailure("ECONOMY_RECIPE", "Рецепт не найден")
+                if (command.quantity > (recipe.maxBatch ?: catalog.maxBatch)) invalidEconomy()
                 if ((state.buildings[recipe.buildingId] ?: 0) < recipe.buildingLevel)
                     economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание")
                 requireHome(state, recipe.requiredHomeLevel)

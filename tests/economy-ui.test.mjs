@@ -52,7 +52,7 @@ function job(overrides = {}) {
 
 test("fresh players can grow and explore without coins; expensive buildings explain missing materials", () => {
   const production = render("production");
-  assert.equal(disabled(button(production, "Начать · 10 мин")), false);
+  assert.equal(disabled(button(production, "Начать · 15 мин")), false);
   assert.match(production, /Без затрат/);
   assert.equal(disabled(button(render("exploration"), "Отправиться: Лесная разведка")), false);
   const construction = render("buildings");
@@ -76,13 +76,13 @@ test("construction checks materials together with coins and only opens when the 
 test("berry production owns its station and collection opens only after the server deadline", () => {
   const state = snapshot({ jobs: [job()] });
   let html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Начать · 10 мин")), true);
+  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
   assert.equal(disabled(button(html, "Растут: Вырастить ягоды")), true);
   assert.match(html, /Здание занято текущим заказом/);
   state.jobs[0].finishesAt = new Date(now).toISOString();
   html = render("production", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), false);
-  assert.equal(disabled(button(html, "Начать · 10 мин")), true);
+  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
   assert.match(html, /Ягоды созрели/);
 });
 
@@ -103,7 +103,7 @@ test("uncertain commands and retry cooldown prevent duplicate actions while navi
   assert.equal(disabled(button(html, "Проверить результат")), false);
   assert.equal(disabled(button(html, "Производство")), false);
   html = render("production", controller({ snapshot: snapshot(), retryAt: now + 15_000, error: "Повторите позже" }));
-  assert.equal(disabled(button(html, "Начать · 10 мин")), true);
+  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
   assert.equal(disabled(button(html, "Повторить через 15 с")), true);
 });
 
@@ -189,7 +189,7 @@ test("full storage leaves ready rewards safe and offers recovery without prevent
   assert.ok(button(html, "Освободить место"));
   state.jobs = [];
   html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Начать · 10 мин")), false, "Production can finish while the player frees storage");
+  assert.equal(disabled(button(html, "Начать · 15 мин")), false, "Production can finish while the player frees storage");
   state.jobs = [job({ finishesAt: new Date(now).toISOString(), rewards: { berries: 250 }, catalogVersion: 1 })];
   html = render("overview", controller({ snapshot: state }));
   assert.ok(button(html, "Расширить склад"));
@@ -197,12 +197,12 @@ test("full storage leaves ready rewards safe and offers recovery without prevent
 
 test("production batch options fit the entire result in warehouse capacity, even if current free space is lower", () => {
   const state = snapshot({ storage: { capacity: 200, used: 195, reserved: 0, available: 5, overflow: 0 } });
-  state.catalog.recipes.find(recipe => recipe.id === "grow_berries").rewards = { berries: 70, fiber: 20 };
+  Object.assign(state.catalog.recipes.find(recipe => recipe.id === "grow_berries"), { rewards: { berries: 70, fiber: 20 }, maxBatch: 10 });
   const html = render("production", controller({ snapshot: state }));
   const size = html.match(/Размер заказа<select[^>]*>([\s\S]*?)<\/select>/)[1];
   assert.deepEqual([...size.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1])), [1, 2]);
   assert.match(html, /Результат займёт 90 мест/);
-  assert.equal(disabled(button(html, "Начать · 10 мин")), false);
+  assert.equal(disabled(button(html, "Начать · 15 мин")), false);
 });
 
 test("player market cannot buy an unaffordable storage lot and offers the warehouse as a next action", () => {

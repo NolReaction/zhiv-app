@@ -115,7 +115,8 @@ test("catalog gates and current stock determine construction availability togeth
 
 test("batches use full capacity; unclaimed work still occupies the station", () => {
   const state = snapshot({ storage: { capacity: 200, used: 195, reserved: 0, available: 5, overflow: 0 } });
-  const recipe = { ...state.catalog.recipes.find(entry => entry.id === "grow_berries"), rewards: { berries: 70, fiber: 20 } };
+  const recipe = { ...state.catalog.recipes.find(entry => entry.id === "grow_berries"), rewards: { berries: 70, fiber: 20 }, maxBatch: 10 };
+  assert.equal(helpers.worldBatchLimit(state, { ...recipe, maxBatch: 1 }), 1);
   assert.equal(helpers.worldBatchLimit(state, recipe), 2);
   assert.equal(helpers.worldProductionReason(state, recipe, 2), null);
   assert.match(helpers.worldProductionReason(state, recipe, 3), /партию/);

@@ -40,11 +40,19 @@ class EconomyRulesTest {
         assertEquals(1, sold.jobs.size)
     }
 
+    @Test fun `free gathering rejects bulk orders without spending`() {
+        val initial = EconomyRules.initial()
+        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> {
+            apply(initial, "start_production", "grow_berries", 2)
+        }.code)
+        assertEquals(EconomyRules.initial(), initial)
+    }
+
     @Test fun `berry recipes snapshot a separate server timed collection and deliver locked rewards only after it finishes`() {
         val berryRecipes = EconomyRules.catalog.recipes.filter { it.buildingId == "garden" && (it.rewards["berries"] ?: 0L) > 0L }
         assertEquals(6, berryRecipes.size)
         for (recipe in berryRecipes) assertEquals(EconomyCollectionSpec("berry_harvest", 8), recipe.collection)
-        val started = apply(EconomyRules.initial(), "start_production", "grow_berries", 2)
+        val started = apply(EconomyRules.initial(), "start_production", "grow_berries", 1)
         val job = started.jobs.single()
         assertEquals(EconomyCollection("berry_harvest", 8, null, null), job.collection)
         val ripeAt = Instant.parse(job.finishesAt)
@@ -192,11 +200,11 @@ class EconomyRulesTest {
             state = apply(started, "claim_job", job.id, at = at)
         }
 
-        repeat(2) {
+        repeat(8) {
             complete("start_production", "grow_berries_overnight")
             state = apply(state, "sell", "berries", state.inventory.getValue("berries"), at)
         }
-        complete("start_exploration", "forest_camp")
+        repeat(8) { complete("start_exploration", "forest") }
         complete("start_construction", "woodlot")
         complete("start_construction", "workshop")
         complete("start_exploration", "forest")
@@ -212,6 +220,7 @@ class EconomyRulesTest {
 
         complete("start_exploration", "forest_camp")
         complete("start_construction", "quarry")
+        complete("start_production", "quarry_stone")
         complete("start_construction", "kiln")
         assertEquals(1, state.buildings["quarry"])
         assertEquals(1, state.buildings["kiln"])
@@ -522,12 +531,12 @@ class EconomyRulesTest {
         assertEquals(0L, EconomyRules.storage(claimed).available)
     }
 
-    @Test fun `production cannot start a batch larger than the entire warehouse`() {
+    @Test fun `overnight gathering rejects bulk queues even when its reward would fit`() {
         val state = EconomyRules.initial()
         val recipe = EconomyRules.catalog.recipes.single { it.id == "grow_berries_overnight" }
         assertTrue(recipe.rewards.values.sum() <= EconomyRules.storage(state).capacity)
-        assertTrue(recipe.rewards.values.sum() * 2 > EconomyRules.storage(state).capacity)
-        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { apply(state, "start_production", recipe.id, 2) }.code)
+        assertTrue(recipe.rewards.values.sum() * 2 < EconomyRules.storage(state).capacity)
+        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(state, "start_production", recipe.id, 2) }.code)
         assertTrue(state.jobs.isEmpty())
         assertEquals(0L, state.wallet.coins)
         // Occupied slots do not prevent starting a feasible order: the player can free them before collection.

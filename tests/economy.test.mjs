@@ -79,11 +79,11 @@ test("an empty account reaches home two with bush and forest goods before openin
     return issue(p, "claim_job", job.id, 1, clock).state;
   };
   assert.deepEqual(read(p).inventory, {});
-  for (let cycle = 0; cycle < 2; cycle++) {
+  for (let cycle = 0; cycle < 8; cycle++) {
     const harvest = complete("start_production", "grow_berries_overnight");
     issue(p, "sell", "berries", harvest.inventory.berries, clock);
   }
-  complete("start_exploration", "forest_camp");
+  for (let trip = 0; trip < 8; trip++) complete("start_exploration", "forest");
   complete("start_construction", "woodlot");
   complete("start_construction", "workshop");
   complete("start_exploration", "forest");
@@ -104,6 +104,7 @@ test("an empty account reaches home two with bush and forest goods before openin
   complete("start_exploration", "forest_camp");
   const mined = complete("start_construction", "quarry");
   assert.equal(mined.buildings.quarry, 1); assert.equal(mined.buildings.kiln, 0);
+  complete("start_production", "quarry_stone");
   const equipped = complete("start_construction", "kiln");
   assert.equal(equipped.buildings.kiln, 1);
   assert.ok(equipped.wallet.coins >= 0);
@@ -415,17 +416,18 @@ test("cross-building dependencies require completed levels for construction, rec
   }
 });
 
-test("oversized output batches are rejected before spending, while a full warehouse may start a fitting batch", () => {
+test("storage fitting still rejects oversized paid output independently of queue limits", () => {
   const p = player(), row = fixture(p, { items: { berries: 200 }, home: 5,
     buildings: Object.fromEntries(model.economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])) });
   row.state.buildings.warehouse = 1;
-  const recipe = model.economyCatalog.recipes.find(recipe => Object.values(recipe.rewards).reduce((a, b) => a + b, 0) * model.economyCatalog.maxBatch > 200);
-  assert.ok(recipe, "late producers supply batches larger than the initial warehouse");
-  Object.assign(row.state.inventory, rules.scaledEconomyCost(recipe.cost, model.economyCatalog.maxBatch).items);
-  row.state.wallet.coins = recipe.cost.coins * model.economyCatalog.maxBatch;
-  const before = read(p);
-  assert.throws(() => issue(p, "start_production", recipe.id, model.economyCatalog.maxBatch), { code: "ECONOMY_STORAGE_FULL" });
-  assert.deepEqual(read(p), before);
+  const recipe = model.economyCatalog.recipes.find(recipe => recipe.id === "grow_berries");
+  const original = recipe.rewards;
+  try {
+    recipe.rewards = { berries: 201 };
+    const before = read(p);
+    assert.throws(() => issue(p, "start_production", recipe.id), { code: "ECONOMY_STORAGE_FULL" });
+    assert.deepEqual(read(p), before);
+  } finally { recipe.rewards = original; }
   assert.equal(issue(p, "start_production", "grow_berries").state.jobs.length, 1);
 });
 
@@ -444,4 +446,14 @@ test("catalog v1 jobs retain their original reward and deadline across the wareh
   row.state.buildings.warehouse = 2;
   const result = issue(p, "claim_job", oldJob.id, 1, now + 1000).state;
   assert.equal(result.inventory.berries, 230); assert.equal(result.wallet.coins, 0); assert.equal(result.jobs.length, 0);
+});
+
+ test("free gathering and unattended jobs reject bulk commands atomically", () => {
+  for (const recipe of model.economyCatalog.recipes.filter(recipe => recipe.maxBatch === 1)) {
+    const p = player(); fixture(p, { items: recipe.cost.items, coins: recipe.cost.coins * 2, home: 5,
+      buildings: Object.fromEntries(model.economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])) });
+    const before = read(p);
+    assert.throws(() => issue(p, "start_production", recipe.id, 2), { code: "INVALID_ECONOMY_COMMAND" });
+    assert.deepEqual(read(p), before, recipe.id);
+  }
 });

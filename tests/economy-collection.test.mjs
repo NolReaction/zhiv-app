@@ -103,9 +103,9 @@ test("market purchases during gathering may fill storage, but a failed delivery 
   const before = read(p, finish);
   assert.throws(() => issue(p, "claim_job", job.id, finish), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p, finish), before);
-  economy.commandDevEconomy(p.token, command(p, "sell", "wood", finish, 6), finish);
+  economy.commandDevEconomy(p.token, command(p, "sell", "wood", finish, job.rewards.berries), finish);
   const result = issue(p, "claim_job", job.id, finish + 1).state;
-  assert.equal(result.inventory.berries, 6); assert.equal(result.storage.used, 200); assert.equal(result.jobs.length, 0);
+  assert.equal(result.inventory.berries, job.rewards.berries); assert.equal(result.storage.used, 200); assert.equal(result.jobs.length, 0);
 });
 
 test("reloading after the server deadline can deliver without trusting any animation token or local inventory", () => {
@@ -114,7 +114,7 @@ test("reloading after the server deadline can deliver without trusting any anima
   const restored = read(p, readyAt + 24 * 3600_000);
   assert.deepEqual(restored.inventory, {}); assert.ok(restored.jobs[0].collection.startedAt);
   const claimed = issue(p, "claim_job", job.id, readyAt + 24 * 3600_000).state;
-  assert.equal(claimed.inventory.berries, 6);
+  assert.equal(claimed.inventory.berries, job.rewards.berries);
   const bad = { ...command(p, "start_collection", job.id), animationComplete: true, rewards: { berries: 1000 } };
   assert.throws(() => economy.commandDevEconomy(p.token, bad, now), { code: "INVALID_ECONOMY_COMMAND" });
 });

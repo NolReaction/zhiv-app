@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { auditProductionBalance } from "./lib/economy-balance.mjs";
 
 const catalogPath = new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url);
 const startingBuildings = { home: 1, garden: 1, warehouse: 1 };
@@ -106,6 +107,7 @@ export function auditEconomyProgression(catalog) {
     }
   }
   assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration or fishing");
+  auditProductionBalance(catalog);
 
   const closure = (target, visiting = new Set(), result = new Set()) => {
     assert(!visiting.has(target), `Construction dependency cycle at ${target}`);

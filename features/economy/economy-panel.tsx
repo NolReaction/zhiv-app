@@ -233,7 +233,7 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
   const [requestedQuantity, setQuantity] = useState(1);
   const inputId = useId();
   const rewardCount = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0);
-  const maximum = Math.min(state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, rewardCount)));
+  const maximum = Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, rewardCount)));
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
   const required = requirements(recipe, recipe);
   const occupied = state.jobs.some(job => (job.kind === "production" || job.kind === "construction") && job.targetId === recipe.buildingId);

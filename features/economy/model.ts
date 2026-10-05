@@ -38,6 +38,7 @@ export const economyCatalogSchema = z.object({
     requiredBuildings, warehouseCapacity: count.positive().nullish(),
   })).max(100) })).max(100),
   recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), requiredHomeLevel: count.positive(),
+    maxBatch: count.positive().max(100).nullish(),
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && (recipe.rewards.berries ?? 0) > 0,
       "Berry collection requires a garden recipe with berries")).max(1000),
