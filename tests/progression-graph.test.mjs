@@ -85,10 +85,28 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 144);
+  assert.equal(graph.nodes.length, 148);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 14);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 16);
+});
+
+test("fishing is current while other profiles and Pleska's home stay optional proposals", () => {
+  assert.equal(node("pleska").status, "active");
+  assert.equal(node("fishing_catches").status, "active");
+  assert(hasEdge("start", "pleska", "available"));
+  for (const id of ["public_profiles", "pleska_home"]) {
+    assert.equal(node(id).status, "plan");
+    assert.equal(node(id).cost, undefined);
+    assert.equal(node(id).seconds, undefined);
+    assert(!getPrerequisiteIds(graph, "b:home:5").has(id));
+  }
+  assert.equal(node("player_level").status, "active");
+  assert.equal(node("achievements").status, "active");
+  assert.match(node("willow_rod").description, /отдельная вещь/);
+  assert.match(node("trader").description, /40%/);
+  assert.match(node("b:warehouse:1").description, /объявлениях рынка/);
+  assert.match(node("r:grow_berries").description, /Партия: до 1/);
 });
 
 test("production and construction retain every house, previous-level and additional building gate", () => {

@@ -74,7 +74,7 @@ const worldDefinitions: WorldDefinition[] = [
   ["forest_set", "6 лесных находок", "🍃", "Шесть разных находок лесной коллекции открывают шляпу следопыта. Сохранённое правило коллекции.", "collection"],
   ["river_set", "6 речных находок", "🐚", "Шесть разных речных находок открывают ивовую удочку. Сохранённое правило коллекции.", "collection"],
   ["explorer_cap", "Шляпа следопыта", "👒", "Награда за полную лесную коллекцию. Полученную вещь можно надеть.", "equipment"],
-  ["willow_rod", "Ивовая удочка", "🎣", "Награда за полную речную коллекцию. Полученную вещь можно экипировать; новые способы её производства ещё не включены.", "equipment"],
+  ["willow_rod", "Ивовая удочка · гардероб", "🎣", "Награда прежнего гардероба за полную речную коллекцию. Это отдельная вещь от рыбацкой удочки, которую продаёт Плёска: награда альбома не открывает купленную снасть.", "equipment"],
   ["wardrobe", "Гардероб", "🧣", "Полученные вещи можно надевать. Создание новых вещей через прежний крафт сейчас отключено.", "equipment"],
   ["full_collection", "Все 12 находок", "🏅", "Полная лесная и речная коллекция связана с достижением за все 12 находок.", "collection"],
   ["life_marks", "Отметки жизни", "💚", "Подтверждённые отметки жизни поддерживают дневную серию. Это отдельная ветка от строительства и производства."],
@@ -85,6 +85,8 @@ const worldDefinitions: WorldDefinition[] = [
   ["tap_streak", "Серия тапов", "⚡", "Непрерывная серия тапов заканчивается после паузы 10 секунд. Она даёт лучший рекорд серии."],
   ["leaderboard", "Рейтинг и рекорды", "🏆", "Месячные тапы и лучшая непрерывная серия — две метрики рейтинга. Уровень по общему счёту не входит в эти рейтинги."],
   ["achievements", "Достижения", "🏅", "Достижения включают 7 дней серии отметок, 1000 суммарных тапов, 10 000 тапов за игру и полную коллекцию. Они не служат воротами экономического развития."],
+  ["pleska", "Плёска · лавка и рыбалка", "🎣", "Жительница берега продаёт удочки, наживку и сырую рыбу. Стартовая удочка бесплатна; купленные снасти выбираются перед следующей вылазкой. Плёска покупает сырую рыбу по полной базовой цене. Её декоративная рыбалка не выдаёт игроку товары."],
+  ["fishing_catches", "Коллекция пойманной рыбы", "🐟", "Четыре вида записываются после получения улова береговой вылазки. Купленная рыба не открывает коллекцию. Снасти и наживка повышают шанс необычного вида, но не гарантируют его; одна рыба в партии определяется серверным розыгрышем.", "collection"],
 ];
 
 const projectDefinitions: WorldDefinition[] = [
@@ -102,6 +104,8 @@ const projectDefinitions: WorldDefinition[] = [
   ["orders", "Заказы жителей", "📜", "Будущие заказы жителей и торговца: применение продукции хозяйства."],
   ["new_fruits", "Новые плоды", "🍎", "Будущее расширение сада новыми плодами. Уровень сада для открытия ещё не выбран."],
   ["tackle", "Новые снасти", "🪝", "Будущее расширение мастерской и рыбалки новыми снастями. Уровень верстака для открытия ещё не выбран."],
+  ["public_profiles", "Чужие профили", "👥", "План: смотреть уровень и достижения других игроков; позднее — их обустройство. Собственный уровень и достижения уже работают. Просмотр чужого хозяйства и его правила ещё не реализованы."],
+  ["pleska_home", "Домик Плёски", "🏠", "Будущий домик жительницы. Место, внешний вид, уровни и игровые правила ещё не утверждены. Действующие лавка и рыбалка не требуют этой постройки."],
 ];
 
 /** A read-only map of current game rules and explicitly separate world proposals. */
@@ -129,8 +133,8 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     return add({ id, title, label: title, icon, phase, description, kind, status, requirements: {}, children: [] });
   }
 
-  fixed("start", "Начало", "🌱", 0, "На новом аккаунте уже есть дом 1, ягодный куст 1 и кладовая 1. Монет и серверных товаров в начале нет. Места на карте объединяют несколько хозяйственных возможностей; их уровни улучшаются отдельно.");
-  fixed("trader", "Торговец", "🧑‍🌾", 0, "Продажа товаров со склада по фиксированной цене. Доступна с начала игры, без рынка игроков.");
+  fixed("start", "Начало", "🌱", 0, "Есть дом 1, ягодный куст 1 и кладовая 1, без монет и материалов. Закажите ягоды и через «В путь» отправьте Мохлика в бесплатную лесную разведку. Получите результаты; часть продайте, древесину, камень и волокно оставьте для стройки. Первые цели — лесозаготовки 1, верстак 1 и дом 2. Тапы не дают хозяйственную валюту.");
+  fixed("trader", "Быстрая продажа", "🧑‍🌾", 0, `Продажа из кладовой с начала игры: ${100 - (catalog.localBuyer?.payoutBps ?? 10000) / 100}% уценки от базовой цены, итог стопки округляется вниз. Сырую рыбу выгоднее продать Плёске по полной базовой цене. Рынок игроков открывается позднее; покупатель там не гарантирован.`);
   fixed("coins", "Монеты", "🪙", 0, "Выручка за товары идёт на строительство и улучшения. Монеты не занимают место на складе.");
   fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку: 1 жемчужина за каждые начатые ${catalog.constructionSpeedup.secondsPerPearl / 60} минут остатка. Цена подтверждается перед списанием. Бесплатный путь — дождаться таймера. Производство и вылазки не ускоряются; получение и покупка жемчуга ещё готовятся.`);
   edge("start", "trader", "available");
@@ -159,7 +163,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
         label: `${buildingLabels[building.id] || building.name} ${level}`, icon: buildingIcons[building.id] || "🏗️",
         kind: "building", status: "active", phase: level, buildingId: building.id, locationId: locationByBuilding.get(building.id)?.id, level,
         cost: cloneCost(data.cost), seconds: data.seconds, requirements, children: [],
-        description: initialBuildings.has(building.id) && level === 1 ? `Есть на старте. ${building.description}` : building.description,
+        description: `${initialBuildings.has(building.id) && level === 1 ? "Есть на старте. " : ""}${building.description}${building.id === "warehouse" ? " Каждая единица товара занимает место; монеты, жемчуг и удочки не занимают. Товар в объявлениях рынка продолжает занимать место. Перед получением результата может понадобиться освободить склад." : " В хозяйстве идёт только одна стройка. Заказ этого оборудования нужно забрать перед его улучшением."}`,
         ...(data.warehouseCapacity != null ? { warehouseCapacity: data.warehouseCapacity } : {}),
       });
       for (const recipe of catalog.recipes.filter(value => value.buildingId === building.id && value.buildingLevel === level)) {
@@ -173,7 +177,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
           buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
           rewards: { ...recipe.rewards }, requirements, children: [],
-          description: recipe.collection ? "Ягоды растут по таймеру заказа. После созревания нажмите «Собрать»: Мохлик принесёт урожай, и он поступит в кладовую." : `${recipe.seconds >= 14400 ? "Длинный цикл: можно реже забирать результат. " : ""}Заказ идёт по серверному таймеру; Мохлику не нужно всё время стоять у производства. Готовый результат нужно забрать.`,
+          description: `${recipe.collection ? "После созревания нажмите «Собрать»: Мохлик принесёт урожай. Во время активной вылазки он занят — сбор ждёт возвращения. " : ""}Таймер идёт и после закрытия приложения; готовый результат нужно забрать. Одно оборудование выполняет один заказ. Партия: до ${recipe.maxBatch ?? catalog.maxBatch}; короткая переработка допускает очередь до двух часов, бесплатный сбор и длинные заказы — одну партию. Перед получением проверьте место в кладовой.`,
         });
         node.children.push(child.id);
         edge(node.id, child.id, "unlock");
@@ -184,7 +188,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
         id: `e:${exploration.id}`, title: exploration.name, label: routeLabels[exploration.id] || exploration.name,
         icon: exploration.id.includes("shore") ? "🎣" : exploration.id.includes("cave") || exploration.id.includes("quarry") ? "⛏️" : exploration.id === "coastal_deposits" ? "🏖️" : "🧭",
         kind: "exploration", status: "active", phase: level, cost: cloneCost(exploration.cost), seconds: exploration.seconds,
-        rewards: { ...exploration.rewards }, requirements: { home: exploration.requiredHomeLevel, ...exploration.requiredBuildings }, children: [], description: exploration.description,
+        rewards: { ...exploration.rewards }, requirements: { home: exploration.requiredHomeLevel, ...exploration.requiredBuildings }, children: [], description: `${exploration.description} Мохлик выполняет одну вылазку; таймер идёт и после закрытия приложения. Находки нужно получить, освободив место в кладовой.${catalog.fishing?.routeIds.includes(exploration.id) ? " В рыбалке со снастями одна рыба заменяется серверным выбранным видом; редкий улов не гарантирован." : ""}`,
       });
     }
   }
@@ -248,6 +252,9 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   }
 
   for (const [id, label, icon, description, kind] of worldDefinitions) fixed(id, label, icon, 6, description, kind);
+  edge("start", "pleska", "available");
+  edge("pleska", "fishing_catches", "flow");
+  for (const id of catalog.fishing?.routeIds ?? []) edge("pleska", `e:${id}`, "flow");
   edge("start", "living", "available");
   for (const id of ["wildlife", "bridge_ruin", "lighthouse_ruin"]) edge("living", id, "available");
   edge("bush", "living", "flow"); edge("campfire", "living", "flow");
@@ -266,6 +273,8 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   byId.get("bridge")!.label = "Мост: ремонт";
   byId.get("lighthouse")!.label = "Маяк: ремонт";
   edge("place:quarry", "mine_interior", "plan");
+  edge("player_level", "public_profiles", "plan"); edge("achievements", "public_profiles", "plan");
+  edge("pleska", "pleska_home", "plan");
   edge("bridge_ruin", "bridge", "plan"); edge("lighthouse_ruin", "lighthouse", "plan");
   for (const [source, target] of [
     ["r:make_planks", "bridge"], ["r:make_rope", "bridge"], ["r:make_tools", "bridge"], ["bridge", "far_bank"],

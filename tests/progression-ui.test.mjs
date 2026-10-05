@@ -30,16 +30,18 @@ test("branch renders every location, level, recipe and exploration as an accessi
   assert.match(html, /Дом 2 · шахта, печь и рынок/);
 });
 
-test("branch distinguishes the physical workshop from equipment and explicitly links the selected workbench to its place", () => {
+test("branch opens the free start while keeping places, equipment and future work distinct", () => {
   assert.match(html, /data-node-id="place:workshop"[^>]*data-kind="location"/);
   assert.match(html, /data-node-id="b:workshop:1"[^>]*data-kind="building"/);
   assert.match(html, /data-node-id="b:kiln:1"[^>]*data-kind="building"/);
   const detail = html.slice(html.indexOf("<aside"));
-  assert.match(detail, /Улучшение хозяйства/);
-  assert.match(detail, /Верстак · уровень 1/);
-  assert.match(detail, /Место на карте/);
-  assert.match(detail, />Мастерская</);
-  assert.match(detail, /Стоимость обустройства/);
+  assert.match(detail, />Начало</);
+  assert.match(detail, /бесплатную лесную разведку/);
+  assert.match(detail, /Тапы не дают хозяйственную валюту/);
+  assert.match(html, /data-node-id="start"[^>]*aria-pressed="true"/);
+  assert.match(html, /Схема правил и возможностей/);
+  assert.match(html, /data-node-id="public_profiles"[^>]*data-status="plan"/);
+  assert.match(html, /data-node-id="pleska_home"[^>]*data-status="plan"/);
   assert.match(html, /Внутри места/);
   assert.match(html, /data-node-id="mine_interior"[^>]*data-status="plan"/);
 });

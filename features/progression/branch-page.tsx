@@ -17,7 +17,7 @@ const MAX_SCALE = 1.8;
 const kindNames: Record<string, string> = { location: "Место на карте", building: "Улучшение хозяйства", recipe: "Производство", exploration: "Вылазка", world: "Мир", collection: "Коллекция", equipment: "Снаряжение", milestone: "Прогресс", market: "Торговля", project: "Будущее мира" };
 const buildingIcons: Record<string, LucideIcon> = { home: Home, garden: Sprout, woodlot: Trees, quarry: Pickaxe, workshop: Hammer, dryer: CookingPot, kiln: Flame, warehouse: Warehouse };
 const worldIcons: Record<string, LucideIcon> = {
-  start: Sprout, trader: Store, claimed: CircleCheck, market: Store, "place:home": Home, "place:workshop": Hammer, "place:woodlot": Trees, "place:quarry": Pickaxe, living: Leaf, bush: Droplets, campfire: TentTree, wildlife: Bird, bridge_ruin: Fence, lighthouse_ruin: TowerControl, album: BookOpen, wardrobe: Shirt, full_collection: Medal, life_marks: Heart, day_streak: CalendarDays, calendar_gifts: Gift, taps: Hand, player_level: Star, tap_streak: Zap, leaderboard: Trophy, achievements: Medal, mine_interior: Pickaxe, bridge: Fence, far_bank: MapPinned, regional_trips: Compass, new_finds: Binoculars, shore_site: Waves, boat: Sailboat, port: Anchor, lighthouse: TowerControl, ships: Ship, sea_trips: Waves, orders: ScrollText, new_fruits: Apple, tackle: FishingHook,
+  start: Sprout, trader: Store, claimed: CircleCheck, market: Store, "place:home": Home, "place:workshop": Hammer, "place:woodlot": Trees, "place:quarry": Pickaxe, living: Leaf, bush: Droplets, campfire: TentTree, wildlife: Bird, bridge_ruin: Fence, lighthouse_ruin: TowerControl, album: BookOpen, wardrobe: Shirt, full_collection: Medal, life_marks: Heart, day_streak: CalendarDays, calendar_gifts: Gift, taps: Hand, player_level: Star, tap_streak: Zap, leaderboard: Trophy, achievements: Medal, pleska: FishingRod, fishing_catches: Fish, public_profiles: Star, pleska_home: Home, mine_interior: Pickaxe, bridge: Fence, far_bank: MapPinned, regional_trips: Compass, new_finds: Binoculars, shore_site: Waves, boat: Sailboat, port: Anchor, lighthouse: TowerControl, ships: Ship, sea_trips: Waves, orders: ScrollText, new_fruits: Apple, tackle: FishingHook,
 };
 const explorationIcons: Record<string, LucideIcon> = { forest: TreePine, shore: Fish, forest_camp: Trees, shore_camp: FishingRod, cave: Pickaxe, deep_cave: Mountain, old_woodland: Trees, coastal_deposits: Waves, uplands: Mountain, abandoned_quarry: Pickaxe };
 
@@ -76,8 +76,8 @@ export function BranchPage() {
   const suppressClickUntil = useRef(0);
   const inputMode = useRef("pointer");
   const [dragging, setDragging] = useState(false);
-  const [selectedId, setSelectedId] = useState("b:workshop:1");
-  const [activePhase, setActivePhase] = useState(1);
+  const [selectedId, setSelectedId] = useState("start");
+  const [activePhase, setActivePhase] = useState(0);
   const [query, setQuery] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const detailHeadingId = useId();
@@ -141,7 +141,7 @@ export function BranchPage() {
   }
 
   useEffect(() => {
-    centerNode("b:workshop:1", 1);
+    centerNode("start", 1);
     const viewport = canvasRef.current;
     if (!viewport) return;
     const wheel = (event: WheelEvent) => {
@@ -239,7 +239,7 @@ export function BranchPage() {
   }}>
     <header className={styles.header}>
       <Link href="/" className={styles.back} aria-label="Вернуться в Я живой"><ArrowLeft size={18} aria-hidden="true" /></Link>
-      <div className={styles.heading}><span>Я живой</span><h1>Ветка развития мира</h1></div>
+      <div className={styles.heading}><span>Схема правил и возможностей</span><h1>Ветка развития мира</h1></div>
       <div className={styles.search}>
         <Search size={17} aria-hidden="true" />
         <input ref={searchRef} type="search" value={query} placeholder="Мост, верстак, доски…" aria-label="Найти в ветке развития" aria-controls={query.trim() ? "branch-search-results" : undefined} onChange={event => setQuery(event.target.value)} onKeyDown={event => {

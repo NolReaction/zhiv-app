@@ -128,7 +128,7 @@ export function PleskTackleCounter({ economy, state, catalog, initialCategory = 
         {selectedBait ? <PleskBaitOffer key={selectedBait.itemId} economy={economy} state={state} bait={selectedBait} /> : <div className={styles.gearCard}><p className={styles.description}>Рыбачить можно с одной удочкой.</p><button type="button" className={styles.secondary} disabled={blocked || noBait} onClick={() => send("equip_fishing_bait", "none", 1, 0, !noBait)}>{noBait ? "Без наживки · выбрано" : "Использовать без наживки"}</button></div>}
       </>}
     </section>
-    <p className={styles.footnote}>Снаряжение можно поменять и перед отправлением.</p>
+    <p className={styles.footnote}>Улучшенные снасти повышают шанс редкого вида для одной рыбы в улове. Размер партии задаёт маршрут. Снаряжение можно поменять перед отправлением.</p>
   </>;
 }
 
