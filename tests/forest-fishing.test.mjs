@@ -169,6 +169,27 @@ test("missing, malformed, distant or over-budget water never invents a fishing p
   assert.equal(fishingWaterTarget({ ...scene(), water: { surfaces: Array(FISHING_WATER_LIMITS.polygons + 1).fill(polygon(0, 0, 300, 300)), exclusions: [] } }, base, 36), undefined);
 });
 
+test("downward casting ignores closer side water and refuses a dry forward sector", () => {
+  const base = { x: 150, y: 100 }, size = 36;
+  const side = polygon(170, 0, 130, 130), below = polygon(110, 150, 90, 150);
+  const world = { width: 300, height: 300, water: { surfaces: [side, below], exclusions: [] } };
+  const nearest = fishingWaterTarget(world, base, size);
+  assert.ok(nearest.x > base.x + 20 && nearest.y < base.y + 30);
+  const down = fishingWaterTarget(world, base, size, "down");
+  assert.ok(down.y > 150 && Math.abs(down.x - base.x) < 15);
+  for (let seed = 0; seed < 100; seed++) {
+    const target = fishingCastTarget(world, down, size, seed);
+    assert.ok(target.y > base.y + size && Math.abs(target.x - base.x) < (target.y - base.y) * .4);
+    for (let angle = 0; angle < Math.PI * 2; angle += .1) {
+      assert.ok(isForestWater(world, { x: target.x + Math.cos(angle) * size * .249,
+        y: target.y + Math.sin(angle) * size * .249 }));
+    }
+  }
+  const dry = { ...world, water: { surfaces: [side], exclusions: [] } };
+  assert.ok(fishingWaterTarget(dry, base, size));
+  assert.equal(fishingWaterTarget(dry, base, size, "down"), undefined);
+});
+
  test("cast targets vary within a small radius, stay fixed during a cast and keep ripples out of land", () => {
   const world=scene(); world.water.exclusions=[polygon(157,130,2,2)];
   const center=fishingWaterTarget(world,{x:100,y:150},48),targets=new Set();

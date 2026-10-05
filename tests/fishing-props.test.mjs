@@ -313,7 +313,7 @@ test("a new cast's small water offset cannot swap Mochlik's occupied hands at re
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function shoreFrame(style, size) {
   const position = actualWorld.destinations.find(item => item.id === (style === "plesk" ? "plesk-fishing" : "fishing")).position;
-  const waterTarget = fishingWaterTarget(actualWorld, position, size);
+  const waterTarget = fishingWaterTarget(actualWorld, position, size, style === "plesk" ? "down" : "nearest");
   assert.ok(waterTarget, "the actual map contains a safe fishing point");
   return { ...base, ...position, size, waterTarget, direction: fishingDirection(position, waterTarget), rodId: "willow_rod" };
 }
@@ -327,9 +327,10 @@ test("actual shores aim an elevated pole in the water's ground direction and kee
         assert.equal(rig.bodyDirection, frame.direction, "front water cannot force a right-facing body");
         for (const arm of [rig.nearArm, rig.farArm]) {
           assert.ok(arm.reachable, `${style}/${size}/${action}/${phase}: a contact target cannot outrun the short paw`);
-          assert.ok(Math.abs(distance(arm.shoulder, arm.elbow) - size * .21) < 1e-6);
-          assert.ok(Math.abs(distance(arm.elbow, arm.hand) - size * .23) < 1e-6);
-          assert.ok(distance(arm.shoulder, arm.hand) <= size * .44);
+          assert.ok(Math.abs(distance(arm.shoulder, arm.elbow) - size * (style === "plesk" ? .12 : .21)) < 1e-6);
+          assert.ok(Math.abs(distance(arm.elbow, arm.hand) - size * (style === "plesk" ? .13 : .23)) < 1e-6);
+          assert.ok(distance(arm.shoulder, arm.hand) <= size * (style === "plesk" ? .25 : .44));
+          if (style === "plesk") assert.ok(arm.elbow.y < frame.y - size * .12, "short paws cannot bend down to the feet");
         }
         if (["fish", "bite", "reel"].includes(action)) {
           const planar = { x: tackle.tip.x - tackle.grip.x,

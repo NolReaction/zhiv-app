@@ -100,17 +100,21 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
     const draw = random(mind), outcome = draw < .19 ? "miss" : draw > .79 ? "large" : "small";
     const species: FishSpeciesId = outcome === "large" ? "fish_mooncarp" : draw < .4 ? "fish" : draw < .6 ? "fish_silverfin" : "fish_reedperch";
     const motion: FishingMotion = { outcome, catchScale: outcome === "large" ? 1.35 : 1, species };
-    add("pack", 1.5); add("cast", 1.8, motion);
+    // Preparing tackle never transfers the fish already stored in the basket.
+    add("idle", 1.5, { variation: "check" }); add("cast", 1.8, motion);
     add("fish", 9 + random(mind) * 12 + (1 - mind.needs.patience) * 3, { ...motion, variation: random(mind) < .5 ? "check" : "calm" });
     add("bite", 1.1 + random(mind) * .5, { ...motion, variation: "nibble" });
     add("reel", outcome === "large" ? 4 : 2.8, { ...motion, variation: outcome === "miss" ? "escape" : "struggle" });
-    if (outcome !== "miss") { add("catch", 3, { ...motion, caught: true }); add("pack", 2.8, { ...motion, caught: true, deposit: true }); }
+    if (outcome !== "miss") {
+      add("catch", 3, { ...motion, caught: true }); add("pack", 2.8, { ...motion, caught: true, deposit: true });
+      add("idle", 4 + random(mind) * 2);
+    }
     else add("idle", 2, { ...motion, variation: "escape" });
   } else if (choice.intent === "trade") {
     add("greet", 2.5, { direction: "front" }); add("trade", 12 + random(mind) * 10, { direction: "front", sell: true });
-    add("pack", 2, { direction: "front" });
+    add("idle", 2, { direction: "front" });
   } else if (choice.intent === "rest") add("rest", 10 + (1 - mind.needs.energy) * 22 + random(mind) * 5, { direction: "front" });
-  else if (choice.intent === "tackle") { add("pack", 3, { direction: "front" }); add("idle", 3 + random(mind) * 3, { direction: "left" }); }
+  else if (choice.intent === "tackle") { add("idle", 3, { direction: "front", variation: "check" }); add("idle", 3 + random(mind) * 3, { direction: "left" }); }
   else if (choice.intent === "greet") {
     mind.noticePending = false; mind.greetAfter = mind.elapsed + 25; add("greet", 2.5, { direction: "front" });
   } else add("idle", 4 + random(mind) * 5, { direction: random(mind) < .5 ? "left" : "back" });
@@ -161,7 +165,7 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
   if (mind.stage.action === "fish" && mind.age > 1 && (env.rain > .82 || mind.noticePending && mind.elapsed >= mind.greetAfter)) {
     mind.reason = env.rain > .82 ? "Начался сильный дождь — аккуратно сматывает леску." : "Гость позвал — сматывает леску, чтобы ответить.";
     mind.queue = [{ action: "reel", duration: 1.4, target: mind.stage.target, outcome: "miss", variation: "escape" },
-      { action: "pack", duration: 1.5, target: mind.stage.target }];
+      { action: "idle", duration: 1.5, target: mind.stage.target, variation: "check" }];
     startNext(mind);
   } else if (mind.noticePending && mind.elapsed >= mind.greetAfter && ["idle", "rest", "trade"].includes(mind.stage.action)) {
     // Complete the paused harmless activity after greeting; catches and walking
@@ -192,12 +196,16 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
 export function pleskMindFrame(mind: PleskMind | null, scene: FixedWorldScene, still: boolean): PleskResidentFrame | null {
   const places = pleskLocalPlaces(scene);
   if (!mind || !mind.available || !places || mind.scene !== scene && !isWalkable(places.nav, mind.position)) return null;
-  const stage = mind.stage, phase = still ? .5 : clamp(mind.age / stage.duration);
+  const stage = mind.stage, phase = clamp(mind.age / stage.duration);
   const walk = stage.trail ? samplePleskTrail(stage.trail, mind.age) : undefined;
   const direction = walk?.direction ?? stage.direction ?? (stage.target.id === places.base.id ? places.direction : "front");
   return { id: "plesk", ...mind.position, size: PLESK.size, direction, action: stage.action, phase,
     frame: still ? 0 : walk?.frame ?? Math.floor(mind.age * 8) % 32,
-    destinationId: stage.target.id, carryingFish: mind.catchCount > 0 || Boolean(stage.caught),
+    destinationId: stage.target.id,
+    // During pack only the current held catch matters. Stored fish must not
+    // reappear in the paws, including when reduced motion samples this stage.
+    carryingFish: stage.action === "pack" ? Boolean(stage.deposit && phase < FISHING_PACK_RELEASE)
+      : mind.catchCount > 0 || Boolean(stage.caught),
     basketFilled: mind.catchCount > 0 || Boolean(stage.deposit && phase >= FISHING_PACK_RELEASE),
     species: stage.species ?? mind.basketSpecies,
     basketSpecies: stage.deposit && phase >= FISHING_PACK_RELEASE ? stage.species : mind.basketSpecies,

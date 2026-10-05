@@ -77,9 +77,8 @@ export function pleskLocalPlaces(scene: FixedWorldScene): PleskPlaces | null {
   const base = authoredStop(scene, PLESK.fishingDestination);
   const nav = base && createWorldNavigation(scene, (scene.actor?.size ?? 50) * .1);
   if (!base || !nav) { placeCache.set(scene, null); return null; }
-  const waterTarget = fishingWaterTarget(scene, base.position, PLESK.size);
-  // She keeps her face toward the viewer while fishing beside the river. Body
-  // facing never relocates the authored float; the tackle still aims at water.
+  const waterTarget = fishingWaterTarget(scene, base.position, PLESK.size, "down");
+  // Cast down from the pier into verified water, with her face toward the viewer.
   const direction: PixelDirection = "front";
   const trade = authoredStop(scene, PLESK.tradingDestination), rest = authoredStop(scene, PLESK.restingDestination);
   const toTrade = connectingTrail(nav, base, trade), toRest = connectingTrail(nav, base, rest);
@@ -119,7 +118,7 @@ function routine(scene: FixedWorldScene): Routine | null {
     basketSpecies = species;
   };
   for (let variant = 0; variant < PLESK_LIMITS.routineVariants; variant++) {
-    stay("pack", 2);
+    stay("idle", 2);
     if (waterTarget) {
       catchFish(15 + variant * 4, false, variant === 2);
       stay("idle", 4, true);
@@ -137,14 +136,14 @@ function routine(scene: FixedWorldScene): Routine | null {
     if (trade && toTrade) {
       walk(toTrade, trade, loaded);
       stay("greet", 3, loaded, trade, "front"); stay("trade", 18 + variant * 4, loaded, trade, "front");
-      stay("pack", 3, false, trade, "front"); stay("idle", 4, false, trade, variant === 1 ? "left" : "front");
+      stay("idle", 3, false, trade, "front"); stay("idle", 4, false, trade, variant === 1 ? "left" : "front");
       if (rest && tradeToRest) { walk(tradeToRest, rest, false); atRest = true; }
       else walk(reversePleskTrail(toTrade), base, false);
     }
     if (rest && toRest) {
       if (!atRest) walk(toRest, rest, trade && toTrade ? false : loaded);
       stay("rest", 12 + variant * 4, false, rest, "front");
-      stay("pack", 4, false, rest, "front");
+      stay("idle", 4, false, rest, "front");
       stay("idle", 3, false, rest, variant === 2 ? "back" : "left");
       walk(reversePleskTrail(toRest), base, false);
     }
@@ -181,7 +180,7 @@ export function pleskResidentFrame(scene: FixedWorldScene, elapsed: number, stil
   const position = stage.trail ? samplePleskTrail(stage.trail, age)
     : { ...stage.destination.position, direction: stage.direction, frame: Math.floor(age * 8) % 32 };
   return { id: "plesk", ...position, size: PLESK.size, action: stage.action, phase, destinationId: stage.destination.id,
-    carryingFish: stage.carryingFish, species: stage.species,
+    carryingFish: stage.carryingFish && (stage.action !== "pack" || phase < FISHING_PACK_RELEASE), species: stage.species,
     basketSpecies: stage.action === "pack" && stage.carryingFish && phase >= FISHING_PACK_RELEASE ? stage.species : stage.basketSpecies,
     basketFilled: stage.action === "pack"
       ? Boolean(stage.basketFilled || stage.carryingFish && phase >= FISHING_PACK_RELEASE)

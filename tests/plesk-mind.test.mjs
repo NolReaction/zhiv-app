@@ -11,6 +11,7 @@ const { createPleskMind, advancePleskMind, pleskMindFrame, noticePleskMind, PLES
 const { pleskLocalPlaces, PLESK } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
 const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { TILED_WORLD: world } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { FISHING_PACK_RELEASE, fishingCatchFrame } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const day = { rain: 0, dusk: 0, playerNear: false };
 const advance = (mind, seconds, env = day, step = .1, scene = world) => {
   for (let time = 0; time < seconds - 1e-8; time += step) advancePleskMind(mind, scene, Math.min(step, seconds - time), env);
@@ -123,6 +124,11 @@ test("first and later catches have distinct held and packed states, and a missed
   frame = pleskMindFrame(success, world, false);
   assert.equal(frame.basketFilled, true);
   assert.equal(frame.basketSpecies, caughtSpecies);
+  assert.equal(frame.carryingFish, false, "a released catch is no longer held during the end of pack");
+  const still = pleskMindFrame(success, world, true);
+  assert.equal(still.phase, frame.phase); assert.equal(still.basketFilled, true);
+  assert.equal(still.basketSpecies, caughtSpecies); assert.equal(still.carryingFish, false);
+  assert.equal(fishingCatchFrame(still, true).visible, false, "reduced motion cannot lift the deposited catch back out");
   until(success, mind => mind.catchCount === 1);
   assert.equal(pleskMindFrame(success, world, false).basketFilled, true);
   assert.equal(pleskMindFrame(success, world, false).basketSpecies, caughtSpecies);
@@ -131,6 +137,65 @@ test("first and later catches have distinct held and packed states, and a missed
   const decisions = miss.decisions;
   until(miss, mind => mind.decisions > decisions);
   assert.equal(miss.catchCount, 0);
+});
+
+test("every live packing stage belongs to one new catch and never repeats from stored stock or camera sampling", () => {
+  const mind = createPleskMind(world, 9);
+  let previousStage = mind.stage, previousCount = 0, held = false, completedCatches = 0, completedDeposits = 0, lastDeposit = -Infinity;
+  const snapshot = () => JSON.stringify({ elapsed: mind.elapsed, age: mind.age, position: mind.position,
+    needs: mind.needs, catchCount: mind.catchCount, basketSpecies: mind.basketSpecies, seed: mind.seed,
+    stage: mind.stage, queue: mind.queue, decisions: mind.decisions, observation: mind.observation });
+  for (let t = 0; t < 1800; t += .1) {
+    advancePleskMind(mind, world, .1, day);
+    const frame = pleskMindFrame(mind, world, false);
+    if (mind.stage !== previousStage) {
+      if (previousStage.action === "catch") { held = true; completedCatches++; }
+      if (previousStage.deposit) {
+        assert(held, "one completed catch authorizes exactly one completed deposit");
+        held = false; completedDeposits++; lastDeposit = t;
+        assert.equal(frame.action, "idle", "the resident pauses after placing the fish");
+      }
+      previousStage = mind.stage;
+    }
+    if (frame.action === "cast") assert(t - lastDeposit >= 4 - .11, "a completed transfer is followed by a quiet pause");
+    if (frame.action === "pack") {
+      assert.equal(mind.stage.deposit, true, "preparation and tackle checks never pack an old basket fish");
+      assert.equal(mind.stage.caught, true);
+      assert.equal(frame.carryingFish, frame.phase < FISHING_PACK_RELEASE);
+    }
+    if (mind.catchCount > previousCount) {
+      assert.equal(mind.catchCount, previousCount + 1);
+      assert.equal(completedDeposits, completedCatches);
+    }
+    previousCount = mind.catchCount;
+    const before = snapshot();
+    for (let camera = 0; camera < 3; camera++) {
+      const still = pleskMindFrame(mind, world, true);
+      assert.equal(still.phase, frame.phase); assert.equal(still.basketFilled, frame.basketFilled);
+      assert.equal(still.carryingFish, frame.carryingFish);
+    }
+    assert.equal(snapshot(), before, "sampling either camera cannot change catch, seed, queue or progress");
+  }
+  assert(completedDeposits > 10, "the invariant covers many complete catches rather than a single pose");
+  assert(completedCatches - completedDeposits >= 0 && completedCatches - completedDeposits <= 1,
+    "only the current held catch may await its one deposit");
+});
+
+test("stowing an interrupted cast never repacks fish already stored in the basket", () => {
+  for (const interruption of ["rain", "visitor"]) {
+    const mind = createPleskMind(world, 9);
+    mind.catchCount = 1; mind.basketSpecies = "fish_silverfin";
+    until(mind, item => item.stage.action === "fish" && item.age > 2);
+    if (interruption === "visitor") noticePleskMind(mind);
+    const environment = interruption === "rain" ? { rain: 1, dusk: 0 } : day;
+    for (let time = 0; time < 5; time += .1) {
+      advancePleskMind(mind, world, .1, environment);
+      const frame = pleskMindFrame(mind, world, false);
+      assert.notEqual(frame.action, "pack");
+      assert.equal(fishingCatchFrame(frame, false).visible, false);
+      assert.equal(mind.catchCount, 1); assert.equal(frame.basketSpecies, "fish_silverfin");
+    }
+  }
 });
 
 test("read-only camera sampling, reduced motion and paused steps preserve the actual current feet and live needs", () => {

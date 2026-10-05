@@ -14,7 +14,7 @@ export type ForestFishingFrame = WorldPoint & FishingMotion & Pick<FishingPropFr
 /** Only authored water can receive a float. The whole largest ripple must fit,
  * including exclusions smaller than an animation pixel. This bounded search is
  * called when a place changes, never from the animation's per-frame painter. */
-export function fishingWaterTarget(scene: FixedWorldScene, base: WorldPoint, size: number): WorldPoint | undefined {
+export function fishingWaterTarget(scene: FixedWorldScene, base: WorldPoint, size: number, aim: "nearest" | "down" = "nearest"): WorldPoint | undefined {
   if (![base.x, base.y, size].every(Number.isFinite) || size <= 0 || !scene.water
     || !Array.isArray(scene.water.surfaces) || !Array.isArray(scene.water.exclusions) || !scene.water.surfaces.length
     || scene.water.surfaces.length + scene.water.exclusions.length > FISHING_WATER_LIMITS.polygons) return;
@@ -30,7 +30,13 @@ export function fishingWaterTarget(scene: FixedWorldScene, base: WorldPoint, siz
   for (let ring = 0; ring < FISHING_WATER_LIMITS.rings; ring++) {
     const radius = start + ring * step;
     for (let sample = 0; sample < FISHING_WATER_LIMITS.directions; sample++) {
-      const angle = Math.PI * (.25 + sample * 2 / FISHING_WATER_LIMITS.directions);
+      // Pleska fishes over the lower edge of her pier. A narrow forward sector
+      // prevents the closer side channel from turning her cast to the right.
+      // Missing water in that sector disables fishing instead of aiming inland.
+      const offset = sample === 0 ? 0 : Math.ceil(sample / 2) * (sample % 2 ? 1 : -1);
+      const angle = aim === "down"
+        ? Math.PI / 2 + offset * Math.PI / (6 * FISHING_WATER_LIMITS.directions)
+        : Math.PI * (.25 + sample * 2 / FISHING_WATER_LIMITS.directions);
       const point = { x: base.x + Math.cos(angle) * radius, y: base.y + Math.sin(angle) * radius };
       if (point.x < clearance || point.y < clearance || point.x > scene.width - clearance || point.y > scene.height - clearance
         || !isForestWater(scene, point)) continue;

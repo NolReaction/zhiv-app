@@ -21,7 +21,7 @@ const scene = () => ({ schemaVersion: 1, id: "plesk-test", width: 500, height: 2
   terrain: [], focus: { x: 0, y: 0, width: 500, height: 200 }, actor: { spawn: { x: 40, y: 100 }, size: 50 },
   sites: [], paths: [], destinations: [destination("home", 40, 100), destination("fishing", 240, 150),
     destination("plesk-fishing", 320, 100), destination("plesk-trade", 40, 145), destination("plesk-rest", 290, 145)],
-  water: { surfaces: [rectangle("river", 360, 0, 140, 200)], exclusions: [] },
+  water: { surfaces: [rectangle("river", 295, 155, 205, 45)], exclusions: [] },
   navigation: { version: 1, cellSize: 5, interests: [], areas: [rectangle("shore", 0, 0, 360, 180)],
     obstacles: [rectangle("trunk", 170, 20, 20, 110)] },
 });
@@ -34,13 +34,13 @@ test("Плёск catches fish, takes it to his own trading place, checks tackle 
   for (const action of ["pack", "cast", "fish", "bite", "reel", "catch", "rest", "greet", "walk", "trade", "idle"]) {
     assert.ok(first(action) >= 0, `${action} is visible`);
   }
-  for (const [before, after] of [["pack", "cast"], ["cast", "fish"], ["fish", "bite"], ["bite", "reel"],
+  for (const [before, after] of [["idle", "cast"], ["cast", "fish"], ["fish", "bite"], ["bite", "reel"],
     ["reel", "catch"], ["catch", "walk"], ["walk", "trade"]]) assert.ok(first(before) < first(after));
   assert.ok(frames.filter(frame => frame.action === "fish").length > frames.filter(frame => frame.action === "trade").length * 1.5);
   assert.ok(frames.some(frame => frame.action === "walk" && frame.carryingFish && frame.destinationId === "plesk-trade"));
   assert.ok(frames.some(frame => frame.action === "walk" && !frame.carryingFish && frame.destinationId === "plesk-fishing"));
   assert.ok(frames.some(frame => frame.action === "rest" && frame.destinationId === "plesk-rest"));
-  assert.ok(frames.some(frame => frame.action === "pack" && frame.destinationId === "plesk-rest"));
+  assert.ok(frames.some(frame => frame.action === "idle" && frame.destinationId === "plesk-rest"));
   assert.ok(frames.filter(frame => frame.action === "trade").every(frame => frame.carryingFish));
   assert.ok(frames.every(frame => frame.destinationId.startsWith("plesk-")), "the hero's home and fishing place are never NPC stops");
 });
@@ -57,6 +57,7 @@ test("a first catch enters the basket only after packing while the next catch pr
   assert.equal(frames[firstPack].basketFilled, false, "lowering the first fish into the basket takes time");
   const packed = frames.slice(firstPack, secondCatch).find(frame => frame.action === "pack" && frame.phase > .7);
   assert.equal(packed.basketFilled, true);
+  assert.equal(packed.carryingFish, false, "the released fish stays in the basket instead of being held again");
   assert.equal(frames[secondCatch].carryingFish, true);
   assert.equal(frames[secondCatch].basketFilled, true, "the previous catch remains stored while another fish is shown");
   assert.equal(frames[secondPack].basketFilled, true, "packing another fish never erases earlier catches");
@@ -187,7 +188,9 @@ test("the authored island keeps Плёск at the upper wooden pier, separate fr
     assert.ok(frames.every(frame => Math.hypot(frame.x - base.x, frame.y - base.y) < 90), "all regular activities belong to the pier area");
     assert.ok(frames.every(frame => Math.hypot(frame.x - heroFishing.x, frame.y - heroFishing.y) > 200), "the main hero keeps his lower fishing clearing");
     const bobber = frames.find(frame => frame.waterTarget).waterTarget;
-    assert.deepEqual(bobber, fishingWaterTarget(world, base, PLESK.size), "facing changes never relocate the real water anchor");
+    assert.deepEqual(bobber, fishingWaterTarget(world, base, PLESK.size, "down"));
+    assert.ok(bobber.y > base.y + PLESK.size, "the cast lands below the pier");
+    assert.ok(Math.abs(bobber.x - base.x) < (bobber.y - base.y) * .27, "the side channel cannot steal her cast");
     const fishing = frames.filter(frame => ["cast", "fish", "bite", "reel", "catch"].includes(frame.action));
     assert.ok(fishing.every(frame => frame.direction === "front"), "her face stays visible throughout fishing at the upper pier");
     assert.equal(pleskResidentFrame(world, 42, true).direction, "front");

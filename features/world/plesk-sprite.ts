@@ -16,7 +16,7 @@ export type PleskSpriteRig = {
 };
 export const PLESK_SPRITE_SIZE = 48;
 export const PLESK_SPRITE_CACHE_LIMIT = 256;
-export type PleskShoreSpriteOptions = { externalArms?: boolean; lean?: number; crouch?: number };
+export type PleskShoreSpriteOptions = { externalArms?: boolean; lean?: number; crouch?: number; basketScale?: number };
 const cache = new Map<string, HTMLCanvasElement>();
 const rigs = new WeakMap<HTMLCanvasElement, PleskSpriteRig>();
 export const pleskSpriteRig = (sprite: HTMLCanvasElement) => rigs.get(sprite);
@@ -46,10 +46,11 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const closedEyes = blink || action === "rest" && (still || clockFrame >= 4);
   const fishScale = Math.round(Math.max(.7, Math.min(1.5, (Number.isFinite(motion?.catchScale) ? motion!.catchScale! : motion?.outcome === "large" ? 1.35 : 1))) * 20) / 20;
   const carryingBasket = Boolean(motion?.carryingBasket && ["walk", "idle", "greet"].includes(action));
-  const externalArms = Boolean(shore?.externalArms && ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"].includes(action));
+  const externalArms = Boolean(shore?.externalArms && ["walk", "idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest", "greet", "trade"].includes(action));
+  const basketScale = Math.round(Math.max(.6, Math.min(1, shore?.basketScale ?? 1)) * 20) / 20;
   const shoreLean = externalArms ? Math.round(Math.max(-3, Math.min(3, Number.isFinite(shore?.lean) ? shore!.lean! : 0))) : 0;
   const shoreCrouch = externalArms ? Math.round(Math.max(0, Math.min(3, Number.isFinite(shore?.crouch) ? shore!.crouch! : 0))) : 0;
-  const key = `${externalArms}:${shoreLean}:${shoreCrouch}:${carryingBasket}:${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}:${fishScale}:${motion?.outcome === "miss"}`;
+  const key = `${externalArms}:${shoreLean}:${shoreCrouch}:${basketScale}:${carryingBasket}:${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}:${fishScale}:${motion?.outcome === "miss"}`;
   const saved = cache.get(key);
   if (saved) { cache.delete(key); cache.set(key, saved); return saved; }
 
@@ -156,7 +157,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     else otherHand = wrist;
   }
   if (carryingBasket) {
-    const handle = fishingBasketHandle(basket, PLESK_SPRITE_SIZE);
+    const handle = fishingBasketHandle(basket, PLESK_SPRITE_SIZE, basketScale);
     if (sideView) {
       // In profile the visible shoulder carries the basket ahead of the hip.
       // Routing the far arm around the tail looked like a limb growing from it.
