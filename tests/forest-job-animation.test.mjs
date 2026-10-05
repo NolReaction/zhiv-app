@@ -188,3 +188,97 @@ test("a cancelled mine receipt cannot send a returned hero back inside before th
     assert.equal(s.journeyTravel,undefined);
   }finally{session.release()}
 });
+
+test("a fresh mine job on the first camera visibly leaves base instead of being mistaken for a restored interior",()=>{
+  const session=create(),s=session.state,j=job("cave");
+  try {
+    const feet={...s.clearing.position};
+    syncForestJourneyTravel(s,world,j,start+1000,false);
+    assert.equal(s.journeyTravel.phase,"leaving");assert.deepEqual(s.clearing.position,feet);
+    assert.equal(forestJourneyActorAway(s,j,start+1000),false);
+    const travel=s.journeyTravel;
+    for(let n=0;n<5;n++)syncForestJourneyTravel(s,world,j,start+1000,false);
+    assert.strictEqual(s.journeyTravel,travel);assert.deepEqual(s.clearing.position,feet);
+    for(let n=0;n<2400 && s.journeyTravel.phase!=="working";n++)step(s,j,start+1000+n*50);
+    assert.equal(s.journeyTravel.phase,"working");
+  }finally{session.release()}
+});
+
+test("a miner elsewhere on the map walks back to base for tools before taking the safe quarry road",()=>{
+  const session=create(),s=session.state,j=job("cave");
+  try {
+    const elsewhere=world.destinations.find(point=>point.id==="fishing").position;
+    s.clearing.position={...elsewhere};
+    syncForestJourneyTravel(s,world,null,start,false);syncForestJourneyTravel(s,world,j,start,false);
+    assert.equal(s.journeyTravel.mining.prepared,false);
+    assert.deepEqual(s.clearing.requestedPoint,s.clearing.home);
+    assert.equal(forestJourneyMiningFrame(s,world),null,"tools stay at base until picked up");
+    let n=0;
+    for(;n<2400 && !s.journeyTravel.mining.prepared;n++)step(s,j,start+n*50);
+    assert.equal(s.journeyTravel.mining.prepared,true);assert.deepEqual(s.clearing.position,s.clearing.home);
+    for(;n<4800 && s.journeyTravel.phase!=="working";n++)step(s,j,start+n*50);
+    assert.equal(s.journeyTravel.phase,"working");
+  }finally{session.release()}
+});
+
+test("an expedition replacing mine production first exits and returns without teleporting or losing its new job",()=>{
+  const session=create(),s=session.state,mine=job("quarry_work"),shore=job("shore",3600,{fish:4});
+  mine.id="production:quarry-1";
+  try {
+    syncForestJourneyTravel(s,world,mine,start+60_000,false);
+    assert.equal(s.journeyTravel.phase,"working");const feet={...s.clearing.position};
+    syncForestJourneyTravel(s,world,shore,start+61_000,false);
+    assert.equal(s.journeyTravel.phase,"exiting");assert.equal(s.journeyTravel.jobId,mine.id);
+    assert.deepEqual(s.clearing.position,feet);assert.equal(forestJourneyActorAway(s,shore,start+61_000),false);
+    let returned=false;
+    for(let n=0;n<4800 && s.journeyTravel?.phase!=="fishing";n++){
+      step(s,shore,start+61_000+n*50);
+      if(!s.journeyTravel) { returned=true;assert.deepEqual(s.clearing.position,s.clearing.home); }
+    }
+    assert.equal(returned,true);assert.equal(s.journeyTravel.jobId,shore.id);assert.equal(s.journeyTravel.phase,"fishing");
+  }finally{session.release()}
+});
+
+
+test("quarry work cannot cut off a visible fishing catch or hide its return after the expedition is removed",()=>{
+  const session=create(),s=session.state,shore=job("shore",2700,{fish:4}),mine=job("quarry_work");
+  mine.id="production:waiting-quarry";
+  try {
+    syncForestJourneyTravel(s,world,shore,start+60_000,false);
+    const age=forestJobFishingPlan(shore).catches[0].at-1;
+    syncForestJourneyTravel(s,world,shore,start+age*1000,false);
+    const before=forestJourneyFishingFrame(s,world),feet={...s.clearing.position};
+    assert.equal(before.action,"pack");
+    syncForestJourneyTravel(s,world,mine,start+age*1000,false,[shore.id]);
+    assert.equal(s.journeyTravel.jobId,shore.id);assert.ok(s.journeyTravel.ending);
+    assert.deepEqual(forestJourneyFishingFrame(s,world),before);assert.deepEqual(s.clearing.position,feet);
+    assert.equal(forestJourneyActorAway(s,mine,start+age*1000),false);
+    let returned=false;
+    for(let n=0;n<4800 && s.journeyTravel?.jobId!==mine.id;n++) {
+      step(s,mine,start+age*1000+n*50);
+      if(s.journeyTravel?.phase==="returning") assert.equal(forestJourneyActorAway(s,mine,start+age*1000+n*50),false);
+      if(!s.journeyTravel) { returned=true;assert.deepEqual(s.clearing.position,s.clearing.home); }
+    }
+    assert.equal(returned,true);assert.equal(s.journeyTravel.jobId,mine.id);assert.equal(s.journeyTravel.phase,"leaving");
+    assert.ok(Math.hypot(s.clearing.position.x-s.clearing.home.x,s.clearing.position.y-s.clearing.home.y)<1,
+      "the new mine road begins with one bounded step from base");
+  }finally{session.release()}
+});
+
+
+test("reduced motion replaces a finished mine worker with the new static assignment without waiting for a frozen return",()=>{
+  for(const route of ["shore","cave"]) {
+    const session=create(),s=session.state,mine=job("quarry_work"),next=job(route);
+    mine.id="production:old";next.id="new-assignment";
+    try {
+      syncForestJourneyTravel(s,world,mine,start+60_000,true);
+      assert.equal(s.journeyTravel.phase,"working");
+      syncForestJourneyTravel(s,world,next,start+61_000,true);
+      assert.equal(s.journeyTravel.jobId,next.id);
+      assert.equal(s.journeyTravel.phase,route==="shore" ? "fishing" : "working");
+      const feet={...s.clearing.position};
+      for(let n=0;n<5;n++)syncForestJourneyTravel(s,world,next,start+62_000,true);
+      assert.deepEqual(s.clearing.position,feet);
+    }finally{session.release()}
+  }
+});

@@ -1,7 +1,7 @@
 /** Geometry shared by the equipped world prop and its shop/collection icon.
  * Prices and fishing bonuses belong to the economy catalog. Coordinates use
  * the gripping palm as origin, +x toward the tip, and one unit per actor size. */
-export const FISHING_ROD_IDS = ["reed_rod", "river_rod", "willow_rod"] as const;
+export const FISHING_ROD_IDS = ["reed_rod", "river_rod", "willow_rod", "tide_rod", "starfall_rod"] as const;
 export type FishingRodId = typeof FISHING_ROD_IDS[number];
 export type FishingRodAppearance = Readonly<{
   shaft: string; highlight: string; handle: string; reel: string; metal: string; wrap: string | null;
@@ -19,11 +19,16 @@ const riverRod: FishingRodAppearance = Object.freeze({ shaft: "#334d51", highlig
 const willowRod: FishingRodAppearance = Object.freeze({ shaft: "#886240", highlight: "#c3a169", handle: "#786044",
   reel: "#bc7f4f", metal: "#e5bf88", wrap: "#75905a" });
 
+const tideRod: FishingRodAppearance = Object.freeze({ shaft: "#28616a", highlight: "#9cd5cd", handle: "#334c59",
+  reel: "#549197", metal: "#cae6df", wrap: "#78c7c5" });
+const starfallRod: FishingRodAppearance = Object.freeze({ shaft: "#554775", highlight: "#b8a6d2", handle: "#443d5c",
+  reel: "#c69f54", metal: "#f5df9e", wrap: "#8e74aa" });
+
 export function fishingRodId(value: unknown): FishingRodId {
-  return value === "river_rod" || value === "willow_rod" ? value : "reed_rod";
+  return FISHING_ROD_IDS.find(id => id === value) ?? "reed_rod";
 }
 export function fishingRodAppearance(rodId?: string): FishingRodAppearance {
-  return rodId === "river_rod" ? riverRod : rodId === "willow_rod" ? willowRod : reedRod;
+  return rodId === "starfall_rod" ? starfallRod : rodId === "tide_rod" ? tideRod : rodId === "river_rod" ? riverRod : rodId === "willow_rod" ? willowRod : reedRod;
 }
 
 export type FishingRodGeometryOptions = {
@@ -51,7 +56,7 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
     shapes.push({ kind: "ellipse", x, y, rx: radiusX, ry: radiusY, fill, stroke, width });
   const band = (at: number, halfWidth: number, color: RodColor, thickness = .026) =>
     line([["M", at - thickness / 2, -halfWidth], ["L", at - thickness / 2, halfWidth]], color, thickness);
-  const curveAt = (t: number) => (id === "willow_rod" ? .055 * side : 0) * 4 * t * (1 - t) + bend * 2 * t * (1 - t);
+  const curveAt = (t: number) => ((id === "willow_rod" || id === "starfall_rod") ? .055 * side : 0) * 4 * t * (1 - t) + bend * 2 * t * (1 - t);
   const shaft = (from: number, to: number, startWidth: number, endWidth: number) => {
     const top: RodPathCommand[] = [], bottom: RodPathCommand[] = [];
     for (let step = 0; step <= 6; step++) {
@@ -76,7 +81,7 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
     reelStart = shapes.length;
     ellipse(rx, ry, .047, .034, "handle", "shaft");
     for (const at of [-.02, 0, .02]) line([["M", rx + at, ry - .024], ["L", rx + at, ry + .024]], "metal", .011);
-  } else if (id === "river_rod") {
+  } else if (id === "river_rod" || id === "tide_rod") {
     // The telescoping shoulders remain visible even with all color removed.
     for (const [from, to, width] of [[0, .35, .028], [.35, .68, .021], [.68, 1, .013]]) shaft(from, to, width, width * .65);
     line([["M", 0, -.011], ["Q", length * .5, bend - .009, length, 0]], "highlight", .013);
@@ -88,6 +93,11 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
       const x = at * length, y = curveAt(at) + .029 * side;
       line([["M", x - .012, curveAt(at)], ["L", x, y]], "shaft", .012);
       ellipse(x, y, .024, .018, undefined, "metal", .013);
+    }
+    if (id === "tide_rod") {
+      for (const at of [.1, .27, .47]) { const x = at * length, y = curveAt(at);
+        line([["M", x - .025, y - .023], ["Q", x, y + .025, x + .025, y - .015]], "wrap", .021);
+      }
     }
     line([["M", rx + .035, 0], ["L", rx + .035, ry], ["L", rx + .006, ry + .022 * side]], "metal", .023);
     reelStart = shapes.length;
@@ -107,6 +117,11 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
       const x = length * at, y = curveAt(at);
       body([["M", x - .024, y], ["Q", x + .005, y - .065 * side, x + .045, y],
         ["Q", x + .005, y + .027 * side, x - .024, y], ["Z"]], "wrap", "metal", .01);
+    }
+    if (id === "starfall_rod") {
+      for (const at of [.24, .55]) { const x = at * length, y = curveAt(at);
+        body([["M", x, y - .065], ["L", x + .015, y - .015], ["L", x + .051, y], ["L", x + .015, y + .016], ["L", x, y + .051], ["L", x - .015, y + .016], ["L", x - .051, y], ["L", x - .015, y - .015], ["Z"]], "metal", "shaft", .008);
+      }
     }
     line([["M", 0, .02 * side], ["L", rx, ry]], "metal", .023);
     reelStart = shapes.length;

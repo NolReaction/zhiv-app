@@ -3,99 +3,108 @@
   "dailyMinimumHours": 20,
   "daily": [
     {
-      "coins": 200,
-      "pearls": 0,
-      "items": {}
-    },
-    {
-      "coins": 0,
+      "coins": 300,
       "pearls": 0,
       "items": {
-        "wood": 2
+        "wood": 3
       }
-    },
-    {
-      "coins": 0,
-      "pearls": 0,
-      "items": {
-        "stone": 2
-      }
-    },
-    {
-      "coins": 0,
-      "pearls": 10,
-      "items": {}
     },
     {
       "coins": 300,
       "pearls": 0,
-      "items": {}
-    },
-    {
-      "coins": 0,
-      "pearls": 0,
       "items": {
-        "fiber": 2
+        "stone": 3
       }
     },
     {
-      "coins": 0,
-      "pearls": 20,
-      "items": {}
+      "coins": 200,
+      "pearls": 50,
+      "items": {
+        "fiber": 3
+      }
+    },
+    {
+      "coins": 400,
+      "pearls": 0,
+      "items": {
+        "wood": 5
+      }
+    },
+    {
+      "coins": 400,
+      "pearls": 0,
+      "items": {
+        "stone": 5
+      }
+    },
+    {
+      "coins": 300,
+      "pearls": 100,
+      "items": {
+        "fiber": 3
+      }
+    },
+    {
+      "coins": 500,
+      "pearls": 300,
+      "items": {
+        "ancient_core": 1
+      }
     }
   ],
   "achievementPearls": {
     "seven_day_streak": [
-      20
+      100
     ],
     "thousand_taps": [
-      10
+      50
     ],
     "five_friends": [
-      10
+      50
     ],
     "ten_thousand_series": [
-      30
+      150
     ],
     "linked_email": [
-      10
+      50
     ],
     "saved_recovery_code": [
-      10
+      50
     ],
     "full_collection": [
       0
     ],
     "first_path": [
-      10
+      50
     ],
     "familiar_trails": [
-      20
+      100
     ],
     "explorer": [
-      10,
-      20,
-      40
+      50,
+      100,
+      200
     ],
     "master_recipes": [
-      20,
-      30
+      100,
+      150
     ],
     "home_builder": [
-      10,
-      20,
-      40,
-      60
+      50,
+      100,
+      200,
+      300
     ],
     "river_atlas": [
-      30
+      150
     ],
     "first_sale": [
-      10
+      50
     ],
     "lucky_find": [
-      20
+      100
     ]
   },
-  "currencyScale": 10
+  "currencyScale": 10,
+  "pearlScale": 50
 }

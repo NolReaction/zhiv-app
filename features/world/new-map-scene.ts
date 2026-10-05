@@ -49,7 +49,7 @@ import type { ForestFishingFrame } from "./forest-fishing";
 import { fishingPropsBounds } from "./fishing-props";
 import { forestCookingBounds, type ForestCookingFrame } from "./forest-cooking";
 import { drawForestCookingHero, drawForestProductionCooking } from "./forest-cooking-painter";
-import { forestProductionFrames, syncForestProduction, type ForestProductionFrame } from "./economy-production-state";
+import { forestProductionFrames, forestProductionJourney, syncForestProduction, type ForestProductionFrame } from "./economy-production-state";
 import { drawForestProductionStation } from "./forest-production-painter";
 import { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, noticeCookingPreview } from "./dev/forest-cooking-preview";
 import { forestTrailDestination } from "./forest-trails";
@@ -303,9 +303,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   // A confirmed account job always owns the hero and its economic deadline.
   function displayedJourney(): { journey: EconomySceneJourney | null | undefined; now: number } {
     const now = explorationNow();
-    if (economyJourneyAway(options.economyJourney, now) || !WORLD_DEV_ENABLED || !state.fishingPreview) {
-      return { journey: options.economyJourney, now };
-    }
+    // Even an unclaimed expedition keeps its own return animation. Ordinary
+    // quarry production borrows the worker only when that slot is empty.
+    if (options.economyJourney) return { journey: options.economyJourney, now };
+    const mining = forestProductionJourney(state.economyProduction, now);
+    if (mining) return { journey: mining, now };
+    if (!WORLD_DEV_ENABLED || !state.fishingPreview) return { journey: null, now };
     const rehearsal = state.fishingPreview;
     return { now: state.elapsed * 1000, journey: { id: `dev-fishing:${rehearsal.id}`, routeId: "shore",
       startedAt: new Date(rehearsal.startedAt * 1000).toISOString(),
@@ -315,6 +318,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const actorAway = () => { const { journey, now } = displayedJourney(); return forestJourneyActorAway(state, journey, now); };
   function syncExploration() {
     if (!session.isOwner()) return;
+    syncProduction();
     if (economyJourneyAway(options.economyJourney, explorationNow())) state.fishingPreview = undefined;
     const { journey, now } = displayedJourney();
     syncForestJourneyTravel(state, world, journey, now, reducedMotion(options, dev), options.cancelledExplorations);

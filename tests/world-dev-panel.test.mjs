@@ -310,7 +310,7 @@ test("cheats use the economy account, real catalog levels and server commands wi
   assert.match(view.markup, /Монеты|Жемчуг/);
   for (const [button, command] of [
     ["grant-coins-10000", ["grant_currency", "coins", 10000]],
-    ["grant-pearls-1000", ["grant_currency", "pearls", 1000]],
+    ["grant-pearls-5000", ["grant_currency", "pearls", 5000]],
     ["grant-item", ["grant_item", "wood", 100]],
     ["set-building-level", ["set_building_level", "home", 2]],
     ["grant-upgrade-cost", ["grant_upgrade_cost", "home", 1]],

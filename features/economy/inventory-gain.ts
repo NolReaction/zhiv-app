@@ -21,9 +21,9 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     if (!job || job.kind === "construction" || after.jobs.some(item => item.id === job.id)) return null;
     allowed = job.rewards; source = "claim";
   } else if (command.action === "buy_fishing_item") {
-    const catalog = before.catalog.fishing;
-    if (!catalog || ![...catalog.fish, ...catalog.baits].some(item => item.itemId === command.targetId)) return null;
-    allowed = { [command.targetId]: command.quantity }; source = "purchase";
+    const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && item.kind === "bait");
+    if (!offer || !before.catalog.fishing?.baits.some(item => item.itemId === offer.itemId)) return null;
+    allowed = { [offer.itemId]: command.quantity }; source = "purchase";
   } else if (command.action === "buy_listing") {
     const listing = result.listing;
     if (!listing || listing.id !== command.targetId || listing.status !== "sold") return null;

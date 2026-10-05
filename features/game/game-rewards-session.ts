@@ -6,11 +6,11 @@ import type { GameAchievementId } from "./game-api";
 type Transport = { get: (signal: AbortSignal) => Promise<GameRewards>; send: (body: GameRewardClaim, signal: AbortSignal) => Promise<GameRewardResult> };
 type StoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 type View = { data: GameRewards | null; loading: boolean; busy: boolean; uncertain: boolean; pending: GameRewardClaim | null;
-  error: string; result: GameRewardResult | null; retryAt: number };
+  error: string; result: GameRewardResult | null; retryAt: number; readVersion: number };
 
 /** One pending receipt per account is shared by daily and achievement claim controls. */
 export function createGameRewardsSession(owner: string | null, transport: Transport, storage?: StoragePort) {
-  let view: View = { data: null, loading: false, busy: false, uncertain: false, pending: null, error: "", result: null, retryAt: 0 };
+  let view: View = { data: null, loading: false, busy: false, uncertain: false, pending: null, error: "", result: null, retryAt: 0, readVersion: 0 };
   let subscribers = 0, epoch = 0, sequence = 0, read: Promise<void> | null = null;
   let serverClock = Date.now(), localClock = performance.now();
   const key = `zhiv:game-rewards:pending:v1:${owner}`;
@@ -38,7 +38,7 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
     if (data.ownerPublicId !== owner) { lost(); throw new ApiError("Сеанс аккаунта изменился", 502); }
     if (view.data && Date.parse(data.serverTime) < Date.parse(view.data.serverTime)) return;
     serverClock = Date.parse(data.serverTime); localClock = performance.now();
-    publish({ data });
+    publish({ data, readVersion: view.readVersion + 1 });
   }
   function refresh(): Promise<void> {
     if (!subscribers || !owner || view.busy || now() < view.retryAt) return Promise.resolve();

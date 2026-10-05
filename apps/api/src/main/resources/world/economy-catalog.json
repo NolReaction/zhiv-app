@@ -209,6 +209,20 @@
       "tradable": true
     },
     {
+      "id": "glow_bait",
+      "name": "Светлячковая наживка",
+      "category": "fishing",
+      "baseSellPrice": 40,
+      "tradable": true
+    },
+    {
+      "id": "firefly_bait",
+      "name": "Искристая мушка",
+      "category": "fishing",
+      "baseSellPrice": 70,
+      "tradable": true
+    },
+    {
       "id": "ancient_core",
       "name": "Древнее ядро",
       "category": "special",
@@ -2323,8 +2337,9 @@
         "description": "Легендарная гостья глубоких вод. Треугольный плавник выдаёт её силуэт.",
         "rarity": "legendary",
         "weight": 1,
-        "affinity": 1,
-        "buyPrice": 3200
+        "affinity": 2,
+        "buyPrice": 3200,
+        "requiredHookId": "leviathan_hook"
       }
     ],
     "rods": [
@@ -2333,21 +2348,45 @@
         "name": "Камышовая удочка",
         "description": "Простая надёжная удочка. Есть у каждого начинающего рыбака.",
         "price": 0,
-        "rareBonus": 0
+        "rareBonus": 0,
+        "rarity": "common",
+        "requiredHomeLevel": 1
       },
       {
         "id": "river_rod",
         "name": "Речная удочка",
         "description": "Чувствительный кончик повышает шанс необычной рыбы.",
         "price": 18000,
-        "rareBonus": 2
+        "rareBonus": 2,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1
       },
       {
         "id": "willow_rod",
         "name": "Ивовая удочка",
         "description": "Гибкая снасть Плёски лучше замечает осторожные поклёвки.",
         "price": 72000,
-        "rareBonus": 5
+        "rareBonus": 5,
+        "rarity": "rare",
+        "requiredHomeLevel": 2
+      },
+      {
+        "id": "tide_rod",
+        "name": "Приливная удочка",
+        "description": "Упругое удилище уверенно подсекает глубоководную рыбу.",
+        "price": 160000,
+        "rareBonus": 8,
+        "rarity": "epic",
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "starfall_rod",
+        "name": "Звёздная удочка",
+        "description": "Лёгкая прочная снасть чувствует самые осторожные поклёвки.",
+        "price": 360000,
+        "rareBonus": 12,
+        "rarity": "legendary",
+        "requiredHomeLevel": 4
       }
     ],
     "baits": [
@@ -2355,13 +2394,33 @@
         "itemId": "crumb_bait",
         "description": "Одна порция на всю вылазку. Немного повышает шанс необычной рыбы.",
         "price": 30,
-        "rareBonus": 1
+        "rareBonus": 1,
+        "rarity": "common",
+        "requiredHomeLevel": 1
       },
       {
         "itemId": "worm_bait",
         "description": "Одна порция на всю вылазку. Особенно привлекает редкую рыбу.",
         "price": 70,
-        "rareBonus": 3
+        "rareBonus": 3,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1
+      },
+      {
+        "itemId": "glow_bait",
+        "description": "Светящаяся смесь привлекает осторожных глубоководных рыб. Одна порция на вылазку.",
+        "price": 140,
+        "rareBonus": 5,
+        "rarity": "rare",
+        "requiredHomeLevel": 2
+      },
+      {
+        "itemId": "firefly_bait",
+        "description": "Искристая мушка соблазняет самых редких обитателей воды. Одна порция на вылазку.",
+        "price": 260,
+        "rareBonus": 8,
+        "rarity": "epic",
+        "requiredHomeLevel": 3
       }
     ],
     "hooks": [
@@ -2370,23 +2429,53 @@
         "name": "Простой крючок",
         "description": "Начальная снасть без дополнительных усилений.",
         "price": 0,
-        "rareBonus": 0
+        "rareBonus": 0,
+        "rarity": "common",
+        "requiredHomeLevel": 1
       },
       {
         "id": "barbed_hook",
         "name": "Бородатый крючок",
         "description": "Надёжная бородка помогает удержать осторожную рыбу в особом улове.",
         "price": 12000,
-        "rareBonus": 2
+        "rareBonus": 2,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1
       },
       {
         "id": "silver_hook",
         "name": "Серебряный крючок",
         "description": "Тонкая светлая снасть повышает шанс ценных видов в особом улове.",
         "price": 42000,
-        "rareBonus": 4
+        "rareBonus": 4,
+        "rarity": "rare",
+        "requiredHomeLevel": 2
+      },
+      {
+        "id": "tide_hook",
+        "name": "Приливный крючок",
+        "description": "Изогнутое жало удерживает крупных обитателей глубины.",
+        "price": 110000,
+        "rareBonus": 7,
+        "rarity": "epic",
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "leviathan_hook",
+        "name": "Крючок Левиафана",
+        "description": "Особо прочная снасть для самого сильного улова.",
+        "price": 260000,
+        "rareBonus": 10,
+        "rarity": "legendary",
+        "requiredHomeLevel": 4
       }
-    ]
+    ],
+    "shop": {
+      "refreshSeconds": 21600,
+      "refreshPricePearls": 100,
+      "slots": 4,
+      "baitStock": 5
+    }
   },
   "localBuyer": {
     "payoutBps": 6000
@@ -2402,5 +2491,6 @@
       "living_resin"
     ]
   },
-  "currencyScale": 10
+  "currencyScale": 10,
+  "pearlScale": 50
 }

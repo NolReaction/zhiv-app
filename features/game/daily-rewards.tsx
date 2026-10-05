@@ -1,5 +1,5 @@
 "use client";
-import type { RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { CalendarDays, Check, Clock3, Gift, RefreshCw, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
@@ -7,6 +7,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyController } from "@/features/economy/use-economy";
 import type { GameReward } from "./game-rewards-api";
 import { useGameRewards, type GameRewardsController } from "./use-game-rewards";
+import { createDailyRewardEntryPrompt } from "./daily-reward-entry";
 import styles from "./daily-rewards.module.css";
 
 export function dailyRewardWait(nextClaimAt: string, now: number) {
@@ -34,7 +35,7 @@ export function DailyRewardsPanel({ controller, isOnline, names = {} }: { contro
   const daily = controller.data?.daily, receipt = controller.result?.claim.kind === "daily" ? controller.result.claim : null;
   const locked = !isOnline || controller.busy || controller.uncertain || controller.pending !== null || controller.retryAt > controller.now;
   return <div className={styles.panel} aria-busy={controller.loading || controller.busy}>
-    <p className={styles.intro}>Маленькие подарки за возвращение в лес. Пропуск дня сохраняет ваш шаг.</p>
+    <p className={styles.intro}>Припасы, монеты и жемчуг за возвращение в лес. Пропуск дня сохраняет ваш шаг.</p>
     {!isOnline && <p className={styles.status} role="status">Для получения нужен интернет.{daily && " Показаны последние загруженные подарки."}</p>}
     {!daily ? <div className={styles.empty}><Gift size={34} aria-hidden="true" /><p>{controller.loading ? "Открываем подарки…" : "Загрузите подарки, чтобы узнать, что приготовил лес."}</p>
       <button type="button" disabled={controller.loading || !isOnline} onClick={() => void controller.refresh()}><RefreshCw size={16} aria-hidden="true" />Обновить</button></div>
@@ -76,6 +77,12 @@ export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, on
   open: boolean; onOpenChange: (value: boolean) => void; onReturnFocus: () => void;
 }) {
   const controller = useGameRewards(ownerPublicId, isOnline, onSessionLost, () => { void economy.refresh(); });
+  const entryPrompt = useRef<ReturnType<typeof createDailyRewardEntryPrompt> | null>(null);
+  if (entryPrompt.current === null) { entryPrompt.current = createDailyRewardEntryPrompt(ownerPublicId, controller.readVersion); }
+  useEffect(() => {
+    if (open) entryPrompt.current?.dismiss();
+    if (entryPrompt.current?.shouldOpen(controller, isOnline)) onOpenChange(true);
+  }, [controller, isOnline, open, onOpenChange]);
   const names = Object.fromEntries(economy.snapshot?.catalog.items.map(item => [item.id, item.name]) ?? []);
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogPortal><DialogOverlay className={styles.scrim} />
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus(); }}>

@@ -33,7 +33,7 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop }: { ec
     sale.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [itemId]);
   if (!item) return null;
-  if (item.category === "special") return <section ref={sale} className={styles.relicGuard} aria-label={item.name}><ItemIcon itemId={item.id} size={30} /><div><h3>{item.name}</h3><p>Реликвии хранятся отдельно. Их используют для улучшений или обменивают с другими игроками.</p></div></section>;
+  if (item.category === "special") return <section ref={sale} className={styles.relicGuard} aria-label={item.name}><ItemIcon itemId={item.id} size={30} /><div><h3>{item.name}</h3><p>Можно обменять с другими игроками.</p></div></section>;
   const stock = state.inventory[itemId] ?? 0;
   const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
   const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
@@ -43,7 +43,7 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop }: { ec
   const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
   return <section ref={sale} className={`${styles.pantry} ${styles.sale}`} aria-label={`Продажа: ${item.name}`}>
     <div className={styles.saleHeading}>
-      <ProductIcon itemId={item.id} size={18} />
+      <ProductIcon state={state} itemId={item.id} size={18} />
       <h3>{item.name}</h3>
       {onClose && <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Свернуть продажу"><ChevronUp size={16} aria-hidden="true" /></button>}
     </div>
@@ -63,21 +63,14 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop }: { ec
   </section>;
 }
 
-export function relicUpgradeUses(state: EconomyView, itemId: string) {
-  return state.catalog.buildings.flatMap(building => building.levels.filter(level => (level.cost.items[itemId] ?? 0) > 0)
-    .map(level => ({ buildingId: building.id, buildingName: building.name, level: level.level, quantity: level.cost.items[itemId] })));
-}
-
 export function RelicPantrySection({ state, onExplore, onOpenMarket }: { state: EconomyView; onExplore: () => void; onOpenMarket?: () => void }) {
   const items = state.catalog.items.filter(item => item.category === "special");
   const requiredHome = state.catalog.rareDrops?.requiredHomeLevel;
   return <section className={styles.relics} aria-label="Реликвии в кладовой">
-    <p className={styles.relicIntro}>Материалы для улучшения построек.</p>
     <div className={styles.relicList}>{items.map(item => {
-      const stock = state.inventory[item.id] ?? 0, uses = relicUpgradeUses(state, item.id);
+      const stock = state.inventory[item.id] ?? 0;
       return <article className={styles.relicCard} key={item.id} data-relic={item.id} data-owned={stock > 0}>
         <div className={styles.relicHeading}><span className={styles.relicArt}><ItemIcon itemId={item.id} size={48} /></span><div><h3>{item.name}</h3></div><strong aria-label={`В наличии: ${number(stock)}`}>×{number(stock)}</strong></div>
-        {uses.length > 0 && <p className={styles.relicUses}>{uses.map(use => `${use.buildingName} · ур. ${use.level} (${number(use.quantity)} шт.)`).join("; ")}</p>}
       </article>;
     })}</div>
     {items.length === 0 ? <p className={styles.muted}>Реликвии появятся вместе с новыми маршрутами.</p> : <><p className={styles.muted}>{requiredHome ? `Находки в вылазках с домом ур. ${requiredHome}. ` : "Находки из вылазок. "}Их также можно получить по обмену с другими игроками.</p><div className={styles.relicActions}><button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />В путь<ArrowRight size={13} aria-hidden="true" /></button>{onOpenMarket && <button type="button" className={styles.textButton} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Лавки игроков<ArrowRight size={13} aria-hidden="true" /></button>}</div></>}
@@ -136,7 +129,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
         {ownedItems.map(item => {
           const fish = state.catalog.fishing?.fish.find(entry => entry.itemId === item.id);
           return <button key={item.id} type="button" className={styles.item} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id} onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
-          <ProductIcon itemId={item.id} size={20} />
+          <ProductIcon state={state} itemId={item.id} size={20} />
           <span>{item.name}</span>
           <strong>×{number(state.inventory[item.id])}</strong>
           {fish && <FishRarityBadge className={styles.itemRarity} rarity={fish.rarity} />}

@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { ItemIcon } = await vite.ssrLoadModule("/features/items/item-icon.tsx");
-const { WorldPantryMenu, PantrySale, RelicPantrySection, relicUpgradeUses } = await vite.ssrLoadModule("/features/economy/world-pantry-menu.tsx");
+const { WorldPantryMenu, PantrySale, RelicPantrySection } = await vite.ssrLoadModule("/features/economy/world-pantry-menu.tsx");
 const { FISH_RARITY_LEVELS, FISH_RARITY_NAMES, FishRarityBadge, FishRarityScale } = await vite.ssrLoadModule("/features/economy/fish-rarity.tsx");
 const { economyCatalog, economyCatalogSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage, newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts");
@@ -49,22 +49,17 @@ test("supplies omit relic sale cards while their separate tab reports the actual
   assert.doesNotMatch(relics, /aria-label="Предметы в кладовой"|Продать торговцу|Купить жемчуг/);
 });
 
-test("relic uses and access hints follow authoritative upgrade costs and the drop catalogue", () => {
+test("relic shelf shows stock and acquisition actions without building requirements", () => {
   const state = fresh({ living_resin: 1 });
-  const homeUse = id => relicUpgradeUses(state, id).filter(use => use.buildingId === "home").map(use => [use.buildingId, use.level, use.quantity]);
-  assert.deepEqual(homeUse("living_resin"), [["home", 4, 1]]);
-  assert.deepEqual(homeUse("ancient_core"), [["home", 5, 1]]);
   const html = render(RelicPantrySection, { state, onExplore() {} });
-  assert.match(html, /домом ур\. 3/); assert.match(html, /Дом Мохлика · ур\. 4 \(1 шт\.\)/);
-  assert.match(html, /Дом Мохлика · ур\. 5 \(1 шт\.\)/);
+  assert.match(html, /домом ур\. 3/); assert.match(html, /В путь/);
+  assert.doesNotMatch(html, /Дом Мохлика ·|Кладовая ·|Материалы для улучшения|шт\.\)/);
   assert.doesNotMatch(html, /редкие|редкая|редкий|Купить|Продать|монет/i);
-  state.catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4).cost.items.living_resin = 2;
-  assert.equal(relicUpgradeUses(state, "living_resin").find(use => use.buildingId === "home").quantity, 2);
 });
 
 test("even an old direct sale callback exposes no NPC quote or sell control for a relic", () => {
   const html = render(PantrySale, { economy: controller(fresh({ ancient_core: 1 })), itemId: "ancient_core" });
-  assert.match(html, /Древнее ядро/); assert.match(html, /обменивают с другими игроками/);
+  assert.match(html, /Древнее ядро/); assert.match(html, /обменять с другими игроками/);
   assert.doesNotMatch(html, /Продать торговцу|Количество|монет|Infinity|NaN|<input/);
 });
 

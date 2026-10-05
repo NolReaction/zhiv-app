@@ -6,7 +6,7 @@ export const economyDevCommandSchema = z.object({
   requestId: economyCommandSchema.shape.requestId,
   ownerPublicId: economyCommandSchema.shape.ownerPublicId,
   expectedRevision: economyCommandSchema.shape.expectedRevision,
-  action: z.enum(["grant_currency", "grant_item", "grant_upgrade_cost", "set_building_level", "finish_jobs"]),
+  action: z.enum(["grant_currency", "grant_item", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"]),
   targetId: economyCommandSchema.shape.targetId,
   quantity: z.number().int().min(0).max(10_000_000).default(1),
   totalPrice: z.literal(0).default(0),
@@ -16,6 +16,9 @@ export const economyDevCommandSchema = z.object({
     if (command.quantity < 1 || (command.action === "grant_item" && command.quantity > 1_000_000)) invalid("quantity");
     if (command.action === "grant_currency" ? !["coins", "pearls"].includes(command.targetId)
       : !economyCatalog.items.some(item => item.id === command.targetId)) invalid("targetId");
+  } else if (command.action === "apply_settlement") {
+    if (command.targetId !== "home") invalid("targetId");
+    if (!economyCatalog.buildings.find(building => building.id === "home")!.levels.some(level => level.level === command.quantity)) invalid("quantity");
   } else if (command.action === "finish_jobs") {
     if (!["all", "construction", "production", "exploration"].includes(command.targetId)) invalid("targetId");
     if (command.quantity !== 1) invalid("quantity");

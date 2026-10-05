@@ -1,7 +1,7 @@
 "use client";
 import type { EconomySceneProduction } from "@/features/world/economy-production-state";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import { LocateFixed, LoaderCircle, Scan } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
 import { habitatLighting } from "@/features/mochlik/lighting";
@@ -11,7 +11,7 @@ import type { GameItemId } from "@/features/game/game-rewards";
 import type { SceneOptions } from "@/features/mochlik/scene";
 import type { EconomySceneBuildings, EconomySceneJourney } from "./economy-scene-state";
 import type { WorldState } from "./model";
-import type { createMapEngine, MapAction, MapObjectSelection, WorldPlace } from "./map-engine";
+import type { createMapEngine, MapObjectSelection, WorldPlace } from "./map-engine";
 import { MAP_PLACES } from "./map-layout";
 import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { interactiveMapObjects } from "./site-interactions";
@@ -22,13 +22,13 @@ import { createMapAnchorStore } from "./map-anchor-store";
 import { useGardenCollection } from "@/features/economy/garden-collection-context";
 import styles from "./world.module.css";
 
-type Props = { hideJourneyStatus?: boolean; hideMapControls?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
+type Props = { hideJourneyStatus?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
   constructionEconomy?: EconomyController; onOpenConstruction?: (stationId: string) => void; hideConstructionStatus?: boolean;
   selectedObjectId?: string | null; onObjectSelection?: (selection: MapObjectSelection | null) => void;
   onResident?: (id: "plesk") => void;
   openObjectRequest?: { id: number; place: WorldPlace };
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ hideJourneyStatus = false, hideMapControls = false, constructionEconomy, onOpenConstruction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
+export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onOpenConstruction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
   const garden = useGardenCollection();
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
@@ -110,7 +110,6 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
   }, [wakeSignal]);
   const journey = sceneJourney(state, now);
   const objects = interactiveMapObjects(TILED_WORLD);
-  const control = (action: MapAction) => engine.current?.control(action);
   return <div ref={root} className={styles.scene} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
@@ -124,10 +123,6 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
       <button data-map-anchor data-kind="fishing" data-x={MAP_PLACES.fishing.marker.x} data-y={MAP_PLACES.fishing.marker.y} onClick={() => onPlace("fishing")} aria-label="Открыть рыбалку" title="Рыбалка" />
     </div>}
     <MapFeedback anchorStore={anchorStore} economy={constructionEconomy} onOpen={onOpenConstruction} ready={ready} hidden={hideConstructionStatus} />
-    <div className={styles.cameraControls} hidden={hideMapControls} aria-label="Управление картой">
-      <button onClick={() => control("overview")} disabled={!ready} aria-label="Показать всю карту" title="Вся карта"><Scan size={19} /></button>
-      <button onClick={() => control("pet")} disabled={!ready} aria-label="Найти Мохлика" title="Найти Мохлика"><LocateFixed size={19} /></button>
-    </div>
     {!hideJourneyStatus && economyJourney && <button className={styles.away} onClick={() => onPlace("cave")} aria-label="Открыть исследование Мохлика">
       <span>{economyJourney.label ?? "Исследование"} · {now >= Date.parse(economyJourney.finishesAt) ? "Мохлик вернулся — забрать находки" : `${Math.max(1, Math.ceil((Date.parse(economyJourney.finishesAt) - now) / 60000))} мин до возвращения`}</span>
     </button>}

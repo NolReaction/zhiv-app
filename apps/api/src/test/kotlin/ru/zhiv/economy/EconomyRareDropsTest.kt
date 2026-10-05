@@ -105,7 +105,7 @@ class EconomyRareDropsTest {
         assertEquals(3L, EconomyRules.storage(owned).used)
         for (id in spec.itemIds) {
             assertEquals("ECONOMY_ITEM", assertFailsWith<AuthFailure> { apply(owned, "sell", id) }.code)
-            assertEquals("ECONOMY_FISHING_ITEM", assertFailsWith<AuthFailure> { apply(owned, "buy_fishing_item", id) }.code)
+            assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> { apply(owned, "buy_fishing_item", id) }.code)
         }
     }
 }

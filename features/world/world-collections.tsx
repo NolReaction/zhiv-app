@@ -3,6 +3,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { BookOpen, Check, ChevronLeft, ChevronRight, Fish, Mountain, Trees } from "lucide-react";
 import { CollectionIcon, ItemIcon } from "@/features/items/item-icon";
+import { HiddenFishIcon } from "@/features/economy/fish-discovery";
 import { FishRarityBadge, FishRarityScale } from "@/features/economy/fish-rarity";
 import type { EconomyView } from "@/features/economy/model";
 import { worldCatalog, type WorldState } from "./model";
@@ -50,8 +51,8 @@ export function WorldCollections({ state, economy, gifts }: { state: WorldState;
         {chapter === "quarry" && <p className={styles.sources}>Заказы шахты, Вход в пещеру, Глубокий проход, Прибрежные отложения и Заброшенный карьер.</p>}
         {chapter === "fishing" && <FishRarityScale />}
         <div className={styles.finds}>{entries.map(entry => <article className={styles.find} key={entry.id} data-owned={entry.owned}>
-          <div className={styles.art}>{entry.illustration === "item" ? <ItemIcon itemId={entry.id} size={64} /> : <CollectionIcon findId={entry.id} size={64} />}{entry.owned ? <Check size={15} aria-label="Найдено" /> : <span aria-hidden="true">?</span>}</div>
-          <h4>{entry.name}</h4>{entry.rarity && <FishRarityBadge rarity={entry.rarity} />}<p>{entry.owned ? entry.description : entry.source}</p><small>{entry.owned ? "Записано в книге" : "Ещё не найдено"}</small>
+          <div className={styles.art}>{entry.illustration === "item" ? entry.owned ? <ItemIcon itemId={entry.id} size={64} /> : <HiddenFishIcon size={64} /> : <CollectionIcon findId={entry.id} size={64} />}{entry.owned ? <Check size={15} aria-label="Найдено" /> : <span aria-hidden="true">?</span>}</div>
+          <h4>{entry.illustration === "item" && !entry.owned ? "Неизвестная рыба" : entry.name}</h4>{entry.rarity && <FishRarityBadge rarity={entry.rarity} />}<p>{entry.owned ? entry.description : entry.source}</p><small>{entry.owned ? "Записано в книге" : "Ещё не найдено"}</small>
         </article>)}</div>
         {chapter === "fishing" && legacyRiverFinds.length > 0 && <details className={styles.archive}><summary>Прежние речные находки · {legacyRiverFinds.length}/6</summary><p>Ваши находки из прежних путешествий сохранены.</p><div>{legacyRiverFinds.map(find => <span key={find.id}><CollectionIcon findId={find.id} size={30} />{find.name}</span>)}</div></details>}
         <footer className={styles.footer}><button type="button" disabled={index === 0} onClick={() => setChapter(COLLECTION_CHAPTERS[index - 1].id)} aria-label="Предыдущая глава"><ChevronLeft size={16} />Назад</button><span>{index + 1} / {COLLECTION_CHAPTERS.length}</span><button type="button" disabled={index === COLLECTION_CHAPTERS.length - 1} onClick={() => setChapter(COLLECTION_CHAPTERS[index + 1].id)} aria-label="Следующая глава">Далее<ChevronRight size={16} /></button></footer>

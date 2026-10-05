@@ -15,7 +15,7 @@ const smooth = (t: number) => t*t*(3-2*t);
  * moves there; the shared navigation feet remain on the safe quarry marker. */
 export function forestJourneyMiningFrame(state: ForestSessionState, scene: FixedWorldScene, still = false): ForestMiningFrame | null {
   const travel = state.journeyTravel, mine = travel?.mining;
-  if (!travel || !mine || travel.scene !== scene) return null;
+  if (!travel || !mine || travel.scene !== scene || !mine.prepared) return null;
   const body = clearingActivityFrame(state.clearing, { still });
   const base = { ...state.clearing.position, size: state.clearing.size, direction: body.direction,
     pose: body.pose === "walk" ? "walk" as const : "idle" as const, frame: body.frame,

@@ -107,21 +107,24 @@ export function auditEconomyProgression(catalog) {
     assert.equal(new Set(fishing.hooks.map(hook => hook.id)).size, fishing.hooks.length, "Duplicate hook ID");
     assert(fishing.hooks.some(hook => hook.id === "bare_hook" && hook.price === 0 && hook.rareBonus === 0), "Starter hook must remain free");
     for (const hook of fishing.hooks) assert(Number.isSafeInteger(hook.price) && hook.price >= 0 && Number.isSafeInteger(hook.rareBonus) && hook.rareBonus >= 0, "Invalid hook price or bonus");
-    for (const rod of fishing.rods) assert(Number.isSafeInteger(rod.price) && rod.price >= 0 && Number.isSafeInteger(rod.rareBonus) && rod.rareBonus >= 0, "Invalid rod price or bonus");
+    const rarity = new Set(["common", "uncommon", "rare", "epic", "legendary"]);
+    const validGear = gear => rarity.has(gear.rarity) && Number.isInteger(gear.requiredHomeLevel) && gear.requiredHomeLevel >= 1 && gear.requiredHomeLevel <= 5;
+    for (const rod of fishing.rods) assert(Number.isSafeInteger(rod.price) && rod.price >= 0 && Number.isSafeInteger(rod.rareBonus) && rod.rareBonus >= 0 && validGear(rod), "Invalid rod price, bonus or progression");
     unique(fishing.hooks ?? [], "hook");
     assert(fishing.hooks?.some(hook => hook.id === "bare_hook" && hook.price === 0 && hook.rareBonus === 0), "Starter hook must remain free");
     for (const hook of fishing.hooks) assert(!items.has(hook.id) && !fishing.rods.some(rod => rod.id === hook.id)
-      && Number.isSafeInteger(hook.price) && hook.price >= 0 && Number.isSafeInteger(hook.rareBonus) && hook.rareBonus >= 0, "Invalid durable hook or inventory ID collision");
+      && Number.isSafeInteger(hook.price) && hook.price >= 0 && Number.isSafeInteger(hook.rareBonus) && hook.rareBonus >= 0 && validGear(hook), "Invalid durable hook or inventory ID collision");
     for (const fish of fishing.fish) {
       assert(items.has(fish.itemId), `Fishing: unknown item ${fish.itemId}`);
       assert(Number.isSafeInteger(fish.buyPrice) && fish.buyPrice > items.get(fish.itemId).baseSellPrice, "Fish buy-sell arbitrage");
       assert(Number.isSafeInteger(fish.weight) && fish.weight > 0 && Number.isSafeInteger(fish.affinity) && fish.affinity >= 0, "Invalid fishing weight");
-      itemUses.add(fish.itemId); // Sold at Pleska's shop and recorded permanently in the catch collection.
-      merchantItems.push(fish.itemId);
+      assert(!fish.requiredHookId || fishing.hooks.some(hook => hook.id === fish.requiredHookId), "Fish requires an unknown hook");
+      itemUses.add(fish.itemId); // Caught on a paid trip, sold to Pleska and recorded permanently.
     }
     for (const bait of fishing.baits) {
       assert(items.has(bait.itemId), `Fishing: unknown bait ${bait.itemId}`);
       assert(Number.isSafeInteger(bait.price) && bait.price > items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
+      assert(validGear(bait), "Invalid bait rarity or progression");
       itemUses.add(bait.itemId); // One stack unit is consumed by a special fishing departure.
       merchantItems.push(bait.itemId);
     }
@@ -186,10 +189,17 @@ export function auditEconomyProgression(catalog) {
     if (rare && completed.home >= rare.requiredHomeLevel && catalog.explorations.some(route => hasRequirements(route) && hasMaterials(route.cost))) {
       for (const item of rare.itemIds) if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
     }
-    // Repeatable free produce supplies coins, so fixed-price NPC stock is reachable.
+    // Repeatable free produce supplies coins; each eligible rotating offer has positive probability.
     // This does not assume another player supplies a missing progression material.
     if ([...obtainable].some(id => items.get(id)?.tradable)) for (const item of merchantItems) {
-      if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
+      const bait = catalog.fishing.baits.find(b => b.itemId === item);
+      if (completed.home >= (bait?.requiredHomeLevel ?? 1) && !obtainable.has(item)) { obtainable.add(item); changed = true; }
+    }
+    if (catalog.fishing && catalog.explorations.some(route => catalog.fishing.routeIds.includes(route.id) && hasRequirements(route) && hasMaterials(route.cost))) {
+      for (const fish of catalog.fishing.fish) {
+        const hook = catalog.fishing.hooks.find(hook => hook.id === fish.requiredHookId);
+        if (completed.home >= (hook?.requiredHomeLevel ?? 1) && !obtainable.has(fish.itemId)) { obtainable.add(fish.itemId); changed = true; }
+      }
     }
     for (const building of buildings.values()) {
       const next = building.levels.find(level => level.level === (completed[building.id] ?? 0) + 1);

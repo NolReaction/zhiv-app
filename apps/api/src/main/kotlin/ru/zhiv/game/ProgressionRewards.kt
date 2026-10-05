@@ -12,7 +12,7 @@ import java.util.UUID
 
 internal val progressionRewardsJson = Json { encodeDefaults = true; ignoreUnknownKeys = false }
 @Serializable data class ProgressionReward(val coins: Long = 0, val pearls: Long = 0, val items: Map<String,Long> = emptyMap())
-@Serializable private data class ProgressionRewardsCatalog(val version: Int, val currencyScale: Int, val dailyMinimumHours: Long,
+@Serializable private data class ProgressionRewardsCatalog(val version: Int, val currencyScale: Int, val pearlScale: Int, val dailyMinimumHours: Long,
     val daily: List<ProgressionReward>, val achievementPearls: Map<String,List<Long>>)
 @Serializable data class DailyRewardCycle(val step: Int, val reward: ProgressionReward)
 data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null)
@@ -70,11 +70,11 @@ object ProgressionRewardRules {
     val daily = catalog.daily
     val achievementPearls = catalog.achievementPearls
     init {
-        require(catalog.version==1 && catalog.currencyScale==10 && daily.size==7 && catalog.dailyMinimumHours==20L)
+        require(catalog.version==1 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
         require(achievementPearls.keys==GameRewards.tiers.keys && achievementPearls.all { (id,values) ->
-            values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_BALANCE } })
-        require(daily.all { reward -> reward.coins in 0L..ECONOMY_MAX_BALANCE && reward.pearls in 0L..ECONOMY_MAX_BALANCE
-            && reward.items.all { (id,quantity) -> id in setOf("wood","stone","fiber") && quantity in 1L..ECONOMY_MAX_ITEMS } })
+            values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_PEARLS } })
+        require(daily.all { reward -> reward.coins in 0L..ECONOMY_MAX_BALANCE && reward.pearls in 0L..ECONOMY_MAX_PEARLS
+            && reward.items.all { (id,quantity) -> id in setOf("wood","stone","fiber","ancient_core") && quantity in 1L..ECONOMY_MAX_ITEMS } })
     }
     fun dailyView(state: DailyRewardsState, now: Instant): DailyRewardsView {
         require(state.step in 1..7)
@@ -89,7 +89,7 @@ object ProgressionRewardRules {
         if(left.lastClaimAt==null || right.lastClaimAt?.isAfter(left.lastClaimAt)==true) right else left
     fun credit(state: EconomyState, reward: ProgressionReward): EconomyState {
         if(reward.coins !in 0L..(ECONOMY_MAX_BALANCE-state.wallet.coins)
-            || reward.pearls !in 0L..(ECONOMY_MAX_BALANCE-state.wallet.pearls)) economyFailure("ECONOMY_CAPACITY","Кошелёк заполнен")
+            || reward.pearls !in 0L..(ECONOMY_MAX_PEARLS-state.wallet.pearls)) economyFailure("ECONOMY_CAPACITY","Кошелёк заполнен")
         return state.copy(wallet=state.wallet.copy(coins=state.wallet.coins+reward.coins,pearls=state.wallet.pearls+reward.pearls),
             inventory=EconomyRules.addItems(state.inventory,reward.items))
     }

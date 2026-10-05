@@ -68,10 +68,10 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
         validateRewardClaim(command)
         return transaction(sessionHash,command.ownerPublicId) { c,a,now ->
             val key=UUID.fromString(command.requestId); val signature=progressionRewardsJson.encodeToString(command)
-            val previous=c.economyRows("SELECT signature,claim,accepted_revision,currency_scale FROM game_reward_claims WHERE user_id=? AND request_id=?",a.id,key) {
+            val previous=c.economyRows("SELECT signature,claim,accepted_revision,currency_scale,pearl_scale FROM game_reward_claims WHERE user_id=? AND request_id=?",a.id,key) {
                 val original=progressionRewardsJson.decodeFromString<ProgressionRewardReceipt>(it.getString(2))
                 Receipt(it.getString(1),original.copy(reward=original.reward.copy(coins=EconomyMoney.nominal(original.reward.coins,it.getInt(4)),
-                    pearls=EconomyMoney.nominal(original.reward.pearls,it.getInt(4)))),it.getLong(3)) }.firstOrNull()
+                    pearls=EconomyMoney.pearls(original.reward.pearls,it.getInt(5)))),it.getLong(3)) }.firstOrNull()
             if(previous!=null) {
                 if(previous.signature!=signature) rewardFailure("REWARD_REQUEST_CONFLICT","Этот запрос уже использован для другой награды")
                 return@transaction ProgressionRewardResult(command.requestId,view(c,a,now),economyView(c,a.id,a.publicId,now),previous.revision,true,previous.claim)

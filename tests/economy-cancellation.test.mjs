@@ -27,9 +27,11 @@ test("active and ready fishing trips can be abandoned with no reward or completi
     assert.deepEqual(result.state.inventory, started.inventory);
     assert.deepEqual(result.state.wallet, started.wallet);
     assert.equal(result.state.completedExplorations, started.completedExplorations);
-    assert.equal(result.state.revision, started.revision + 1);
+    // Reading an eight-hour trip can first persist the six-hour merchant refresh.
+    // Cancellation itself advances exactly the revision it accepted once.
+    assert.equal(result.state.revision, cancel.expectedRevision + 1);
     assert.equal(result.replayed, false);
-    assert.throws(() => issue(p, "claim_job", trip.id, Date.parse(trip.finishesAt)), { code: "ECONOMY_JOB_GONE" });
+    assert.throws(() => issue(p, "claim_job", trip.id, at), { code: "ECONOMY_JOB_GONE" });
     const repeated = economy.commandDevEconomy(p.token, cancel, at + 10_000);
     assert.equal(repeated.replayed, true);
     assert.equal(repeated.acceptedRevision, result.acceptedRevision);

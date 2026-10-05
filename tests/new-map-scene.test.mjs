@@ -3337,3 +3337,42 @@ test("production props use one confirmed job across both cameras, preserve ready
     assert.deepEqual(state.clearing,clearing,"a multi-hour job never forces the hero into cooking animation or movement");
   } finally { probe?.release(); views.forEach(view=>view.dispose()); env.restore(); }
 });
+
+test("ordinary quarry production walks from base, shares the miner across cameras and yields safely to an expedition", async () => {
+  const quarry={id:"quarry",label:"Шахта",initialLevel:1,bounds:{x:660,y:590,width:55,height:48},
+    anchor:{x:688,y:638},entry:{x:680,y:640},doorway:{x:686,y:625},collision:[],hitArea:[],
+    states:[{level:1,label:"Шахта",image:"/test-quarry.webp"}]};
+  const loaded=await modules({...fishingFixture(),sites:[quarry],destinations:[
+    {id:"fishing",position:{x:690,y:700},pauseSeconds:15},
+    {id:"quarry",position:{x:674,y:649},pauseSeconds:15}]});
+  const {mountHabitat,connectForestSession,TILED_WORLD,worldDevStore,forestJourneyActorAway}=loaded;
+  const env=browser(),views=[];let probe;
+  try {
+    worldDevStore.patch({...quietClearing,autoLife:false});
+    const owner="mine-worker",production={ownerPublicId:owner,revision:1,jobs:[{id:"quarry-production",stationId:"quarry",stationLevel:1,
+      recipeId:"quarry_stone",startedAt:new Date(100_000).toISOString(),finishesAt:new Date(700_000).toISOString()}]};
+    const original=structuredClone(production),initial={...options,reducedMotion:false,serverNow:100_000,
+      presenceKey:`zhiv:mochlik:presence:${owner}`,economyProduction:production};
+    const callbacks={activity(){},ready(){},failure:assert.fail};
+    const circle=mountHabitat(env.surface(),initial,callbacks);views.push(circle);
+    env.finish();await flush();env.finish();await flush();
+    probe=connectForestSession(initial.presenceKey,TILED_WORLD,"circle",100_000,0,()=>{});
+    const clock=sceneClock(env),home={...probe.state.clearing.home};
+    assert.equal(probe.state.journeyTravel.phase,"leaving","a first mounted production receipt still shows departure");
+    assert.deepEqual(probe.state.clearing.position,home);
+    clock.until(()=>probe.state.journeyTravel.phase==="working","ordinary stone production reaches the mine",1000);
+    const feet={...probe.state.clearing.position},travel=probe.state.journeyTravel;
+    const world=mountHabitat(env.surface(),{...initial,view:"world"},callbacks);views.push(world);await flush();
+    assert.strictEqual(probe.state.journeyTravel,travel);assert.deepEqual(probe.state.clearing.position,feet);
+    assert.equal(env.frames.size,1,"both cameras share the same worker clock");
+    const expedition={id:"higher-priority-shore",routeId:"shore",startedAt:new Date(100_000).toISOString(),
+      finishesAt:new Date(700_000).toISOString(),rewards:{fish:4}};
+    const next={...initial,economyJourney:expedition};
+    world.configure({...next,view:"world"});circle.configure({...next,backgrounded:true});
+    assert.equal(probe.state.journeyTravel.phase,"exiting");assert.deepEqual(probe.state.clearing.position,feet);
+    assert.equal(forestJourneyActorAway(probe.state,expedition,100_000),false);
+    clock.until(()=>probe.state.journeyTravel?.phase==="fishing","the new expedition starts after a physical return from the mine",2000);
+    assert.equal(probe.state.journeyTravel.jobId,expedition.id);
+    assert.deepEqual(production,original,"a visual worker cannot alter production dates, output or claim state");
+  }finally{views.forEach(view=>view.dispose());probe?.release();worldDevStore.reset();env.restore();}
+});

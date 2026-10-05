@@ -36,9 +36,9 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
-    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '40'
+    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '41'
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migration V40. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migration V41. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

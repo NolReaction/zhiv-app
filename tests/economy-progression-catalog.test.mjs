@@ -4,7 +4,7 @@ import { auditEconomyProgression, readEconomyCatalog } from "../scripts/audit-ec
 
 test("economy catalog has useful chains, reachable upgrades, sufficient storage and a market-proof pacing floor", () => {
   const report = auditEconomyProgression(readEconomyCatalog());
-  assert.equal(report.itemCount, 40);
+  assert.equal(report.itemCount, 42);
   assert.equal(report.buildingCount, 8);
   assert.equal(report.constructionOrder.length, 37);
 });

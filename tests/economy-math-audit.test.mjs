@@ -37,29 +37,29 @@ test("a joint long order is costed once and exposes its output portfolio rather 
 test("catch expectation changes exactly one fish and keeps bait spending distinct from its fractional species portfolio", () => {
   const math = economicMath(readEconomyCatalog()), initial = math.catchPortfolio();
   near(Object.values(initial.output).reduce((a, b) => a + b, 0), 4);
-  near(initial.output.fish, 3.55); near(initial.expectedFishRevenue, 351.524);
-  near(math.catchPortfolio("river_rod").expectedFishRevenue, 353.9885533846457);
+  near(initial.output.fish, (3 + 5500 / 9999)); near(initial.expectedFishRevenue, 351.3751375137515);
+  near(math.catchPortfolio("river_rod").expectedFishRevenue, 353.5485144605666);
   const bait = math.catchPortfolio("reed_rod", "crumb_bait");
   assert(bait.expectedFishRevenue - initial.expectedFishRevenue < bait.baitPurchaseCoins);
   assert.equal(math.sourceHome("charcoal"), 2); assert.equal(math.sourceHome("resin"), 3); assert.equal(math.sourceHome("tools"), 4);
-  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, 40);
+  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, 42);
   const chargedRoute = readEconomyCatalog();
   chargedRoute.explorations.find(r => r.id === "shore").cost = { coins: 7, items: { wood: 2 } };
   const charged = economicMath(chargedRoute).profile("fish");
-  near(charged.coins, 7 / 3.55); near(charged.slotMinutes.woodlot, 8 / 3.55);
+  near(charged.coins, 7 / (3 + 5500 / 9999)); near(charged.slotMinutes.woodlot, 8 / (3 + 5500 / 9999));
 });
 
 test("hook and bait portfolios apply once per paid trip and never multiply rare draws by quantity", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
-  const best = math.catchPortfolio('willow_rod', 'worm_bait', 'shore', 'silver_hook');
-  const camp = math.catchPortfolio('willow_rod', 'worm_bait', 'shore_camp', 'silver_hook');
+  const best = math.catchPortfolio('starfall_rod', 'firefly_bait', 'shore', 'leviathan_hook');
+  const camp = math.catchPortfolio('starfall_rod', 'firefly_bait', 'shore_camp', 'leviathan_hook');
   assert.equal(best.speciesDrawsPerJob, 1); assert.equal(camp.speciesDrawsPerJob, 1);
-  near(best.probabilities.fish_shark, 13 / 10804);
-  near(best.expectedFishRevenue, 365.394298407997);
+  near(best.probabilities.fish_shark, 61 / 12040);
+  near(best.expectedFishRevenue, 386.34883720930236);
   near(camp.expectedFishRevenue - best.expectedFishRevenue, 6 * catalog.items.find(item => item.id === 'fish').baseSellPrice);
-  assert.equal(best.baitPurchaseCoins, 70); assert.equal(camp.baitPurchaseCoins, 70);
+  assert.equal(best.baitPurchaseCoins, 260); assert.equal(camp.baitPurchaseCoins, 260);
   const report = auditEconomicMath(catalog);
-  assert.equal(report.fishingLoadouts.length, 27);
+  assert.equal(report.fishingLoadouts.length, 125);
   for (const loadout of report.fishingLoadouts.filter(row => row.baitId)) {
     const noBait = report.fishingLoadouts.find(row => row.rodId === loadout.rodId && row.hookId === loadout.hookId && !row.baitId);
     assert.ok(loadout.expectedFishRevenue - noBait.expectedFishRevenue < loadout.baitPurchaseCoins);
@@ -79,4 +79,17 @@ test("rare materials have one shared earned-time clock and no invented NPC price
     assert.equal(p.acquisition.finiteSpecificGuarantee, false);
   }
   assert.equal(report.profiles.filter(profile => profile.acquisition).length, 3);
+});
+
+test("fish references use earned catches and the legendary hook gate rather than an unavailable NPC purchase", () => {
+  const math = economicMath(readEconomyCatalog()), shark = math.profile("fish_shark");
+  assert.equal(shark.sourceHome, 4); assert.equal(shark.referenceHome, 4);
+  assert.equal(shark.catchReference.hookId, "leviathan_hook");
+  near(shark.catchReference.probability, 21 / 10680);
+  near(shark.slotMinutes.mochlik, 45 * 10680 / 21);
+  assert.equal(shark.coins, 0, "the permanent hook startup price is disclosed separately from every catch");
+  assert.equal(shark.catchReference.hookPurchaseCoins, 260000);
+  assert.equal(shark.catchReference.finiteGuarantee, false);
+  assert.equal(math.profile("glow_bait").sourceHome, 2);
+  assert.equal(math.profile("firefly_bait").sourceHome, 3);
 });

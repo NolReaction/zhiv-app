@@ -3,7 +3,7 @@ import { GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
 import type { GameAchievementId } from "./game-api";
 import type { AchievementReward, GameReward, GameRewards } from "./game-rewards-api";
 
-const catalog = rawCatalog as unknown as { version: number; currencyScale: number; dailyMinimumHours: number; daily: GameReward[];
+const catalog = rawCatalog as unknown as { version: number; currencyScale: number; pearlScale: number; dailyMinimumHours: number; daily: GameReward[];
   achievementPearls: Record<GameAchievementId, number[]> };
 export const progressionRewardsCatalog = catalog;
 export type DailyRewardState = { step: number; lastClaimAt: string | null; lastClaimDate: string | null };
@@ -38,14 +38,14 @@ export function achievementRewardRows(earned: (id: GameAchievementId, level: num
     });
   });
 }
-/** This catalog may issue ordinary starter materials only; rare drops have their own rules. */
+/** Daily bundles are authoritative and finite; the finale also grants one relic. */
 export function assertProgressionRewardCatalog(): void {
-  if (catalog.version !== 1 || catalog.currencyScale !== 10 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
+  if (catalog.version !== 1 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
   const ids = Object.keys(GAME_ACHIEVEMENT_TARGETS) as GameAchievementId[];
   if (Object.keys(catalog.achievementPearls).length !== ids.length || ids.some(id => catalog.achievementPearls[id].length !== GAME_ACHIEVEMENT_TARGETS[id].length)) throw new Error("Invalid achievement rewards");
   for (const reward of catalog.daily as GameReward[]) {
     if ([reward.coins, reward.pearls, ...Object.values(reward.items)].some(value => !Number.isSafeInteger(value) || value < 0)
-      || Object.keys(reward.items).some(id => !["wood", "stone", "fiber"].includes(id))) throw new Error("Invalid ordinary daily reward");
+      || Object.keys(reward.items).some(id => !["wood", "stone", "fiber", "ancient_core"].includes(id))) throw new Error("Invalid daily reward");
   }
 }
 assertProgressionRewardCatalog();

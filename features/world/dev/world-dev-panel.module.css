@@ -193,3 +193,18 @@
 /* The map measures its compact HUD, including an active construction indicator. */
 .root[data-world-view="true"] { top: var(--quick-top, calc(80px + env(safe-area-inset-top))); }
 .root[data-world-view="true"] .drawer { height: min(700px, calc(100dvh - var(--quick-top, 80px) - 70px - env(safe-area-inset-bottom))); }
+
+.presetSection { display: grid; gap: 12px; padding: 14px; border: 1px solid #718757; border-radius: 13px; background: linear-gradient(150deg, #31472f, #1e3025); }
+.presetSection h4 { margin: 0 0 4px; font-size: 15px; color: #eff6d7; }
+.presetLevels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.root .drawer .presetLevels button { padding: 5px 2px; font-size: 11px; }
+.presetBuildings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin: 0; }
+.presetBuildings > div { display: flex; justify-content: space-between; gap: 6px; min-width: 0; font-size: 11px; }
+.presetBuildings dt { color: var(--dev-muted); overflow-wrap: anywhere; }
+.presetBuildings dd { margin: 0; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.cheatSection { padding-top: 0; display: block; }
+.cheatSection > summary { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; font-weight: 650; }
+.cheatSection > summary::-webkit-details-marker { display: none; }
+.cheatSection > summary::after { content: "+"; font-size: 20px; color: var(--dev-muted); }
+.cheatSection[open] > summary::after { content: "−"; }
+.cheatTools { display: grid; gap: 10px; padding-bottom: 8px; }

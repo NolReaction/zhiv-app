@@ -38,10 +38,6 @@
 .mapAnchors button[data-kind='workshop'] { --place-color: #ddad7a; }
 .world .mapAnchors button:hover { background: transparent; border: 0; }
 .mapAnchors button:hover::after, .mapAnchors button:focus-visible::after { transform: rotate(45deg) scale(1.25); box-shadow: 0 0 0 3px #14231799, 0 0 10px var(--place-color); }
-.cameraControls { position: absolute; z-index: 4; right: max(12px, env(safe-area-inset-right)); bottom: calc(90px + env(safe-area-inset-bottom)); display: grid; gap: 6px; }
-.cameraControls[hidden] { display: none; }
-.cameraControls button { width: 44px; padding: 8px; background: #132018eb; }
-@media (max-width: 380px) and (max-height: 680px) { .cameraControls { display: flex; bottom: calc(72px + env(safe-area-inset-bottom)); } }
 .away { position: absolute; top: calc(120px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 90px); font-size: .875rem; }
 .objectLayer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .mapAnchors button { touch-action: none; }
@@ -134,7 +130,7 @@
   .balances > span { padding: 0 6px; }
 }
 @media (max-width: 359px) { .collection { grid-template-columns: 1fr; } .balances { padding: 7px 5px; } }
-@media (max-height: 500px) { .cameraControls { bottom: 75px; display: flex; } .away { top: 105px; } .feedback { bottom: 75px; } }
+@media (max-height: 500px) { .away { top: 105px; } .feedback { bottom: 75px; } }
 @media (prefers-reduced-motion: reduce) { .portal[data-state], .sheet[data-state] { animation: none; clip-path: none; } .world *, .sheet * { transition: none !important; } }
 
 .sheetScrim[data-slot='dialog-overlay'] { z-index: 90; background: #06100970; }

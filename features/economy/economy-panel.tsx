@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, Trees } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { PlayerItemIcon } from "./fish-discovery";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
@@ -99,14 +100,14 @@ function Cost({ state, cost, quantity = 1 }: { state: EconomyView; cost: Economy
     {cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins * quantity}><ItemIcon itemId="coins" size={16} />{number(cost.coins * quantity)} монет<span className={styles.sr}>; есть {number(state.wallet.coins)}</span></li>}
     {entries.map(([id, amount]) => {
       const available = state.inventory[id] ?? 0, required = amount * quantity;
-      return <li key={id} data-missing={available < required}><ItemIcon itemId={id} size={18} />{itemName(state, id)}: {number(available)} / {number(required)}<span className={styles.sr}>{available < required ? "; не хватает" : "; достаточно"}</span></li>;
+      return <li key={id} data-missing={available < required}><PlayerItemIcon state={state} itemId={id} size={18} />{itemName(state, id)}: {number(available)} / {number(required)}<span className={styles.sr}>{available < required ? "; не хватает" : "; достаточно"}</span></li>;
     })}
   </ul></div>;
 }
 
 function Rewards({ state, value, quantity = 1 }: { state: EconomyView; value: Record<string, number>; quantity?: number }) {
   return <ul className={styles.rewards} aria-label="Результат">{Object.entries(value).map(([id, amount]) => {
-    return <li key={id}><ItemIcon itemId={id} size={18} />{itemName(state, id)} × {number(amount * quantity)}</li>;
+    return <li key={id}><PlayerItemIcon state={state} itemId={id} size={18} />{itemName(state, id)} × {number(amount * quantity)}</li>;
   })}</ul>;
 }
 
@@ -245,7 +246,7 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
   const occupied = state.jobs.some(job => (job.kind === "production" || job.kind === "construction") && job.targetId === recipe.buildingId);
   const reason = unmetRequirement(state, required) ?? (maximum < 1 ? "Для этого заказа нужно расширить склад" : occupied ? "Здание занято текущим заказом" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null);
   const choices = Array.from({ length: maximum }, (_, index) => index + 1);
-  return <article className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
+  return <article className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
     <Rewards state={state} value={recipe.rewards} quantity={quantity} />
     <RequirementList state={state} required={required} navigate={navigate} />
     <Cost state={state} cost={recipe.cost} quantity={quantity} />
@@ -357,7 +358,7 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
     <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {state.catalog.items.length}</button></div>
     <label className={styles.field} htmlFor={categoryId}>Категория<select id={categoryId} value={category} onChange={event => setCategory(event.target.value)}><option value="all">Все категории</option>{categories.map(value => <option key={value} value={value}>{categoryNames[value] ?? value}</option>)}</select></label>
     {items.length ? <div className={styles.stockGrid}>{items.map(entry => {
-      return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><ItemIcon itemId={entry.id} size={23} /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id] ?? 0)}</small></span></button>;
+      return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><PlayerItemIcon state={state} itemId={entry.id} size={23} /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id] ?? 0)}</small></span></button>;
     })}</div> : <div className={styles.empty}><Package size={32} aria-hidden /><h3>{owned.length ? "В этой категории пока пусто" : "Здесь будут ваши находки"}</h3><p className={styles.muted}>Вырастите урожай, отправьте Мохлика за сырьём или посмотрите источники товаров в каталоге.</p><button onClick={() => navigate("exploration")}>Выбрать вылазку<ArrowRight size={16} aria-hidden /></button><button onClick={() => { setAll(true); setCategory("all"); }}>Посмотреть все товары</button></div>}
     {item && <ItemGuide economy={economy} item={item} navigate={navigate} />}
     {item && item.tradable && (state.inventory[item.id] ?? 0) > 0 && <SellForm key={item.id} economy={economy} item={item} />}
@@ -384,7 +385,7 @@ function OfferCard({ economy, offer, owned, navigate }: { economy: ReadyEconomy;
   const label = `${itemName(state, offer.itemId)} × ${number(offer.quantity)}`;
   const actionLabel = owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : expired ? "Обновите витрину" : !itemUnlocked ? (Number.isFinite(requiredHome) ? `Нужен дом ${requiredHome} ур.` : "Товар пока недоступен") : oldPrice ? "Предложение недоступно" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет";
   return <article className={`${styles.card} ${styles.offerCard}`} role="listitem" aria-label={label} data-market-offer={offer.id}>
-    <div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={offer.itemId} size={22} /></span><div><h3>{label}</h3><p className={styles.offerSeller}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
+    <div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={offer.itemId} size={22} /></span><div><h3>{label}</h3><p className={styles.offerSeller}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
     <div className={styles.offerMeta}><span className={styles.offerPrice}><ItemIcon itemId="coins" size={16} />{number(offer.totalPrice)}<span className={styles.sr}> монет</span></span><span className={styles.offerPriceLabel}>за весь лот</span></div>
     <p className={styles.offerUnit}>{(offer.totalPrice / offer.quantity).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} за шт. · {Number.isFinite(requiredHome) ? `Дом ${requiredHome}+` : "Пока недоступен"}</p>
     {owned && oldPrice && <p className={styles.hint}>Цена ниже нового минимума. Этот лот скрыт от покупателей: верните товар на склад и выставьте заново.</p>}

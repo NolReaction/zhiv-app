@@ -9,13 +9,13 @@ import kotlin.test.*
 
 class ProgressionRewardsTest {
     private fun at(value: String)=Instant.parse(value)
-    @Test fun `catalog pays four hundred thirty finite achievement pearls and ordinary cycle only`() {
-        assertEquals(430L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
+    @Test fun `catalog pays finite achievement pearls and seven valuable bundles`() {
+        assertEquals(2150L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
         assertEquals(21,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
-        assertEquals(500L,ProgressionRewardRules.daily.sumOf { it.coins })
-        assertEquals(30L,ProgressionRewardRules.daily.sumOf { it.pearls })
-        assertEquals(6L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
-        assertEquals(setOf("wood","stone","fiber"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
+        assertEquals(2400L,ProgressionRewardRules.daily.sumOf { it.coins })
+        assertEquals(450L,ProgressionRewardRules.daily.sumOf { it.pearls })
+        assertEquals(23L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
+        assertEquals(setOf("wood","stone","fiber","ancient_core"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
         assertEquals(listOf(0L),ProgressionRewardRules.achievementPearls.getValue("full_collection"))
     }
     @Test fun `next UTC date and twenty hours are independent fences`() {

@@ -44,7 +44,7 @@ export async function loadJourneyRules() {
 
 export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy = {}) {
   const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false, pearlBudget = 0, rareSeed = DEFAULT_JOURNEY_RARE_SEED } = policy;
-  assert(Number.isSafeInteger(pearlBudget) && pearlBudget >= 0 && pearlBudget <= 1_000_000_000 * (catalog.currencyScale ?? 1), "Invalid research pearl budget");
+  assert(Number.isSafeInteger(pearlBudget) && pearlBudget >= 0 && pearlBudget <= 1_000_000_000 * (catalog.pearlScale ?? catalog.currencyScale ?? 1), "Invalid research pearl budget");
   assert(["active16h", "visits2", "visits3"].includes(mode), "Invalid visit policy");
   const rareRandom = createJourneyRareRandom(rareSeed);
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
@@ -278,7 +278,7 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     if (isActive) clock = Math.floor(clock / day) * day + day + 7 * hour;
     else clock = nextVisit(sessionEnd);
   }
-  const report = { catalogVersion: catalog.version, currencyScale: catalog.currencyScale ?? 1, mode, complete: !goal(), elapsedDays: Number(((clock - firstVisit) / day).toFixed(3)),
+  const report = { catalogVersion: catalog.version, currencyScale: catalog.currencyScale ?? 1, pearlScale: catalog.pearlScale ?? catalog.currencyScale ?? 1, mode, complete: !goal(), elapsedDays: Number(((clock - firstVisit) / day).toFixed(3)),
     homeDays: Object.fromEntries([2, 3, 4, 5].map(l => [l, milestones[`home:${l}`] == null ? null : Number(milestones[`home:${l}`].toFixed(3))])),
     commands, saleRevenue: revenue, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
     ...(pearlBudget > 0 ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),

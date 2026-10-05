@@ -63,8 +63,9 @@ test("harvest celebrates on the accepted claim, while rod ownership and resource
   const after = state(1, [], { berries: 14 });
   const accepted = inventoryGainFromReceipt(before, result(after), command("claim_job", harvest.id));
   assert.deepEqual(accepted.items, [{ itemId: "berries", quantity: 12 }]);
-  const purchase = command("buy_fishing_item", "worm_bait", 0, 4);
-  const bait = inventoryGainFromReceipt(state(), result(state(1, [], { worm_bait: 4 })), purchase);
+  const purchase = command("buy_fishing_item", "shop:worm_bait", 0, 4);
+  const offered = { ...state(), fishingShop: { offers: [{ id: "shop:worm_bait", itemId: "worm_bait", kind: "bait", remaining: 5 }] } };
+  const bait = inventoryGainFromReceipt(offered, result(state(1, [], { worm_bait: 4 })), purchase);
   assert.equal(bait.source, "purchase"); assert.deepEqual(bait.items, [{ itemId: "worm_bait", quantity: 4 }]);
   assert.equal(inventoryGainFromReceipt(state(), result(state(1, [], { fish: 99 })), command("buy_fishing_item", "willow_rod")), null);
   assert.equal(inventoryGainFromReceipt(before, result(state(1, [], { berries: 1 })), command("sell", "berries")), null);

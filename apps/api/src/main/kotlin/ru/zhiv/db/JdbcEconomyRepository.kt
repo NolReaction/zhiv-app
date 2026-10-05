@@ -33,13 +33,20 @@ internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow = 
  * conversion fence even if an administrative gameplay reset removes a profile. */
 internal fun ensureEconomyProfile(c: Connection, user: UUID) {
     if (c.economyRows("SELECT 1 FROM economy_profiles WHERE user_id=?", user) { true }.isNotEmpty()) return
-    c.economyUpdate("""
+    val inserted = c.economyUpdate("""
         INSERT INTO economy_profiles(user_id,state)
         SELECT ?,economy_v3_initial_state(CASE WHEN EXISTS(SELECT 1 FROM economy_conversion_audit WHERE user_id=?)
             THEN jsonb_set(coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb),'{resources}','{"sparks":0,"wood":0,"stone":0}'::jsonb)
             ELSE coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb) END)
         ON CONFLICT DO NOTHING
     """.trimIndent(), user, user, user, user)
+    if (inserted == 1 && EconomyRules.catalog.fishing != null) {
+        val state = readEconomyProfile(c, user).state
+        val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
+        // Initial merchant stock belongs to revision zero, just like starter tackle.
+        c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
+            economyJson.encodeToString(state.copy(fishingShop = EconomyFishingShops.create(state, now))), user)
+    }
     c.economyUpdate("""
         INSERT INTO economy_conversion_audit(user_id,legacy_sparks,legacy_wood,legacy_stone,coins_granted,wood_granted,stone_granted)
         SELECT ?,coalesce((w.state->'resources'->>'sparks')::bigint,0),coalesce((w.state->'resources'->>'wood')::bigint,0),
@@ -67,7 +74,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     val row = readEconomyProfile(c, user)
     val s = row.state
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs, s.migration,
-        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression)
+        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, fishingShop = s.fishingShop)
 }
 
 class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository {
@@ -99,7 +106,12 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
         }
     }
 
-    override suspend fun snapshot(sessionHash: ByteArray): EconomyView = transaction(sessionHash) { c, actor, now -> economyView(c, actor.id, actor.publicId, now) }
+    override suspend fun snapshot(sessionHash: ByteArray): EconomyView = transaction(sessionHash) { c, actor, now ->
+        val state = readEconomyProfile(c, actor.id).state
+        if (EconomyRules.catalog.fishing != null && EconomyFishingShops.expired(state.fishingShop, now))
+            saveEconomyProfile(c, actor.id, state.copy(fishingShop = EconomyFishingShops.create(state, now)), recordAwards = false)
+        economyView(c, actor.id, actor.publicId, now)
+    }
 
     override suspend fun command(sessionHash: ByteArray, command: EconomyCommand): EconomyResult {
         validateEconomyCommand(command)

@@ -1,3 +1,4 @@
+import type { EconomySceneJourney } from "./economy-scene-state";
 import type { FixedWorldScene, SiteVisual } from "./tiled/types";
 
 /** Confirmed server jobs only. No costs, output goods or command callbacks enter the scene. */
@@ -49,4 +50,16 @@ export function forestProductionFrames(snapshot: EconomySceneProduction | null |
     used.add(job.stationId);
   }
   return result;
+}
+
+/** The quarry worker is a cosmetic use of an already confirmed production job.
+ * The caller gives real expeditions precedence; this creates no extra work,
+ * inventory or rewards and never extends the server-owned deadline. */
+export function forestProductionJourney(snapshot: EconomySceneProduction | null | undefined, now: number): EconomySceneJourney | null {
+  if (!snapshot || !Number.isFinite(now)) return null;
+  const job = snapshot.jobs.filter(job => job.stationId === "quarry" && job.stationLevel > 0
+    && Number.isInteger(job.stationLevel) && Date.parse(job.startedAt) <= now && Date.parse(job.finishesAt) > now)
+    .sort((a, b) => Date.parse(a.finishesAt) - Date.parse(b.finishesAt) || a.id.localeCompare(b.id))[0];
+  return job ? { id: `production:${job.id}`, routeId: "quarry_work", startedAt: job.startedAt,
+    finishesAt: job.finishesAt, label: "Работает в шахте" } : null;
 }

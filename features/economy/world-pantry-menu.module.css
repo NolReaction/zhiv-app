@@ -84,7 +84,6 @@
 .pantryTabs small { min-width:14px; margin-left:3px; font-size:10px; font-variant-numeric:tabular-nums; color:#758060; }
 .pantryPanel { display:grid; gap:11px; min-width:0; }
 .relics { display:grid; gap:10px; }
-.relicIntro { color:#637154; font-size:11px; line-height:1.5; }
 .relicList { display:grid; gap:8px; }
 .relicCard { --relic-border:#b7ab78; --relic-glow:#c9b97930; border:1px solid var(--relic-border); border-radius:12px; padding:10px; background:linear-gradient(115deg,#f5ead1,#e7e3c7); box-shadow:0 0 12px var(--relic-glow),inset 0 1px #fff6dc; }
 .relicCard[data-relic='moon_crystal'] { --relic-border:#adaabd; --relic-glow:#b1abc13a; background:linear-gradient(115deg,#f3eade,#e1dfdc); }
@@ -97,7 +96,6 @@
 .relicHeading h3 { font-size:12px; color:#475d43; overflow-wrap:anywhere; }
 .relicHeading small { display:block; margin-top:3px; font-size:10px; color:#748167; }
 .relicHeading > strong { color:#718357; font-size:14px; font-variant-numeric:tabular-nums; }
-.relicUses { border-top:1px solid #b8ba9760; padding-top:7px; margin-top:7px !important; font-size:10px; line-height:1.45; color:#687455; }
 .relicActions { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 10px; }
 .relicGuard { display:flex; align-items:center; gap:9px; padding:10px; border:1px solid #b3b689; border-radius:10px; background:#ebe3c7; }
 .relicGuard h3 { font-size:12px; margin-bottom:3px; }

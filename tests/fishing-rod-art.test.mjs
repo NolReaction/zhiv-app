@@ -22,7 +22,7 @@ test("rod identities have different physical sections, grips and reel silhouette
     assert.ok(shapes.some(shape => shape.kind === "ellipse"), "every model has its own reel geometry");
     assert.ok(Object.isFrozen(fishingRodAppearance(rodId)));
   }
-  assert.equal(geometry.size, 3); assert.equal(counts.size, 3);
+  assert.equal(geometry.size, FISHING_ROD_IDS.length); assert.equal(counts.size, FISHING_ROD_IDS.length);
   for (const value of [undefined, null, {}, "unknown", "constructor", "__proto__"]) assert.equal(fishingRodId(value), "reed_rod");
   assert.deepEqual(fishingRodShapes("unknown"), fishingRodShapes("reed_rod"));
 });

@@ -8,6 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
+const { createDailyRewardEntryPrompt } = await vite.ssrLoadModule("/features/game/daily-reward-entry.ts");
 const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
 const { DailyRewardsPanel, dailyRewardWait } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
@@ -179,4 +180,36 @@ test("client API uses private no-store reads and validates receipt echo payload"
   assert.equal(result.requestId, command.requestId); assert.equal(calls[0].path, "/api/v1/game/rewards");
   assert.equal(calls[0].options.credentials, "same-origin"); assert.equal(calls[0].options.cache, "no-store");
   assert.equal(calls[1].path, "/api/v1/game/rewards/claims"); assert.deepEqual(JSON.parse(calls[1].options.body), command);
+});
+
+
+test("unclaimed daily gift prompts on each world entry after a fresh read, never on each poll", async () => {
+  let data = view(), reads = 0, writes = 0;
+  const session = createGameRewardsSession(owner, transport({ get: async () => { reads++; return data; }, send: async command => { writes++; return receipt(command); } }));
+  const stop = session.activate();
+  const firstVisit = createDailyRewardEntryPrompt(owner, session.getSnapshot().readVersion);
+  assert.equal(firstVisit.shouldOpen(session.getSnapshot(), true), false);
+  await session.refresh(); assert.equal(firstVisit.shouldOpen(session.getSnapshot(), true), true);
+  await session.refresh(); assert.equal(firstVisit.shouldOpen(session.getSnapshot(), true), false, "dismissal lasts for this visit");
+  const nextVisit = createDailyRewardEntryPrompt(owner, session.getSnapshot().readVersion);
+  assert.equal(nextVisit.shouldOpen(session.getSnapshot(), true), false, "cached availability may belong to a previous visit");
+  await session.refresh(); assert.equal(nextVisit.shouldOpen(session.getSnapshot(), true), true, "an unclaimed gift returns next visit");
+  const paidVisit = createDailyRewardEntryPrompt(owner, session.getSnapshot().readVersion);
+  data = view(2, false); await session.refresh(); assert.equal(paidVisit.shouldOpen(session.getSnapshot(), true), false);
+  assert.equal(writes, 0); assert.equal(reads, 4); stop();
+});
+
+test("entry prompt waits online for its owner and respects a manually opened gift", () => {
+  const state = { data: view(), readVersion: 2, loading: false, busy: false, pending: null, uncertain: false };
+  const prompt = createDailyRewardEntryPrompt(owner, 1);
+  assert.equal(prompt.shouldOpen(state, false), false);
+  assert.equal(prompt.shouldOpen({ ...state, data: view(1, true, other) }, true), false);
+  assert.equal(prompt.shouldOpen({ ...state, loading: true }, true), false);
+  assert.equal(prompt.shouldOpen({ ...state, busy: true }, true), false);
+  prompt.dismiss(); assert.equal(prompt.shouldOpen(state, true), false);
+  const pending = { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "daily" };
+  const recovery = createDailyRewardEntryPrompt(owner, 1);
+  assert.equal(recovery.shouldOpen({ ...state, data: view(2, false), pending, uncertain: true }, true), true, "a committed but unconfirmed daily gift opens recovery");
+  const achievement = createDailyRewardEntryPrompt(owner, 1);
+  assert.equal(achievement.shouldOpen({ ...state, pending: { ...pending, kind: "achievement" }, uncertain: true }, true), false, "daily prompt does not hijack an achievement receipt");
 });

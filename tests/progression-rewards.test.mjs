@@ -21,12 +21,12 @@ const claim = (p, command, now) => rewards.claimDevProgressionReward(p.token, co
 const profile = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
 const row = (p, id, level, now) => rewards.getDevProgressionRewards(p.token, now).achievementRewards.find(r => r.achievementId === id && r.level === level);
 
-test("shared catalog totals 430 achievement pearls and a modest ordinary seven-step cycle", () => {
+test("shared catalog totals 2150 achievement pearls and valuable seven-step bundles", () => {
   const catalog = rules.progressionRewardsCatalog;
-  assert.equal(Object.values(catalog.achievementPearls).flat().reduce((a, b) => a + b), 430);
+  assert.equal(Object.values(catalog.achievementPearls).flat().reduce((a, b) => a + b), 2150);
   assert.deepEqual(catalog.daily.reduce((sum, r) => ({ coins: sum.coins + r.coins, pearls: sum.pearls + r.pearls,
-    items: sum.items + Object.values(r.items).reduce((a, b) => a + b, 0) }), { coins: 0, pearls: 0, items: 0 }), { coins: 500, pearls: 30, items: 6 });
-  assert.deepEqual([...new Set(catalog.daily.flatMap(r => Object.keys(r.items)))].sort(), ["fiber", "stone", "wood"]);
+    items: sum.items + Object.values(r.items).reduce((a, b) => a + b, 0) }), { coins: 0, pearls: 0, items: 0 }), { coins: 2400, pearls: 450, items: 23 });
+  assert.deepEqual([...new Set(catalog.daily.flatMap(r => Object.keys(r.items)))].sort(), ["ancient_core", "fiber", "stone", "wood"]);
 });
 
 test("UTC midnight and twenty-hour fences both apply independently of player timezone", () => {
@@ -48,7 +48,9 @@ test("opening rewards changes no wallet; seven manual claims wrap and skipped da
   assert.deepEqual(economy.getDevEconomy(p.token, now).wallet, initial.wallet);
   let last;
   for (let step = 1; step <= 7; step++) {
+    const beforeClaim = economy.getDevEconomy(p.token, now);
     last = claim(p, request(p), now);
+    assert.equal(last.acceptedRevision, beforeClaim.revision + 1, "one atomic credit after the merchant window is reconciled");
     assert.equal(last.claim.step, step); assert.equal(last.replayed, false);
     assert.equal(api.gameRewardResultSchema.safeParse(last).success, true);
     assert.throws(() => claim(p, request(p), now + 1000), { code: "DAILY_REWARD_COOLDOWN" });
@@ -56,9 +58,9 @@ test("opening rewards changes no wallet; seven manual claims wrap and skipped da
     assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, step % 7 + 1);
   }
   const final = economy.getDevEconomy(p.token, now);
-  assert.equal(final.wallet.coins - initial.wallet.coins, 500); assert.equal(final.wallet.pearls - initial.wallet.pearls, 30);
-  for (const id of ["wood", "stone", "fiber"]) assert.equal((final.inventory[id] ?? 0) - (initial.inventory[id] ?? 0), 2);
-  assert.equal(final.revision, initial.revision + 7); assert.equal(last.rewards.daily.step, 1);
+  assert.equal(final.wallet.coins - initial.wallet.coins, 2400); assert.equal(final.wallet.pearls - initial.wallet.pearls, 450);
+  for (const [id, amount] of Object.entries({ wood: 8, stone: 8, fiber: 6, ancient_core: 1 })) assert.equal((final.inventory[id] ?? 0) - (initial.inventory[id] ?? 0), amount);
+  assert.ok(final.revision >= initial.revision + 7); assert.equal(last.rewards.daily.step, 1);
 });
 
 test("lost-response replay preserves original reward, date and accepted revision alongside fresh economy", () => {
@@ -90,17 +92,17 @@ test("full storage failure consumes neither daily step nor request and can retry
   assert.throws(() => claim(p, command, later), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(value.state, before); assert.equal(value.revision, revision);
   assert.equal(rewards.getDevProgressionRewards(p.token, later).daily.step, 2);
-  value.state.inventory.wood -= 2;
+  value.state.inventory.wood -= 3;
   const accepted = claim(p, command, later);
   assert.equal(accepted.replayed, false); assert.equal(accepted.claim.step, 2);
 });
 
 test("wallet limit failure does not lose the gift and uses current inventory instead of a stale snapshot", () => {
   const p = player(), now = at("2026-10-05T12:00:00Z"); rewards.getDevProgressionRewards(p.token, now);
-  const value = profile(p), command = request(p); value.state.wallet.coins = 10_000_000_000;
+  const value = profile(p), command = request(p), revision = value.revision; value.state.wallet.coins = 10_000_000_000;
   assert.throws(() => claim(p, command, now), { code: "ECONOMY_CAPACITY" });
-  assert.equal(value.revision, 0); assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, 1);
-  value.state.wallet.coins -= 200; assert.equal(claim(p, command, now).economy.wallet.coins, 10_000_000_000);
+  assert.equal(value.revision, revision); assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, 1);
+  value.state.wallet.coins -= 300; assert.equal(claim(p, command, now).economy.wallet.coins, 10_000_000_000);
 });
 
 test("earned achievement tiers pay manually once and duplicate keys cannot reopen payout", () => {
@@ -114,7 +116,7 @@ test("earned achievement tiers pay manually once and duplicate keys cannot reope
   assert.equal(row(p, "first_path", 1, now).eligible, true);
   assert.equal(economy.getDevEconomy(p.token, now).wallet.pearls, initial.wallet.pearls, "earning is not an automatic payout");
   const command = request(p, { kind: "achievement", achievementId: "first_path", level: 1 }), first = claim(p, command, now);
-  assert.equal(first.claim.reward.pearls, 10); assert.equal(first.economy.wallet.pearls, initial.wallet.pearls + 10);
+  assert.equal(first.claim.reward.pearls, 50); assert.equal(first.economy.wallet.pearls, initial.wallet.pearls + 50);
   assert.equal(row(p, "first_path", 1, now).claimedAt, first.claim.claimedAt);
   assert.equal(claim(p, command, now + 5000).replayed, true);
   assert.throws(() => claim(p, request(p, { kind: "achievement", achievementId: "first_path", level: 1 }), now), { code: "ACHIEVEMENT_REWARD_CLAIMED" });
@@ -142,7 +144,7 @@ test("legacy finite ownership is grandfathered while obsolete full_collection ha
   ids.awardDevGameTaps(p.me.user.publicId, 1000, now);
   const own = row(p, "thousand_taps", 1, now); assert.equal(own.eligible, true);
   const hidden = row(p, "full_collection", 1, now); assert.equal(hidden.pearls, 0); assert.equal(hidden.blockedReason, "no_reward");
-  assert.equal(claim(p, request(p, { kind: "achievement", achievementId: "thousand_taps", level: 1 }), now).claim.reward.pearls, 10);
+  assert.equal(claim(p, request(p, { kind: "achievement", achievementId: "thousand_taps", level: 1 }), now).claim.reward.pearls, 50);
 });
 
 test("reward UUID fences are shared with ordinary economy commands in both directions", () => {
@@ -192,8 +194,27 @@ test("materials reserved in active market lots still occupy storage during a dai
   const pending = request(p), later = now + 86400_000;
   assert.throws(() => claim(p, pending, later), { code: "ECONOMY_STORAGE_FULL" });
   economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
-    expectedRevision: value.revision, action: "sell", targetId: "wood", quantity: 2, totalPrice: 0 }, later);
+    expectedRevision: value.revision, action: "sell", targetId: "wood", quantity: 3, totalPrice: 0 }, later);
   const received = claim(p, pending, later);
   assert.equal(received.claim.step, 2); assert.equal(received.economy.storage.overflow, 0);
   assert.equal(received.economy.storage.reserved, 2, "gift did not consume or ignore escrow");
+});
+
+
+test("final gift credits its relic and currencies atomically, and exact replay never repeats them", () => {
+  const p = player(), start = at("2026-10-05T12:00:00Z");
+  for (let day = 0; day < 6; day++) claim(p, request(p), start + day * 86400_000);
+  const now = start + 6 * 86400_000, command = request(p), value = profile(p);
+  value.state.inventory = { wood: economy.getDevEconomy(p.token, now).storage.capacity };
+  const wallet = structuredClone(value.state.wallet);
+  assert.throws(() => claim(p, command, now), { code: "ECONOMY_STORAGE_FULL" });
+  assert.deepEqual(value.state.wallet, wallet); assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, 7);
+  value.state.inventory.wood--;
+  const paid = claim(p, command, now);
+  assert.equal(paid.economy.inventory.ancient_core, 1);
+  assert.deepEqual(paid.economy.wallet, { coins: wallet.coins + 500, pearls: wallet.pearls + 300 });
+  const replay = claim(p, command, now + 1000);
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, paid.claim);
+  assert.deepEqual(replay.economy.wallet, paid.economy.wallet); assert.deepEqual(replay.economy.inventory, paid.economy.inventory);
+  assert.equal(replay.rewards.daily.step, 1);
 });

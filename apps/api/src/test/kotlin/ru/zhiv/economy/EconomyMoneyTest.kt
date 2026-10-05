@@ -14,7 +14,7 @@ class EconomyMoneyTest {
             jobs = listOf(job), migration = EconomyMigration(coinsGranted = 7, woodGranted = 0, stoneGranted = 0), completedExplorations = 19,
             progression = EconomyProgression(routes = mapOf("forest" to 3L), recipes = mapOf("make_rope" to 2L)))
         val current = EconomyMoney.redenominate(old)
-        assertEquals(EconomyWallet(1230, 40), current.wallet)
+        assertEquals(EconomyWallet(1230, 200), current.wallet)
         assertEquals(70L, current.migration.coinsGranted)
         assertEquals(job.copy(cost = job.cost.copy(coins = 1500)), current.jobs.single())
         assertEquals(old.inventory, current.inventory)
@@ -26,6 +26,21 @@ class EconomyMoneyTest {
         assertEquals(-40L, EconomyMoney.nominal(-4))
         assertEquals(-40L, EconomyMoney.nominal(-40, 10))
         assertFailsWith<IllegalArgumentException> { EconomyMoney.nominal(1, 2) }
+    }
+
+    @Test fun `V40 markers convert pearls only and allow the complete previous balance limit`() {
+        val old = EconomyRules.initial().copy(currencyScale = 10, pearlScale = null,
+            wallet = EconomyWallet(1230, 10_000_000_000L))
+        val current = EconomyMoney.redenominate(old)
+        assertEquals(EconomyWallet(1230, ECONOMY_MAX_PEARLS), current.wallet)
+        assertEquals(50, current.pearlScale)
+        assertEquals(old.migration, current.migration)
+        assertSame(current, EconomyMoney.redenominate(current))
+        assertEquals(100L, EconomyMoney.pearls(2, 1))
+        assertEquals(100L, EconomyMoney.pearls(20, 10))
+        assertEquals(100L, EconomyMoney.pearls(100, 50))
+        assertFailsWith<IllegalArgumentException> { EconomyMoney.pearls(10, 5) }
+        assertFailsWith<IllegalArgumentException> { EconomyMoney.nominal(10, 50) }
     }
 
     @Test fun `NPC packet rounding preserves old quantization rather than adding fractional old coins`() {
@@ -40,13 +55,13 @@ class EconomyMoneyTest {
         assertEquals(1_000_000_000L, ECONOMY_MAX_ITEMS)
     }
 
-    @Test fun `construction charges ten nominal pearls per the same started five minute interval`() {
+    @Test fun `construction charges fifty nominal pearls per the same started five minute interval`() {
         val now = Instant.parse("2026-10-05T00:00:00Z")
         val job = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 2,
             startedAt = now.toString(), finishesAt = now.toString())
         for ((milliseconds, retiredPearls) in listOf(-1L to 0L, 0L to 0L, 1L to 1L,
             299_999L to 1L, 300_000L to 1L, 300_001L to 2L, 900_000L to 3L))
-            assertEquals(retiredPearls * 10, EconomyRules.constructionSpeedupPrice(
+            assertEquals(retiredPearls * 50, EconomyRules.constructionSpeedupPrice(
                 job.copy(finishesAt = now.plusMillis(milliseconds).toString()), now))
     }
 }

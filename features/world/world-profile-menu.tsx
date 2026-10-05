@@ -1,7 +1,7 @@
 "use client";
 
 import { Heart, Leaf, Search, Sprout } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -48,12 +48,23 @@ function memoryMessage(observation: ForestObservation) {
 /** Content for the profile popover; the map owns its frame, focus and dismissal. */
 export function WorldProfileMenu({ presenceKey, ...props }: Props) {
   const observation = useForestObservation(presenceKey);
-  return <WorldProfileContent {...props} observation={observation} onTakeOver={() => takeOverForestSession(presenceKey)} />;
+  const [callPulse, setCallPulse] = useState(0);
+  const callTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (callTimer.current) clearTimeout(callTimer.current); }, []);
+  const call = props.onCall ? () => {
+    if (callTimer.current) clearTimeout(callTimer.current);
+    setCallPulse(value => value + 1);
+    try { navigator.vibrate?.(12); } catch { /* Visual feedback works without device vibration. */ }
+    props.onCall?.();
+    callTimer.current = setTimeout(() => setCallPulse(0), 1200);
+  } : undefined;
+  return <WorldProfileContent {...props} observation={observation} onCall={call} callPulse={callPulse} onTakeOver={() => takeOverForestSession(presenceKey)} />;
 }
 
-export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver, rewards }: Omit<Props, "presenceKey"> & {
+export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver, rewards, callPulse = 0 }: Omit<Props, "presenceKey"> & {
   observation: ForestObservation | null;
   onTakeOver?: () => void;
+  callPulse?: number;
 }) {
   const state = world.snapshot?.state;
   const houseLevel = economy.snapshot?.buildings.home ?? state?.houseLevel;
@@ -98,8 +109,8 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
       {sync?.canTakeOver && onTakeOver && <button type="button" className={styles.action} onClick={onTakeOver}>Продолжить здесь</button>}
     </div>}
     {(rewards || onCall) && <div className={styles.actions}>{rewards}
-      {onCall && <button type="button" className={styles.action} disabled={!observation || observation.paused} onClick={onCall}>
-        <Heart size={15} aria-hidden="true" />Позвать Мохлика
+      {onCall && <button type="button" className={styles.action} data-called={callPulse > 0 || undefined} disabled={!observation || observation.paused} onClick={onCall}>
+        <Heart key={callPulse} size={15} aria-hidden="true" />{callPulse > 0 ? "Мохлик, иди сюда!" : "Позвать Мохлика"}
       </button>}
     </div>}
   </div>;

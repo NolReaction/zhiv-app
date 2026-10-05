@@ -30,7 +30,7 @@ test('three special materials are barter-only stacks used by later homes, never 
   assert.equal(read(p).storage.used, 6);
   for (const id of spec.itemIds) {
     assert.throws(() => issue(p, 'sell', id), { code: 'ECONOMY_ITEM' });
-    assert.throws(() => issue(p, 'buy_fishing_item', id), { code: 'ECONOMY_FISHING_ITEM' });
+    assert.throws(() => issue(p, 'buy_fishing_item', id), { code: 'ECONOMY_FISHING_SHOP_CHANGED' });
   }
 });
 

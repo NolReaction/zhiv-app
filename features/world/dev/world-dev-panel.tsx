@@ -131,13 +131,15 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
   </details>;
 }
 
-const DEV_TABS = [["mochlik", "Мохлик"], ["plesk", "Плёска"], ["world", "Мир"], ["buildings", "Здания"], ["cheats", "Читы"], ["ai", "AI"], ["debug", "Отладка"]] as const;
-const MOCHLIK_TABS = [["scenarios", "Сценарии"], ["scenes", "Сценки"], ["activities", "Занятия"], ["animation", "Анимации"], ["appearance", "Внешность"]] as const;
-const DEBUG_TABS = [["overlays", "Разметка"], ["routes", "Пути"], ["app", "Приложение"]] as const;
+const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
+const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"]] as const;
+const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
+const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
+type SceneTab = typeof SCENE_TABS[number][0];
 type DebugTab = typeof DEBUG_TABS[number][0];
-type DevPage = Exclude<DevTab, "mochlik" | "debug"> | MochlikTab | DebugTab;
+type DevPage = "cheats" | MochlikTab | SceneTab | DebugTab;
 
 /** Automatic activation: arrow keys move within this tablist; Tab enters its panel. */
 export function WorldDevTabs<T extends string>({ id, label, tabs, selected, onSelect, secondary = false }: {
@@ -171,12 +173,13 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<DevTab>("mochlik");
+  const [tab, setTab] = useState<DevTab>("cheats");
   const [mochlikTab, setMochlikTab] = useState<MochlikTab>("scenes");
+  const [sceneTab, setSceneTab] = useState<SceneTab>("scenarios");
   const [debugTab, setDebugTab] = useState<DebugTab>("overlays");
   const [selectedPose, setSelectedPose] = useState<PixelPose>("greet");
   const scrollPositions = useRef<Partial<Record<DevPage, number>>>({});
-  const page: DevPage = tab === "mochlik" ? mochlikTab : tab === "debug" ? debugTab : tab;
+  const page: DevPage = tab === "mochlik" ? mochlikTab : tab === "debug" ? debugTab : tab === "scene" ? sceneTab : tab;
   const [lastAction, setLastAction] = useState<ManualAction | null>(null);
   const [feedback, setFeedback] = useState("");
   const observation = useForestObservation(active && (open || lastAction?.kind === "life"
@@ -282,29 +285,30 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
     {!open && lastAction && <p className={styles.closedFeedback} role="status">{repeatUnavailable ?? feedback}</p>}
     {open && <section id={drawerId} className={styles.drawer} aria-labelledby={titleId}>
       <header className={styles.header}>
-        <div><h2 id={titleId}>Проверка леса</h2><p>Вид сцены и тестовое хозяйство</p></div>
+        <div><h2 id={titleId}>Мастерская DEV</h2><p>{tab === "cheats" ? "Тестовый профиль · изменения сохраняются" : tab === "debug" ? "Диагностика мира и приложения" : "Предпросмотр · без выдачи наград"}</p></div>
         <button type="button" className={styles.headerButton} onClick={() => { worldDevStore.reset(); setLastAction(null); setFeedback("Все настройки вида сброшены"); }}
           title="Вернуть настройки вида. Память Мохлика и ресурсы сохранятся."><RotateCcw size={15} aria-hidden />Сброс вида</button>
         <button ref={closeButton} type="button" className={styles.headerButton} onClick={close} aria-label="Закрыть панель разработчика"><X size={16} aria-hidden />Закрыть</button>
       </header>
-      <div className={styles.globalControls}>
+      {tab !== "cheats" && <div className={styles.globalControls}>
         <button type="button" data-paused={state.paused} aria-label={state.paused ? "Продолжить сцену" : "Пауза сцены"} onClick={() => change({ paused: !state.paused }, state.paused ? "Сцена продолжена" : "Сцена на паузе")}>
           {state.paused ? "Продолжить" : "Пауза"}
         </button>
         <label className={styles.timeControl}><span>Свет</span><select aria-label="Свет" value={state.timeOfDay} onChange={event => change({ timeOfDay: event.target.value as WorldDevState["timeOfDay"] })}>
           {TIME.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select></label>
-      </div>
+      </div>}
       <WorldDevTabs id={id} label="Разделы DEV" tabs={DEV_TABS} selected={tab} onSelect={setTab} />
       {DEV_TABS.map(([section]) => <div key={section} role="tabpanel" id={`${id}-panel-${section}`} aria-labelledby={`${id}-tab-${section}`}
         hidden={tab !== section} className={styles.workspace}>
         {tab === section && <>
-          {tab === "mochlik" && <WorldDevTabs id={`${id}-mochlik`} label="Проверки Мохлика" tabs={MOCHLIK_TABS} selected={mochlikTab} onSelect={setMochlikTab} secondary />}
+          {tab === "mochlik" && <WorldDevTabs id={`${id}-mochlik`} label="Персонажи и движения" tabs={MOCHLIK_TABS} selected={mochlikTab} onSelect={setMochlikTab} secondary />}
+          {tab === "scene" && <WorldDevTabs id={`${id}-scene`} label="Сцена и окружение" tabs={SCENE_TABS} selected={sceneTab} onSelect={setSceneTab} secondary />}
           {tab === "debug" && <WorldDevTabs id={`${id}-debug`} label="Инструменты отладки" tabs={DEBUG_TABS} selected={debugTab} onSelect={setDebugTab} secondary />}
-          {(tab === "mochlik" ? MOCHLIK_TABS : tab === "debug" ? DEBUG_TABS : [[page, ""]] as const).map(([subpage]) => <div key={subpage}
-            role={tab === "mochlik" || tab === "debug" ? "tabpanel" : "region"}
-            id={tab === "mochlik" || tab === "debug" ? `${id}-${tab}-panel-${subpage}` : undefined}
-            aria-labelledby={tab === "mochlik" || tab === "debug" ? `${id}-${tab}-tab-${subpage}` : `${id}-tab-${tab}`}
+          {(tab === "mochlik" ? MOCHLIK_TABS : tab === "debug" ? DEBUG_TABS : tab === "scene" ? SCENE_TABS : [[page, ""]] as const).map(([subpage]) => <div key={subpage}
+            role={tab !== "cheats" ? "tabpanel" : "region"}
+            id={tab !== "cheats" ? `${id}-${tab}-panel-${subpage}` : undefined}
+            aria-labelledby={tab !== "cheats" ? `${id}-${tab}-tab-${subpage}` : `${id}-tab-${tab}`}
             hidden={page !== subpage} className={styles.body} tabIndex={page === subpage ? 0 : -1}
             ref={node => { if (node && page === subpage) node.scrollTop = scrollPositions.current[subpage] ?? 0; }}
             onScroll={event => { scrollPositions.current[subpage] = event.currentTarget.scrollTop; }}>

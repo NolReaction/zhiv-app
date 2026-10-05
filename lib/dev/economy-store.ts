@@ -1,6 +1,6 @@
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash, randomInt } from "node:crypto";
-import { ECONOMY_CURRENCY_SCALE, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/money";
+import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/money";
 import { marketListingEligible, marketMinimumPrice } from "@/features/economy/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney } from "@/lib/dev/world-store";
@@ -8,8 +8,10 @@ import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandS
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
 import { inheritEconomyCollection } from "@/features/economy/collection-progress";
+import { createFishingShop, fishingShopExpired } from "@/features/economy/fishing-shop";
 import { fishingState } from "@/features/economy/fishing";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
+import { economyDevSettlement } from "@/features/economy/dev-presets";
 import { barterCommandSchema, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/barter-model";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number };
@@ -46,6 +48,7 @@ function profile(token: string | undefined, now: number) {
   if (!value) {
     const legacy = consumeDevLegacyEconomy(token, now);
     value = { revision: 0, state: newEconomyState(legacy), receipts: new Map(), legacyJourneys: new Set() };
+    if (economyCatalog.fishing) value.state.fishingShop = createFishingShop(value.state, now, randomInt);
     store().profiles.set(owner, value);
   }
   normalizeCurrency(value);
@@ -56,7 +59,7 @@ function profile(token: string | undefined, now: number) {
   return { owner, value };
 }
 function normalizeCurrency(value: Profile) {
-  if (value.state.currencyScale === ECONOMY_CURRENCY_SCALE) return;
+  if (value.state.currencyScale === ECONOMY_CURRENCY_SCALE && value.state.pearlScale === ECONOMY_PEARL_SCALE) return;
   const next = redenominateEconomyState(value.state);
   bump(value); value.state = next;
 }
@@ -64,8 +67,8 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   const state = structuredClone(value.state);
   delete state.fishingCastSeed;
   delete state.rareDropState;
-  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE,
-    storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
+  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
+    fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
@@ -100,7 +103,7 @@ function escrowItems(owner: string, excluding?: string): Record<string, number> 
 }
 function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number): EconomyResult {
   value.state = next; bump(value);
-  if (!["grant_currency", "grant_item", "grant_upgrade_cost", "set_building_level", "finish_jobs"].includes(command.action))
+  if (!["grant_currency", "grant_item", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"].includes(command.action))
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
     signature: JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]),
@@ -112,6 +115,10 @@ export function initializeDevEconomy(token: string | undefined, now = Date.now()
 export function getDevEconomy(token: string | undefined, now = Date.now(), expectedOwner?: string): EconomyView {
   const { owner, value } = profile(token, now);
   if (expectedOwner != null && owner !== expectedOwner) fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите хозяйство");
+  if (economyCatalog.fishing && fishingShopExpired(value.state.fishingShop, now)) {
+    const shop = createFishingShop(value.state, now, randomInt);
+    bump(value); value.state.fishingShop = shop;
+  }
   return view(owner, value, now);
 }
 export function commandDevEconomy(token: string | undefined, input: EconomyCommand, now = Date.now()): EconomyResult {
@@ -138,10 +145,17 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
   const next: EconomyState = structuredClone(value.state);
   let message: string;
   switch (command.action) {
+    case "apply_settlement": {
+      if (next.jobs.length) return fail("ECONOMY_BUILDING_BUSY", "Сначала завершите или отмените задания и заберите результаты");
+      next.buildings = economyDevSettlement(command.quantity);
+      message = `DEV: дом ${command.quantity} и все доступные ему улучшения готовы`;
+      break;
+    }
     case "grant_currency": {
       const currency = command.targetId as "coins" | "pearls";
-      if (command.quantity % ECONOMY_CURRENCY_SCALE !== 0) return fail("INVALID_ECONOMY_COMMAND", "Количество валюты должно быть кратно 10", 400);
-      if (next.wallet[currency] + command.quantity > ECONOMY_MAX_BALANCE) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
+      const quantum = currency === "pearls" ? ECONOMY_PEARL_SCALE : ECONOMY_CURRENCY_SCALE;
+      if (command.quantity % quantum !== 0) return fail("INVALID_ECONOMY_COMMAND", `Количество валюты должно быть кратно ${quantum}`, 400);
+      if (next.wallet[currency] + command.quantity > (currency === "pearls" ? ECONOMY_MAX_PEARLS : ECONOMY_MAX_BALANCE)) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
       next.wallet[currency] += command.quantity;
       message = `DEV: выдано ${command.quantity} ${currency === "coins" ? "монет" : "жемчужин"}`;
       break;
@@ -434,7 +448,7 @@ export function creditDevProgressionReward(token: string | undefined, ownerPubli
   if (value.receipts.has(requestId.toLowerCase())) fail("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия");
   const next = structuredClone(value.state);
   for (const currency of ["coins", "pearls"] as const) {
-    if (!Number.isSafeInteger(reward[currency]) || reward[currency] < 0 || next.wallet[currency] + reward[currency] > ECONOMY_MAX_BALANCE)
+    if (!Number.isSafeInteger(reward[currency]) || reward[currency] < 0 || next.wallet[currency] + reward[currency] > (currency === "pearls" ? ECONOMY_MAX_PEARLS : ECONOMY_MAX_BALANCE))
       fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
     next.wallet[currency] += reward[currency];
   }

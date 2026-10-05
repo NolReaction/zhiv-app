@@ -3,7 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { PackageCheck } from "lucide-react";
-import { ItemIcon } from "@/features/items/item-icon";
+import { PlayerItemIcon } from "@/features/economy/fish-discovery";
+import type { EconomyView } from "@/features/economy/model";
 import type { EconomyController } from "@/features/economy/use-economy";
 import type { InventoryGain } from "@/features/economy/inventory-gain";
 import { createInventoryGainPlayback } from "./inventory-gain-playback";
@@ -15,14 +16,14 @@ const subscribeClient = () => () => {};
 const clientSnapshot = () => true;
 const serverSnapshot = () => false;
 
-export function InventoryGainContents({ event, names }: { event: InventoryGain; names: Readonly<Record<string, string>> }) {
+export function InventoryGainContents({ event, names, state }: { event: InventoryGain; names: Readonly<Record<string, string>>; state?: EconomyView | null }) {
   const itemName = (itemId: string) => names[itemId] ?? itemId;
   return <>
     <span className={styles.heading}><PackageCheck size={14} aria-hidden="true" />В кладовую</span>
     <div className={styles.items}>
       {event.items.slice(0, VISIBLE_ITEMS).map((item, index) => <span key={item.itemId} className={styles.item}
         data-inventory-item={item.itemId} data-quantity={item.quantity} style={{ "--gain-delay": `${index * 75}ms` } as CSSProperties}>
-        <span className={styles.icon}><ItemIcon itemId={item.itemId} size={27} /></span>
+        <span className={styles.icon}><PlayerItemIcon state={state} itemId={item.itemId} size={27} /></span>
         <span className={styles.name}>{itemName(item.itemId)}</span><strong>+{item.quantity.toLocaleString("ru-RU")}</strong>
       </span>)}
     </div>
@@ -86,7 +87,7 @@ export function WorldInventoryGains({ economy, ready = true, hud }: {
     {gains.filter(event => event.ownerPublicId === owner).map(event => <div key={event.id}
       ref={element => { if (element) elements.current.set(event.id, element); else elements.current.delete(event.id); }}
       hidden className={styles.effect} data-inventory-gain={event.id} data-inventory-owner={event.ownerPublicId} aria-atomic="true">
-      <InventoryGainContents event={event} names={names} />
+      <InventoryGainContents event={event} names={names} state={economy.snapshot} />
     </div>)}
   </div>, document.body);
 }

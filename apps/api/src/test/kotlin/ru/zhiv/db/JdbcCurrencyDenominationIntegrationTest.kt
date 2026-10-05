@@ -59,7 +59,7 @@ class JdbcCurrencyDenominationIntegrationTest {
             }
             DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
             val persisted = source.connection.use { readEconomyProfile(it, seller.id) }
-            assertEquals(8L, persisted.revision)
+            assertEquals(9L, persisted.revision)
             assertEquals(EconomyMoney.redenominate(old), persisted.state)
             source.connection.use { c ->
                 assertEquals(Triple(-3L, 1L, 1), c.economyRows("SELECT coins,pearls,currency_scale FROM economy_ledger WHERE user_id=? AND source_key='historic'", seller.id) {
@@ -73,14 +73,14 @@ class JdbcCurrencyDenominationIntegrationTest {
             val economy = JdbcEconomyRepository(source)
             val replay = economy.command(sellerToken.hash, ordinary)
             assertTrue(replay.replayed); assertEquals(7L, replay.acceptedRevision)
-            assertEquals(EconomyWallet(1230, 40), replay.state.wallet)
+            assertEquals(EconomyWallet(1230, 200), replay.state.wallet)
             assertEquals(listOf(job.copy(cost = job.cost.copy(coins = 1500))), replay.state.jobs)
             assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
                 economy.command(sellerToken.hash, ordinary.copy(requestId = UUID.randomUUID().toString())) }.code)
             val paid = JdbcProgressionRewardsRepository(source).claim(sellerToken.hash, rewardRequest)
             assertTrue(paid.replayed); assertEquals(7L, paid.acceptedRevision)
-            assertEquals(originalGift.copy(reward = ProgressionReward(pearls = 10)), paid.claim)
-            assertEquals(EconomyWallet(1230, 40), paid.economy.wallet)
+            assertEquals(originalGift.copy(reward = ProgressionReward(pearls = 50)), paid.claim)
+            assertEquals(EconomyWallet(1230, 200), paid.economy.wallet)
             val market = JdbcEconomyMarketRepository(source)
             val visible = market.market(buyerToken.hash).listings.single()
             assertEquals(60L, visible.totalPrice)

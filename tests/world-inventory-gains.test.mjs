@@ -64,7 +64,7 @@ test("account switches hide old cards, ignore foreign events and invalidate dela
 test("cards use the shared item drawings and exact positive quantities, with bounded rows and accessible overflow", () => {
   const event = { ...gain("claim"), items: [{ itemId: "fish", quantity: 3 }, { itemId: "wood", quantity: 2 },
     { itemId: "berries", quantity: 12 }, { itemId: "stone", quantity: 4 }] };
-  const html = renderToStaticMarkup(createElement(InventoryGainContents, { event,
+  const html = renderToStaticMarkup(createElement(InventoryGainContents, { event, state: { fishing: { catches: { fish: 3 } } },
     names: { fish: "Речная рыба", wood: "Древесина", berries: "Ягоды", stone: "Камень" } }));
   assert.match(html, /В кладовую/); assert.match(html, /data-item-icon="fish"/);
   assert.match(html, /data-inventory-item="fish" data-quantity="3"/); assert.match(html, /<strong>\+3<\/strong>/);
@@ -90,4 +90,15 @@ test("the fixed upper overlay clears modal stacks, never catches input and remov
   assert.match(world, /<WorldInventoryGains\s+key=\{ownerPublicId\}\s+economy=\{economy\}\s+hud=\{topHud\}\s*\/>/);
   assert.match(css, /\.effect\[hidden\] \{ display: none; \}/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*animation: none[\s\S]*\.glints \{ display: none/);
+});
+
+
+test("purchase feedback cannot reveal fish art before a personal catch", () => {
+  const event = { ...gain("bought"), source: "purchase" };
+  const props = { event, names: { fish: "Речная рыба" }, state: { fishing: { catches: {} } } };
+  const hidden = renderToStaticMarkup(createElement(InventoryGainContents, props));
+  assert.match(hidden, /data-hidden-fish="true"/); assert.doesNotMatch(hidden, /data-item-icon="fish"/);
+  props.state.fishing.catches.fish = 1;
+  const caught = renderToStaticMarkup(createElement(InventoryGainContents, props));
+  assert.match(caught, /data-item-icon="fish"/); assert.doesNotMatch(caught, /data-hidden-fish/);
 });

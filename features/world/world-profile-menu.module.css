@@ -28,3 +28,10 @@
 .action:disabled { opacity: .55; cursor: default; box-shadow: none; }
 @media (max-width: 360px) { .profile { gap: 12px; } .feelings > div { padding: 8px; } }
 @media (forced-colors: active) { .mood, .feelings > div, .levelIcon, .action { border-color: ButtonText; } }
+
+.action { transition: transform 100ms ease, box-shadow 100ms ease, background-color 160ms ease; }
+.action:active:enabled { transform: translateY(2px) scale(.985); box-shadow: inset 0 1px 3px #1e372d55; }
+.action[data-called] { background: #60784b; border-color: #425d39; box-shadow: inset 0 1px #ffffff30, 0 2px 0 #304832; }
+.action[data-called] > svg { animation: callPulse 420ms ease-out; fill: #e4db9a; color: #e4db9a; }
+@keyframes callPulse { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.32); } 70% { transform: scale(.95); } }
+@media (prefers-reduced-motion: reduce) { .action { transition: none; } .action:active:enabled { transform: none; } .action[data-called] > svg { animation: none; } }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { economyCatalog, type EconomyJob } from "@/features/economy/model";
+import { economyDevSettlement } from "@/features/economy/dev-presets";
 import type { EconomyController } from "@/features/economy/use-economy";
 import type { WorldController } from "../use-world";
 import styles from "./world-dev-panel.module.css";
@@ -14,6 +15,7 @@ type JobFilter = typeof JOB_FILTERS[number][0];
 export function WorldDevCheats({ world, economy, previewBuildings = false, onShowAccountBuildings }: {
   world: WorldController; economy?: EconomyController; previewBuildings?: boolean; onShowAccountBuildings?: () => void;
 }) {
+  const [presetLevel, setPresetLevel] = useState(2);
   const [itemId, setItemId] = useState("wood");
   const [amount, setAmount] = useState("100");
   const [buildingId, setBuildingId] = useState("home");
@@ -21,6 +23,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   const [jobFilter, setJobFilter] = useState<JobFilter>("all");
   const snapshot = economy?.snapshot;
   const catalog = snapshot?.catalog ?? economyCatalog;
+  const preset = economyDevSettlement(presetLevel, catalog);
   const permitted = process.env.NODE_ENV === "development" && world.snapshot?.devTools === true && economy?.devAvailable === true;
   const cooldown = Boolean(economy && economy.retryAt > economy.now);
   const locked = !permitted || !snapshot || !economy || economy.busy || economy.uncertain || cooldown;
@@ -60,20 +63,39 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
     {economy && (economy.uncertain || !snapshot) && <button type="button" disabled={economy.busy || cooldown}
       onClick={() => { if (!economy.busy && !cooldown) void economy.retry(); }}>{economy.uncertain ? "Проверить результат" : "Загрузить хозяйство"}</button>}
 
-    <section className={styles.cheatSection} aria-label="Валюта">
-      <h4>Валюта</h4>
+    <section className={styles.presetSection} aria-label="Готовое поселение">
+      <div><h4>Готовое поселение</h4><p className={styles.hint}>Дом и все доступные ему улучшения на карте — одной командой.</p></div>
+      <div className={styles.presetLevels} role="group" aria-label="Уровень дома для сценария">
+        {catalog.buildings.find(entry => entry.id === "home")!.levels.map(entry => <button type="button" key={entry.level}
+          aria-pressed={presetLevel === entry.level} onClick={() => setPresetLevel(entry.level)}>Дом {entry.level}</button>)}
+      </div>
+      <dl className={styles.presetBuildings}>{catalog.buildings.map(entry => <div key={entry.id}>
+        <dt>{entry.name}</dt><dd>{preset[entry.id] ? `ур. ${preset[entry.id]}` : "закрыто"}</dd>
+      </div>)}</dl>
+      <p className={styles.hint}>Заменит уровни построек выбранным сценарием. Запасы, деньги и находки сохранятся.</p>
+      <button type="button" disabled={locked || Boolean(snapshot?.jobs.length)} data-dev-action="apply-settlement"
+        onClick={() => { if (!snapshot?.jobs.length) act("apply_settlement", "home", presetLevel); }}>Применить · полный дом {presetLevel}</button>
+      {Boolean(snapshot?.jobs.length) && <p className={styles.cheatWarning}>Сначала завершите или отмените задания и заберите результаты. Таймеры доступны ниже.</p>}
+      {previewBuildings && <p className={styles.cheatWarning}>Для проверки результата отключите предпросмотр в «Сцена → Здания».</p>}
+    </section>
+
+    <details className={styles.cheatSection}>
+      <summary>Валюта</summary>
+      <div className={styles.cheatTools}>
       <dl className={styles.cheatBalance}>
         <div><dt>Монеты</dt><dd>{snapshot ? format(snapshot.wallet.coins) : "—"}</dd></div>
         <div><dt>Жемчуг</dt><dd>{snapshot ? format(snapshot.wallet.pearls) : "—"}</dd></div>
       </dl>
       <div className={styles.columns}>
-        {([["coins", 10000, "+10 000 монет"], ["coins", 100000, "+100 000 монет"], ["pearls", 1000, "+1 000 жемчуга"], ["pearls", 10000, "+10 000 жемчуга"]] as const).map(([currency, value, label]) =>
+        {([["coins", 10000, "+10 000 монет"], ["coins", 100000, "+100 000 монет"], ["pearls", 5000, "+5 000 жемчуга"], ["pearls", 50000, "+50 000 жемчуга"]] as const).map(([currency, value, label]) =>
           <button type="button" key={`${currency}-${value}`} disabled={locked} data-dev-action={`grant-${currency}-${value}`} onClick={() => act("grant_currency", currency, value)}>{label}</button>)}
       </div>
-    </section>
+      </div>
+    </details>
 
-    <section className={styles.cheatSection} aria-label="Материалы и товары">
-      <h4>Материалы и товары</h4>
+    <details className={styles.cheatSection}>
+      <summary>Материалы и товары</summary>
+      <div className={styles.cheatTools}>
       <label className={styles.field}><span>Предмет</span><select value={itemId} disabled={locked} onChange={event => setItemId(event.target.value)}>
         {catalog.items.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
       </select></label>
@@ -88,10 +110,12 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       {snapshot && (snapshot.storage.overflow > 0
         ? <p className={styles.cheatWarning}>Сверх вместимости: {format(snapshot.storage.overflow)}. Освободите место или увеличьте уровень кладовой перед получением продукции.</p>
         : validQuantity && quantity > snapshot.storage.available && <p className={styles.hint}>Чит выдаст предметы сверх вместимости. Для получения продукции затем понадобится свободное место в кладовой.</p>)}
-    </section>
+      </div>
+    </details>
 
-    <section className={styles.cheatSection} aria-label="Постройки без ожидания">
-      <h4>Постройки без ожидания</h4>
+    <details className={styles.cheatSection}>
+      <summary>Постройки без ожидания</summary>
+      <div className={styles.cheatTools}>
       <label className={styles.field}><span>Постройка</span><select value={building.id} disabled={locked}
         onChange={event => { setBuildingId(event.target.value); setLevel(""); }}>
         {catalog.buildings.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · ур. {snapshot?.buildings[entry.id] ?? 0}</option>)}
@@ -112,10 +136,12 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
         : "Для следующего улучшения уже хватает монет и материалов."}</p>
       {previewBuildings && <div className={styles.cheatWarning}><p>Включён визуальный предпросмотр зданий. Он скрывает настоящие уровни на карте.</p>
         {onShowAccountBuildings && <button type="button" onClick={onShowAccountBuildings}>Показывать уровни хозяйства</button>}</div>}
-    </section>
+      </div>
+    </details>
 
-    <section className={styles.cheatSection} aria-label="Таймеры заданий">
-      <h4>Таймеры заданий</h4>
+    <details className={styles.cheatSection}>
+      <summary>Таймеры заданий</summary>
+      <div className={styles.cheatTools}>
       <label className={styles.field}><span>Какие задания завершить</span><select value={jobFilter} disabled={locked} onChange={event => setJobFilter(event.target.value as JobFilter)}>
         {JOB_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label>
@@ -127,6 +153,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
         return <li key={job.id}><div><strong>{jobName(job)}</strong><span>{ready ? "Готово к получению" : `Осталось ${Math.max(1, Math.ceil((Date.parse(job.finishesAt) - (economy?.now ?? 0)) / 60000))} мин.`}</span></div>
           {ready && <button type="button" disabled={locked} onClick={() => { if (!locked) economy?.act("claim_job", job.id); }}>{job.kind === "construction" ? "Завершить стройку" : "Забрать"}</button>}</li>;
       })}</ul> : <p className={styles.hint}>Таких заданий сейчас нет.</p>}
-    </section>
+      </div>
+    </details>
   </div>;
 }

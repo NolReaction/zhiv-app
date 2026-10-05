@@ -103,10 +103,10 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
         EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs,it.migration,
             EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing)
     }
-    val ledger = c.economyRows("""SELECT kind,coins,pearls,currency_scale,items,created_at FROM economy_ledger
+    val ledger = c.economyRows("""SELECT kind,coins,pearls,currency_scale,pearl_scale,items,created_at FROM economy_ledger
         WHERE user_id=? ORDER BY created_at DESC,source_key DESC LIMIT 30""", profile.id) { r ->
         AdminEconomyLedger(r.getString("kind"),EconomyMoney.nominal(r.getLong("coins"),r.getInt("currency_scale")),
-            EconomyMoney.nominal(r.getLong("pearls"),r.getInt("currency_scale")),
+            EconomyMoney.pearls(r.getLong("pearls"),r.getInt("pearl_scale")),
             economyJson.decodeFromString<Map<String,Long>>(r.getString("items")),r.adminTime("created_at")!!)
     }
     return AdminEconomyDetail(target,profile.name,time.toString(),profile.updatedAt,view,

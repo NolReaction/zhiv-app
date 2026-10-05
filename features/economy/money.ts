@@ -1,24 +1,33 @@
 import type { EconomyState } from "./model";
 
-/** Nominal denomination only: ten current coins/pearls equal one retired unit. */
+/** Relative to the retired unit: coins ×10 and pearls ×50. */
 export const ECONOMY_CURRENCY_SCALE = 10;
+export const ECONOMY_PEARL_SCALE = 50;
 export const ECONOMY_MAX_ITEMS = 1_000_000_000;
 export const ECONOMY_MAX_BALANCE = ECONOMY_MAX_ITEMS * ECONOMY_CURRENCY_SCALE;
+export const ECONOMY_MAX_PEARLS = ECONOMY_MAX_ITEMS * ECONOMY_PEARL_SCALE;
 export function nominalEconomyMoney(amount: number, storedScale = 1): number {
-  if (![1, ECONOMY_CURRENCY_SCALE].includes(storedScale) || !Number.isSafeInteger(amount)) throw new Error("Invalid stored currency");
-  const nominal = amount * (ECONOMY_CURRENCY_SCALE / storedScale);
-  if (!Number.isSafeInteger(nominal)) throw new Error("Unsafe currency amount");
-  return nominal;
+  return nominal(amount, storedScale, ECONOMY_CURRENCY_SCALE);
 }
-/** Old snapshots are converted once; inventory, time, probabilities and receipts are untouched. */
+export function nominalEconomyPearls(amount: number, storedScale = 1): number {
+  return nominal(amount, storedScale, ECONOMY_PEARL_SCALE);
+}
+function nominal(amount: number, storedScale: number, targetScale: number): number {
+  if (![1, 10, targetScale].includes(storedScale) || !Number.isSafeInteger(amount)) throw new Error("Invalid stored currency");
+  const value = amount * (targetScale / storedScale);
+  if (!Number.isSafeInteger(value)) throw new Error("Unsafe currency amount");
+  return value;
+}
+/** Independent markers preserve both earlier denominations; paid receipts stay raw. */
 export function redenominateEconomyState(state: EconomyState): EconomyState {
-  if (state.currencyScale === ECONOMY_CURRENCY_SCALE) return state;
-  if (state.currencyScale != null && state.currencyScale !== 1) throw new Error("Unknown currency scale");
+  if (state.currencyScale === ECONOMY_CURRENCY_SCALE && state.pearlScale === ECONOMY_PEARL_SCALE) return state;
+  const coinScale = state.currencyScale ?? 1, pearlScale = state.pearlScale ?? coinScale;
   const next = structuredClone(state);
-  next.wallet.coins = nominalEconomyMoney(next.wallet.coins);
-  next.wallet.pearls = nominalEconomyMoney(next.wallet.pearls);
-  next.migration.coinsGranted = nominalEconomyMoney(next.migration.coinsGranted);
-  for (const job of next.jobs) job.cost.coins = nominalEconomyMoney(job.cost.coins);
+  next.wallet.coins = nominalEconomyMoney(next.wallet.coins, coinScale);
+  next.wallet.pearls = nominalEconomyPearls(next.wallet.pearls, pearlScale);
+  next.migration.coinsGranted = nominalEconomyMoney(next.migration.coinsGranted, coinScale);
+  for (const job of next.jobs) job.cost.coins = nominalEconomyMoney(job.cost.coins, coinScale);
   next.currencyScale = ECONOMY_CURRENCY_SCALE;
+  next.pearlScale = ECONOMY_PEARL_SCALE;
   return next;
 }

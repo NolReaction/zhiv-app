@@ -14,7 +14,8 @@ export function fishingWeights(rodId: string, baitId: string | null, catalog = e
   const bonus = (catalog.rods.find(rod => rod.id === rodId)?.rareBonus ?? 0)
     + (catalog.hooks?.find(hook => hook.id === hookId)?.rareBonus ?? 0)
     + (catalog.baits.find(bait => bait.itemId === baitId)?.rareBonus ?? 0);
-  return catalog.fish.map(fish => ({ itemId: fish.itemId, weight: fish.weight + fish.affinity * bonus }));
+  return catalog.fish.map(fish => ({ itemId: fish.itemId,
+    weight: fish.requiredHookId && fish.requiredHookId !== hookId ? 0 : fish.weight + fish.affinity * bonus }));
 }
 export function fishingOdds(state: { fishing?: EconomyFishing }, catalog = economyCatalog.fishing!,
   override: { rodId?: string; hookId?: string; baitId?: string | null } = {}) {

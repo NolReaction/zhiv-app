@@ -40,7 +40,7 @@ object EconomyRules {
         checkNotNull(EconomyRules::class.java.getResourceAsStream("/world/economy-catalog.json")).bufferedReader().use { it.readText() })
 
     init {
-        require(catalog.version == 3 && catalog.currencyScale == 10 && catalog.maxBatch in 1..10)
+        require(catalog.version == 3 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
@@ -51,16 +51,19 @@ object EconomyRules {
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
         require(catalog.recipes.all { it.maxBatch == null || it.maxBatch in 1..catalog.maxBatch })
         catalog.fishing?.let { fishing ->
+            val rarities = setOf("common", "uncommon", "rare", "epic", "legendary")
             require(fishing.routeIds.isNotEmpty() && fishing.routeIds.all { id -> catalog.explorations.any { it.id == id && (it.rewards["fish"] ?: 0) > 0 } })
             require(fishing.fish.isNotEmpty() && fishing.fish.map { it.itemId }.distinct().size == fishing.fish.size)
-            require(fishing.fish.all { fish -> fish.weight in 1..10000 && fish.affinity in 0..10 && fish.rarity in setOf("common", "uncommon", "rare", "epic", "legendary") &&
+            require(fishing.fish.all { fish -> fish.weight in 1..10000 && fish.affinity in 0..10 && fish.rarity in rarities &&
+                (fish.requiredHookId == null || fishing.hooks.any { it.id == fish.requiredHookId }) &&
                 catalog.items.any { it.id == fish.itemId && it.baseSellPrice < fish.buyPrice } })
             require(fishing.rods.map { it.id }.distinct().size == fishing.rods.size && fishing.rods.any { it.id == "reed_rod" && it.price == 0L })
-            require(fishing.rods.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 })
+            require(fishing.rods.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 && it.rarity in rarities && it.requiredHomeLevel in 1..5 })
             require(fishing.hooks.map { it.id }.distinct().size == fishing.hooks.size && fishing.hooks.any { it.id == "bare_hook" && it.price == 0L })
-            require(fishing.hooks.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 })
+            require(fishing.hooks.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 && it.rarity in rarities && it.requiredHomeLevel in 1..5 })
             require(fishing.baits.map { it.itemId }.distinct().size == fishing.baits.size && fishing.baits.all { bait ->
-                bait.price in 1..ECONOMY_MAX_BALANCE && bait.rareBonus in 0..100 && catalog.items.any { it.id == bait.itemId && it.baseSellPrice < bait.price } })
+                bait.price in 1..ECONOMY_MAX_BALANCE && bait.rareBonus in 0..100 && bait.rarity in rarities && bait.requiredHomeLevel in 1..5 &&
+                    catalog.items.any { it.id == bait.itemId && it.baseSellPrice < bait.price } })
         }
         catalog.rareDrops?.let { rare ->
             require(rare.itemIds.all { id -> catalog.items.any { it.id == id && it.category == "special" } })
@@ -77,7 +80,7 @@ object EconomyRules {
 
     fun initial(sparks: Long = 0, wood: Long = 0, stone: Long = 0, homeLevel: Int = 1, workshopLevel: Int = 0): EconomyState {
         val grant = legacyConversion(sparks, wood, stone)
-        return EconomyState(currencyScale=10,wallet = EconomyWallet(grant.coinsGranted), inventory = mapOf("wood" to grant.woodGranted, "stone" to grant.stoneGranted).filterValues { it > 0 },
+        return EconomyState(currencyScale=10,pearlScale=50,wallet = EconomyWallet(grant.coinsGranted), inventory = mapOf("wood" to grant.woodGranted, "stone" to grant.stoneGranted).filterValues { it > 0 },
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0), migration = grant)
     }
@@ -147,7 +150,7 @@ object EconomyRules {
         val remaining = Duration.between(now, Instant.parse(job.finishesAt))
         if (remaining.isNegative || remaining.isZero) return 0
         val interval = catalog.constructionSpeedup.secondsPerPearl
-        return ECONOMY_CURRENCY_SCALE * (remaining.seconds / interval + if (remaining.seconds % interval != 0L || remaining.nano > 0) 1 else 0)
+        return ECONOMY_PEARL_SCALE * (remaining.seconds / interval + if (remaining.seconds % interval != 0L || remaining.nano > 0) 1 else 0)
     }
 
     /** FNV-1a on a server UUID; integer weights are shared with the browser's odds display. */
@@ -155,7 +158,7 @@ object EconomyRules {
         val spec = checkNotNull(catalog.fishing)
         val bonus = (spec.rods.find { it.id == rodId }?.rareBonus ?: 0) + (spec.baits.find { it.itemId == baitId }?.rareBonus ?: 0) +
             (spec.hooks.find { it.id == hookId }?.rareBonus ?: 0)
-        val weights = spec.fish.map { it to (it.weight + it.affinity * bonus) }
+        val weights = spec.fish.map { it to if (it.requiredHookId != null && it.requiredHookId != hookId) 0 else it.weight + it.affinity * bonus }
         var hash = 2166136261L
         for (character in serverJobId) hash = ((hash xor character.code.toLong()) * 16777619L) and 0xffffffffL
         // Keep the quantile stable when tackle changes; modulo would create free equipment rerolls.
@@ -172,7 +175,7 @@ object EconomyRules {
 
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "sell") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "refresh_fishing_shop", "sell") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "start_production" -> {
@@ -315,25 +318,44 @@ object EconomyRules {
                 delivered to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"
             }
+            "refresh_fishing_shop" -> {
+                val shop = state.fishingShop
+                val spec = catalog.fishing?.shop
+                if (shop == null || spec == null || shop.id != command.targetId || EconomyFishingShops.expired(shop, now))
+                    economyFailure("ECONOMY_FISHING_SHOP_CHANGED", "Предложения обновились. Загляните в лавку ещё раз")
+                val price = spec.refreshPricePearls
+                if (price > command.totalPrice) economyFailure("ECONOMY_FISHING_PRICE_CHANGED", "Цена обновления изменилась. Проверьте предложение Плёски")
+                if (state.wallet.pearls < price) economyFailure("ECONOMY_PEARLS", "Не хватает жемчужин для обновления лавки")
+                state.copy(wallet = state.wallet.copy(pearls = state.wallet.pearls - price),
+                    fishingShop = EconomyFishingShops.create(state, now)) to "Плёска подготовила новые предложения"
+            }
             "buy_fishing_item" -> {
                 val spec = catalog.fishing ?: economyFailure("ECONOMY_FISHING_ITEM", "Лавка Плёски пока недоступна")
-                val rod = spec.rods.find { it.id == command.targetId }
-                val hook = spec.hooks.find { it.id == command.targetId }
-                val fish = spec.fish.find { it.itemId == command.targetId }
-                val bait = spec.baits.find { it.itemId == command.targetId }
-                if (rod == null && hook == null && fish == null && bait == null) economyFailure("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет")
+                val shop = state.fishingShop
+                if (shop == null || EconomyFishingShops.expired(shop, now))
+                    economyFailure("ECONOMY_FISHING_SHOP_CHANGED", "Предложения обновились. Загляните в лавку ещё раз")
+                val offer = shop.offers.find { it.id == command.targetId }
+                    ?: economyFailure("ECONOMY_FISHING_SHOP_CHANGED", "Этого предложения уже нет. Загляните в лавку ещё раз")
+                val rod = spec.rods.find { offer.kind == "rod" && it.id == offer.itemId }
+                val hook = spec.hooks.find { offer.kind == "hook" && it.id == offer.itemId }
+                val bait = spec.baits.find { offer.kind == "bait" && it.itemId == offer.itemId }
+                if (rod == null && hook == null && bait == null) economyFailure("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет")
+                requireHome(state, rod?.requiredHomeLevel ?: hook?.requiredHomeLevel ?: checkNotNull(bait).requiredHomeLevel)
                 if (command.quantity > catalog.maxBatch || (rod != null || hook != null) && command.quantity != 1L) invalidEconomy()
                 if (rod != null && rod.id in state.fishing.ownedRods) economyFailure("ECONOMY_FISHING_OWNED", "Эта удочка уже есть в коллекции")
                 if (hook != null && hook.id in state.fishing.ownedHooks) economyFailure("ECONOMY_FISHING_OWNED", "Этот крючок уже есть в коллекции")
-                val price = (rod?.price ?: hook?.price ?: fish?.buyPrice ?: checkNotNull(bait).price) * command.quantity
+                if (command.quantity > offer.remaining) economyFailure("ECONOMY_FISHING_STOCK", "Плёска уже продала эту партию. Дождитесь новых предложений")
+                val price = offer.unitPrice * command.quantity
                 if (price > command.totalPrice) economyFailure("ECONOMY_FISHING_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Плёски")
                 val spent = spend(state, EconomyCost(coins = price))
                 val next = if (rod != null) spent.copy(fishing = state.fishing.copy(ownedRods = state.fishing.ownedRods + rod.id))
                     else if (hook != null) spent.copy(fishing = state.fishing.copy(ownedHooks = state.fishing.ownedHooks + hook.id))
-                    else spent.copy(inventory = addItems(spent.inventory, mapOf(command.targetId to command.quantity)))
+                    else spent.copy(inventory = addItems(spent.inventory, mapOf(offer.itemId to command.quantity)))
                 addItems(next.inventory, reservedItems)
                 assertStorageTransition(state, next, reservedItems)
-                next to if (rod != null) "Удочка добавлена в коллекцию" else if (hook != null) "Крючок добавлен в коллекцию" else "Покупка у Плёски отправлена на склад"
+                next.copy(fishingShop = shop.copy(offers = shop.offers.map {
+                    if (it.id == offer.id) it.copy(remaining = it.remaining - command.quantity) else it
+                })) to if (rod != null) "Удочка добавлена в коллекцию" else if (hook != null) "Крючок добавлен в коллекцию" else "Покупка у Плёски отправлена на склад"
             }
             "equip_fishing_rod" -> {
                 if (catalog.fishing?.rods?.none { it.id == command.targetId } != false || command.targetId !in state.fishing.ownedRods)

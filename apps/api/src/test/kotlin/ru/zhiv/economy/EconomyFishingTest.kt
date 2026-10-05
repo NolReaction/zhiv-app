@@ -13,8 +13,12 @@ class EconomyFishingTest {
     private fun command(action: String, target: String, quantity: Long = 1, price: Long = 0) =
         EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, action, target, quantity, price)
     private fun apply(state: EconomyState, action: String, target: String, quantity: Long = 1, price: Long = 0, at: Instant = now) =
-        EconomyRules.apply(state, command(action, target, quantity, price), at).first
-    private fun funded() = EconomyRules.initial().copy(wallet = EconomyWallet(100_000))
+        EconomyRules.apply(state, command(action, if (action == "buy_fishing_item") offerId(state, target) else target, quantity, price), at).first
+    private fun offerId(state: EconomyState, itemId: String) = state.fishingShop?.offers?.find { it.itemId == itemId }?.id ?: itemId
+    private fun funded(): EconomyState {
+        val state = EconomyRules.initial().copy(wallet = EconomyWallet(100_000))
+        return state.copy(fishingShop = EconomyFishingShops.create(state, now, { 0 }))
+    }
 
     @Test fun `old persisted json gets starter tackle without importing inventory as catches`() {
         val initial = EconomyRules.initial().copy(inventory = mapOf("fish" to 50L))
@@ -52,11 +56,14 @@ class EconomyFishingTest {
         assertEquals(listOf("reed_rod", "river_rod"), rod.fishing.ownedRods)
         assertEquals(initial.inventory, rod.inventory)
         assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(rod, "buy_fishing_item", "river_rod", price = 18000) }.code)
-        val bought = apply(rod, "buy_fishing_item", "fish_mooncarp", quantity = 2, price = 1280)
+        assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> {
+            apply(rod, "buy_fishing_item", "fish_mooncarp", quantity = 2, price = 1280)
+        }.code)
+        val bought = rod.copy(inventory = mapOf("fish_mooncarp" to 2L))
         assertEquals(2L, bought.inventory["fish_mooncarp"])
         assertTrue(bought.fishing.catches.isEmpty())
         val sold = apply(bought, "sell_fish", "fish_mooncarp", quantity = 2)
-        assertEquals(81360L, sold.wallet.coins)
+        assertEquals(82640L, sold.wallet.coins)
         assertTrue(sold.fishing.catches.isEmpty())
         assertEquals("ECONOMY_FISHING_ITEM", assertFailsWith<AuthFailure> { apply(sold, "sell_fish", "wood") }.code)
     }
@@ -64,16 +71,16 @@ class EconomyFishingTest {
     @Test fun `bad quotes unknown goods unsupported quantities inventory and escrow limits are rejected`() {
         val initial = funded()
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", price = 17990) }.code)
-        assertEquals("ECONOMY_FISHING_ITEM", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "wood", price = 1000) }.code)
+        assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "wood", price = 1000) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", quantity = 2, price = 36000) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "crumb_bait", quantity = 11, price = 330) }.code)
         val full = initial.copy(inventory = mapOf("wood" to 190L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(full, command("buy_fishing_item", "crumb_bait", price = 30), now, mapOf("stone" to 10L))
+            EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "crumb_bait"), price = 30), now, mapOf("stone" to 10L))
         }.code)
-        val rod = EconomyRules.apply(full, command("buy_fishing_item", "river_rod", price = 18000), now, mapOf("stone" to 10L)).first
+        val rod = EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "river_rod"), price = 18000), now, mapOf("stone" to 10L)).first
         assertEquals(full.inventory, rod.inventory)
-        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(EconomyRules.initial(), "buy_fishing_item", "river_rod", price = 18000) }.code)
+        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(funded().copy(wallet = EconomyWallet()), "buy_fishing_item", "river_rod", price = 18000) }.code)
         for (invalid in listOf(command("equip_fishing_rod", "reed_rod", quantity = 2), command("sell_fish", "fish", price = 1)))
             assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(initial, invalid, now) }.code)
     }
@@ -144,9 +151,10 @@ class EconomyFishingTest {
     }
 
     @Test fun `hooks remain durable unique purchases and saved fishing never adopts later loadout changes`() {
-        val initial = funded()
+        val homeTwo = funded().copy(buildings = funded().buildings + ("home" to 2))
+        val initial = homeTwo.copy(fishingShop = EconomyFishingShops.create(homeTwo, now, { it - 1 }))
         assertEquals("ECONOMY_FISHING_HOOK", assertFailsWith<AuthFailure> { apply(initial, "equip_fishing_hook", "silver_hook") }.code)
-        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "barbed_hook", 2, 24000) }.code)
+        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "silver_hook", 2, 84000) }.code)
         val purchased = apply(initial, "buy_fishing_item", "silver_hook", price = 42000)
         assertEquals(58000L, purchased.wallet.coins); assertEquals(initial.inventory, purchased.inventory)
         assertEquals(listOf("bare_hook", "silver_hook"), purchased.fishing.ownedHooks)

@@ -36,7 +36,8 @@ export function economicMath(catalog) {
     ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)));
   const sourceHome = itemId => Math.min(...[...catalog.recipes, ...catalog.explorations].filter(d => d.rewards[itemId] > 0).map(definitionHome),
     ...(rare.has(itemId) ? [catalog.rareDrops.requiredHomeLevel] : []),
-    ...(fish.has(itemId) || catalog.fishing?.baits.some(b => b.itemId === itemId) ? [1] : []));
+    ...(fish.has(itemId) ? [catalog.fishing.hooks.find(h => h.id === catalog.fishing.fish.find(f => f.itemId === itemId)?.requiredHookId)?.requiredHomeLevel ?? 1] : []),
+    ...(catalog.fishing?.baits.filter(b => b.itemId === itemId).map(b => b.requiredHomeLevel ?? 1) ?? []));
   const primitive = new Map();
   for (const r of catalog.recipes.filter(r => r.seconds < 14400 && Object.keys(r.rewards).length === 1)) {
     const id = Object.keys(r.rewards)[0], prior = primitive.get(id);
@@ -46,7 +47,7 @@ export function economicMath(catalog) {
     const route = catalog.explorations.find(r => r.id === routeId); assert(route && route.rewards.fish > 0);
     const bonus = (catalog.fishing.rods.find(r => r.id === rodId)?.rareBonus ?? 0) + (catalog.fishing.baits.find(b => b.itemId === baitId)?.rareBonus ?? 0)
       + (catalog.fishing.hooks?.find(h => h.id === hookId)?.rareBonus ?? 0);
-    const weights = catalog.fishing.fish.map(f => ({ ...f, w: f.weight + f.affinity * bonus })), total = weights.reduce((sum, f) => sum + f.w, 0);
+    const weights = catalog.fishing.fish.map(f => ({ ...f, w: f.requiredHookId && f.requiredHookId !== hookId ? 0 : f.weight + f.affinity * bonus })), total = weights.reduce((sum, f) => sum + f.w, 0);
     const output = { ...route.rewards, fish: route.rewards.fish - 1 };
     for (const f of weights) output[f.itemId] = (output[f.itemId] ?? 0) + f.w / total;
     const baitCost = baitId ? catalog.fishing.baits.find(b => b.itemId === baitId).price : 0;
@@ -96,10 +97,28 @@ export function economicMath(catalog) {
         result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
       for (const [other, quantity] of Object.entries(portfolio.output)) if (other !== "fish") result.byproducts[other] = quantity / output;
+    } else if (fish.has(id)) {
+      const requiredHookId = catalog.fishing.fish.find(f => f.itemId === id).requiredHookId ?? "bare_hook";
+      const portfolio = catchPortfolio("reed_rod", null, "shore", requiredHookId), probability = portfolio.probabilities[id];
+      assert(probability > 0, `${id}: reference tackle cannot catch the fish`);
+      result.reference = "expected shared catch portfolio with starter rod and minimum eligible hook; merchant waiting excluded";
+      result.referenceHome = result.sourceHome;
+      result.producerLevels.home = result.referenceHome;
+      result.catchReference = { rodId: "reed_rod", hookId: requiredHookId, probability, expectedTrips: 1 / probability,
+        hookPurchaseCoins: catalog.fishing.hooks.find(hook => hook.id === requiredHookId).price, finiteGuarantee: false };
+      add(result.slotMinutes, portfolio.slotMinutes, 1 / probability);
+      result.coins = portfolio.routeCoins / probability;
+      for (const [input, quantity] of Object.entries(portfolio.routeInputs)) {
+        const p = profile(input, [...path, id]), scale = quantity / probability;
+        add(result.slotMinutes, p.slotMinutes, scale); add(result.rawInputs, p.rawInputs, scale); add(result.byproducts, p.byproducts, scale);
+        requireLevels(result.producerLevels, p.producerLevels); result.coins += p.coins * scale;
+        result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
+      }
+      for (const [other, quantity] of Object.entries(portfolio.output)) if (other !== id && quantity > 0) result.byproducts[other] = quantity / probability;
     } else {
-      const purchase = catalog.fishing?.fish.find(f => f.itemId === id) ?? catalog.fishing?.baits.find(b => b.itemId === id);
+      const purchase = catalog.fishing?.baits.find(b => b.itemId === id);
       assert(purchase, `No elementary reference or NPC stock for ${id}`);
-      result.reference = "NPC purchase; caught alternatives are portfolios"; result.coins = purchase.buyPrice ?? purchase.price;
+      result.reference = "rotating merchant offer; stock waiting excluded"; result.coins = purchase.price; result.referenceHome = result.sourceHome;
     }
     result.totalSlotMinutes = Object.values(result.slotMinutes).reduce((sum, minutes) => sum + minutes, 0);
     profiles.set(id, result); return result;

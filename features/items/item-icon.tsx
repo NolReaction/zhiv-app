@@ -9,6 +9,24 @@ import { FishArt } from "@/features/world/fish-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/fish-species";
 
 const fishingArt: Record<string, ReactNode> = {
+  glow_bait: <>
+    <path d="M14 15h21l3 23c-4 7-24 7-28 0Z" fill="#789e88" />
+    <ellipse cx="24" cy="15" rx="11" ry="4" fill="#516c5f" />
+    <path d="M13 12h22v6H13Z" fill="#b5bf93" />
+    <path d="m18 26 3 2m7-5 3 2m-7 8 3 2" stroke="#dded9f" strokeWidth="4" />
+    <path d="m16 28 7-3m3-2 7-3m-13 16 9-5" stroke="#bdd398" strokeWidth="1" />
+    <path d="M14 38c6 3 14 3 20 0" stroke="#c8d5ad" strokeWidth="1.5" />
+  </>,
+  firefly_bait: <>
+    <path d="M24 24c-3-16-16-14-14-5 1 5 8 8 14 8m1-3c6-16 18-11 13-3-3 4-9 6-13 6" fill="#c6b5d8" />
+    <path d="m15 15 10 11 10-12" fill="none" stroke="#eadcc6" strokeWidth="1.5" />
+    <path d="M26 24c-9 3-13 10-8 15 6 5 15-2 12-9Z" fill="#b39a65" />
+    <path d="m17 32 11 3m-10-6 11 3" stroke="#6d5e65" strokeWidth="2" />
+    <ellipse cx="20" cy="38" rx="4" ry="3" fill="#eade98" strokeWidth="1.3" />
+    <circle cx="28" cy="24" r="4" fill="#746780" />
+    <path d="m28 20 1-6m2 8 5-4m-2 15 7 1" stroke="#806c75" strokeWidth="1.3" />
+    <path d="m7 32 1-4 2 4 4 1-4 1-2 4-1-4-4-1Z" fill="#eee2a3" strokeWidth="1" />
+  </>,
   ...Object.fromEntries(FISH_SPECIES_IDS.map(species => [species,
     <g key={species} transform="translate(27 25) scale(27)"><FishArt species={species} /></g>])),
   crumb_bait: <>

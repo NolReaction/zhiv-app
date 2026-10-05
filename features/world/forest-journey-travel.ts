@@ -26,7 +26,7 @@ export type ForestJourneyTravel = {
   basketSpecies?: FishSpeciesId;
   rodId?: string;
   catchSpecies?: FishSpeciesId;
-  mining?: { entry: WorldPoint; doorway: WorldPoint; workCue: WorldPoint; phaseAt: number };
+  mining?: { entry: WorldPoint; doorway: WorldPoint; workCue: WorldPoint; phaseAt: number; prepared: boolean };
   jobFishing?: ForestJobFishingPlan;
   jobStartedAt?: number;
   jobAge?: number;
@@ -36,7 +36,7 @@ export type ForestJourneyTravel = {
   ending?: { settleAt: number; endsAt: number; source: ForestFishingFrame; finishAge: number };
 };
 const shoreRoutes = new Set(["shore", "shore_camp"]);
-const mineRoutes = new Set(["cave", "deep_cave", "abandoned_quarry"]);
+const mineRoutes = new Set(["cave", "deep_cave", "abandoned_quarry", "quarry_work"]);
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 
 export const forestJourneyWalking = (state: ForestSessionState) => state.journeyTravel?.phase === "leaving" || state.journeyTravel?.phase === "returning";
@@ -49,6 +49,7 @@ export function forestJourneyActorAway(state: ForestSessionState, journey: Econo
   const travel = state.journeyTravel;
   return economyJourneyAway(journey, now)
     && !travel?.ending
+    && !(travel?.phase === "returning" || travel?.mining && travel.phase === "exiting")
     && !(travel?.jobId === journey?.id && (travel?.phase === "leaving" || travel?.phase === "fishing" || travel?.phase === "entering" || travel?.phase === "exiting"
       || travel?.cancelled));
 }
@@ -60,9 +61,21 @@ function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, jou
   if (!miningJob && !state.journeyTravel?.mining) return false;
   const id = miningJob ? journey!.id : null;
   let travel = state.journeyTravel;
-  if (id && travel?.jobId !== id) {
+  // A new assignment in reduced motion switches to its own static scene;
+  // otherwise a frozen return from the old job would block it indefinitely.
+  if (still && active && travel?.mining && journey?.id !== travel.jobId) {
+    state.journeyTravel = undefined; state.explorationId = null; travel = undefined;
+    releaseClearingPoint(state.clearing);
+  }
+  if (travel?.mining && travel.phase === "away" && travel.jobId !== id) {
+    state.journeyTravel = undefined; travel = undefined;
+  }
+  if (id && travel?.jobId !== id && !travel?.mining) {
     const place = forestTrailDestination(scene, "quarry"), site = scene.sites.find(site => site.id === "quarry");
-    const restoring = state.explorationId === undefined || still;
+    // A freshly confirmed job can reach a newly mounted camera before it has
+    // observed the idle snapshot. Such a job still departs visibly from base.
+    const age = Math.max(0, (now - Date.parse(journey!.startedAt)) / 1000);
+    const restoring = still || state.explorationId === undefined && age > 15;
     state.explorationId = id;
     cancelForestDirector(state, "Отправился в шахту"); state.reaction=0; state.animation=null;
     if (!place || !site?.doorway || !state.clearing.navigation || !isWalkable(state.clearing.navigation, place)
@@ -70,12 +83,13 @@ function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, jou
     travel = { jobId:id, finishesAt:Date.parse(journey!.finishesAt), phase:"leaving", shore:place,
       home:{...state.clearing.home}, beganAt:state.clearing.elapsed, requested:false, scene,
       mining:{ entry:{...site.entry}, doorway:{...site.doorway},
-        workCue:{x:site.anchor.x,y:site.bounds.y-state.clearing.size*.12},phaseAt:state.director.elapsed } };
+        workCue:{x:site.anchor.x,y:site.bounds.y-state.clearing.size*.12},phaseAt:state.director.elapsed,
+        prepared:restoring || isClearingAtPoint(state.clearing,state.clearing.home) } };
     state.journeyTravel=travel;
     if (restoring) { restoreAtShore(state,place); travel.phase="working"; }
     else requestClearingOutside(state.clearing);
   }
-  if (!travel?.mining) return true;
+  if (!travel?.mining) return miningJob;
   if(travel.phase==="away") {
     if(!active) { state.journeyTravel=undefined; state.explorationId=null; releaseClearingPoint(state.clearing); }
     return true;
@@ -100,7 +114,7 @@ function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, jou
     else if (travel.phase === "entering") {
       const progress=Math.max(0,Math.min(1,(state.director.elapsed-mine.phaseAt)/MINING_PORTAL_SECONDS));
       travel.phase="exiting"; mine.phaseAt=state.director.elapsed-(1-progress)*MINING_PORTAL_SECONDS;
-    } else if (travel.phase === "leaving") { travel.phase="returning"; travel.requested=false; releaseClearingPoint(state.clearing); }
+    } else if (travel.phase === "leaving") { travel.phase="returning"; travel.requested=false; travel.beganAt=state.clearing.elapsed; releaseClearingPoint(state.clearing); }
   }
   if (still) { state.director.reason=travel.phase==="working" ? "Работает внутри шахты" : "Шахтная вылазка — движение приостановлено"; return true; }
   if (travel.phase==="entering" || travel.phase==="exiting") {
@@ -111,9 +125,15 @@ function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, jou
     return true;
   }
   if (travel.phase==="working") { state.director.reason="Работает внутри шахты"; return true; }
-  const target=travel.phase==="leaving" ? travel.shore : travel.home;
+  const target=travel.phase==="leaving" && mine.prepared ? travel.shore : travel.home;
   if (isClearingAtPoint(state.clearing,target)) {
-    if (travel.phase==="leaving") { travel.phase="entering"; mine.phaseAt=state.director.elapsed; state.director.reason="Заходит внутрь шахты"; }
+    if (travel.phase==="leaving" && !mine.prepared) {
+      // Walk home first to collect the helmet and pickaxe. Never reset the
+      // actual feet to the spawn or cut through a porch/bush interaction.
+      mine.prepared=true; travel.requested=false; travel.beganAt=state.clearing.elapsed;
+      releaseClearingPoint(state.clearing); state.director.reason="Взял каску и кирку у дома";
+    }
+    else if (travel.phase==="leaving") { travel.phase="entering"; mine.phaseAt=state.director.elapsed; state.director.reason="Заходит внутрь шахты"; }
     else {
       // Keep a cancelled receipt fenced until the authoritative snapshot drops
       // the job. Repeated cameras must not send the same miner back inside.
@@ -129,7 +149,7 @@ function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, jou
     || state.clearing.elapsed-travel.beganAt>120) {
     releaseClearingPoint(state.clearing); travel.phase="away"; return true;
   }
-  state.director.reason=travel.phase==="leaving" ? "Идёт к шахте с каской и киркой" : "Возвращается из шахты домой";
+  state.director.reason=travel.phase==="leaving" ? mine.prepared ? "Идёт от дома к шахте с каской и киркой" : "Возвращается к дому за каской и киркой" : "Возвращается из шахты домой";
   return true;
 }
 
@@ -208,6 +228,11 @@ export function forestJourneyFishingFrame(state: ForestSessionState, scene: Fixe
  * fishing place; newly confirmed jobs use the existing collision-safe walker. */
 export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedWorldScene,
   journey: EconomySceneJourney | null | undefined, now: number, still: boolean, cancelledExplorations: readonly string[] = []) {
+  // A background quarry job can become visible as soon as a fishing receipt
+  // is claimed/cancelled. Let its already visible catch, tackle and walk home
+  // finish before the miner takes over the same physical actor.
+  const previousTravel = state.journeyTravel;
+  if (!still && mineRoutes.has(journey?.routeId ?? "") && previousTravel && !previousTravel.mining && previousTravel.phase !== "away") journey = null;
   if (syncMiningTravel(state,scene,journey,now,still,cancelledExplorations)) return;
   const active = economyJourneyAway(journey, now), id = active ? journey!.id : null;
   const observed = state.explorationId !== undefined, previous = state.explorationId;

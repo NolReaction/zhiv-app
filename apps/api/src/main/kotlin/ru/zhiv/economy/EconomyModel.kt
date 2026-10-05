@@ -31,12 +31,20 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 )
 @Serializable data class EconomyFishingCatch(val rodId: String, val baitId: String?, val fishId: String, val hookId: String = "bare_hook")
 @Serializable data class EconomyFishSpec(val itemId: String, val description: String, val rarity: String,
-    val weight: Int, val affinity: Int, val buyPrice: Long)
-@Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int)
-@Serializable data class EconomyHookSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int)
-@Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int)
+    val weight: Int, val affinity: Int, val buyPrice: Long, val requiredHookId: String? = null)
+@Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int,
+    val rarity: String = "common", val requiredHomeLevel: Int = 1)
+@Serializable data class EconomyHookSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int,
+    val rarity: String = "common", val requiredHomeLevel: Int = 1)
+@Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int,
+    val rarity: String = "common", val requiredHomeLevel: Int = 1)
+@Serializable data class EconomyFishingOffer(val id: String, val kind: String, val itemId: String, val unitPrice: Long, val remaining: Long)
+@Serializable data class EconomyFishingShop(val id: String, val openedAt: String, val refreshAt: String, val refreshPricePearls: Long, val offers: List<EconomyFishingOffer>)
+@Serializable data class EconomyFishingShopConfig(val refreshSeconds: Long = 21600, val refreshPricePearls: Long = 100, val slots: Int = 4, val baitStock: Long = 5) {
+    init { require(refreshSeconds in 1L..86400L && refreshPricePearls in 1L..ECONOMY_MAX_BALANCE && slots == 4 && baitStock in 1L..100L) }
+}
 @Serializable data class EconomyFishingCatalog(val routeIds: List<String>, val fish: List<EconomyFishSpec>,
-    val rods: List<EconomyRodSpec>, val baits: List<EconomyBaitSpec>,
+    val rods: List<EconomyRodSpec>, val baits: List<EconomyBaitSpec>, val shop: EconomyFishingShopConfig = EconomyFishingShopConfig(),
     val hooks: List<EconomyHookSpec> = listOf(EconomyHookSpec("bare_hook", "Простой крючок", "Начальная снасть без дополнительных усилений.", 0, 0)))
 @Serializable data class EconomyRareDropSpec(val version: Int = 1, val requiredHomeLevel: Int,
     val minSeconds: Long, val maxSeconds: Long, val itemIds: List<String>) {
@@ -70,7 +78,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val buildings: Map<String, Int>, val jobs: List<EconomyJob> = emptyList(), val migration: EconomyMigration,
     val completedExplorations: Long = 0, val fishing: EconomyFishing = EconomyFishing(),
     val fishingCastSeed: String? = null, val progression: EconomyProgression = EconomyProgression(),
-    val rareDropState: EconomyRareDropClock? = null, val currencyScale: Int = 1,
+    val rareDropState: EconomyRareDropClock? = null, val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 1, val pearlScale: Int? = null,
 )
 @Serializable data class EconomyItem(val id: String, val name: String, val category: String, val baseSellPrice: Long, val tradable: Boolean = true)
 @Serializable data class EconomyBuildingLevel(
@@ -102,7 +110,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val recipes: List<EconomyRecipe>, val explorations: List<EconomyExploration>, val market: EconomyMarketConfig = EconomyMarketConfig(),
     val constructionSpeedup: EconomyConstructionSpeedup, val fishing: EconomyFishingCatalog? = null,
     val localBuyer: EconomyLocalBuyer = EconomyLocalBuyer(),
-    val rareDrops: EconomyRareDropSpec? = null, val currencyScale: Int = 10,
+    val rareDrops: EconomyRareDropSpec? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
 )
 @Serializable data class EconomyStorage(
     val capacity: Long, val used: Long, val reserved: Long, val available: Long, val overflow: Long,
@@ -112,7 +120,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val wallet: EconomyWallet, val inventory: Map<String, Long>, val buildings: Map<String, Int>,
     val jobs: List<EconomyJob>, val migration: EconomyMigration, val catalog: EconomyCatalog,
     val storage: EconomyStorage, val completedExplorations: Long = 0, val fishing: EconomyFishing = EconomyFishing(),
-    val progression: EconomyProgression = EconomyProgression(), val currencyScale: Int = 10,
+    val progression: EconomyProgression = EconomyProgression(), val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
 )
 @Serializable data class EconomyCommand(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,

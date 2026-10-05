@@ -102,3 +102,37 @@
 .primary .price { color: var(--forest-paper-light, #f0e6ca); }
 @media (max-width: 379px) { .shop { padding: 10px; } .tabs button { flex-wrap: wrap; } }
 @container (max-width: 360px) { .fishList { grid-template-columns: 1fr; } .fishChoice { min-height: 60px; } }
+
+.merchantHeader { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: linear-gradient(120deg, color-mix(in srgb, var(--forest-primary, #466347) 13%, var(--forest-paper-light, #f0e6ca)), var(--forest-paper-light, #f0e6ca)); border: 1px solid var(--forest-border, #c8bd98); }
+.merchantHeader > div:first-child { display: grid; gap: 7px; }
+.merchantHeader strong { font-size: .875rem; }
+.merchantHeader > div > span { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: .6875rem; color: var(--forest-muted, #59624d); }
+.merchantHeader time { font-variant-numeric: tabular-nums; color: var(--forest-ink, #394d3e); }
+.refreshOffers { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 10px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); font-size: .75rem; cursor: pointer; }
+.refreshConfirm { padding-top: 8px; border-top: 1px solid var(--forest-border, #c8bd98); }
+.refreshConfirm p { margin: 0 0 8px; font-size: .75rem; }
+.refreshConfirm > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.offerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.offerTile { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 10px 8px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 13px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); cursor: pointer; }
+.offerTile[aria-pressed='true'] { outline: 2px solid var(--forest-primary, #466347); outline-offset: 1px; }
+.offerTile > strong { flex: 1; text-align: center; font-size: .75rem; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.offerTile > [data-fish-rarity] { font-size: .625rem; }
+.offerArt { display: flex; align-items: center; justify-content: center; width: 62px; height: 57px; background: radial-gradient(ellipse, var(--gear-glow, #d9dbb955), transparent 72%); }
+.shop [data-gear-rarity='uncommon'] { --gear-glow: #96b28b99; }
+.shop [data-gear-rarity='rare'] { --gear-glow: #91bccc99; }
+.shop [data-gear-rarity='epic'] { --gear-glow: #bc9ec799; }
+.shop [data-gear-rarity='legendary'] { --gear-glow: #e1b965bb; }
+.offerBottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; width: 100%; margin-top: 3px; padding-top: 7px; border-top: 1px solid var(--forest-border, #c8bd98); font-size: .75rem; }
+.offerBottom > small { display: inline-flex; align-items: center; gap: 4px; color: var(--forest-muted, #59624d); font-size: .625rem; }
+.ownedTackle { min-width: 0; padding-top: 4px; border-top: 1px solid var(--forest-border, #c8bd98); }
+.ownedTackle > summary { display: flex; gap: 8px; align-items: center; min-height: 48px; font-size: .8125rem; font-weight: 600; cursor: pointer; }
+.ownedTackle > summary::after { content: '+'; margin-left: auto; font-size: 1.25rem; font-weight: 400; }
+.ownedTackle[open] > summary::after { content: '−'; }
+.ownedTackle > summary > span { font-size: .6875rem; color: var(--forest-muted, #59624d); font-weight: 400; }
+.ownedTackle .tackleTabs { margin-bottom: 10px; }
+.emptyCatch { display: grid; justify-items: center; gap: 9px; padding: 22px 16px; border: 1px dashed var(--forest-border, #c8bd98); border-radius: 15px; text-align: center; color: var(--forest-muted, #59624d); }
+.emptyCatch strong { font-size: .875rem; color: var(--forest-ink, #394d3e); }
+.emptyCatch p { margin: 0; max-width: 30ch; font-size: .75rem; line-height: 1.55; }
+.oddsList dt > small { font-size: .625rem; color: var(--forest-muted, #59624d); }
+.ownedTackle > summary:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
+@container (min-width: 460px) { .merchantHeader { grid-template-columns: 1fr auto; align-items: center; } .refreshConfirm { grid-column: 1 / -1; } .offerGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

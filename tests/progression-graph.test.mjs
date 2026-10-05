@@ -94,9 +94,9 @@ test("node and edge ids are unique and actual world remains connected without pr
 
 test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
   assert.equal(node("daily_rewards").status, "active");
-  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /30 жемчужин/);
+  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /450 жемчужин/);
   assert.match(node("daily_rewards").description, /20 часов/); assert.match(node("daily_rewards").description, /Пропуск не сбрасывает/);
-  assert.match(node("pearls").description, /до 430/); assert.match(node("achievements").description, /до 430/);
+  assert.match(node("pearls").description, /до 2150/); assert.match(node("achievements").description, /до 2150/);
   assert(hasEdge("daily_rewards", "pearls", "flow")); assert(hasEdge("achievements", "pearls", "flow"));
   assert.equal(node("pearl_trader").status, "plan");
   assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind === "plan"));

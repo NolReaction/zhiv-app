@@ -22,7 +22,7 @@ const request = (p, action, targetId, revision, totalPrice = 0, quantity = 1) =>
 
 function legacyState() {
   const p = player(), state = structuredClone(currentState(p).state);
-  delete state.currencyScale;
+  delete state.currencyScale; delete state.pearlScale;
   state.wallet = { coins: 123, pearls: 4 }; state.migration.coinsGranted = 7;
   state.jobs = [{ id: crypto.randomUUID(), kind: "construction", targetId: "home", targetLevel: 2, recipeId: null,
     startedAt: "2026-10-01T00:00:00.000Z", finishesAt: "2026-10-05T00:00:00.000Z", cost: { coins: 150, items: { wood: 20 } }, rewards: {}, catalogVersion: 2 }];
@@ -32,7 +32,7 @@ function legacyState() {
 test("denomination is one guarded conversion of money, with materials clocks jobs and progress preserved", () => {
   const legacy = legacyState(), frozen = structuredClone(legacy), nominal = money.redenominateEconomyState(legacy);
   assert.deepEqual(legacy, frozen, "the conversion does not partially mutate the input");
-  assert.equal(nominal.currencyScale, 10); assert.deepEqual(nominal.wallet, { coins: 1230, pearls: 40 });
+  assert.equal(nominal.currencyScale, 10); assert.deepEqual(nominal.wallet, { coins: 1230, pearls: 200 });
   assert.equal(nominal.migration.coinsGranted, 70); assert.equal(nominal.jobs[0].cost.coins, 1500);
   for (const field of ["inventory", "buildings", "progression", "fishing", "completedExplorations"]) assert.deepEqual(nominal[field], legacy[field]);
   assert.deepEqual({ ...nominal.jobs[0], cost: legacy.jobs[0].cost }, legacy.jobs[0]);
@@ -51,16 +51,16 @@ test("whole-stack NPC rounding and minimum quantities are exactly old proceeds t
   assert.equal(sale.economyLocalSaleLimit(30, 99, money.ECONOMY_MAX_BALANCE - 20, { payoutBps: 6000 }), 1);
 });
 
-test("construction uses the same started five-minute intervals with a ten-pearl quantum", () => {
+test("construction uses the same started five-minute intervals with a fifty-pearl quantum", () => {
   const now = Date.parse("2026-10-05T12:00:00Z"), interval = model.economyCatalog.constructionSpeedup.secondsPerPearl * 1000;
   assert.equal(interval, 300000);
   for (const remaining of [0, 1, interval - 1, interval, interval + 1, 8 * 3600000, 72 * 3600000]) {
-    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), Math.ceil(remaining / interval) * 10);
+    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), Math.ceil(remaining / interval) * 50);
   }
 });
 
 test("wallet limit and existing prices scale while item limits and legacy conversion head start stay equivalent", () => {
-  assert.equal(model.ECONOMY_MAX_BALANCE, 10_000_000_000); assert.equal(model.ECONOMY_MAX_ITEMS, 1_000_000_000);
+  assert.equal(model.ECONOMY_MAX_PEARLS, 50_000_000_000); assert.equal(model.ECONOMY_MAX_BALANCE, 10_000_000_000); assert.equal(model.ECONOMY_MAX_ITEMS, 1_000_000_000);
   for (const [id, base] of Object.entries({ berries: 3, wood: 4, stone: 3, fiber: 2, fish: 8 }))
     assert.equal(model.economyCatalog.items.find(item => item.id === id).baseSellPrice, base * 10);
   assert.equal(model.economyCatalog.buildings.find(item => item.id === "home").levels[1].cost.coins, 1500);
@@ -68,8 +68,8 @@ test("wallet limit and existing prices scale while item limits and legacy conver
   const p = player(), view = economy.getDevEconomy(p.token); view.wallet.coins = model.ECONOMY_MAX_BALANCE;
   assert.equal(model.economyViewSchema.safeParse(view).success, true);
   view.inventory.wood = model.ECONOMY_MAX_ITEMS + 1; assert.equal(model.economyViewSchema.safeParse(view).success, false);
-  assert.equal(rewardRules.progressionRewardsCatalog.daily.reduce((n, r) => n + r.pearls, 0), 30);
-  assert.equal(Object.values(rewardRules.progressionRewardsCatalog.achievementPearls).flat().reduce((a, b) => a + b), 430);
+  assert.equal(rewardRules.progressionRewardsCatalog.pearlScale, 50);
+  assert.equal(Object.values(rewardRules.progressionRewardsCatalog.achievementPearls).flat().reduce((a, b) => a + b), 2150);
 });
 
 test("DEV HMR upgrades old profiles and live offers once, retaining historical offer units", () => {
@@ -80,7 +80,7 @@ test("DEV HMR upgrades old profiles and live offers once, retaining historical o
   const active = listing("active"), closed = listing("sold");
   globalThis.__zhivDevEconomyStore.listings.set(active.id, active); globalThis.__zhivDevEconomyStore.listings.set(closed.id, closed);
   const first = economy.getDevEconomy(p.token, now), second = economy.getDevEconomy(p.token, now);
-  assert.equal(first.revision, 8); assert.equal(second.revision, 8); assert.deepEqual(first.wallet, { coins: 1230, pearls: 40 });
+  assert.equal(first.revision, 8); assert.equal(second.revision, 8); assert.deepEqual(first.wallet, { coins: 1230, pearls: 200 });
   assert.equal(active.totalPrice, 40); assert.equal(active.currencyScale, 10);
   assert.equal(closed.totalPrice, 4); assert.equal(closed.currencyScale, 1, "closed historical prices stay raw");
 });
@@ -106,16 +106,46 @@ test("pre-change paid gift is projected in current units and stays consumed with
   rewardRow.daily = { step: 1, lastClaimAt: claimedAt, lastClaimDate: "2026-10-04" };
   rewardRow.receipts.set(command.requestId, { signature, claim: original, acceptedRevision: 1 });
   const first = rewards.claimDevProgressionReward(p.token, command, now), second = rewards.claimDevProgressionReward(p.token, command, now);
-  assert.equal(first.replayed, true); assert.equal(first.claim.reward.pearls, 20); assert.equal(first.claim.claimedAt, claimedAt);
-  assert.equal(first.economy.wallet.pearls, 20); assert.deepEqual(second.economy.wallet, first.economy.wallet);
+  assert.equal(first.replayed, true); assert.equal(first.claim.reward.pearls, 100); assert.equal(first.claim.claimedAt, claimedAt);
+  assert.equal(first.economy.wallet.pearls, 100); assert.deepEqual(second.economy.wallet, first.economy.wallet);
   assert.equal(first.acceptedRevision, 1); assert.equal(rewardRow.receipts.get(command.requestId).claim.reward.pearls, 2);
 });
 
 test("new market offers keep old price quantum and failed fractional-price orders leave escrow untouched", () => {
   const p = player(), row = currentState(p); row.state.buildings.home = 2; row.state.completedExplorations = 1; row.state.inventory.wood = 4;
-  const command = request(p, "create_listing", "wood", row.revision, 41);
+  const revision = row.revision, command = request(p, "create_listing", "wood", revision, 41);
   assert.throws(() => economy.commandDevEconomyMarket(p.token, command), { code: "ECONOMY_MARKET_PRICE" });
-  assert.equal(row.state.inventory.wood, 4); assert.equal(row.revision, 0);
+  assert.equal(row.state.inventory.wood, 4); assert.equal(row.revision, revision);
   const result = economy.commandDevEconomyMarket(p.token, { ...command, totalPrice: 40 });
   assert.equal(result.listing.totalPrice, 40); assert.equal(result.state.storage.reserved, 1);
+});
+
+
+test("V40 snapshots multiply only pearls and preserve the full previous pearl balance capacity", () => {
+  const old = legacyState(); old.currencyScale = 10; old.wallet = { coins: 1230, pearls: 10_000_000_000 };
+  old.migration.coinsGranted = 70; old.jobs[0].cost.coins = 1500;
+  const upgraded = money.redenominateEconomyState(old);
+  assert.equal(upgraded.pearlScale, 50); assert.equal(upgraded.currencyScale, 10);
+  assert.deepEqual(upgraded.wallet, { coins: 1230, pearls: 50_000_000_000 });
+  assert.equal(upgraded.migration.coinsGranted, 70); assert.equal(upgraded.jobs[0].cost.coins, 1500);
+  assert.strictEqual(money.redenominateEconomyState(upgraded), upgraded);
+  for (const [value, scale] of [[2, 1], [20, 10], [100, 50]]) assert.equal(money.nominalEconomyPearls(value, scale), 100);
+  assert.throws(() => money.nominalEconomyPearls(10, 5));
+  assert.throws(() => money.nominalEconomyMoney(10, 50));
+});
+
+test("a V40 gift receipt keeps its original units while current pearls project by five once", () => {
+  const p = player(), owner = p.me.user.publicId, now = Date.parse("2026-10-05T12:00:00Z");
+  rewards.getDevProgressionRewards(p.token, now);
+  const economyRow = currentState(p); economyRow.state.wallet = { coins: 500, pearls: 20 };
+  economyRow.state.currencyScale = 10; delete economyRow.state.pearlScale;
+  const command = { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "daily" };
+  const original = { kind: "daily", step: 7, reward: { coins: 300, pearls: 20, items: { wood: 2 } }, claimedAt: "2026-10-04T12:00:00.000Z" };
+  const rewardRow = globalThis.__zhivDevProgressionRewards.get(owner);
+  rewardRow.receipts.set(command.requestId, { signature: JSON.stringify(command), claim: original, acceptedRevision: 0, currencyScale: 10 });
+  const first = rewards.claimDevProgressionReward(p.token, command, now), second = rewards.claimDevProgressionReward(p.token, command, now);
+  assert.deepEqual(first.claim.reward, { coins: 300, pearls: 100, items: { wood: 2 } });
+  assert.deepEqual(first.economy.wallet, { coins: 500, pearls: 100 });
+  assert.deepEqual(second.economy.wallet, first.economy.wallet);
+  assert.equal(rewardRow.receipts.get(command.requestId).claim.reward.pearls, 20);
 });
