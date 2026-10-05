@@ -34,7 +34,7 @@ fun Route.economyMarketRoutes(repository: EconomyMarketRepository, codec: TokenC
                     throw AuthFailure("INVALID_ECONOMY_QUERY", "Некорректный запрос рынка", 400)
                 val limit = call.request.queryParameters["limit"]?.let {
                     it.toIntOrNull() ?: throw AuthFailure("INVALID_ECONOMY_QUERY", "Некорректный размер страницы", 400)
-                } ?: 30
+                } ?: EconomyRules.catalog.market.showcaseSlots
                 call.respond(repository.market(hash, call.request.queryParameters["cursor"], limit))
             }
         }

@@ -8,7 +8,7 @@ import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryG
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
   send: (command: EconomyCommand, signal: AbortSignal) => Promise<EconomyResult>;
-  market: (signal: AbortSignal, cursor?: string) => Promise<MarketView>;
+  market: (signal: AbortSignal) => Promise<MarketView>;
   trade: (command: MarketCommand, signal: AbortSignal) => Promise<EconomyResult>;
   dev?: (command: EconomyDevCommand, signal: AbortSignal) => Promise<EconomyResult>;
 };
@@ -89,20 +89,19 @@ export function createEconomySession(owner: string | null, transport: Transport,
       else if (!pending) publish({ error: error instanceof ApiError ? error.message : "Нет связи с хозяйством. Изменения появятся после подключения.", retryAt: now() + delay });
     } finally { requests.delete(request); }
   }
-  function refreshMarket(cursor?: string): Promise<void> {
+  function refreshMarket(): Promise<void> {
     if (!active || !owner || view.busy || performance.now() < marketBlockedUntil) return Promise.resolve();
     if (marketReading) return marketReading;
-    const task = readMarket(cursor); marketReading = task;
+    const task = readMarket(); marketReading = task;
     void task.finally(() => { if (marketReading === task) marketReading = null; });
     return task;
   }
-  async function readMarket(cursor?: string) {
+  async function readMarket() {
     const generation = epoch, sequence = ++marketSequence, request = controller();
     try {
-      const result = await transport.market(request.signal, cursor);
+      const result = await transport.market(request.signal);
       if (!valid(generation) || sequence !== marketSequence) return;
-      const listings = cursor && view.market ? [...new Map([...view.market.listings, ...result.listings].map(item => [item.id, item])).values()] : result.listings;
-      publish({ market: { ...result, listings }, marketError: null });
+      publish({ market: result, marketError: null });
     } catch (error) {
       if (!valid(generation) || sequence !== marketSequence) return;
       if (error instanceof ApiError && error.status === 401) onSessionLost();

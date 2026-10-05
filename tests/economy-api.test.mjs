@@ -93,7 +93,7 @@ test("commands reject hostile JSON shape, extra fields, fractions and body overf
 test("market read validates cursor and limits, while trade requires progression and exact quantity", async () => {
   const p = player(), cmd = command(p);
   const response = await marketGET(read("/market")); assert.equal(response.status, 200); assert.equal(model.marketViewSchema.safeParse(await response.json()).success, true);
-  for (const suffix of ["?limit=0", "?limit=51", "?limit=3.5", "?limit=1&limit=2", "?cursor=", "?cursor=bad", "?other=1"])
+  for (const suffix of ["?limit=0", "?limit=13", "?limit=51", "?limit=3.5", "?limit=1&limit=2", "?cursor=", "?cursor=bad", "?other=1"])
     assert.equal((await marketGET(read(`/market${suffix}`))).status, 400);
   const locked = await marketPOST(post({ ...cmd, action: "create_listing", targetId: "wood", totalPrice: 4 }, {}, "/market/commands"));
   assert.equal(locked.status, 409); assert.equal((await locked.json()).code, "ECONOMY_MARKET_LOCKED");

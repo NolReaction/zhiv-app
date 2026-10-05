@@ -165,7 +165,7 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   cheat(p, "set_building_level", "home", 2);
   const row = fixture(p); row.state.completedExplorations = 1;
   cheat(p, "grant_item", "wood", 3);
-  const listing = economy.commandDevEconomyMarket(p.token, { ...command(p, "create_listing", "wood", 2), totalPrice: 4 }, now).listing;
+  const listing = economy.commandDevEconomyMarket(p.token, { ...command(p, "create_listing", "wood", 2), totalPrice: 8 }, now).listing;
   cheat(p, "set_building_level", "home", 1);
   assert.equal(globalThis.__zhivDevEconomyStore.listings.get(listing.id).status, "active");
   assert.equal(read(p).storage.reserved, 2); assert.deepEqual(read(p).jobs, [production]);

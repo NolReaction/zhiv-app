@@ -25,23 +25,32 @@ class EconomyMarketRulesTest {
 
     @Test fun `whole lot price allows exact cap but no overflow or one coin over`() {
         EconomyMarketRules.validatePrice(2, 30, 3)
-        EconomyMarketRules.validatePrice(2, 2, 3)
+        EconomyMarketRules.validatePrice(2, 6, 3)
+        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 5, 3) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 31, 3) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 1, 3) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(0, 1, 3) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(1, Long.MAX_VALUE, Long.MAX_VALUE) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(1, 1, 0) }
-        EconomyMarketRules.validatePrice(99, 1_000_000_000, Long.MAX_VALUE)
+        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, 1_000_000_000, Long.MAX_VALUE) }
     }
 
-    @Test fun `cursor round trip preserves microseconds and rejects arbitrary query text`() {
-        val listing = EconomyMarketListing(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", "Мохлик", "berries", 2, 6,
-            "active", "2026-10-01T12:00:00.123456Z", owned = false)
-        val cursor = assertNotNull(EconomyMarketRules.cursor(EconomyMarketRules.cursor(listing)))
-        assertEquals(listing.createdAt, cursor.createdAt.toString())
-        assertEquals(listing.id, cursor.id.toString())
-        assertNull(EconomyMarketRules.cursor(null as String?))
-        listOf("", " ", "a".repeat(161), "not-a-cursor", "JztEUk9QIFRBQkxFIGVjb25vbXk7")
-            .forEach { assertFailsWith<AuthFailure> { EconomyMarketRules.cursor(it) } }
+    @Test fun `home tiers include producer dependencies and fishing without requiring workshop ownership`() {
+        assertEquals(2, EconomyMarketRules.requiredHomeLevel("charcoal"))
+        assertEquals(3, EconomyMarketRules.requiredHomeLevel("resin"))
+        assertEquals(4, EconomyMarketRules.requiredHomeLevel("tools"))
+        assertEquals(4, EconomyMarketRules.requiredHomeLevel("reinforced_parts"))
+        assertEquals(1, EconomyMarketRules.requiredHomeLevel("fish_mooncarp"))
+        assertEquals(1, EconomyMarketRules.requiredHomeLevel("worm_bait"))
+        assertEquals(Int.MAX_VALUE, EconomyMarketRules.requiredHomeLevel("pearls"))
+        assertTrue(EconomyMarketRules.eligible("tools", 1, 100, 4))
+        assertFalse(EconomyMarketRules.eligible("tools", 1, 100, 3))
+        assertFalse(EconomyMarketRules.eligible("tools", 1, 99, 4))
+        assertFalse(EconomyMarketRules.eligible("fish_mooncarp", 1, 31, 4))
+        for (item in EconomyRules.catalog.items.filter { it.tradable }) {
+            assertTrue(EconomyMarketRules.requiredHomeLevel(item.id) in 1..5, item.id)
+            EconomyMarketRules.validatePrice(99, item.baseSellPrice * 99, item.baseSellPrice)
+            assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, item.baseSellPrice * 99 - 1, item.baseSellPrice) }
+        }
     }
 }

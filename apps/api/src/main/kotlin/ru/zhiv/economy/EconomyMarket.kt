@@ -3,9 +3,6 @@ package ru.zhiv.economy
 import kotlinx.serialization.Serializable
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.http.parseCanonicalUuidV4
-import java.time.Instant
-import java.util.Base64
-import java.util.UUID
 
 @Serializable
 data class EconomyMarketListing(
@@ -22,26 +19,28 @@ data class EconomyMarketListing(
 )
 
 @Serializable
+data class EconomyMarketShowcase(val refreshAt: String, val slots: Int, val maxPerSeller: Int, val refreshSeconds: Long)
+
+@Serializable
 data class EconomyMarketView(
     val listings: List<EconomyMarketListing>,
     val mine: List<EconomyMarketListing>,
     val nextCursor: String? = null,
     val serverTime: String,
+    val showcase: EconomyMarketShowcase,
 )
 
 interface EconomyMarketRepository {
-    suspend fun market(sessionHash: ByteArray, cursor: String? = null, limit: Int = 30): EconomyMarketView
+    suspend fun market(sessionHash: ByteArray, cursor: String? = null, limit: Int = EconomyRules.catalog.market.showcaseSlots): EconomyMarketView
     suspend fun command(sessionHash: ByteArray, command: EconomyCommand): EconomyResult
 }
-
-internal data class EconomyMarketCursor(val createdAt: Instant, val id: UUID)
 
 /** Pure validation shared by the SQL boundary and inexpensive unit tests. */
 object EconomyMarketRules {
     const val MAX_LISTINGS = 10
     const val MAX_QUANTITY = 99L
     const val MAX_PRICE_MULTIPLIER = 5L
-    const val MAX_PAGE_SIZE = 50
+    const val MAX_PAGE_SIZE = 12
 
     fun validate(command: EconomyCommand) {
         validateEconomyCommand(command)
@@ -67,22 +66,35 @@ object EconomyMarketRules {
     fun validatePrice(quantity: Long, totalPrice: Long, baseSellPrice: Long, multiplier: Long = MAX_PRICE_MULTIPLIER) {
         // Catalog prices are bounded independently; division avoids overflow even for a corrupt catalog.
         if (quantity !in 1L..MAX_QUANTITY || baseSellPrice <= 0L || multiplier !in 1L..MAX_PRICE_MULTIPLIER ||
-            totalPrice !in quantity..1_000_000_000L || (totalPrice - 1L) / quantity / multiplier >= baseSellPrice) {
-            throw AuthFailure("ECONOMY_MARKET_PRICE", "Цена партии не может превышать пятикратную цену рынка", 400)
+            totalPrice !in quantity..1_000_000_000L || totalPrice / quantity < baseSellPrice || (totalPrice - 1L) / quantity / multiplier >= baseSellPrice) {
+            throw AuthFailure("ECONOMY_MARKET_PRICE", "Цена партии должна быть от базовой до пятикратной стоимости", 400)
         }
     }
 
-    internal fun cursor(value: String?): EconomyMarketCursor? {
-        if (value == null) return null
-        if (value.isBlank() || value.length > 160)
-            throw AuthFailure("INVALID_ECONOMY_QUERY", "Некорректная страница рынка", 400)
-        return runCatching {
-            val parts = String(Base64.getUrlDecoder().decode(value), Charsets.UTF_8).split('|')
-            require(parts.size == 2)
-            EconomyMarketCursor(Instant.parse(parts[0]), requireNotNull(parseCanonicalUuidV4(parts[1])))
-        }.getOrElse { throw AuthFailure("INVALID_ECONOMY_QUERY", "Некорректная страница рынка", 400) }
+    fun requiredHomeLevel(itemId: String, catalog: EconomyCatalog = EconomyRules.catalog): Int {
+        fun buildingHome(id: String, level: Int, seen: Set<String> = emptySet()): Int {
+            if (id == "home") return level
+            val key = "$id:$level"
+            if (key in seen) return Int.MAX_VALUE
+            val definition = catalog.buildings.firstOrNull { it.id == id }?.levels?.firstOrNull { it.level == level }
+                ?: return Int.MAX_VALUE
+            return maxOf(definition.requiredHomeLevel, definition.requiredBuildings.maxOfOrNull { (required, amount) ->
+                buildingHome(required, amount, seen + key)
+            } ?: 1)
+        }
+        fun requirements(home: Int, buildings: Map<String, Int>): Int = maxOf(home,
+            buildings.maxOfOrNull { (id, level) -> buildingHome(id, level) } ?: 1)
+        val sources = catalog.recipes.filter { (it.rewards[itemId] ?: 0L) > 0L }.map { recipe ->
+            requirements(recipe.requiredHomeLevel, recipe.requiredBuildings + (recipe.buildingId to
+                maxOf(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?: 0)))
+        } + catalog.explorations.filter { (it.rewards[itemId] ?: 0L) > 0L }
+            .map { requirements(it.requiredHomeLevel, it.requiredBuildings) }
+        if (catalog.fishing?.fish?.any { it.itemId == itemId } == true || catalog.fishing?.baits?.any { it.itemId == itemId } == true) return 1
+        return sources.minOrNull() ?: Int.MAX_VALUE
     }
 
-    internal fun cursor(listing: EconomyMarketListing): String = Base64.getUrlEncoder().withoutPadding()
-        .encodeToString("${listing.createdAt}|${listing.id}".toByteArray(Charsets.UTF_8))
+    fun eligible(itemId: String, quantity: Long, totalPrice: Long, homeLevel: Int): Boolean {
+        val item = EconomyRules.catalog.items.firstOrNull { it.id == itemId && it.tradable } ?: return false
+        return quantity > 0L && totalPrice / quantity >= item.baseSellPrice && homeLevel >= requiredHomeLevel(itemId)
+    }
 }

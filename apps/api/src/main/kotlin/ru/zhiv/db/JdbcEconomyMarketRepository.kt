@@ -106,29 +106,73 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         ))
     }
 
-    override suspend fun market(sessionHash: ByteArray, cursor: String?, limit: Int): EconomyMarketView {
-        if (limit !in 1..EconomyMarketRules.MAX_PAGE_SIZE)
-            throw AuthFailure("INVALID_ECONOMY_QUERY", "Размер страницы должен быть от 1 до 50", 400)
-        val page = EconomyMarketRules.cursor(cursor)
-        return transaction { c ->
-            val user = actor(c, sessionHash)
-            val cursorSql = if (page == null) "" else " AND (l.created_at,l.id)<(?,?)"
-            val parameters = mutableListOf<Any?>(user.id)
-            if (page != null) {
-                parameters.add(OffsetDateTime.ofInstant(page.createdAt, ZoneOffset.UTC))
-                parameters.add(page.id)
+    private data class Showcase(val refreshAt: Instant, val ids: List<UUID>)
+
+    private fun readShowcase(c: Connection, user: UUID): Showcase? = c.economyRows(
+        "SELECT refresh_at,listing_ids FROM economy_market_showcases WHERE user_id=?", user) {
+        Showcase(it.getObject(1, OffsetDateTime::class.java).toInstant(),
+            (it.getArray(2).array as Array<*>).map { id -> UUID.fromString(id.toString()) })
+    }.firstOrNull()
+
+    /** The account lock serializes first reads, refreshes and purchases across devices. */
+    private fun showcase(c: Connection, user: UUID, state: EconomyState, at: Instant): Showcase {
+        readShowcase(c, user)?.takeIf { at.isBefore(it.refreshAt) }?.let { return it }
+        val config = EconomyRules.catalog.market
+        val home = state.buildings["home"] ?: 1
+        val items = EconomyRules.catalog.items.filter { it.tradable && home >= EconomyMarketRules.requiredHomeLevel(it.id) }
+        val ids = if (items.isEmpty()) emptyList() else {
+            val values = items.joinToString(",") { "(?::text,?::bigint)" }
+            val parameters = items.flatMap { listOf<Any?>(it.id, it.baseSellPrice) }.toMutableList()
+            parameters.add(user.toString() + at.toString())
+            parameters.add(user)
+            parameters.add(config.showcasePerSeller)
+            parameters.add(config.showcaseSlots)
+            c.economyRows("""WITH prices(item_id,minimum) AS (VALUES $values), candidates AS (
+                SELECT l.id,l.seller_id,md5(l.id::text || ?) AS rank
+                FROM economy_market_listings l JOIN app_users u ON u.id=l.seller_id JOIN prices p ON p.item_id=l.item_id
+                WHERE l.status='active' AND l.seller_id<>? AND u.deleted_at IS NULL AND u.banned_at IS NULL
+                  AND l.total_price / l.quantity >= p.minimum
+            ), diverse AS (
+                SELECT id,rank,row_number() OVER (PARTITION BY seller_id ORDER BY rank,id) AS seller_slot FROM candidates
+            ) SELECT id FROM diverse WHERE seller_slot<=? ORDER BY rank,id LIMIT ?""", *parameters.toTypedArray()) {
+                it.getObject(1, UUID::class.java)
             }
-            parameters.add(limit + 1)
-            val rows = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
-                JOIN app_users u ON u.id=l.seller_id WHERE l.status='active' AND l.seller_id<>?
-                AND u.deleted_at IS NULL AND u.banned_at IS NULL $cursorSql
-                ORDER BY l.created_at DESC,l.id DESC LIMIT ?""", *parameters.toTypedArray()) { listing(it, user.id).listing }
+        }
+        val result = Showcase(at.plusSeconds(config.showcaseRefreshSeconds), ids)
+        c.prepareStatement("""INSERT INTO economy_market_showcases(user_id,refresh_at,listing_ids) VALUES (?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET refresh_at=EXCLUDED.refresh_at,listing_ids=EXCLUDED.listing_ids""").use { statement ->
+            statement.setObject(1, user)
+            statement.setObject(2, OffsetDateTime.ofInstant(result.refreshAt, ZoneOffset.UTC))
+            val array = c.createArrayOf("uuid", ids.toTypedArray())
+            try { statement.setArray(3, array); statement.executeUpdate() } finally { array.free() }
+        }
+        return result
+    }
+
+    override suspend fun market(sessionHash: ByteArray, cursor: String?, limit: Int): EconomyMarketView {
+        if (limit !in 1..EconomyRules.catalog.market.showcaseSlots || cursor != null)
+            throw AuthFailure("INVALID_ECONOMY_QUERY", "Лавка содержит до 12 предложений без дополнительных страниц", 400)
+        return transaction { c ->
+            val initial = actor(c, sessionHash)
+            c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", initial.id) { true }
+            val user = actor(c, sessionHash)
+            if (user.id != initial.id) throw AuthFailure("ECONOMY_OWNER_CHANGED", "Открыт другой профиль. Обновите лавку.", 409)
+            ensureEconomyProfile(c, user.id)
+            val state = readEconomyProfile(c, user.id).state
+            val config = EconomyRules.catalog.market
+            val at = now(c)
+            val unlocked = (state.buildings["home"] ?: 1) >= config.requiredHomeLevel && state.completedExplorations >= config.requiredExplorations
+            val selection = if (unlocked) showcase(c, user.id, state, at) else Showcase(at.plusSeconds(config.showcaseRefreshSeconds), emptyList())
+            val selected = if (selection.ids.isEmpty()) emptyList() else c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
+                JOIN app_users u ON u.id=l.seller_id WHERE l.id IN (${selection.ids.joinToString(",") { "?" }})
+                AND l.status='active' AND u.deleted_at IS NULL AND u.banned_at IS NULL""", *selection.ids.toTypedArray()) { listing(it, user.id).listing }
+                .filter { EconomyMarketRules.eligible(it.itemId, it.quantity, it.totalPrice, state.buildings["home"] ?: 1) }
+                .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
             val mine = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
                 JOIN app_users u ON u.id=l.seller_id WHERE l.status='active' AND l.seller_id=?
-                ORDER BY l.created_at DESC,l.id DESC LIMIT ?""", user.id, EconomyRules.catalog.market.maxListings) { listing(it, user.id).listing }
-            val listings = rows.take(limit)
-            EconomyMarketView(listings, mine,
-                if (rows.size > limit) EconomyMarketRules.cursor(listings.last()) else null, now(c).toString())
+                ORDER BY l.created_at DESC,l.id DESC LIMIT ?""", user.id, config.maxListings) { listing(it, user.id).listing }
+            EconomyMarketView(selected.take(limit), mine, serverTime=at.toString(), showcase=EconomyMarketShowcase(
+                selection.refreshAt.toString(), config.showcaseSlots, config.showcasePerSeller, config.showcaseRefreshSeconds))
         }
     }
 
@@ -215,6 +259,11 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             throw AuthFailure("ECONOMY_MARKET_QUOTE_CHANGED", "Проверьте состав и цену партии", 409)
         if (EconomyRules.catalog.items.none { it.id == lot.itemId && it.tradable })
             throw AuthFailure("ECONOMY_MARKET_ITEM", "Торговля этим предметом приостановлена", 409)
+        val selection = readShowcase(c, user)
+        if (selection == null || !now(c).isBefore(selection.refreshAt) || UUID.fromString(lot.id) !in selection.ids)
+            throw AuthFailure("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку.", 409)
+        if (!EconomyMarketRules.eligible(lot.itemId, lot.quantity, lot.totalPrice, state.buildings["home"] ?: 1))
+            throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома или цена устарела", 409)
         if (state.wallet.coins < lot.totalPrice) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно монет", 409)
         ensureEconomyProfile(c, row.seller)
         val seller = readEconomyProfile(c, row.seller).state

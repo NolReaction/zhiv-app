@@ -260,6 +260,7 @@ test("market escrow conserves goods, quoted full-lot buy transfers coins once to
 test("two buyers cannot acquire the same lot and failed purchase charges neither party", () => {
   const seller = player(), buyer = player(), rival = player(); [seller, buyer, rival].forEach(p => fixture(p));
   const lot = trade(seller, "create_listing", "wood", 5, 40).listing;
+  economy.getDevEconomyMarket(buyer.token, {}, now); economy.getDevEconomyMarket(rival.token, {}, now);
   const first = command(buyer, "buy_listing", lot.id, 5, 40), second = command(rival, "buy_listing", lot.id, 5, 40);
   economy.commandDevEconomyMarket(buyer.token, first, now);
   assert.throws(() => economy.commandDevEconomyMarket(rival.token, second, now), { code: "ECONOMY_MARKET_NOT_ACTIVE" });
@@ -268,8 +269,8 @@ test("two buyers cannot acquire the same lot and failed purchase charges neither
 
 test("market cancel returns exactly escrow, self buying and foreign cancellation fail", () => {
   const seller = player(), other = player(); fixture(seller); fixture(other);
-  const lot = trade(seller, "create_listing", "stone", 10, 20).listing;
-  assert.throws(() => trade(seller, "buy_listing", lot.id, 10, 20), { code: "ECONOMY_MARKET_SELF_TRADE" });
+  const lot = trade(seller, "create_listing", "stone", 10, 30).listing;
+  assert.throws(() => trade(seller, "buy_listing", lot.id, 10, 30), { code: "ECONOMY_MARKET_SELF_TRADE" });
   assert.throws(() => trade(other, "cancel_listing", lot.id), { code: "ECONOMY_MARKET_OWNER" });
   const cancel = command(seller, "cancel_listing", lot.id);
   assert.equal(economy.commandDevEconomyMarket(seller.token, cancel, now).state.inventory.stone, 30);
@@ -291,14 +292,13 @@ test("market gates, limits and price range come from the shared catalog", () => 
   assert.equal(read(p).inventory.wood, 20);
 });
 
-test("cursor pagination is stable for same-time lots and rejects malformed cursors", () => {
-  const seller = player(), buyer = player(); fixture(seller);
+test("showcase has two lots per seller, no cursor and stays fixed across smaller reads", () => {
+  const seller = player(), buyer = player(); fixture(seller); fixture(buyer);
   for (let i = 0; i < 5; i++) trade(seller, "create_listing", "wood", 1, 4);
   const first = economy.getDevEconomyMarket(buyer.token, { limit: 2 }, now);
-  const second = economy.getDevEconomyMarket(buyer.token, { limit: 2, cursor: first.nextCursor }, now);
-  const third = economy.getDevEconomyMarket(buyer.token, { limit: 2, cursor: second.nextCursor }, now);
-  assert.equal(new Set([...first.listings, ...second.listings, ...third.listings].map(lot => lot.id)).size, 5);
-  assert.equal(third.nextCursor, null);
+  const smaller = economy.getDevEconomyMarket(buyer.token, { limit: 1 }, now);
+  assert.equal(first.listings.length, 2); assert.deepEqual(smaller.listings, first.listings.slice(0, 1));
+  assert.equal(first.nextCursor, null);
   for (const cursor of ["", "bad", "x".repeat(161)]) assert.throws(() => economy.getDevEconomyMarket(buyer.token, { cursor }, now), { code: "INVALID_ECONOMY_QUERY" });
 });
 
@@ -350,6 +350,7 @@ test("a purchase checks mixed inventory and own escrow before transferring money
   const seller = player(), buyer = player(); fixture(seller); fixture(buyer, { coins: 100, items: { wood: 100, stone: 96 } });
   const reserved = trade(buyer, "create_listing", "wood", 50, 200).listing;
   const lot = trade(seller, "create_listing", "berries", 6, 30).listing;
+  economy.getDevEconomyMarket(buyer.token, {}, now);
   const beforeBuyer = read(buyer), beforeSeller = read(seller);
   assert.throws(() => trade(buyer, "buy_listing", lot.id, 6, 30), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(buyer), beforeBuyer); assert.deepEqual(read(seller), beforeSeller);

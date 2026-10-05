@@ -509,9 +509,13 @@ class JdbcAccountLifecycleIntegrationTest {
         market.command(b.session,listing)
         val listingId=UUID.fromString(market.market(b.session).mine.single().id)
         assertEquals(5L,economy.snapshot(b.session).inventory["berries"])
+        val targetShowcase=market.market(a.session).showcase
+        assertEquals("1",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",b.id))
         val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
         val merged=economy.snapshot(a.session)
         assertEquals(13L,merged.inventory["berries"])
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",b.id))
+        assertEquals(targetShowcase,market.market(a.session).showcase,"merging does not refill the surviving player's window")
         assertEquals("cancelled",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
         assertEquals("1",scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?",a.id,UUID.fromString(listing.requestId)))
         assertFailsWith<AuthFailure> { market.command(a.session,listing.copy(ownerPublicId=merged.ownerPublicId,expectedRevision=merged.revision)) }
@@ -522,6 +526,7 @@ class JdbcAccountLifecycleIntegrationTest {
         prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'",a.id))
         assertEquals("0",scalar("SELECT count(*) FROM economy_profiles WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",a.id))
     }
 
     @Test fun `merge capacity review includes stock held in active listings`() = runBlocking<Unit> {

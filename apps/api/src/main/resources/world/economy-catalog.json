@@ -2136,7 +2136,10 @@
     "maxListings": 10,
     "maxLotQuantity": 99,
     "maxPriceMultiplier": 5,
-    "feeBps": 0
+    "feeBps": 0,
+    "showcaseSlots": 12,
+    "showcasePerSeller": 2,
+    "showcaseRefreshSeconds": 1800
   },
   "fishing": {
     "routeIds": [

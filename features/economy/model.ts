@@ -31,7 +31,8 @@ export const economyCatalogSchema = z.object({
   localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
   version: z.literal(2), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400) }),
-  market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000) }),
+  market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000),
+    showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
   items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance.positive(), tradable: z.boolean() })).max(1000),
   buildings: z.array(z.object({ id, name: z.string(), description: z.string(), levels: z.array(z.object({
     level: z.number().int().min(1).max(100), seconds: count, cost: economyCostSchema, requiredHomeLevel: z.number().int().min(1).max(5),
@@ -78,8 +79,9 @@ export const economyMarketListingSchema = z.object({
   createdAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), owned: z.boolean(),
 });
 export const marketViewSchema = z.object({
-  listings: z.array(economyMarketListingSchema).max(50), mine: z.array(economyMarketListingSchema).max(10),
-  nextCursor: z.string().nullable(), serverTime: z.string().datetime(),
+  listings: z.array(economyMarketListingSchema).max(12), mine: z.array(economyMarketListingSchema).max(10),
+  nextCursor: z.null(), serverTime: z.string().datetime(),
+  showcase: z.object({ refreshAt: z.string().datetime(), slots: count.positive().max(12), maxPerSeller: count.positive().max(10), refreshSeconds: count.positive().max(86400) }).optional(),
 });
 export const economyResultSchema = z.object({
   state: economyViewSchema, message: z.string(), acceptedRevision: count, replayed: z.boolean(), listing: economyMarketListingSchema.optional().nullable(),

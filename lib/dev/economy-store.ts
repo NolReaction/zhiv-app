@@ -1,4 +1,6 @@
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
+import { createHash } from "node:crypto";
+import { marketListingEligible, marketMinimumPrice } from "@/features/economy/market-rules";
 import { getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
 import { consumeDevLegacyEconomy, hasDevLegacyJourney } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
@@ -11,9 +13,15 @@ type Receipt = { signature: string; message: string; acceptedRevision: number };
 type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand;
 type Profile = { revision: number; state: EconomyState; receipts: Map<string, Receipt>; legacyJourneys: Set<string> };
 type Listing = Omit<EconomyMarketListing, "owned" | "sellerName">;
-type Store = { profiles: Map<string, Profile>; listings: Map<string, Listing> };
+type Showcase = { refreshAt: number; ids: string[] };
+type Store = { profiles: Map<string, Profile>; listings: Map<string, Listing>; showcases: Map<string, Showcase> };
 const globalStore = globalThis as typeof globalThis & { __zhivDevEconomyStore?: Store };
-const store = () => globalStore.__zhivDevEconomyStore ??= { profiles: new Map(), listings: new Map() };
+function store(): Store {
+  const value = globalStore.__zhivDevEconomyStore ??= { profiles: new Map(), listings: new Map(), showcases: new Map() };
+  // Next HMR may retain the pre-showcase store; preserve its profiles and paid listings.
+  value.showcases ??= new Map();
+  return value;
+}
 export const resetDevEconomyStoreForTests = () => { delete globalStore.__zhivDevEconomyStore; };
 export { EconomyRuleError as DevEconomyError };
 function fail(code: string, message: string, status = 409): never { throw new EconomyRuleError(code, message, status); }
@@ -162,6 +170,7 @@ export function creditDevLegacyJourney(token: string | undefined, journey: { id:
 }
 export function removeDevEconomyOwner(owner: string) {
   store().profiles.delete(owner);
+  store().showcases.delete(owner);
   for (const [id, listing] of store().listings) if (listing.sellerPublicId === owner) store().listings.delete(id);
 }
 function publicListing(listing: Listing, owner: string, token: string | undefined): EconomyMarketListing {
@@ -173,25 +182,36 @@ function requireMarket(state: EconomyState) {
 }
 const compareListings = (a: Listing, b: Listing) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
 export function getDevEconomyMarket(token: string | undefined, options: { cursor?: string; limit?: number; ownerPublicId?: string } = {}, now = Date.now()): MarketView {
-  const { owner } = profile(token, now);
+  const { owner, value } = profile(token, now);
   if (options.ownerPublicId && options.ownerPublicId !== owner) fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите рынок");
-  const limit = options.limit ?? 30;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 50) fail("INVALID_ECONOMY_QUERY", "Некорректный размер страницы", 400);
-  let boundary: { createdAt: string; id: string } | null = null;
-  if (options.cursor != null) {
-    try {
-      if (options.cursor.length > 160 || !/^[A-Za-z0-9_-]+$/.test(options.cursor)) throw Error();
-      const [createdAt, id, extra] = Buffer.from(options.cursor, "base64url").toString("utf8").split("|");
-      if (extra || !Number.isFinite(Date.parse(createdAt)) || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw Error();
-      boundary = { createdAt: new Date(createdAt).toISOString(), id: id.toLowerCase() };
-    } catch { fail("INVALID_ECONOMY_QUERY", "Некорректная страница рынка", 400); }
-  }
+  const config = economyCatalog.market, limit = options.limit ?? config.showcaseSlots;
+  if (!Number.isInteger(limit) || limit < 1 || limit > config.showcaseSlots || options.cursor != null)
+    fail("INVALID_ECONOMY_QUERY", "Лавка содержит до 12 предложений без дополнительных страниц", 400);
   const active = [...store().listings.values()].filter(item => item.status === "active").sort(compareListings);
   const mine = active.filter(item => item.sellerPublicId === owner).map(item => publicListing(item, owner, token));
-  const candidates = active.filter(item => item.sellerPublicId !== owner && (!boundary || item.createdAt < boundary.createdAt || item.createdAt === boundary.createdAt && item.id < boundary.id));
-  const page = candidates.slice(0, limit), last = page.at(-1);
-  return { listings: page.map(item => publicListing(item, owner, token)), mine, serverTime: new Date(now).toISOString(),
-    nextCursor: candidates.length > limit && last ? Buffer.from(`${last.createdAt}|${last.id}`).toString("base64url") : null };
+  let selection = store().showcases.get(owner);
+  const unlocked = marketUnlocked(value.state);
+  if (unlocked && (!selection || now >= selection.refreshAt)) {
+    const rank = (id: string) => createHash("md5").update(id + owner + now).digest("hex");
+    const candidates = active.filter(item => item.sellerPublicId !== owner && marketListingEligible(item, value.state.buildings.home ?? 1)
+      && lookupDevUser(token, item.sellerPublicId).kind === "ok").map(item => ({ item, rank: rank(item.id) }))
+      .sort((a, b) => a.rank.localeCompare(b.rank) || a.item.id.localeCompare(b.item.id));
+    const perSeller = new Map<string, number>(), ids: string[] = [];
+    for (const { item } of candidates) {
+      const count = perSeller.get(item.sellerPublicId) ?? 0;
+      if (count >= config.showcasePerSeller) continue;
+      ids.push(item.id); perSeller.set(item.sellerPublicId, count + 1);
+      if (ids.length >= config.showcaseSlots) break;
+    }
+    selection = { refreshAt: now + config.showcaseRefreshSeconds * 1000, ids };
+    store().showcases.set(owner, selection);
+  }
+  const listings = !unlocked || !selection ? [] : selection.ids.map(id => store().listings.get(id))
+    .filter((item): item is Listing => !!item && item.status === "active" && marketListingEligible(item, value.state.buildings.home ?? 1)
+      && lookupDevUser(token, item.sellerPublicId).kind === "ok").slice(0, limit).map(item => publicListing(item, owner, token));
+  return { listings, mine, serverTime: new Date(now).toISOString(), nextCursor: null,
+    showcase: { refreshAt: new Date(selection?.refreshAt ?? now + config.showcaseRefreshSeconds * 1000).toISOString(),
+      slots: config.showcaseSlots, maxPerSeller: config.showcasePerSeller, refreshSeconds: config.showcaseRefreshSeconds } };
 }
 export function commandDevEconomyMarket(token: string | undefined, input: MarketCommand, now = Date.now()): EconomyResult {
   const parsed = marketCommandSchema.safeParse(input);
@@ -212,7 +232,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (command.action === "create_listing") {
     const item = economyCatalog.items.find(item => item.id === command.targetId && item.tradable);
     if (!item) return fail("ECONOMY_MARKET_ITEM", "Этот предмет нельзя выставить на рынок", 400);
-    if (command.totalPrice > item.baseSellPrice * economyCatalog.market.maxPriceMultiplier * command.quantity) return fail("ECONOMY_MARKET_PRICE", "Цена лота вне разрешённого диапазона", 400);
+    if (command.totalPrice < marketMinimumPrice(item.id, command.quantity) || command.totalPrice > item.baseSellPrice * economyCatalog.market.maxPriceMultiplier * command.quantity) return fail("ECONOMY_MARKET_PRICE", "Цена лота вне разрешённого диапазона", 400);
     if ([...store().listings.values()].filter(item => item.sellerPublicId === owner && item.status === "active").length >= economyCatalog.market.maxListings) return fail("ECONOMY_MARKET_LIMIT", "На прилавке уже 10 лотов");
     if ((next.inventory[item.id] ?? 0) < command.quantity) return fail("ECONOMY_RESOURCES", "Не хватает предметов для лота");
     next.inventory[item.id] -= command.quantity;
@@ -236,8 +256,13 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   }
   if (listing.sellerPublicId === owner) return fail("ECONOMY_MARKET_SELF_TRADE", "Нельзя купить собственный лот");
   if (command.quantity !== listing.quantity || command.totalPrice !== listing.totalPrice) return fail("ECONOMY_MARKET_QUOTE_CHANGED", "Проверьте количество и цену лота");
+  const selection = store().showcases.get(owner);
+  if (!selection || now >= selection.refreshAt || !selection.ids.includes(listing.id))
+    return fail("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку");
+  if (!marketListingEligible(listing, next.buildings.home ?? 1))
+    return fail("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома или цена устарела");
   const seller = store().profiles.get(listing.sellerPublicId);
-  if (!seller) return fail("ECONOMY_MARKET_NOT_ACTIVE", "Продавец больше недоступен");
+  if (!seller || lookupDevUser(token, listing.sellerPublicId).kind !== "ok") return fail("ECONOMY_MARKET_NOT_ACTIVE", "Продавец больше недоступен");
   if (next.wallet.coins < listing.totalPrice) return fail("ECONOMY_RESOURCES", "Не хватает монет");
   if (seller.state.wallet.coins + listing.totalPrice > ECONOMY_MAX_BALANCE || seller.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Продавец пока не может принять оплату");
   creditEconomyItems(next, { [listing.itemId]: listing.quantity });

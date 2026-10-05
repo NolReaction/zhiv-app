@@ -114,6 +114,17 @@
 .stockGrid small { color: #b8cba2; font-size: .75rem; }
 .offerPrice { display: inline-flex; align-items: center; gap: 5px; color: var(--economy-gold); font-size: 1.05rem; font-weight: 650; white-space: nowrap; }
 .offerMeta { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.shopHeading { display: flex; align-items: center; gap: 12px; padding: 22px 16px 16px; border: 1px solid #b6c7943d; border-radius: 16px; background: repeating-linear-gradient(90deg, #76965b 0 24px, #c5cc9e 24px 48px) top / 100% 8px no-repeat, linear-gradient(125deg, #364a2e, #1d2d20); }
+.shopHeading > svg { flex-shrink: 0; color: var(--economy-gold); }
+.showcaseInfo { display: grid; gap: 10px; }
+.showcaseInfo strong { display: block; margin-bottom: 6px; font-size: .85rem; }
+.showcaseInfo button { justify-self: start; }
+.shopGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 12px; align-items: start; }
+.offerCard { min-width: 0; border-bottom: 5px solid #675337; background: linear-gradient(160deg, #293c29, #19281e); }
+.offerCard .cardHeader { align-items: flex-start; }
+.offerCard h3, .offerCard .muted { overflow-wrap: anywhere; }
+.offerCard .offerMeta { flex-wrap: wrap; }
+.offerCard > button { width: 100%; }
 .confirmation { display: grid; gap: 10px; border-top: 1px solid var(--economy-line); padding-top: 12px; }
 .confirmation p { font-size: .82rem; }
 .skeleton { height: 96px; border: 1px solid #c5dbac20; border-radius: 16px; background: #c5dbac09; }

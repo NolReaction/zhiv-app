@@ -35,7 +35,7 @@
 |---|---|---|
 | Аккаунт, отметки, приватность, статус | Ktor/PostgreSQL; локально — имитация | [lib/check-in-api.ts](../lib/check-in-api.ts), [lib/auth-api.ts](../lib/auth-api.ts) |
 | Подтверждённые тапы, рекорды, достижения | Серверные квитанции | [game-sync.ts](../features/game/game-sync.ts) повторяет неподтверждённые пакеты из журнала |
-| Монеты, товары, здания, заказы и рынок | Серверная экономика V32–V35 с `revision` | [economy/session.ts](../features/economy/session.ts): `requestId`, `expectedRevision`, точный повтор после потери ответа |
+| Монеты, товары, здания, заказы и рынок | Серверная экономика V32–V36 с `revision` | [economy/session.ts](../features/economy/session.ts): `requestId`, `expectedRevision`, точный повтор после потери ответа |
 | Гардероб, коллекции, прежние походы | Прежний world snapshot | [world/session.ts](../features/world/session.ts), старые новые старты запрещены сервером |
 | Геометрия карты, водная маска, свет | `world/tiled/forest.tmj` | Экспорт [forest.generated.json](../features/world/tiled/forest.generated.json), общий `TILED_WORLD` |
 | Потребности, краткая память, безопасная позиция/сон, грибы и сад | Подтверждённый снимок `forest_memory` с отдельной revision и арендой записи | `forest-memory.ts` формирует снимок v2; `forest-memory-sync.ts` согласует его с API; localStorage — кэш |

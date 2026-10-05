@@ -98,8 +98,9 @@ test("market purchases during gathering may fill storage, but a failed delivery 
   const job = grow(p), readyAt = Date.parse(job.finishesAt);
   const collecting = issue(p, "start_collection", job.id, readyAt).state.jobs[0];
   const finish = Date.parse(collecting.collection.finishesAt);
-  const listing = trade(seller, "create_listing", "wood", 10, 10, readyAt).listing;
-  trade(p, "buy_listing", listing.id, 10, 10, readyAt + 1);
+  const listing = trade(seller, "create_listing", "wood", 10, 40, readyAt).listing;
+  economy.getDevEconomyMarket(p.token, {}, readyAt);
+  trade(p, "buy_listing", listing.id, 10, 40, readyAt + 1);
   const before = read(p, finish);
   assert.throws(() => issue(p, "claim_job", job.id, finish), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p, finish), before);

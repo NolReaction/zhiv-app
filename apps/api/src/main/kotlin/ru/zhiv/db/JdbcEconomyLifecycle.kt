@@ -89,6 +89,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
 
 /** Keep the one-time conversion audit attached to the retired UUID. No new grant on reset. */
 internal fun removeEconomyProfile(c: Connection, user: UUID) {
+    c.lifecycleEconomyUpdate("DELETE FROM economy_market_showcases WHERE user_id=?", user)
     c.lifecycleEconomyUpdate("DELETE FROM economy_commands WHERE user_id=?", user)
     c.lifecycleEconomyUpdate("DELETE FROM economy_ledger WHERE user_id=?", user)
     c.lifecycleEconomyUpdate("DELETE FROM economy_profiles WHERE user_id=?", user)

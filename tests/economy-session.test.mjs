@@ -97,12 +97,12 @@ test("read polling is coalesced, throttled and never grants timer results locall
   assert.ok(Number.isFinite(session.now()));
 });
 
-test("market page append deduplicates lots; new refresh drops closed stale listings", async () => {
+test("market refresh replaces the fixed showcase and drops closed stale listings", async () => {
   let calls = 0;
   const first = { id: "a" }, second = { id: "b" };
-  const session = createEconomySession(owner, transport({ market: async () => ({ ...market(), listings: ++calls === 1 ? [first] : calls === 2 ? [first, second] : [] }) }), () => assert.fail());
-  session.activate(); await session.refreshMarket(); await session.refreshMarket("cursor");
-  assert.deepEqual(session.getSnapshot().market.listings.map(lot => lot.id), ["a", "b"]);
+  const session = createEconomySession(owner, transport({ market: async () => ({ ...market(), listings: ++calls === 1 ? [first] : calls === 2 ? [second] : [] }) }), () => assert.fail());
+  session.activate(); await session.refreshMarket(); await session.refreshMarket();
+  assert.deepEqual(session.getSnapshot().market.listings.map(lot => lot.id), ["b"]);
   await session.refreshMarket(); assert.equal(session.getSnapshot().market.listings.length, 0);
 });
 

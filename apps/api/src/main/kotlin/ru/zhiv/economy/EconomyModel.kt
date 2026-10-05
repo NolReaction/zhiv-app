@@ -68,7 +68,10 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
     val requiredBuildings: Map<String, Int> = emptyMap(),
 )
-@Serializable data class EconomyMarketConfig(val requiredHomeLevel: Int = 2, val requiredExplorations: Long = 1, val maxListings: Int = 10, val maxLotQuantity: Long = 99, val maxPriceMultiplier: Long = 5, val feeBps: Int = 0)
+@Serializable data class EconomyMarketConfig(val requiredHomeLevel: Int = 2, val requiredExplorations: Long = 1, val maxListings: Int = 10, val maxLotQuantity: Long = 99, val maxPriceMultiplier: Long = 5, val feeBps: Int = 0,
+    val showcaseSlots: Int = 12, val showcasePerSeller: Int = 2, val showcaseRefreshSeconds: Long = 1800) {
+    init { require(showcaseSlots in 1..12 && showcasePerSeller in 1..10 && showcaseRefreshSeconds in 1L..86400L) }
+}
 @Serializable data class EconomyLocalBuyer(val payoutBps: Int = 10_000)
 @Serializable data class EconomyConstructionSpeedup(val secondsPerPearl: Long)
 @Serializable data class EconomyCatalog(

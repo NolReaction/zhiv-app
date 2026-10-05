@@ -35,8 +35,8 @@ export const getEconomy = (signal?: AbortSignal) => request(
   "/api/v1/economy", economyViewSchema, undefined, signal);
 export const sendEconomyCommand = (command: EconomyCommand, signal?: AbortSignal) => request(
   "/api/v1/economy/commands", economyResultSchema, command, signal);
-export const getEconomyMarket = (signal?: AbortSignal, cursor?: string) => request(
-  `/api/v1/economy/market${cursor ? `?${new URLSearchParams({ cursor })}` : ""}`,
+export const getEconomyMarket = (signal?: AbortSignal) => request(
+  "/api/v1/economy/market",
   marketViewSchema, undefined, signal);
 export const sendMarketCommand = (command: MarketCommand, signal?: AbortSignal) => request(
   "/api/v1/economy/market/commands", economyResultSchema, command, signal);

@@ -142,6 +142,34 @@ test("an empty player market is honest and offers a next action without fictiona
   assert.doesNotMatch(html, /Продавец:/);
 });
 
+test("a personal showcase explains its fixed window and disables stale quotes until refresh", () => {
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 42,
+    status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString(),
+    showcase: { refreshAt: new Date(now + 1800_000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } };
+  const economy = controller({ snapshot: snapshot({ wallet: { coins: 1000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 }), market });
+  let html = render("market", economy);
+  assert.match(html, /Ваша витрина · 1 \/ 12/);
+  assert.match(html, /До 2 лотов от одной лавки/);
+  assert.match(html, /Купленные и снятые лоты до смены не заменяются/);
+  assert.ok(button(html, "Проверить наличие"));
+  assert.equal(disabled(button(html, "Купить весь лот")), false);
+  assert.doesNotMatch(html, /Показать ещё/);
+  html = render("market", { ...economy, now: now + 1800_000 });
+  assert.equal(disabled(button(html, "Обновите витрину")), true);
+  assert.equal(disabled(button(html, "Обновить витрину")), false);
+});
+
+test("stale or older-server offers cannot bypass home tiers or the NPC resale price floor", () => {
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 100,
+    status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
+  const state = snapshot({ wallet: { coins: 1000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 });
+  assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Нужен дом 4 ур.")), true);
+  state.buildings.home = 4;
+  assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Купить весь лот")), false);
+  market.listings[0].totalPrice = 99;
+  assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Предложение недоступно")), true);
+});
+
 test("conversion is disclosed once as history and premium balance never exposes a checkout", () => {
   const html = render("overview", controller({ snapshot: snapshot({ migration: { version: 1, coinsGranted: 126, woodGranted: 10, stoneGranted: 4 } }) }));
   assert.match(html, /Прежние запасы перенесены/);
