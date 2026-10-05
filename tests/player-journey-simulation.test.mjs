@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadJourneyRules, simulateJourney } from "../scripts/simulate-player-journey.mjs";
 import { lookaheadPolicy } from "../scripts/simulate-player-lookahead.mjs";
+import { jointPlanningPolicy } from "../scripts/simulate-player-joint.mjs";
 
 test("a simulated empty player reaches home two using actual commands without grants or a quarry", async () => {
   const loaded = await loadJourneyRules();
@@ -38,5 +39,45 @@ test("lookahead prepares later upgrades with real commands while the default pla
       assert(result.saleRevenue > 0);
       assert(result.actions.start_construction >= 14);
     }
+  } finally { await loaded.close(); }
+});
+
+test("an explicit research pearl balance pays only actual construction speedups and cannot create materials", async () => {
+  const loaded = await loadJourneyRules();
+  try {
+    const casts = [];
+    const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, jobId) => {
+      const result = loaded.rules.applyEconomyCommand(state, command, now, jobId);
+      if (command.action === "start_fishing") casts.push(state.fishingCastSeed);
+      return result;
+    } } };
+    simulateJourney(observed, "visits3", 40, lookaheadPolicy);
+    const baseline = casts.splice(0);
+    const result = simulateJourney(observed, "visits3", 40, { ...lookaheadPolicy, pearlBudget: 100 });
+    assert(casts.length >= 50 && baseline.length >= 50);
+    assert.deepEqual(casts.slice(0, 50), baseline.slice(0, 50), "The paired scenarios share the same nth-cast seeds");
+    assert(result.actions.speedup_construction > 0);
+    assert(result.pearlsSpent > 0 && result.pearlsSpent <= 100);
+    assert.equal(result.pearlsRemaining + result.pearlsSpent, 100);
+    assert.equal(result.actions.buy_fishing_item, undefined);
+    assert.equal(result.failures.ECONOMY_PEARLS, undefined);
+    assert.equal(result.failures.ECONOMY_BUILDING_REQUIRED, undefined);
+    assert(result.saleRevenue > 0, "Construction resources and coins still require ordinary acquisition");
+    const ids = result.milestones.map(m => m.building);
+    assert.equal(new Set(ids).size, ids.length, "A speedup must not complete the same upgrade twice");
+    assert.throws(() => simulateJourney(loaded, "visits3", 1, { pearlBudget: -1 }), /Invalid research pearl budget/);
+  } finally { await loaded.close(); }
+});
+
+test("joint planning actually starts multi-output orders without unlocking stations or granting their inputs", async () => {
+  const loaded = await loadJourneyRules();
+  try {
+    const result = simulateJourney(loaded, "visits3", 40, jointPlanningPolicy);
+    assert(result.productionRecipes.workshop_overnight > 0);
+    assert(result.homeDays[3] > 0);
+    assert.equal(result.failures.ECONOMY_BUILDING_REQUIRED, undefined);
+    assert.equal(result.actions.speedup_construction, undefined);
+    assert.equal(result.actions.buy_fishing_item, undefined);
+    assert(result.saleRevenue > 0);
   } finally { await loaded.close(); }
 });

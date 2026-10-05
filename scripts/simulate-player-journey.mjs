@@ -3,7 +3,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "vite";
 
 // Read-only player policy: every state change uses the shipped TS domain rules.
-// No market, pearls, legacy grant, admin command, backdating or tap income.
+// No market, legacy grant, admin command, backdating or tap income. The default
+// has no pearls; an explicit research scenario may start with a declared budget.
 const root = fileURLToPath(new URL("..", import.meta.url));
 const epoch = Date.parse("2026-10-05T00:00:00Z"), day = 86400, hour = 3600;
 const firstVisit = 7 * hour;
@@ -18,23 +19,39 @@ export async function loadJourneyRules() {
 }
 
 export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy = {}) {
-  const { prepareNextConstruction = false, preserveFutureCraftedStock = false } = policy;
+  const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false, pearlBudget = 0 } = policy;
+  assert(Number.isSafeInteger(pearlBudget) && pearlBudget >= 0 && pearlBudget <= 1_000_000_000, "Invalid research pearl budget");
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
-  let clock = firstVisit, sequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null;
-  const milestones = {}, events = [], failures = {}, actions = {}, items = new Map(catalog.items.map(item => [item.id, item]));
+  state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
+  let clock = firstVisit, sequence = 0, castSequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null, pearlsSpent = 0;
+  const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, items = new Map(catalog.items.map(item => [item.id, item]));
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
   const uuid = () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}`;
   const eligible = d => (state.buildings.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
     && (!d.buildingId || state.buildings[d.buildingId] >= d.buildingLevel);
-  const command = (action, targetId, quantity = 1) => {
+  const command = (action, targetId, quantity = 1, totalPrice = 0) => {
     if (action === "start_exploration" && catalog.fishing.routeIds.includes(targetId)) action = "start_fishing";
     const next = structuredClone(state);
     try {
+      let generated = 0;
+      // The nth cast gets the same server-generated seed in every scenario.
+      // Extra speedup requests cannot shift the future catch sample path.
+      const jobId = () => action === "start_fishing" && ++generated === 2
+        ? `00000000-0000-4000-9000-${(castSequence + 1).toString(16).padStart(12, "0")}` : uuid();
       rules.applyEconomyCommand(next, { requestId: uuid(), ownerPublicId: "0000-0000-0001", expectedRevision: commands,
-        action, targetId, quantity, totalPrice: 0 }, epoch + clock * 1000, uuid);
+        action, targetId, quantity, totalPrice }, epoch + clock * 1000, jobId);
+      if (action === "start_fishing" && generated >= 2) castSequence++;
       if (action === "sell" || action === "sell_fish") revenue += next.wallet.coins - state.wallet.coins;
-      Object.assign(state, next); commands++; actions[action] = (actions[action] ?? 0) + 1; lastFailure = null; return true;
+      if (action === "speedup_construction") {
+        const job = state.jobs.find(j => j.id === targetId);
+        pearlsSpent += state.wallet.pearls - next.wallet.pearls;
+        milestones[`${job.targetId}:${job.targetLevel}`] = (clock - firstVisit) / day;
+        events.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), building: `${job.targetId}:${job.targetLevel}`, coins: next.wallet.coins });
+      }
+      Object.assign(state, next); commands++; actions[action] = (actions[action] ?? 0) + 1;
+      if (action === "start_production") productionRecipes[targetId] = (productionRecipes[targetId] ?? 0) + quantity;
+      lastFailure = null; return true;
     } catch (error) { lastFailure = error.code ?? error.message; failures[lastFailure] = (failures[lastFailure] ?? 0) + 1; return false; }
   };
   const cash = rewards => Object.entries(rewards).reduce((sum, [id, amount]) => sum + (catalog.fishing.fish.some(f => f.itemId === id)
@@ -74,16 +91,31 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
       target = { id, key, ...catalog.buildings.find(b => b.id === id).levels.find(l => l.level === Number(level)) };
     }
     for (const job of state.jobs) for (const [id, quantity] of Object.entries(job.rewards)) planned[id] = (planned[id] ?? 0) + quantity;
+    const jointSources = new Map();
+    if (jointBatchPlanning && !isActive) {
+      for (const r of catalog.recipes.filter(r => projectedEligible(r) && Object.keys(r.rewards).length > 1 && r.seconds <= gap)) {
+        const covered = Object.entries(r.rewards).filter(([id]) => (target.cost.items[id] ?? 0) > (planned[id] ?? 0));
+        const separateClaims = covered.reduce((sum, [id, amount]) => {
+          const basic = catalog.recipes.find(b => projectedEligible(b) && Object.keys(b.rewards).length === 1 && b.rewards[id] > 0 && b.seconds < 14400);
+          return sum + (basic ? Math.ceil(Math.min(amount, target.cost.items[id] - (planned[id] ?? 0)) / basic.rewards[id] / basic.maxBatch) : 0);
+        }, 0);
+        // The unit is completed orders/visits, not a dimensionless rarity score.
+        // Inputs and every output are still processed by the ordinary recursion.
+        if (covered.length >= 2 && separateClaims > 1) for (const [id] of covered) jointSources.set(id, r);
+      }
+    }
     const expand = (id, amount, path = []) => {
       needed[id] = (needed[id] ?? 0) + amount;
       const owned = Math.min(planned[id] ?? 0, amount); planned[id] = (planned[id] ?? 0) - owned;
       if (owned >= amount) return;
       assert(!path.includes(id), `Policy cycle: ${path.join(" -> ")} -> ${id}`);
-      const source = sources(id)[0];
+      const source = jointSources.get(id) ?? sources(id)[0];
       if (!source && prepareNextConstruction) return;
       assert(source, `No source for ${id} at ${target.key}`);
       const batches = Math.ceil((amount - owned) / source.rewards[id]);
       recipeWants.set(source.id, (recipeWants.get(source.id) ?? 0) + batches);
+      if (jointBatchPlanning) for (const [output, quantity] of Object.entries(source.rewards))
+        planned[output] = (planned[output] ?? 0) + quantity * batches - (output === id ? amount - owned : 0);
       for (const [input, quantity] of Object.entries(source.cost.items)) expand(input, quantity * batches, [...path, id]);
     };
     for (const [id, amount] of Object.entries(target.cost.items)) expand(id, amount);
@@ -129,6 +161,11 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     target = goal(); if (!target) return;
     plan = demand(target); sellExcess(plan.needed);
     if (eligible(target) && rules.canAffordEconomy(state, target.cost) && !state.jobs.some(j => j.kind === "construction" || j.kind === "production" && j.targetId === target.id)) command("start_construction", target.id);
+    const construction = state.jobs.find(j => j.kind === "construction");
+    if (pearlBudget > 0 && construction) {
+      const price = rules.constructionSpeedupPrice(construction, epoch + clock * 1000);
+      if (price > 0 && price <= state.wallet.pearls) command("speedup_construction", construction.id, 1, price);
+    }
     target = goal(); if (!target) return;
     plan = demand(target);
     const busy = new Set(state.jobs.filter(j => ["production", "construction"].includes(j.kind)).map(j => j.targetId));
@@ -175,8 +212,10 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
   }
   const report = { mode, complete: !goal(), elapsedDays: Number(((clock - firstVisit) / day).toFixed(3)),
     homeDays: Object.fromEntries([2, 3, 4, 5].map(l => [l, milestones[`home:${l}`] == null ? null : Number(milestones[`home:${l}`].toFixed(3))])),
-    commands, saleRevenue: revenue, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events };
-  assert.equal(state.wallet.pearls, 0); assert(state.wallet.coins >= 0);
+    commands, saleRevenue: revenue, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
+    ...(pearlBudget > 0 ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
+    ...(jointBatchPlanning ? { productionRecipes } : {}) };
+  assert.equal(state.wallet.pearls, pearlBudget - pearlsSpent); assert(state.wallet.coins >= 0);
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
   return report;
 }
