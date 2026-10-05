@@ -612,8 +612,8 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);
-  assert.match(people, /Этому человеку, включая общие группы/);
-  assert.match(people, /Скрыты от этого человека, включая группы/);
+  assert.match(people, /Отметки, статус и игровой профиль видны этому человеку; настройки отметок действуют и в общих группах/);
+  assert.match(people, /Отметки, статус и игровой профиль скрыты от этого человека, включая группы/);
   assert.match(people, /aria-describedby=\{sharingHintId\}/);
   assert.match(people, /useReducer\(\s*inviteDialogReducer,\s*initialInviteDialogState/);
   assert.match(people, /<Dialog open=\{inviteDialog\.open\}/);

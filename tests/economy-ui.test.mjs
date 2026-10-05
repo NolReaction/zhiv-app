@@ -87,7 +87,7 @@ test("berry production owns its station and collection opens only after the serv
 });
 
 test("an active house build keeps the current level and does not offer a second construction", () => {
-  const state = snapshot({ wallet: { coins: 999, pearls: 0 }, inventory: { wood: 99, stone: 99 },
+  const state = snapshot({ wallet: { coins: 9990, pearls: 0 }, inventory: { wood: 99, stone: 99 },
     jobs: [job({ kind: "construction", targetId: "home", recipeId: null, targetLevel: 2, rewards: {} })] });
   const html = render("buildings", controller({ snapshot: state }));
   assert.match(html, /Прежний уровень продолжает действовать/);
@@ -117,16 +117,16 @@ test("loading and failed initial reads never display a spend action or a made-up
 });
 
 test("market shows real full-lot quotes, escapes seller text and applies catalog access requirements", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "<script>seller</script>", itemId: "wood", quantity: 6, totalPrice: 42,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "<script>seller</script>", itemId: "wood", quantity: 6, totalPrice: 420,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 42, pearls: 0 }, buildings: { home: 2, garden: 1 }, completedExplorations: 1 });
+  const state = snapshot({ wallet: { coins: 420, pearls: 0 }, buildings: { home: 2, garden: 1 }, completedExplorations: 1 });
   let html = render("market", controller({ snapshot: state, market }));
   assert.match(html, /Древесина × 6/);
   assert.match(html, /за весь лот/);
   assert.match(html, /&lt;script&gt;seller&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
-  state.wallet.coins = 41;
+  state.wallet.coins = 410;
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Не хватает монет")), true);
   state.catalog.market.requiredHomeLevel = 3;
   html = render("market", controller({ snapshot: state, market }));
@@ -143,10 +143,10 @@ test("an empty player market is honest and offers a next action without fictiona
 });
 
 test("a personal showcase explains its fixed window and disables stale quotes until refresh", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 42,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 420,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString(),
     showcase: { refreshAt: new Date(now + 1800_000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } };
-  const economy = controller({ snapshot: snapshot({ wallet: { coins: 1000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 }), market });
+  const economy = controller({ snapshot: snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 }), market });
   let html = render("market", economy);
   assert.match(html, /Ваша витрина · 1 \/ 12/);
   assert.match(html, /До 2 лотов от одной лавки/);
@@ -160,30 +160,30 @@ test("a personal showcase explains its fixed window and disables stale quotes un
 });
 
 test("stale or older-server offers cannot bypass home tiers or the NPC resale price floor", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 100,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 1000,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 1000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 });
+  const state = snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 });
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Нужен дом 4 ур.")), true);
   state.buildings.home = 4;
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Купить весь лот")), false);
-  market.listings[0].totalPrice = 99;
+  market.listings[0].totalPrice = 990;
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Предложение недоступно")), true);
 });
 
 test("conversion is disclosed once as history and premium balance never exposes a checkout", () => {
-  const html = render("overview", controller({ snapshot: snapshot({ migration: { version: 1, coinsGranted: 126, woodGranted: 10, stoneGranted: 4 } }) }));
+  const html = render("overview", controller({ snapshot: snapshot({ migration: { version: 1, coinsGranted: 1260, woodGranted: 10, stoneGranted: 4 } }) }));
   assert.match(html, /Прежние запасы перенесены/);
-  assert.match(html, /126 монет, 10 древесины и 4 камня/);
+  assert.match(html, /1(?:\s|&nbsp;|\u202f)260 монет, 10 древесины и 4 камня/);
   assert.match(html, /покупка пока недоступна/i);
   assert.ok(buttons(html).every(entry => !/Купить жемчуг|Пополнить/.test(entry.text)));
-  const wallet = renderToStaticMarkup(createElement(EconomyBalances, { wallet: { coins: 25, pearls: 0 } }));
-  assert.match(wallet, /Монеты: 25/);
+  const wallet = renderToStaticMarkup(createElement(EconomyBalances, { wallet: { coins: 250, pearls: 0 } }));
+  assert.match(wallet, /Монеты: 250/);
   assert.doesNotMatch(wallet, /Искры/);
 });
 
 test("building progression requires the actual workshop and quarry, not only an upgraded home or money", () => {
   const target = economyCatalog.buildings.find(building => building.id === "home").levels[1];
-  const state = snapshot({ wallet: { coins: 1_000_000, pearls: 0 }, inventory: { ...target.cost.items },
+  const state = snapshot({ wallet: { coins: 10000000, pearls: 0 }, inventory: { ...target.cost.items },
     buildings: { home: 1, garden: 1, warehouse: 1, workshop: 0, quarry: 1 } });
   const html = render("buildings", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Улучшить до ур. 2: Дом Мохлика")), true);
@@ -234,9 +234,9 @@ test("production batch options fit the entire result in warehouse capacity, even
 });
 
 test("player market cannot buy an unaffordable storage lot and offers the warehouse as a next action", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 42,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 420,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 42, pearls: 0 }, buildings: { home: 2, garden: 1, warehouse: 1 }, completedExplorations: 1,
+  const state = snapshot({ wallet: { coins: 420, pearls: 0 }, buildings: { home: 2, garden: 1, warehouse: 1 }, completedExplorations: 1,
     storage: { capacity: 200, used: 190, reserved: 5, available: 5, overflow: 0 } });
   const html = render("market", controller({ snapshot: state, market }));
   assert.equal(disabled(button(html, "Не хватает места на складе")), true);
@@ -253,6 +253,10 @@ test("material guide includes zero-stock goods, production sources, construction
   assert.ok(button(html, "Доски"));
   assert.ok(html.includes(`Все товары · ${economyCatalog.items.length}`));
   assert.match(html, /<option value="fishing">Рыболовные товары<\/option>/);
+  for (const fish of economyCatalog.fishing.fish) {
+    assert.equal(economyCatalog.items.find(item => item.id === fish.itemId).category, "produce", "all fish share the existing harvest and fish category");
+  }
+  assert.doesNotMatch(html, /<option value="fish">fish<\/option>/);
   assert.match(html, /Сырьё/);
   const state = snapshot({ inventory: { planks: 8 } });
   state.catalog.items.find(item => item.id === "planks").tradable = false;
@@ -309,10 +313,10 @@ test("inventory guide and sale consistently show the actual discounted payout", 
   const html = render("inventory", controller({ snapshot: state }), "fish");
   assert.match(html, /Быстрая продажа с уценкой 40%/);
   assert.match(html, /Быстрая продажа торговцу: 60% базовой цены/);
-  assert.match(html, /Плёска купит дороже: 8 монет за штуку/);
-  assert.equal(disabled(button(html, "Продать 1 шт. за 4 монет")), false);
-  assert.doesNotMatch(html, /Продать 1 шт. за 8 монет|Торговец покупает сразу по 8/);
-  state.wallet.coins = 1_000_000_000;
+  assert.match(html, /Плёска купит дороже: 80 монет за штуку/);
+  assert.equal(disabled(button(html, "Продать 1 шт. за 40 монет")), false);
+  assert.doesNotMatch(html, /Продать 1 шт. за 80 монет|Торговец покупает сразу по 80/);
+  state.wallet.coins = 10_000_000_000;
   assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish"), "Продать — шт.")), true);
 });
 
@@ -323,5 +327,5 @@ test("legacy inventory sale keeps full price; tiny stock cannot disappear for ze
   delete state.catalog.localBuyer;
   html = render("inventory", controller({ snapshot: state }), "crumb_bait");
   assert.doesNotMatch(html, /уценкой|округляется/);
-  assert.equal(disabled(button(html, "Продать 1 шт. за 1 монет")), false);
+  assert.equal(disabled(button(html, "Продать 1 шт. за 10 монет")), false);
 });

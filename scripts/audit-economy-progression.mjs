@@ -23,7 +23,8 @@ export function auditEconomyProgression(catalog) {
   const buildings = unique(catalog.buildings, "building");
   unique(catalog.recipes, "recipe");
   unique(catalog.explorations, "exploration");
-  assert.equal(catalog.version, 2);
+  assert.equal(catalog.version, 3);
+  assert.equal(catalog.currencyScale, 10);
   const rare = catalog.rareDrops;
   const special = [...items.values()].filter(item => item.category === "special");
   assert([...items.values()].every(item => Number.isSafeInteger(item.baseSellPrice)
@@ -78,7 +79,7 @@ export function auditEconomyProgression(catalog) {
   assert(Number.isInteger(payoutBps) && payoutBps > 0 && payoutBps <= 10_000, "Invalid local buyer payout");
   const specialistFish = new Set((catalog.fishing?.fish ?? []).map(fish => fish.itemId));
   const cashValue = quantities => Object.entries(quantities).reduce((sum, [id, amount]) => sum +
-    (specialistFish.has(id) ? items.get(id).baseSellPrice * amount : Math.floor(items.get(id).baseSellPrice * amount * payoutBps / 10_000)), 0);
+    (specialistFish.has(id) ? items.get(id).baseSellPrice * amount : Math.floor(items.get(id).baseSellPrice / catalog.currencyScale * amount * payoutBps / 10_000) * catalog.currencyScale), 0);
   const production = [...catalog.recipes, ...catalog.explorations];
   const npcValue = quantities => Object.entries(quantities).reduce((sum, [item, amount]) => sum + items.get(item).baseSellPrice * amount, 0);
   for (const definition of production) {
@@ -103,7 +104,14 @@ export function auditEconomyProgression(catalog) {
     assert.equal(new Set(fishing.baits.map(bait => bait.itemId)).size, fishing.baits.length, "Duplicate bait ID");
     assert(fishing.routeIds.length > 0 && fishing.routeIds.every(id => catalog.explorations.some(route => route.id === id && route.rewards.fish > 0)), "Fishing needs a real fish route");
     assert(fishing.rods.some(rod => rod.id === "reed_rod" && rod.price === 0), "Starter rod must remain free");
+    assert.equal(new Set(fishing.hooks.map(hook => hook.id)).size, fishing.hooks.length, "Duplicate hook ID");
+    assert(fishing.hooks.some(hook => hook.id === "bare_hook" && hook.price === 0 && hook.rareBonus === 0), "Starter hook must remain free");
+    for (const hook of fishing.hooks) assert(Number.isSafeInteger(hook.price) && hook.price >= 0 && Number.isSafeInteger(hook.rareBonus) && hook.rareBonus >= 0, "Invalid hook price or bonus");
     for (const rod of fishing.rods) assert(Number.isSafeInteger(rod.price) && rod.price >= 0 && Number.isSafeInteger(rod.rareBonus) && rod.rareBonus >= 0, "Invalid rod price or bonus");
+    unique(fishing.hooks ?? [], "hook");
+    assert(fishing.hooks?.some(hook => hook.id === "bare_hook" && hook.price === 0 && hook.rareBonus === 0), "Starter hook must remain free");
+    for (const hook of fishing.hooks) assert(!items.has(hook.id) && !fishing.rods.some(rod => rod.id === hook.id)
+      && Number.isSafeInteger(hook.price) && hook.price >= 0 && Number.isSafeInteger(hook.rareBonus) && hook.rareBonus >= 0, "Invalid durable hook or inventory ID collision");
     for (const fish of fishing.fish) {
       assert(items.has(fish.itemId), `Fishing: unknown item ${fish.itemId}`);
       assert(Number.isSafeInteger(fish.buyPrice) && fish.buyPrice > items.get(fish.itemId).baseSellPrice, "Fish buy-sell arbitrage");
@@ -120,6 +128,7 @@ export function auditEconomyProgression(catalog) {
     for (let index = 1; index < fishing.fish.length; index++) {
       const previous = fishing.fish[index - 1], fish = fishing.fish[index];
       assert(fish.affinity * previous.weight >= previous.affinity * fish.weight, "Stronger tackle must not improve cheaper fish over rarer fish");
+      assert(items.get(fish.itemId).baseSellPrice >= items.get(previous.itemId).baseSellPrice, "Fish quantile ranks must follow resale prices");
     }
   }
   assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration or fishing");

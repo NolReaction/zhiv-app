@@ -42,21 +42,24 @@ test("supplies omit relic sale cards while their separate tab reports the actual
   assert.match(supplies, /role="tab"[^>]*aria-selected="false"[^>]*>[\s\S]*?Реликвии<small>3<\/small>/);
   const relics = pantry(state, "relics");
   assert.equal((relics.match(/data-relic=/g) ?? []).length, 3);
-  assert.match(relics, /Древнее ядро[\s\S]*?В наличии · 2/);
-  assert.match(relics, /Живая смола[\s\S]*?В наличии · 0/);
+  assert.match(relics, /Древнее ядро[\s\S]*?aria-label="В наличии: 2">×2</);
+  assert.match(relics, /Живая смола[\s\S]*?aria-label="В наличии: 0">×0</);
+  assert.doesNotMatch(relics, /В наличии ·|ключевых улучшений|занимает одно место/);
+  assert.equal((relics.match(/aria-label="В наличии:/g) ?? []).length, 3, "each relic shows its stock once");
   assert.doesNotMatch(relics, /aria-label="Предметы в кладовой"|Продать торговцу|Купить жемчуг/);
 });
 
 test("relic uses and access hints follow authoritative upgrade costs and the drop catalogue", () => {
   const state = fresh({ living_resin: 1 });
-  assert.deepEqual(relicUpgradeUses(state, "living_resin").map(use => [use.buildingId, use.level, use.quantity]), [["home", 4, 1]]);
-  assert.deepEqual(relicUpgradeUses(state, "ancient_core").map(use => [use.buildingId, use.level, use.quantity]), [["home", 5, 1]]);
+  const homeUse = id => relicUpgradeUses(state, id).filter(use => use.buildingId === "home").map(use => [use.buildingId, use.level, use.quantity]);
+  assert.deepEqual(homeUse("living_resin"), [["home", 4, 1]]);
+  assert.deepEqual(homeUse("ancient_core"), [["home", 5, 1]]);
   const html = render(RelicPantrySection, { state, onExplore() {} });
   assert.match(html, /домом ур\. 3/); assert.match(html, /Дом Мохлика · ур\. 4 \(1 шт\.\)/);
   assert.match(html, /Дом Мохлика · ур\. 5 \(1 шт\.\)/);
   assert.doesNotMatch(html, /редкие|редкая|редкий|Купить|Продать|монет/i);
   state.catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4).cost.items.living_resin = 2;
-  assert.equal(relicUpgradeUses(state, "living_resin")[0].quantity, 2);
+  assert.equal(relicUpgradeUses(state, "living_resin").find(use => use.buildingId === "home").quantity, 2);
 });
 
 test("even an old direct sale callback exposes no NPC quote or sell control for a relic", () => {
@@ -78,16 +81,17 @@ test("all five fish grades have shared readable labels and are accepted by the c
   assert.equal((legend.match(/data-fish-rarity=/g) ?? []).length, 5);
 });
 
-test("existing species classification prices and weights stay intact across shop book and inventory", () => {
-  assert.deepEqual(economyCatalog.fishing.fish.map(fish => [fish.itemId, fish.rarity, fish.weight, fish.buyPrice]), [
-    ["fish", "common", 55, 16], ["fish_silverfin", "common", 30, 24], ["fish_reedperch", "uncommon", 12, 36], ["fish_mooncarp", "rare", 3, 64],
+test("existing species remain in the expanded grades across shop book and inventory", () => {
+  assert.deepEqual(economyCatalog.fishing.fish.filter(fish => ["fish", "fish_silverfin", "fish_reedperch", "fish_mooncarp"].includes(fish.itemId)).map(fish => [fish.itemId, fish.rarity, fish.buyPrice]), [
+    ["fish", "common", 160], ["fish_silverfin", "common", 240], ["fish_reedperch", "uncommon", 360], ["fish_mooncarp", "rare", 640],
   ]);
   const state = fresh({ fish_mooncarp: 2 });
   const shop = render(PleskFishingShop, { economy: controller(state), onFishing() {}, onOpenPantry() {} });
   assert.match(shop, /data-fish-rarity="uncommon"/); assert.match(shop, /data-fish-rarity="rare"/);
   assert.match(pantry(state), /data-fish-rarity="rare"/);
   const entries = collectionBookEntries("fishing", [], state);
-  assert.equal(entries.length, 4); assert.equal(entries.find(entry => entry.id === "fish_mooncarp").rarity, "rare");
+  assert.equal(entries.length, economyCatalog.fishing.fish.length); assert.equal(entries.find(entry => entry.id === "fish_mooncarp").rarity, "rare");
+  assert.equal(entries.find(entry => entry.id === "fish_shark").rarity, "legendary");
   assert.equal(entries.filter(entry => entry.owned).length, 0, "purchased stock never counts as caught");
   state.fishing.catches.fish_mooncarp = 1; state.inventory = {};
   const collection = render(PleskFishingCollection, { state, catalog: state.catalog.fishing });

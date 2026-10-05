@@ -9,11 +9,11 @@ import kotlin.test.*
 
 class ProgressionRewardsTest {
     private fun at(value: String)=Instant.parse(value)
-    @Test fun `catalog pays forty three finite achievement pearls and ordinary cycle only`() {
-        assertEquals(43L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
+    @Test fun `catalog pays four hundred thirty finite achievement pearls and ordinary cycle only`() {
+        assertEquals(430L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
         assertEquals(21,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
-        assertEquals(50L,ProgressionRewardRules.daily.sumOf { it.coins })
-        assertEquals(3L,ProgressionRewardRules.daily.sumOf { it.pearls })
+        assertEquals(500L,ProgressionRewardRules.daily.sumOf { it.coins })
+        assertEquals(30L,ProgressionRewardRules.daily.sumOf { it.pearls })
         assertEquals(6L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
         assertEquals(setOf("wood","stone","fiber"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
         assertEquals(listOf(0L),ProgressionRewardRules.achievementPearls.getValue("full_collection"))
@@ -43,12 +43,12 @@ class ProgressionRewardsTest {
     }
     @Test fun `credit respects wallet limit and never changes completed counters`() {
         val initial=EconomyRules.initial(0,0,0)
-        val credited=ProgressionRewardRules.credit(initial,ProgressionReward(20,1,mapOf("wood" to 2)))
-        assertEquals(initial.wallet.coins+20,credited.wallet.coins); assertEquals(initial.wallet.pearls+1,credited.wallet.pearls)
+        val credited=ProgressionRewardRules.credit(initial,ProgressionReward(200,10,mapOf("wood" to 2)))
+        assertEquals(initial.wallet.coins+200,credited.wallet.coins); assertEquals(initial.wallet.pearls+10,credited.wallet.pearls)
         assertEquals(2L,credited.inventory["wood"]); assertEquals(initial.progression,credited.progression)
         assertEquals(initial.completedExplorations,credited.completedExplorations)
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure> { ProgressionRewardRules.credit(initial.copy(
-            wallet=EconomyWallet(ECONOMY_MAX_BALANCE,0)),ProgressionReward(coins=1)) }.code)
+            wallet=EconomyWallet(ECONOMY_MAX_BALANCE,0)),ProgressionReward(coins=10)) }.code)
     }
     @Test fun `claim decoder rejects forged clocks rewards unknown levels and wrong UUID versions`() {
         val base="\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"ownerPublicId\":\"1234-5678-ABCD\""

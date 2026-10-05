@@ -17,8 +17,9 @@ export function economicMath(catalog) {
   const buildings = new Map(catalog.buildings.map(b => [b.id, b]));
   const fish = new Set(catalog.fishing?.fish.map(f => f.itemId) ?? []);
   const rare = new Set(catalog.rareDrops?.itemIds ?? []);
+  const moneyScale = catalog.currencyScale ?? 1;
   const liquidation = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum +
-    (fish.has(id) ? items.get(id).baseSellPrice * quantity : Math.floor(items.get(id).baseSellPrice * quantity * (catalog.localBuyer?.payoutBps ?? 10000) / 10000)), 0);
+    (fish.has(id) ? items.get(id).baseSellPrice * quantity : Math.floor(items.get(id).baseSellPrice / moneyScale * quantity * (catalog.localBuyer?.payoutBps ?? 10000) / 10000) * moneyScale), 0);
   const homeCache = new Map();
   function buildingHome(id, level, path = []) {
     const key = `${id}:${level}`;
@@ -41,14 +42,15 @@ export function economicMath(catalog) {
     const id = Object.keys(r.rewards)[0], prior = primitive.get(id);
     if (!prior || r.seconds / r.rewards[id] < prior.seconds / prior.rewards[id]) primitive.set(id, r);
   }
-  function catchPortfolio(rodId = "reed_rod", baitId = null, routeId = "shore") {
+  function catchPortfolio(rodId = "reed_rod", baitId = null, routeId = "shore", hookId = "bare_hook") {
     const route = catalog.explorations.find(r => r.id === routeId); assert(route && route.rewards.fish > 0);
-    const bonus = (catalog.fishing.rods.find(r => r.id === rodId)?.rareBonus ?? 0) + (catalog.fishing.baits.find(b => b.itemId === baitId)?.rareBonus ?? 0);
+    const bonus = (catalog.fishing.rods.find(r => r.id === rodId)?.rareBonus ?? 0) + (catalog.fishing.baits.find(b => b.itemId === baitId)?.rareBonus ?? 0)
+      + (catalog.fishing.hooks?.find(h => h.id === hookId)?.rareBonus ?? 0);
     const weights = catalog.fishing.fish.map(f => ({ ...f, w: f.weight + f.affinity * bonus })), total = weights.reduce((sum, f) => sum + f.w, 0);
     const output = { ...route.rewards, fish: route.rewards.fish - 1 };
     for (const f of weights) output[f.itemId] = (output[f.itemId] ?? 0) + f.w / total;
     const baitCost = baitId ? catalog.fishing.baits.find(b => b.itemId === baitId).price : 0;
-    return { slotMinutes: { mochlik: route.seconds / 60 }, output, probabilities: Object.fromEntries(weights.map(f => [f.itemId, f.w / total])),
+    return { slotMinutes: { mochlik: route.seconds / 60 }, output, speciesDrawsPerJob: 1, probabilities: Object.fromEntries(weights.map(f => [f.itemId, f.w / total])),
       routeCoins: route.cost.coins, routeInputs: { ...route.cost.items }, baitPurchaseCoins: baitCost, expectedFishRevenue: Object.entries(output).filter(([id]) => fish.has(id)).reduce((sum, [id, q]) => sum + items.get(id).baseSellPrice * q, 0) };
   }
   const profiles = new Map();
@@ -158,5 +160,8 @@ export function auditEconomicMath(catalog) {
   for (const p of profiles) assert(Object.values(p.slotMinutes).every(x => Number.isFinite(x) && x >= 0), `${p.itemId}: invalid minutes`);
   for (const r of batches) assert(r.incrementalMargin > 0, `${r.id}: nonpositive actual sale margin`);
   return { units: "minimum intrinsic occupied named slot-minutes, excluding waits to claim; coins; item units", profiles, batches, stationBenchmarks: math.stationBenchmarks,
-    fishing: catalog.fishing.rods.map(r => ({ rodId: r.id, ...math.catchPortfolio(r.id) })) };
+    fishing: catalog.fishing.rods.map(r => ({ rodId: r.id, ...math.catchPortfolio(r.id) })),
+    fishingLoadouts: catalog.fishing.rods.flatMap(rod => (catalog.fishing.hooks ?? [{ id: "bare_hook" }]).flatMap(hook =>
+      [null, ...catalog.fishing.baits.map(bait => bait.itemId)].map(baitId => ({ rodId: rod.id, hookId: hook.id, baitId,
+        ...math.catchPortfolio(rod.id, baitId, "shore", hook.id) })))) };
 }

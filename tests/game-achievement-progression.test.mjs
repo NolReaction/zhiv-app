@@ -88,8 +88,26 @@ test("biomes cover exactly the menu directions and known recipe/catch IDs preven
   assert.equal(math.economyAchievementProgress(state).master_recipes, 5);
   assert.equal(math.economyAchievementProgress(state).river_atlas, 0, "ownership or purchased fish is not a personal catch");
   state.fishing.catches = Object.fromEntries([...model.economyCatalog.fishing.fish.map(fish => [fish.itemId, 1]), ["unknown", 999]]);
-  assert.equal(math.economyAchievementProgress(state).river_atlas, 4);
+  assert.equal(math.economyAchievementProgress(state).river_atlas, 12);
   assert.equal(math.economyAchievementProgress(economy.getDevEconomy(player().token)).explorer, 0);
+});
+
+test("expanded river atlas requires twelve catches but preserves an earned former four-species tier and its date", () => {
+  const p = player(), now = Date.now(), earnedAt = '2026-01-01T12:00:00.000Z';
+  economy.getDevEconomy(p.token, now);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.fishing.catches = Object.fromEntries(['fish', 'fish_silverfin', 'fish_reedperch', 'fish_mooncarp'].map(id => [id, 1]));
+  assert.equal(card(p, 'river_atlas', now).progress, 4);
+  assert.equal(card(p, 'river_atlas', now).target, 12);
+  assert.equal(card(p, 'river_atlas', now).unlockedAt, null);
+  // Persisted pre-expansion tier is authoritative; no recatch or new award is required.
+  const store = globalThis.__zhivDevStore, ownerId = store.publicIds.get(p.me.user.publicId);
+  store.achievementTierAwards.get(ownerId).set('river_atlas', new Map([[1, earnedAt]]));
+  store.achievementRewardEligibility.set(ownerId, new Map([['river_atlas:1', true]]));
+  const restored = card(p, 'river_atlas', now + 1000);
+  assert.equal(restored.unlockedAt, earnedAt); assert.equal(restored.tiers[0].unlockedAt, earnedAt);
+  assert.equal(identities.getDevAchievementRewardEligibility(p.me.user.publicId, 'river_atlas', 1), true);
+  assert.deepEqual(row.state.fishing.catches, { fish: 1, fish_silverfin: 1, fish_reedperch: 1, fish_mooncarp: 1 });
 });
 
 test("inherited collection, wrong chapter time and merge of inherited-only worlds do not claim personal finds", () => {
@@ -112,20 +130,20 @@ test("first sale belongs to seller after confirmed payment, not NPC sales, listi
     economy.getDevEconomy(p.token, now);
     const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
     row.state.buildings.home = 2; row.state.completedExplorations = 1;
-    row.state.wallet.coins = 100; row.state.inventory = { berries: 10 };
+    row.state.wallet.coins = 1000; row.state.inventory = { berries: 10 };
   }
   issue(seller, "sell", "berries", now, 1);
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
-  const create = command(seller, "create_listing", "berries", now, 2, 6);
+  const create = command(seller, "create_listing", "berries", now, 2, 60);
   economy.commandDevEconomyMarket(seller.token, create, now);
   const canceled = economy.getDevEconomyMarket(seller.token, now).mine[0];
   economy.commandDevEconomyMarket(seller.token, command(seller, "cancel_listing", canceled.id, now), now);
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
-  economy.commandDevEconomyMarket(seller.token, command(seller, "create_listing", "berries", now, 2, 6), now);
+  economy.commandDevEconomyMarket(seller.token, command(seller, "create_listing", "berries", now, 2, 60), now);
   const lot = economy.getDevEconomyMarket(seller.token, now).mine[0];
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
   economy.getDevEconomyMarket(buyer.token, now);
-  const buy = command(buyer, "buy_listing", lot.id, now, 2, 6);
+  const buy = command(buyer, "buy_listing", lot.id, now, 2, 60);
   economy.commandDevEconomyMarket(buyer.token, buy, now);
   economy.commandDevEconomyMarket(buyer.token, buy, now + 1000);
   assert.equal(card(seller, "first_sale", now + 5000).unlockedAt, new Date(now).toISOString());

@@ -3,9 +3,10 @@ import { getDevIdentity, getDevAchievementRewardEligibility } from "./api-store"
 import { getDevGameAchievements } from "./game-store";
 import { creditDevProgressionReward, getDevEconomy, DevEconomyError } from "./economy-store";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "@/features/game/game-rewards-api";
+import { ECONOMY_CURRENCY_SCALE, nominalEconomyMoney } from "@/features/economy/money";
 import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, type DailyRewardState } from "@/features/game/progression-rewards";
 
-type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number };
+type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number; currencyScale?: 1 | 10 };
 type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt> };
 const globalStore = globalThis as typeof globalThis & { __zhivDevProgressionRewards?: Map<string, Profile> };
 const store = () => globalStore.__zhivDevProgressionRewards ??= new Map();
@@ -45,7 +46,9 @@ export function claimDevProgressionReward(token: string | undefined, input: unkn
   if (receipt) {
     if (receipt.signature !== signature) fail("REWARD_REQUEST_CONFLICT", "Этот запрос уже использован для другой награды");
     return { requestId: command.requestId, rewards: view(token, owner, value, now), economy: getDevEconomy(token, now, owner),
-      acceptedRevision: receipt.acceptedRevision, replayed: true, claim: structuredClone(receipt.claim), message: "Награда получена" };
+      acceptedRevision: receipt.acceptedRevision, replayed: true, claim: { ...structuredClone(receipt.claim), reward: { ...structuredClone(receipt.claim.reward),
+        coins: nominalEconomyMoney(receipt.claim.reward.coins, receipt.currencyScale ?? 1),
+        pearls: nominalEconomyMoney(receipt.claim.reward.pearls, receipt.currencyScale ?? 1) } }, message: "Награда получена" };
   }
   const current = getDevProgressionRewards(token, now), claimedAt = new Date(now).toISOString();
   let claim: GameRewardResult["claim"];
@@ -63,7 +66,7 @@ export function claimDevProgressionReward(token: string | undefined, input: unkn
   const economy = creditDevProgressionReward(token, owner, key, claim.reward, signature, now);
   if (claim.kind === "daily") value.daily = afterDailyClaim(value.daily, now);
   else value.claims.set(`${claim.achievementId}:${claim.level}`, claimedAt);
-  value.receipts.set(key, { signature, claim: structuredClone(claim), acceptedRevision: economy.revision });
+  value.receipts.set(key, { signature, claim: structuredClone(claim), acceptedRevision: economy.revision, currencyScale: ECONOMY_CURRENCY_SCALE });
   return { requestId: command.requestId, rewards: view(token, owner, value, now), economy, acceptedRevision: economy.revision,
     replayed: false, claim, message: "Награда получена" };
 }

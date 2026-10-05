@@ -94,6 +94,7 @@
 | Уровни, достижения и рейтинг по тапам | [`features/game/`](../features/game/), [`GameRewards.kt`](../apps/api/src/main/kotlin/ru/zhiv/game/GameRewards.kt) | [Правила и данные](development/backend-and-data.md) |
 | Группы уровней, полоса прогресса и заблокированные значки | [`game-levels-button.tsx`](../features/game/game-levels-button.tsx), [`game-levels.module.css`](../features/game/game-levels.module.css) | [Меню уровней](development/updates-and-levels.md#как-устроено-меню-уровней) |
 | Потерянные тапы, несколько вкладок, смена аккаунта | [`use-game-progress.ts`](../features/game/use-game-progress.ts), [`game-sync.ts`](../features/game/game-sync.ts), [`game-sync-journal.ts`](../features/game/game-sync-journal.ts) | [Синхронизация](game/game-sync-reliability.md) |
+| Смотреть игровой профиль друга | [`guest-profile.tsx`](../features/people/guest-profile.tsx), [`guest-profile-model.ts`](../features/people/guest-profile-model.ts), [`JdbcGuestProfileRepository.kt`](../apps/api/src/main/kotlin/ru/zhiv/db/JdbcGuestProfileRepository.kt) | [Видимость, безопасные поля и read-only контракт](game/friend-profiles.md) |
 | Картинка достижения | [`public/achievements/`](../public/achievements/) | [Каталог медалей](../public/achievements/README.md) |
 
 **Как поддерживать справку.** Добавляйте короткий ответ в `world-help-content.ts`, а не в JSX панели. Числа берите из каталога/правил, доступность — из `WORLD_PRESENTATION`. Отличайте существующую механику от доступной сейчас кнопки. Пользователю нужны действия и последствия; пути исходников и команды запуска остаются в `docs/`.
@@ -127,3 +128,5 @@
 История решений и отчёты — в [индексе документации](README.md#история-и-материалы); актуальный этап — в [WORK_STATE.md](../WORK_STATE.md).
 
 Награды и реликвии: [правила](game/rewards-and-relics.md), общий `progression-rewards-catalog.json`, `features/game/progression-rewards.ts`, `features/economy/rare-drops.ts`, `features/economy/barter-model.ts`; серверные `JdbcProgressionRewardsRepository`/`JdbcEconomyBarterRepository`, миграции V38–V39.
+
+Номинал валют ×10: [правила конверсии](game/currency-units.md), `features/economy/money.ts`, `EconomyMoney.kt`, миграция V40. Предметы и длительности сохраняются; старые денежные квитанции читаются с `currency_scale`.

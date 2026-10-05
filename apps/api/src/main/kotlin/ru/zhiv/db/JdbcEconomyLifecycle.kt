@@ -3,6 +3,7 @@ package ru.zhiv.db
 import kotlinx.serialization.encodeToString
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.economy.ECONOMY_MAX_BALANCE
+import ru.zhiv.economy.ECONOMY_MAX_ITEMS
 import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomyCollectionProgress
@@ -57,7 +58,7 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
     return buildList {
         if (states.any { it.jobs.isNotEmpty() }) add("Сначала получите результаты производства, строительства и исследований в обоих профилях. Затем повторите объединение.")
         if (states.sumOf { it.wallet.coins } > ECONOMY_MAX_BALANCE || states.sumOf { it.wallet.pearls } > ECONOMY_MAX_BALANCE ||
-            combinedInventory.values.any { it > ECONOMY_MAX_BALANCE } || mergedStorage.overflow > 0)
+            combinedInventory.values.any { it > ECONOMY_MAX_ITEMS } || mergedStorage.overflow > 0)
             add("Общий запас превышает вместимость склада. Расширьте склад или уменьшите запасы перед объединением; предметы не будут потеряны.")
     }
 }
@@ -70,17 +71,18 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     val b = readEconomyProfile(c, source).state
     val conflicts = economyMergeConflicts(c, target, source)
     if (conflicts.isNotEmpty()) throw AuthFailure("ACCOUNT_MERGE_CONFLICT", conflicts.joinToString(" "), 409)
-    fun add(first: Long, second: Long): Long {
-        if (first > ECONOMY_MAX_BALANCE - second) throw AuthFailure("ECONOMY_CAPACITY", "Общий запас превышает вместимость экономики", 409)
+    fun add(first: Long, second: Long,limit: Long=ECONOMY_MAX_BALANCE): Long {
+        if (first > limit - second) throw AuthFailure("ECONOMY_CAPACITY", "Общий запас превышает вместимость экономики", 409)
         return first + second
     }
-    val inventory = (a.inventory.keys + b.inventory.keys).associateWith { add(a.inventory[it] ?: 0, b.inventory[it] ?: 0) }
+    val inventory = (a.inventory.keys + b.inventory.keys).associateWith { add(a.inventory[it] ?: 0, b.inventory[it] ?: 0,ECONOMY_MAX_ITEMS) }
     val buildings = (a.buildings.keys + b.buildings.keys).associateWith { maxOf(a.buildings[it] ?: 0, b.buildings[it] ?: 0) }
     saveEconomyProfile(c, target, a.copy(wallet=a.wallet.copy(coins=add(a.wallet.coins,b.wallet.coins), pearls=add(a.wallet.pearls,b.wallet.pearls)),
-        inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations),
+        inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations,ECONOMY_MAX_ITEMS),
         fishing=a.fishing.copy(ownedRods=(a.fishing.ownedRods+b.fishing.ownedRods).distinct(),
+            ownedHooks=(a.fishing.ownedHooks+b.fishing.ownedHooks).distinct(),
             catches=(a.fishing.catches.keys+b.fishing.catches.keys).associateWith {
-                minOf(ECONOMY_MAX_BALANCE,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
+                minOf(ECONOMY_MAX_ITEMS,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
         fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
         rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)

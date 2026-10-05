@@ -319,7 +319,7 @@ test("fishing departure shows equipped gear, charges one bait per trip and guard
   const before = structuredClone(state);
   const missing = sectorView("shore", state);
   const shore = route(missing.html, "shore");
-  assert.match(shore, /Ивовая удочка/); assert.match(shore, /1 на вылазку/);
+  assert.match(shore, /Ивовая удочка/); assert.match(shore, /1 наживка на вылазку/);
   assert.match(shore, /Не хватает припасов/); assert.match(shore, /<strong>0 \/ 1<\/strong>/);
   assert.equal(missing.depart("shore").props.disabled, true);
   missing.depart("shore").props.onClick(); assert.deepEqual(missing.calls, []);
@@ -402,9 +402,9 @@ function fishingDepartureView(state = snapshot(), overrides = {}) {
   const html = renderToStaticMarkup(createElement(Probe));
   function walk(element) { if (!isValidElement(element)) return; elements.push(element); Children.forEach(element.props.children, walk); }
   walk(tree);
-  const [rod, bait] = elements.filter(element => element.type === "select");
+  const [rod, hook, bait] = elements.filter(element => element.type === "select");
   const start = elements.find(element => element.type === "button" && element.props["aria-label"]?.startsWith("Отправиться:"));
-  return { calls, html, rod, bait, start, elements };
+  return { calls, html, rod, hook, bait, start, elements };
 }
 
 test("departure offers only owned rods and allows bait from stock or explicitly no bait", () => {
@@ -425,6 +425,37 @@ test("departure offers only owned rods and allows bait from stock or explicitly 
   assert.equal(state.fishing.equippedBaitId, "worm_bait", "selection is not applied optimistically");
 });
 
+test("departure exposes only owned hooks and waits for their confirmed selection before starting", () => {
+  const state = snapshot({ fishing: fishingGear({ ownedHooks: ["bare_hook", "barbed_hook"], equippedHookId: "bare_hook", equippedBaitId: null }) });
+  const view = fishingDepartureView(state);
+  const options = Children.toArray(view.hook.props.children).filter(isValidElement);
+  assert.deepEqual(options.map(option => option.props.value), ["bare_hook", "barbed_hook"]);
+  assert.match(view.html, /Крючок/); assert.match(view.html, /Удочка и крючок не расходуются/);
+  view.hook.props.onChange({ target: { value: "silver_hook" } });
+  view.hook.props.onChange({ target: { value: "unknown_hook" } });
+  assert.deepEqual(view.calls, [], "unowned and unknown hooks cannot issue an equipment command");
+  view.hook.props.onChange({ target: { value: "barbed_hook" } }); view.start.props.onClick();
+  assert.deepEqual(view.calls, [["equip_fishing_hook", "barbed_hook", 1, 0]]);
+  assert.equal(state.fishing.equippedHookId, "bare_hook");
+  assert.equal(state.inventory.barbed_hook, undefined);
+  const confirmed = fishingDepartureView(snapshot({ fishing: { ...state.fishing, equippedHookId: "barbed_hook" } }));
+  confirmed.start.props.onClick(); assert.deepEqual(confirmed.calls, [["start_fishing", "shore", 1, 0]]);
+});
+
+test("a missing owned hook blocks departure and saved jobs show their original hook after equipment changes", () => {
+  const invalid = fishingDepartureView(snapshot({ fishing: fishingGear({ ownedHooks: ["bare_hook"], equippedHookId: "silver_hook", equippedBaitId: null }) }));
+  assert.match(invalid.html, /Выберите крючок/); assert.match(invalid.html, /Выберите доступную удочку и крючок/);
+  assert.equal(invalid.start.props.disabled, true); invalid.start.props.onClick(); assert.deepEqual(invalid.calls, []);
+  const saved = job({ targetId: "shore", fishing: { rodId: "reed_rod", hookId: "barbed_hook", baitId: null, fishId: "fish" } });
+  const state = snapshot({ jobs: [saved], fishing: fishingGear({ ownedHooks: ["bare_hook", "barbed_hook", "silver_hook"], equippedHookId: "silver_hook", equippedBaitId: null }) });
+  const view = activeView(saved, { state });
+  assert.match(view.html, /Крючок этой вылазки: Бородатый крючок/);
+  assert.doesNotMatch(view.html, /Крючок этой вылазки: Серебряный крючок/);
+  assert.notEqual(expeditionCancellationKey("ME", { ...saved, fishing: { ...saved.fishing, hookId: "silver_hook" } }), view.key);
+  const legacy = activeView(job({ targetId: "shore", fishing: { rodId: "reed_rod", baitId: null, fishId: "fish" } }));
+  assert.match(legacy.html, /Крючок этой вылазки: Простой крючок/);
+});
+
 test("equipping then immediately departing waits for a confirmed snapshot and never auto-starts", () => {
   const state = snapshot({ fishing: fishingGear({ equippedRodId: "reed_rod", equippedBaitId: null }) });
   const before = fishingDepartureView(state);
@@ -432,7 +463,7 @@ test("equipping then immediately departing waits for a confirmed snapshot and ne
   before.start.props.onClick(); before.start.props.onClick();
   assert.deepEqual(before.calls, [["equip_fishing_rod", "river_rod", 1, 0]], "equip and departure share the same synchronous receipt latch");
   const pending = fishingDepartureView(state, { busy: true });
-  assert.equal(pending.rod.props.disabled, true); assert.equal(pending.bait.props.disabled, true); assert.equal(pending.start.props.disabled, true);
+  assert.equal(pending.rod.props.disabled, true); assert.equal(pending.hook.props.disabled, true); assert.equal(pending.bait.props.disabled, true); assert.equal(pending.start.props.disabled, true);
   pending.start.props.onClick(); assert.deepEqual(pending.calls, []);
   const confirmed = fishingDepartureView({ ...state, revision: state.revision + 1, fishing: { ...state.fishing, equippedRodId: "river_rod" } });
   assert.equal(confirmed.rod.props.value, "river_rod"); assert.equal(confirmed.start.props.disabled, false);
@@ -442,12 +473,12 @@ test("equipping then immediately departing waits for a confirmed snapshot and ne
 });
 
 test("equipment selectors and departure honor receipt recovery, cooldown and stale owner/revision", () => {
-  const state = snapshot({ fishing: fishingGear({ equippedRodId: "reed_rod", equippedBaitId: null }), inventory: { worm_bait: 2 } });
+  const state = snapshot({ fishing: fishingGear({ equippedRodId: "reed_rod", ownedHooks: ["bare_hook", "barbed_hook"], equippedHookId: "bare_hook", equippedBaitId: null }), inventory: { worm_bait: 2 } });
   for (const flags of [{ uncertain: true }, { busy: true }, { retryAt: now + 5000 },
     { snapshot: { ...state, ownerPublicId: "OTHER" } }, { snapshot: { ...state, revision: state.revision + 1 } }]) {
     const view = fishingDepartureView(state, flags);
-    assert.equal(view.rod.props.disabled, true); assert.equal(view.bait.props.disabled, true); assert.equal(view.start.props.disabled, true);
-    view.rod.props.onChange({ target: { value: "river_rod" } }); view.bait.props.onChange({ target: { value: "worm_bait" } }); view.start.props.onClick();
+    assert.equal(view.rod.props.disabled, true); assert.equal(view.hook.props.disabled, true); assert.equal(view.bait.props.disabled, true); assert.equal(view.start.props.disabled, true);
+    view.rod.props.onChange({ target: { value: "river_rod" } }); view.hook.props.onChange({ target: { value: "barbed_hook" } }); view.bait.props.onChange({ target: { value: "worm_bait" } }); view.start.props.onClick();
     assert.deepEqual(view.calls, []);
   }
 });

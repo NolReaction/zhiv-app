@@ -1,4 +1,4 @@
-import { ECONOMY_MAX_BALANCE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 
 import { fishingState, fishingTripCost, selectFishingCatch } from "./fishing";
 import { advanceEconomyProgression, newEconomyProgression } from "./collection-progress";
@@ -13,7 +13,7 @@ export class EconomyRuleError extends Error {
 export function constructionSpeedupPrice(job: Pick<EconomyJob, "kind" | "finishesAt">, now: number,
   config = economyCatalog.constructionSpeedup): number {
   if (job.kind !== "construction") return 0;
-  return Math.ceil(Math.max(0, Date.parse(job.finishesAt) - now) / (config.secondsPerPearl * 1000));
+  return Math.ceil(Math.max(0, Date.parse(job.finishesAt) - now) / (config.secondsPerPearl * 1000)) * ECONOMY_CURRENCY_SCALE;
 }
 const fail = (code: string, message: string): never => { throw new EconomyRuleError(code, message); };
 export function canAffordEconomy(state: Pick<EconomyState, "wallet" | "inventory">, cost: EconomyCost, quantity = 1) {
@@ -38,7 +38,7 @@ export function assertEconomyStorageTransition(previous: Pick<EconomyState, "bui
   previousReserved: Record<string, number> = {}, nextReserved: Record<string, number> = previousReserved) {
   const totals = { ...next.inventory };
   for (const [item, quantity] of Object.entries(nextReserved)) totals[item] = (totals[item] ?? 0) + quantity;
-  if (Object.values(totals).some(quantity => quantity > ECONOMY_MAX_BALANCE)) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
+  if (Object.values(totals).some(quantity => quantity > ECONOMY_MAX_ITEMS)) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   const before = economyStorage(previous, previousReserved), after = economyStorage(next, nextReserved);
   if (after.used + after.reserved > after.capacity && after.used + after.reserved > before.used + before.reserved)
     fail("ECONOMY_STORAGE_FULL", "Склад заполнен. Продайте лишнее, используйте материалы или расширьте склад");
@@ -49,12 +49,12 @@ export function marketUnlocked(state: Pick<EconomyState, "buildings" | "complete
 export function convertLegacyEconomy(resources: { sparks: number; wood: number; stone: number }) {
   const safe = (value: number) => Number.isSafeInteger(value) && value > 0 ? value : 0;
   const wood = Math.sqrt(safe(resources.wood)), stone = Math.sqrt(safe(resources.stone));
-  return { version: 1 as const, coinsGranted: Math.min(500, Math.floor(2 * Math.sqrt(safe(resources.sparks)) + wood + stone)),
+  return { version: 1 as const, coinsGranted: ECONOMY_CURRENCY_SCALE * Math.min(500, Math.floor(2 * Math.sqrt(safe(resources.sparks)) + wood + stone)),
     woodGranted: Math.min(30, Math.floor(wood)), stoneGranted: Math.min(30, Math.floor(stone)) };
 }
 export function newEconomyState(legacy: { resources: { sparks: number; wood: number; stone: number }; houseLevel: number; workshopLevel: number }): EconomyState {
   const migration = convertLegacyEconomy(legacy.resources);
-  return { wallet: { coins: migration.coinsGranted, pearls: 0 },
+  return { currencyScale: ECONOMY_CURRENCY_SCALE, wallet: { coins: migration.coinsGranted, pearls: 0 },
     inventory: { ...(migration.woodGranted ? { wood: migration.woodGranted } : {}), ...(migration.stoneGranted ? { stone: migration.stoneGranted } : {}) },
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
@@ -70,7 +70,7 @@ function debit(state: EconomyState, cost: EconomyCost) {
 }
 export function creditEconomyItems(state: EconomyState, rewards: Record<string, number>) {
   for (const [item, amount] of Object.entries(rewards)) {
-    if ((state.inventory[item] ?? 0) + amount > ECONOMY_MAX_BALANCE) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
+    if ((state.inventory[item] ?? 0) + amount > ECONOMY_MAX_ITEMS) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   }
   for (const [item, amount] of Object.entries(rewards)) {
     state.inventory[item] = (state.inventory[item] ?? 0) + amount;
@@ -145,17 +145,19 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         if (!catalog?.routeIds.includes(route.id) || !(route.rewards.fish > 0)) return fail("ECONOMY_FISHING_ROUTE", "Здесь нельзя рыбачить со снастями Плёски");
         if (!tackle.ownedRods.includes(tackle.equippedRodId) || !catalog.rods.some(rod => rod.id === tackle.equippedRodId))
           return fail("ECONOMY_FISHING_ROD", "Сначала выберите свою удочку");
+        if (!tackle.ownedHooks.includes(tackle.equippedHookId) || !catalog.hooks.some(hook => hook.id === tackle.equippedHookId))
+          return fail("ECONOMY_FISHING_HOOK", "Сначала выберите свой крючок");
         if (tackle.equippedBaitId && !catalog.baits.some(bait => bait.itemId === tackle.equippedBaitId))
           return fail("ECONOMY_FISHING_BAIT", "Наживка не найдена");
         // Generated by the authenticated server adapter, independently of requestId.
         const id = jobId(), seed = state.fishingCastSeed ?? jobId();
-        const fishId = selectFishingCatch(seed, tackle.equippedRodId, tackle.equippedBaitId, catalog);
+        const fishId = selectFishingCatch(seed, tackle.equippedRodId, tackle.equippedBaitId, catalog, tackle.equippedHookId);
         const rewards: Record<string, number> = { ...route.rewards, ...rare?.rewards, fish: route.rewards.fish - 1 };
         rewards[fishId] = (rewards[fishId] ?? 0) + 1;
         if (!rewards.fish) delete rewards.fish;
         createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards,
           ...(rare ? { rareDrop: rare.delivery } : {}),
-          fishing: { rodId: tackle.equippedRodId, baitId: tackle.equippedBaitId, fishId } }, route.seconds, fishingTripCost(route.cost, state), id);
+          fishing: { rodId: tackle.equippedRodId, hookId: tackle.equippedHookId, baitId: tackle.equippedBaitId, fishId } }, route.seconds, fishingTripCost(route.cost, state), id);
         state.fishingCastSeed = seed;
         if (rare) state.rareDropState = rare.clock;
         return "Мохлик отправился рыбачить. Снасти и наживка подготовлены";
@@ -219,11 +221,11 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         if (!economyCatalog.rareDrops) return fail("ECONOMY_RARE_STATE", "Не удалось проверить редкую находку");
         state.rareDropState = settleRareDrop(state.rareDropState, job.rareDrop, economyCatalog.rareDrops, rareRandom);
       }
-      if (job.kind === "exploration") state.completedExplorations = Math.min(ECONOMY_MAX_BALANCE, state.completedExplorations + 1);
+      if (job.kind === "exploration") state.completedExplorations = Math.min(ECONOMY_MAX_ITEMS, state.completedExplorations + 1);
       if (job.kind === "exploration" && economyCatalog.fishing?.routeIds.includes(job.targetId)) {
         const current = fishingState(state), catches = { ...current.catches };
         for (const fish of economyCatalog.fishing.fish) if (job.rewards[fish.itemId])
-          catches[fish.itemId] = Math.min(ECONOMY_MAX_BALANCE, (catches[fish.itemId] ?? 0) + job.rewards[fish.itemId]);
+          catches[fish.itemId] = Math.min(ECONOMY_MAX_ITEMS, (catches[fish.itemId] ?? 0) + job.rewards[fish.itemId]);
         state.fishing = { ...current, catches };
         state.fishingCastSeed = null;
       }
@@ -234,22 +236,25 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       const catalog = economyCatalog.fishing, current = fishingState(state);
       if (!catalog) return fail("ECONOMY_FISHING_ITEM", "Лавка Плёски пока недоступна");
       const rod = catalog.rods.find(item => item.id === command.targetId);
+      const hook = catalog.hooks.find(item => item.id === command.targetId);
       const fish = catalog.fish.find(item => item.itemId === command.targetId);
       const bait = catalog.baits.find(item => item.itemId === command.targetId);
-      if (!rod && !fish && !bait) return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
-      if (command.quantity > economyCatalog.maxBatch || rod && command.quantity !== 1)
+      if (!rod && !hook && !fish && !bait) return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
+      if (command.quantity > economyCatalog.maxBatch || (rod || hook) && command.quantity !== 1)
         throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Проверьте количество товара", 400);
       if (rod && current.ownedRods.includes(rod.id)) return fail("ECONOMY_FISHING_OWNED", "Эта удочка уже есть в коллекции");
-      const price = (rod?.price ?? fish?.buyPrice ?? bait!.price) * command.quantity;
+      if (hook && current.ownedHooks.includes(hook.id)) return fail("ECONOMY_FISHING_OWNED", "Этот крючок уже есть в коллекции");
+      const price = (rod?.price ?? hook?.price ?? fish?.buyPrice ?? bait!.price) * command.quantity;
       if (price > command.totalPrice) return fail("ECONOMY_FISHING_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Плёски");
-      if (!rod) {
+      if (!rod && !hook) {
         const inventory = { ...state.inventory, [command.targetId]: (state.inventory[command.targetId] ?? 0) + command.quantity };
         assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
       }
       debit(state, { coins: price, items: {} });
       if (rod) state.fishing = { ...current, ownedRods: [...current.ownedRods, rod.id] };
+      else if (hook) state.fishing = { ...current, ownedHooks: [...current.ownedHooks, hook.id] };
       else creditEconomyItems(state, { [command.targetId]: command.quantity });
-      return rod ? "Удочка добавлена в коллекцию" : "Покупка у Плёски отправлена на склад";
+      return rod ? "Удочка добавлена в коллекцию" : hook ? "Крючок добавлен в коллекцию" : "Покупка у Плёски отправлена на склад";
     }
     case "equip_fishing_rod": {
       const current = fishingState(state);
@@ -265,6 +270,13 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (baitId && !(state.inventory[baitId] > 0)) return fail("ECONOMY_RESOURCES", "Сначала приобретите эту наживку");
       state.fishing = { ...fishingState(state), equippedBaitId: baitId };
       return baitId ? "Наживка выбрана: одна порция на следующую вылазку" : "Выбрана рыбалка без наживки";
+    }
+    case "equip_fishing_hook": {
+      const current = fishingState(state);
+      if (!economyCatalog.fishing?.hooks.some(hook => hook.id === command.targetId) || !current.ownedHooks.includes(command.targetId))
+        return fail("ECONOMY_FISHING_HOOK", "Сначала приобретите этот крючок");
+      state.fishing = { ...current, equippedHookId: command.targetId };
+      return "Крючок выбран для следующих вылазок";
     }
     case "sell_fish":
     case "sell": {

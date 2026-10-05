@@ -95,10 +95,10 @@ test("read-only achievement getter does not initialize a profile or expose a dra
 test("merge preserves unique ownership and saturated counters without adding resources", () => {
   const first = progress.advanceEconomyProgression(undefined, job("forest", 7200));
   const second = progress.advanceEconomyProgression(undefined, job("cave", 14400));
-  first.routes.forest = model.ECONOMY_MAX_BALANCE;
+  first.routes.forest = model.ECONOMY_MAX_ITEMS;
   second.routes.forest = 1;
   const merged = progress.mergeEconomyProgression(first, second);
-  assert.equal(merged.routes.forest, model.ECONOMY_MAX_BALANCE);
+  assert.equal(merged.routes.forest, model.ECONOMY_MAX_ITEMS);
   assert.deepEqual(merged.collections.finds, ["acorn", "quartz_cluster"]);
   assert.equal(merged.collections.travelSeconds, 7200); assert.equal(merged.collections.quarrySeconds, 14400);
 });

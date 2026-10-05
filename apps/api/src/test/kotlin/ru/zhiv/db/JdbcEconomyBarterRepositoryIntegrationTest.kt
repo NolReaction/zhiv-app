@@ -209,7 +209,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         val seller=player();val buyer=player(emptyMap());val lot=offer(seller);barter.barter(buyer.hash)
         val first=action(buyer,"accept_offer",lot.id)
         assertEquals("ECONOMY_RESOURCES",assertFailsWith<AuthFailure>{barter.command(buyer.hash,first)}.code)
-        edit(buyer){it.copy(inventory=mapOf("moon_crystal" to 1L,"ancient_core" to ECONOMY_MAX_BALANCE))}
+        edit(buyer){it.copy(inventory=mapOf("moon_crystal" to 1L,"ancient_core" to ECONOMY_MAX_ITEMS))}
         val beforeBuyer=economy.snapshot(buyer.hash);val beforeSeller=economy.snapshot(seller.hash)
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure>{barter.command(buyer.hash,first)}.code)
         assertEquals(beforeBuyer,economy.snapshot(buyer.hash).copy(serverTime=beforeBuyer.serverTime))
@@ -218,7 +218,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         assertEquals(0L,scalar("SELECT count(*) FROM economy_barter_receipts WHERE user_id=?",buyer.id))
         assertEquals(0L,scalar("SELECT count(*) FROM economy_ledger WHERE source_key=?","barter:accept:${lot.id}"))
         edit(buyer){it.copy(inventory=mapOf("moon_crystal" to 1L))}
-        edit(seller){it.copy(inventory=it.inventory+("moon_crystal" to ECONOMY_MAX_BALANCE))}
+        edit(seller){it.copy(inventory=it.inventory+("moon_crystal" to ECONOMY_MAX_ITEMS))}
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure>{barter.command(buyer.hash,first)}.code)
         assertEquals(1L,economy.snapshot(buyer.hash).inventory["moon_crystal"])
     }
@@ -251,7 +251,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         economy.command(p.hash,sell)
         assertEquals("ECONOMY_REQUEST_CONFLICT",assertFailsWith<AuthFailure>{barter.command(p.hash,createCommand(p).copy(requestId=sell.requestId))}.code)
         val market=JdbcEconomyMarketRepository(source)
-        val marketRequest=EconomyCommand(UUID.randomUUID().toString(),p.publicId,economy.snapshot(p.hash).revision,"create_listing","berries",totalPrice=3)
+        val marketRequest=EconomyCommand(UUID.randomUUID().toString(),p.publicId,economy.snapshot(p.hash).revision,"create_listing","berries",totalPrice=30)
         market.command(p.hash,marketRequest)
         assertEquals("ECONOMY_REQUEST_CONFLICT",assertFailsWith<AuthFailure>{barter.command(p.hash,createCommand(p).copy(requestId=marketRequest.requestId))}.code)
         val rewardId=UUID.randomUUID()

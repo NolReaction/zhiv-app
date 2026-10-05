@@ -165,3 +165,31 @@ test("map and pantry conversation entries keep their return paths, while fishing
     assert.equal(nav.component("WorldExpeditionsMenu").props.initialSector, "shore");
   } finally { nav.restore(); }
 });
+
+test("gifts open manually from My Mochlik while call and reward closing preserve the profile", () => {
+  const nav = navigation();
+  try {
+    const original = nav.component("DailyRewardsDialog");
+    assert.equal(original.props.open, false);
+    assert.equal(original.key, "characters-test", "the persistent reward controller is keyed to its owner");
+    assert.equal(nav.component("DailyRewardsButton"), undefined, "there is no standalone map gift button");
+    nav.find(element => element.props["data-world-quick"] === "profile").props.onClick();
+    let profile = nav.component("WorldProfileMenu");
+    assert.equal(profile.props.rewards.type.name, "DailyRewardsButton");
+    const wake = nav.component("WorldScene").props.wakeSignal;
+    profile.props.onCall();
+    profile = nav.component("WorldProfileMenu"); assert.ok(profile, "calling does not dismiss the profile");
+    assert.equal(nav.component("WorldScene").props.wakeSignal, wake + 1);
+    profile.props.rewards.props.onRequestOpen();
+    let gifts = nav.component("DailyRewardsDialog"); assert.equal(gifts.props.open, true);
+    assert.ok(nav.component("WorldProfileMenu"), "the profile remains behind the gift dialog");
+    const trigger = profile.props.rewards.props.triggerRef;
+    trigger.current = { isConnected: true, focus() { nav.focused.push("gifts"); } };
+    gifts.props.onOpenChange(false); gifts = nav.component("DailyRewardsDialog");
+    assert.equal(gifts.props.open, false); assert.equal(gifts.key, original.key);
+    assert.ok(nav.component("WorldProfileMenu")); gifts.props.onReturnFocus(); assert.deepEqual(nav.focused, ["gifts"]);
+    nav.find(element => element.props["aria-label"] === "Закрыть: Мой Мохлик").props.onClick();
+    assert.equal(nav.component("WorldProfileMenu"), undefined);
+    assert.equal(nav.component("DailyRewardsDialog").key, original.key, "closing the profile keeps receipt resolution mounted");
+  } finally { nav.restore(); }
+});

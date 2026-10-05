@@ -4,7 +4,7 @@ import { auditEconomyProgression, readEconomyCatalog } from "../scripts/audit-ec
 
 test("economy catalog has useful chains, reachable upgrades, sufficient storage and a market-proof pacing floor", () => {
   const report = auditEconomyProgression(readEconomyCatalog());
-  assert.equal(report.itemCount, 32);
+  assert.equal(report.itemCount, 40);
   assert.equal(report.buildingCount, 8);
   assert.equal(report.constructionOrder.length, 37);
 });
@@ -62,7 +62,7 @@ test("fishing shop cannot introduce buy-sell arbitrage or reverse tackle progres
 
 test("local-sale audit protects processing margins and rejects a zero recovery payout", () => {
   const lowSmokedPrice = readEconomyCatalog();
-  lowSmokedPrice.items.find(item => item.id === "smoked_fish").baseSellPrice = 24;
+  lowSmokedPrice.items.find(item => item.id === "smoked_fish").baseSellPrice = 240;
   assert.throws(() => auditEconomyProgression(lowSmokedPrice), /actual sale proceeds/);
   const unavailableRecovery = readEconomyCatalog();
   unavailableRecovery.localBuyer.payoutBps = 0;

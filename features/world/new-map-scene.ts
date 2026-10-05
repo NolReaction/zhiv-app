@@ -53,6 +53,8 @@ import { forestProductionFrames, syncForestProduction, type ForestProductionFram
 import { drawForestProductionStation } from "./forest-production-painter";
 import { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, noticeCookingPreview } from "./dev/forest-cooking-preview";
 import { forestTrailDestination } from "./forest-trails";
+import { forestJourneyMiningFrame, type ForestMiningFrame } from "./forest-mining";
+import { drawForestMiningHero, drawForestMiningWork } from "./forest-mining-painter";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
@@ -104,6 +106,7 @@ export type NewMapPaintPreview = {
   livingDebug?: LivingWorldDebugSnapshot;
   actorAway?: boolean;
   fishing?: ForestFishingFrame | null;
+  mining?: ForestMiningFrame | null;
   cooking?: ForestCookingFrame | null;
   productions?: readonly ForestProductionFrame[];
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
@@ -147,7 +150,8 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const selectedVisuals = preview?.visuals ?? visualsFor(currentLevels);
   const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
   const walking = preview?.clearing;
-  const actor = { x: walking?.x ?? NEW_MAP_SPAWN.x, y: walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
+  const actor = { x: preview?.mining?.x ?? walking?.x ?? NEW_MAP_SPAWN.x, y: preview?.mining?.y ?? walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
+  const mining = preview?.mining ? { ...preview.mining, size:actor.size } : null;
   const fishing = preview?.fishing ? { ...preview.fishing, size: actor.size } : null;
   const cooking = !fishing && preview?.cooking ? { ...preview.cooking, size: actor.size } : null;
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
@@ -156,12 +160,12 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const groundBirds = birds.filter(bird => bird.groundY !== undefined).sort((a, b) => a.groundY! - b.groundY!);
   const life = preview?.life;
   const heroVisible = dev?.showHero !== false && !(preview?.actorAway ?? economyJourneyAway(options.economyJourney, timestamp));
-  const automatic = heroVisible && !fishing && !cooking && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+  const automatic = heroVisible && !fishing && !mining && !cooking && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
   const motion = automatic && walking ? walking : null;
   // A cancelled carry may wait for clear ground; attention cannot hide its basket.
   const garden = automatic || life?.garden.basket?.held ? forestGardenVisualFrame(life?.garden, actor,
     { pose: motion?.pose ?? "idle", frame: motion?.frame ?? 0, direction: motion?.direction ?? "front" }, still) : null;
-  const routine = heroVisible && !fishing && life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
+  const routine = heroVisible && !fishing && !mining && life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, { ...actor, propSize: PET_SIZE }, elapsed) : null;
   const encounter = heroVisible && !fishing && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
     ? faunaInteractionFrame(preview.fauna) : null;
@@ -219,6 +223,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
     withForestOcclusion(context, world, actor, () => {
+      if (mining) {
+        drawForestMiningHero(context,mining,dev?.equipment ?? options.worldState?.equipment,dev?.heroShadow);
+        return;
+      }
       if (fishing) {
         drawForestFishingHero(context, fishing, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
         return;
@@ -244,6 +252,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   if (walking?.homeSleeping && home && heroVisible && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
+  if (mining && dev?.showBuildings !== false && dev?.showHero !== false) drawForestMiningWork(context,mining,still);
   drawForestCampfires(context, frontFires, elapsed, still);
   paintProduction(true);
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
@@ -401,7 +410,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing")
+    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" || state.journeyTravel?.mining)
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -433,6 +442,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       residents: residentFrames(), fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
+      mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
       fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit,

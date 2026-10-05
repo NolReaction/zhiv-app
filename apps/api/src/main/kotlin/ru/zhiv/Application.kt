@@ -30,6 +30,7 @@ import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.checkInRoutes
 import ru.zhiv.config.AppConfig
 import ru.zhiv.db.DatabaseFactory
+import ru.zhiv.db.JdbcGuestProfileRepository
 import ru.zhiv.db.JdbcRelationshipRepository
 import ru.zhiv.db.JdbcGroupRepository
 import ru.zhiv.db.JdbcDirectInviteRepository
@@ -75,6 +76,8 @@ import ru.zhiv.observability.Slf4jGameEventSink
 import ru.zhiv.observability.RequestDiagnostics
 import ru.zhiv.observability.recordApiFailure
 import ru.zhiv.observability.recordAuthFailure
+import ru.zhiv.relationships.GuestProfileRepository
+import ru.zhiv.relationships.guestProfileRoutes
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
@@ -122,6 +125,7 @@ fun Application.module() {
         repository,
         config,
         relationships = relationships,
+        guestProfiles = JdbcGuestProfileRepository(dataSource),
         groups = groups,
         directInvites = directInvites,
         recovery = recovery,
@@ -170,6 +174,7 @@ fun Application.installZhivApi(
     economyMarket: EconomyMarketRepository? = null,
     progressionRewards: ProgressionRewardsRepository? = null,
     economyBarter: EconomyBarterRepository? = null,
+    guestProfiles: GuestProfileRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -341,6 +346,7 @@ fun Application.installZhivApi(
             }
         }
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
+        guestProfiles?.let { guestProfileRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }
         recovery?.let { codeRecoveryRoutes(it, identities, tokenCodec, config) }

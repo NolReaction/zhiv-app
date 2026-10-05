@@ -18,13 +18,13 @@ const owner = "7K3P-2Q9M-W8ZR", target = "7K3P-2Q9M-W8ZS", otherOwner = "7K3P-2Q
 const serverTime = "2026-10-05T12:00:00Z";
 const updatedAt = "2026-10-04T12:00:00Z";
 const player = { publicId: target, displayName: "Тестер", initialized: true, updatedAt, revision: 4,
-  coins: 70, pearls: 2, homeLevel: 2, completedExplorations: 3,
+  coins: 700, pearls: 20, homeLevel: 2, completedExplorations: 3,
   storage: { used: 210, capacity: 200, available: 0, reserved: 10, overflow: 20 },
   runningJobs: 2, readyJobs: 1, awaitingCollectionJobs: 1, blockedReadyJobs: 1 };
 const uninitialized = { ...player, publicId: otherOwner, displayName: "Новичок", initialized: false,
   updatedAt: null, revision: null, coins: null, pearls: null, homeLevel: null, completedExplorations: null, storage: null,
   runningJobs: 0, readyJobs: 0, awaitingCollectionJobs: 0, blockedReadyJobs: 0 };
-const summary = { players: 80, initializedPlayers: 60, uninitializedPlayers: 20, coins: 50000, pearls: 450,
+const summary = { players: 80, initializedPlayers: 60, uninitializedPlayers: 20, coins: 500000, pearls: 4500,
   runningJobs: 27, readyJobs: 9, storageBlockedPlayers: 3, overflowPlayers: 2, updatedLast24Hours: 17 };
 const page = (players = [player, uninitialized], total = players.length) => ({ serverTime, total, offset: 0, limit: 25, summary, players });
 const options = { q: "Тестер", sort: "ready", offset: 0, limit: 25 };
@@ -33,7 +33,7 @@ const garden = economyCatalog.recipes.find(value => value.collection);
 const job = (index, extra = {}) => ({ id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
   kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
   startedAt: "2026-10-05T11:00:00Z", finishesAt: "2026-10-05T12:10:00Z",
-  cost: { coins: 7, items: { wood: 2 } }, rewards: { wood: 4 }, catalogVersion: 2, ...extra });
+  cost: { coins: 70, items: { wood: 2 } }, rewards: { wood: 4 }, catalogVersion: 2, ...extra });
 function detail() {
   const jobs = [job(1), job(2, { recipeId: garden.id, targetId: "garden", finishesAt: "2026-10-05T11:50:00Z",
     rewards: { berries: 4 }, collection: { ...garden.collection, startedAt: null, finishesAt: null } }),
@@ -41,13 +41,13 @@ function detail() {
     collection: { ...garden.collection, startedAt: serverTime, finishesAt: new Date(Date.parse(serverTime) + garden.collection.seconds * 1000).toISOString() } }),
   job(4, { kind: "construction", targetId: "home", recipeId: null, targetLevel: 2, finishesAt: "2026-10-05T11:55:00Z" })];
   return { publicId: target, displayName: "Тестер", serverTime, updatedAt,
-    economy: { ownerPublicId: target, revision: 4, serverTime, wallet: { coins: 70, pearls: 2 }, inventory: { wood: 7, berries: 2 },
+    economy: { ownerPublicId: target, revision: 4, serverTime, wallet: { coins: 700, pearls: 20 }, inventory: { wood: 7, berries: 2 },
       buildings: { home: 2, garden: 1 }, jobs, migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 },
       completedExplorations: 3, storage: player.storage, catalog: economyCatalog,
       fishing: { ownedRods: [economyCatalog.fishing.rods[0].id], equippedRodId: economyCatalog.fishing.rods[0].id,
         equippedBaitId: null, catches: { fish_silverfin: 2 } } },
     jobStatuses: jobs.map((value, index) => ({ jobId: value.id, status: ["running", "awaiting_collection", "collecting", "ready"][index], storageBlocked: index === 3 })),
-    ledger: [{ kind: "start_production", coins: -7, pearls: -2, items: { wood: -2, berries: 4 }, createdAt: serverTime }] };
+    ledger: [{ kind: "start_production", coins: -70, pearls: -20, items: { wood: -2, berries: 4 }, createdAt: serverTime }] };
 }
 function inspect(element) {
   const elements = [];
@@ -66,7 +66,7 @@ test("economy list keeps the global summary distinct from search and makes missi
   const view = list();
   assert.match(view.markup, /Сводка по всем игрокам/);
   assert.match(view.markup, /Поиск ограничивает список ниже/);
-  assert.match(view.markup, /50(?:\s|&nbsp;|\u202f)000/);
+  assert.match(view.markup, /500(?:\s|&nbsp;|\u202f)000/);
   assert.match(view.markup, /из 2/);
   assert.match(view.markup, /Хозяйство ещё не заведено/);
   const newRow = view.markup.slice(view.markup.indexOf("Новичок"), view.markup.indexOf("Новичок") + 600);
@@ -101,7 +101,7 @@ test("detail renders catalog names, all collection phases and signed recent delt
   assert.ok(markup.includes(wood));
   assert.match(markup, /До завершения: <strong>10 мин\./);
   assert.equal(economyRemaining("2026-10-05T12:10:00Z", serverTime), "10 мин.");
-  assert.match(markup, /-7/); assert.match(markup, /-2/); assert.match(markup, /\+4/);
+  assert.match(markup, /-70/); assert.match(markup, /-20/); assert.match(markup, /\+4/);
   assert.match(markup, /Последние операции · до 30 записей/);
   assert.match(markup, /не полная история аккаунта/);
   assert.doesNotMatch(markup, /lastonline|Последний вход|Последняя активность/);

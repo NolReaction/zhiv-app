@@ -21,7 +21,7 @@ object EconomyCollectionProgress {
         require(catalog.version == 1 && catalog.travel.secondsPerFind > 0 && catalog.quarry.secondsPerFind > 0)
         require(knownFinds.size == travelFinds.size + quarryFinds.size)
     }
-    private fun add(first: Long, second: Long): Long = minOf(ECONOMY_MAX_BALANCE, first + second)
+    private fun add(first: Long, second: Long): Long = minOf(ECONOMY_MAX_ITEMS, first + second)
 
     fun inherit(value: EconomyProgression, inherited: List<String>): EconomyProgression = value.copy(
         collections = value.collections.copy(finds = (value.collections.finds.filter { it in knownFinds } +

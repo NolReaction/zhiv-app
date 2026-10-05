@@ -6,6 +6,7 @@ import kotlinx.serialization.encodeToString
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.ECONOMY_MAX_BALANCE
+import ru.zhiv.economy.ECONOMY_MAX_ITEMS
 import ru.zhiv.world.*
 import java.sql.Connection
 import java.sql.ResultSet
@@ -39,13 +40,13 @@ private fun creditLegacyJourney(c: Connection, user: UUID, journey: WorldJourney
     if (c.worldRows("SELECT 1 FROM economy_ledger WHERE user_id=? AND source_key=?", user, key) { true }.isNotEmpty()) return
     val converted = EconomyRules.legacyConversion(journey.rewards.sparks, journey.rewards.wood, journey.rewards.stone)
     val before = readEconomyProfile(c, user).state
-    fun add(a: Long, b: Long): Long {
-        if (a > ECONOMY_MAX_BALANCE - b) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для награды перед возвращением из путешествия", 409)
+    fun add(a: Long, b: Long,limit: Long=ECONOMY_MAX_BALANCE): Long {
+        if (a > limit - b) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для награды перед возвращением из путешествия", 409)
         return a + b
     }
     val inventory = before.inventory.toMutableMap()
-    if (converted.woodGranted > 0) inventory["wood"] = add(inventory["wood"] ?: 0, converted.woodGranted)
-    if (converted.stoneGranted > 0) inventory["stone"] = add(inventory["stone"] ?: 0, converted.stoneGranted)
+    if (converted.woodGranted > 0) inventory["wood"] = add(inventory["wood"] ?: 0, converted.woodGranted,ECONOMY_MAX_ITEMS)
+    if (converted.stoneGranted > 0) inventory["stone"] = add(inventory["stone"] ?: 0, converted.stoneGranted,ECONOMY_MAX_ITEMS)
     val next = before.copy(wallet=before.wallet.copy(coins=add(before.wallet.coins, converted.coinsGranted)), inventory=inventory)
     assertEconomyMarketCapacity(c, user, before, next)
     saveEconomyProfile(c, user, next)

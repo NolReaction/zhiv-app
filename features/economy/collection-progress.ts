@@ -1,10 +1,10 @@
 import collectionCatalog from "@/apps/api/src/main/resources/world/collections-catalog.json";
-import { ECONOMY_MAX_BALANCE, economyProgressionSchema, type EconomyJob, type EconomyProgression } from "./model";
+import { ECONOMY_MAX_ITEMS, economyProgressionSchema, type EconomyJob, type EconomyProgression } from "./model";
 
 const travelFinds: readonly string[] = collectionCatalog.travel.finds;
 const quarryFinds = collectionCatalog.quarry.finds.map(find => find.id);
 const knownFinds = new Set([...travelFinds, ...quarryFinds]);
-const add = (first: number, second: number) => Math.min(ECONOMY_MAX_BALANCE, first + second);
+const add = (first: number, second: number) => Math.min(ECONOMY_MAX_ITEMS, first + second);
 export const newEconomyProgression = (): EconomyProgression => economyProgressionSchema.parse({});
 
 /** Only known inherited forest finds participate; old river keepsakes stay in their original profile. */

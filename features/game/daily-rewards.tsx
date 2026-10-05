@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import type { RefObject } from "react";
 import { CalendarDays, Check, Clock3, Gift, RefreshCw, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
@@ -9,15 +9,6 @@ import type { GameReward } from "./game-rewards-api";
 import { useGameRewards, type GameRewardsController } from "./use-game-rewards";
 import styles from "./daily-rewards.module.css";
 
-const shownDays = new Map<string, string>();
-/** This local display preference uses the confirmed server day, never a reward claim. */
-export function markDailyRewardSeen(owner: string, serverTime: string, storage?: Pick<Storage, "getItem" | "setItem">) {
-  const day = serverTime.slice(0, 10), key = `zhiv:daily-rewards:shown:v1:${owner}`;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(serverTime))) return false;
-  if (shownDays.get(owner) === day) return false;
-  try { if (storage?.getItem(key) === day) { shownDays.set(owner, day); return false; } storage?.setItem(key, day); } catch { /* One display per day still works in memory. */ }
-  shownDays.set(owner, day); return true;
-}
 export function dailyRewardWait(nextClaimAt: string, now: number) {
   const minutes = Math.ceil((Date.parse(nextClaimAt) - now) / 60_000);
   if (!Number.isFinite(minutes) || minutes <= 0) return "Проверяем доступность…";
@@ -68,33 +59,29 @@ export function DailyRewardsPanel({ controller, isOnline, names = {} }: { contro
     <details className={styles.rules}><summary>Как приходят подарки</summary><p>Один подарок в день по UTC, не раньше чем через 20 часов после предыдущего. Получайте их по очереди: пропуск не сбрасывает семь шагов. Награда попадает в кошелёк и кладовую только после нажатия и подтверждения сервера.</p></details>
   </div>;
 }
-export function DailyRewardsMap({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onRequestOpen, canAutoOpen }: {
+export function DailyRewardsButton({ ownerPublicId, isOnline = true, onSessionLost, open, onRequestOpen, triggerRef }: {
+  ownerPublicId: string; isOnline?: boolean; onSessionLost?: () => void; open: boolean; onRequestOpen: () => void;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
+}) {
+  const controller = useGameRewards(ownerPublicId, isOnline, onSessionLost);
+  const available = Boolean(controller.data?.daily.claimable && !controller.pending && isOnline), uncertain = controller.uncertain;
+  return <button ref={triggerRef} type="button" className={styles.giftButton} data-world-rewards-trigger data-available={available || undefined} data-uncertain={uncertain || undefined}
+      aria-haspopup="dialog" aria-expanded={open} aria-label={`Подарки за вход${uncertain ? ". Нужно проверить получение" : available ? ". Подарок доступен" : ""}`}
+      onClick={() => { onRequestOpen(); void controller.refresh(); }}><Gift size={18} aria-hidden="true" /><span>Подарки</span>{(available || uncertain) && <span className={styles.indicator} aria-hidden="true" />}</button>;
+}
+
+/** Keep this mounted while the profile or dialog closes: an in-flight claim still confirms the wallet. */
+export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onReturnFocus }: {
   ownerPublicId: string; economy: EconomyController; isOnline?: boolean; onSessionLost?: () => void;
-  open: boolean; onOpenChange: (value: boolean) => void; onRequestOpen: () => void; canAutoOpen: boolean;
+  open: boolean; onOpenChange: (value: boolean) => void; onReturnFocus: () => void;
 }) {
   const controller = useGameRewards(ownerPublicId, isOnline, onSessionLost, () => { void economy.refresh(); });
-  const trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const data = controller.data;
-    if (!data || data.ownerPublicId !== ownerPublicId || !isOnline) return;
-    let storage: Storage | undefined;
-    try { storage = window.localStorage; } catch { /* The in-memory display preference is enough. */ }
-    if (open) { markDailyRewardSeen(ownerPublicId, data.serverTime, storage); return; }
-    if (canAutoOpen && data.daily.claimable && !controller.loading && !controller.busy && !controller.pending
-      && markDailyRewardSeen(ownerPublicId, data.serverTime, storage)) onRequestOpen();
-  }, [controller.data, controller.loading, controller.busy, controller.pending, ownerPublicId, isOnline, open, canAutoOpen, onRequestOpen]);
-  const available = Boolean(controller.data?.daily.claimable && !controller.pending && isOnline), uncertain = controller.uncertain;
   const names = Object.fromEntries(economy.snapshot?.catalog.items.map(item => [item.id, item.name]) ?? []);
-  return <>
-    <button ref={trigger} type="button" className={styles.giftButton} data-available={available || undefined} data-uncertain={uncertain || undefined}
-      aria-haspopup="dialog" aria-expanded={open} aria-label={`Подарки за вход${uncertain ? ". Нужно проверить получение" : available ? ". Подарок доступен" : ""}`}
-      onClick={() => { onRequestOpen(); void controller.refresh(); }}><Gift size={18} aria-hidden="true" /><span>Подарки</span>{(available || uncertain) && <span className={styles.indicator} aria-hidden="true" />}</button>
-    <Dialog open={open} onOpenChange={onOpenChange}><DialogPortal><DialogOverlay className={styles.scrim} />
-      <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus({ preventScroll: true }); }}>
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogPortal><DialogOverlay className={styles.scrim} />
+      <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus(); }}>
         <header className={styles.header}><DialogTitle><CalendarDays size={22} aria-hidden="true" />Подарки за вход</DialogTitle><DialogPrimitive.Close aria-label="Закрыть подарки"><X size={20} aria-hidden="true" /></DialogPrimitive.Close></header>
         <DialogDescription className={styles.sr}>Семь подарков за возвращение в лес. Каждый подарок нужно забрать вручную.</DialogDescription>
         <DailyRewardsPanel controller={controller} isOnline={isOnline} names={names} />
       </DialogPrimitive.Content>
-    </DialogPortal></Dialog>
-  </>;
+    </DialogPortal></Dialog>;
 }

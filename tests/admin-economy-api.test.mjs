@@ -18,13 +18,13 @@ const emptyPlayer = { publicId, displayName: "Новый игрок", initialize
 const summary = { players: 1, initializedPlayers: 0, uninitializedPlayers: 1, coins: 0, pearls: 0,
   runningJobs: 0, readyJobs: 0, storageBlockedPlayers: 0, overflowPlayers: 0, updatedLast24Hours: 0 };
 const page = { serverTime, total: 1, offset: 0, limit: 25, summary, players: [emptyPlayer] };
-const economy = { ownerPublicId: publicId, revision: 4, serverTime, wallet: { coins: 321, pearls: 7 },
+const economy = { ownerPublicId: publicId, revision: 4, serverTime, wallet: { coins: 3210, pearls: 70 },
   inventory: { wood: 20 }, buildings: { home: 1, warehouse: 1 }, jobs: [],
   migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 },
   catalog: economyCatalog, storage: { capacity: 200, used: 20, reserved: 5, available: 175, overflow: 0 },
   completedExplorations: 1, fishing: { ownedRods: ["reed_rod"], equippedRodId: "reed_rod", equippedBaitId: null, catches: {} } };
 const detail = { publicId, displayName: "Игрок", serverTime, updatedAt: serverTime, economy, jobStatuses: [],
-  ledger: [{ kind: "sell", coins: 10, pearls: -1, items: { wood: -5 }, createdAt: serverTime }] };
+  ledger: [{ kind: "sell", coins: 100, pearls: -10, items: { wood: -5 }, createdAt: serverTime }] };
 
 test("economy list preserves missing profiles and sends literal bounded query without credentials in headers", async () => {
   globalThis.fetch = async (url, options) => {
@@ -43,7 +43,7 @@ test("economy detail accepts signed journal deltas but strips private seeds", as
     return Response.json({ ...detail, economy: { ...economy, fishingCastSeed: "private" } });
   };
   const response = await api.getAdminEconomyPlayer(publicId);
-  assert.equal(response.ledger[0].items.wood, -5); assert.equal(response.ledger[0].pearls, -1);
+  assert.equal(response.ledger[0].items.wood, -5); assert.equal(response.ledger[0].pearls, -10);
   assert.equal(response.economy.storage.reserved, 5); assert.equal("fishingCastSeed" in response.economy, false);
 });
 

@@ -16,7 +16,7 @@ const { WorldCollections } = await vite.ssrLoadModule("/features/world/world-col
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
 
 test("every economic item, currency and wardrobe item has artwork", () => {
-  const expected = [...economyCatalog.items.map(item => item.id), ...worldCatalog.items.map(item => item.id), "coins", "pearls"];
+  const expected = [...economyCatalog.items.map(item => item.id), ...economyCatalog.fishing.hooks.map(hook => hook.id), ...worldCatalog.items.map(item => item.id), "coins", "pearls"];
   assert.deepEqual([...itemIconIds].sort(), expected.sort());
   assert.equal(new Set(itemIconIds).size, itemIconIds.length);
 });

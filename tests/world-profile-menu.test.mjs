@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Children, isValidElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldProfileContent } = await vite.ssrLoadModule("/features/world/world-profile-menu.tsx");
+const { BOOK_COLLECTION_COUNT } = await vite.ssrLoadModule("/features/world/collection-book.ts");
 const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/model.ts");
 const { newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
@@ -46,10 +47,16 @@ test("map profile uses the authoritative home level and completed progress witho
   assert.match(markup, /Уровень 12/);
   assert.match(markup, /<dt>Дом<\/dt><dd>3 ур\.<\/dd>/);
   assert.match(markup, /<dt>Исследования<\/dt><dd>7<\/dd>/);
-  assert.match(markup, /<dt>Книга находок<\/dt><dd>1 \/ 14<\/dd>/);
+  assert.ok(markup.includes(`<dt>Книга находок</dt><dd>1 / ${BOOK_COLLECTION_COUNT}</dd>`));
   assert.match(markup, /21 день/);
   assert.deepEqual(elements.filter(element => element.type === "button").map(buttonText), ["Позвать Мохлика"]);
   assert.doesNotMatch(markup, /Кладовая|Гардероб|Обустроить дом|Прежние походы/);
+});
+
+test("the map profile contains gifts beside its character call without duplicate labels", () => {
+  const view = profile({ rewards: createElement("button", { type: "button", "aria-haspopup": "dialog" }, "Подарки") });
+  assert.deepEqual(view.elements.filter(element => element.type === "button").map(buttonText), ["Подарки", "Позвать Мохлика"]);
+  assert.equal((view.markup.match(/>Подарки</g) ?? []).length, 1);
 });
 
 test("profile reports stable feelings rather than animation phases, percentages or private AI details", () => {
@@ -67,7 +74,7 @@ test("profile counts the same permanent book pages as collections, excluding old
   const view = profile({ economy: { snapshot: state }, world: { snapshot: { state: {
     ...newWorldState(), collection: ["acorn", "river_pearl"],
   } } } });
-  assert.match(view.markup, /<dt>Книга находок<\/dt><dd>3 \/ 14<\/dd>/);
+  assert.ok(view.markup.includes(`<dt>Книга находок</dt><dd>3 / ${BOOK_COLLECTION_COUNT}</dd>`));
 });
 
 test("missing observations cannot call the character; missing economy is not presented as zero progress", () => {

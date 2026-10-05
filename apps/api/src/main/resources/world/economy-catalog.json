@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "maxBatch": 10,
   "constructionSpeedup": {
     "secondsPerPearl": 300
@@ -9,203 +9,203 @@
       "id": "berries",
       "name": "Лесные ягоды",
       "category": "produce",
-      "baseSellPrice": 3,
+      "baseSellPrice": 30,
       "tradable": true
     },
     {
       "id": "wood",
       "name": "Древесина",
       "category": "material",
-      "baseSellPrice": 4,
+      "baseSellPrice": 40,
       "tradable": true
     },
     {
       "id": "stone",
       "name": "Камень",
       "category": "material",
-      "baseSellPrice": 3,
+      "baseSellPrice": 30,
       "tradable": true
     },
     {
       "id": "ore",
       "name": "Железная руда",
       "category": "material",
-      "baseSellPrice": 6,
+      "baseSellPrice": 60,
       "tradable": true
     },
     {
       "id": "fiber",
       "name": "Растительное волокно",
       "category": "material",
-      "baseSellPrice": 2,
+      "baseSellPrice": 20,
       "tradable": true
     },
     {
       "id": "fish",
       "name": "Речная рыба",
       "category": "produce",
-      "baseSellPrice": 8,
+      "baseSellPrice": 80,
       "tradable": true
     },
     {
       "id": "planks",
       "name": "Доски",
       "category": "crafted",
-      "baseSellPrice": 12,
+      "baseSellPrice": 120,
       "tradable": true
     },
     {
       "id": "rope",
       "name": "Верёвка",
       "category": "crafted",
-      "baseSellPrice": 8,
+      "baseSellPrice": 80,
       "tradable": true
     },
     {
       "id": "metal_parts",
       "name": "Металлические детали",
       "category": "crafted",
-      "baseSellPrice": 46,
+      "baseSellPrice": 460,
       "tradable": true
     },
     {
       "id": "dried_berries",
       "name": "Сушёные ягоды",
       "category": "provisions",
-      "baseSellPrice": 26,
+      "baseSellPrice": 260,
       "tradable": true
     },
     {
       "id": "smoked_fish",
       "name": "Копчёная рыба",
       "category": "provisions",
-      "baseSellPrice": 34,
+      "baseSellPrice": 340,
       "tradable": true
     },
     {
       "id": "clay",
       "name": "Глина",
       "category": "material",
-      "baseSellPrice": 4,
+      "baseSellPrice": 40,
       "tradable": true
     },
     {
       "id": "sand",
       "name": "Песок",
       "category": "material",
-      "baseSellPrice": 3,
+      "baseSellPrice": 30,
       "tradable": true
     },
     {
       "id": "charcoal",
       "name": "Древесный уголь",
       "category": "crafted",
-      "baseSellPrice": 10,
+      "baseSellPrice": 100,
       "tradable": true
     },
     {
       "id": "iron_ingot",
       "name": "Железный слиток",
       "category": "crafted",
-      "baseSellPrice": 34,
+      "baseSellPrice": 340,
       "tradable": true
     },
     {
       "id": "bricks",
       "name": "Кирпичи",
       "category": "crafted",
-      "baseSellPrice": 14,
+      "baseSellPrice": 140,
       "tradable": true
     },
     {
       "id": "glass",
       "name": "Стекло",
       "category": "crafted",
-      "baseSellPrice": 24,
+      "baseSellPrice": 240,
       "tradable": true
     },
     {
       "id": "hardwood",
       "name": "Твёрдая древесина",
       "category": "material",
-      "baseSellPrice": 10,
+      "baseSellPrice": 100,
       "tradable": true
     },
     {
       "id": "resin",
       "name": "Смола",
       "category": "material",
-      "baseSellPrice": 6,
+      "baseSellPrice": 60,
       "tradable": true
     },
     {
       "id": "cloth",
       "name": "Полотно",
       "category": "crafted",
-      "baseSellPrice": 24,
+      "baseSellPrice": 240,
       "tradable": true
     },
     {
       "id": "beams",
       "name": "Балки",
       "category": "crafted",
-      "baseSellPrice": 60,
+      "baseSellPrice": 600,
       "tradable": true
     },
     {
       "id": "tools",
       "name": "Инструменты",
       "category": "crafted",
-      "baseSellPrice": 100,
+      "baseSellPrice": 1000,
       "tradable": true
     },
     {
       "id": "reinforced_parts",
       "name": "Усиленные узлы",
       "category": "crafted",
-      "baseSellPrice": 180,
+      "baseSellPrice": 1800,
       "tradable": true
     },
     {
       "id": "cut_stone",
       "name": "Тёсаный камень",
       "category": "crafted",
-      "baseSellPrice": 12,
+      "baseSellPrice": 120,
       "tradable": true
     },
     {
       "id": "fish_silverfin",
       "name": "Серебринка",
       "category": "produce",
-      "baseSellPrice": 12,
+      "baseSellPrice": 120,
       "tradable": true
     },
     {
       "id": "fish_reedperch",
       "name": "Камышовый окунёк",
       "category": "produce",
-      "baseSellPrice": 18,
+      "baseSellPrice": 180,
       "tradable": true
     },
     {
       "id": "fish_mooncarp",
       "name": "Лунный карасик",
       "category": "produce",
-      "baseSellPrice": 32,
+      "baseSellPrice": 320,
       "tradable": true
     },
     {
       "id": "crumb_bait",
       "name": "Хлебная наживка",
       "category": "fishing",
-      "baseSellPrice": 1,
+      "baseSellPrice": 10,
       "tradable": true
     },
     {
       "id": "worm_bait",
       "name": "Лесной червячок",
       "category": "fishing",
-      "baseSellPrice": 2,
+      "baseSellPrice": 20,
       "tradable": true
     },
     {
@@ -228,6 +228,62 @@
       "category": "special",
       "baseSellPrice": 0,
       "tradable": false
+    },
+    {
+      "id": "fish_rudd",
+      "name": "Краснопёрка",
+      "category": "produce",
+      "baseSellPrice": 140,
+      "tradable": true
+    },
+    {
+      "id": "fish_dace",
+      "name": "Лесной елец",
+      "category": "produce",
+      "baseSellPrice": 200,
+      "tradable": true
+    },
+    {
+      "id": "fish_bream",
+      "name": "Бронзовый лещ",
+      "category": "produce",
+      "baseSellPrice": 240,
+      "tradable": true
+    },
+    {
+      "id": "fish_pike",
+      "name": "Изумрудная щука",
+      "category": "produce",
+      "baseSellPrice": 400,
+      "tradable": true
+    },
+    {
+      "id": "fish_eel",
+      "name": "Тёмный угорь",
+      "category": "produce",
+      "baseSellPrice": 480,
+      "tradable": true
+    },
+    {
+      "id": "fish_sturgeon",
+      "name": "Золотой осётр",
+      "category": "produce",
+      "baseSellPrice": 720,
+      "tradable": true
+    },
+    {
+      "id": "fish_mirror_koi",
+      "name": "Зеркальный кои",
+      "category": "produce",
+      "baseSellPrice": 960,
+      "tradable": true
+    },
+    {
+      "id": "fish_shark",
+      "name": "Теневая акула",
+      "category": "produce",
+      "baseSellPrice": 1600,
+      "tradable": true
     }
   ],
   "buildings": [
@@ -250,7 +306,7 @@
           "level": 2,
           "seconds": 1800,
           "cost": {
-            "coins": 150,
+            "coins": 1500,
             "items": {
               "wood": 20,
               "stone": 15,
@@ -268,7 +324,7 @@
           "level": 3,
           "seconds": 86400,
           "cost": {
-            "coins": 1800,
+            "coins": 18000,
             "items": {
               "planks": 45,
               "bricks": 50,
@@ -288,7 +344,7 @@
           "level": 4,
           "seconds": 259200,
           "cost": {
-            "coins": 9000,
+            "coins": 90000,
             "items": {
               "beams": 60,
               "cut_stone": 90,
@@ -311,7 +367,7 @@
           "level": 5,
           "seconds": 604800,
           "cost": {
-            "coins": 42000,
+            "coins": 420000,
             "items": {
               "beams": 160,
               "cut_stone": 240,
@@ -353,7 +409,7 @@
           "level": 2,
           "seconds": 10800,
           "cost": {
-            "coins": 120,
+            "coins": 1200,
             "items": {
               "wood": 12,
               "stone": 8,
@@ -370,7 +426,7 @@
           "level": 3,
           "seconds": 43200,
           "cost": {
-            "coins": 800,
+            "coins": 8000,
             "items": {
               "planks": 25,
               "clay": 30,
@@ -388,7 +444,7 @@
           "level": 4,
           "seconds": 86400,
           "cost": {
-            "coins": 3500,
+            "coins": 35000,
             "items": {
               "beams": 30,
               "bricks": 40,
@@ -406,7 +462,7 @@
           "level": 5,
           "seconds": 172800,
           "cost": {
-            "coins": 12000,
+            "coins": 120000,
             "items": {
               "beams": 60,
               "bricks": 100,
@@ -432,7 +488,7 @@
           "level": 1,
           "seconds": 300,
           "cost": {
-            "coins": 30,
+            "coins": 300,
             "items": {
               "wood": 4,
               "stone": 2
@@ -445,7 +501,7 @@
           "level": 2,
           "seconds": 21600,
           "cost": {
-            "coins": 180,
+            "coins": 1800,
             "items": {
               "planks": 12,
               "stone": 15,
@@ -462,7 +518,7 @@
           "level": 3,
           "seconds": 64800,
           "cost": {
-            "coins": 1000,
+            "coins": 10000,
             "items": {
               "planks": 35,
               "iron_ingot": 12,
@@ -479,7 +535,7 @@
           "level": 4,
           "seconds": 172800,
           "cost": {
-            "coins": 4800,
+            "coins": 48000,
             "items": {
               "beams": 40,
               "cut_stone": 50,
@@ -496,7 +552,7 @@
           "level": 5,
           "seconds": 345600,
           "cost": {
-            "coins": 16000,
+            "coins": 160000,
             "items": {
               "beams": 80,
               "tools": 30,
@@ -521,7 +577,7 @@
           "level": 1,
           "seconds": 600,
           "cost": {
-            "coins": 60,
+            "coins": 600,
             "items": {
               "wood": 6,
               "stone": 4
@@ -534,7 +590,7 @@
           "level": 2,
           "seconds": 28800,
           "cost": {
-            "coins": 260,
+            "coins": 2600,
             "items": {
               "planks": 15,
               "stone": 20,
@@ -551,7 +607,7 @@
           "level": 3,
           "seconds": 86400,
           "cost": {
-            "coins": 1400,
+            "coins": 14000,
             "items": {
               "planks": 40,
               "iron_ingot": 18,
@@ -568,7 +624,7 @@
           "level": 4,
           "seconds": 259200,
           "cost": {
-            "coins": 6000,
+            "coins": 60000,
             "items": {
               "beams": 45,
               "cut_stone": 70,
@@ -585,7 +641,7 @@
           "level": 5,
           "seconds": 432000,
           "cost": {
-            "coins": 20000,
+            "coins": 200000,
             "items": {
               "beams": 90,
               "reinforced_parts": 30,
@@ -610,7 +666,7 @@
           "level": 1,
           "seconds": 1200,
           "cost": {
-            "coins": 120,
+            "coins": 1200,
             "items": {
               "wood": 10,
               "stone": 8
@@ -623,7 +679,7 @@
           "level": 2,
           "seconds": 43200,
           "cost": {
-            "coins": 450,
+            "coins": 4500,
             "items": {
               "planks": 20,
               "bricks": 18,
@@ -641,7 +697,7 @@
           "level": 3,
           "seconds": 129600,
           "cost": {
-            "coins": 2500,
+            "coins": 25000,
             "items": {
               "planks": 50,
               "bricks": 45,
@@ -660,7 +716,7 @@
           "level": 4,
           "seconds": 259200,
           "cost": {
-            "coins": 11000,
+            "coins": 110000,
             "items": {
               "beams": 65,
               "cut_stone": 70,
@@ -679,7 +735,7 @@
           "level": 5,
           "seconds": 432000,
           "cost": {
-            "coins": 36000,
+            "coins": 360000,
             "items": {
               "reinforced_parts": 40,
               "tools": 50,
@@ -705,7 +761,7 @@
           "level": 1,
           "seconds": 600,
           "cost": {
-            "coins": 45,
+            "coins": 450,
             "items": {
               "wood": 6,
               "stone": 2
@@ -718,7 +774,7 @@
           "level": 2,
           "seconds": 21600,
           "cost": {
-            "coins": 180,
+            "coins": 1800,
             "items": {
               "planks": 12,
               "stone": 15,
@@ -735,7 +791,7 @@
           "level": 3,
           "seconds": 64800,
           "cost": {
-            "coins": 1100,
+            "coins": 11000,
             "items": {
               "planks": 30,
               "bricks": 40,
@@ -753,7 +809,7 @@
           "level": 4,
           "seconds": 172800,
           "cost": {
-            "coins": 4200,
+            "coins": 42000,
             "items": {
               "beams": 25,
               "bricks": 60,
@@ -771,7 +827,7 @@
           "level": 5,
           "seconds": 259200,
           "cost": {
-            "coins": 14000,
+            "coins": 140000,
             "items": {
               "reinforced_parts": 15,
               "beams": 60,
@@ -796,7 +852,7 @@
           "level": 1,
           "seconds": 1800,
           "cost": {
-            "coins": 90,
+            "coins": 900,
             "items": {
               "wood": 8,
               "stone": 14
@@ -812,7 +868,7 @@
           "level": 2,
           "seconds": 28800,
           "cost": {
-            "coins": 380,
+            "coins": 3800,
             "items": {
               "planks": 15,
               "stone": 30,
@@ -830,7 +886,7 @@
           "level": 3,
           "seconds": 86400,
           "cost": {
-            "coins": 1600,
+            "coins": 16000,
             "items": {
               "planks": 40,
               "bricks": 45,
@@ -848,7 +904,7 @@
           "level": 4,
           "seconds": 259200,
           "cost": {
-            "coins": 6500,
+            "coins": 65000,
             "items": {
               "beams": 45,
               "cut_stone": 80,
@@ -867,7 +923,7 @@
           "level": 5,
           "seconds": 432000,
           "cost": {
-            "coins": 24000,
+            "coins": 240000,
             "items": {
               "reinforced_parts": 35,
               "bricks": 150,
@@ -904,7 +960,7 @@
           "level": 2,
           "seconds": 28800,
           "cost": {
-            "coins": 250,
+            "coins": 2500,
             "items": {
               "planks": 18,
               "stone": 20,
@@ -921,12 +977,13 @@
           "level": 3,
           "seconds": 86400,
           "cost": {
-            "coins": 1600,
+            "coins": 16000,
             "items": {
               "planks": 50,
               "bricks": 45,
               "iron_ingot": 12,
-              "cloth": 10
+              "cloth": 10,
+              "living_resin": 1
             }
           },
           "requiredHomeLevel": 3,
@@ -939,12 +996,13 @@
           "level": 4,
           "seconds": 172800,
           "cost": {
-            "coins": 7000,
+            "coins": 70000,
             "items": {
               "beams": 60,
               "cut_stone": 70,
               "glass": 25,
-              "tools": 15
+              "tools": 15,
+              "ancient_core": 1
             }
           },
           "requiredHomeLevel": 4,
@@ -957,13 +1015,14 @@
           "level": 5,
           "seconds": 259200,
           "cost": {
-            "coins": 22000,
+            "coins": 220000,
             "items": {
               "beams": 100,
               "cut_stone": 140,
               "reinforced_parts": 35,
               "glass": 60,
-              "cloth": 45
+              "cloth": 45,
+              "moon_crystal": 1
             }
           },
           "requiredHomeLevel": 5,
@@ -2173,35 +2232,99 @@
     "fish": [
       {
         "itemId": "fish",
-        "description": "Знакомая речная рыба. Подходит для старых рецептов копчения.",
+        "description": "Знакомая речная рыба. Подходит для рецептов копчения.",
         "rarity": "common",
-        "weight": 55,
+        "weight": 5500,
         "affinity": 0,
-        "buyPrice": 16
+        "buyPrice": 160
       },
       {
         "itemId": "fish_silverfin",
         "description": "Быстрая стайная рыбка с серебристой спинкой и голубыми плавниками.",
         "rarity": "common",
-        "weight": 30,
-        "affinity": 1,
-        "buyPrice": 24
+        "weight": 2600,
+        "affinity": 10,
+        "buyPrice": 240
+      },
+      {
+        "itemId": "fish_rudd",
+        "description": "Золотистая речная рыбка с яркими красными плавниками.",
+        "rarity": "common",
+        "weight": 850,
+        "affinity": 8,
+        "buyPrice": 280
       },
       {
         "itemId": "fish_reedperch",
-        "description": "Полосатый лесной окунёк прячется у камышей. Любит хорошую наживку.",
+        "description": "Полосатый лесной окунёк прячется у камышей.",
         "rarity": "uncommon",
-        "weight": 12,
-        "affinity": 2,
-        "buyPrice": 36
+        "weight": 500,
+        "affinity": 10,
+        "buyPrice": 360
+      },
+      {
+        "itemId": "fish_dace",
+        "description": "Стремительная стройная рыбка, любящая прохладные ручьи.",
+        "rarity": "uncommon",
+        "weight": 220,
+        "affinity": 8,
+        "buyPrice": 400
+      },
+      {
+        "itemId": "fish_bream",
+        "description": "Широкая спокойная рыба с тёплой бронзовой чешуёй.",
+        "rarity": "uncommon",
+        "weight": 140,
+        "affinity": 7,
+        "buyPrice": 480
       },
       {
         "itemId": "fish_mooncarp",
-        "description": "Редкий округлый карасик с лунным пятнышком. Тонкая снасть помогает его заметить.",
+        "description": "Округлый карасик с лунным пятнышком. Осторожно касается наживки.",
         "rarity": "rare",
-        "weight": 3,
+        "weight": 100,
+        "affinity": 8,
+        "buyPrice": 640
+      },
+      {
+        "itemId": "fish_pike",
+        "description": "Длинная пятнистая хищница с изумрудной спинкой.",
+        "rarity": "rare",
+        "weight": 50,
+        "affinity": 6,
+        "buyPrice": 800
+      },
+      {
+        "itemId": "fish_eel",
+        "description": "Извилистый ночной житель глубоких заводей.",
+        "rarity": "rare",
+        "weight": 25,
+        "affinity": 4,
+        "buyPrice": 960
+      },
+      {
+        "itemId": "fish_sturgeon",
+        "description": "Крупная древняя рыба с золотистыми костяными щитками.",
+        "rarity": "epic",
+        "weight": 10,
         "affinity": 3,
-        "buyPrice": 64
+        "buyPrice": 1440
+      },
+      {
+        "itemId": "fish_mirror_koi",
+        "description": "Яркий пятнистый кои с длинными плавниками и зеркальным блеском.",
+        "rarity": "epic",
+        "weight": 4,
+        "affinity": 2,
+        "buyPrice": 1920
+      },
+      {
+        "itemId": "fish_shark",
+        "description": "Легендарная гостья глубоких вод. Треугольный плавник выдаёт её силуэт.",
+        "rarity": "legendary",
+        "weight": 1,
+        "affinity": 1,
+        "buyPrice": 3200
       }
     ],
     "rods": [
@@ -2216,14 +2339,14 @@
         "id": "river_rod",
         "name": "Речная удочка",
         "description": "Чувствительный кончик повышает шанс необычной рыбы.",
-        "price": 1800,
+        "price": 18000,
         "rareBonus": 2
       },
       {
         "id": "willow_rod",
         "name": "Ивовая удочка",
         "description": "Гибкая снасть Плёски лучше замечает осторожные поклёвки.",
-        "price": 7200,
+        "price": 72000,
         "rareBonus": 5
       }
     ],
@@ -2231,14 +2354,37 @@
       {
         "itemId": "crumb_bait",
         "description": "Одна порция на всю вылазку. Немного повышает шанс необычной рыбы.",
-        "price": 3,
+        "price": 30,
         "rareBonus": 1
       },
       {
         "itemId": "worm_bait",
         "description": "Одна порция на всю вылазку. Особенно привлекает редкую рыбу.",
-        "price": 7,
+        "price": 70,
         "rareBonus": 3
+      }
+    ],
+    "hooks": [
+      {
+        "id": "bare_hook",
+        "name": "Простой крючок",
+        "description": "Начальная снасть без дополнительных усилений.",
+        "price": 0,
+        "rareBonus": 0
+      },
+      {
+        "id": "barbed_hook",
+        "name": "Бородатый крючок",
+        "description": "Надёжная бородка помогает удержать осторожную рыбу в особом улове.",
+        "price": 12000,
+        "rareBonus": 2
+      },
+      {
+        "id": "silver_hook",
+        "name": "Серебряный крючок",
+        "description": "Тонкая светлая снасть повышает шанс ценных видов в особом улове.",
+        "price": 42000,
+        "rareBonus": 4
       }
     ]
   },
@@ -2255,5 +2401,6 @@
       "moon_crystal",
       "living_resin"
     ]
-  }
+  },
+  "currencyScale": 10
 }

@@ -59,7 +59,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         economy.snapshot(token.hash)
         source.connection.use { c ->
             val row = readEconomyProfile(c, user.id)
-            val state = row.state.copy(wallet = row.state.wallet.copy(coins = coins), inventory = mapOf("berries" to berries),
+            val state = row.state.copy(wallet = row.state.wallet.copy(coins = coins * 10), inventory = mapOf("berries" to berries),
                 buildings = row.state.buildings + ("home" to if (unlocked) 2 else 1), completedExplorations = if (unlocked) 1 else 0)
             c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(state), user.id)
             c.commit()
@@ -74,7 +74,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         }
     }
     private suspend fun command(player: Player, action: String, target: String = "berries", quantity: Long = 1, price: Long = 0) =
-        EconomyCommand(UUID.randomUUID().toString(), player.publicId, economy.snapshot(player.hash).revision, action, target, quantity, price)
+        EconomyCommand(UUID.randomUUID().toString(), player.publicId, economy.snapshot(player.hash).revision, action, target, quantity, if (action == "create_listing") price * 10 else price)
     private suspend fun offer(player: Player, quantity: Long = 2, price: Long = 6): EconomyMarketListing {
         val previous = market.market(player.hash).mine.map { it.id }.toSet()
         market.command(player.hash, command(player, "create_listing", quantity = quantity, price = price))
@@ -110,7 +110,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> { market.command(p.hash, create.copy(totalPrice = 10)) }.code)
         val lot = market.market(p.hash).mine.single()
         assertEquals(3L, lot.quantity)
-        assertEquals(100L, economy.snapshot(p.hash).wallet.coins)
+        assertEquals(1000L, economy.snapshot(p.hash).wallet.coins)
         val cancel = command(p, "cancel_listing", lot.id)
         val result = market.command(p.hash, cancel)
         assertEquals(20L, result.state.inventory["berries"])
@@ -129,9 +129,9 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(1, results.count { it.isSuccess })
         assertEquals("ECONOMY_MARKET_NOT_ACTIVE", (results.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
         val views = listOf(seller, a, b).map { economy.snapshot(it.hash) }
-        assertEquals(210L, views.sumOf { it.wallet.coins })
+        assertEquals(2100L, views.sumOf { it.wallet.coins })
         assertEquals(20L, views.sumOf { it.inventory["berries"] ?: 0L })
-        assertEquals(25L, views.first().wallet.coins)
+        assertEquals(250L, views.first().wallet.coins)
         assertEquals(1L, scalar("SELECT count(*) FROM economy_market_listings WHERE id=? AND status='sold'", UUID.fromString(lot.id)))
         assertEquals(1L, scalar("SELECT count(*) FROM economy_ledger WHERE kind='market_buy' AND source_key=?", "market:buy:${lot.id}"))
         val index = results.indexOfFirst { it.isSuccess }
@@ -148,8 +148,8 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val results = coroutineScope { listOf(buyer.hash, token.hash).map { hash -> async(Dispatchers.IO) { market.command(hash, request) } }.awaitAll() }
         assertEquals(1, results.count { it.replayed })
         assertEquals(2L, economy.snapshot(buyer.hash).inventory["berries"])
-        assertEquals(94L, economy.snapshot(buyer.hash).wallet.coins)
-        assertEquals(106L, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(940L, economy.snapshot(buyer.hash).wallet.coins)
+        assertEquals(1060L, economy.snapshot(seller.hash).wallet.coins)
     }
 
     @Test fun `seller cancel racing a buy preserves either escrow refund or purchased goods`() = runBlocking<Unit> {
@@ -163,7 +163,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         }.awaitAll() }
         assertEquals(1, results.count { it.isSuccess })
         val views = listOf(seller, buyer).map { economy.snapshot(it.hash) }
-        assertEquals(200L, views.sumOf { it.wallet.coins })
+        assertEquals(2000L, views.sumOf { it.wallet.coins })
         assertEquals(20L, views.sumOf { it.inventory["berries"] ?: 0L })
         assertTrue(market.market(seller.hash).mine.isEmpty())
     }
@@ -181,8 +181,8 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val failed = results.indexOfFirst { it.isFailure }
         val (p, request) = requests[failed]
         market.command(p.hash, request.copy(expectedRevision = economy.snapshot(p.hash).revision))
-        assertEquals(100L, economy.snapshot(a.hash).wallet.coins)
-        assertEquals(100L, economy.snapshot(b.hash).wallet.coins)
+        assertEquals(1000L, economy.snapshot(a.hash).wallet.coins)
+        assertEquals(1000L, economy.snapshot(b.hash).wallet.coins)
         assertEquals(20L, economy.snapshot(a.hash).inventory["berries"])
         assertEquals(20L, economy.snapshot(b.hash).inventory["berries"])
     }
@@ -216,19 +216,19 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     }
 
     @Test fun `escrow reserves capacity and lifecycle cancellation refunds all lots only once`() = runBlocking<Unit> {
-        val seller = player(berries = ECONOMY_MAX_BALANCE)
+        val seller = player(berries = ECONOMY_MAX_ITEMS)
         offer(seller, 99, 297)
         source.connection.use { c ->
             c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", seller.id) { true }
             val before = readEconomyProfile(c, seller.id).state
             assertFailsWith<AuthFailure> {
-                assertEconomyMarketCapacity(c, seller.id, before, before.copy(inventory=mapOf("berries" to ECONOMY_MAX_BALANCE - 98)))
+                assertEconomyMarketCapacity(c, seller.id, before, before.copy(inventory=mapOf("berries" to ECONOMY_MAX_ITEMS - 98)))
             }
             cancelEconomyMarketListings(c, seller.id)
             cancelEconomyMarketListings(c, seller.id)
             c.commit()
         }
-        assertEquals(ECONOMY_MAX_BALANCE, economy.snapshot(seller.hash).inventory["berries"])
+        assertEquals(ECONOMY_MAX_ITEMS, economy.snapshot(seller.hash).inventory["berries"])
         assertTrue(market.market(seller.hash).mine.isEmpty())
         assertEquals(1L, scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='market_cancel'", seller.id))
     }
@@ -252,7 +252,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(before.revision, after.revision)
         assertEquals(before.inventory, after.inventory)
         assertEquals(before.wallet, after.wallet)
-        assertEquals(100L, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(1000L, economy.snapshot(seller.hash).wallet.coins)
         assertEquals(1, market.market(seller.hash).mine.size)
         assertEquals(0L, scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?", buyer.id, UUID.fromString(buy.requestId)))
         market.command(buyer.hash, command(buyer, "cancel_listing", ownLot.id))
@@ -312,7 +312,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val sold = economy.snapshot(seller.hash)
         assertEquals(90L, sold.storage.overflow)
         assertEquals(0L, sold.storage.reserved)
-        assertEquals(130L, sold.wallet.coins)
+        assertEquals(1300L, sold.wallet.coins)
         economy.command(seller.hash, command(seller, "sell", quantity=10))
         assertEquals(80L, economy.snapshot(seller.hash).storage.overflow)
     }
@@ -414,10 +414,10 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(0, economy.snapshot(high.hash).buildings["workshop"], "specialization may replace owning a workshop")
         market.command(seller.hash, command(seller, "create_listing", "tools", 1, 100))
         val cheap = market.market(seller.hash).mine.single()
-        execute("UPDATE economy_market_listings SET total_price=1 WHERE id=?", UUID.fromString(cheap.id))
+        execute("UPDATE economy_market_listings SET total_price=10 WHERE id=?", UUID.fromString(cheap.id))
         val buyer = player(berries = 0); editState(buyer) { it.copy(buildings=it.buildings + ("home" to 4)) }
         assertTrue(market.market(buyer.hash).listings.isEmpty())
-        assertEquals(1L, market.market(seller.hash).mine.single().totalPrice)
+        assertEquals(10L, market.market(seller.hash).mine.single().totalPrice)
         market.command(seller.hash, command(seller, "cancel_listing", cheap.id))
         assertEquals(2L, economy.snapshot(seller.hash).inventory["tools"])
     }
@@ -433,7 +433,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val duplicate = command(p, "sell", quantity = 1).copy(requestId = fresh.requestId)
         assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> { economy.command(p.hash, duplicate) }.code)
         assertEquals(18L, economy.snapshot(p.hash).inventory["berries"])
-        assertEquals(100L + EconomyRules.localSellPrice(3), economy.snapshot(p.hash).wallet.coins)
+        assertEquals(1000L + EconomyRules.localSellPrice(30), economy.snapshot(p.hash).wallet.coins)
     }
 
     @Test fun `V36 preserves populated V35 listings paid quotes balances receipts and escrow`() = runBlocking<Unit> {
@@ -449,7 +449,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
                 val lot = UUID.randomUUID(); val request = UUID.randomUUID()
                 isolated.connection.use { c ->
                     c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", user.id) { true }
-                    ensureEconomyProfile(c, user.id)
+                    c.economyUpdate("INSERT INTO economy_profiles(user_id,state) VALUES (?,economy_v2_initial_state('{}'::jsonb))", user.id)
                     val state = readEconomyProfile(c, user.id).state.copy(wallet=EconomyWallet(123, 20),
                         inventory=mapOf("berries" to 17L), buildings=mapOf("home" to 2, "warehouse" to 1), completedExplorations=1)
                     c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb,revision=7 WHERE user_id=?", economyJson.encodeToString(state), user.id)
@@ -461,16 +461,18 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
                 fun rows(table: String) = isolated.connection.use { c -> c.economyRows("SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text FROM $table t") { it.getString(1) }.single() }
                 val tables = listOf("economy_profiles", "economy_market_listings", "economy_market_receipts", "economy_ledger")
                 val before = tables.associateWith(::rows)
-                DatabaseFactory.migrate(isolated); DatabaseFactory.migrate(isolated)
+                val showcaseMigration = Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("36").load()
+                showcaseMigration.migrate(); showcaseMigration.migrate()
                 assertEquals(before, tables.associateWith(::rows))
+                DatabaseFactory.migrate(isolated)
                 val upgraded = JdbcEconomyMarketRepository(isolated)
                 val view = upgraded.market(token.hash)
-                assertEquals(3L, view.mine.single().totalPrice, "old quotes are neither repriced nor destroyed")
+                assertEquals(30L, view.mine.single().totalPrice, "old quote changes denomination without losing the offer")
                 assertEquals(3L, repo.snapshot(token.hash).storage.reserved)
-                val cancel = EconomyCommand(UUID.randomUUID().toString(), user.publicId, 7, "cancel_listing", lot.toString())
+                val cancel = EconomyCommand(UUID.randomUUID().toString(), user.publicId, 8, "cancel_listing", lot.toString())
                 val result = upgraded.command(token.hash, cancel)
                 assertEquals(20L, result.state.inventory["berries"])
-                assertEquals(EconomyWallet(123, 20), result.state.wallet)
+                assertEquals(EconomyWallet(1230, 200), result.state.wallet)
                 assertTrue(upgraded.command(token.hash, cancel).replayed)
             }
         } finally { source.connection.use { c -> c.autoCommit = true; c.economyUpdate("DROP DATABASE $database WITH (FORCE)") } }

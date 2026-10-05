@@ -28,7 +28,11 @@ test("scene adapters use saved trip tackle and species instead of the subsequent
   assert.deepEqual(economySceneJourney(state), original, "changing tackle is for the next trip only");
   original.fishing.rodId = "willow_rod";
   assert.equal(state.jobs[0].fishing.rodId, "river_rod", "a mutable presentation cannot rewrite server-owned equipment");
-  assert.equal("rewards" in original, false); assert.equal("inventory" in original, false);
+  assert.deepEqual(original.rewards, state.jobs[0].rewards);
+  assert.notStrictEqual(original.rewards, state.jobs[0].rewards, "visual catch quantities are a detached authoritative projection");
+  original.rewards.fish = 100;
+  assert.equal(state.jobs[0].rewards.fish, 3, "the scene cannot rewrite job rewards");
+  assert.equal("inventory" in original, false);
 });
 
 test("legacy explorations never borrow new equipment metadata and ready trips stay visible until removed", () => {

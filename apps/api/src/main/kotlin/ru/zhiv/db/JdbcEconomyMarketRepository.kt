@@ -32,7 +32,7 @@ internal fun assertEconomyMarketCapacity(
     if ((next.inventory.keys + reservedAfter.keys).any { item ->
         val amount = next.inventory[item] ?: 0L
         val held = reservedAfter[item] ?: 0L
-        amount < 0L || held < 0L || held > ECONOMY_MAX_BALANCE || amount > ECONOMY_MAX_BALANCE - held
+        amount < 0L || held < 0L || held > ECONOMY_MAX_ITEMS || amount > ECONOMY_MAX_ITEMS - held
     }) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для предметов", 409)
     EconomyRules.assertStorageTransition(before, next, reservedBefore, reservedAfter)
 }
@@ -101,7 +101,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             id = result.getObject("id", UUID::class.java).toString(),
             sellerPublicId = result.getString("public_id"), sellerName = result.getString("display_name"),
             itemId = result.getString("item_id"), quantity = result.getLong("quantity"),
-            totalPrice = result.getLong("total_price"), status = result.getString("status"),
+            totalPrice = EconomyMoney.nominal(result.getLong("total_price"),result.getInt("currency_scale")), status = result.getString("status"),
             createdAt = result.getObject("created_at", OffsetDateTime::class.java).toInstant().toString(),
             closedAt = result.getObject("closed_at", OffsetDateTime::class.java)?.toInstant()?.toString(),
             owned = seller == owner,
@@ -274,7 +274,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         if (seller.wallet.coins > ECONOMY_MAX_BALANCE - lot.totalPrice)
             throw AuthFailure("ECONOMY_CAPACITY", "Продавец пока не может принять монеты", 409)
         val amount = state.inventory[lot.itemId] ?: 0L
-        if (amount > ECONOMY_MAX_BALANCE - lot.quantity)
+        if (amount > ECONOMY_MAX_ITEMS - lot.quantity)
             throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для предметов", 409)
         val inventory = state.inventory + (lot.itemId to amount + lot.quantity)
         val next = state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - lot.totalPrice), inventory = inventory)

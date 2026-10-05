@@ -1638,6 +1638,7 @@ export function CheckInApp() {
 
       ) : activeView === "people" ? (
         <PeopleView
+          ownerPublicId={me?.user.publicId ?? null}
           data={people}
           groups={groups}
           error={peopleError}

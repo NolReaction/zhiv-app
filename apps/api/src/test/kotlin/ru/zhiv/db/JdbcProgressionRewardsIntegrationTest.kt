@@ -46,7 +46,7 @@ class JdbcProgressionRewardsIntegrationTest {
         val p=player(); val initial=economy.snapshot(p.hash); val request=command(p)
         val both=List(2) { async(Dispatchers.IO) { rewards.claim(p.hash,request) } }.awaitAll()
         assertEquals(1,both.count { it.replayed }); assertEquals(both[0].claim,both[1].claim)
-        assertEquals(initial.wallet.coins+20,economy.snapshot(p.hash).wallet.coins)
+        assertEquals(initial.wallet.coins+200,economy.snapshot(p.hash).wallet.coins)
         assertEquals(initial.revision+1,economy.snapshot(p.hash).revision)
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
         val conflict=assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="achievement",achievementId="first_path",level=1)) }
@@ -100,8 +100,8 @@ class JdbcProgressionRewardsIntegrationTest {
         val row=rewards.snapshot(p.hash).achievementRewards.single { it.achievementId=="thousand_taps" }
         assertTrue(row.eligible); assertEquals("2020-01-01T00:00:00Z",row.earnedAt)
         val command=command(p,achievement="thousand_taps",level=1); val paid=rewards.claim(p.hash,command)
-        assertEquals(initial.wallet.pearls+1,paid.economy.wallet.pearls); assertEquals(initial.revision+1,paid.acceptedRevision)
-        assertEquals("1",scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"reward:${command.requestId}"))
+        assertEquals(initial.wallet.pearls+10,paid.economy.wallet.pearls); assertEquals(initial.revision+1,paid.acceptedRevision)
+        assertEquals("10",scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"reward:${command.requestId}"))
         assertEquals(paid.claim,rewards.claim(p.hash,command).claim)
     }
     @Test fun `reward merge unions paid tiers and receipts retaining latest daily without crediting twice`()=runBlocking<Unit> {

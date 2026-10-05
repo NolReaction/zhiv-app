@@ -23,6 +23,7 @@ export function economyWorldState(state: WorldState | undefined, economy: Econom
 export function economySceneJourney(economy: EconomyView | null | undefined): EconomySceneJourney | null {
   const job = economy?.jobs.find(job => job.kind === "exploration");
   return job ? { id: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt, routeId: job.targetId,
+    rewards: { ...job.rewards },
     ...(job.fishing ? { fishing: { rodId: job.fishing.rodId, fishId: job.fishing.fishId } } : {}),
     label: economy?.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Исследование" } : null;
 }

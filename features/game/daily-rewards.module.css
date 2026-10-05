@@ -1,10 +1,10 @@
-.giftButton { position: relative; pointer-events: auto; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 9px 12px; border: 1px solid #c8d5a444; border-radius: 13px; background: #233b29f5; color: #f0e6ca; font: inherit; font-size: 12px; cursor: pointer; box-shadow: 0 3px 14px #07140b40; }
-.giftButton > svg { color: #dbc691; }
-.giftButton[data-available] { border-color: #d6bc73; background: #3e4c2cf5; }
-.giftButton:hover { background: #3c5135; }
-.indicator { width: 7px; height: 7px; border-radius: 50%; background: #f0d17f; box-shadow: 0 0 0 3px #edcf7c15; }
-.giftButton[data-uncertain] .indicator { background: #e4b183; }
-.giftButton:focus-visible { outline: 2px solid #e1eeb6; outline-offset: 3px; }
+.giftButton { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #b7ab84; border-radius: 12px; background: #f0e6ca; color: #394d3e; font: inherit; font-size: .75rem; line-height: 1.4; cursor: pointer; }
+.giftButton > svg { flex-shrink: 0; color: #765322; }
+.giftButton[data-available] { border-color: #8b9f70; background: #e0e6c8; }
+.giftButton:hover { background: #e3dec1; }
+.indicator { flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: #466347; }
+.giftButton[data-uncertain] .indicator { background: #874c30; }
+.giftButton:focus-visible { outline: 2px solid #355e48; outline-offset: 3px; }
 .scrim[data-slot='dialog-overlay'] { z-index: 110; background: #07191099; }
 .dialog[data-slot='dialog-content'] { --dialog-padding: 0; position: fixed; z-index: 120; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(550px, calc(100vw - 24px)); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #9aab7b; border-radius: 22px; background: #e6d9b7; color: #394d3e; box-shadow: 0 20px 70px #020b0788; scrollbar-width: thin; outline: none; }
 .dialog, .dialog * { box-sizing: border-box; }

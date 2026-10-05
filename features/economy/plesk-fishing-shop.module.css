@@ -33,8 +33,8 @@
 .primary, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; min-height: 44px; min-width: 0; padding: 10px; border: 1px solid var(--forest-primary, #466347); border-radius: 11px; color: var(--forest-paper-light, #f0e6ca); background: var(--forest-primary, #466347); font-size: .8125rem; font-weight: 550; line-height: 1.4; cursor: pointer; }
 .secondary { color: var(--forest-ink, #394d3e); background: var(--forest-paper-light, #f0e6ca); border-color: var(--forest-border, #c8bd98); }
 .section { display: grid; gap: 9px; min-width: 0; }
-.tackleTabs { display: flex; gap: 7px; border-bottom: 1px solid var(--forest-border, #c8bd98); padding-bottom: 8px; }
-.tackleTabs button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px 13px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--forest-ink, #394d3e); font-size: .8125rem; cursor: pointer; }
+.tackleTabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; border-bottom: 1px solid var(--forest-border, #c8bd98); padding-bottom: 8px; }
+.shop .tackleTabs button { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px; min-width: 0; min-height: 44px; padding: 8px 4px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--forest-ink, #394d3e); font-size: .75rem; cursor: pointer; }
 .tackleTabs button[aria-selected='true'] { border-color: var(--forest-primary, #466347); background: color-mix(in srgb, var(--forest-primary, #466347) 12%, var(--forest-paper-light, #f0e6ca)); color: var(--forest-ink, #394d3e); }
 .tackleTabs span { font-size: .625rem; color: var(--forest-muted, #59624d); }
 .tacklePanel { display: grid; gap: 10px; min-width: 0; outline: none; }
@@ -50,6 +50,19 @@
 .section h2, .collectionHeading h2 { margin: 2px 0 1px; font-size: .875rem; font-weight: 600; color: var(--forest-ink, #394d3e); }
 .gearCard { display: grid; gap: 10px; padding: 13px; min-width: 0; border: 1px solid var(--forest-border, #c8bd98); border-radius: 14px; background: var(--forest-paper-light, #f0e6ca); }
 .gearCard[data-selected] { border-color: var(--forest-primary, #466347); background: color-mix(in srgb, var(--forest-primary, #466347) 12%, var(--forest-paper-light, #f0e6ca)); }
+.catchChance { margin: 0; color: var(--forest-ink, #394d3e); font-size: .75rem; line-height: 1.6; }
+.odds { display: grid; gap: 7px; padding: 10px 11px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 10px; background: color-mix(in srgb, var(--forest-paper-light, #f0e6ca) 85%, transparent); font-size: .75rem; line-height: 1.5; }
+.odds > p { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
+.odds > p strong, .oddsList dd { font-variant-numeric: tabular-nums; color: var(--forest-accent-ink, #785021); }
+.odds summary { min-height: 36px; padding: 8px 0; cursor: pointer; color: var(--forest-ink, #394d3e); }
+.odds summary:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; border-radius: 4px; }
+.odds > small { color: var(--forest-muted, #59624d); font-size: .6875rem; }
+.oddsList { display: grid; gap: 0; margin: 9px 0 0; }
+.oddsList > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--forest-border, #c8bd98); }
+.oddsList dt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; min-width: 0; }
+.oddsList dt > span:first-child { overflow-wrap: anywhere; }
+.oddsList dd { margin: 0; font-size: .6875rem; white-space: nowrap; }
+.oddsList dt > [data-fish-rarity] { font-size: .625rem; }
 .gearHeading { display: flex; align-items: center; gap: 10px; }
 .gearHeading > div { flex: 1; min-width: 0; }
 .gearHeading > svg { color: var(--forest-ink, #394d3e); flex: 0 0 auto; }

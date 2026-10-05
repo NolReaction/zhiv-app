@@ -102,12 +102,16 @@ class JdbcAccountLifecycleIntegrationTest {
         for ((account,clock) in listOf(a to near,b to far)) {
             val state=source.connection.use { readEconomyProfile(it,account.id).state }
             execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state.copy(
-                buildings=state.buildings+("home" to 3),rareDropState=clock,inventory=mapOf("ancient_core" to 1))),account.id)
+                buildings=state.buildings+("home" to 3),rareDropState=clock,inventory=mapOf("ancient_core" to 1),
+                fishing=state.fishing.copy(ownedHooks=listOf("bare_hook",if(account==a) "barbed_hook" else "silver_hook"),
+                    equippedHookId=if(account==a) "barbed_hook" else "silver_hook"))),account.id)
         }
         val first=readyMerge(a,b,browser)
         auth.confirmMerge(a.session,browser,first)
         assertEquals(far,source.connection.use { readEconomyProfile(it,a.id).state.rareDropState })
         assertEquals(2L,economy.snapshot(a.session).inventory["ancient_core"])
+        assertEquals(setOf("bare_hook","barbed_hook","silver_hook"),economy.snapshot(a.session).fishing.ownedHooks.toSet())
+        assertEquals("barbed_hook",economy.snapshot(a.session).fishing.equippedHookId)
         auth.confirmMerge(a.session,browser,first)
         assertEquals(far,source.connection.use { readEconomyProfile(it,a.id).state.rareDropState })
         auth.confirmMerge(c.session,browser,readyMerge(c,a,browser))

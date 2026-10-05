@@ -37,16 +37,33 @@ test("a joint long order is costed once and exposes its output portfolio rather 
 test("catch expectation changes exactly one fish and keeps bait spending distinct from its fractional species portfolio", () => {
   const math = economicMath(readEconomyCatalog()), initial = math.catchPortfolio();
   near(Object.values(initial.output).reduce((a, b) => a + b, 0), 4);
-  near(initial.output.fish, 3.55); near(initial.expectedFishRevenue, 35.12);
-  near(math.catchPortfolio("river_rod").expectedFishRevenue - initial.expectedFishRevenue, 1.38);
+  near(initial.output.fish, 3.55); near(initial.expectedFishRevenue, 351.524);
+  near(math.catchPortfolio("river_rod").expectedFishRevenue, 353.9885533846457);
   const bait = math.catchPortfolio("reed_rod", "crumb_bait");
   assert(bait.expectedFishRevenue - initial.expectedFishRevenue < bait.baitPurchaseCoins);
   assert.equal(math.sourceHome("charcoal"), 2); assert.equal(math.sourceHome("resin"), 3); assert.equal(math.sourceHome("tools"), 4);
-  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, 32);
+  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, 40);
   const chargedRoute = readEconomyCatalog();
   chargedRoute.explorations.find(r => r.id === "shore").cost = { coins: 7, items: { wood: 2 } };
   const charged = economicMath(chargedRoute).profile("fish");
   near(charged.coins, 7 / 3.55); near(charged.slotMinutes.woodlot, 8 / 3.55);
+});
+
+test("hook and bait portfolios apply once per paid trip and never multiply rare draws by quantity", () => {
+  const catalog = readEconomyCatalog(), math = economicMath(catalog);
+  const best = math.catchPortfolio('willow_rod', 'worm_bait', 'shore', 'silver_hook');
+  const camp = math.catchPortfolio('willow_rod', 'worm_bait', 'shore_camp', 'silver_hook');
+  assert.equal(best.speciesDrawsPerJob, 1); assert.equal(camp.speciesDrawsPerJob, 1);
+  near(best.probabilities.fish_shark, 13 / 10804);
+  near(best.expectedFishRevenue, 365.394298407997);
+  near(camp.expectedFishRevenue - best.expectedFishRevenue, 6 * catalog.items.find(item => item.id === 'fish').baseSellPrice);
+  assert.equal(best.baitPurchaseCoins, 70); assert.equal(camp.baitPurchaseCoins, 70);
+  const report = auditEconomicMath(catalog);
+  assert.equal(report.fishingLoadouts.length, 27);
+  for (const loadout of report.fishingLoadouts.filter(row => row.baitId)) {
+    const noBait = report.fishingLoadouts.find(row => row.rodId === loadout.rodId && row.hookId === loadout.hookId && !row.baitId);
+    assert.ok(loadout.expectedFishRevenue - noBait.expectedFishRevenue < loadout.baitPurchaseCoins);
+  }
 });
 
 test("rare materials have one shared earned-time clock and no invented NPC price or additive production work", () => {

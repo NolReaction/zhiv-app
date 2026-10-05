@@ -121,7 +121,7 @@ test("pantry shortcut is visible before opening a building and includes reserved
   assert.doesNotMatch(markup, /data-upgrade-station/);
 });
 
-test("released gift, relic and fish-rarity rules are searchable without inventing future catches", () => {
+test("released gift, relic and fish-rarity rules are searchable and match the available catch catalogue", () => {
   const topics = worldHelpTopics(), get = id => topics.find(topic => topic.id === id);
   assert.match(get("rewards").paragraphs.join(" "), /семи шагам.*UTC.*20 часов.*Пропуск сохраняет/);
   assert.match(get("rewards").paragraphs.join(" "), /Забрать подарок.*само по себе ничего не начисляет/);
@@ -129,7 +129,7 @@ test("released gift, relic and fish-rarity rules are searchable without inventin
   assert.match(get("relics").paragraphs[0], /Древнее ядро.*Лунный кристалл.*Живая смола/);
   assert.match(get("relics").paragraphs[0], /от 48 до 144 часов/);
   assert.match(get("relics").paragraphs.join(" "), /одну реликвию за одну другую/);
-  assert.match(get("plesk").paragraphs.join(" "), /Эпические и легендарные виды появятся позже/);
+  assert.match(get("plesk").paragraphs.join(" "), /Можно поймать и эпические виды, и легендарную акулу/);
   assert.ok(searchWorldHelp(topics, "подарки жемчуг").some(topic => topic.id === "rewards"));
   assert.ok(searchWorldHelp(topics, "смола обмен").some(topic => topic.id === "relics"));
 });

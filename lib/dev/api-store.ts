@@ -1,3 +1,4 @@
+import { GUEST_ACHIEVEMENT_IDS, guestCollections, type GuestProfile } from "@/features/people/guest-profile-model";
 import { rollingStreakStartedAt } from "@/lib/daily-streak";
 import { isTimeZone, nextLocalDay } from "@/lib/time-zone";
 import type { GameAchievementId, GameAchievements } from "@/features/game/game-api";
@@ -1007,6 +1008,30 @@ export function lookupDevUser(
       serverTime: new Date().toISOString(),
     },
   };
+}
+
+/** Read-only guest projection. No target profile initialization, award reconciliation, balances or private timestamps. */
+export function getDevGuestProfile(token: string | undefined, circleId: string): DevResult<GuestProfile> {
+  const viewer = sessionUser(token);
+  if (!viewer) return { kind: "unauthorized" };
+  const circle = store().circles.get(circleId);
+  if (!circle || circle.archivedAt || ![circle.lowUserId, circle.highUserId].includes(viewer.id)) return { kind: "not-found" };
+  const target = store().users.get(otherUserId(circle, viewer.id));
+  if (!target || effectiveRecipientSharing(target.id, viewer.id).mode === "OFF") return { kind: "not-found" };
+  const state = getDevEconomyAchievementState(target.publicId);
+  const finds = [...getDevCollectionFinds(target.publicId), ...(state?.progression.collections.finds ?? [])];
+  const awards = store().achievementAwards.get(target.id);
+  const tiers = store().achievementTierAwards.get(target.id);
+  const achievements = GUEST_ACHIEVEMENT_IDS.flatMap(id => {
+    const key = id as GameAchievementId;
+    if (!awards?.has(key)) return [];
+    const level = Math.min(GAME_ACHIEVEMENT_TARGETS[key].length, Math.max(1, ...[...(tiers?.get(key)?.keys() ?? [])]));
+    return [{ id, level }];
+  });
+  return { kind: "ok", value: { ownerPublicId: viewer.publicId, circleId,
+    user: { publicId: target.publicId, displayName: target.displayName },
+    homeLevel: Math.min(5, Math.max(1, state?.buildings.home ?? 1)), completedExplorations: state?.completedExplorations ?? 0,
+    achievements, collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
 }
 
 export function listDevPeople(token: string | undefined): DevResult<PeopleResponse> {

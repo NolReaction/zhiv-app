@@ -1,9 +1,10 @@
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash, randomInt } from "node:crypto";
+import { ECONOMY_CURRENCY_SCALE, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/money";
 import { marketListingEligible, marketMinimumPrice } from "@/features/economy/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney } from "@/lib/dev/world-store";
-import { ECONOMY_MAX_BALANCE, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
 import { inheritEconomyCollection } from "@/features/economy/collection-progress";
@@ -14,7 +15,7 @@ import { barterCommandSchema, type BarterCommand, type BarterOffer, type BarterV
 type Receipt = { signature: string; message: string; acceptedRevision: number };
 type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand;
 type Profile = { revision: number; state: EconomyState; receipts: Map<string, Receipt>; legacyJourneys: Set<string> };
-type Listing = Omit<EconomyMarketListing, "owned" | "sellerName">;
+type Listing = Omit<EconomyMarketListing, "owned" | "sellerName"> & { currencyScale?: 1 | 10 };
 type Showcase = { refreshAt: number; ids: string[] };
 type BarterReceipt = { signature: string; message: string; acceptedRevision: number; offer: BarterOffer };
 type Store = { profiles: Map<string, Profile>; listings: Map<string, Listing>; showcases: Map<string, Showcase>;
@@ -26,6 +27,12 @@ function store(): Store {
   // Next HMR may retain the pre-showcase store; preserve its profiles and paid listings.
   value.showcases ??= new Map();
   value.barterOffers ??= new Map(); value.barterShowcases ??= new Map(); value.barterReceipts ??= new Map();
+  for (const listing of value.listings.values()) {
+    listing.currencyScale ??= 1;
+    if (listing.status === "active" && listing.currencyScale === 1) {
+      listing.totalPrice = nominalEconomyMoney(listing.totalPrice, 1); listing.currencyScale = 10;
+    }
+  }
   return value;
 }
 export const resetDevEconomyStoreForTests = () => { delete globalStore.__zhivDevEconomyStore; };
@@ -41,17 +48,23 @@ function profile(token: string | undefined, now: number) {
     value = { revision: 0, state: newEconomyState(legacy), receipts: new Map(), legacyJourneys: new Set() };
     store().profiles.set(owner, value);
   }
+  normalizeCurrency(value);
   value.state.fishing ??= fishingState({});
   value.state.progression = inheritEconomyCollection(value.state.progression, getDevCollectionFinds(owner));
   value.state.buildings.warehouse ??= 1;
   value.state.buildings.kiln ??= 0;
   return { owner, value };
 }
+function normalizeCurrency(value: Profile) {
+  if (value.state.currencyScale === ECONOMY_CURRENCY_SCALE) return;
+  const next = redenominateEconomyState(value.state);
+  bump(value); value.state = next;
+}
 function view(owner: string, value: Profile, now: number): EconomyView {
   const state = structuredClone(value.state);
   delete state.fishingCastSeed;
   delete state.rareDropState;
-  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state,
+  return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE,
     storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
@@ -127,6 +140,7 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
   switch (command.action) {
     case "grant_currency": {
       const currency = command.targetId as "coins" | "pearls";
+      if (command.quantity % ECONOMY_CURRENCY_SCALE !== 0) return fail("INVALID_ECONOMY_COMMAND", "Количество валюты должно быть кратно 10", 400);
       if (next.wallet[currency] + command.quantity > ECONOMY_MAX_BALANCE) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
       next.wallet[currency] += command.quantity;
       message = `DEV: выдано ${command.quantity} ${currency === "coins" ? "монет" : "жемчужин"}`;
@@ -164,7 +178,7 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
   // DEV grants may deliberately exceed storage capacity, but never numeric limits,
   // including the player's materials already reserved by market listings.
   const reserved = escrowItems(owner);
-  if (Object.entries(next.inventory).some(([item, quantity]) => quantity + (reserved[item] ?? 0) > ECONOMY_MAX_BALANCE))
+  if (Object.entries(next.inventory).some(([item, quantity]) => quantity + (reserved[item] ?? 0) > ECONOMY_MAX_ITEMS))
     return fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   return commit(owner, value, next, command, message, now);
 }
@@ -191,7 +205,7 @@ export function removeDevEconomyOwner(owner: string) {
 }
 function publicListing(listing: Listing, owner: string, token: string | undefined): EconomyMarketListing {
   const seller = lookupDevUser(token, listing.sellerPublicId);
-  return { ...listing, sellerName: seller.kind === "ok" ? seller.value.user.displayName : "Житель леса", owned: listing.sellerPublicId === owner };
+  return { ...listing, totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1), sellerName: seller.kind === "ok" ? seller.value.user.displayName : "Житель леса", owned: listing.sellerPublicId === owner };
 }
 function requireMarket(state: EconomyState) {
   if (!marketUnlocked(state)) fail("ECONOMY_MARKET_LOCKED", "Рынок откроется после улучшения дома до уровня 2 и возвращения из первого исследования");
@@ -248,7 +262,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (command.action === "create_listing") {
     const item = economyCatalog.items.find(item => item.id === command.targetId && item.tradable);
     if (!item) return fail("ECONOMY_MARKET_ITEM", "Этот предмет нельзя выставить на рынок", 400);
-    if (command.totalPrice < marketMinimumPrice(item.id, command.quantity) || command.totalPrice > item.baseSellPrice * economyCatalog.market.maxPriceMultiplier * command.quantity) return fail("ECONOMY_MARKET_PRICE", "Цена лота вне разрешённого диапазона", 400);
+    if (command.totalPrice % ECONOMY_CURRENCY_SCALE !== 0 || command.totalPrice < marketMinimumPrice(item.id, command.quantity) || command.totalPrice > item.baseSellPrice * economyCatalog.market.maxPriceMultiplier * command.quantity) return fail("ECONOMY_MARKET_PRICE", "Цена лота вне разрешённого диапазона", 400);
     if ([...store().listings.values()].filter(item => item.sellerPublicId === owner && item.status === "active").length >= economyCatalog.market.maxListings) return fail("ECONOMY_MARKET_LIMIT", "На прилавке уже 10 лотов");
     if ((next.inventory[item.id] ?? 0) < command.quantity) return fail("ECONOMY_RESOURCES", "Не хватает предметов для лота");
     next.inventory[item.id] -= command.quantity;
@@ -256,7 +270,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
     const reserved = escrowItems(owner);
     assertEconomyStorageTransition(value.state, next, reserved, { ...reserved, [item.id]: (reserved[item.id] ?? 0) + command.quantity });
     const listing: Listing = { id: crypto.randomUUID(), sellerPublicId: owner, itemId: item.id, quantity: command.quantity,
-      totalPrice: command.totalPrice, status: "active", createdAt: new Date(now).toISOString(), closedAt: null };
+      totalPrice: command.totalPrice, currencyScale: ECONOMY_CURRENCY_SCALE, status: "active", createdAt: new Date(now).toISOString(), closedAt: null };
     store().listings.set(listing.id, listing);
     return { ...commit(owner, value, next, command, "Лот размещён на прилавке", now), listing: publicListing(listing, owner, token) };
   }
@@ -279,6 +293,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
     return fail("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома или цена устарела");
   const seller = store().profiles.get(listing.sellerPublicId);
   if (!seller || lookupDevUser(token, listing.sellerPublicId).kind !== "ok") return fail("ECONOMY_MARKET_NOT_ACTIVE", "Продавец больше недоступен");
+  normalizeCurrency(seller);
   if (next.wallet.coins < listing.totalPrice) return fail("ECONOMY_RESOURCES", "Не хватает монет");
   if (seller.state.wallet.coins + listing.totalPrice > ECONOMY_MAX_BALANCE || seller.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Продавец пока не может принять оплату");
   creditEconomyItems(next, { [listing.itemId]: listing.quantity });

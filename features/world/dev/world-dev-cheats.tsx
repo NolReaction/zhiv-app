@@ -67,7 +67,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
         <div><dt>Жемчуг</dt><dd>{snapshot ? format(snapshot.wallet.pearls) : "—"}</dd></div>
       </dl>
       <div className={styles.columns}>
-        {([["coins", 1000, "+1 000 монет"], ["coins", 10000, "+10 000 монет"], ["pearls", 100, "+100 жемчуга"], ["pearls", 1000, "+1 000 жемчуга"]] as const).map(([currency, value, label]) =>
+        {([["coins", 10000, "+10 000 монет"], ["coins", 100000, "+100 000 монет"], ["pearls", 1000, "+1 000 жемчуга"], ["pearls", 10000, "+10 000 жемчуга"]] as const).map(([currency, value, label]) =>
           <button type="button" key={`${currency}-${value}`} disabled={locked} data-dev-action={`grant-${currency}-${value}`} onClick={() => act("grant_currency", currency, value)}>{label}</button>)}
       </div>
     </section>

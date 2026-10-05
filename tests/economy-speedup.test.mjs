@@ -19,23 +19,23 @@ function fixture({ pearls = 20, remaining = 900_000, kind = "construction", targ
   const row = globalThis.__zhivDevEconomyStore.profiles.get(player.me.user.publicId);
   const job = { id: crypto.randomUUID(), kind, targetId, recipeId: null, targetLevel: 2,
     startedAt: new Date(now - 900_000).toISOString(), finishesAt: new Date(now + remaining).toISOString(),
-    rewards: {}, cost: { coins: 150, items: { wood: 20 } }, catalogVersion: 2 };
-  row.state.wallet = { coins: 71, pearls };
+    rewards: {}, cost: { coins: 1500, items: { wood: 20 } }, catalogVersion: 2 };
+  row.state.wallet = { coins: 710, pearls: pearls * 10 };
   row.state.inventory = { berries: 8, stone: 4 };
   row.state.jobs = [job];
   return { player, row, job, read: (at = now) => economy.getDevEconomy(player.token, at) };
 }
 const command = (f, price = 3, extra = {}) => ({ requestId: crypto.randomUUID(), ownerPublicId: f.player.me.user.publicId,
-  expectedRevision: f.read().revision, action: "speedup_construction", targetId: f.job.id, quantity: 1, totalPrice: price, ...extra });
+  expectedRevision: f.read().revision, action: "speedup_construction", targetId: f.job.id, quantity: 1, totalPrice: price * 10, ...extra });
 const issue = (f, c, at = now) => economy.commandDevEconomy(f.player.token, c, at);
 
 test("construction quote rounds started five-minute intervals using the shared policy", () => {
   assert.equal(model.economyCatalog.constructionSpeedup.secondsPerPearl, 300);
   const f = fixture();
   for (const [remaining, price] of [[-1, 0], [0, 0], [1, 1], [299999, 1], [300000, 1], [300001, 2], [900000, 3]]) {
-    assert.equal(rules.constructionSpeedupPrice({ ...f.job, finishesAt: new Date(now + remaining).toISOString() }, now), price);
+    assert.equal(rules.constructionSpeedupPrice({ ...f.job, finishesAt: new Date(now + remaining).toISOString() }, now), price * 10);
   }
-  assert.equal(rules.constructionSpeedupPrice(f.job, now, { secondsPerPearl: 600 }), 2, "the UI may quote the server-supplied policy");
+  assert.equal(rules.constructionSpeedupPrice(f.job, now, { secondsPerPearl: 600 }), 20, "the UI may quote the server-supplied policy");
   for (const kind of ["production", "exploration"]) assert.equal(rules.constructionSpeedupPrice({ ...f.job, kind }, now), 0);
 });
 
@@ -43,8 +43,8 @@ test("speedup spends only current pearls and atomically completes the paid const
   const f = fixture();
   const before = f.read();
   const result = issue(f, command(f, 10));
-  assert.equal(result.state.wallet.pearls, 17, "accepted quote is an upper limit, not a client-controlled debit");
-  assert.equal(result.state.wallet.coins, 71);
+  assert.equal(result.state.wallet.pearls, 170, "accepted quote is an upper limit, not a client-controlled debit");
+  assert.equal(result.state.wallet.coins, 710);
   assert.deepEqual(result.state.inventory, before.inventory);
   assert.equal(result.state.buildings.home, 2);
   assert.deepEqual(result.state.jobs, []);
@@ -54,7 +54,7 @@ test("speedup spends only current pearls and atomically completes the paid const
 
 test("delayed confirmation pays a lower price and ready construction is completed free", () => {
   const cheaper = fixture();
-  assert.equal(issue(cheaper, command(cheaper, 3), now + 300_000).state.wallet.pearls, 18);
+  assert.equal(issue(cheaper, command(cheaper, 3), now + 300_000).state.wallet.pearls, 180);
   for (const at of [now + 900_000, now + 900_001]) {
     const ready = fixture({ pearls: 0 });
     const completed = issue(ready, command(ready, 3), at).state;
@@ -95,9 +95,9 @@ test("lost response retry spends once and a second device cannot finish or pay a
   const replay = issue(f, accepted, now + 1_000_000);
   assert.equal(replay.replayed, true);
   assert.equal(replay.acceptedRevision, first.acceptedRevision);
-  assert.equal(replay.state.wallet.pearls, 17);
+  assert.equal(replay.state.wallet.pearls, 170);
   assert.equal(replay.state.revision, first.state.revision);
-  assert.throws(() => issue(f, { ...accepted, totalPrice: 4 }), { code: "ECONOMY_REQUEST_CONFLICT" });
+  assert.throws(() => issue(f, { ...accepted, totalPrice: 40 }), { code: "ECONOMY_REQUEST_CONFLICT" });
   assert.throws(() => issue(f, command(f)), { code: "ECONOMY_JOB_GONE" });
   assert.equal(f.row.receipts.size, 1);
 });

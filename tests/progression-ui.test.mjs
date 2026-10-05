@@ -40,7 +40,8 @@ test("branch opens the free start while keeping places, equipment and future wor
   assert.match(detail, /Тапы не дают хозяйственную валюту/);
   assert.match(html, /data-node-id="start"[^>]*aria-pressed="true"/);
   assert.match(html, /Схема правил и возможностей/);
-  assert.match(html, /data-node-id="public_profiles"[^>]*data-status="plan"/);
+  assert.match(html, /data-node-id="public_profiles"[^>]*data-status="active"/);
+  assert.match(html, /data-node-id="friend_glade"[^>]*data-status="plan"/);
   assert.match(html, /data-node-id="pleska_home"[^>]*data-status="plan"/);
   assert.match(html, /Внутри места/);
   assert.match(html, /data-node-id="mine_interior"[^>]*data-status="plan"/);

@@ -17,7 +17,7 @@ const market = (p, at = now, options = {}) => economy.getDevEconomyMarket(p.toke
 function player(home = 2, inventory = { berries: 100 }) {
   const p = identities.createDevIdentity("Лесник", crypto.randomUUID()); read(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.wallet.coins = 100000; row.state.inventory = inventory; row.state.buildings.home = home; row.state.completedExplorations = 1;
+  row.state.wallet.coins = 1000000; row.state.inventory = inventory; row.state.buildings.home = home; row.state.completedExplorations = 1;
   return p;
 }
 const command = (p, action, targetId, quantity = 1, totalPrice = 0, at = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
@@ -106,9 +106,9 @@ test("home gate applies to discovery and to a selected item after a level change
 
 test("historical cheap lots remain immutable and cancellable but cannot enter a showcase", () => {
   const seller = player(), buyer = player(2, {}), lot = offer(seller);
-  const saved = globalThis.__zhivDevEconomyStore.listings.get(lot.id); saved.totalPrice = 1;
+  const saved = globalThis.__zhivDevEconomyStore.listings.get(lot.id); saved.totalPrice = 10;
   const snapshot = structuredClone(saved);
-  assert.equal(market(buyer).listings.length, 0); assert.equal(market(seller).mine[0].totalPrice, 1);
+  assert.equal(market(buyer).listings.length, 0); assert.equal(market(seller).mine[0].totalPrice, 10);
   assert.deepEqual(saved, snapshot);
   assert.throws(() => buy(buyer, saved), { code: "ECONOMY_MARKET_SHOWCASE_CHANGED" });
   assert.equal(trade(seller, "cancel_listing", lot.id).state.inventory.berries, 100);

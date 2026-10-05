@@ -58,7 +58,7 @@ object EconomyMarketRules {
         } else {
             if (command.quantity !in 1L..EconomyRules.catalog.market.maxLotQuantity)
                 throw AuthFailure("ECONOMY_MARKET_QUANTITY", "В объявлении может быть от 1 до 99 предметов", 400)
-            if (command.totalPrice !in command.quantity..1_000_000_000L)
+            if (command.totalPrice !in command.quantity..ECONOMY_MAX_BALANCE)
                 throw AuthFailure("ECONOMY_MARKET_PRICE", "Укажите цену всей партии в монетах", 400)
         }
     }
@@ -66,7 +66,7 @@ object EconomyMarketRules {
     fun validatePrice(quantity: Long, totalPrice: Long, baseSellPrice: Long, multiplier: Long = MAX_PRICE_MULTIPLIER) {
         // Catalog prices are bounded independently; division avoids overflow even for a corrupt catalog.
         if (quantity !in 1L..MAX_QUANTITY || baseSellPrice <= 0L || multiplier !in 1L..MAX_PRICE_MULTIPLIER ||
-            totalPrice !in quantity..1_000_000_000L || totalPrice / quantity < baseSellPrice || (totalPrice - 1L) / quantity / multiplier >= baseSellPrice) {
+            totalPrice !in quantity..ECONOMY_MAX_BALANCE || totalPrice % ECONOMY_CURRENCY_SCALE != 0L || totalPrice / quantity < baseSellPrice || (totalPrice - 1L) / quantity / multiplier >= baseSellPrice) {
             throw AuthFailure("ECONOMY_MARKET_PRICE", "Цена партии должна быть от базовой до пятикратной стоимости", 400)
         }
     }

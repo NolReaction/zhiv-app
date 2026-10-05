@@ -10,7 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
-const { DailyRewardsPanel, markDailyRewardSeen, dailyRewardWait } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
+const { DailyRewardsPanel, dailyRewardWait } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
 const { AchievementCard } = await vite.ssrLoadModule("/features/game/game-achievements.tsx");
 const { GAME_ACHIEVEMENTS } = await vite.ssrLoadModule("/features/game/game-rewards.ts");
 const { GAME_ACHIEVEMENT_TARGETS } = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
@@ -142,14 +142,17 @@ test("uncertain daily UI offers recovery and blocks a new claim", () => {
   const html = render(DailyRewardsPanel, { controller: controller(view(), { pending, uncertain: true }), isOnline: true });
   assert.match(html, /Проверить получение/); assert.match(html, /<button[^>]*disabled=""[^>]*>.*?Забрать подарок/);
 });
-test("the popup preference is per owner and confirmed UTC day, including reload and denied storage", () => {
-  const storage = cache(), id = "AAAA-0000-0003";
-  assert.equal(markDailyRewardSeen(id, at, storage), true); assert.equal(markDailyRewardSeen(id, at, storage), false);
-  assert.equal(markDailyRewardSeen(id, "2026-10-06T00:00:00Z", storage), true);
-  assert.equal(markDailyRewardSeen("AAAA-0000-0004", at, storage), true);
-  const blocked = { getItem() { throw Error(); }, setItem() { throw Error(); } };
-  assert.equal(markDailyRewardSeen("AAAA-0000-0005", at, blocked), true); assert.equal(markDailyRewardSeen("AAAA-0000-0005", at, blocked), false);
-  assert.equal(markDailyRewardSeen(id, "invalid", storage), false);
+test("closing the profile subscription leaves its mounted dialog claim and confirmation alive", async () => {
+  const wait = deferred(); let command, aborted = false, confirmations = 0;
+  const session = createGameRewardsSession(owner, transport({ send: (body, signal) => {
+    command = body; signal.addEventListener("abort", () => { aborted = true; }); return wait.promise;
+  } }));
+  const closeDialog = session.activate(), closeProfile = session.activate(); await session.refresh();
+  const claim = session.claimDaily().then(result => { if (result) confirmations++; });
+  closeProfile(); assert.equal(aborted, false); assert.equal(session.getSnapshot().busy, true);
+  wait.resolve(receipt(command)); await claim;
+  assert.equal(confirmations, 1); assert.equal(session.getSnapshot().pending, null);
+  assert.equal(session.getSnapshot().data.daily.step, 2); closeDialog();
 });
 test("historical earned stages expose one next claim without adding achievement cards", () => {
   const quest = GAME_ACHIEVEMENTS.find(row => row.id === "explorer"), rewardRows = view().achievementRewards.filter(row => row.achievementId === quest.id);

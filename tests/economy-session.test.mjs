@@ -9,7 +9,7 @@ const { createEconomySession } = await vite.ssrLoadModule("/features/economy/ses
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", now = Date.now();
-const state = (revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revision, serverTime: new Date(now).toISOString(), wallet: { coins: 100, pearls: 0 }, inventory: {},
+const state = (revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revision, serverTime: new Date(now).toISOString(), wallet: { coins: 1000, pearls: 0 }, inventory: {},
   buildings: { home: 1, garden: 1, warehouse: 1, kiln: 0 }, storage: { capacity: 200, used: 0, reserved: 0, available: 200, overflow: 0 },
   jobs: [], migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: economyCatalog, completedExplorations: 0 });
 const market = () => ({ listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() });
@@ -23,20 +23,20 @@ test("uncertain purchase uses same receipt, blocks other writes and survives ses
   const cache = storage(), sent = []; let wallet = state();
   const t = transport({ trade: async command => {
     sent.push(structuredClone(command));
-    if (sent.length === 1) { wallet = state(1); wallet.wallet.coins = 70; throw Error("Response lost after commit"); }
+    if (sent.length === 1) { wallet = state(1); wallet.wallet.coins = 700; throw Error("Response lost after commit"); }
     return { ...result(wallet), replayed: true };
   }, get: async () => wallet });
   const first = createEconomySession(owner, t, () => assert.fail(), cache), stop = first.activate();
   await first.refresh();
-  first.actMarket("buy_listing", crypto.randomUUID(), 6, 30); await flush();
+  first.actMarket("buy_listing", crypto.randomUUID(), 6, 300); await flush();
   assert.equal(first.getSnapshot().uncertain, true); assert.equal(cache.data.size, 1);
-  first.act("start_exploration", "forest"); first.actMarket("create_listing", "wood", 1, 4);
+  first.act("start_exploration", "forest"); first.actMarket("create_listing", "wood", 1, 40);
   assert.equal(sent.length, 1);
   stop();
   const next = createEconomySession(owner, t, () => assert.fail(), cache); next.activate(); await next.refresh();
   assert.equal(next.getSnapshot().uncertain, true);
   await next.retry();
-  assert.deepEqual(sent[0], sent[1]); assert.equal(next.getSnapshot().snapshot.wallet.coins, 70);
+  assert.deepEqual(sent[0], sent[1]); assert.equal(next.getSnapshot().snapshot.wallet.coins, 700);
   assert.equal(next.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
 });
 
@@ -110,7 +110,7 @@ test("a trade refreshes market even while an invalidated old page is still loadi
   const stale = deferred(); let reads = 0;
   const session = createEconomySession(owner, transport({ market: () => ++reads === 1 ? stale.promise : Promise.resolve(market()) }), () => assert.fail());
   session.activate(); await session.refresh(); const oldRead = session.refreshMarket();
-  session.actMarket("buy_listing", crypto.randomUUID(), 1, 4); await flush();
+  session.actMarket("buy_listing", crypto.randomUUID(), 1, 40); await flush();
   assert.equal(reads, 2); assert.deepEqual(session.getSnapshot().market.listings, []);
   stale.resolve({ ...market(), listings: [{ id: "already-sold" }] }); await oldRead;
   assert.deepEqual(session.getSnapshot().market.listings, []);
@@ -118,45 +118,45 @@ test("a trade refreshes market even while an invalidated old page is still loadi
 
 test("construction speedup sends the approved pearl quote once and waits for server balance", async () => {
   const wait = deferred(), sent = [];
-  const initial = state(); initial.wallet.pearls = 7;
+  const initial = state(); initial.wallet.pearls = 70;
   const session = createEconomySession(owner, transport({ get: async () => initial, send: command => {
     sent.push(structuredClone(command)); return wait.promise;
   } }), () => assert.fail());
   session.activate(); await session.refresh();
   const jobId = crypto.randomUUID();
-  session.act("speedup_construction", jobId, 1, 3);
-  session.act("speedup_construction", jobId, 1, 3);
+  session.act("speedup_construction", jobId, 1, 30);
+  session.act("speedup_construction", jobId, 1, 30);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].action, "speedup_construction");
   assert.equal(sent[0].targetId, jobId);
-  assert.equal(sent[0].totalPrice, 3);
-  assert.equal(session.getSnapshot().snapshot.wallet.pearls, 7);
+  assert.equal(sent[0].totalPrice, 30);
+  assert.equal(session.getSnapshot().snapshot.wallet.pearls, 70);
   assert.equal(session.getSnapshot().snapshot.buildings.home, 1);
-  const confirmed = state(1); confirmed.wallet.pearls = 4; confirmed.buildings.home = 2;
+  const confirmed = state(1); confirmed.wallet.pearls = 40; confirmed.buildings.home = 2;
   wait.resolve(result(confirmed)); await flush();
-  assert.equal(session.getSnapshot().snapshot.wallet.pearls, 4);
+  assert.equal(session.getSnapshot().snapshot.wallet.pearls, 40);
   assert.equal(session.getSnapshot().snapshot.buildings.home, 2);
 });
 
 test("uncertain pearl speedup restores the exact maximum price and request ID", async () => {
   const cache = storage(), sent = [];
-  let wallet = state(); wallet.wallet.pearls = 7;
+  let wallet = state(); wallet.wallet.pearls = 70;
   const t = transport({ get: async () => wallet, send: async command => {
     sent.push(structuredClone(command));
-    if (sent.length === 1) { wallet = state(1); wallet.wallet.pearls = 4; wallet.buildings.home = 2; throw Error("Lost response"); }
+    if (sent.length === 1) { wallet = state(1); wallet.wallet.pearls = 40; wallet.buildings.home = 2; throw Error("Lost response"); }
     return { ...result(wallet), replayed: true };
   } });
   const first = createEconomySession(owner, t, () => assert.fail(), cache), stop = first.activate();
-  await first.refresh(); first.act("speedup_construction", crypto.randomUUID(), 1, 3); await flush();
+  await first.refresh(); first.act("speedup_construction", crypto.randomUUID(), 1, 30); await flush();
   assert.equal(first.getSnapshot().uncertain, true);
-  first.act("speedup_construction", crypto.randomUUID(), 1, 8);
+  first.act("speedup_construction", crypto.randomUUID(), 1, 80);
   assert.equal(sent.length, 1); stop();
   const next = createEconomySession(owner, t, () => assert.fail(), cache); next.activate(); await next.refresh();
   assert.equal(next.getSnapshot().uncertain, true);
   await next.retry();
   assert.deepEqual(sent[1], sent[0]);
-  assert.equal(sent[1].totalPrice, 3);
-  assert.equal(next.getSnapshot().snapshot.wallet.pearls, 4);
+  assert.equal(sent[1].totalPrice, 30);
+  assert.equal(next.getSnapshot().snapshot.wallet.pearls, 40);
   assert.equal(next.getSnapshot().uncertain, false);
   assert.equal(cache.data.size, 0);
 });

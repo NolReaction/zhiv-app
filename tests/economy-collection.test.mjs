@@ -92,15 +92,15 @@ test("active exploration blocks harvesting; a returned explorer can gather and r
 test("market purchases during gathering may fill storage, but a failed delivery keeps the completed batch for retry", () => {
   const p = player(), seller = player();
   for (const [account, inventory] of [[p, { wood: 190 }], [seller, { wood: 10 }]]) {
-    const row = fixture(account, { inventory, wallet: { coins: 100, pearls: 0 }, completedExplorations: 1 });
+    const row = fixture(account, { inventory, wallet: { coins: 1000, pearls: 0 }, completedExplorations: 1 });
     row.state.buildings.home = 2;
   }
   const job = grow(p), readyAt = Date.parse(job.finishesAt);
   const collecting = issue(p, "start_collection", job.id, readyAt).state.jobs[0];
   const finish = Date.parse(collecting.collection.finishesAt);
-  const listing = trade(seller, "create_listing", "wood", 10, 40, readyAt).listing;
+  const listing = trade(seller, "create_listing", "wood", 10, 400, readyAt).listing;
   economy.getDevEconomyMarket(p.token, {}, readyAt);
-  trade(p, "buy_listing", listing.id, 10, 40, readyAt + 1);
+  trade(p, "buy_listing", listing.id, 10, 400, readyAt + 1);
   const before = read(p, finish);
   assert.throws(() => issue(p, "claim_job", job.id, finish), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p, finish), before);

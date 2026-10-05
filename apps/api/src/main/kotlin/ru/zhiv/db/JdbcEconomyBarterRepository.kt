@@ -26,7 +26,7 @@ internal fun cancelEconomyBarterOffers(c: Connection, user: UUID) {
     val inventory = before.inventory.toMutableMap()
     for ((id, item) in offers) {
         val held = inventory[item] ?: 0L
-        if (held >= ECONOMY_MAX_BALANCE) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для материала", 409)
+        if (held >= ECONOMY_MAX_ITEMS) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для материала", 409)
         inventory[item] = held + 1L
         c.economyUpdate("UPDATE economy_barter_offers SET status='cancelled',closed_at=clock_timestamp() WHERE id=?", id)
         c.economyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items)
@@ -223,7 +223,7 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
         val sellerState = readEconomyProfile(c, row.seller).state
         val gained = state.inventory[offer.offeredItemId] ?: 0L
         val sellerGained = sellerState.inventory[offer.requestedItemId] ?: 0L
-        if (gained >= ECONOMY_MAX_BALANCE || sellerGained >= ECONOMY_MAX_BALANCE)
+        if (gained >= ECONOMY_MAX_ITEMS || sellerGained >= ECONOMY_MAX_ITEMS)
             throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для материала", 409)
         val reservedBuyer = reservedEconomyMarketItems(c, user); val reservedSeller = reservedEconomyMarketItems(c, row.seller)
         val nextBuyer = state.copy(inventory=state.inventory + (offer.requestedItemId to payment - 1L) + (offer.offeredItemId to gained + 1L))
@@ -241,7 +241,7 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
         if (row.seller != user) throw AuthFailure("ECONOMY_BARTER_OWNER", "Снять предложение может только его автор", 403)
         val item = row.offer.offeredItemId; val id = UUID.fromString(row.offer.id)
         val amount = state.inventory[item] ?: 0L
-        if (amount >= ECONOMY_MAX_BALANCE) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для материала", 409)
+        if (amount >= ECONOMY_MAX_ITEMS) throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для материала", 409)
         val reservedBefore = reservedEconomyMarketItems(c, user)
         val next = state.copy(inventory=state.inventory + (item to amount + 1L))
         c.economyUpdate("UPDATE economy_barter_offers SET status='cancelled',closed_at=clock_timestamp() WHERE id=?", id)

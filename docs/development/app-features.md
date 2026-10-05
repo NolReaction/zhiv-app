@@ -37,6 +37,8 @@
 | Резервный код | [features/account/recovery-code-card.tsx](../../features/account/recovery-code-card.tsx), [recovery-starter.tsx](../../features/account/recovery-starter.tsx), [lib/recovery-code.ts](../../lib/recovery-code.ts) | [tests/recovery-code.test.mjs](../../tests/recovery-code.test.mjs), [recovery-capabilities.test.mjs](../../tests/recovery-capabilities.test.mjs) |
 | Слияние/удаление профиля, завершение сессий | [features/account/account-lifecycle.tsx](../../features/account/account-lifecycle.tsx), [lib/account-lifecycle.ts](../../lib/account-lifecycle.ts) | Подтверждение текущего аккаунта: [tests/account-lifecycle.test.mjs](../../tests/account-lifecycle.test.mjs); SQL — `JdbcAccountLifecycleRepositoryIntegrationTest` |
 
+Игровой профиль открывается по нажатию имени друга: [доступ, безопасные поля и проверки](../game/friend-profiles.md). Переключатель исходящей видимости закрывает также эту карточку; посещение поляны пока в плане.
+
 Личная связь не равна группе. Видимость проверяется на сервере; нельзя показывать скрытую отметку, потому что она осталась в старом клиентском ответе. При смене аккаунта сбрасывайте данные предыдущего владельца и игнорируйте запоздалые HTTP-ответы.
 
 Вход поддерживает VK ID, Telegram и email-код при включённых серверных настройках. Локальный адаптер возвращает `legacy: true` и отключённые провайдеры: он позволяет создать тестовый профиль, но не имитирует подтверждённый email/соцсеть. Настройка — [авторизация](../operations/auth-0.5.0.md), [жизненный цикл аккаунта](../operations/account-0.5.1.md).

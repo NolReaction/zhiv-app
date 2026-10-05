@@ -32,13 +32,13 @@ import hudStyles from "./world-map-hud.module.css";
 import { WorldObjectMenu } from "@/features/economy/world-object-menu";
 import { WorldResidentDialog } from "./world-resident-dialog";
 import { WorldCharacters } from "./world-characters";
-import { DailyRewardsMap } from "@/features/game/daily-rewards";
+import { DailyRewardsButton, DailyRewardsDialog } from "@/features/game/daily-rewards";
 
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "help";
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
-export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, open: worldIsOpen, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
@@ -52,6 +52,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
   const [charactersOpen, setCharactersOpen] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
+  const dailyTrigger = useRef<HTMLButtonElement | null>(null);
   const leavingCharacters = useRef(false);
   const [expeditionSector, setExpeditionSector] = useState<SectorId>("forest");
   const [residentOpen, setResidentOpen] = useState(false);
@@ -90,8 +91,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   }, [hasWorld]);
   const clearObject = useCallback(() => { selectedId.current = null; setSelection(null); }, []);
   const openDailyRewards = useCallback(() => {
-    clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(false); setDailyOpen(true);
-  }, [clearObject]);
+    setDailyOpen(true);
+  }, []);
   const closeQuick = useCallback(() => {
     setQuickMenu(null); setCharactersOpen(false);
     if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
@@ -127,13 +128,13 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   useEffect(() => {
     if (!quickMenu) return;
     const outside = (event: PointerEvent) => {
-      if (quickUpgrade || !(event.target instanceof Element) || quickFrame.current?.contains(event.target)
+      if (quickUpgrade || dailyOpen || !(event.target instanceof Element) || quickFrame.current?.contains(event.target)
         || event.target.closest("[data-world-quick]")) return;
       setQuickMenu(null);
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
-  }, [quickMenu, quickUpgrade]);
+  }, [quickMenu, quickUpgrade, dailyOpen]);
   useEffect(() => { if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); }, [quickMenu]);
   const restoreObjectFocus = useCallback(() => {
     if (objectReturn.current?.isConnected) objectReturn.current.focus({ preventScroll: true });
@@ -254,9 +255,6 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           <button className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
-      <div className={styles.rewardsHud}><DailyRewardsMap ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
-        open={dailyOpen} onOpenChange={setDailyOpen} onRequestOpen={openDailyRewards}
-        canAutoOpen={worldIsOpen && !dailyOpen && panel === null && quickMenu === null && selection === null && quickUpgrade === null && !residentOpen && !charactersOpen} /></div>
       <WorldInventoryGains key={ownerPublicId} economy={economy} hud={topHud} />
     </header>
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}
@@ -280,7 +278,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       onPointerDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeQuick(); } }}>
       <header className={`${hudStyles.quickHeader} ${styles.quickHeader}`}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickTitle}</h2><button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick}><X size={18} aria-hidden="true" /></button></header>
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
-        {quickMenu === "profile" && <WorldProfileMenu world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => { setLocalNotice(value => value + 1); closeQuick(); }} />}
+        {quickMenu === "profile" && <WorldProfileMenu world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
+          rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={openResident} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={openResident} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
@@ -292,6 +291,11 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         </div>}
       </div>
     </section>}
+    <DailyRewardsDialog key={ownerPublicId} ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
+      open={dailyOpen} onOpenChange={setDailyOpen} onReturnFocus={() => {
+        if (dailyTrigger.current?.isConnected) dailyTrigger.current.focus({ preventScroll: true });
+        else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true });
+      }} />
     <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident}
       onCloseAutoFocus={event => {
         event.preventDefault();

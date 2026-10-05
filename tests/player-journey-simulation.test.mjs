@@ -53,12 +53,12 @@ test("an explicit research pearl balance pays only actual construction speedups 
     } } };
     simulateJourney(observed, "visits3", 40, lookaheadPolicy);
     const baseline = casts.splice(0);
-    const result = simulateJourney(observed, "visits3", 40, { ...lookaheadPolicy, pearlBudget: 100 });
+    const result = simulateJourney(observed, "visits3", 40, { ...lookaheadPolicy, pearlBudget: 1000 });
     assert(casts.length >= 50 && baseline.length >= 50);
     assert.deepEqual(casts.slice(0, 50), baseline.slice(0, 50), "The paired scenarios share the same nth-cast seeds");
     assert(result.actions.speedup_construction > 0);
-    assert(result.pearlsSpent > 0 && result.pearlsSpent <= 100);
-    assert.equal(result.pearlsRemaining + result.pearlsSpent, 100);
+    assert(result.pearlsSpent > 0 && result.pearlsSpent <= 1000);
+    assert.equal(result.pearlsRemaining + result.pearlsSpent, 1000);
     assert.equal(result.actions.buy_fishing_item, undefined);
     assert.equal(result.failures.ECONOMY_PEARLS, undefined);
     assert.equal(result.failures.ECONOMY_BUILDING_REQUIRED, undefined);

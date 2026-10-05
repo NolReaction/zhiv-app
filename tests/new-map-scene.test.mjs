@@ -2900,18 +2900,20 @@ test("confirmed cancellation reaches both mounted cameras and clears caught fish
     const env = browser(), views = []; let probe;
     try {
       worldDevStore.patch({ ...quietClearing, autoLife: false });
-      const job = { id: `cancel-mounted-${ready}`, routeId: "shore", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
+      const job = { id: `cancel-mounted-${ready}`, routeId: "shore", rewards: { fish: 4 }, startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
       const initial = { ...options, reducedMotion: false, serverNow: 200_000, presenceKey: `cancel-fishing-${ready}`, economyJourney: job };
       const callbacks = { activity() {}, ready() {}, failure: assert.fail };
       const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
       env.finish(); await flush();
       probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 200_000, 0, () => {});
       const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
-      const clock = sceneClock(env); clock.advance(24);
+      const clock = sceneClock(env);
+      const catchAt = 100_000 + (probe.state.journeyTravel.jobFishing.catches[0].at - 3) * 1000;
+      world.setTime(catchAt); clock.advance(.05);
       assert.equal(forestJourneyFishingFrame(probe.state, TILED_WORLD).carryingFish, true);
       if (ready) { world.setTime(700_000); clock.advance(1); }
       const feet = { ...probe.state.clearing.position };
-      const cancelled = { ...initial, economyJourney: null, serverNow: ready ? 701_000 : 224_000, cancelledExplorations: [job.id] };
+      const cancelled = { ...initial, economyJourney: null, serverNow: ready ? 701_000 : catchAt + 50, cancelledExplorations: [job.id] };
       circle.configure(cancelled); world.configure({ ...cancelled, view: "world" });
       assert.equal(probe.state.journeyTravel.cancelled, true);
       assert.deepEqual(probe.state.clearing.position, feet);

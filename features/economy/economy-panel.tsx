@@ -415,13 +415,13 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
   const maximum = quantity ? item.baseSellPrice * limits.maxPriceMultiplier * quantity : 0;
   const totalPrice = integer(price, maximum);
   const minimum = quantity ? marketMinimumPrice(item.id, quantity, state.catalog) : item.baseSellPrice;
-  const valid = Boolean(quantity && totalPrice && totalPrice >= minimum);
+  const valid = Boolean(quantity && totalPrice && totalPrice >= minimum && totalPrice % state.catalog.currencyScale === 0);
   const full = (economy.market?.mine.length ?? 0) >= limits.maxListings;
   const disabled = !valid || full || busy || uncertain || !canTrade(state);
   return <div className={styles.card}>
     <div className={styles.fields}>
       <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0)} step={1} value={amount} disabled={busy || uncertain} onChange={event => setAmount(event.target.value)} /></label>
-      <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={1} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
+      <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={state.catalog.currencyScale} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
     </div>
     <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${limits.maxLotQuantity} предметов в одном предложении.`}</p>
     <p className={styles.hint}><Package size={15} aria-hidden />Выставленные предметы сохраняют место на складе до продажи. Отмена вернёт их; выставление лота само по себе не освобождает склад.</p>

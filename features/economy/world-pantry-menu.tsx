@@ -72,12 +72,12 @@ export function RelicPantrySection({ state, onExplore, onOpenMarket }: { state: 
   const items = state.catalog.items.filter(item => item.category === "special");
   const requiredHome = state.catalog.rareDrops?.requiredHomeLevel;
   return <section className={styles.relics} aria-label="Реликвии в кладовой">
-    <p className={styles.relicIntro}>Находки для ключевых улучшений. Каждая реликвия занимает одно место в кладовой.</p>
+    <p className={styles.relicIntro}>Материалы для улучшения построек.</p>
     <div className={styles.relicList}>{items.map(item => {
       const stock = state.inventory[item.id] ?? 0, uses = relicUpgradeUses(state, item.id);
       return <article className={styles.relicCard} key={item.id} data-relic={item.id} data-owned={stock > 0}>
-        <div className={styles.relicHeading}><span className={styles.relicArt}><ItemIcon itemId={item.id} size={48} /></span><div><h3>{item.name}</h3><small>В наличии · {number(stock)}</small></div><strong>×{number(stock)}</strong></div>
-        {uses.length > 0 ? <p className={styles.relicUses}>{uses.map(use => `${use.buildingName} · ур. ${use.level} (${number(use.quantity)} шт.)`).join("; ")}</p> : <p className={styles.relicUses}>Для ключевых улучшений хозяйства.</p>}
+        <div className={styles.relicHeading}><span className={styles.relicArt}><ItemIcon itemId={item.id} size={48} /></span><div><h3>{item.name}</h3></div><strong aria-label={`В наличии: ${number(stock)}`}>×{number(stock)}</strong></div>
+        {uses.length > 0 && <p className={styles.relicUses}>{uses.map(use => `${use.buildingName} · ур. ${use.level} (${number(use.quantity)} шт.)`).join("; ")}</p>}
       </article>;
     })}</div>
     {items.length === 0 ? <p className={styles.muted}>Реликвии появятся вместе с новыми маршрутами.</p> : <><p className={styles.muted}>{requiredHome ? `Находки в вылазках с домом ур. ${requiredHome}. ` : "Находки из вылазок. "}Их также можно получить по обмену с другими игроками.</p><div className={styles.relicActions}><button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />В путь<ArrowRight size={13} aria-hidden="true" /></button>{onOpenMarket && <button type="button" className={styles.textButton} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Лавки игроков<ArrowRight size={13} aria-hidden="true" /></button>}</div></>}

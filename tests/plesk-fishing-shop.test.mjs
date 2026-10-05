@@ -7,9 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskBaitOffer, PleskTackleCounter, PleskFishingCollection, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
+const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskHookOffer, PleskBaitOffer, PleskTackleCounter, PleskFishingCollection, PleskCatchOdds, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
 const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/fishing.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-04T20:00:00Z");
 function snapshot(overrides = {}) {
@@ -78,7 +79,7 @@ test("trade limits respect purse overflow, inventory, storage and transaction ba
   state.storage.available = 7;
   assert.equal(fishingTradeLimits(state, "fish_silverfin").buy, 7);
   assert.equal(fishingTradeLimits(state, "fish_silverfin").sell, state.catalog.maxBatch);
-  state.wallet.coins = ECONOMY_MAX_BALANCE - 12;
+  state.wallet.coins = ECONOMY_MAX_BALANCE - state.catalog.items.find(item => item.id === "fish_silverfin").baseSellPrice;
   assert.equal(fishingTradeLimits(state, "fish_silverfin").sell, 1);
   state.wallet.coins = ECONOMY_MAX_BALANCE;
   assert.equal(fishingTradeLimits(state, "fish_silverfin").sell, 0);
@@ -100,7 +101,7 @@ test("empty stock, full storage and insufficient coins disable handlers as well 
 });
 
 test("rod purchase and equipment selection are distinct confirmed commands", () => {
-  const state = snapshot(), calls = [];
+  const state = snapshot({ wallet: { coins: 100000, pearls: 0 } }), calls = [];
   const rod = state.catalog.fishing.rods.find(entry => entry.id === "river_rod");
   let view = inspect(PleskRodOffer, { state, economy: controller(state, { act(...args) { calls.push(args); } }), rod });
   view.control("Купить удочку").props.onClick(); view.control("Купить удочку").props.onClick();
@@ -136,10 +137,10 @@ test("bait purchases quote price, selection needs stock, and missing selected ba
 test("collection counts confirmed catches independently of purchased, sold or ambient fish", () => {
   const state = snapshot({ inventory: { fish_mooncarp: 90 }, fishing: { ownedRods: ["reed_rod", "river_rod"], equippedRodId: "reed_rod", equippedBaitId: null, catches: { fish_silverfin: 8 } } });
   const html = renderToStaticMarkup(createElement(PleskFishingCollection, { state, catalog: state.catalog.fishing }));
-  assert.match(html, /Виды рыб: 1 \/ 4/);
+  assert.ok(html.includes(`Виды рыб: 1 / ${state.catalog.fishing.fish.length}`));
   assert.match(html, /Поймано: 8/);
   assert.doesNotMatch(html, /Поймано: 90/);
-  assert.equal((html.match(/data-discovered="false"/g) ?? []).length, 3);
+  assert.equal((html.match(/data-discovered="false"/g) ?? []).length, state.catalog.fishing.fish.length - 1);
   assert.match(html, /Удочки · 2 \/ 3/);
   assert.match(html, /Проданная рыба остаётся в коллекции/);
 });
@@ -158,7 +159,7 @@ test("shop provides keyboard tab navigation and fishing/pantry navigation withou
   assert.doesNotMatch(view.html, /Обновление через|Ежедневные|Бесплатный улов/);
 });
 
-test("tackle counter separates rods and bait and renders just one selected offer", () => {
+test("tackle counter separates rods hooks and bait and renders just one selected offer", () => {
   const state = snapshot(), calls = [];
   const props = { state, catalog: state.catalog.fishing, economy: controller(state, { act(...args) { calls.push(args); } }) };
   const rods = inspect(PleskTackleCounter, props);
@@ -174,8 +175,74 @@ test("tackle counter separates rods and bait and renders just one selected offer
   assert.match(baits.html, /Купить наживку:/);
   baits.control("Без наживки").props.onClick(); assert.deepEqual(calls, [], "the tile only opens details; choosing equipment is a separate explicit action");
   const tabs = rods.elements.filter(element => element.props.role === "tab");
-  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1]);
+  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1]);
   for (const key of ["ArrowLeft", "ArrowRight", "Home", "End"]) {
     let prevented = false; tabs[0].props.onKeyDown({ key, preventDefault() { prevented = true; } }); assert.equal(prevented, true);
   }
+  const hooks = inspect(PleskTackleCounter, { ...props, initialCategory: "hooks" });
+  assert.equal((hooks.html.match(/<article\b/g) ?? []).length, 1);
+  assert.match(hooks.html, /Выбрать крючок на прилавке/);
+  assert.doesNotMatch(hooks.html, /Выбрать удочку на прилавке|Выбрать наживку на прилавке|Купить штук/);
+  hooks.control("Серебряный").props.onClick(); assert.deepEqual(calls, [], "browsing a hook never buys or equips it");
+  assert.match(hooks.html, /не занимает место в кладовой/);
+});
+
+test("hook purchase equipment selection and confirmed ownership are separate guarded actions", () => {
+  const state = snapshot({ wallet: { coins: 100000, pearls: 0 } }), calls = [];
+  const hook = state.catalog.fishing.hooks.find(entry => entry.id === "silver_hook");
+  const props = () => ({ state, economy: controller(state, { act(...args) { calls.push(args); } }), hook });
+  let view = inspect(PleskHookOffer, props());
+  view.control("Купить крючок").props.onClick(); view.control("Купить крючок").props.onClick();
+  assert.deepEqual(calls, [["buy_fishing_item", hook.id, 1, hook.price]]);
+  assert.deepEqual(state.fishing.ownedHooks, ["bare_hook"]);
+  assert.equal(state.inventory[hook.id], undefined);
+  state.fishing.ownedHooks.push(hook.id); calls.length = 0;
+  view = inspect(PleskHookOffer, props()); view.control("Взять с собой").props.onClick();
+  assert.deepEqual(calls, [["equip_fishing_hook", hook.id, 1, 0]]);
+  state.fishing.equippedHookId = hook.id; calls.length = 0;
+  view = inspect(PleskHookOffer, props());
+  assert.equal(view.control("Выбран").props.disabled, true); view.control("Выбран").props.onClick();
+  assert.deepEqual(calls, []);
+});
+
+test("unaffordable stale foreign busy uncertain and cooling-down hooks cannot dispatch from their handlers", () => {
+  const state = snapshot({ wallet: { coins: 100000, pearls: 0 } }), hook = state.catalog.fishing.hooks.find(entry => entry.id === "barbed_hook");
+  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5000 }, { snapshot: null },
+    { snapshot: { ...state, ownerPublicId: "OTHER" } }, { snapshot: { ...state, revision: 99 } }]) {
+    const calls = [], view = inspect(PleskHookOffer, { state, hook, economy: controller(state, { ...flags, act(...args) { calls.push(args); } }) });
+    assert.equal(view.control("Купить крючок").props.disabled, true); view.control("Купить крючок").props.onClick(); assert.deepEqual(calls, []);
+  }
+  const poor = snapshot({ wallet: { coins: hook.price - 1, pearls: 0 } }), calls = [];
+  const view = inspect(PleskHookOffer, { state: poor, hook, economy: controller(poor, { act(...args) { calls.push(args); } }) });
+  assert.equal(view.control("Купить крючок").props.disabled, true); view.control("Купить крючок").props.onClick(); assert.deepEqual(calls, []);
+  assert.match(view.html, /Не хватает 1 монет/);
+});
+
+test("odds previews use authoritative loadout weights and explain the one-draw party instead of guaranteeing rarity", () => {
+  const state = snapshot(), catalog = state.catalog.fishing, before = structuredClone(state);
+  const override = { rodId: "willow_rod", hookId: "silver_hook", baitId: "worm_bait" };
+  const expected = fishingOdds(state, catalog, override);
+  const html = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog, override, preview: true }));
+  const percent = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(value * 100)}%`;
+  assert.match(html, /Шансы одного особого улова за вылазку/);
+  assert.match(html, /Остальные рыбы в партии — обычная рыба/);
+  assert.match(html, /после выбора снасти перед отправлением/);
+  assert.equal((html.match(/data-fish-odds=/g) ?? []).length, 12);
+  for (const odd of expected) assert.ok(html.includes(`<dd>${percent(odd.probability)}</dd>`));
+  const baseShark = fishingOdds(state, catalog).find(odd => odd.itemId === "fish_shark").probability;
+  const betterShark = expected.find(odd => odd.itemId === "fish_shark").probability;
+  assert(betterShark > baseShark && betterShark < .002);
+  assert.match(html, /Теневая акула/); assert.match(html, /data-fish-rarity="legendary"/);
+  assert.deepEqual(state, before, "Previewing gear cannot buy, equip or rewrite current odds");
+});
+
+test("legacy tackle defaults to the owned plain hook and hook collection ignores inventory goods", () => {
+  const state = snapshot({ fishing: { ownedRods: ["reed_rod"], equippedRodId: "reed_rod", equippedBaitId: null, catches: {} }, inventory: { silver_hook: 100, fish_shark: 2 } });
+  assert.equal(fishingState(state).equippedHookId, "bare_hook");
+  assert.deepEqual(fishingState(state).ownedHooks, ["bare_hook"]);
+  const html = renderToStaticMarkup(createElement(PleskFishingCollection, { state, catalog: state.catalog.fishing }));
+  assert.match(html, /Крючки · 1 \/ 3/); assert.match(html, /Виды рыб: 0 \/ 12/);
+  assert.doesNotMatch(html, /Поймано: 2|Крючки · 2/);
+  const shop = renderToStaticMarkup(createElement(PleskFishingShop, { economy: controller(state), onFishing() {}, onOpenPantry() {} }));
+  assert.match(shop, /Простой крючок/);
 });

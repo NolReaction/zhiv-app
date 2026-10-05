@@ -86,7 +86,7 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 150);
+  assert.equal(graph.nodes.length, 151);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
   assert.equal(graph.nodes.filter(value => value.status === "plan").length, 17);
@@ -94,9 +94,9 @@ test("node and edge ids are unique and actual world remains connected without pr
 
 test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
   assert.equal(node("daily_rewards").status, "active");
-  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /3 жемчужины/);
+  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /30 жемчужин/);
   assert.match(node("daily_rewards").description, /20 часов/); assert.match(node("daily_rewards").description, /Пропуск не сбрасывает/);
-  assert.match(node("pearls").description, /до 43/); assert.match(node("achievements").description, /до 43/);
+  assert.match(node("pearls").description, /до 430/); assert.match(node("achievements").description, /до 430/);
   assert(hasEdge("daily_rewards", "pearls", "flow")); assert(hasEdge("achievements", "pearls", "flow"));
   assert.equal(node("pearl_trader").status, "plan");
   assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind === "plan"));
@@ -134,11 +134,13 @@ test("rare materials share a real post-home-three exploration source without a f
   assert.equal(JSON.stringify(changed), before, "Graph keeps its own copy of drop metadata");
 });
 
-test("fishing is current while other profiles and Pleska's home stay optional proposals", () => {
+test("fishing and friend profiles are current while glade visits and Pleska's home remain optional proposals", () => {
   assert.equal(node("pleska").status, "active");
   assert.equal(node("fishing_catches").status, "active");
   assert(hasEdge("start", "pleska", "available"));
-  for (const id of ["public_profiles", "pleska_home"]) {
+  assert.equal(node("public_profiles").status, "active");
+  assert(hasEdge("start", "public_profiles", "available"));
+  for (const id of ["friend_glade", "pleska_home"]) {
     assert.equal(node(id).status, "plan");
     assert.equal(node(id).cost, undefined);
     assert.equal(node(id).seconds, undefined);

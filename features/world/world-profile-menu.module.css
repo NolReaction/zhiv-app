@@ -21,6 +21,7 @@
 .memory p { margin: 0; }
 .memory[data-warning] { padding: 10px; border: 1px solid #b99558; border-radius: 11px; background: #ecdcaf; color: #715329; }
 .memory .action { width: 100%; margin-top: 8px; }
+.actions { display: grid; gap: 9px; min-width: 0; }
 .action { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 12px; border: 1px solid #355339; border-radius: 12px; background: var(--forest-primary, #466347); color: #fff4d8; box-shadow: inset 0 1px #ffffff21, 0 2px 0 #304832; font: inherit; font-size: .75rem; line-height: 1.4; cursor: pointer; touch-action: manipulation; }
 .action:hover:enabled { background: #38543c; }
 .action:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }

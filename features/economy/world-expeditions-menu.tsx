@@ -77,6 +77,8 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, confirmati
   }, [confirming, blocked]);
   const claimBlocked = !status.ready || status.storageShortfall > 0 || blocked || confirming;
   const paid = job.cost.coins > 0 || Object.values(job.cost.items).some(quantity => quantity > 0);
+  const tripHookId = job.fishing?.hookId ?? "bare_hook";
+  const tripHook = state.catalog.fishing?.hooks.find(hook => hook.id === tripHookId);
   function cancel() {
     if (!confirming || blocked || sentForKey.current === key) return;
     sentForKey.current = key;
@@ -86,6 +88,7 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, confirmati
   }
   return <section ref={card} tabIndex={-1} className={styles.active} aria-label={`Текущая вылазка: ${title}`} aria-busy={economy.busy || undefined} data-ready={status.ready || undefined}>
     <div className={styles.activeTitle}><Compass size={18} aria-hidden="true" /><div><span>{status.ready ? "Мохлик вернулся" : "Мохлик в пути"}</span><strong>{title}</strong></div></div>
+    {job.fishing && <p className={styles.savedHook}><ItemIcon itemId={tripHookId} size={20} /><span>Крючок этой вылазки: {tripHook?.name ?? (tripHookId === "bare_hook" ? "Простой крючок" : "Сохранённый крючок")}</span></p>}
     <Findings state={state} rewards={job.rewards} />
     <progress className={styles.progress} value={status.progress} max={1} aria-label={`Готовность вылазки: ${title}`} />
     <div className={styles.actions}><span className={styles.time}>{status.ready ? <Check size={13} aria-hidden="true" /> : <Clock3 size={13} aria-hidden="true" />}{status.ready ? "Находки ждут" : `Ещё ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span><button type="button" className={styles.primary} disabled={claimBlocked} onClick={() => { if (!claimBlocked) void economy.act("claim_job", job.id); }} aria-label={`Забрать находки: ${title}`}>Забрать</button></div>
@@ -115,7 +118,9 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
   const collecting = state.jobs.some(job => job.collection?.startedAt);
   const catalog = state.catalog.fishing;
   const rods = catalog?.rods.filter(rod => gear.ownedRods.includes(rod.id)) ?? [];
-  const invalidGear = fishing && (!rods.some(rod => rod.id === gear.equippedRodId) || Boolean(gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId)));
+  const hooks = catalog?.hooks.filter(hook => gear.ownedHooks.includes(hook.id)) ?? [];
+  const invalidGear = fishing && (!rods.some(rod => rod.id === gear.equippedRodId) || !hooks.some(hook => hook.id === gear.equippedHookId)
+    || Boolean(gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId)));
   const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || exploring || collecting || invalidGear;
   return <div className={styles.detail}>
     {fishing && <div className={styles.fishingGear}>
@@ -124,12 +129,17 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
         const rodId = event.target.value;
         command.send("equip_fishing_rod", rodId, 1, 0, rodId !== gear.equippedRodId && rods.some(rod => rod.id === rodId));
       }}>{!rods.some(rod => rod.id === gear.equippedRodId) && <option value={gear.equippedRodId} disabled>Выберите удочку</option>}{rods.map(rod => <option key={rod.id} value={rod.id}>{rod.name}</option>)}</select></label></div>
+      <div className={styles.loadoutRow}><ItemIcon itemId={gear.equippedHookId} size={36} /><label htmlFor={`${id}-hook`}>Крючок<select id={`${id}-hook`} value={gear.equippedHookId} disabled={command.blocked || !hooks.length} onChange={event => {
+        const hookId = event.target.value;
+        command.send("equip_fishing_hook", hookId, 1, 0, hookId !== gear.equippedHookId && hooks.some(hook => hook.id === hookId));
+      }}>{!hooks.some(hook => hook.id === gear.equippedHookId) && <option value={gear.equippedHookId} disabled>Выберите крючок</option>}{hooks.map(hook => <option key={hook.id} value={hook.id}>{hook.name}</option>)}</select></label></div>
       <div className={styles.loadoutRow}>{gear.equippedBaitId ? <ItemIcon itemId={gear.equippedBaitId} size={32} /> : <Fish size={27} aria-hidden="true" />}<label htmlFor={`${id}-bait`}>Наживка<select id={`${id}-bait`} value={gear.equippedBaitId ?? "none"} disabled={command.blocked} onChange={event => {
         const baitId = event.target.value;
         const owned = baitId === "none" || Boolean(catalog?.baits.some(bait => bait.itemId === baitId) && (state.inventory[baitId] ?? 0) > 0);
         command.send("equip_fishing_bait", baitId, 1, 0, baitId !== (gear.equippedBaitId ?? "none") && owned);
       }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0}>{itemName(state, bait.itemId)} · {(state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
-      <p>{gear.equippedBaitId ? "1 на вылазку. " : ""}Снасти влияют на шанс редкой рыбы.</p>
+      <p>{gear.equippedBaitId ? "1 наживка на вылазку. " : ""}Удочка и крючок не расходуются. Снасти меняют шанс одного особого улова, остальные рыбы — обычная рыба.</p>
+      {invalidGear && <p className={styles.warning}>Выберите доступную удочку и крючок перед отправлением.</p>}
       {onOpenFishingShop && <button type="button" className={styles.link} onClick={onOpenFishingShop}>Купить снасти у Плёски<ArrowRight size={12} aria-hidden="true" /></button>}
     </div>}
     {missing.length > 0 && <ul className={styles.requirements} aria-label="Условия открытия">{missing.map(({ id, level }) => <li key={id}><LockKeyhole size={12} aria-hidden="true" />{onNavigateStation ? <button type="button" className={styles.link} onClick={() => onNavigateStation(id)}>{stationName(state, id)} · нужен ур. {level}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{stationName(state, id)} · нужен ур. {level}</span>}</li>)}</ul>}

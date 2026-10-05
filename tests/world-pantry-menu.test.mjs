@@ -14,7 +14,7 @@ after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
 function snapshot(overrides = {}) {
-  const state = { ownerPublicId: "ME", revision: 7, serverTime: new Date(now).toISOString(), wallet: { coins: 48291, pearls: 917 }, inventory: { wood: 20, berries: 6, stone: 0 },
+  const state = { ownerPublicId: "ME", revision: 7, serverTime: new Date(now).toISOString(), wallet: { coins: 482910, pearls: 9170 }, inventory: { wood: 20, berries: 6, stone: 0 },
     buildings: { home: 1, garden: 1, warehouse: 1 }, jobs: [], completedExplorations: 0,
     migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: structuredClone(economyCatalog), ...overrides };
   return { ...state, storage: overrides.storage ?? economyStorage(state) };
@@ -40,7 +40,7 @@ test("pantry content contains compact stock without a second frame, house tabs o
   assert.match(html, /aria-label="Лесные ягоды: 6"/);
   assert.doesNotMatch(html, /aria-label="Камень: 0"/);
   assert.match(html, /width="20" height="20"/);
-  assert.doesNotMatch(html, /role="dialog"|<h[12]\b|Оборудование:|Запасы дома|Выданы тестовые материалы|48[\s\S]?291|917/);
+  assert.doesNotMatch(html, /role="dialog"|<h[12]\b|Оборудование:|Запасы дома|Выданы тестовые материалы|482[\s\S]?910|9[\s\S]?170/);
   assert.match(button(html, "Расширить кладовую").attributes, /aria-haspopup="dialog"/);
 });
 
@@ -103,7 +103,7 @@ test("player market shortcut requires navigation and the actual catalog unlock c
 
 test("warehouse expansion shows its own server-clock progress and ready status", () => {
   const job = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 2,
-    startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 45_000).toISOString(), rewards: {}, cost: { coins: 20, items: {} }, catalogVersion: 2 };
+    startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 45_000).toISOString(), rewards: {}, cost: { coins: 200, items: {} }, catalogVersion: 2 };
   const state = snapshot({ jobs: [job] });
   let html = render(controller({ snapshot: state }));
   assert.match(html, /Кладовая расширяется/);
@@ -138,25 +138,25 @@ function inspectSale(state, props = {}, flags = {}) {
 
 test("quick sale shows catalog markdown and sends the displayed minimum quote without mutating stock", () => {
   const state = snapshot(); state.catalog.localBuyer = { payoutBps: 6000 };
-  state.catalog.items.find(item => item.id === "wood").baseSellPrice = 3;
+  state.catalog.items.find(item => item.id === "wood").baseSellPrice = 30;
   const view = inspectSale(state);
   assert.match(view.html, /уценкой 40%/);
   assert.match(view.html, /Сумма за всё количество округляется вниз/);
-  assert.match(button(view.html, "Продать торговцу").text, /· 1$/);
+  assert.match(button(view.html, "Продать торговцу").text, /· 10$/);
   view.control("Продать торговцу").props.onClick();
-  assert.deepEqual(view.calls, [["sell", "wood", 1, 1]]);
+  assert.deepEqual(view.calls, [["sell", "wood", 1, 10]]);
   assert.equal(state.inventory.wood, 20);
 });
 
 test("penny stock starts at a payable batch, and wallet limits use the whole-stack rounded price", () => {
-  const state = snapshot({ inventory: { crumb_bait: 10 }, wallet: { coins: 999_999_999, pearls: 0 } });
+  const state = snapshot({ inventory: { crumb_bait: 10 }, wallet: { coins: 9_999_999_990, pearls: 0 } });
   state.catalog.localBuyer = { payoutBps: 6000 };
   const view = inspectSale(state, { itemId: "crumb_bait" });
   const input = view.elements.find(element => element.type === "input");
   assert.equal(input.props.min, 2); assert.equal(input.props.max, 3); assert.equal(input.props.value, "2");
-  assert.match(button(view.html, "Продать торговцу").text, /· 1$/);
+  assert.match(button(view.html, "Продать торговцу").text, /· 10$/);
   view.control("Продать торговцу").props.onClick();
-  assert.deepEqual(view.calls, [["sell", "crumb_bait", 2, 1]]);
+  assert.deepEqual(view.calls, [["sell", "crumb_bait", 2, 10]]);
   state.inventory.crumb_bait = 1;
   const empty = inspectSale(state, { itemId: "crumb_bait" });
   assert.equal(empty.control("Продать торговцу").props.disabled, true);
@@ -168,8 +168,8 @@ test("fish points to Pleska's full price and an available navigation callback", 
   const state = snapshot({ inventory: { fish: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
   let opened = 0;
   const view = inspectSale(state, { itemId: "fish", onOpenFishingShop() { opened++; } });
-  assert.match(view.html, /Плёска купит дороже: 8 монет за штуку/);
-  assert.match(button(view.html, "Продать торговцу").text, /· 4$/);
+  assert.match(view.html, /Плёска купит дороже: 80 монет за штуку/);
+  assert.match(button(view.html, "Продать торговцу").text, /· 40$/);
   view.control("К Плёске").props.onClick(); assert.equal(opened, 1); assert.deepEqual(view.calls, []);
   assert.doesNotMatch(inspectSale(state, { itemId: "fish" }).html, />К Плёске/);
 });

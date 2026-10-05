@@ -15,10 +15,10 @@ const { newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const fresh = () => ({ ...newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 }), catalog: economyCatalog });
 
-test("the book has exactly three chapters and fourteen permanent entries", () => {
+test("the book has three chapters with permanent finds and every current fish species", () => {
   assert.deepEqual(book.COLLECTION_CHAPTERS.map(entry => entry.title), ["Путешествия", "Рыбалка", "Каменоломня"]);
-  assert.equal(book.BOOK_COLLECTION_COUNT, 14);
-  assert.deepEqual(book.COLLECTION_CHAPTERS.map(entry => book.collectionBookEntries(entry.id, [], fresh()).length), [6, 4, 4]);
+  assert.equal(book.BOOK_COLLECTION_COUNT, 10 + economyCatalog.fishing.fish.length);
+  assert.deepEqual(book.COLLECTION_CHAPTERS.map(entry => book.collectionBookEntries(entry.id, [], fresh()).length), [6, economyCatalog.fishing.fish.length, 4]);
   assert.equal(new Set(book.bookFindIds).size, book.bookFindIds.length);
 });
 
@@ -51,7 +51,7 @@ test("book UI renders accessible chapter tabs, owned records and current acquisi
   assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
   assert.match(html, /role="tabpanel"/);
   assert.match(html, /aria-selected="true"/);
-  assert.match(html, /1\/14/);
+  assert.ok(html.includes(`1/${book.BOOK_COLLECTION_COUNT}`));
   assert.equal((html.match(/data-owned="true"/g) ?? []).length, 1);
   assert.match(html, /за каждые 2 ч завершённых работ/);
   assert.match(html, /Продажа рыбы и материалов их не стирает/);

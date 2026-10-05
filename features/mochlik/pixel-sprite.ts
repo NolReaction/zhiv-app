@@ -160,11 +160,15 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       if (direction !== "back") { rect(direction === "left" ? 18 : 28, neckY + 2, 4, 6 + (walking ? frame % 2 : 0), scarf); }
     }
     if (appearance.head) {
-      const cap = appearance.head === "leaf_cap" ? "#9cb764" : "#c29a61";
+      const cap = appearance.head === "mining_helmet" ? "#d6b456" : appearance.head === "leaf_cap" ? "#9cb764" : "#c29a61";
       // Keep the cap attached while bending down, yawning and stretching.
       const capTop = Math.max(0, 1 + headOffset);
       rect(14, 7 + headOffset, 22, 3, "#514d32"); rect(16, 5 + headOffset, 18, 4, cap);
       rect(20, capTop, 11, 5 + headOffset - capTop + 1, cap); rect(20, 5 + headOffset, 11, 1, "#78613b");
+      if (appearance.head === "mining_helmet") {
+        rect(17, 5 + headOffset, 16, 1, "#f2d789");
+        if (direction !== "back") { rect(24, 4 + headOffset, 4, 4, "#6a674f"); rect(25, 5 + headOffset, 2, 2, "#fff0ae"); }
+      }
     }
   }
   let bottom = 48;

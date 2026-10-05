@@ -21,11 +21,11 @@ const claim = (p, command, now) => rewards.claimDevProgressionReward(p.token, co
 const profile = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
 const row = (p, id, level, now) => rewards.getDevProgressionRewards(p.token, now).achievementRewards.find(r => r.achievementId === id && r.level === level);
 
-test("shared catalog totals 43 achievement pearls and a modest ordinary seven-step cycle", () => {
+test("shared catalog totals 430 achievement pearls and a modest ordinary seven-step cycle", () => {
   const catalog = rules.progressionRewardsCatalog;
-  assert.equal(Object.values(catalog.achievementPearls).flat().reduce((a, b) => a + b), 43);
+  assert.equal(Object.values(catalog.achievementPearls).flat().reduce((a, b) => a + b), 430);
   assert.deepEqual(catalog.daily.reduce((sum, r) => ({ coins: sum.coins + r.coins, pearls: sum.pearls + r.pearls,
-    items: sum.items + Object.values(r.items).reduce((a, b) => a + b, 0) }), { coins: 0, pearls: 0, items: 0 }), { coins: 50, pearls: 3, items: 6 });
+    items: sum.items + Object.values(r.items).reduce((a, b) => a + b, 0) }), { coins: 0, pearls: 0, items: 0 }), { coins: 500, pearls: 30, items: 6 });
   assert.deepEqual([...new Set(catalog.daily.flatMap(r => Object.keys(r.items)))].sort(), ["fiber", "stone", "wood"]);
 });
 
@@ -56,7 +56,7 @@ test("opening rewards changes no wallet; seven manual claims wrap and skipped da
     assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, step % 7 + 1);
   }
   const final = economy.getDevEconomy(p.token, now);
-  assert.equal(final.wallet.coins - initial.wallet.coins, 50); assert.equal(final.wallet.pearls - initial.wallet.pearls, 3);
+  assert.equal(final.wallet.coins - initial.wallet.coins, 500); assert.equal(final.wallet.pearls - initial.wallet.pearls, 30);
   for (const id of ["wood", "stone", "fiber"]) assert.equal((final.inventory[id] ?? 0) - (initial.inventory[id] ?? 0), 2);
   assert.equal(final.revision, initial.revision + 7); assert.equal(last.rewards.daily.step, 1);
 });
@@ -97,10 +97,10 @@ test("full storage failure consumes neither daily step nor request and can retry
 
 test("wallet limit failure does not lose the gift and uses current inventory instead of a stale snapshot", () => {
   const p = player(), now = at("2026-10-05T12:00:00Z"); rewards.getDevProgressionRewards(p.token, now);
-  const value = profile(p), command = request(p); value.state.wallet.coins = 1_000_000_000;
+  const value = profile(p), command = request(p); value.state.wallet.coins = 10_000_000_000;
   assert.throws(() => claim(p, command, now), { code: "ECONOMY_CAPACITY" });
   assert.equal(value.revision, 0); assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, 1);
-  value.state.wallet.coins -= 20; assert.equal(claim(p, command, now).economy.wallet.coins, 1_000_000_000);
+  value.state.wallet.coins -= 200; assert.equal(claim(p, command, now).economy.wallet.coins, 10_000_000_000);
 });
 
 test("earned achievement tiers pay manually once and duplicate keys cannot reopen payout", () => {
@@ -114,7 +114,7 @@ test("earned achievement tiers pay manually once and duplicate keys cannot reope
   assert.equal(row(p, "first_path", 1, now).eligible, true);
   assert.equal(economy.getDevEconomy(p.token, now).wallet.pearls, initial.wallet.pearls, "earning is not an automatic payout");
   const command = request(p, { kind: "achievement", achievementId: "first_path", level: 1 }), first = claim(p, command, now);
-  assert.equal(first.claim.reward.pearls, 1); assert.equal(first.economy.wallet.pearls, initial.wallet.pearls + 1);
+  assert.equal(first.claim.reward.pearls, 10); assert.equal(first.economy.wallet.pearls, initial.wallet.pearls + 10);
   assert.equal(row(p, "first_path", 1, now).claimedAt, first.claim.claimedAt);
   assert.equal(claim(p, command, now + 5000).replayed, true);
   assert.throws(() => claim(p, request(p, { kind: "achievement", achievementId: "first_path", level: 1 }), now), { code: "ACHIEVEMENT_REWARD_CLAIMED" });
@@ -142,7 +142,7 @@ test("legacy finite ownership is grandfathered while obsolete full_collection ha
   ids.awardDevGameTaps(p.me.user.publicId, 1000, now);
   const own = row(p, "thousand_taps", 1, now); assert.equal(own.eligible, true);
   const hidden = row(p, "full_collection", 1, now); assert.equal(hidden.pearls, 0); assert.equal(hidden.blockedReason, "no_reward");
-  assert.equal(claim(p, request(p, { kind: "achievement", achievementId: "thousand_taps", level: 1 }), now).claim.reward.pearls, 1);
+  assert.equal(claim(p, request(p, { kind: "achievement", achievementId: "thousand_taps", level: 1 }), now).claim.reward.pearls, 10);
 });
 
 test("reward UUID fences are shared with ordinary economy commands in both directions", () => {

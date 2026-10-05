@@ -51,7 +51,7 @@ test("cross-site writes and wrong content types cannot change economy", async ()
   const p = player(), cmd = command(p), before = economy.getDevEconomy(p.token);
   for (const headers of [{ Origin: "https://evil.example" }, { "Sec-Fetch-Site": "cross-site" }]) {
     assert.equal((await POST(post(cmd, headers))).status, 403);
-    assert.equal((await marketPOST(post({ ...cmd, action: "create_listing", targetId: "wood", totalPrice: 4 }, headers, "/market/commands"))).status, 403);
+    assert.equal((await marketPOST(post({ ...cmd, action: "create_listing", targetId: "wood", totalPrice: 40 }, headers, "/market/commands"))).status, 403);
   }
   assert.equal((await POST(post(cmd, { "Content-Type": "text/plain" }))).status, 415);
   const after = economy.getDevEconomy(p.token); assert.equal(after.revision, before.revision); assert.deepEqual(after.inventory, before.inventory);
@@ -95,9 +95,9 @@ test("market read validates cursor and limits, while trade requires progression 
   const response = await marketGET(read("/market")); assert.equal(response.status, 200); assert.equal(model.marketViewSchema.safeParse(await response.json()).success, true);
   for (const suffix of ["?limit=0", "?limit=13", "?limit=51", "?limit=3.5", "?limit=1&limit=2", "?cursor=", "?cursor=bad", "?other=1"])
     assert.equal((await marketGET(read(`/market${suffix}`))).status, 400);
-  const locked = await marketPOST(post({ ...cmd, action: "create_listing", targetId: "wood", totalPrice: 4 }, {}, "/market/commands"));
+  const locked = await marketPOST(post({ ...cmd, action: "create_listing", targetId: "wood", totalPrice: 40 }, {}, "/market/commands"));
   assert.equal(locked.status, 409); assert.equal((await locked.json()).code, "ECONOMY_MARKET_LOCKED");
-  assert.equal((await marketPOST(post({ ...cmd, action: "create_listing", targetId: "wood", quantity: 1.5, totalPrice: 4 }, {}, "/market/commands"))).status, 400);
+  assert.equal((await marketPOST(post({ ...cmd, action: "create_listing", targetId: "wood", quantity: 1.5, totalPrice: 40 }, {}, "/market/commands"))).status, 400);
 });
 
 test("the in-memory economy cannot accidentally become the deployed backend", async () => {

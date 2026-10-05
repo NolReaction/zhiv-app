@@ -23,7 +23,7 @@ class GameAchievementProgressTest {
         val state = EconomyRules.initial().copy(inventory=fish,progression=EconomyProgression(recipes=recipes))
         assertEquals(5L,economyAchievementProgress(state).getValue("master_recipes"))
         assertEquals(0L,economyAchievementProgress(state).getValue("river_atlas"))
-        assertEquals(4L,economyAchievementProgress(state.copy(fishing=state.fishing.copy(catches=fish + ("unknown" to 999L)))).getValue("river_atlas"))
+        assertEquals(12L,economyAchievementProgress(state.copy(fishing=state.fishing.copy(catches=fish + ("unknown" to 999L)))).getValue("river_atlas"))
         assertEquals(0L,economyAchievementProgress(state).getValue("first_sale"))
         assertEquals(1L,economyAchievementProgress(state,true).getValue("first_sale"))
     }

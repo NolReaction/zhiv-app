@@ -15,7 +15,6 @@
   --forest-focus: #355e48;
 }
 .world { position: relative; width: 100%; height: 100%; overflow: hidden; color: #eef2dc; }
-.rewardsHud { align-self: flex-end; pointer-events: none; }
 .world *, .sheet * { box-sizing: border-box; }
 :where(.world, .sheet, .loading) button { min-height: 44px; border: 1px solid var(--sheet-button-border, #d8e6b643); border-radius: 14px; background: var(--sheet-button-bg, #19271cec); color: var(--sheet-button-ink, #e0e9ce); font: inherit; font-size: .875rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 13px; transition: background .18s, border-color .18s; }
 :where(.world, .sheet) button:where(:hover:not(:disabled)) { background: var(--sheet-button-hover, #33452bee); border-color: var(--sheet-button-hover-border, #d4e8a78c); }

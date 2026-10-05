@@ -13,7 +13,6 @@ const { connectForestSession } = await vite.ssrLoadModule("/features/world/fores
 const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { requestClearingSleep, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
 const { forestJourneyWalking, forestJourneyEnding, forestJourneyActorAway, forestJourneyFishingFrame, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/forest-journey-travel.ts");
-const { FOREST_FISHING_FIRST_CATCH_SECONDS, FOREST_FISHING_CYCLE_SECONDS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
 const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
 const { fishingTackleFrame } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
@@ -21,7 +20,7 @@ const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts"
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
 const start = 1_000_000;
 const journey = (routeId = "shore") => ({ id: `test-${routeId}`, startedAt: new Date(start).toISOString(),
-  finishesAt: new Date(start + 600_000).toISOString(), routeId, label: "Прибрежная вылазка" });
+  finishesAt: new Date(start + 600_000).toISOString(), routeId, label: "Прибрежная вылазка", rewards: { fish: 4 } });
 const create = () => connectForestSession(undefined, scene, "world", start, 0, () => {}, { persistence: false, sync: false });
 function advance(state, job, now, seconds, until = () => false) {
   for (let elapsed = 0; elapsed < seconds && !until(); elapsed += .05) {
@@ -41,6 +40,17 @@ function finishVisual(state, job, now, cancelled = []) {
   state.director.elapsed = state.journeyTravel.ending.endsAt;
   syncForestJourneyTravel(state, scene, job, now, false, cancelled);
   assert.equal(forestJourneyEnding(state), false);
+}
+// Real jobs have finite paid catch windows on server time; director.elapsed only drives cleanup/motion.
+function seekFishingAge(state, job, age) {
+  assert.ok(age < state.journeyTravel.jobFishing.duration, "sample the active job before its actual deadline");
+  syncForestJourneyTravel(state, scene, job, start + age * 1000, false);
+  assert.ok(Math.abs(state.journeyTravel.jobAge - age) < 1e-9, "server timestamp preserves the sampled age within floating-point precision");
+}
+function seekCatch(state, job, phase = "catch", slotIndex = 0) {
+  const plan = state.journeyTravel.jobFishing, untilPacked = { bite: 8, reel: 6, catch: 3.4, pack: 1 };
+  seekFishingAge(state, job, plan.catches[slotIndex].at - untilPacked[phase] * plan.unit);
+  assert.equal(forestJourneyFishingFrame(state, scene).action, phase);
 }
 function assertTravelTackle(frame) {
   assert.ok(frame);
@@ -95,18 +105,18 @@ test("an active trip removed by the server returns from its actual feet with all
   const session = create(), state = session.state, job = journey();
   try {
     syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-    state.director.elapsed += FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+    seekCatch(state, job);
     assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, true, "there is visible caught fish before cancellation");
-    const feet = { ...state.clearing.position };
-    syncForestJourneyTravel(state, scene, null, start + 90_000, false);
+    const feet = { ...state.clearing.position }, cancelledAt = start + (state.journeyTravel.jobAge + 1) * 1000;
+    syncForestJourneyTravel(state, scene, null, cancelledAt, false);
     assert.equal(forestJourneyEnding(state), true, "the visible catch is put away before leaving");
     assert.equal(state.journeyTravel.cancelled, true, "server removal before the deadline also covers cancellation on another device");
     assert.deepEqual(state.clearing.position, feet);
-    finishVisual(state, null, start + 90_000);
+    finishVisual(state, null, cancelledAt);
     assert.equal(state.journeyTravel.phase, "returning");
     assert.equal(forestJourneyFishingFrame(state, scene).carryingFish, false);
     const request = state.clearing.requestedPoint, beganAt = state.journeyTravel.beganAt;
-    for (const timestamp of [start + 90_000, start + 95_000, start + 600_000]) {
+    for (const timestamp of [cancelledAt, cancelledAt + 5_000, start + 600_000]) {
       syncForestJourneyTravel(state, scene, null, timestamp, false, [job.id]);
       assert.deepEqual(state.clearing.position, feet);
       assert.strictEqual(state.clearing.requestedPoint, request);
@@ -124,7 +134,7 @@ test("natural completion keeps caught fish but cancellation of a ready returning
     const session = create(), state = session.state, job = journey();
     try {
       syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-      state.director.elapsed += FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+      seekCatch(state, job);
       syncForestJourneyTravel(state, scene, job, start + 600_000, false);
       finishVisual(state, job, start + 600_000);
       assert.equal(state.journeyTravel.phase, "returning");
@@ -222,15 +232,24 @@ test("return yields to a newly authorized berry collection without cancelling it
   assert.equal(state.life.garden.harvest.request.jobId, "berries-1"); session.release();
 });
 
-test("a fishing hero uses session time, remains on safe feet and exposes all fishing actions", () => {
+test("a fishing hero follows paid server catch windows and stays on safe feet without cosmetic repeat catches", () => {
   const session = create(), state = session.state, job = journey();
   syncForestJourneyTravel(state, scene, job, start + 50_000, false);
   const position = { ...state.clearing.position }, actions = new Set();
+  const first = forestJourneyFishingFrame(state, scene);
   for (let index = 0; index < 600; index++) {
     const frame = forestJourneyFishingFrame(state, scene);
     actions.add(frame.action);
     advanceForestDirector(state, .05, { autoLife: true, blocked: true, actorAway: false,
       explicitTravel: false, homeAvailable: true, dusk: 0, rain: 0, butterflies: "off", fireflies: "off" });
+    assert.deepEqual(state.clearing.position, position);
+    assert.deepEqual(frame, first, "without a newer server-time sample no extra fish or cycle appears");
+  }
+  const plan = state.journeyTravel.jobFishing, slot = plan.catches[0];
+  for (const age of [51.8, 55, slot.at - 8 * plan.unit, slot.at - 6 * plan.unit,
+    slot.at - 3.4 * plan.unit, slot.at - plan.unit, slot.at + 1]) {
+    seekFishingAge(state, job, age);
+    actions.add(forestJourneyFishingFrame(state, scene).action);
     assert.deepEqual(state.clearing.position, position);
   }
   for (const action of ["cast", "fish", "bite", "reel", "catch", "pack", "rest"]) assert.ok(actions.has(action), action);
@@ -254,23 +273,23 @@ test("without nearby water the coastal hero stays visibly at rest instead of cas
 });
 
 test("non-coastal jobs remain away and a replacement job cannot inherit the old fishing owner", () => {
-  const session = create(), state = session.state, shore = journey(), cave = journey("cave");
+  const session = create(), state = session.state, shore = journey(), forest = journey("forest");
   syncForestJourneyTravel(state, scene, shore, start, false);
   assert.ok(forestJourneyFishingFrame(state, scene));
   const position = { ...state.clearing.position };
-  syncForestJourneyTravel(state, scene, cave, start + 1000, false);
+  syncForestJourneyTravel(state, scene, forest, start + 1000, false);
   assert.equal(forestJourneyEnding(state), true);
-  assert.equal(forestJourneyActorAway(state, cave, start + 1000), false, "old tackle is put away before the next job hides its actor");
-  finishVisual(state, cave, start + 1000);
+  assert.equal(forestJourneyActorAway(state, forest, start + 1000), false, "old tackle is put away before the next job hides its actor");
+  finishVisual(state, forest, start + 1000);
   assert.equal(state.journeyTravel, undefined); assert.equal(forestJourneyFishingFrame(state, scene), null);
-  assert.equal(forestJourneyActorAway(state, cave, start + 1000), true);
+  assert.equal(forestJourneyActorAway(state, forest, start + 1000), true);
   assert.deepEqual(state.clearing.position, position);
   session.release();
 });
 
 test("confirmed tackle remains locked to its trip and the selected species survives the return and cancellation", () => {
   const session = create(), state = session.state;
-  const job = { ...journey(), fishing: { rodId: "river_rod", fishId: "fish_mooncarp" } };
+  const job = { ...journey(), rewards: { fish_mooncarp: 1, fish: 3 }, fishing: { rodId: "river_rod", fishId: "fish_mooncarp" } };
   try {
     syncForestJourneyTravel(state, scene, job, start + 60_000, false);
     assert.equal(state.journeyTravel.rodId, "river_rod"); assert.equal(state.journeyTravel.catchSpecies, "fish_mooncarp");
@@ -278,20 +297,21 @@ test("confirmed tackle remains locked to its trip and the selected species survi
     const beforeReading = structuredClone(state.journeyTravel);
     forestJourneyFishingFrame(state, scene); forestJourneyFishingFrame(state, scene, true);
     assert.deepEqual(state.journeyTravel, beforeReading, "sampling props does not mutate the selected result");
-    state.director.elapsed = state.journeyTravel.fishingAt + FOREST_FISHING_FIRST_CATCH_SECONDS + .01;
+    seekCatch(state, job);
     const firstCatch = forestJourneyFishingFrame(state, scene);
     assert.equal(firstCatch.action, "catch"); assert.equal(firstCatch.species, "fish_mooncarp");
     assert.equal(firstCatch.basketFilled, false); assert.equal(firstCatch.basketSpecies, undefined);
-    state.director.elapsed = state.journeyTravel.fishingAt + 22;
+    seekCatch(state, job, "pack");
     const firstPacked = forestJourneyFishingFrame(state, scene);
-    assert.equal(firstPacked.action, "pack"); assert.equal(firstPacked.basketSpecies, "fish_mooncarp");
+    assert.equal(firstPacked.action, "pack"); assert.equal(firstPacked.species, "fish_mooncarp");
+    assert.equal(firstPacked.basketSpecies, undefined, "the first fish does not enter the basket before its pack ends");
     const still = forestJourneyFishingFrame(state, scene, true);
     assert.equal(still.species, "fish_mooncarp"); assert.equal(still.carryingFish, false); assert.equal(still.basketFilled, false);
     // A later profile refresh can alter current equipment; only a new job ID
     // may acquire different tackle for this ongoing physical scene.
-    syncForestJourneyTravel(state, scene, { ...job, fishing: { rodId: "willow_rod", fishId: "fish_silverfin" } }, start + 61_000, false);
+    syncForestJourneyTravel(state, scene, { ...job, fishing: { rodId: "willow_rod", fishId: "fish_silverfin" } }, start + (state.journeyTravel.jobAge + .2) * 1000, false);
     assert.equal(state.journeyTravel.rodId, "river_rod"); assert.equal(state.journeyTravel.catchSpecies, "fish_mooncarp");
-    state.director.elapsed += FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+    assert.deepEqual(state.journeyTravel.jobFishing, beforeReading.jobFishing, "profile refresh cannot replace already paid fish slots");
     syncForestJourneyTravel(state, scene, job, start + 600_000, false);
     finishVisual(state, job, start + 600_000);
     assert.equal(state.journeyTravel.phase, "returning");
@@ -322,12 +342,11 @@ test("new trip identities replace old gear while pre-fishing jobs retain the ori
 });
 
 test("deadlines finish a visible reel, catch and pack before settling without restarting from account refreshes", () => {
-  for (const age of [FOREST_FISHING_FIRST_CATCH_SECONDS - 1, FOREST_FISHING_FIRST_CATCH_SECONDS + 1, 22,
-    FOREST_FISHING_CYCLE_SECONDS + FOREST_FISHING_FIRST_CATCH_SECONDS + 1]) {
+  for (const [phase, slotIndex] of [["reel", 0], ["catch", 0], ["pack", 0], ["catch", 1]]) {
     const session = create(), state = session.state, job = journey();
     try {
       syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-      state.director.elapsed = state.journeyTravel.fishingAt + age;
+      seekCatch(state, job, phase, slotIndex);
       const before = forestJourneyFishingFrame(state, scene), feet = { ...state.clearing.position };
       syncForestJourneyTravel(state, scene, job, start + 600_000, false);
       assert.equal(forestJourneyEnding(state), true); assert.equal(state.journeyTravel.phase, "fishing");
@@ -358,14 +377,16 @@ test("deadlines finish a visible reel, catch and pack before settling without re
 });
 
 test("claim or cancellation during waiting folds the exact visible tackle and cannot invent a later catch", () => {
-  for (const cancel of [false, true]) for (const age of [.4, 2, 6, FOREST_FISHING_FIRST_CATCH_SECONDS - 3.4, 15.1]) {
+  for (const cancel of [false, true]) for (const phase of ["idle", "cast", "fish", "bite", "reel"]) {
     const session = create(), state = session.state, job = journey();
     try {
       syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-      state.director.elapsed = state.journeyTravel.fishingAt + age;
+      const plan = state.journeyTravel.jobFishing;
+      const age = { idle: 60.4, cast: 62, fish: 66, bite: plan.catches[0].at - 8 * plan.unit, reel: plan.catches[0].at - 7 * plan.unit }[phase];
+      seekFishingAge(state, job, age);
       const before = forestJourneyFishingFrame(state, scene), feet = { ...state.clearing.position };
-      assert.ok(["idle", "cast", "fish", "bite", "reel"].includes(before.action));
-      const timestamp = start + (cancel ? 90_000 : 600_000);
+      assert.equal(before.action, phase);
+      const timestamp = start + (cancel ? (age + 1) * 1000 : 600_000);
       syncForestJourneyTravel(state, scene, null, timestamp, false, cancel ? [job.id] : []);
       const ending = state.journeyTravel.ending, folded = forestJourneyFishingFrame(state, scene);
       assert.equal(ending.settleAt, state.director.elapsed);
@@ -388,13 +409,14 @@ test("a cancellation receipt cleans an already visible catch but carries no old 
   const session = create(), state = session.state, job = journey();
   try {
     syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-    state.director.elapsed = state.journeyTravel.fishingAt + FOREST_FISHING_FIRST_CATCH_SECONDS + .8;
+    seekCatch(state, job);
     const original = structuredClone(job), before = forestJourneyFishingFrame(state, scene);
-    syncForestJourneyTravel(state, scene, job, start + 90_000, false, [job.id]);
+    const cancelledAt = start + (state.journeyTravel.jobAge + 1) * 1000;
+    syncForestJourneyTravel(state, scene, job, cancelledAt, false, [job.id]);
     assert.deepEqual(forestJourneyFishingFrame(state, scene), before, "the existing caught fish is put away visibly");
-    finishVisual(state, job, start + 90_000, [job.id]);
+    finishVisual(state, job, cancelledAt, [job.id]);
     assert.equal(state.journeyTravel.cancelled, true); assert.equal(state.journeyTravel.phase, "returning");
-    assert.equal(forestJourneyActorAway(state, job, start + 90_000), false);
+    assert.equal(forestJourneyActorAway(state, job, cancelledAt), false);
     const returning = forestJourneyFishingFrame(state, scene);
     assert.equal(returning.carryingFish, false); assert.equal(returning.basketSpecies, undefined);
     assertTravelTackle(returning); assert.deepEqual(job, original);
@@ -410,7 +432,7 @@ test("camera handoff and pause preserve a pending pack; a berry request starts o
   let map;
   try {
     syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-    state.director.elapsed = state.journeyTravel.fishingAt + FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+    seekCatch(state, job);
     syncForestJourneyTravel(state, scene, job, start + 600_000, false);
     const ending = state.journeyTravel.ending, before = forestJourneyFishingFrame(state, scene), feet = { ...state.clearing.position };
     state.life.garden.harvest = { request: { requestId: 7, jobId: "berries-after-shore" }, phase: "pending" };
@@ -431,7 +453,7 @@ test("reduced motion finishes a pending cleanup immediately at the same physical
   const session = create(), state = session.state, job = journey();
   try {
     syncForestJourneyTravel(state, scene, job, start + 60_000, false);
-    state.director.elapsed = state.journeyTravel.fishingAt + FOREST_FISHING_FIRST_CATCH_SECONDS + 1;
+    seekCatch(state, job);
     syncForestJourneyTravel(state, scene, job, start + 600_000, false);
     const feet = { ...state.clearing.position };
     assert.equal(forestJourneyEnding(state), true);

@@ -15,7 +15,7 @@ after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
 function state(overrides = {}) {
-  const snapshot = { ownerPublicId: "ME", revision: 1, serverTime: new Date(now).toISOString(), wallet: { coins: 500, pearls: 0 }, inventory: { wood: 20 },
+  const snapshot = { ownerPublicId: "ME", revision: 1, serverTime: new Date(now).toISOString(), wallet: { coins: 5000, pearls: 0 }, inventory: { wood: 20 },
     buildings: { home: 1, warehouse: 1 }, jobs: [], completedExplorations: 0,
     migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: structuredClone(economyCatalog), ...overrides };
   return { ...snapshot, storage: economyStorage(snapshot) };
@@ -23,7 +23,7 @@ function state(overrides = {}) {
 function construction(overrides = {}) {
   return { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "home", recipeId: null, targetLevel: 2,
     startedAt: new Date(now - 100_000).toISOString(), finishesAt: new Date(now + 500_000).toISOString(), rewards: {},
-    cost: { coins: 150, items: { wood: 20, stone: 15, planks: 6, rope: 2 } }, catalogVersion: 2, ...overrides };
+    cost: { coins: 1500, items: { wood: 20, stone: 15, planks: 6, rope: 2 } }, catalogVersion: 2, ...overrides };
 }
 function render(stationId = "home", overrides = {}) {
   const economy = { snapshot: state(), market: null, marketError: null, busy: false, uncertain: false, error: null, notice: "", now, retryAt: 0,
@@ -41,7 +41,7 @@ test("upgrade leads with its result and keeps exact costs and missing-level navi
   assert.ok(html.indexOf('aria-label="Что изменится"') < html.indexOf('aria-label="Подготовка к улучшению"'));
   assert.match(html, /aria-label="Где получить: Камень, В путь\. Есть 0, нужно [0-9]+"/);
   assert.match(html, /aria-label="Недостающие условия"/);
-  assert.match(text(html), /Монеты 500 \/ 150/);
+  assert.match(text(html), /Монеты 5 000 \/ 1 500/);
   assert.ok(!buttons(html).some(button => button.text.trim() === "Кладовая"));
   assert.doesNotMatch(html, /DEV: Дом Мохлика/);
 });
@@ -67,9 +67,9 @@ test("a ready construction has one enabled completion action and reuses normal r
 });
 
 test("active construction shows its real pearl quote without spending on first press", () => {
-  const snapshot = state({ wallet: { coins: 100, pearls: 8 }, jobs: [construction()] });
+  const snapshot = state({ wallet: { coins: 1000, pearls: 80 }, jobs: [construction()] });
   const html = render("home", { snapshot });
-  const accelerate = buttons(html).find(button => /aria-label="Ускорить за 2 жемчужины"/.test(button.attributes));
+  const accelerate = buttons(html).find(button => /aria-label="Ускорить за 20 жемчужин"/.test(button.attributes));
   assert.ok(accelerate);
   assert.doesNotMatch(accelerate.attributes, /disabled/);
   assert.match(accelerate.attributes, /aria-expanded="false"/);
@@ -85,9 +85,9 @@ test("insufficient pearls explain the shortfall and the server catalog supplies 
   const snapshot = state({ jobs: [construction()] });
   snapshot.catalog.constructionSpeedup.secondsPerPearl = 100;
   const html = render("home", { snapshot });
-  const button = buttons(html).find(button => /aria-label="Ускорить за 5 жемчужин"/.test(button.attributes));
+  const button = buttons(html).find(button => /aria-label="Ускорить за 50 жемчужин"/.test(button.attributes));
   assert.match(button.attributes, /disabled/);
-  assert.match(text(html), /Не хватает жемчужин: 5/);
+  assert.match(text(html), /Не хватает жемчужин: 50/);
 });
 
 test("a paid production order remains claimable before upgrading its station", () => {

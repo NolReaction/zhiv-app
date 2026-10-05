@@ -35,7 +35,7 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
     if (c.economyRows("SELECT 1 FROM economy_profiles WHERE user_id=?", user) { true }.isNotEmpty()) return
     c.economyUpdate("""
         INSERT INTO economy_profiles(user_id,state)
-        SELECT ?,economy_v2_initial_state(CASE WHEN EXISTS(SELECT 1 FROM economy_conversion_audit WHERE user_id=?)
+        SELECT ?,economy_v3_initial_state(CASE WHEN EXISTS(SELECT 1 FROM economy_conversion_audit WHERE user_id=?)
             THEN jsonb_set(coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb),'{resources}','{"sparks":0,"wood":0,"stone":0}'::jsonb)
             ELSE coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb) END)
         ON CONFLICT DO NOTHING

@@ -26,7 +26,7 @@ after(async () => {
 function player() { const p = identities.createDevIdentity("Тестовый житель", crypto.randomUUID()); globalThis.__economyCheatsTestToken = p.token; return p; }
 const read = p => economy.getDevEconomy(p.token, now);
 const command = (p, action = "grant_currency", targetId = "coins", quantity = 100) => ({
-  requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, expectedRevision: read(p).revision, action, targetId, quantity, totalPrice: 0,
+  requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, expectedRevision: read(p).revision, action, targetId, quantity: action === "grant_currency" ? quantity * 10 : quantity, totalPrice: 0,
 });
 const cheat = (p, action, targetId, quantity = 1) => economy.commandDevEconomyCheat(p.token, command(p, action, targetId, quantity), now);
 const normal = (p, action, targetId, quantity = 1, at = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity), at);
@@ -41,13 +41,13 @@ test("DEV currency and item grants return the real snapshot, preserve normal com
   const response = await POST(post(cmd)), result = await response.json();
   assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
   assert.equal(model.economyResultSchema.safeParse(result).success, true);
-  assert.equal(result.state.wallet.coins, 100); assert.equal(result.acceptedRevision, 1);
+  assert.equal(result.state.wallet.coins, 1000); assert.equal(result.acceptedRevision, 1);
   const replay = economy.commandDevEconomyCheat(p.token, { ...cmd, requestId: cmd.requestId.toUpperCase() }, now);
-  assert.equal(replay.replayed, true); assert.equal(replay.state.wallet.coins, 100); assert.equal(replay.state.revision, 1);
+  assert.equal(replay.replayed, true); assert.equal(replay.state.wallet.coins, 1000); assert.equal(replay.state.revision, 1);
   assert.throws(() => economy.commandDevEconomyCheat(p.token, { ...cmd, quantity: 200 }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
   cheat(p, "grant_currency", "pearls", 25);
   const granted = cheat(p, "grant_item", "berries", 400).state;
-  assert.equal(granted.wallet.pearls, 25); assert.equal(granted.inventory.berries, 400);
+  assert.equal(granted.wallet.pearls, 250); assert.equal(granted.inventory.berries, 400);
   assert.equal(granted.storage.overflow, 200, "DEV grants explicitly permit storage overflow");
   const sold = normal(p, "sell", "berries", 10).state;
   assert.equal(sold.inventory.berries, 390); assert.equal(sold.storage.overflow, 190);
@@ -86,7 +86,7 @@ test("bad actions, items, quantities, zero-level homes and extra fields cannot m
   const p = player(), base = command(p), before = read(p);
   const invalid = [null, [], { ...base, action: "erase_save" }, { ...base, action: "grant_item", targetId: "__proto__" },
     { ...base, targetId: "sparks" }, { ...base, quantity: 0 }, { ...base, quantity: -1 }, { ...base, quantity: 1.5 },
-    { ...base, quantity: 1_000_001 }, { ...base, quantity: "100" }, { ...base, totalPrice: 1 }, { ...base, extra: true },
+    { ...base, quantity: 10_000_001 }, { ...base, quantity: "100" }, { ...base, totalPrice: 1 }, { ...base, extra: true },
     { ...base, action: "finish_jobs", targetId: "market", quantity: 1 }, { ...base, action: "finish_jobs", targetId: "all", quantity: 2 },
     { ...base, action: "set_building_level", targetId: "home", quantity: 0 },
     { ...base, action: "set_building_level", targetId: "warehouse", quantity: 0 },
@@ -108,14 +108,14 @@ test("owner switches and stale revisions fail before any change and do not poiso
   cheat(p, "grant_currency", "coins", 1);
   assert.throws(() => economy.commandDevEconomyCheat(p.token, stale, now), { code: "ECONOMY_REVISION_CONFLICT" });
   const fixed = economy.commandDevEconomyCheat(p.token, { ...stale, expectedRevision: read(p).revision }, now);
-  assert.equal(fixed.state.wallet.coins, 101); assert.equal(fixed.replayed, false);
+  assert.equal(fixed.state.wallet.coins, 1010); assert.equal(fixed.replayed, false);
 });
 
 test("numeric overflow including market escrow is atomic and records no successful receipt", () => {
   const p = player(), row = fixture(p);
   row.state.wallet.coins = model.ECONOMY_MAX_BALANCE;
   row.state.wallet.pearls = model.ECONOMY_MAX_BALANCE;
-  row.state.inventory.wood = model.ECONOMY_MAX_BALANCE - 2;
+  row.state.inventory.wood = model.ECONOMY_MAX_ITEMS - 2;
   globalThis.__zhivDevEconomyStore.listings.set("reserved", { id: "reserved", sellerPublicId: p.me.user.publicId,
     itemId: "wood", quantity: 2, totalPrice: 4, status: "active", createdAt: new Date(now).toISOString(), closedAt: null });
   const before = read(p), receipts = row.receipts.size;
@@ -132,7 +132,7 @@ test("numeric overflow including market escrow is atomic and records no successf
 test("upgrade cost grants only the missing cost and leave prerequisite buildings and paid work intact", () => {
   const p = player(), row = fixture(p);
   const home = model.economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2);
-  row.state.wallet.coins = home.cost.coins + 50;
+  row.state.wallet.coins = home.cost.coins + 500;
   row.state.inventory = { wood: 500 };
   const expected = { ...row.state.inventory };
   for (const [item, amount] of Object.entries(home.cost.items)) expected[item] = Math.max(expected[item] ?? 0, amount);
@@ -165,7 +165,7 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   cheat(p, "set_building_level", "home", 2);
   const row = fixture(p); row.state.completedExplorations = 1;
   cheat(p, "grant_item", "wood", 3);
-  const listing = economy.commandDevEconomyMarket(p.token, { ...command(p, "create_listing", "wood", 2), totalPrice: 8 }, now).listing;
+  const listing = economy.commandDevEconomyMarket(p.token, { ...command(p, "create_listing", "wood", 2), totalPrice: 80 }, now).listing;
   cheat(p, "set_building_level", "home", 1);
   assert.equal(globalThis.__zhivDevEconomyStore.listings.get(listing.id).status, "active");
   assert.equal(read(p).storage.reserved, 2); assert.deepEqual(read(p).jobs, [production]);

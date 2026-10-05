@@ -77,6 +77,7 @@
 .loading .link { width: 100%; }
 @media (max-width: 360px) { .route summary { gap: 4px 5px; padding: 7px; grid-template-columns: 26px minmax(0, 1fr) auto 12px; } .routeIcon { width: 26px; height: 28px; } .routeText strong { font-size: 10px; } .routeDuration { font-size: 9px; } }
 .fishingGear { display: grid; gap: 6px; padding: 12px; border-radius: 12px; border: 1px solid var(--forest-border, #c8bd98); background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); font-size: .8125rem; line-height: 1.5; }
+.savedHook { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--forest-muted, #59624d); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
 .fishingGear strong { color: var(--forest-ink, #394d3e); font-weight: 600; }
 .fishingGear p { margin: 0; color: var(--forest-muted, #59624d); font-size: .75rem; }
 .fishingGear > button { min-height: 44px; justify-self: start; text-align: left; }

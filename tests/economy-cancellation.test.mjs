@@ -45,11 +45,11 @@ test("abandoning a supplied trip never refunds its consumed provisions or histor
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings.home = route.requiredHomeLevel;
   row.state.inventory = { ...route.cost.items, fish: 3 };
-  row.state.wallet = { coins: 73, pearls: 2 };
+  row.state.wallet = { coins: 730, pearls: 20 };
   const started = issue(p, "start_exploration", route.id).state, trip = started.jobs[0];
   assert.notDeepEqual(started.inventory, { ...route.cost.items, fish: 3 });
   // Persisted jobs can originate in an older catalog with a coin cost.
-  row.state.jobs[0].cost.coins = 25;
+  row.state.jobs[0].cost.coins = 250;
   const result = issue(p, "cancel_exploration", trip.id).state;
   assert.deepEqual(result.inventory, started.inventory);
   assert.deepEqual(result.wallet, started.wallet);

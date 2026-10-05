@@ -1,6 +1,7 @@
 "use client";
 
 import { Heart, Leaf, Search, Sprout } from "lucide-react";
+import type { ReactNode } from "react";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -18,6 +19,7 @@ type Props = {
   level: number;
   bestStreakDays: number;
   onCall?: () => void;
+  rewards?: ReactNode;
 };
 
 const feelings = {
@@ -49,7 +51,7 @@ export function WorldProfileMenu({ presenceKey, ...props }: Props) {
   return <WorldProfileContent {...props} observation={observation} onTakeOver={() => takeOverForestSession(presenceKey)} />;
 }
 
-export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver }: Omit<Props, "presenceKey"> & {
+export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver, rewards }: Omit<Props, "presenceKey"> & {
   observation: ForestObservation | null;
   onTakeOver?: () => void;
 }) {
@@ -95,8 +97,10 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
       <p>{memoryMessage(observation)}</p>
       {sync?.canTakeOver && onTakeOver && <button type="button" className={styles.action} onClick={onTakeOver}>Продолжить здесь</button>}
     </div>}
-    {onCall && <button type="button" className={styles.action} disabled={!observation || observation.paused} onClick={onCall}>
-      <Heart size={15} aria-hidden="true" />Позвать Мохлика
-    </button>}
+    {(rewards || onCall) && <div className={styles.actions}>{rewards}
+      {onCall && <button type="button" className={styles.action} disabled={!observation || observation.paused} onClick={onCall}>
+        <Heart size={15} aria-hidden="true" />Позвать Мохлика
+      </button>}
+    </div>}
   </div>;
 }

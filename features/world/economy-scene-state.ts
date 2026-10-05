@@ -3,6 +3,7 @@ import { initialPreviewLevels } from "./tiled/preview-state";
 
 /** Server-owned exploration; the scene neither completes it nor awards its goods. */
 export type EconomySceneJourney = { id: string; startedAt: string; finishesAt: string; label?: string; routeId?: string;
+  rewards?: Readonly<Record<string, number>>;
   fishing?: { rodId: string; fishId: string } };
 
 /** A home-circle status can show work without making the character leave home. */

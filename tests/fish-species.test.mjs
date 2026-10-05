@@ -12,8 +12,10 @@ after(() => vite.close());
 const { FISH_SPECIES_IDS, FISH_SPECIES, fishShapes, fishSpeciesId } = await vite.ssrLoadModule("/features/world/fish-species.ts");
 const { drawFishSprite } = await vite.ssrLoadModule("/features/world/fish-sprite.ts");
 const { FishIcon } = await vite.ssrLoadModule("/features/world/fish-icon.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 
-test("the four species have distinct silhouettes and bounded full-tail geometry for water clearance", () => {
+test("every catalog species has a distinct silhouette and bounded full-tail geometry for water clearance", () => {
+  assert.deepEqual([...FISH_SPECIES_IDS].sort(), economyCatalog.fishing.fish.map(fish => fish.itemId).sort());
   const bodies = new Set();
   for (const species of FISH_SPECIES_IDS) {
     bodies.add(JSON.stringify(FISH_SPECIES[species].radius));
@@ -26,7 +28,7 @@ test("the four species have distinct silhouettes and bounded full-tail geometry 
       }
     }
   }
-  assert.equal(bodies.size, 4);
+  assert.equal(bodies.size, FISH_SPECIES_IDS.length);
   for (const invalid of [undefined, null, {}, "constructor", "__proto__", "unknown_fish"]) assert.equal(fishSpeciesId(invalid), "fish");
 });
 
@@ -53,7 +55,7 @@ test("fish icons need no asset requests or shared SVG IDs and expose optional ac
     assert.doesNotMatch(html, /\bid="|<image|<use|<foreignObject|url\(|(?:href|src)=/);
     assert.ok(html.includes(FISH_SPECIES[species].colors.body)); drawings.add(html);
   }
-  assert.equal(drawings.size, 4);
+  assert.equal(drawings.size, FISH_SPECIES_IDS.length);
   const named = renderToStaticMarkup(createElement(FishIcon, { species: "fish_silverfin", label: "Серебринка" }));
   assert.match(named, /role="img" aria-label="Серебринка"/); assert.doesNotMatch(named, /aria-hidden/);
 });
