@@ -2850,7 +2850,11 @@ test("coastal jobs keep the real hero visible through walking, fishing, camera h
     world.configure({ ...traveling, view: "world" }); clock.advance(1);
     assert.ok(probe.state.director.elapsed > paused);
     world.setTime(700_000);
-    assert.equal(probe.state.journeyTravel.phase, "returning");
+    assert.equal(probe.state.journeyTravel.phase, "fishing");
+    assert.ok(probe.state.journeyTravel.ending, "the server deadline first folds the visible tackle");
+    assert.deepEqual(probe.state.clearing.position, feet);
+    world.notice(); assert.equal(probe.state.reaction, 0, "a tap cannot steal the actor during cleanup");
+    clock.until(() => probe.state.journeyTravel.phase === "returning", "cleanup finishes before walking home");
     clock.until(() => !probe.state.journeyTravel, "the same walker returns after the server deadline", 500);
     assert.deepEqual(probe.state.clearing.position, home);
     assert.ok(sampleHero(world, env, pixelSprite).body);
@@ -2901,16 +2905,18 @@ test("confirmed cancellation reaches both mounted cameras and clears caught fish
       const feet = { ...probe.state.clearing.position };
       const cancelled = { ...initial, economyJourney: null, serverNow: ready ? 701_000 : 224_000, cancelledExplorations: [job.id] };
       circle.configure(cancelled); world.configure({ ...cancelled, view: "world" });
-      assert.equal(probe.state.journeyTravel.phase, "returning");
       assert.equal(probe.state.journeyTravel.cancelled, true);
       assert.deepEqual(probe.state.clearing.position, feet);
+      if (!ready) assert.ok(probe.state.journeyTravel.ending, "an active cancellation completes its visible gesture first");
+      clock.until(() => probe.state.journeyTravel.phase === "returning", "a cancelled catch finishes putting away its tackle");
       assert.equal(forestJourneyFishingFrame(probe.state, TILED_WORLD).carryingFish, false);
       assert.deepEqual(circle.position(), world.position());
       const beganAt = probe.state.journeyTravel.beganAt;
       world.configure({ ...cancelled, view: "world" });
       assert.equal(probe.state.journeyTravel.beganAt, beganAt, "a repeated receipt cannot restart the walk");
+      const handoffFeet = { ...probe.state.clearing.position };
       world.dispose(); await flush();
-      assert.deepEqual(probe.state.clearing.position, feet, "camera handoff preserves the cancelled return");
+      assert.deepEqual(probe.state.clearing.position, handoffFeet, "camera handoff preserves the cancelled return");
       clock.until(() => !probe.state.journeyTravel, "the empty-handed actor returns using the shared collision-safe walker", 500);
       assert.deepEqual(probe.state.clearing.position, probe.state.clearing.home);
     } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
@@ -3025,8 +3031,10 @@ test("DEV fishing rehearses the real trip, stops with a safe return and yields t
     const atShore = { ...probe.state.clearing.position };
     worldDevStore.triggerLife("idle");
     assert.equal(probe.state.fishingPreview, undefined);
-    assert.equal(probe.state.journeyTravel.phase, "returning");
+    assert.equal(probe.state.journeyTravel.phase, "fishing");
+    assert.ok(probe.state.journeyTravel.ending, "DEV stopping uses the same catch cleanup as a confirmed journey");
     assert.deepEqual(probe.state.clearing.position, atShore, "stop never teleports home");
+    clock.until(() => probe.state.journeyTravel.phase === "returning", "DEV stop finishes the current catch first");
     clock.until(() => !probe.state.journeyTravel, "DEV stop completes its return even with autoLife off", 500);
     assert.deepEqual(probe.state.clearing.position, home);
     const confirmed = { id: "confirmed-cave", routeId: "cave", startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };

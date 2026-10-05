@@ -105,11 +105,18 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       oval(22 + side * 2, faceY - 1, 9, 8, c.light);
       rect(19, faceY - 12, 9, 5, c.moss); rect(17, faceY - 10, 12, 3, c.moss);
       rect(21, faceY - 13, 3, 2, c.mossLight); rect(24, faceY - 8, 3, 2, c.moss);
-      const look = direction === "left" ? rig?.fishingStance ? -5 : -3 : direction === "right" ? rig?.fishingStance ? 5 : 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
+      const look = direction === "left" ? rig?.fishingStance ? -2 : -3 : direction === "right" ? rig?.fishingStance ? 2 : 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
       for (const x of [19 + look, 29 + look]) {
         if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
-        else { oval(x, faceY, rig?.fishingStance && (side > 0 ? x === 19 + look : x === 29 + look) ? 1 : 2,
-          pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
+        else if (rig?.fishingStance) {
+          // A compact rounded glyph retains two-pixel caps. Rasterizing a
+          // narrow ellipse creates isolated tips which read as a cross at zoom.
+          const top = pose === "wonder" ? faceY - 3 : faceY - 2;
+          const height = pose === "wonder" ? 6 : 5;
+          rect(x - 1, top + 1, 3, height - 2, c.eye);
+          rect(x - 1, top, 2, 1, c.eye); rect(x - 1, top + height - 1, 2, 1, c.eye);
+          rect(x - 1, top + 1, 1, 1, "#fff8e8");
+        } else { oval(x, faceY, 2, pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
       }
       rect(23 + look, faceY + 3, 3, 2, c.outline); rect(24 + look, faceY + 5, 1, 2, c.outline);
       if (pose === "yawn") {

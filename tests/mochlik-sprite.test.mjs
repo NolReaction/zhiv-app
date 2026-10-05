@@ -124,3 +124,19 @@ test("a fishing lean turns the gaze and torso while both planted paws retain the
     assert.equal(pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch }), ordinary);
   }
 });
+
+test("shore fishing eyes use equal compact rounded glyphs with two-pixel caps instead of isolated cross tips", () => {
+  for (const direction of ["front", "left", "right"]) for (const pose of ["fish", "wonder", "present"]) {
+    const sprite = pixelSprite(pose, direction, 0, undefined, { gardening: true, crouch: 1, fishingStance: true });
+    const eyes = [...sprite.pixels].filter(([, color]) => color === "#30291d").map(([key]) => key.split(":").map(Number));
+    const columns = [...new Set(eyes.map(([x]) => x))].sort((a, b) => a - b);
+    const groups = [columns.filter(x => x < columns[0] + 4), columns.filter(x => x >= columns[0] + 4)];
+    for (const group of groups) {
+      assert.equal(group.length, 3, "each open eye remains three source pixels wide");
+      const rows = new Map();
+      for (const [, y] of eyes.filter(([x]) => group.includes(x))) rows.set(y, (rows.get(y) ?? 0) + 1);
+      assert.equal(rows.size, pose === "wonder" ? 6 : 5);
+      assert.ok([...rows.values()].every(count => count >= 2), "neither cap nor a highlighted interior row has a lone protruding pixel");
+    }
+  }
+});

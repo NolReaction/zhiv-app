@@ -16,6 +16,7 @@ export type PleskSpriteRig = {
 };
 export const PLESK_SPRITE_SIZE = 48;
 export const PLESK_SPRITE_CACHE_LIMIT = 256;
+export type PleskShoreSpriteOptions = { externalArms?: boolean; lean?: number; crouch?: number };
 const cache = new Map<string, HTMLCanvasElement>();
 const rigs = new WeakMap<HTMLCanvasElement, PleskSpriteRig>();
 export const pleskSpriteRig = (sprite: HTMLCanvasElement) => rigs.get(sprite);
@@ -32,7 +33,7 @@ const lerp = (a: WorldPoint, b: WorldPoint, t: number) => point(a.x + (b.x - a.x
 /** Eight walking poses; finite phase buckets for deliberate actions. The cache
  * stores raster poses, never the unbounded world clock or actor coordinates. */
 export function pleskSprite(action: FishingAction, direction: PixelDirection, frame: number,
-  phase = 0, still = false, motion?: FishingMotion): HTMLCanvasElement {
+  phase = 0, still = false, motion?: FishingMotion, shore?: PleskShoreSpriteOptions): HTMLCanvasElement {
   action = actions.includes(action) ? action : "idle";
   direction = directions.includes(direction) ? direction : "front";
   const clockFrame = still ? 0 : Number.isFinite(frame) ? ((Math.trunc(frame) % 32) + 32) % 32 : 0;
@@ -45,7 +46,10 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const closedEyes = blink || action === "rest" && (still || clockFrame >= 4);
   const fishScale = Math.round(Math.max(.7, Math.min(1.5, (Number.isFinite(motion?.catchScale) ? motion!.catchScale! : motion?.outcome === "large" ? 1.35 : 1))) * 20) / 20;
   const carryingBasket = Boolean(motion?.carryingBasket && ["walk", "idle", "greet"].includes(action));
-  const key = `${carryingBasket}:${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}:${fishScale}:${motion?.outcome === "miss"}`;
+  const externalArms = Boolean(shore?.externalArms && ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"].includes(action));
+  const shoreLean = externalArms ? Math.round(Math.max(-3, Math.min(3, Number.isFinite(shore?.lean) ? shore!.lean! : 0))) : 0;
+  const shoreCrouch = externalArms ? Math.round(Math.max(0, Math.min(3, Number.isFinite(shore?.crouch) ? shore!.crouch! : 0))) : 0;
+  const key = `${externalArms}:${shoreLean}:${shoreCrouch}:${carryingBasket}:${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}:${fishScale}:${motion?.outcome === "miss"}`;
   const saved = cache.get(key);
   if (saved) { cache.delete(key); cache.set(key, saved); return saved; }
 
@@ -79,14 +83,14 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const rise = walking ? [0, 0, -1, -1, 0, 0, -1, -1][index] : 0;
   const phasePart = stage / 12;
   const pulling = action === "bite" || action === "reel";
-  const lean = variation === "struggle" ? -3 + (index > 3 ? 1 : 0) : variation === "escape" ? phasePart > .5 ? 1 : -2
+  const lean = externalArms ? shoreLean : variation === "struggle" ? -3 + (index > 3 ? 1 : 0) : variation === "escape" ? phasePart > .5 ? 1 : -2
     : variation === "check" ? 1 : action === "cast" ? Math.round(-2 + phasePart * 4)
     : pulling ? -Math.round(phasePart * 2) : action === "pack" ? -Math.round(Math.sin(phasePart * Math.PI) * 2) : 0;
-  const crouch = resting ? 5 : action === "pack" ? Math.round(Math.sin(phasePart * Math.PI) * 3)
+  const crouch = externalArms ? shoreCrouch : resting ? 5 : action === "pack" ? Math.round(Math.sin(phasePart * Math.PI) * 3)
     : pulling && phasePart < 1 && index % 4 > 1 ? 1 : 0;
-  const breath = !still && !walking && (action === "idle" || action === "fish") && index > 4 ? -1 : 0;
-  const body = point(24 + (sideView ? lean : 0), 33 + rise + Math.min(2, crouch) + breath);
-  const head = point((sideView ? 26 : 24) + (sideView ? lean : 0), 18 + rise + crouch + breath
+  const breath = !externalArms && !still && !walking && (action === "idle" || action === "fish") && index > 4 ? -1 : 0;
+  const body = point(24 + (sideView || externalArms ? lean : 0), 33 + rise + Math.min(2, crouch) + breath);
+  const head = point((sideView ? 26 : 24) + (sideView || externalArms ? lean : 0), 18 + rise + crouch + breath
     + (variation === "check" ? 1 : variation === "nibble" ? -1 : 0)
     + (action === "greet" && phasePart > .35 && phasePart < .7 ? 1 : 0));
   const tail = point(back ? 24 + (walking ? step : index === 4 ? 1 : 0) : sideView ? 9 - step : 9 + (index > 3 ? 1 : 0),
@@ -191,7 +195,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     rect(to.x, to.y - 1, 2, 1, near ? c.shine : c.light);
   };
   if (!back) drawTail();
-  if (sideView) drawArm(farShoulder, otherHand, false);
+  if (sideView && !externalArms) drawArm(farShoulder, otherHand, false);
   const bodyCompression = Math.min(2, crouch);
   oval(body.x, body.y, resting ? 13 : 11, resting ? 9 : 11 - bodyCompression, c.outline);
   oval(body.x, body.y - 1, resting ? 12 : 10, resting ? 8 : 10 - bodyCompression, c.dark);
@@ -269,8 +273,10 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     rect(head.x - 3, head.y + 6, 5, 1, c.dark);
   }
   if (direction !== "left") drawFlower();
-  if (!sideView) drawArm(farShoulder, otherHand, false);
-  drawArm(shoulder, grip, true);
+  if (!externalArms) {
+    if (!sideView) drawArm(farShoulder, otherHand, false);
+    drawArm(shoulder, grip, true);
+  }
 
   const mappedFeet = feet.map(mirror), bottom = Math.max(...mappedFeet.map(foot => foot.y + 3));
   const planted = mappedFeet.filter(foot => foot.y + 3 === bottom);

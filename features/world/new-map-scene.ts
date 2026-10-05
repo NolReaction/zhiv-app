@@ -40,7 +40,7 @@ import { forestPersistenceOverridden } from "./forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "./dev/world-dev-store";
 import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from "./economy-scene-state";
 import { interactiveMapObjects } from "./site-interactions";
-import { forestJourneyActorAway, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
+import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
 
 import { advancePleskMind, pleskMindFrame, noticePleskMind } from "./plesk-mind";
 import { previewForestResidents } from "./dev/forest-resident-preview";
@@ -302,7 +302,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function syncCooking() {
     if (!session.isOwner()) return;
     const selection = dev?.cookingPreview;
-    const context = { blocked: exploring() || forestJourneyWalking(state) || dev?.showHero === false,
+    const context = { blocked: exploring() || forestJourneyWalking(state) || forestJourneyEnding(state) || dev?.showHero === false,
       still: reducedMotion(options, dev) };
     if (selection && session.consumeEvent("cooking-preview", selection.id)) startCookingPreview(state, selection, context);
     advanceCookingPreview(state, selection, context);
@@ -331,7 +331,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const leaseMode = state.memory.sync?.mode;
     const leaseBlocked = active() && !session.isSimulationAllowed() && (leaseMode === "other-device" || leaseMode === "error");
     if (!session.isOwner() && !leaseBlocked) return;
-    if (request && Number.isSafeInteger(request.requestId) && request.requestId > 0) {
+    // Keep the request unconsumed until the visible catch/tackle is put away.
+    if (request && Number.isSafeInteger(request.requestId) && request.requestId > 0 && (!forestJourneyEnding(state) || leaseBlocked)) {
       const fresh = session.consumeEvent("garden-harvest", request.requestId);
       if (fresh || leaseBlocked && garden.harvest?.request.requestId === request.requestId) {
         if (leaseBlocked) {
@@ -394,7 +395,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const visitors = resident ? [{ ...resident, hand: pleskWildlifeHand(resident),
       available: !dev?.residentPreview && !state.pleskMind?.noticePending && (!resident.carryingFish || resident.action === "rest")
         && ["idle", "rest", "greet"].includes(resident.action) }] : [];
-    return { autoLife: !cooking && dev?.autoLife !== false, blocked: blocked || exploring() || forestJourneyWalking(state)
+    return { autoLife: !cooking && dev?.autoLife !== false, blocked: blocked || exploring() || forestJourneyWalking(state) || forestJourneyEnding(state)
       || Boolean(cooking && cooking.startedAt !== null), actorAway: actorAway(),
       explicitTravel: !blocked && (forestJourneyWalking(state) || Boolean(cooking && cooking.startedAt === null)), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
@@ -582,7 +583,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     });
   }
   function requestLife(kind: WorldDevLifeAction) {
-    if (exploring()) return;
+    if (exploring() || forestJourneyEnding(state)) return;
     state.reaction = 0;
     requestForestDirective(state, kind, directorOptions());
   }
@@ -630,11 +631,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         } else if (kind !== "plesk") {
           stopFishingPreview();
           // DEV scenery cannot cancel a confirmed journey or its safe return.
-          if (!exploring() && !forestJourneyWalking(state)) applyForestDevScenario(state, kind, directorOptions());
+          if (!exploring() && !forestJourneyWalking(state) && !forestJourneyEnding(state)) applyForestDevScenario(state, kind, directorOptions());
         }
       } else if (!dev.scenarioEvent && before.scenarioEvent) {
         stopFishingPreview();
-        if (!forestJourneyWalking(state)) cancelForestDirector(state);
+        if (!forestJourneyWalking(state) && !forestJourneyEnding(state)) cancelForestDirector(state);
         state.birdStarted = null;
       }
     }
@@ -647,7 +648,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   });
   prepareArtwork();
   function notice() {
-    if (disposed || exploring() || !session.isSimulationAllowed()) return;
+    if (disposed || exploring() || forestJourneyEnding(state) || !session.isSimulationAllowed()) return;
     if (noticeCookingPreview(state, dev?.cookingPreview)) {
       if (active()) session.publish();
       resume(); return;

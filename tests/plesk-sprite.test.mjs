@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { pleskSprite, pleskSpriteRig, PLESK_SPRITE_CACHE_LIMIT } = await vite.ssrLoadModule("/features/world/plesk-sprite.ts");
 const { drawPleskResident, pleskFishingAnchors } = await vite.ssrLoadModule("/features/world/plesk-painter.ts");
-const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, fishingBasketHandle, FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, fishingBasketHandle, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 function canvas() {
   const result = { width: 0, height: 0, pixels: new Map() }; let offset = 0, scale = 1;
@@ -97,12 +97,14 @@ test("source poses are normalized, stationary under reduced motion, reused and e
 });
 
 function context() {
-  const draws = [], paths = [], palms = [], events = [], translations = [], stack = []; let path = [];
-  return { draws, paths, palms, events, translations, imageSmoothingEnabled: true,
+  const draws = [], paths = [], strokes = [], palms = [], events = [], translations = [], stack = []; let path = [];
+  return { draws, paths, strokes, palms, events, translations, imageSmoothingEnabled: true,
     save() { stack.push({ imageSmoothingEnabled: this.imageSmoothingEnabled }); }, restore() { Object.assign(this, stack.pop()); },
-    drawImage(...args) { draws.push({ args, smoothing: this.imageSmoothingEnabled }); },
+    drawImage(...args) { draws.push({ args, smoothing: this.imageSmoothingEnabled }); events.push("body"); },
     beginPath() { path = []; }, moveTo(x, y) { path.push({ x, y }); }, lineTo(x, y) { path.push({ x, y }); },
-    quadraticCurveTo() {}, ellipse() {}, arc() {}, closePath() {}, fill() {}, clip() {}, stroke() { paths.push(path); events.push("prop"); },
+    quadraticCurveTo() {}, ellipse() {}, arc() {}, closePath() {}, fill() {}, clip() {}, stroke() {
+      paths.push(path); strokes.push({ path, width: this.lineWidth, color: this.strokeStyle, event: events.length }); events.push("prop");
+    },
     fillRect(...args) { palms.push(args); events.push("palm"); },
     translate(x, y) { translations.push({ x, y }); }, rotate() {}, scale() {},
   };
@@ -114,7 +116,7 @@ test("Pleska paints at her recorded ground contact and the rod starts at the art
   const { args: [sprite, x, y, width, height], smoothing } = ctx.draws[0], rig = pleskSpriteRig(sprite);
   assert.equal(y + rig.contact.bottom / 48 * height, frame.y); assert.equal(width, frame.size);
   assert.equal(smoothing, false); assert.equal(ctx.imageSmoothingEnabled, true);
-  const expectedGrip = { x: x + rig.grip.x / 48 * width, y: y + rig.grip.y / 48 * height };
+  const expectedGrip = pleskFishingAnchors(frame, rig, false).grip;
   assert.deepEqual(ctx.translations[0], expectedGrip, "the shared rod renderer uses the articulated hand as its local origin");
   assert.equal(ctx.events.at(-1), "palm", "fingers paint over the handle, not below it");
   assert.ok(ctx.palms.some(([left, top, w, h]) => expectedGrip.x >= left && expectedGrip.x <= left + w
@@ -123,6 +125,72 @@ test("Pleska paints at her recorded ground contact and the rod starts at the art
   assert.ok(bounds.x <= x && bounds.y <= y);
   assert.ok(bounds.x + bounds.width >= frame.waterTarget.x + frame.size * .2);
   assert.ok(bounds.y + bounds.height >= frame.waterTarget.y + frame.size * .2);
+});
+
+test("shore rasters omit old arms with separate bounded cache keys while ordinary poses keep their complete rig", () => {
+  for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) {
+    const ordinary = pleskSprite(action, "right", 3, .4);
+    const shore = pleskSprite(action, "right", 3, .4, false, undefined, { externalArms: true, lean: 1, crouch: 1 });
+    assert.notStrictEqual(shore, ordinary); assert.notEqual(signature(shore), signature(ordinary));
+    assert.equal(pleskSpriteRig(shore).arms.length, 0, "only the world arm painter owns a shore arm");
+    assert.equal(pleskSpriteRig(ordinary).arms.length, 2);
+    assert.equal(pleskSpriteRig(shore).contact.bottom, 45);
+    assert.strictEqual(shore, pleskSprite(action, "right", 3, .4, false, undefined, { externalArms: true, lean: 1.2, crouch: 1.1 }),
+      "body lean/compression use bounded integer buckets");
+  }
+  for (const action of ["walk", "trade", "greet"]) {
+    assert.strictEqual(pleskSprite(action, "front", 3, .4),
+      pleskSprite(action, "front", 3, .4, false, undefined, { externalArms: true, lean: 3, crouch: 3 }),
+      "non-shore actions cannot discard their raster arms");
+  }
+});
+
+test("the actual pier painter aims right from the feet and keeps fixed arms on the rod, reel and caught fish", () => {
+  const base = { x: 1214, y: 744, size: 36, direction: "front", frame: 0, carryingFish: false,
+    waterTarget: { x: 1239.943, y: 733.254 }, rodId: "willow_rod", outcome: "large", catchScale: 1.35, species: "fish_mooncarp" };
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y), pixel = base.size / 48;
+  for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) for (let index = 0; index <= 20; index++) {
+    const phase = index / 20, frame = { ...base, action, phase, frame: index % 8, carryingFish: ["catch", "pack"].includes(action) };
+    const ctx = context(); drawPleskResident(ctx, frame, false);
+    const [sprite, x, y, width, height] = ctx.draws[0].args, body = pleskSpriteRig(sprite);
+    const rig = pleskFishingAnchors(frame, body, false), directed = { ...frame, direction: rig.bodyDirection };
+    assert.equal(rig.bodyDirection, "right", "a front-facing pier frame turns toward its actual water point");
+    assert.equal(body.arms.length, 0);
+    assert.equal(y + body.contact.bottom / 48 * height, base.y); assert.equal(width, base.size);
+    const visibleArms = ctx.strokes.filter(stroke => stroke.path.length === 3 && stroke.color === "#3c5258");
+    assert.equal(visibleArms.length, 2);
+    for (const [armIndex, arm] of [rig.farArm, rig.nearArm].entries()) {
+      assert.deepEqual(visibleArms[armIndex].path, [arm.shoulder, arm.elbow, arm.hand]);
+      assert.ok(Math.abs(distance(arm.shoulder, arm.elbow) - base.size * .21) < 1e-9, "upper bone has one length");
+      assert.ok(Math.abs(distance(arm.elbow, arm.hand) - base.size * .23) < 1e-9, "forearm has one length");
+    }
+    assert.ok(visibleArms[0].event < ctx.events.indexOf("body"), "far arm belongs behind the body");
+    assert.ok(visibleArms[1].event > ctx.events.indexOf("body"), "near arm belongs in front in profile");
+    assert.ok(distance(rig.nearHand, fishingTackleFrame(directed, false, rig).grip) <= pixel, "visible paw clasps the actual handle");
+    if (["cast", "fish", "bite"].includes(action) || action === "reel" && phase <= FISHING_REEL_HANDOFF) {
+      const reel = fishingReelHand(directed, action !== "reel", rig);
+      assert.ok(distance(rig.farHand, reel) <= pixel, `${action}/${phase}: supporting/reeling paw touches the reel within one native pixel`);
+    }
+    if (action === "catch" || action === "pack" && phase < FISHING_PACK_RELEASE) {
+      assert.ok(distance(rig.farHand, fishingCatchFrame(directed, false, rig).wrist) <= pixel,
+        "visible free paw holds the actual underside instead of disconnected fingers");
+    }
+    assert.ok(ctx.palms.some(([left, top, w, h]) => rig.grip.x >= left && rig.grip.x <= left + w
+      && rig.grip.y >= top && rig.grip.y <= top + h), "foreground fingers cross the true handle");
+    assert.ok(Number.isFinite(x));
+  }
+});
+
+test("shore arms freeze under reduced motion, back-facing arms stay behind, and wildlife retains the original palm", () => {
+  const base = { x: 1214, y: 744, size: 36, direction: "front", action: "reel", phase: .2, frame: 1,
+    carryingFish: false, waterTarget: { x: 1214, y: 700 }, outcome: "large", variation: "struggle" };
+  const first = context(), later = context(); drawPleskResident(first, base, true); drawPleskResident(later, { ...base, phase: .9, frame: 7 }, true);
+  assert.deepEqual(first.draws, later.draws); assert.deepEqual(first.paths, later.paths); assert.deepEqual(first.palms, later.palms);
+  for (const ctx of [first, later]) for (const stroke of ctx.strokes.filter(item => item.path.length === 3 && item.color === "#3c5258")) {
+    assert.ok(stroke.event < ctx.events.indexOf("body"), "both arms belong behind the back-facing body");
+  }
+  const wildlife = context(); drawPleskResident(wildlife, { ...base, action: "greet", wildlife: true }, false);
+  assert.equal(pleskSpriteRig(wildlife.draws[0].args[0]).arms.length, 2);
 });
 
 test("the round face keeps its short muzzle inside the skull and its clip on one anatomical temple", () => {

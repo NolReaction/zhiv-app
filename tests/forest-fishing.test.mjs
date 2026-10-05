@@ -7,11 +7,27 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingActionFrame, fishingWaterTarget, fishingCastTarget, FOREST_FISHING_CYCLE_SECONDS, FOREST_FISHING_FIRST_CATCH_SECONDS, forestFishingCatchState, FISHING_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
+const { fishingActionFrame, fishingWaterTarget, fishingCastTarget, fishingCleanupEnd, FOREST_FISHING_CYCLE_SECONDS, FOREST_FISHING_FIRST_CATCH_SECONDS, forestFishingCatchState, FISHING_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
 const { isForestWater } = await vite.ssrLoadModule("/features/world/forest-water.ts");
-const { FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { FISHING_PACK_RELEASE, FISHING_REEL_HOOK } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const polygon = (x, y, width, height) => ({ points: [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }] });
 const scene = () => ({ width: 300, height: 300, water: { surfaces: [polygon(120, 0, 180, 300)], exclusions: [] } });
+
+test("only an already visible successful reel or catch completes its own pack before departure", () => {
+  for (const offset of [0, FOREST_FISHING_CYCLE_SECONDS, FOREST_FISHING_CYCLE_SECONDS * 5]) {
+    for (let age = .01; age < FOREST_FISHING_CYCLE_SECONDS; age += .13) {
+      const elapsed = offset + age, frame = fishingActionFrame(elapsed), finish = fishingCleanupEnd(elapsed);
+      if ((["catch", "pack"].includes(frame.action) || frame.action === "reel" && frame.phase > FISHING_REEL_HOOK) && frame.outcome !== "miss") {
+        assert.ok(Number.isFinite(finish) && finish > elapsed && finish - elapsed < 11);
+        const after = fishingActionFrame(finish + 1e-7);
+        assert.equal(after.action, "rest"); assert.equal(after.castIndex, frame.castIndex);
+        assert.equal(after.basketFilled, true); assert.equal(after.basketSpecies, frame.species);
+        assert.equal(forestFishingCatchState(finish).caught, forestFishingCatchState(elapsed).caught + (frame.action === "reel" ? 1 : 0));
+      } else assert.equal(finish, undefined, `${frame.action}/${frame.outcome} cannot finish a new decorative catch`);
+    }
+  }
+  for (const elapsed of [NaN, Infinity, -1]) assert.equal(fishingCleanupEnd(elapsed), undefined);
+});
 
 test("four deterministic casts vary waiting, line checks, failed bites and large catches without owning inventory", () => {
   const outcomes = new Set(), variations = new Set(), sizes = new Set(), actions = new Set();

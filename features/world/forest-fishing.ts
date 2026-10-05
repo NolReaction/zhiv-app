@@ -1,12 +1,12 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
-import { FISHING_PACK_RELEASE, type FishingMotion } from "./fishing-props";
+import { FISHING_PACK_RELEASE, FISHING_REEL_HOOK, type FishingMotion, type FishingPropFrame } from "./fishing-props";
 import { isForestWater } from "./forest-water";
 import type { FishSpeciesId } from "./fish-species";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export const FISHING_WATER_LIMITS = { rings: 13, directions: 48, polygons: 256, edges: 20_000 } as const;
 export type FishingAction = "walk" | "idle" | "cast" | "fish" | "bite" | "reel" | "catch" | "pack" | "rest";
-export type ForestFishingFrame = WorldPoint & FishingMotion & {
+export type ForestFishingFrame = WorldPoint & FishingMotion & Pick<FishingPropFrame, "settling"> & {
   size: number; direction: PixelDirection; action: FishingAction; phase: number; frame: number;
   carryingFish: boolean; basketFilled?: boolean; waterTarget?: WorldPoint;
 };
@@ -130,6 +130,18 @@ export function forestFishingCatchState(elapsed: number): { caught: number; pack
   const time = clock(elapsed), loops = Math.floor(time / duration), age = time % duration;
   return { caught: loops * catches.length + catches.filter(at => age + 1e-9 >= at).length,
     packed: loops * packed.length + packed.filter(at => age + 1e-9 >= at).length };
+}
+
+/** A visible hooked/held catch finishes its own pack before the actor leaves.
+ * Other phases have no new catch to complete and may fold the tackle now.
+ * This is a local scene deadline, unrelated to the server job's reward. */
+export function fishingCleanupEnd(elapsed: number): number | undefined {
+  const time = clock(elapsed), age = time % duration, loops = Math.floor(time / duration);
+  const stage = stages.find(item => age < item.end) ?? stages[0];
+  if (!["reel", "catch", "pack"].includes(stage.action) || stage.outcome === "miss") return;
+  if (stage.action === "reel" && (age - stage.start) / stage.seconds <= FISHING_REEL_HOOK) return;
+  const pack = stages.find(item => item.castIndex === stage.castIndex && item.action === "pack");
+  return pack ? loops * duration + pack.end : undefined;
 }
 
 /** Four deterministic casts differ in patience, line checks, false nibbles,

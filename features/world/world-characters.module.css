@@ -1,0 +1,20 @@
+.library { min-width: 0; }
+.library .trigger { display: flex; width: 100%; justify-content: flex-start; min-height: 48px; padding: 9px 10px; gap: 9px; border: 0; border-radius: 10px; background: transparent; font-size: 13px; text-align: left; }
+.triggerLabel { display: flex; flex: 1; flex-direction: column; gap: 3px; line-height: 1.3; }
+.triggerLabel small { color: #b8c9a7; font-size: 10px; }
+.chevron { flex: 0 0 auto; }
+.chevron[data-expanded] { transform: rotate(180deg); }
+.contents { padding: 6px 0 10px; }
+.hint { margin: 0 4px 10px; color: #b2c3a6; font-size: 10px; line-height: 1.5; }
+.grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.grid > li { min-width: 0; }
+.library .card { display: flex; flex-direction: column; justify-content: flex-start; gap: 4px; width: 100%; min-height: 113px; padding: 7px 3px 9px; border: 1px solid #b6c99230; border-radius: 12px; background: #879d6a13; text-align: center; }
+.card strong { color: #f0edd6; font-size: 11px; line-height: 1.2; font-weight: 600; }
+.card small { color: #b8c9a7; font-size: 9px; line-height: 1.3; }
+.portrait { display: block; width: 100%; max-width: 70px; height: auto; aspect-ratio: 1; image-rendering: pixelated; }
+.hiddenPortrait { position: relative; display: block; width: 100%; max-width: 70px; aspect-ratio: 1; }
+.library .silhouette { display: block; width: 100%; height: 100%; fill: #0b1812; color: #0b1812; filter: drop-shadow(0 1px 0 #adc28e29); }
+.question { position: absolute; inset: 0; display: grid; place-items: center; padding-top: 12px; color: #a9ba9b; font-size: 22px; font-weight: 600; }
+.library .locked:disabled { opacity: .8; border-color: #aabc8620; background: #0d1b125c; cursor: default; }
+.library button:focus-visible { outline: 2px solid #e1eeb6; outline-offset: 3px; }
+@media (max-width: 380px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }.library .card { min-height: 122px; }.portrait, .hiddenPortrait { max-width: 76px; }}

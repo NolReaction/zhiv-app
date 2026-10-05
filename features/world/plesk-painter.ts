@@ -1,5 +1,7 @@
 import type { PleskResidentFrame } from "./plesk-resident";
-import { drawFishingProps, fishingPropsBounds, fishingCatchFrame, fishingTackleFrame, fishingBasketHandle, fishingPackCenter } from "./fishing-props";
+import { drawFishingProps, fishingPropsBounds, fishingCatchFrame, fishingTackleFrame, fishingBasketHandle, fishingPackCenter, fishingReelHand } from "./fishing-props";
+import { fishingDirection } from "./forest-fishing";
+import { fishingShoreRig, type FishingShoreRig } from "./fishing-shore-rig";
 import { pleskSprite, pleskSpriteRig, PLESK_SPRITE_SIZE, type PleskSpriteRig } from "./plesk-sprite";
 import type { WorldBounds, WorldPoint } from "./tiled/types";
 
@@ -10,11 +12,16 @@ export function pleskHitBounds(frame: PleskResidentFrame): WorldBounds {
 }
 
 export const pleskRenderBounds = fishingPropsBounds;
+const usesShoreRig = (frame: PleskResidentFrame) => Boolean(frame.waterTarget
+  && [frame.waterTarget.x, frame.waterTarget.y].every(Number.isFinite) && !frame.wildlife
+  && ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"].includes(frame.action));
+const shoreFrame = (frame: PleskResidentFrame) => ({ ...frame, rodId: "willow_rod", direction: fishingDirection(frame, frame.waterTarget) });
 
 /** Props interpolate in world coordinates rather than the raster's phase
  * buckets. In particular, mirrored catches land at the basket painter's exact
  * asymmetric fish center without a one-pixel release jump. */
 export function pleskFishingAnchors(frame: PleskResidentFrame, rig: PleskSpriteRig, still: boolean) {
+  if (usesShoreRig(frame)) return fishingShoreRig(shoreFrame(frame), still, "plesk");
   const scale = frame.size / PLESK_SPRITE_SIZE;
   const world = (point: WorldPoint): WorldPoint => ({ x: frame.x - frame.size / 2 + point.x * scale,
     y: frame.y - rig.contact.bottom * scale + point.y * scale });
@@ -42,9 +49,12 @@ export function pleskWildlifeHand(frame: PleskResidentFrame): WorldPoint {
  * painter. Only local limb geometry changes; feet do not bounce off the shore. */
 export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskResidentFrame, still: boolean) {
   if (![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0) return;
-  const carryingBasket = frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action);
-  const props = { ...frame, rodId: "willow_rod", carryingBasket };
-  const sprite = pleskSprite(frame.action, frame.direction, frame.frame, frame.phase, still, props);
+  const shore = usesShoreRig(frame), directed = shore ? shoreFrame(frame) : frame;
+  const carryingBasket = !shore && frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action);
+  const props = { ...directed, rodId: "willow_rod", carryingBasket };
+  const shoreRig = shore ? fishingShoreRig(props, still, "plesk") : undefined;
+  const sprite = pleskSprite(frame.action, directed.direction, frame.frame, frame.phase, still, props,
+    shoreRig ? { externalArms: true, lean: shoreRig.lean, crouch: shoreRig.crouch } : undefined);
   const rig = pleskSpriteRig(sprite)!;
   const size = frame.size, scale = size / PLESK_SPRITE_SIZE;
   const origin = { x: frame.x - size / 2, y: frame.y - rig.contact.bottom * scale };
@@ -54,9 +64,26 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   ctx.fillStyle = "rgba(28,43,35,.2)"; ctx.beginPath();
   ctx.ellipse(frame.x, frame.y, size * .2, size * .035, 0, 0, Math.PI * 2); ctx.fill();
   ctx.imageSmoothingEnabled = false;
+  const anchors = shoreRig ?? pleskFishingAnchors(frame, rig, still);
+  const back = directed.direction === "back";
+  const arm = (part: FishingShoreRig["nearArm"], near: boolean) => {
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const stroke = (offset: number) => {
+      ctx.beginPath(); ctx.moveTo(part.shoulder.x, part.shoulder.y + offset);
+      ctx.lineTo(part.elbow.x, part.elbow.y + offset); ctx.lineTo(part.hand.x, part.hand.y + offset); ctx.stroke();
+    };
+    ctx.strokeStyle = "#3c5258"; ctx.lineWidth = size * .09; stroke(0);
+    ctx.strokeStyle = near && !back ? "#9ab7bb" : "#74949c"; ctx.lineWidth = size * .054; stroke(-size * .012);
+    ctx.fillStyle = near && !back ? "#b8cecd" : "#74949c";
+    ctx.beginPath(); ctx.ellipse(part.hand.x, part.hand.y, size * .038, size * .04, 0, 0, Math.PI * 2); ctx.fill();
+  };
+  if (shoreRig) {
+    arm(shoreRig.farArm, false);
+    if (back) { arm(shoreRig.nearArm, true); drawFishingProps(ctx, props, still, anchors); }
+  }
   ctx.drawImage(sprite, origin.x, origin.y, size, size);
-  const anchors = pleskFishingAnchors(frame, rig, still);
-  drawFishingProps(ctx, props, still, anchors);
+  if (shoreRig && !back) arm(shoreRig.nearArm, true);
+  if (!shoreRig || !back) drawFishingProps(ctx, props, still, anchors);
   // Full paws belong behind props. Only two small fingers overlap the handle
   // or lower fish outline, leaving the fish's head and body readable.
   const tackle = fishingTackleFrame(props, still, anchors);
@@ -65,6 +92,13 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
     ctx.fillStyle = "#b8cecd";
     ctx.fillRect(at.x - scale, at.y - scale, scale * 3, scale);
     ctx.fillRect(at.x - scale, at.y + scale, scale * 3, scale);
+    if (shoreRig && ["idle", "cast", "fish", "bite", "reel"].includes(frame.action)) {
+      const reel = fishingReelHand(props, still || frame.action !== "reel", anchors);
+      if (Math.hypot(reel.x - shoreRig.farHand.x, reel.y - shoreRig.farHand.y) <= scale) {
+        ctx.fillStyle = "#9ab7bb";
+        ctx.fillRect(shoreRig.farHand.x - scale * .55, shoreRig.farHand.y - scale * .35, scale * 1.1, scale * .7);
+      }
+    }
   }
   if (carryingBasket) {
     const handle = fishingBasketHandle(anchors.basket, size);
@@ -74,9 +108,10 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   }
   const fish = fishingCatchFrame(props, still, anchors);
   if (fish.visible && (frame.action === "pack" || frame.phase >= .18)) {
+    const wrist = shoreRig ? shoreRig.farHand : fish.wrist;
     ctx.fillStyle = "#9ab7bb";
-    ctx.fillRect(fish.wrist.x - scale, fish.wrist.y, scale, scale);
-    ctx.fillRect(fish.wrist.x + scale, fish.wrist.y, scale, scale);
+    ctx.fillRect(wrist.x - scale, wrist.y, scale, scale);
+    ctx.fillRect(wrist.x + scale, wrist.y, scale, scale);
   }
   ctx.restore();
 }

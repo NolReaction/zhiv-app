@@ -1,7 +1,7 @@
 import { clearingActivityFrame, isClearingAtPoint, releaseClearingPoint, requestClearingOutside, requestClearingPoint } from "./clearing-activity";
 import { economyJourneyAway, type EconomySceneJourney } from "./economy-scene-state";
 import { cancelForestDirector } from "./forest-director";
-import { fishingActionFrame, fishingCastTarget, fishingDirection, fishingWaterTarget, forestFishingCatchState, type ForestFishingFrame } from "./forest-fishing";
+import { fishingActionFrame, fishingCastTarget, fishingCleanupEnd, fishingDirection, fishingWaterTarget, forestFishingCatchState, type ForestFishingFrame } from "./forest-fishing";
 import type { ForestSessionState } from "./forest-session";
 import { forestTrailDestination } from "./forest-trails";
 import { isWalkable } from "./navigation";
@@ -24,18 +24,24 @@ export type ForestJourneyTravel = {
   basketSpecies?: FishSpeciesId;
   rodId?: string;
   catchSpecies?: FishSpeciesId;
+  /** A server deadline/removal stops ownership immediately, while the visible
+   * catch and tackle finish on the shared scene clock before walking away. */
+  ending?: { settleAt: number; endsAt: number; source: ForestFishingFrame; finishAge: number };
 };
 const shoreRoutes = new Set(["shore", "shore_camp"]);
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 
 export const forestJourneyWalking = (state: ForestSessionState) => state.journeyTravel?.phase === "leaving" || state.journeyTravel?.phase === "returning";
+export const forestJourneyEnding = (state: ForestSessionState) => Boolean(state.journeyTravel?.ending);
 
 /** Economic time owns rewards. A coastal job keeps its actor physically present
  * throughout travel and fishing; other expeditions retain their off-map absence. */
 export function forestJourneyActorAway(state: ForestSessionState, journey: EconomySceneJourney | null | undefined, now: number) {
   const travel = state.journeyTravel;
   return economyJourneyAway(journey, now)
-    && !(travel?.jobId === journey?.id && (travel?.phase === "leaving" || travel?.phase === "fishing"));
+    && !travel?.ending
+    && !(travel?.jobId === journey?.id && (travel?.phase === "leaving" || travel?.phase === "fishing"
+      || travel?.phase === "returning" && travel.cancelled));
 }
 
 /** Reconstruct a server-confirmed ongoing fishing job only when the session
@@ -56,6 +62,32 @@ function beginFishing(state: ForestSessionState, travel: ForestJourneyTravel) {
   state.director.reason = travel.waterTarget ? "Ловит рыбу на берегу" : "Отдыхает на берегу — безопасного места для заброса нет";
 }
 
+function fishingFrameAt(state: ForestSessionState, scene: FixedWorldScene, travel: ForestJourneyTravel,
+  age: number, still = false): ForestFishingFrame {
+  const action = fishingActionFrame(age, still, travel.catchSpecies);
+  return { ...state.clearing.position, size: state.clearing.size,
+    direction: fishingDirection(travel.shore, travel.waterTarget),
+    ...(travel.waterTarget ? action : { action: "rest" as const, phase: 0, frame: 0, carryingFish: false }),
+    ...(travel.waterTarget ? { waterTarget: fishingCastTarget(scene, travel.waterTarget, state.clearing.size, action.castIndex ?? 0) } : {}),
+    carryingBasket: true, rodId: travel.rodId };
+}
+
+function beginFishingEnd(state: ForestSessionState, scene: FixedWorldScene, travel: ForestJourneyTravel) {
+  const age = Math.max(0, state.director.elapsed - (travel.fishingAt ?? state.director.elapsed));
+  const cleanup = fishingCleanupEnd(age), finishAge = cleanup ?? age;
+  const settleAt = state.director.elapsed + Math.max(0, finishAge - age);
+  travel.ending = { settleAt, endsAt: settleAt + (cleanup === undefined ? .6 : .4), finishAge,
+    // Across repeated cycles modulo rounding can sample pack(1) just before
+    // rest(0); choose the unambiguous completed side of that same boundary.
+    source: fishingFrameAt(state, scene, travel, finishAge + (cleanup === undefined ? 0 : 1e-9)) };
+  state.director.reason = travel.cancelled ? "Убирает снасти после отмены вылазки" : "Убирает снасти перед возвращением";
+}
+
+function preservePackedCatch(travel: ForestJourneyTravel, frame: ForestFishingFrame) {
+  travel.carryingFish = Boolean(!travel.cancelled && travel.waterTarget && frame.basketFilled);
+  travel.basketSpecies = travel.carryingFish ? frame.basketSpecies : undefined;
+}
+
 /** Detached frame shares the session clock, actual feet and authored water.
  * Rest is the truthful fallback if a map has no usable water near its marker. */
 export function forestJourneyFishingFrame(state: ForestSessionState, scene: FixedWorldScene, still = false): ForestFishingFrame | null {
@@ -66,15 +98,17 @@ export function forestJourneyFishingFrame(state: ForestSessionState, scene: Fixe
     if (body.residing || body.homeSleeping || body.bush?.occupied || body.opacity < 1) return null;
     return { ...state.clearing.position, size: state.clearing.size, direction: body.direction,
       action: body.pose === "walk" ? "walk" : "idle", phase: 0, frame: body.frame,
-      carryingFish: Boolean(travel.carryingFish), basketSpecies: travel.basketSpecies, rodId: travel.rodId };
+      carryingFish: Boolean(travel.carryingFish), carryingBasket: true, basketSpecies: travel.basketSpecies, rodId: travel.rodId };
   }
   if (travel.phase !== "fishing" || !isClearingAtPoint(state.clearing, travel.shore)) return null;
-  const action = fishingActionFrame(state.director.elapsed - (travel.fishingAt ?? state.director.elapsed), still, travel.catchSpecies);
-  return { ...state.clearing.position, size: state.clearing.size,
-    direction: fishingDirection(travel.shore, travel.waterTarget),
-    ...(travel.waterTarget ? action
-      : { action: "rest" as const, phase: 0, frame: 0, carryingFish: false }),
-    ...(travel.waterTarget ? { waterTarget: fishingCastTarget(scene, travel.waterTarget, state.clearing.size, action.castIndex ?? 0) } : {}), rodId: travel.rodId };
+  const ending = travel.ending;
+  if (ending && state.director.elapsed >= ending.settleAt) {
+    const phase = still ? 1 : Math.max(0, Math.min(1, (state.director.elapsed - ending.settleAt) / (ending.endsAt - ending.settleAt)));
+    return { ...ending.source, action: "rest", phase: 1, frame: 0, waterTarget: undefined,
+      settling: { from: ending.source, phase } };
+  }
+  return fishingFrameAt(state, scene, travel,
+    state.director.elapsed - (travel.fishingAt ?? state.director.elapsed), still);
 }
 
 /** Session-local cosmetic travel. Job ownership/deadlines never enter memory,
@@ -89,7 +123,25 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
     || !active && !journey && now < current.finishesAt && !current.jobId.startsWith("dev-fishing:"))) {
     // A confirmed removal before its deadline forfeits the trip on every view.
     // Local cancellation receipts also cover ready jobs already walking home.
-    current.cancelled = true; current.carryingFish = false;
+    current.cancelled = true; current.carryingFish = false; current.basketSpecies = undefined;
+  }
+  let cleaned = false;
+  if (current?.ending) {
+    // Sampling another camera or receiving the same snapshot cannot restart
+    // the gesture. Pausing freezes director.elapsed and therefore this ending.
+    if (!still && current.scene === scene && state.director.elapsed < current.ending.endsAt) return;
+    preservePackedCatch(current, current.ending.source);
+    current.ending = undefined; cleaned = true;
+  }
+  if (current?.phase === "fishing" && !cleaned && (current.cancelled || id !== previous && Boolean(previous))
+    && !still && current.scene === scene && current.waterTarget && isClearingAtPoint(state.clearing, current.shore)) {
+    beginFishingEnd(state, scene, current); return;
+  }
+  if (current?.cancelled && id === previous && !current.ending && current.phase === "fishing") {
+    // A local cancellation receipt may precede the next account snapshot.
+    // Its actor still returns visibly instead of becoming an off-map job.
+    current.phase = "returning"; current.requested = false; current.beganAt = state.clearing.elapsed;
+    releaseClearingPoint(state.clearing); requestClearingOutside(state.clearing);
   }
   if (id !== previous) {
     state.explorationId = id;
@@ -112,11 +164,11 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
     } else if (previous) {
       const travel = state.journeyTravel;
       if (travel && !still && distance(state.clearing.position, travel.home) > .5) {
-        travel.carryingFish = Boolean(!travel.cancelled && travel.waterTarget && travel.fishingAt !== undefined
-          && forestFishingCatchState(state.director.elapsed - travel.fishingAt).caught > 0);
-        if (travel.carryingFish) {
+        if (!cleaned) travel.carryingFish = Boolean(!travel.cancelled && travel.waterTarget && travel.fishingAt !== undefined
+          && forestFishingCatchState(state.director.elapsed - travel.fishingAt).packed > 0);
+        if (!cleaned && travel.carryingFish) {
           const catchFrame = fishingActionFrame(state.director.elapsed - travel.fishingAt!, false);
-          travel.basketSpecies = travel.catchSpecies ?? (catchFrame.basketFilled ? catchFrame.basketSpecies : catchFrame.species);
+          travel.basketSpecies = catchFrame.basketSpecies;
         }
         travel.phase = "returning"; travel.requested = false; travel.beganAt = state.clearing.elapsed;
         releaseClearingPoint(state.clearing); requestClearingOutside(state.clearing);
