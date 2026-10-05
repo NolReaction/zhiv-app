@@ -3,7 +3,7 @@ import type { WorldPoint } from "./tiled/types";
 
 export type FishingRodFrame = {
   grip: WorldPoint; tip: WorldPoint; reel: WorldPoint; size: number;
-  side: number; tension: number; crank: number; rodId?: string;
+  side: number; tension: number; crank: number; rodId?: string; detailScale?: number;
 };
 
 /** Render only the rod; the caller still owns hand anchors, line and float. */
@@ -19,7 +19,7 @@ export function drawFishingRod(ctx: CanvasRenderingContext2D, frame: FishingRodF
   ctx.save(); ctx.translate(grip.x, grip.y); ctx.rotate(Math.atan2(dy, dx)); ctx.scale(size, size);
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   for (const shape of fishingRodShapes(frame.rodId, { length: length / size, reel: localReel,
-    tension: frame.tension, crank: frame.crank, side: frame.side })) {
+    tension: frame.tension, crank: frame.crank, side: frame.side, detailScale: frame.detailScale })) {
     ctx.beginPath();
     if (shape.kind === "ellipse") ctx.ellipse(shape.x, shape.y, shape.rx, shape.ry, 0, 0, Math.PI * 2);
     else for (const command of shape.commands) {

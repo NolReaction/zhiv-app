@@ -1,4 +1,4 @@
-import { drawFishingProps, fishingTackleFrame, fishingCatchFrame, FISHING_PACK_RELEASE } from "./fishing-props";
+import { drawFishingProps, fishingTackleFrame, fishingCatchFrame, fishingReelHand, FISHING_PACK_RELEASE } from "./fishing-props";
 import { fishingShoreRig } from "./fishing-shore-rig";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { drawGroundedHero } from "./grounding";
@@ -35,17 +35,27 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
     if (!forearmOnly) segment(shoulder, elbow, 2, armLight);
     segment(elbow, hand, 2, armLight);
   }
+  function paw(part: typeof nearArm) {
+    const dx = part.elbow.x - part.hand.x, dy = part.elbow.y - part.hand.y, length = Math.max(.001, Math.hypot(dx, dy));
+    const cuff = { x: part.hand.x + dx / length * Math.min(length, scale * 2), y: part.hand.y + dy / length * Math.min(length, scale * 2) };
+    segment(cuff, part.hand, 2, armShade); segment(cuff, part.hand, 1, armLight);
+    const px = Math.round((part.hand.x - origin.x) / scale), py = Math.round((part.hand.y - origin.y) / scale);
+    ctx.fillStyle = armLight; ctx.fillRect(origin.x + (px - 1) * scale, origin.y + (py - 1) * scale, scale * 2, scale * 2);
+  }
   ctx.save();
   const props = { ...frame, basketFilled: frame.basketFilled ?? (frame.carryingFish && action !== "catch" && (action !== "pack" || phase >= FISHING_PACK_RELEASE)) };
   const drawProps = () => drawFishingProps(ctx, props, still, { ...rig, drawBasket: Boolean(frame.waterTarget || frame.carryingFish || frame.carryingBasket) });
   if (direction === "back") { arm(farArm); arm(nearArm); drawProps(); }
-  else arm(farArm);
+  else { arm(farArm); arm(nearArm); }
   drawGroundedHero(ctx, { x, y, size, pose: rig.pose, direction: rig.bodyDirection, frame: still ? 0 : frame.frame, appearance, shadow,
     rig: { gardening: true, crouch: rig.crouch, lean: rig.lean, fishingStance: rig.fishingStance },
     breathe: still ? 0 : Math.sin(phase * Math.PI * 2) * .004 });
   // The shoulder stays behind the torso, but the supporting forearm emerges
   // in front to wind, unhook and lower the fish. The body cannot erase it.
-  if (direction !== "back") { arm(farArm, true); arm(nearArm); drawProps(); }
+  if (direction !== "back") {
+    if (["catch", "pack"].includes(action) || rig.traveling && (frame.carryingFish || frame.carryingBasket)) arm(farArm, true);
+    paw(farArm); paw(nearArm); drawProps();
+  }
   {
     const tackle = fishingTackleFrame(props, still, rig);
     if (tackle.visible) {
@@ -57,6 +67,13 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
         const at = { x: rig.grip.x + dx / length * size * along, y: rig.grip.y + dy / length * size * along };
         ctx.beginPath(); ctx.moveTo(at.x - dy / length * size * .025, at.y + dx / length * size * .025);
         ctx.lineTo(at.x + dy / length * size * .025, at.y - dx / length * size * .025); ctx.stroke();
+      }
+      const winding = fishingReelHand(props, still || action !== "reel", rig);
+      if (Math.hypot(winding.x - rig.farHand.x, winding.y - rig.farHand.y) <= scale) {
+        ctx.fillStyle = armShade;
+        ctx.fillRect(rig.farHand.x - scale * .55, rig.farHand.y - scale * .5, scale * 1.1, scale);
+        ctx.fillStyle = armLight;
+        ctx.fillRect(rig.farHand.x - scale * .45, rig.farHand.y - scale * .35, scale * .9, scale * .7);
       }
     }
     const fish = fishingCatchFrame(props, still, rig);

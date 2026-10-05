@@ -29,6 +29,7 @@ export function fishingRodAppearance(rodId?: string): FishingRodAppearance {
 export type FishingRodGeometryOptions = {
   length?: number; tension?: number; crank?: number; side?: number;
   reel?: { x: number; y: number };
+  detailScale?: number;
 };
 const finite = (value: number | undefined, fallback: number) => Number.isFinite(value) ? value! : fallback;
 
@@ -41,6 +42,8 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
   const bend = Math.max(0, Math.min(1.5, finite(options.tension, 0))) * .11 * side;
   const crank = finite(options.crank, .5), reel = options.reel ?? { x: -.025, y: .09 * side };
   const rx = finite(reel.x, -.025), ry = finite(reel.y, .09 * side);
+  const detail = Math.max(.2, Math.min(1, finite(options.detailScale, 1)));
+  let reelStart = 0;
   const shapes: FishingRodShape[] = [];
   const line = (commands: readonly RodPathCommand[], stroke: RodColor, width: number) => shapes.push({ kind: "path", commands, stroke, width });
   const body = (commands: readonly RodPathCommand[], fill: RodColor, stroke?: RodColor, width = .012) => shapes.push({ kind: "path", commands, fill, stroke, width });
@@ -70,6 +73,7 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
     line([["M", -.065, 0], ["L", .08, 0]], "handle", .071);
     for (const at of [-.04, -.014, .012, .038]) band(at, .03, "metal", .009);
     line([["M", 0, .005 * side], ["L", rx, ry]], "shaft", .021);
+    reelStart = shapes.length;
     ellipse(rx, ry, .047, .034, "handle", "shaft");
     for (const at of [-.02, 0, .02]) line([["M", rx + at, ry - .024], ["L", rx + at, ry + .024]], "metal", .011);
   } else if (id === "river_rod") {
@@ -86,6 +90,7 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
       ellipse(x, y, .024, .018, undefined, "metal", .013);
     }
     line([["M", rx + .035, 0], ["L", rx + .035, ry], ["L", rx + .006, ry + .022 * side]], "metal", .023);
+    reelStart = shapes.length;
     body([["M", rx - .065, ry], ["L", rx + .027, ry], ["L", rx + .038, ry + .077 * side],
       ["L", rx - .068, ry + .077 * side], ["Z"]], "reel", "shaft");
     ellipse(rx - .022, ry + .077 * side, .058, .018, "metal", "shaft", .01);
@@ -104,6 +109,7 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
         ["Q", x + .005, y + .027 * side, x - .024, y], ["Z"]], "wrap", "metal", .01);
     }
     line([["M", 0, .02 * side], ["L", rx, ry]], "metal", .023);
+    reelStart = shapes.length;
     ellipse(rx, ry, .079, .079, "reel", "metal", .013);
     ellipse(rx, ry, .059, .059, "handle", "metal", .008);
     for (let index = 0; index < 4; index++) {
@@ -114,7 +120,18 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
     line([["M", rx, ry], ["L", rx + Math.cos(crank) * .09, ry + Math.sin(crank) * .09]], "metal", .015);
     ellipse(rx + Math.cos(crank) * .09, ry + Math.sin(crank) * .09, .023, .016, "handle");
   }
-  return shapes;
+  if (detail === 1) return shapes;
+  return shapes.map((shape, index) => {
+    if (index < reelStart) return shape;
+    const width = (shape.width ?? .012) * detail;
+    if (shape.kind === "ellipse") return { ...shape, width, x: rx + (shape.x - rx) * detail,
+      y: ry + (shape.y - ry) * detail, rx: shape.rx * detail, ry: shape.ry * detail };
+    const commands = shape.commands.map(command => command[0] === "Z" ? command : command[0] === "Q"
+      ? ["Q", rx + (command[1] - rx) * detail, ry + (command[2] - ry) * detail,
+        rx + (command[3] - rx) * detail, ry + (command[4] - ry) * detail] as const
+      : [command[0], rx + (command[1] - rx) * detail, ry + (command[2] - ry) * detail] as const);
+    return { ...shape, width, commands };
+  });
 }
 
 /** Static icon framing uses the same shape builder and proportions as a world rod. */

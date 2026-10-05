@@ -82,6 +82,35 @@ test("casting, reeling and packing articulate the hand which holds the matching 
   assert.notEqual(signature(pleskSprite("idle", "front", 30)), signature(pleskSprite("idle", "front", 6)), "eyes blink independently");
 });
 
+test("ordinary idle and greeting paint only tiny paw tips, with no visible shoulder or elbow tubes", () => {
+  for (const direction of ["front", "back", "left", "right"]) for (const action of ["idle", "greet"]) {
+    for (let frame = 0; frame < (action === "idle" ? 1 : 8); frame++) {
+      const sprite = pleskSprite(action, direction, frame, frame / 7), rig = pleskSpriteRig(sprite);
+      const bareBody = pleskSprite(action, direction, frame, frame / 7, false, undefined, { externalArms: true });
+      const changed = [...sprite.pixels].filter(([key, color]) => bareBody.pixels.get(key) !== color);
+      assert.ok(changed.length > 0 && changed.length <= 10, `${action}/${direction}: two paws change at most ten source pixels`);
+      for (const [key] of changed) {
+        const [x, y] = key.split(":").map(Number);
+        assert.ok(rig.palms.some(({ position }) => Math.abs(x - (position.x - Number(direction === "left"))) <= 1 && Math.abs(y - position.y) <= 1),
+          "every visible paw pixel belongs to a 3 × 3 tip, never a long outlined arm");
+      }
+    }
+  }
+});
+
+test("ordinary paws remain tucked against the belly in every direction, including the small greeting", () => {
+  for (const direction of ["front", "back", "left", "right"]) for (const action of ["idle", "walk", "greet", "rest", "trade"]) {
+    for (let frame = 0; frame < 8; frame++) {
+      const rig = pleskSpriteRig(pleskSprite(action, direction, frame, frame / 7));
+      for (const arm of rig.arms) {
+        assert.ok(Math.hypot(arm.palm.x - arm.shoulder.x, arm.palm.y - arm.shoulder.y) <= 5,
+          `${action}/${direction}: the paw stays within five source pixels of its shoulder`);
+        assert.ok(arm.palm.y >= rig.head.y + 8, "even the greeting stays below the cheek");
+      }
+    }
+  }
+});
+
 test("source poses are normalized, stationary under reduced motion, reused and evicted from a bounded cache", () => {
   const resting = pleskSprite("fish", "right", 0, .5, true);
   for (const frame of [-1000, 8, 31, 100000, NaN, Infinity]) {
@@ -172,6 +201,19 @@ test("the actual pier painter casts down and stamps compact pixel paws on the ro
       assert.ok(Math.abs((left - x) / pixel - Math.round((left - x) / pixel)) < 1e-9);
       assert.ok(Math.abs((top - y) / pixel - Math.round((top - y) / pixel)) < 1e-9);
     }
+    if (["idle", "cast", "fish", "bite", "reel", "rest"].includes(action)) {
+      for (const { args: [left, top], event } of pixels.filter(rect => rect.event > ctx.events.indexOf("body"))) {
+        assert.ok(Math.min(distance({ x: left + pixel, y: top + pixel }, rig.nearHand),
+          distance({ x: left + pixel, y: top + pixel }, rig.farHand)) <= pixel * 3,
+        `${action}/${phase}: only tiny cuffs emerge in front of the body, not a complete elbow loop (${event})`);
+      }
+    }
+    if (action === "fish") {
+      assert.ok(Math.abs(rig.grip.x - base.x) <= pixel, "the rod leaves the center of the belly");
+      assert.ok(rig.rodTip.y > base.y, "the waiting tip points down past the planted feet");
+      assert.ok(distance(rig.nearHand, rig.farHand) >= pixel * 2.5,
+        "the compact reel mount keeps two tiny paws distinct instead of stacking them on the handle");
+    }
     for (const arm of [rig.farArm, rig.nearArm]) {
       assert.ok(arm.reachable, "the contact stays within the compact paw's reach");
       assert.ok(Math.abs(distance(arm.shoulder, arm.elbow) - base.size * .12) < 1e-9, "upper bone stays below six native pixels");
@@ -191,6 +233,21 @@ test("the actual pier painter casts down and stamps compact pixel paws on the ro
       && rig.grip.y >= top && rig.grip.y <= top + h), "foreground fingers cross the true handle");
     assert.ok(Number.isFinite(x));
   }
+});
+
+test("active DEV fishing without water uses the same central rig and preserves the chosen facing", () => {
+  for (const action of ["cast", "fish", "bite", "reel", "catch", "pack"]) for (const direction of ["front", "back", "left", "right"])
+    for (const still of [false, true]) {
+      const frame = { x: 100, y: 160, size: 48, action, direction, phase: .4, frame: 3,
+        carryingFish: ["catch", "pack"].includes(action), rodId: "willow_rod" };
+      const ctx = context(); drawPleskResident(ctx, frame, still);
+      const body = pleskSpriteRig(ctx.draws[0].args[0]), anchors = pleskFishingAnchors(frame, body, still);
+      assert.equal(anchors.bodyDirection, direction, "a preview's manual facing is retained when it has no finite water target");
+      assert.equal(body.arms.length, 0, "active previews never bring back the separate cached fishing arms");
+      assert.ok(Math.abs(anchors.grip.x - frame.x) <= frame.size * .021, "the fallback shares the centered belly grip");
+      assert.ok(anchors.rodTip.y > frame.y, "the fallback's visible shaft points forward and down");
+      assert.deepEqual(ctx.translations[0], anchors.grip, "the painter starts the same shared rod at its contacting paw");
+    }
 });
 
 test("shore arms freeze under reduced motion, back-facing arms stay behind, and wildlife retains the original palm", () => {
@@ -326,20 +383,31 @@ test("a downward cast swings a full rod instead of shrinking it through the hand
   }
 });
 
-test("held and casting rods stay outside Pleska's eyes and muzzle in each visible facing", () => {
+test("the real Pleska painter stows ordinary tackle and keeps every visible rod outside her face", () => {
   for (const direction of ["front", "left", "right"]) for (const action of ["idle", "walk", "cast", "fish", "catch", "greet"]) {
-    for (const phase of [0, .25, .5, .75, 1]) {
-      const sprite = pleskSprite(action, direction, 0, phase), body = pleskSpriteRig(sprite);
-      const waterTarget = direction === "front" ? { x: 24, y: 105 }
-        : direction === "right" ? { x: 95, y: 45 } : { x: -45, y: 45 };
-      const tackle = fishingTackleFrame({ x: 24, y: 45, size: 48, direction, action, frame: 0, phase,
-        carryingFish: false, waterTarget }, false, { grip: body.grip });
-      const faceX = body.head.x + (direction === "right" ? 2 : direction === "left" ? -2 : 0);
+    for (const hasWater of [false, true]) for (const phase of [0, .25, .5, .75, 1]) {
+      const waterTarget = hasWater ? direction === "front" ? { x: 24, y: 105 }
+        : direction === "right" ? { x: 95, y: 45 } : { x: -45, y: 45 } : undefined;
+      const frame = { x: 24, y: 45, size: 48, direction, action, frame: 0, phase, carryingFish: false, waterTarget };
+      const ctx = context(); drawPleskResident(ctx, frame, false);
+      const body = pleskSpriteRig(ctx.draws[0].args[0]);
+      // Water poses use the shore rig; testing a raw portrait grip here would
+      // bypass the exact branch that paints the character and the prop.
+      const anchors = pleskFishingAnchors(frame, body, false), facing = anchors.bodyDirection ?? direction;
+      const tackle = fishingTackleFrame({ ...frame, direction: facing }, false, anchors);
+      if (action === "walk" || action === "greet" || action === "idle" && !hasWater) {
+        assert.equal(tackle.visible, false, `${action}/${direction}: ordinary tiny paws do not carry a raised fishing pole`);
+        assert.equal(ctx.translations.some(at => Math.hypot(at.x - tackle.grip.x, at.y - tackle.grip.y) < .001), false,
+          "stowed tackle is absent from the actual painter, not just its metadata");
+        continue;
+      }
+      assert.equal(tackle.visible, true, `${action}/${direction}: active fishing keeps its rod`);
+      const faceX = body.head.x + (facing === "right" ? 2 : facing === "left" ? -2 : 0);
       for (let i = 1; i <= 20; i++) {
         const x = tackle.grip.x + (tackle.tip.x - tackle.grip.x) * i / 20;
         const y = tackle.grip.y + (tackle.tip.y - tackle.grip.y) * i / 20;
         const insideFace = ((x - faceX) / 7) ** 2 + ((y - body.head.y - 1) / 6) ** 2 < 1;
-        assert.equal(insideFace, false, `${action}/${direction}/${phase} keeps the face clear`);
+        assert.equal(insideFace, false, `${action}/${direction}/${hasWater}/${phase} keeps the actual rendered face clear`);
       }
     }
   }

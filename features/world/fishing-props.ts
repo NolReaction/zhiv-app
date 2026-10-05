@@ -32,6 +32,7 @@ export type FishingPropAnchors = {
   rodAngle?: number; rodLength?: number; rodTip?: WorldPoint; castOrigin?: WorldPoint;
   settlingLine?: { bobber: WorldPoint; control: WorldPoint; floatPart: number };
   basketScale?: number; tautLine?: boolean; keepRod?: boolean;
+  detailScale?: number; anatomicalSide?: number; castArc?: number;
 };
 const tau = Math.PI * 2;
 const boundedPhase = (frame: FishingPropFrame) => Math.max(0, Math.min(1, Number.isFinite(frame.phase) ? frame.phase : 0));
@@ -97,12 +98,15 @@ export function fishingCatchFrame(frame: FishingPropFrame, still: boolean, ancho
     attached: frame.action === "catch" && phase < .2 };
 }
 
-/** Contains both a 48 px body and the complete cast/float arc, including rods
- * held overhead. The occluder painter needs this even when feet are offscreen. */
+/** Contains the body, elevated legacy tackle and the low forward shore pole,
+ * including its hanging float during idle/rest. Occlusion needs every prop
+ * even when the resident's planted feet have already left the camera. */
 export function fishingPropsBounds(frame: FishingPropFrame): WorldBounds {
   const size = frame.size;
   let left = frame.x - size * 1.5, right = frame.x + size * 1.5;
-  let top = frame.y - size * 2.5, bottom = frame.y + size * .3;
+  // The shore shaft reaches .82size from the belly and its float hangs another
+  // .16size below the tip. Keep painting padding through non-water phases too.
+  let top = frame.y - size * 2.5, bottom = frame.y + size;
   if (waterAction(frame)) {
     left = Math.min(left, frame.waterTarget!.x - size * .3);
     right = Math.max(right, frame.waterTarget!.x + size * .3);
@@ -173,7 +177,7 @@ export type FishingTackleFrame = {
  * the same reel anchor for a supporting paw instead of guessing its position. */
 export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anchors: FishingPropAnchors = {}): FishingTackleFrame {
   const size = frame.size, phase = still ? .5 : boundedPhase(frame);
-  const side = frame.direction === "left" || anchors.grip && anchors.grip.x < frame.x ? -1 : 1;
+  const side = anchors.anatomicalSide ?? (frame.direction === "left" || anchors.grip && anchors.grip.x < frame.x ? -1 : 1);
   const grip = anchors.grip ?? { x: frame.x + side * size * .3, y: frame.y - size * .28 };
   const active = Boolean(waterAction(frame));
   const visible = !anchors.hideRod && (anchors.keepRod || !["rest", "trade"].includes(frame.action));
@@ -225,7 +229,8 @@ export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anch
     if (missed && reeling) tension *= 1 - smooth((phase - .28) / .24);
     const hanging = { x: tip.x, y: tip.y + size * (anchors.tautLine ? .16 : .25) };
     bobber = between(casting && cast > 0 && anchors.castOrigin ? anchors.castOrigin : hanging, water, cast);
-    bobber.y -= cast * (1 - cast) * size * 2.2;
+    const flightArc = anchors.castArc ?? size * 2.2;
+    bobber.y -= cast * (1 - cast) * flightArc;
     if (!still && frame.action === "fish") {
       const nibble = frame.variation === "nibble" ? (1 - Math.cos(phase * tau * 3)) * size * .025 : 0;
       bobber.y += Math.sin(phase * tau * 4) * size * .009 + nibble;
@@ -252,10 +257,13 @@ export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anch
     bobber = between(origin, { x: tip.x, y: tip.y + size * .16 }, smooth(frame.settling.phase));
     tension = 0;
   }
-  const length = Math.max(1, Math.hypot(tip.x - grip.x, tip.y - grip.y));
+  const length = Math.max(.001, Math.hypot(tip.x - grip.x, tip.y - grip.y));
   const dx = (tip.x - grip.x) / length, dy = (tip.y - grip.y) / length;
-  const reel = { x: grip.x - dx * size * .025 - dy * side * size * .043,
-    y: grip.y - dy * size * .025 + dx * side * size * .043 };
+  // Compact fittings keep their mount away from the handle: shrinking the
+  // spool must not stack the winding paw on top of the gripping paw.
+  const mount = anchors.detailScale === undefined ? .043 : .06;
+  const reel = { x: grip.x - dx * size * .025 - dy * side * size * mount,
+    y: grip.y - dy * size * .025 + dx * side * size * mount };
   return { grip, tip, reel, bobber, side, tension, cast, active, visible,
     hookedFish: active && reeling && !missed && phase > FISHING_REEL_HOOK, splash };
 }
@@ -263,13 +271,14 @@ export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anch
 /** The winding paw follows the actual crank drawn by the selected rod model. */
 export function fishingReelHand(frame: FishingPropFrame, still: boolean, anchors: FishingPropAnchors = {}): WorldPoint {
   const rig = fishingTackleFrame(frame, still, anchors), crank = reelCrank(frame, still);
-  const length = Math.max(1, Math.hypot(rig.tip.x - rig.grip.x, rig.tip.y - rig.grip.y));
+  const length = Math.max(.001, Math.hypot(rig.tip.x - rig.grip.x, rig.tip.y - rig.grip.y));
   const dx = (rig.tip.x - rig.grip.x) / length, dy = (rig.tip.y - rig.grip.y) / length;
   const local = frame.rodId === "river_rod" ? { x: .043 + Math.cos(crank) * .05, y: rig.side * (.02 + Math.sin(crank) * .04) }
     : frame.rodId === "willow_rod" ? { x: Math.cos(crank) * .09, y: Math.sin(crank) * .09 }
       : { x: Math.cos(crank) * .035, y: Math.sin(crank) * .025 };
-  return { x: rig.reel.x + frame.size * (local.x * dx - local.y * dy),
-    y: rig.reel.y + frame.size * (local.x * dy + local.y * dx) };
+  const detail = anchors.detailScale ?? 1;
+  return { x: rig.reel.x + frame.size * detail * (local.x * dx - local.y * dy),
+    y: rig.reel.y + frame.size * detail * (local.x * dy + local.y * dx) };
 }
 
 /** Float and line share a single curve: a lifted float cannot drift off its
@@ -303,7 +312,7 @@ function drawTackle(ctx: CanvasRenderingContext2D, frame: FishingPropFrame, phas
   const line = fishingLineFrame(frame, still, anchors, rig);
   const crank = frame.action === "reel" ? reelCrank(frame, still)
     : !anchors.tautLine && !still && frame.variation === "check" ? phase * tau * 3 : 0;
-  drawFishingRod(ctx, { ...rig, size, crank, rodId: frame.rodId });
+  drawFishingRod(ctx, { ...rig, size, crank, rodId: frame.rodId, detailScale: anchors.detailScale });
   ctx.strokeStyle = anchors.tautLine ? "#cbd9cba8" : active ? "#e4e3c4c0" : "#d4d4bda0";
   ctx.lineWidth = line.width;
   ctx.beginPath(); ctx.moveTo(tip.x, tip.y);

@@ -12,10 +12,11 @@ export function pleskHitBounds(frame: PleskResidentFrame): WorldBounds {
 }
 
 export const pleskRenderBounds = fishingPropsBounds;
-const usesShoreRig = (frame: PleskResidentFrame) => Boolean(frame.waterTarget
-  && [frame.waterTarget.x, frame.waterTarget.y].every(Number.isFinite) && !frame.wildlife
-  && ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"].includes(frame.action));
-const shoreFrame = (frame: PleskResidentFrame) => ({ ...frame, rodId: "willow_rod", direction: fishingDirection(frame, frame.waterTarget) });
+const usesShoreRig = (frame: PleskResidentFrame) => !frame.wildlife && (["cast", "fish", "bite", "reel", "catch", "pack"].includes(frame.action)
+  || Boolean(frame.waterTarget && [frame.waterTarget.x, frame.waterTarget.y].every(Number.isFinite)
+    && ["idle", "rest"].includes(frame.action)));
+const shoreFrame = (frame: PleskResidentFrame) => ({ ...frame, rodId: "willow_rod", direction: frame.waterTarget
+  && [frame.waterTarget.x, frame.waterTarget.y].every(Number.isFinite) ? fishingDirection(frame, frame.waterTarget) : frame.direction });
 const usesCarryRig = (frame: PleskResidentFrame) => Boolean(!frame.wildlife && frame.carryingFish
   && ["walk", "idle", "greet", "trade"].includes(frame.action) && !usesShoreRig(frame));
 
@@ -38,7 +39,8 @@ export function pleskFishingAnchors(frame: PleskResidentFrame, rig: PleskSpriteR
     heldFish = { x: resting.x, y: resting.y - Math.sin(phase * Math.PI) * 2 * scale };
   }
   return { grip: world(rig.grip), heldFish, basket, basketScale: .8,
-    hideRod: frame.wildlife || frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action) };
+    hideRod: frame.wildlife || ["walk", "greet"].includes(frame.action) || frame.action === "idle" && !frame.waterTarget
+      || frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action) };
 }
 
 /** The insect lands on the same visible raised paw used by the pixel painter. */
@@ -70,7 +72,7 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   ctx.imageSmoothingEnabled = false;
   const anchors = shoreRig ? { ...shoreRig, ...(carrying ? { hideRod: true } : {}) } : pleskFishingAnchors(frame, rig, still);
   const back = directed.direction === "back";
-  const arm = (part: FishingShoreRig["nearArm"], near: boolean) => {
+  const arm = (part: FishingShoreRig["nearArm"], near: boolean, forearmOnly = false) => {
     // Match the body's 48 px grid: short stepped fur segments, not a smooth
     // thick tube whose bend can read as another leg at large zoom.
     const pixel = (point: WorldPoint) => ({ x: Math.round((point.x - origin.x) / scale),
@@ -85,18 +87,28 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
         ctx.fillRect(origin.x + (x - 1) * scale, origin.y + (y - 1) * scale, width * scale, width * scale);
       }
     };
-    stamp(shoulder, elbow, 3, "#3c5258"); stamp(elbow, hand, 3, "#3c5258");
-    stamp(shoulder, elbow, 2, near && !back ? "#9ab7bb" : "#74949c");
+    if (!forearmOnly) stamp(shoulder, elbow, 3, "#3c5258"); stamp(elbow, hand, 3, "#3c5258");
+    if (!forearmOnly) stamp(shoulder, elbow, 2, near && !back ? "#9ab7bb" : "#74949c");
     stamp(elbow, hand, 2, near && !back ? "#9ab7bb" : "#74949c");
     ctx.fillStyle = near && !back ? "#b8cecd" : "#74949c";
     ctx.fillRect(origin.x + (hand.x - 1) * scale, origin.y + (hand.y - 1) * scale, 2 * scale, 2 * scale);
   };
+  const paw = (part: FishingShoreRig["nearArm"], near: boolean) => {
+    const dx = part.elbow.x - part.hand.x, dy = part.elbow.y - part.hand.y, length = Math.max(.001, Math.hypot(dx, dy));
+    const cuff = { x: part.hand.x + dx / length * Math.min(length, scale * 2), y: part.hand.y + dy / length * Math.min(length, scale * 2) };
+    const cuffOnly = { ...part, shoulder: cuff, elbow: cuff };
+    arm(cuffOnly, near, true);
+  };
   if (shoreRig) {
     arm(shoreRig.farArm, false);
-    if (back) { arm(shoreRig.nearArm, true); drawFishingProps(ctx, props, still, anchors); }
+    arm(shoreRig.nearArm, true);
+    if (back) drawFishingProps(ctx, props, still, anchors);
   }
   ctx.drawImage(sprite, origin.x, origin.y, size, size);
-  if (shoreRig && !back) arm(shoreRig.nearArm, true);
+  if (shoreRig && !back) {
+    if (["catch", "pack"].includes(frame.action) || carrying) arm(shoreRig.farArm, false, true);
+    paw(shoreRig.farArm, false); paw(shoreRig.nearArm, true);
+  }
   if (!shoreRig || !back) drawFishingProps(ctx, props, still, anchors);
   // Full paws belong behind props. Only two small fingers overlap the handle
   // or lower fish outline, leaving the fish's head and body readable.

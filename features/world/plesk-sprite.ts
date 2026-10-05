@@ -168,6 +168,17 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
       if (action !== "greet") grip = point(34, 36 + rise - Math.round(step / 2));
     }
   }
+  const compactPaws = !externalArms && !carryingBasket && ["idle", "walk", "greet", "rest", "trade"].includes(action);
+  if (compactPaws) {
+    // Ordinary gestures are tiny paws resting against the fur, not a second
+    // pair of long legs. The visible tip moves a few pixels; no V-shaped arm
+    // outline is painted between the shoulder and palm.
+    const lift = action === "greet" ? Math.round(Math.sin(phasePart * Math.PI) * 3) : 0;
+    const sway = walking ? Math.round(step / 2) : 0;
+    const pawY = body.y + (resting ? 2 : 0);
+    grip = point(body.x + (resting ? 6 : 7) + (lift > 0 && index > 3 ? 1 : 0), pawY - lift + sway);
+    otherHand = point(body.x + (sideView ? 1 : resting ? -6 : -7), pawY + 1 - sway);
+  }
   const reachable = (from: WorldPoint, to: WorldPoint) => {
     const distance = Math.hypot(to.x - from.x, to.y - from.y);
     return distance > 12.5 ? lerp(from, to, 12.5 / distance) : to;
@@ -181,6 +192,16 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   };
   const arms: { shoulder: WorldPoint; elbow: WorldPoint; palm: WorldPoint }[] = [];
   const drawArm = (from: WorldPoint, to: WorldPoint, near: boolean) => {
+    if (compactPaws) {
+      arms.push({ shoulder: mirror(from), elbow: mirror(lerp(from, to, .5)), palm: mirror(to) });
+      // Three source pixels across, with a quiet fur edge and one highlight.
+      // A connected shoulder/elbow tube would overwhelm this small silhouette.
+      rect(to.x, to.y - 1, 1, 3, c.dark);
+      rect(to.x - 1, to.y, 3, 1, c.dark);
+      rect(to.x, to.y, 2, 1, near ? c.fur : c.dark);
+      rect(to.x, to.y - 1, 1, 1, near ? c.light : c.fur);
+      return;
+    }
     const dx = to.x - from.x, dy = to.y - from.y, distance = Math.hypot(dx, dy);
     const segmentLength = Math.max(6, distance / 2);
     const bend = Math.sqrt(Math.max(0, segmentLength * segmentLength - distance * distance / 4));

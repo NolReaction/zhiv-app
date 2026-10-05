@@ -45,6 +45,27 @@ test("all rod models keep the requested tip and finite bounded details through b
   }
 });
 
+test("shore reel details shrink around their real mount while each pole and shop icon retain their geometry", () => {
+  for (const rodId of FISHING_ROD_IDS) {
+    const reel = { x: -.025, y: .06 }, options = { length: .82, reel, crank: .7, side: 1 };
+    const full = fishingRodShapes(rodId, options), small = fishingRodShapes(rodId, { ...options, detailScale: .45 });
+    assert.equal(small.length, full.length);
+    const shaft = shapes => shapes.find(shape => shape.kind === "path" && shape.commands.some(command =>
+      command[0] === "Q" && command[3] === options.length && command[4] === 0));
+    assert.deepEqual(shaft(small), shaft(full), "compact cranks cannot shorten or move the pole tip");
+    const reelBody = shapes => shapes.find(shape => shape.kind === "ellipse" && shape.x === reel.x && shape.y === reel.y);
+    const a = reelBody(full), b = reelBody(small);
+    if (a) {
+      assert.ok(b); assert.ok(Math.abs(b.rx - a.rx * .45) < 1e-9); assert.ok(Math.abs(b.ry - a.ry * .45) < 1e-9);
+    } else {
+      const aKnob = full.at(-1), bKnob = small.at(-1);
+      assert.equal(aKnob.kind, "ellipse"); assert.equal(bKnob.kind, "ellipse");
+      assert.ok(Math.abs(bKnob.rx - aKnob.rx * .45) < 1e-9);
+    }
+    assert.deepEqual(fishingRodShapes(rodId), fishingRodShapes(rodId, { detailScale: 1 }), "shop defaults retain their established art scale");
+  }
+});
+
 test("Canvas uses the palm and line-tip anchors supplied by the character rig and balances its transform", () => {
   const calls = [], context = new Proxy({}, { get: (_target, key) => (...args) => calls.push([key, ...args]), set: () => true });
   for (const rodId of FISHING_ROD_IDS) {

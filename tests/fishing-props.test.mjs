@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingTackleFrame, fishingLineFrame, fishingPropsBounds, projectFishingRod, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, fishingLineFrame, fishingPropsBounds, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { forestFishingHeroRig, drawForestFishingHero } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
 const { fishingShoreRig } = await vite.ssrLoadModule("/features/world/fishing-shore-rig.ts");
 const { fishingWaterTarget, fishingDirection } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
@@ -55,9 +55,8 @@ test("the rod stays attached to its hand with a real length through every downwa
       const hand = forestFishingHeroRig(frame, false), tackle = fishingTackleFrame(frame, false, hand);
       assert.deepEqual(tackle.grip, hand.nearHand);
       const length = Math.hypot(tackle.tip.x - tackle.grip.x, tackle.tip.y - tackle.grip.y);
-      assert.ok(length >= frame.size * .5 && length <= frame.size * 1.5, "a projected elevated pole remains a substantial visible rod");
-      assert.deepEqual(tackle.tip, projectFishingRod(frame, hand.grip, hand.rodElevation, hand.rodLength),
-        "projection follows the water direction in the ground plane and a separate physical pole height");
+      assert.ok(Math.abs(length - frame.size * .82) < 1e-8, "the low backswing rotates a visible full pole without height cancellation");
+      assert.ok(tackle.tip.y > tackle.grip.y, "the pole leaves the belly toward water below the feet");
       for (const point of [tackle.tip, tackle.reel, tackle.bobber]) assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y));
     }
   }
@@ -83,14 +82,15 @@ test("carried rods stay outside the face and caught fish use the opposite free p
   }
 });
 
-test("close front and back water targets cannot swing the pole inward across a resident's head", () => {
-  for (const side of [-1, 1]) for (const action of ["cast", "fish", "bite", "reel"]) {
-    const grip = { x: base.x + side * base.size * .25, y: base.y - base.size * .4 };
+test("close front and back water keeps the shared low pole below both residents' faces", () => {
+  for (const style of ["mochlik", "plesk"]) for (const direction of ["front", "back"]) for (const action of ["cast", "fish", "bite", "reel"]) {
     for (let index = 0; index <= 40; index++) {
-      const tackle = fishingTackleFrame({ ...base, action, direction: side < 0 ? "back" : "front",
-        phase: index / 40, waterTarget: { x: base.x, y: base.y + 10 } }, false, { grip });
-      assert.ok((tackle.tip.x - grip.x) * side > 0, "the entire pole stays on the outside of its gripping paw");
-      assert.deepEqual(tackle.grip, grip);
+      const frame = { ...base, action, direction, phase: index / 40, waterTarget: { x: base.x, y: base.y + 10 } };
+      const rig = fishingShoreRig(frame, false, style), tackle = fishingTackleFrame(frame, false, rig);
+      assert.ok(tackle.tip.y > tackle.grip.y, "a short forward target cannot flip the rod above the face");
+      assert.deepEqual(tackle.grip, rig.nearHand);
+      assert.equal(rig.bodyDirection, direction);
+      assert.ok(tackle.grip.y > frame.y - frame.size * .3);
     }
   }
 });
@@ -145,6 +145,43 @@ test("reeling winds beside the rod before handing off the unhooked fish", () => 
     assert.ok(Math.hypot(fishingTackleFrame(caught, false, rig).bobber.x - rig.farHand.x,
       fishingTackleFrame(caught, false, rig).bobber.y - rig.farHand.y) > frame.size * .2,
     "the released float retracts to the rod instead of following the fish into the paw");
+  }
+});
+
+test("the small shared reel's supporting hand meets its actually painted crank even on a subpixel pole", () => {
+  for (const rodId of ["river_rod", "willow_rod"]) {
+    const frame = { ...base, size: 36, rodId, phase: 0, waterTarget: { x: base.x + 36 * .02, y: base.y - 36 * .2 + .5 } };
+    const rig = fishingShoreRig(frame, false), tackle = fishingTackleFrame(frame, false, rig);
+    assert.ok(distance(tackle.tip, tackle.grip) > .001 && distance(tackle.tip, tackle.grip) < 1,
+      "this regression exercises the old one-pixel normalization mismatch");
+    let transform = [1, 0, 0, 1, 0, 0], color, ellipse;
+    const stack = [], cranks = [], values = [];
+    const ctx = new Proxy({}, { get: (_target, key) => (...args) => {
+      values.push(...args.filter(value => typeof value === "number"));
+      const [a, b, c, d, e, f] = transform;
+      if (key === "save") stack.push([...transform]);
+      if (key === "restore") transform = stack.pop();
+      if (key === "translate") transform = [a, b, c, d, e + a * args[0] + c * args[1], f + b * args[0] + d * args[1]];
+      if (key === "rotate") {
+        const co = Math.cos(args[0]), si = Math.sin(args[0]);
+        transform = [a * co + c * si, b * co + d * si, c * co - a * si, d * co - b * si, e, f];
+      }
+      if (key === "scale") transform = [a * args[0], b * args[0], c * args[1], d * args[1], e, f];
+      if (key === "beginPath") ellipse = null;
+      if (key === "ellipse") ellipse = { x: a * args[0] + c * args[1] + e, y: b * args[0] + d * args[1] + f };
+      if (key === "fill" && ellipse && color === fishingRodAppearance(rodId).handle) cranks.push(ellipse);
+    }, set: (_target, key, value) => { if (key === "fillStyle") color = value; return true; } });
+    drawFishingProps(ctx, frame, false, { ...rig, drawBasket: false });
+    assert.ok(cranks.length);
+    assert.ok(distance(cranks.at(-1), fishingReelHand(frame, true, rig)) < 1e-8,
+      "the real Canvas knob and support target share the same unit axis and compact detail scale");
+    assert.ok(distance(rig.farHand, cranks.at(-1)) < 1e-8);
+    const degenerate = { ...frame, waterTarget: { ...rig.grip } }, zero = fishingShoreRig(degenerate, false);
+    const zeroTackle = fishingTackleFrame(degenerate, false, zero);
+    for (const point of [zero.grip, zero.rodTip, zero.farHand, zeroTackle.reel, zeroTackle.bobber])
+      assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y), "zero target distance never produces NaN anchors");
+    drawFishingProps(ctx, degenerate, false, { ...zero, drawBasket: false });
+    assert.ok(values.every(Number.isFinite)); assert.equal(stack.length, 0);
   }
 });
 
@@ -221,13 +258,15 @@ test("Mochlik carries his compact basket by the same physical handle in every fa
   }
 });
 
-test("Mochlik's shore rod stays elevated through the backswing, strike and winding even with water below his feet", () => {
+test("the shore rod leaves the central lower grip toward water through backswing, strike and winding", () => {
   for (const direction of ["front", "left", "right", "back"]) for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) {
     for (let phase = 0; phase <= 1; phase += .025) {
       const frame = { ...base, direction, action, phase, waterTarget: { x: base.x, y: base.y + 60 } };
       const hands = forestFishingHeroRig(frame, false), rod = fishingTackleFrame(frame, false, hands);
       assert.deepEqual(rod.grip, hands.nearHand, "the winding/holding paw is never below an unattached handle");
-      assert.ok(rod.tip.y < rod.grip.y - frame.size * .4, "close water cannot turn the pole into a downward stick");
+      assert.ok(Math.abs(rod.grip.x - frame.x) <= frame.size * .021, "both hands work around the belly's central grip");
+      assert.ok(rod.grip.y >= frame.y - frame.size * .24 && rod.grip.y <= frame.y - frame.size * .19);
+      assert.ok(rod.tip.y > rod.grip.y, "the waiting pole points down toward the visible float");
       assert.equal(hands.bodyDirection, direction, "water below the feet does not force a sideways face");
       const line = fishingLineFrame(frame, false, hands, rod);
       assert.ok(line.width <= frame.size * .006, "the line remains lighter than the rod at every zoom");
@@ -238,11 +277,12 @@ test("Mochlik's shore rod stays elevated through the backswing, strike and windi
 });
 
 test("Mochlik keeps his hands, rod and float continuous across every fishing gesture boundary", () => {
-  const stages = ["rest", "idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"];
+  const stages = [{ action: "rest" }, { action: "idle", variation: "check" }, { action: "cast" }, { action: "fish" },
+    { action: "bite" }, { action: "reel" }, { action: "catch" }, { action: "pack" }, { action: "rest" }];
   for (const direction of ["front", "left", "right", "back"]) for (const rodId of ["reed_rod", "river_rod", "willow_rod"]) {
     for (let index = 1; index < stages.length; index++) {
-      const before = { ...base, direction, rodId, action: stages[index - 1], phase: 1, carryingFish: true };
-      const after = { ...before, action: stages[index], phase: 0 };
+      const before = { ...base, direction, rodId, ...stages[index - 1], phase: 1, carryingFish: true };
+      const after = { ...base, direction, rodId, ...stages[index], phase: 0, carryingFish: true };
       const first = forestFishingHeroRig(before, false), next = forestFishingHeroRig(after, false);
       for (const key of ["nearHand", "farHand", "basket"]) {
         assert.ok(Math.hypot(first[key].x - next[key].x, first[key].y - next[key].y) < 1e-8,
@@ -286,7 +326,7 @@ test("the winding float lies on the exact curve painted for the thin shore line"
   }
 });
 
-test("shore culling and occlusion bounds include the raised pole, airborne float and compact ground basket", () => {
+test("shore culling and occlusion bounds include the low pole, released float and compact ground basket", () => {
   for (const direction of ["front", "back", "left", "right"]) for (const still of [false, true]) {
     for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) {
       for (let phase = 0; phase <= 1; phase += .05) {
@@ -306,7 +346,7 @@ test("shore culling and occlusion bounds include the raised pole, airborne float
 
 test("a new cast's small water offset cannot swap Mochlik's occupied hands at rest → preparation", () => {
   const resting = { ...base, action: "rest", phase: 1, carryingFish: true, waterTarget: { x: base.x - 7, y: base.y + 60 } };
-  const preparing = { ...resting, action: "idle", phase: 0, waterTarget: { x: base.x + 7, y: base.y + 60 } };
+  const preparing = { ...resting, action: "idle", variation: "check", phase: 0, waterTarget: { x: base.x + 7, y: base.y + 60 } };
   const before = forestFishingHeroRig(resting, false), after = forestFishingHeroRig(preparing, false);
   for (const key of ["nearHand", "farHand", "basket"]) assert.deepEqual(before[key], after[key]);
   assert.deepEqual(fishingTackleFrame(resting, false, before).bobber, fishingTackleFrame(preparing, false, after).bobber);
@@ -320,26 +360,24 @@ function shoreFrame(style, size) {
   return { ...base, ...position, size, waterTarget, direction: fishingDirection(position, waterTarget), rodId: "willow_rod" };
 }
 
-test("actual shores aim an elevated pole in the water's ground direction and keep both short arms in reach", () => {
+test("actual shores aim the low screen pole at the float and keep both shared short arms in reach", () => {
   for (const style of ["mochlik", "plesk"]) for (const size of style === "plesk" ? [36] : [36, 50, 120]) {
     for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) {
       for (const phase of [0, .2, .34, .5, .78, 1]) {
         const frame = { ...shoreFrame(style, size), action, phase, carryingFish: true };
         const rig = fishingShoreRig(frame, false, style), tackle = fishingTackleFrame(frame, false, rig);
         assert.equal(rig.bodyDirection, frame.direction, "front water cannot force a right-facing body");
-        for (const [index, arm] of [rig.nearArm, rig.farArm].entries()) {
+        for (const arm of [rig.nearArm, rig.farArm]) {
           assert.ok(arm.reachable, `${style}/${size}/${action}/${phase}: a contact target cannot outrun the short paw`);
-          const farMochlik = style === "mochlik" && index === 1;
-          assert.ok(Math.abs(distance(arm.shoulder, arm.elbow) - size * (farMochlik ? .15 : .12)) < 1e-6);
-          assert.ok(Math.abs(distance(arm.elbow, arm.hand) - size * (farMochlik ? .16 : .13)) < 1e-6);
-          assert.ok(distance(arm.shoulder, arm.hand) <= size * (farMochlik ? .31 : .25));
+          assert.ok(Math.abs(distance(arm.shoulder, arm.elbow) - size * .12) < 1e-6);
+          assert.ok(Math.abs(distance(arm.elbow, arm.hand) - size * .13) < 1e-6);
+          assert.ok(distance(arm.shoulder, arm.hand) <= size * .25);
           assert.ok(arm.elbow.y < frame.y - size * .12, "short paws cannot bend down to the feet");
         }
         if (["fish", "bite", "reel"].includes(action)) {
-          const planar = { x: tackle.tip.x - tackle.grip.x,
-            y: tackle.tip.y - tackle.grip.y + size * rig.rodLength * Math.sin(rig.rodElevation) * 1.15 };
-          const aim = { x: frame.waterTarget.x - tackle.grip.x, y: frame.waterTarget.y - frame.y };
-          assert.ok(Math.abs(planar.x * aim.y - planar.y * aim.x) < 1e-6, "removing height recovers the authored ground aim");
+          const planar = { x: tackle.tip.x - tackle.grip.x, y: tackle.tip.y - tackle.grip.y };
+          const aim = { x: frame.waterTarget.x - tackle.grip.x, y: frame.waterTarget.y - tackle.grip.y };
+          assert.ok(Math.abs(planar.x * aim.y - planar.y * aim.x) < 1e-6, "the painted screen pole lies on the grip to visible float axis");
           assert.ok(planar.x * aim.x + planar.y * aim.y > 0);
         }
         if (["cast", "fish", "bite"].includes(action)) assert.ok(distance(rig.farHand, fishingReelHand(frame, true, rig)) < 1e-6);
@@ -355,7 +393,7 @@ test("actual shores aim an elevated pole in the water's ground direction and kee
   }
 });
 
-test("actual-map casts release from one fixed origin, then follow a continuous ballistic flight into the water", () => {
+test("actual-map casts release from one fixed origin, then follow a low forward flight into the water", () => {
   for (const style of ["mochlik", "plesk"]) {
     const frame = { ...shoreFrame(style, style === "plesk" ? 36 : 50), action: "cast" };
     const samples = phase => {
@@ -365,11 +403,16 @@ test("actual-map casts release from one fixed origin, then follow a continuous b
     const release = samples(.34);
     assert.ok(distance(samples(.34 - 1e-6).tackle.bobber, release.tackle.bobber) < .001);
     assert.ok(distance(samples(.34 + 1e-6).tackle.bobber, release.tackle.bobber) < .001);
+    const firstFlight = samples(.34 + .001);
+    assert.ok(firstFlight.tackle.bobber.y > release.tackle.bobber.y, "the initial float travels toward lower water, never shoots above the head");
+    assert.ok(distance(firstFlight.tackle.bobber, release.tackle.bobber) < frame.size * .005,
+      "the released float has a bounded initial movement instead of a positional leap");
     for (const phase of [.4, .5, .78, 1]) {
       const { rig, tackle } = samples(phase), t = (phase - .34) / .66;
       assert.deepEqual(rig.castOrigin, release.rig.castOrigin, "the released lure is no longer dragged by the moving rod tip");
       assert.ok(Math.abs(tackle.bobber.x - (rig.castOrigin.x + (frame.waterTarget.x - rig.castOrigin.x) * t)) < 1e-6);
-      assert.ok(Math.abs(tackle.bobber.y - (rig.castOrigin.y + (frame.waterTarget.y - rig.castOrigin.y) * t - t * (1 - t) * frame.size * 2.2)) < 1e-6);
+      assert.ok(rig.castArc >= 0 && rig.castArc <= frame.size * .22);
+      assert.ok(Math.abs(tackle.bobber.y - (rig.castOrigin.y + (frame.waterTarget.y - rig.castOrigin.y) * t - t * (1 - t) * rig.castArc)) < 1e-6);
     }
     assert.deepEqual(samples(1).tackle.bobber, frame.waterTarget);
   }
@@ -408,7 +451,10 @@ test("departure folds the exact visible cast or waiting line, then meets the bas
     const settling = { ...from, action: "rest", phase: 1, waterTarget: undefined, carryingBasket: true,
       settling: { from, phase: 0 } };
     const start = fishingShoreRig(settling, false), startTackle = fishingTackleFrame(settling, false, start);
-    for (const key of ["nearHand", "farHand", "rodTip", "basket"]) assert.deepEqual(start[key], source[key]);
+    for (const key of ["nearHand", "farHand", "rodTip", "basket", "anatomicalSide"]) assert.deepEqual(start[key], source[key]);
+    assert.deepEqual(start.nearArm.elbow, source.nearArm.elbow);
+    assert.deepEqual(start.farArm.elbow, source.farArm.elbow);
+    assert.deepEqual(startTackle.reel, tackle.reel, "the actual same-side folding begins at the old reel anchor");
     assert.deepEqual(fishingLineFrame(settling, false, start, startTackle).float, sourceLine.float);
     const end = fishingShoreRig({ ...settling, settling: { from, phase: 1 } }, false);
     const walking = fishingShoreRig({ ...settling, action: "walk", frame: 0, settling: undefined }, false);
