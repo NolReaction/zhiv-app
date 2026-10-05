@@ -82,7 +82,9 @@ test("existing species remain in the expanded grades across shop book and invent
   ]);
   const state = fresh({ fish_mooncarp: 2 });
   const shop = render(PleskFishingShop, { economy: controller(state), onFishing() {}, onOpenPantry() {} });
-  assert.match(shop, /data-fish-rarity="uncommon"/); assert.match(shop, /data-fish-rarity="rare"/);
+  assert.doesNotMatch(shop, /Мои снасти|Ваши снасти/);
+  const book = render(PleskFishingCollection, { state, catalog: state.catalog.fishing });
+  assert.match(book, /data-fish-rarity="uncommon"/); assert.match(book, /data-fish-rarity="rare"/);
   assert.match(pantry(state), /data-fish-rarity="rare"/);
   const entries = collectionBookEntries("fishing", [], state);
   assert.equal(entries.length, economyCatalog.fishing.fish.length); assert.equal(entries.find(entry => entry.id === "fish_mooncarp").rarity, "rare");

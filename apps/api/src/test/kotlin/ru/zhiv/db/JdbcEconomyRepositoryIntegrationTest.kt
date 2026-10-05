@@ -62,6 +62,61 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `clothing purchase receipts lock both balances and legacy equipment ownership across racing requests`() = runBlocking<Unit> {
+        val p = player(); val stranger = player(); val world = JdbcWorldRepository(source)
+        economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(original.copy(wallet=EconomyWallet(20_000, 2_000))), p.id)
+        val beforeWorld = world.snapshot(p.hash)
+        val buy = command(p, economy.snapshot(p.hash), "buy_wardrobe_item", "pearls:heather").copy(totalPrice=150)
+        val replies = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, buy) } }.awaitAll() }
+        assertEquals(1, replies.count { it.replayed })
+        assertEquals(1850L, economy.snapshot(p.hash).wallet.pearls)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='buy_wardrobe_item'", p.id))
+        assertEquals("-150", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='buy_wardrobe_item'", p.id))
+        assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> { economy.command(p.hash, buy.copy(totalPrice=0)) }.code)
+        assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, buy) }.code)
+        val afterWorld = world.snapshot(p.hash)
+        assertTrue("heather" in afterWorld.state.inventory)
+        assertTrue(afterWorld.revision > beforeWorld.revision)
+        val equip = WorldCommand(UUID.randomUUID().toString(), p.publicId, afterWorld.revision, "equip", "heather")
+        assertEquals("heather", world.command(p.hash, equip).snapshot.state.equipment.palette)
+        val second = command(p, economy.snapshot(p.hash), "buy_wardrobe_item", "coins:fern").copy(totalPrice=1200)
+        val raced = coroutineScope { List(2) { async(Dispatchers.IO) { runCatching { economy.command(p.hash, second.copy(requestId=UUID.randomUUID().toString())) } } }.awaitAll() }
+        assertEquals(1, raced.count { it.isSuccess })
+        assertEquals(18_800L, economy.snapshot(p.hash).wallet.coins)
+        val again = command(p, economy.snapshot(p.hash), "buy_wardrobe_item", "coins:fern").copy(totalPrice=1200)
+        assertEquals("ECONOMY_WARDROBE_OWNED", assertFailsWith<AuthFailure> { economy.command(p.hash, again) }.code)
+        assertEquals(1850L, economy.snapshot(p.hash).wallet.pearls)
+    }
+
+    @Test fun `legacy clothes remain owned and account merging does not refund duplicate cosmetics`() = runBlocking<Unit> {
+        val a = player(); val b = player(); val world = JdbcWorldRepository(source)
+        for (p in listOf(a,b)) {
+            economy.snapshot(p.hash)
+            val before = source.connection.use { readEconomyProfile(it, p.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(before.copy(wallet=EconomyWallet(5000, 500))), p.id)
+            economy.command(p.hash, command(p, economy.snapshot(p.hash), "buy_wardrobe_item", "pearls:heather").copy(totalPrice=150))
+        }
+        val old = world.snapshot(a.hash)
+        execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?", worldJson.encodeToString(old.state.copy(inventory=old.state.inventory+"fern")), a.id)
+        assertTrue("fern" in economy.snapshot(a.hash).wardrobe)
+        assertEquals("ECONOMY_WARDROBE_OWNED", assertFailsWith<AuthFailure> {
+            economy.command(a.hash, command(a, economy.snapshot(a.hash), "buy_wardrobe_item", "coins:fern").copy(totalPrice=1200))
+        }.code)
+        source.connection.use { c ->
+            c.autoCommit=false
+            listOf(a.id,b.id).sorted().forEach { id -> c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", id) { true } }
+            mergeEconomyProfiles(c,a.id,b.id); mergeWorldProfiles(c,a.id,b.id); c.commit()
+        }
+        val merged = economy.snapshot(a.hash)
+        assertEquals(700L, merged.wallet.pearls)
+        assertEquals(10_000L, merged.wallet.coins)
+        assertEquals(1, merged.wardrobe.count { it == "heather" })
+        assertTrue("fern" in merged.wardrobe)
+        assertTrue("heather" in world.snapshot(a.hash).state.inventory)
+    }
+
     @Test fun `rare delivery has one transactional effect and private clock is isolated from views owners and failed claims`() = runBlocking<Unit> {
         val p = player(); val stranger = player(); economy.snapshot(p.hash)
         val original = source.connection.use { readEconomyProfile(it, p.id).state }

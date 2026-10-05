@@ -1,9 +1,10 @@
+import { wardrobeItems, wardrobeOwned } from "@/features/world/wardrobe";
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash, randomInt } from "node:crypto";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/money";
-import { marketListingEligible, marketMinimumPrice } from "@/features/economy/market-rules";
+import { marketItemUnlocked, marketListingEligible, marketMinimumPrice } from "@/features/economy/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
-import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney } from "@/lib/dev/world-store";
+import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
@@ -53,6 +54,7 @@ function profile(token: string | undefined, now: number) {
   }
   normalizeCurrency(value);
   value.state.fishing ??= fishingState({});
+  value.state.wardrobe = wardrobeOwned(value.state.wardrobe, getDevLegacyWardrobe(owner));
   value.state.progression = inheritEconomyCollection(value.state.progression, getDevCollectionFinds(owner));
   value.state.buildings.warehouse ??= 1;
   value.state.buildings.kiln ??= 0;
@@ -68,7 +70,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   delete state.fishingCastSeed;
   delete state.rareDropState;
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
-    fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
+    wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
@@ -103,7 +105,7 @@ function escrowItems(owner: string, excluding?: string): Record<string, number> 
 }
 function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number): EconomyResult {
   value.state = next; bump(value);
-  if (!["grant_currency", "grant_item", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"].includes(command.action))
+  if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"].includes(command.action))
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
     signature: JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]),
@@ -132,7 +134,9 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const reserved = escrowItems(owner);
   const message = applyEconomyCommand(next, command, now, () => command.action === "start_fishing" ? crypto.randomUUID() : command.requestId, reserved, randomInt);
   assertEconomyStorageTransition(value.state, next, reserved);
-  return commit(owner, value, next, command, message, now);
+  const result = commit(owner, value, next, command, message, now);
+  if (command.action === "buy_wardrobe_item") syncDevWorldWardrobe(token, next.wardrobe ?? [], now);
+  return result;
 }
 /** QA tools mutate the same server snapshot and receipt ledger as ordinary play. */
 export function commandDevEconomyCheat(token: string | undefined, input: EconomyDevCommand, now = Date.now()): EconomyResult {
@@ -164,6 +168,20 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
       creditEconomyItems(next, { [command.targetId]: command.quantity });
       message = `DEV: выдано ${command.quantity} × ${economyCatalog.items.find(item => item.id === command.targetId)!.name}`;
       break;
+    case "grant_wardrobe": {
+      const items = wardrobeItems.filter(item => command.targetId === "all" || item.id === command.targetId);
+      next.wardrobe = wardrobeOwned(next.wardrobe, items.map(item => item.id));
+      message = command.targetId === "all" ? "DEV: вся одежда добавлена в гардероб" : `DEV: ${items[0].name} теперь в гардеробе`;
+      break;
+    }
+    case "grant_fishing_gear": {
+      const fishing = fishingState(next), catalog = economyCatalog.fishing!;
+      const rods = catalog.rods.filter(rod => command.targetId === "all" || rod.id === command.targetId).map(rod => rod.id);
+      const hooks = catalog.hooks.filter(hook => command.targetId === "all" || hook.id === command.targetId).map(hook => hook.id);
+      next.fishing = { ...fishing, ownedRods: [...new Set([...fishing.ownedRods, ...rods])], ownedHooks: [...new Set([...fishing.ownedHooks, ...hooks])] };
+      message = command.targetId === "all" ? "DEV: все удочки и крючки доступны перед рыбалкой" : "DEV: снасть доступна перед рыбалкой";
+      break;
+    }
     case "grant_upgrade_cost": {
       const building = economyCatalog.buildings.find(item => item.id === command.targetId)!;
       const target = building.levels.find(level => level.level === (next.buildings[building.id] ?? 0) + 1);
@@ -196,6 +214,7 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     return fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   return commit(owner, value, next, command, message, now);
 }
+export function getDevEconomyWardrobe(token: string | undefined, now = Date.now()): readonly string[] { return profile(token, now).value.state.wardrobe ?? []; }
 export function getDevEconomyBuildingLevels(token: string | undefined, now = Date.now()): { home: number; workshop: number } {
   const { value } = profile(token, now);
   return { home: value.state.buildings.home ?? 1, workshop: value.state.buildings.workshop ?? 0 };
@@ -276,6 +295,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (command.action === "create_listing") {
     const item = economyCatalog.items.find(item => item.id === command.targetId && item.tradable);
     if (!item) return fail("ECONOMY_MARKET_ITEM", "Этот предмет нельзя выставить на рынок", 400);
+    if (!marketItemUnlocked(next, item.id)) return fail("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома");
     if (command.totalPrice % ECONOMY_CURRENCY_SCALE !== 0 || command.totalPrice < marketMinimumPrice(item.id, command.quantity) || command.totalPrice > item.baseSellPrice * economyCatalog.market.maxPriceMultiplier * command.quantity) return fail("ECONOMY_MARKET_PRICE", "Цена лота вне разрешённого диапазона", 400);
     if ([...store().listings.values()].filter(item => item.sellerPublicId === owner && item.status === "active").length >= economyCatalog.market.maxListings) return fail("ECONOMY_MARKET_LIMIT", "На прилавке уже 10 лотов");
     if ((next.inventory[item.id] ?? 0) < command.quantity) return fail("ECONOMY_RESOURCES", "Не хватает предметов для лота");

@@ -397,7 +397,7 @@ function OfferCard({ economy, offer, owned, navigate }: { economy: ReadyEconomy;
 
 function ListingForm({ economy }: { economy: ReadyEconomy }) {
   const { snapshot: state, busy, uncertain } = economy;
-  const items = state.catalog.items.filter(item => item.tradable && (state.inventory[item.id] ?? 0) > 0);
+  const items = state.catalog.items.filter(item => item.tradable && (state.inventory[item.id] ?? 0) > 0 && marketItemUnlocked(state, item.id, state.catalog));
   const [selected, setSelected] = useState(items[0]?.id ?? "");
   const item = items.find(entry => entry.id === selected) ?? items[0];
   const itemId = useId();
@@ -418,7 +418,7 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
   const minimum = quantity ? marketMinimumPrice(item.id, quantity, state.catalog) : item.baseSellPrice;
   const valid = Boolean(quantity && totalPrice && totalPrice >= minimum && totalPrice % state.catalog.currencyScale === 0);
   const full = (economy.market?.mine.length ?? 0) >= limits.maxListings;
-  const disabled = !valid || full || busy || uncertain || !canTrade(state);
+  const disabled = !valid || full || busy || uncertain || !canTrade(state) || !marketItemUnlocked(state, item.id, state.catalog);
   return <div className={styles.card}>
     <div className={styles.fields}>
       <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0)} step={1} value={amount} disabled={busy || uncertain} onChange={event => setAmount(event.target.value)} /></label>

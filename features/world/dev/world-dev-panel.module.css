@@ -208,3 +208,9 @@
 .cheatSection > summary::after { content: "+"; font-size: 20px; color: var(--dev-muted); }
 .cheatSection[open] > summary::after { content: "−"; }
 .cheatTools { display: grid; gap: 10px; padding-bottom: 8px; }
+
+.cheatItemPreview { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px; border: 1px solid var(--dev-line); border-radius: 10px; background: #203326; }
+.cheatItemPreview > svg { flex-shrink: 0; }
+.cheatItemPreview > div { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.cheatItemPreview strong { font-size: 13px; }
+.cheatItemPreview span, .cheatItemPreview small { color: var(--dev-muted); font-size: 11px; }

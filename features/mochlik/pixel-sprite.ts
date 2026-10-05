@@ -1,3 +1,5 @@
+import { mossPalette } from "./appearance-palette";
+
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
   | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
@@ -45,8 +47,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     }
   };
   const walking = pose === "walk" || pose === "carry" || pose === "fishing-walk";
-  const c = appearance?.palette === "fern" ? { ...colors, moss: "#49816b", mossLight: "#7fb99a", mossDark: "#345649" }
-    : appearance?.palette === "autumn" ? { ...colors, moss: "#b27b42", mossLight: "#d8ae63", mossDark: "#7a5637" } : colors;
+  const c = { ...colors, ...mossPalette(appearance?.palette) };
   const step = walking ? [0, -1, 0, 1][frame % 4] : 0;
   const bob = walking && frame % 2 === 1 ? -1 : pose === "chew" ? [0, 1, 0, 1][frame % 4] : 0;
   let headOffset = bob;
@@ -154,20 +155,48 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   // Wearables share the rig's pose anchors and depth rules in every direction.
   if (appearance && pose !== "sleep" && pose !== "drowsy") {
     if (appearance.neck) {
-      const scarf = appearance.neck === "berry_scarf" ? "#b96374" : "#e2a44d";
+      const scarf = appearance.neck === "berry_scarf" ? "#b96374" : appearance.neck === "river_scarf" ? "#6299b1"
+        : appearance.neck === "forest_bandana" ? "#77905f" : appearance.neck === "moon_scarf" ? "#b7afd7" : "#e2a44d";
       const neckY = 31 + bob + Math.round((headOffset - bob) / 3);
+      const knotX = direction === "left" ? 18 : 28;
       rect(14, neckY, 21, 3, "#65492f"); rect(15, neckY, 19, 2, scarf);
-      if (direction !== "back") { rect(direction === "left" ? 18 : 28, neckY + 2, 4, 6 + (walking ? frame % 2 : 0), scarf); }
+      if (appearance.neck === "forest_bandana") {
+        if (direction === "back") { rect(28, neckY + 2, 4, 2, "#aaba80"); rect(30, neckY + 3, 2, 2, scarf); }
+        else { rect(19, neckY + 2, 11, 2, scarf); rect(21, neckY + 4, 7, 2, scarf); rect(23, neckY + 6, 3, 1, "#aaba80"); }
+      } else if (direction !== "back") {
+        rect(knotX, neckY + 2, 4, 6 + (walking ? frame % 2 : 0), scarf);
+        if (appearance.neck === "river_scarf") rect(knotX, neckY + 5, 4, 1, "#c1e0dd");
+        if (appearance.neck === "moon_scarf") { rect(knotX + 1, neckY + 4, 2, 2, "#f2e5ba"); rect(17, neckY, 4, 1, "#ddd4ee"); }
+      }
     }
     if (appearance.head) {
-      const cap = appearance.head === "mining_helmet" ? "#d6b456" : appearance.head === "leaf_cap" ? "#9cb764" : "#c29a61";
-      // Keep the cap attached while bending down, yawning and stretching.
-      const capTop = Math.max(0, 1 + headOffset);
-      rect(14, 7 + headOffset, 22, 3, "#514d32"); rect(16, 5 + headOffset, 18, 4, cap);
-      rect(20, capTop, 11, 5 + headOffset - capTop + 1, cap); rect(20, 5 + headOffset, 11, 1, "#78613b");
-      if (appearance.head === "mining_helmet") {
-        rect(17, 5 + headOffset, 16, 1, "#f2d789");
-        if (direction !== "back") { rect(24, 4 + headOffset, 4, 4, "#6a674f"); rect(25, 5 + headOffset, 2, 2, "#fff0ae"); }
+      const hatY = headOffset;
+      if (appearance.head === "acorn_cap") {
+        // Low rounded acorn cup; the stem follows the crown while bending.
+        rect(14, 7 + hatY, 22, 3, "#654b36"); rect(16, 4 + hatY, 18, 4, "#996743");
+        rect(20, 2 + hatY, 10, 3, "#bb8652"); rect(24, Math.max(0, hatY), 3, 3, "#654b36");
+        rect(16, 7 + hatY, 18, 2, "#c5955e");
+        for (const x of [18, 23, 28, 32]) rect(x, 7 + hatY, 2, 1, "#795336");
+      } else if (appearance.head === "knitted_cap") {
+        rect(16, 4 + hatY, 18, 6, "#536384"); rect(19, 2 + hatY, 12, 5, "#697caa");
+        rect(23, Math.max(0, hatY), 5, 3, "#c6ccdf");
+        rect(14, 8 + hatY, 22, 3, "#697caa"); rect(16, 8 + hatY, 18, 1, "#a6b4d1");
+        for (const x of [20, 24, 28]) rect(x, 4 + hatY, 1, 3, "#8b9bbd");
+      } else if (appearance.head === "moon_crown") {
+        // A fine silver wreath, not a tall crown: the face and ears stay clear.
+        rect(13, 8 + hatY, 24, 2, "#766987"); rect(15, 8 + hatY, 20, 1, "#c3c1e4");
+        for (const x of [15, 20, 28, 33]) { rect(x, 6 + hatY, 2, 2, "#c3c1e4"); rect(x + 1, 5 + hatY, 1, 1, "#e2ddef"); }
+        if (direction !== "back") { rect(24, 3 + hatY, 2, 5, "#eee0ad"); rect(26, 3 + hatY, 2, 1, "#eee0ad"); rect(26, 7 + hatY, 2, 1, "#eee0ad"); }
+      } else {
+        const cap = appearance.head === "mining_helmet" ? "#d6b456" : appearance.head === "leaf_cap" ? "#9cb764" : "#c29a61";
+        // Keep the cap attached while bending down, yawning and stretching.
+        const capTop = Math.max(0, 1 + headOffset);
+        rect(14, 7 + headOffset, 22, 3, "#514d32"); rect(16, 5 + headOffset, 18, 4, cap);
+        rect(20, capTop, 11, 5 + headOffset - capTop + 1, cap); rect(20, 5 + headOffset, 11, 1, "#78613b");
+        if (appearance.head === "mining_helmet") {
+          rect(17, 5 + headOffset, 16, 1, "#f2d789");
+          if (direction !== "back") { rect(24, 4 + headOffset, 4, 4, "#6a674f"); rect(25, 5 + headOffset, 2, 2, "#fff0ae"); }
+        }
       }
     }
   }

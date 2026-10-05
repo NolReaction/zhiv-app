@@ -84,12 +84,22 @@ object EconomyMarketRules {
         }
         fun requirements(home: Int, buildings: Map<String, Int>): Int = maxOf(home,
             buildings.maxOfOrNull { (id, level) -> buildingHome(id, level) } ?: 1)
-        val sources = catalog.recipes.filter { (it.rewards[itemId] ?: 0L) > 0L }.map { recipe ->
+        val sources = (catalog.recipes.filter { (it.rewards[itemId] ?: 0L) > 0L }.map { recipe ->
             requirements(recipe.requiredHomeLevel, recipe.requiredBuildings + (recipe.buildingId to
                 maxOf(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?: 0)))
         } + catalog.explorations.filter { (it.rewards[itemId] ?: 0L) > 0L }
-            .map { requirements(it.requiredHomeLevel, it.requiredBuildings) }
-        if (catalog.fishing?.fish?.any { it.itemId == itemId } == true || catalog.fishing?.baits?.any { it.itemId == itemId } == true) return 1
+            .map { requirements(it.requiredHomeLevel, it.requiredBuildings) }).toMutableList()
+        catalog.fishing?.let { fishing ->
+            fishing.baits.find { it.itemId == itemId }?.let { sources += it.requiredHomeLevel }
+            fishing.fish.find { it.itemId == itemId }?.let { fish ->
+                val hookHome = fish.requiredHookId?.let { id ->
+                    fishing.hooks.find { it.id == id }?.requiredHomeLevel ?: Int.MAX_VALUE
+                } ?: 1
+                sources += catalog.explorations.filter { it.id in fishing.routeIds }.map {
+                    maxOf(hookHome, requirements(it.requiredHomeLevel, it.requiredBuildings))
+                }
+            }
+        }
         return sources.minOrNull() ?: Int.MAX_VALUE
     }
 

@@ -64,6 +64,39 @@ test("headwear follows bending and stretching, and every pose stays a finite ras
   }
 });
 
+test("new outfits preserve the face, planted feet and individual front/back details", () => {
+  const outfits = [
+    { palette: "ember", head: "acorn_cap", neck: "forest_bandana" },
+    { palette: "heather", head: "knitted_cap", neck: "river_scarf" },
+    { palette: "frost", head: "moon_crown", neck: "moon_scarf" },
+  ];
+  for (const outfit of outfits) for (const direction of ["front", "back", "left", "right"]) {
+    for (const pose of ["idle", "walk", "stretch", "reach", "hold", "chew", "fish", "sleep"]) for (let frame = 0; frame < 4; frame++) {
+      const plain = pixelSprite(pose, direction, frame, { palette: outfit.palette, head: null, neck: null });
+      const dressed = pixelSprite(pose, direction, frame, outfit);
+      assert.deepEqual(pixelSpriteContact(dressed), pixelSpriteContact(plain), "clothing cannot move the contact shadow or planted feet");
+      const eyes = sprite => [...sprite.pixels].filter(([, color]) => color === "#30291d");
+      assert.deepEqual(eyes(dressed), eyes(plain), "headwear cannot cover either eye in a bend or turn");
+      if (pose === "sleep") assert.deepEqual(dressed.pixels, plain.pixels, "rest keeps the existing folded, uncluttered silhouette");
+      else assert.notDeepEqual(dressed.pixels, plain.pixels);
+    }
+  }
+  const moon = { palette: "frost", head: "moon_crown", neck: null };
+  const front = pixelSprite("idle", "front", 0, moon), back = pixelSprite("idle", "back", 0, moon);
+  assert.ok([...front.pixels.values()].includes("#eee0ad"));
+  assert.ok(![...back.pixels.values()].includes("#eee0ad"), "the front crescent does not show through the rear wreath");
+});
+
+test("body and interaction painters share a safe palette for every new moss colour", async () => {
+  const { mossPalette } = await vite.ssrLoadModule("/features/mochlik/appearance-palette.ts");
+  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember"]) {
+    const palette = mossPalette(id);
+    const sprite = pixelSprite("idle", "back", 0, { palette: id, head: null, neck: null });
+    for (const color of Object.values(palette)) assert.ok([...sprite.pixels.values()].includes(color));
+  }
+  for (const id of [undefined, "unknown", "constructor", "__proto__"]) assert.equal(mossPalette(id), mossPalette("moss"));
+});
+
 test("sprite cache is bounded, reuses hot frames and normalizes frame input", () => {
   const first = pixelSprite("idle", "front", 0);
   assert.equal(first, pixelSprite("idle", "front", 4));

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { mossPalette } from "@/features/mochlik/appearance-palette";
 
 function mossTuft(base: string, light: string, dark: string, outline: string) {
   return (
@@ -26,6 +27,12 @@ function scarf(base: string, light: string, dark: string) {
   );
 }
 
+function mossShade(id: string) {
+  const { moss, mossLight, mossDark } = mossPalette(id);
+  return mossTuft(moss, mossLight, mossDark,
+    "M6 29c-3-5 1-9 6-8-3-7 1-12 7-9 1-8 9-9 12-2 6-4 11 2 8 8 6 2 7 9 2 13l-2 5-8 4-10-1-10 1-5-5Z");
+}
+
 /** Wardrobe pieces, with moss colours matching the equipped character. */
 export const equipmentArt: Record<string, ReactNode> = {
   moss: mossTuft(
@@ -42,6 +49,43 @@ export const equipmentArt: Record<string, ReactNode> = {
   ),
   amber_scarf: scarf("#e2a44d", "#f1cb79", "#a7723e"),
   berry_scarf: scarf("#b96374", "#e4a1a5", "#88485e"),
+  heather: mossShade("heather"),
+  frost: mossShade("frost"),
+  ember: mossShade("ember"),
+  river_scarf: scarf("#6299b1", "#c1e0dd", "#426d85"),
+  moon_scarf: <>
+    {scarf("#b7afd7", "#ddd4ee", "#7b739b")}
+    <path d="m16 29 1-3 2 3 3 1-3 1-2 3-1-3-3-1Z" fill="#f2e5ba" stroke="none" />
+  </>,
+  forest_bandana: <>
+    <path d="M7 15c9-8 24-8 34 0l-16 26Z" fill="#77905f" />
+    <path d="M7 15c8 2 26 2 34 0l-4 8c-7 2-17 2-25 0Z" fill="#aaba80" />
+    <path d="m11 18 13 18 13-18" fill="none" stroke="#c9d6aa" strokeWidth="1.5" />
+    <path d="m7 15-4 9 8-3m30-6 4 9-8-3" fill="#77905f" />
+    <path d="M22 24c4-5 7-3 6 0-1 3-3 4-5 4m-3 3 7-10" fill="#c9d6aa" strokeWidth="1" />
+  </>,
+  acorn_cap: <>
+    <path d="M22 9c-2-5 0-7 4-7l2 2c-3 0-3 2-2 5Z" fill="#795336" />
+    <path d="M8 29C8 16 14 8 24 8s16 8 16 21Z" fill="#996743" />
+    <path d="M13 23c2-7 5-10 10-11" fill="none" stroke="#bb8652" strokeWidth="3" />
+    <path d="M5 28c9-4 29-4 38 0v7c-8 7-30 7-38 0Z" fill="#c5955e" />
+    <path d="m8 29 6 5 6-5 6 5 6-5 7 5m-28 3 3-3 6 5 6-5 6 4" fill="none" stroke="#795336" strokeWidth="1.5" />
+    <path d="M7 29c10-3 25-3 34 0" fill="none" stroke="#e0b984" strokeWidth="1.5" />
+  </>,
+  knitted_cap: <>
+    <path d="M9 32 12 18c2-7 6-10 12-10s11 3 13 10l3 14Z" fill="#697caa" />
+    <path d="M17 15 14 29m9-16-1 16m8-14 3 14" fill="none" stroke="#a6b4d1" strokeWidth="2.5" />
+    <path d="M21 8c-5-4-1-9 3-6 4-3 8 2 4 6-2 2-5 2-7 0Z" fill="#c6ccdf" />
+    <path d="M7 30c9-3 25-3 34 0v9c-9 4-25 4-34 0Z" fill="#697caa" />
+    <path d="M9 31c8-2 23-2 30 0m-26 4v4m6-5v6m6-6v6m6-6v6m6-5v4" fill="none" stroke="#a6b4d1" strokeWidth="1.7" />
+  </>,
+  moon_crown: <>
+    <path d="M6 27c8 9 27 9 36 0l-2 7c-9 8-23 8-32 0Z" fill="#c3c1e4" />
+    <path d="M8 28c8 7 23 7 32 0" fill="none" stroke="#f1ebf8" />
+    <path d="M10 27c-6-2-7-8-5-12 6 1 9 7 5 12m5 3c-4-4-3-9 0-12 5 3 6 9 0 12m18 0c4-4 3-9 0-12-5 3-6 9 0 12m5-3c6-2 7-8 5-12-6 1-9 7-5 12" fill="#c3c1e4" />
+    <path d="M27 7c-7-2-13 6-8 13 3 4 9 4 12 0-8 3-12-9-4-13Z" fill="#eee0ad" />
+    <path d="m24 26 2-3 2 3-2 3Z" fill="#f1ebf8" strokeWidth="1" />
+  </>,
   leaf_cap: (
     <>
       <path d="M6 28c7-6 24-7 36-1 3 3 1 7-4 8-4 2-6-1-9 0-7 4-19 4-24-1-2-2-1-4 1-6Z" fill="#78934e" />

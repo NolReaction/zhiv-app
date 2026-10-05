@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, LockKeyhole, MoreHorizontal, Package, PawPrint, Shirt, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, MoreHorizontal, Package, PawPrint, Shirt, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -10,9 +10,8 @@ import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "./world-scene";
-import { worldCatalog as catalog } from "./model";
 import { WorldCollections } from "./world-collections";
-import { ItemIcon } from "@/features/items/item-icon";
+import { WorldWardrobe } from "./world-wardrobe";
 import type { MapObjectSelection, WorldPlace } from "./map-engine";
 import styles from "./world.module.css";
 import { WorldJourneys } from "./world-journeys";
@@ -361,17 +360,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
             })}
           </div>}
           {panel === "journeys" && <WorldJourneys world={world} destination="trail" onClaim={confirming} allowStart={false} />}
-        {panel === "wardrobe" && <div className={styles.panel}><div className={styles.panelHeading}><span className={styles.eyebrow}>ХАРАКТЕР В ДЕТАЛЯХ</span><p>Выбери одежду и оттенок мха для своего Мохлика.</p></div>
-          <div className={styles.wardrobe}>{catalog.items.map(item => {
-            const owned = state.inventory.includes(item.id), equipped = Object.values(state.equipment).includes(item.id);
-            return <article key={item.id} className={styles.item} data-owned={owned} data-equipped={equipped || undefined}><span className={styles.itemSwatch} style={{ background: `${item.color}26` }}><ItemIcon itemId={item.id} size={38} /></span>
-              <div><h3>{item.name}</h3><p>{item.slot === "palette" ? "Цвет мха" : item.slot === "head" ? "Головной убор" : item.slot === "rod" ? "Снаряжение для рыбалки" : "Шарф"}</p></div>
-              {owned ? <button disabled={locked || equipped && item.slot === "palette"} onClick={() => act("equip", equipped ? `remove_${item.slot}` : item.id)}>{equipped ? item.slot === "palette" ? "Выбран" : item.slot === "rod" ? "Убрать" : "Снять" : item.slot === "rod" ? "Взять" : "Надеть"}</button>
-                : item.id === "explorer_cap" || item.id === "willow_rod" ? <span className={styles.kicker}><LockKeyhole size={13} />Награда прежних путешествий</span>
-                  : <span className={styles.kicker}>Новые рецепты появятся позже</span>}
-            </article>;
-          })}</div>
-        </div>}
+        {panel === "wardrobe" && <WorldWardrobe key={ownerPublicId} world={world} economy={economy} />}
         {panel === "collection" && <WorldCollections state={state} economy={economy.snapshot} gifts={snapshot.gifts} />}
 
           <WorldFeedback world={world} />

@@ -21,6 +21,6 @@ export function useWorld(owner: string | null, onSessionLost: () => void) {
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
   }, [session, owner]);
-  return { ...view, now, act: session.act, retry: session.retry, refresh: session.refreshSoft };
+  return { ...view, now, act: session.act, retry: session.retry, refresh: session.refreshSoft, refreshNow: session.refresh };
 }
 export type WorldController = ReturnType<typeof useWorld>;

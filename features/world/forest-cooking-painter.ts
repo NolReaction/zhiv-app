@@ -1,4 +1,5 @@
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
+import { mossPalette } from "@/features/mochlik/appearance-palette";
 import type { ForestCookingFrame } from "./forest-cooking";
 import { drawGroundedHero } from "./grounding";
 import type { WorldPoint } from "./tiled/types";
@@ -59,8 +60,9 @@ export function drawForestCookingHero(ctx: CanvasRenderingContext2D, frame: Fore
   const rig = forestCookingHeroRig(frame, still), { size, action, direction } = frame;
   const { board, pot, bowl, side, phase } = rig;
   const back = direction === "back";
-  const armShade = back ? appearance?.palette === "fern" ? "#345649" : appearance?.palette === "autumn" ? "#7a5637" : "#58683b" : "#d8bf83";
-  const armLight = back ? appearance?.palette === "fern" ? "#49816b" : appearance?.palette === "autumn" ? "#b27b42" : "#7c8845" : "#f4e4ae";
+  const palette = mossPalette(appearance?.palette);
+  const armShade = back ? palette.mossDark : "#d8bf83";
+  const armLight = back ? palette.moss : "#f4e4ae";
   const oval = (x: number, y: number, rx: number, ry: number, color: string) => {
     ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); ctx.fill();
   };

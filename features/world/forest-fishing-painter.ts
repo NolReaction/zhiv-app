@@ -3,6 +3,7 @@ import { fishingShoreRig } from "./fishing-shore-rig";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { drawGroundedHero } from "./grounding";
 import type { WorldPoint } from "./tiled/types";
+import { mossPalette } from "@/features/mochlik/appearance-palette";
 
 type Appearance = { palette: string; head: string | null; neck: string | null };
 
@@ -16,8 +17,9 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   if (![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0) return;
   const { x, y, size, action, direction } = frame, rig = forestFishingHeroRig(frame, still);
   const { phase, nearArm, farArm } = rig;
-  const armShade = direction === "back" ? appearance?.palette === "fern" ? "#345649" : appearance?.palette === "autumn" ? "#7a5637" : "#58683b" : "#d8bf83";
-  const armLight = direction === "back" ? appearance?.palette === "fern" ? "#49816b" : appearance?.palette === "autumn" ? "#b27b42" : "#7c8845" : "#f4e4ae";
+  const palette = mossPalette(appearance?.palette);
+  const armShade = direction === "back" ? palette.mossDark : "#d8bf83";
+  const armLight = direction === "back" ? palette.moss : "#f4e4ae";
   const scale = size / 48, origin = { x: x - size / 2, y: y - size * 45 / 48 };
   function segment(start: WorldPoint, end: WorldPoint, width: number, color: string) {
     const a = { x: Math.round((start.x - origin.x) / scale), y: Math.round((start.y - origin.y) / scale) };

@@ -3338,6 +3338,35 @@ test("production props use one confirmed job across both cameras, preserve ready
   } finally { probe?.release(); views.forEach(view=>view.dispose()); env.restore(); }
 });
 
+test("quarry production keeps one visible work sign by day and night, including static or absent actor frames", async () => {
+  const quarry={id:"quarry",label:"Шахта",initialLevel:1,bounds:{x:660,y:590,width:55,height:48},
+    anchor:{x:688,y:638},entry:{x:680,y:640},doorway:{x:686,y:625},collision:[],hitArea:[],
+    states:[{level:1,label:"Шахта",image:"/test-quarry.webp"}]};
+  const {paintNewMap,TILED_WORLD,NEW_MAP_PET_SIZE,WORLD_DEV_DEFAULTS}=await modules({sites:[quarry]});
+  const env=browser();
+  try {
+    const production={ownerPublicId:"worker",revision:1,jobs:[{id:"stone",stationId:"quarry",stationLevel:1,
+      recipeId:"quarry_stone",startedAt:new Date(100_000).toISOString(),finishesAt:new Date(700_000).toISOString()}]};
+    const cue={x:quarry.anchor.x,y:quarry.bounds.y-NEW_MAP_PET_SIZE*.12};
+    const count=(now,still,night,mining=null,showBuildings=true)=>{
+      const surface=env.surface();
+      paintNewMap(surface.context,new Map(),{...options,reducedMotion:still,economyProduction:production},7,false,now,night?1:0,
+        {scene:TILED_WORLD,actorAway:true,mining,state:{...WORLD_DEV_DEFAULTS,showBuildings,timeOfDay:night?"night":"day"}});
+      return surface.calls.filter(call=>call.method==="ellipse" && call.args[0]===cue.x && call.args[1]===cue.y).length;
+    };
+    const mining={...quarry.entry,size:NEW_MAP_PET_SIZE,opacity:0,scale:1,pose:"idle",frame:0,direction:"back",
+      working:true,workCue:cue,doorway:quarry.doorway,elapsed:7};
+    for(const still of [false,true]) for(const night of [false,true]) {
+      assert.equal(count(200_000,still,night),1,"ordinary production has a sign even when another activity owns the hero");
+      assert.equal(count(200_000,still,night,mining),1,"the worker and production must not draw duplicate signs");
+      assert.equal(count(700_000,still,night),0,"finished jobs stop the work sign without requiring a claim");
+    }
+    assert.equal(count(99_999,false,false),0,"future jobs do not pretend to work early");
+    assert.equal(count(200_000,false,false,mining,false),0,"hidden buildings have no orphan work sign");
+    assert.equal(count(200_000,false,false,{...mining,working:false}),0,"the worker still on the road does not pretend to be inside");
+  }finally{env.restore();}
+});
+
 test("ordinary quarry production walks from base, shares the miner across cameras and yields safely to an expedition", async () => {
   const quarry={id:"quarry",label:"Шахта",initialLevel:1,bounds:{x:660,y:590,width:55,height:48},
     anchor:{x:688,y:638},entry:{x:680,y:640},doorway:{x:686,y:625},collision:[],hitArea:[],
@@ -3365,6 +3394,10 @@ test("ordinary quarry production walks from base, shares the miner across camera
     const world=mountHabitat(env.surface(),{...initial,view:"world"},callbacks);views.push(world);await flush();
     assert.strictEqual(probe.state.journeyTravel,travel);assert.deepEqual(probe.state.clearing.position,feet);
     assert.equal(env.frames.size,1,"both cameras share the same worker clock");
+    const painted=env.surface(),cue=probe.state.journeyTravel.mining.workCue;
+    world.paintWorld(painted.context);
+    assert.equal(painted.calls.filter(call=>call.method==="ellipse" && call.args[0]===cue.x && call.args[1]===cue.y).length,1,
+      "a hidden quarry worker paints one persistent status sign in the real world camera");
     const expedition={id:"higher-priority-shore",routeId:"shore",startedAt:new Date(100_000).toISOString(),
       finishesAt:new Date(700_000).toISOString(),rewards:{fish:4}};
     const next={...initial,economyJourney:expedition};

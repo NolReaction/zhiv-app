@@ -422,6 +422,45 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(2L, economy.snapshot(seller.hash).inventory["tools"])
     }
 
+    @Test fun `merchant bait and mandatory shark hook tiers also gate listing and purchase`() = runBlocking<Unit> {
+        for ((itemId, home) in listOf("firefly_bait" to 3, "fish_shark" to 4)) {
+            val price = EconomyRules.catalog.items.single { it.id == itemId }.baseSellPrice
+            val low = player(coins = 1000, berries = 0)
+            editState(low) { it.copy(inventory=mapOf(itemId to 1L), buildings=it.buildings + ("home" to home - 1)) }
+            val before = economy.snapshot(low.hash)
+            assertEquals("ECONOMY_MARKET_ITEM_LOCKED", assertFailsWith<AuthFailure> {
+                market.command(low.hash, command(low, "create_listing", itemId, 1, price / 10))
+            }.code)
+            assertEquals(before.inventory, economy.snapshot(low.hash).inventory)
+            assertEquals(before.revision, economy.snapshot(low.hash).revision)
+
+            val seller = player(berries = 0)
+            editState(seller) { it.copy(inventory=mapOf(itemId to 2L), buildings=it.buildings + ("home" to home)) }
+            market.command(seller.hash, command(seller, "create_listing", itemId, 1, price / 10))
+            val lot = market.market(seller.hash).mine.single()
+            assertFalse(market.market(low.hash).listings.any { it.id == lot.id })
+            assertEquals("ECONOMY_MARKET_SHOWCASE_CHANGED", assertFailsWith<AuthFailure> {
+                market.command(low.hash, purchase(low, lot))
+            }.code)
+
+            val high = player(coins = 1000, berries = 0)
+            editState(high) { it.copy(buildings=it.buildings + ("home" to home)) }
+            val buy = purchase(high, lot)
+            assertTrue(market.market(high.hash).listings.any { it.id == lot.id })
+            editState(high) { it.copy(buildings=it.buildings + ("home" to home - 1)) }
+            assertEquals("ECONOMY_MARKET_ITEM_LOCKED", assertFailsWith<AuthFailure> { market.command(high.hash, buy) }.code)
+            editState(high) { it.copy(buildings=it.buildings + ("home" to home)) }
+            val result = market.command(high.hash, buy)
+            assertEquals(1L, result.state.inventory[itemId])
+            assertTrue(result.state.fishing.catches.isEmpty())
+
+            market.command(seller.hash, command(seller, "create_listing", itemId, 1, price / 10))
+            val remaining = market.market(seller.hash).mine.single()
+            editState(seller) { it.copy(buildings=it.buildings + ("home" to home - 1)) }
+            assertEquals(1L, market.command(seller.hash, command(seller, "cancel_listing", remaining.id)).state.inventory[itemId])
+        }
+    }
+
     @Test fun `request ids cannot be reused across market and production endpoints`() = runBlocking<Unit> {
         val p = player()
         val sell = command(p, "sell", quantity = 1)

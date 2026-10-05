@@ -252,7 +252,6 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   if (walking?.homeSleeping && home && heroVisible && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
-  if (mining && dev?.showBuildings !== false && dev?.showHero !== false) drawForestMiningWork(context,mining,still);
   drawForestCampfires(context, frontFires, elapsed, still);
   paintProduction(true);
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
@@ -267,6 +266,17 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestLighthouseBeams(context, world, lighting);
   drawForestLightEmitters(context, world, lighting);
   drawBuildingDetails(context, world, lighting);
+  // Station status stays legible above the roof in both daylight and night.
+  // A real expedition and ordinary production share one sign, never a queue.
+  if (dev?.showBuildings !== false) {
+    const quarryProduction = productions.find(frame => frame.stationId === "quarry" && frame.phase === "working");
+    const quarry = quarryProduction && world.sites.find(site => site.id === "quarry");
+    const work = mining?.working ? mining : !mining && quarry && quarryProduction ? {
+      working:true, workCue:{x:quarry.anchor.x,y:quarry.bounds.y-PET_SIZE*.12},
+      size:PET_SIZE, elapsed:quarryProduction.elapsed,
+    } : null;
+    if (work) drawForestMiningWork(context,work,still);
+  }
   if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, world);
   if (WORLD_DEV_ENABLED && preview?.livingDebug) drawLivingWorldDebug(context, world, preview.livingDebug);
   context.restore();

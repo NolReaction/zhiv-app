@@ -38,7 +38,8 @@ test("help uses current catalog rules and marks unavailable mechanics while rebu
   assert.match(get("production").paragraphs[0], /Монеты и материалы списываются при начале работ/);
   assert.match(get("journeys").paragraphs.join("\n"), /Одновременно идёт одно исследование/);
   assert.match(get("market").paragraphs[1], /Свой лот купить нельзя/);
-  assert.match(get("wardrobe").note, /пока нельзя изготовить.*полученные вещи можно менять/);
+  assert.match(get("wardrobe").note, /Одежда меняет внешность.*снасти выбираются перед вылазкой/);
+  assert.match(get("wardrobe").steps.join(" "), /Моих вещах.*Магазине.*монеты или жемчуг.*подтвердить/);
   assert.match(get("collection").paragraphs.join(" "), /Каменоломня.*минерала/);
   assert.match(get("collection").paragraphs.join(" "), /после получения результата.*повторный запрос/);
   assert.match(get("collection").note, /Реликвии.*отдельно в кладовой.*расходуются/);

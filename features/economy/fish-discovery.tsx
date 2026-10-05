@@ -16,8 +16,8 @@ export function HiddenFishIcon({ size = 40 }: { size?: number }) {
   </svg>;
 }
 
-/** Unseen species never mount their native SVG master, even under a dimming filter. */
+/** The staple river fish remains recognisable as a recipe material. Other species open only on a personal catch. */
 export function PlayerItemIcon({ state, itemId, size = 24 }: { state?: Pick<EconomyView, "fishing"> | null; itemId: string; size?: number }) {
-  return FISH_SPECIES_IDS.some(id => id === itemId) && !fishDiscovered(state, itemId)
+  return itemId !== "fish" && FISH_SPECIES_IDS.some(id => id === itemId) && !fishDiscovered(state, itemId)
     ? <HiddenFishIcon size={size} /> : <ItemIcon itemId={itemId} size={size} />;
 }

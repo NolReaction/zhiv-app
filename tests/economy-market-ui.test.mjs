@@ -117,3 +117,16 @@ test("listing prices use the catalog currency quantum and cannot submit an inter
   submit.props.onClick();
   assert.deepEqual(calls, [["create_listing", "wood", 1, acceptedPrice]]);
 });
+
+test("an open seller form cannot list high-tier bait after a home-level change", () => {
+  const e = economy(), calls = [];
+  e.snapshot.inventory.firefly_bait = 2;
+  e.actMarket = (...args) => calls.push(args);
+  const item = e.snapshot.catalog.items.find(entry => entry.id === "firefly_bait");
+  assert.ok(item);
+  const h = harness(ListingPriceForm, { economy: e, item });
+  assert.equal(h.render().nodes.find(node => node.type === "button").props.disabled, false);
+  e.snapshot.buildings.home = 2;
+  const submit = h.render().nodes.find(node => node.type === "button");
+  assert.equal(submit.props.disabled, true); submit.props.onClick(); assert.deepEqual(calls, []);
+});

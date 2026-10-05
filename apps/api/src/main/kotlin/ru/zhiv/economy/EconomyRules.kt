@@ -3,6 +3,7 @@ package ru.zhiv.economy
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.*
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.world.WorldRules
 import ru.zhiv.http.parseCanonicalUuidV4
 import ru.zhiv.http.parsePublicId
 import java.time.Instant
@@ -175,7 +176,7 @@ object EconomyRules {
 
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "refresh_fishing_shop", "sell") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "start_production" -> {
@@ -328,6 +329,19 @@ object EconomyRules {
                 if (state.wallet.pearls < price) economyFailure("ECONOMY_PEARLS", "Не хватает жемчужин для обновления лавки")
                 state.copy(wallet = state.wallet.copy(pearls = state.wallet.pearls - price),
                     fishingShop = EconomyFishingShops.create(state, now)) to "Плёска подготовила новые предложения"
+            }
+            "buy_wardrobe_item" -> {
+                val item = WorldRules.catalog.items.find { it.slot != "rod" && it.purchase != null &&
+                    "${it.purchase.currency}:${it.id}" == command.targetId }
+                    ?: economyFailure("ECONOMY_WARDROBE_ITEM", "Эта вещь не продаётся")
+                val price = checkNotNull(item.purchase)
+                if (item.starter || item.id in state.wardrobe) economyFailure("ECONOMY_WARDROBE_OWNED", "Эта вещь уже есть в гардеробе")
+                if (command.totalPrice != price.amount) economyFailure("ECONOMY_WARDROBE_PRICE_CHANGED", "Цена изменилась. Проверьте стоимость вещи")
+                val balance = if (price.currency == "pearls") state.wallet.pearls else state.wallet.coins
+                if (balance < price.amount) economyFailure("ECONOMY_RESOURCES", if (price.currency == "pearls") "Не хватает жемчужин" else "Не хватает монет")
+                val wallet = if (price.currency == "pearls") state.wallet.copy(pearls = balance - price.amount)
+                    else state.wallet.copy(coins = balance - price.amount)
+                state.copy(wallet = wallet, wardrobe = (state.wardrobe + item.id).distinct().sorted()) to "${item.name} теперь в гардеробе"
             }
             "buy_fishing_item" -> {
                 val spec = catalog.fishing ?: economyFailure("ECONOMY_FISHING_ITEM", "Лавка Плёски пока недоступна")

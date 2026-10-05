@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.economy.*
+import ru.zhiv.world.WorldRules
 import java.sql.Connection
 import java.sql.ResultSet
 import java.time.Instant
@@ -22,11 +23,14 @@ internal fun <T> Connection.economyRows(sql: String, vararg values: Any?, read: 
 }
 internal data class EconomyProfileRow(val revision: Long, val state: EconomyState)
 internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow = c.economyRows(
-    """SELECT e.revision,e.state,coalesce(w.state->'collection','[]'::jsonb)
+    """SELECT e.revision,e.state,coalesce(w.state->'collection','[]'::jsonb),coalesce(w.state->'inventory','[]'::jsonb)
         FROM economy_profiles e LEFT JOIN world_profiles w ON w.user_id=e.user_id WHERE e.user_id=?""", user) {
     val state = economyJson.decodeFromString<EconomyState>(it.getString(2))
     val inherited = economyJson.decodeFromString<List<String>>(it.getString(3))
-    EconomyProfileRow(it.getLong(1), state.copy(progression = EconomyCollectionProgress.inherit(state.progression, inherited)))
+    val legacyWardrobe = economyJson.decodeFromString<List<String>>(it.getString(4))
+    val clothing = WorldRules.catalog.items.filter { item -> item.slot != "rod" }.map { item -> item.id }.toSet()
+    EconomyProfileRow(it.getLong(1), state.copy(progression = EconomyCollectionProgress.inherit(state.progression, inherited),
+        wardrobe = (state.wardrobe + legacyWardrobe).filter { id -> id in clothing }.distinct().sorted()))
 }.single()
 
 /** Caller holds app_users FOR NO KEY UPDATE. The audit remains a permanent
@@ -74,7 +78,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     val row = readEconomyProfile(c, user)
     val s = row.state
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs, s.migration,
-        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, fishingShop = s.fishingShop)
+        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop)
 }
 
 class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository {
@@ -140,6 +144,7 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
             val (next, message) = EconomyRules.apply(before.state, command, now, reservedEconomyMarketItems(c, actor.id))
             assertEconomyMarketCapacity(c, actor.id, before.state, next)
             saveEconomyProfile(c, actor.id, next)
+            if (next.wardrobe != before.state.wardrobe) syncWorldWardrobe(c, actor.id, next.wardrobe)
             if (next.buildings != before.state.buildings) {
                 // The existing renderer consumes WorldState. Update the same transaction;
                 // forest geometry switches only after a completed construction is claimed.

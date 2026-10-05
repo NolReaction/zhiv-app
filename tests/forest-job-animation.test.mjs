@@ -152,6 +152,23 @@ test("mine work marks are bounded and static in reduced motion",()=>{
   calls.length=0;drawForestMiningWork(ctx,{...frame,working:false},false);assert.deepEqual(calls,[]);
 });
 
+test("the mine work sign remains opaque between tool strikes and rejects invalid coordinates",()=>{
+  const calls=[],alphas=[],states=[],ctx=new Proxy({globalAlpha:.8,
+    save(){states.push(this.globalAlpha)},restore(){this.globalAlpha=states.pop()},
+    fill(){alphas.push(this.globalAlpha)},stroke(){alphas.push(this.globalAlpha)},
+  },{get:(target,key)=>key in target ? target[key] : (...args)=>calls.push([key,...args])});
+  const frame={size:50,working:true,workCue:{x:631,y:128},elapsed:0};
+  for(const elapsed of [0,.46,.92,1.39,1.85,10000]) {
+    calls.length=0;alphas.length=0;drawForestMiningWork(ctx,{...frame,elapsed},false);
+    assert.ok(alphas.length>=7 && alphas.every(alpha=>alpha===.8),"the sign never fades away during a loop");
+    assert.equal(ctx.globalAlpha,.8,"painting preserves the caller's alpha");
+    const badge=calls.find(([method])=>method==="ellipse");
+    assert.ok(badge[3]>=15 && badge[3]<=20,"status stays readable and bounded at map scale");
+  }
+  calls.length=0;drawForestMiningWork(ctx,{...frame,workCue:{x:NaN,y:128}},false);
+  assert.deepEqual(calls,[]);
+});
+
 test("finished and cancelled hidden mine jobs reveal safe static feet in reduced motion",()=>{
   for(const cancelled of [false,true]) {
     const session=create(),s=session.state,j=job("cave");

@@ -1,6 +1,7 @@
 import { pixelSprite, pixelSpriteContact, type PixelDirection, type PixelPose, type PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedSite, WorldBounds } from "./tiled/types";
 import { drawSiteImage } from "./tiled/site-image";
+import { worldArtworkMipCache } from "./artwork-mip-cache";
 
 export const HERO_SOURCE_SIZE = 48;
 export const HERO_SOURCE_FEET_Y = 45;
@@ -182,8 +183,8 @@ export function drawSiteGrounding(ctx: CanvasRenderingContext2D, site: FixedSite
   ctx.save();
   const opacity = ctx.globalAlpha;
   ctx.globalAlpha = opacity * (1 - darkness * .58);
-  ctx.drawImage(shadow.diffuse, bounds.x, bounds.y, bounds.width, bounds.height);
+  ctx.drawImage(worldArtworkMipCache.image(ctx, shadow, shadow.diffuse), bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.globalAlpha = opacity * (1 - darkness * .15);
-  ctx.drawImage(shadow.contact, bounds.x, bounds.y, bounds.width, bounds.height);
+  ctx.drawImage(worldArtworkMipCache.image(ctx, shadow, shadow.contact), bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.restore();
 }

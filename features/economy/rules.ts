@@ -1,3 +1,4 @@
+import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/wardrobe";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 
 import { createFishingShop, fishingShopExpired } from "./fishing-shop";
@@ -59,7 +60,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     inventory: { ...(migration.woodGranted ? { wood: migration.woodGranted } : {}), ...(migration.stoneGranted ? { stone: migration.stoneGranted } : {}) },
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
-    jobs: [], migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression() };
+    jobs: [], wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression() };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
   if (!canAffordEconomy(state, cost)) fail("ECONOMY_RESOURCES", "Не хватает монет или материалов");
@@ -87,7 +88,7 @@ function requireBuildings(state: EconomyState, required: Record<string, number>)
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}, rareRandom: RareRandomInteger = secureRareInteger): string {
-  if (!["speedup_construction", "buy_fishing_item", "refresh_fishing_shop", "sell"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  if (!["speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop">, seconds: number, cost: EconomyCost, id = jobId()) => {
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
@@ -244,6 +245,18 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       state.wallet.pearls -= price;
       state.fishingShop = next;
       return "Плёска подготовила новые предложения";
+    }
+    case "buy_wardrobe_item": {
+      const item = wardrobeItems.find(item => item.purchase && wardrobePurchaseTarget(item) === command.targetId);
+      if (!item?.purchase) return fail("ECONOMY_WARDROBE_ITEM", "Эта вещь не продаётся");
+      const owned = wardrobeOwned(state.wardrobe);
+      if (owned.includes(item.id)) return fail("ECONOMY_WARDROBE_OWNED", "Эта вещь уже есть в гардеробе");
+      const { currency, amount } = item.purchase;
+      if (command.totalPrice !== amount) return fail("ECONOMY_WARDROBE_PRICE_CHANGED", "Цена изменилась. Проверьте стоимость вещи");
+      if (state.wallet[currency] < amount) return fail("ECONOMY_RESOURCES", currency === "pearls" ? "Не хватает жемчужин" : "Не хватает монет");
+      state.wallet[currency] -= amount;
+      state.wardrobe = wardrobeOwned(owned, [item.id]);
+      return `${item.name} теперь в гардеробе`;
     }
     case "buy_fishing_item": {
       const catalog = economyCatalog.fishing, current = fishingState(state), shop = state.fishingShop;

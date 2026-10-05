@@ -246,3 +246,43 @@ test("settlement preset cannot erase pending production, exploration or ready re
   for (const quantity of [0, 6]) assert.equal(economyDevCommandSchema.safeParse(command(p, "apply_settlement", "home", quantity)).success, false);
   assert.equal(economyDevCommandSchema.safeParse(command(p, "apply_settlement", "warehouse", 2)).success, false);
 });
+
+
+test("DEV gear grants add permanent ownership atomically without stock, catches, selection or purchase rewards", async () => {
+  const p = player(), before = read(p), input = command(p, "grant_fishing_gear", "all", 1);
+  assert.equal(model.economyCommandSchema.safeParse(input).success, false);
+  assert.equal((await ordinaryPOST(post(input))).status, 400);
+  const response = await POST(post(input)); assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.deepEqual(result.state.fishing.ownedRods, model.economyCatalog.fishing.rods.map(rod => rod.id));
+  assert.deepEqual(result.state.fishing.ownedHooks, model.economyCatalog.fishing.hooks.map(hook => hook.id));
+  assert.equal(result.state.fishing.equippedRodId, before.fishing.equippedRodId);
+  assert.equal(result.state.fishing.equippedHookId, before.fishing.equippedHookId);
+  assert.deepEqual(result.state.fishing.catches, before.fishing.catches);
+  assert.deepEqual(result.state.inventory, before.inventory);
+  assert.deepEqual(result.state.wallet, before.wallet);
+  assert.deepEqual(result.state.fishingShop, before.fishingShop, "DEV ownership must not buy up or reroll the merchant");
+  const replay = economy.commandDevEconomyCheat(p.token, input, now);
+  assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, result.acceptedRevision);
+  const repeated = cheat(p, "grant_fishing_gear", "all").state;
+  assert.deepEqual(repeated.fishing, result.state.fishing, "a new receipt still cannot duplicate permanent gear");
+  for (const target of ["wood", "fish", "worm_bait", "__proto__"])
+    assert.equal(economyDevCommandSchema.safeParse(command(p, "grant_fishing_gear", target, 1)).success, false);
+  assert.equal(economyDevCommandSchema.safeParse(command(p, "grant_fishing_gear", "all", 2)).success, false);
+  process.env.NODE_ENV = "production";
+  assert.equal((await POST(post(command(p, "grant_fishing_gear", "all", 1)))).status, 503);
+});
+
+test("individual DEV gear grants preserve paid trips and fish grants do not fake collection discoveries", () => {
+  const p = player();
+  const trip = normal(p, "start_fishing", "shore").state.jobs[0];
+  const granted = cheat(p, "grant_fishing_gear", "leviathan_hook").state;
+  assert.deepEqual(granted.fishing.ownedHooks, ["bare_hook", "leviathan_hook"]);
+  assert.deepEqual(granted.fishing.ownedRods, ["reed_rod"]);
+  assert.deepEqual(granted.jobs[0], trip, "granting better tackle does not rewrite an already paid draw");
+  for (const id of ["fish_shark", "fish", "firefly_bait"]) cheat(p, "grant_item", id, 3);
+  const state = read(p);
+  assert.equal(state.inventory.fish_shark, 3); assert.equal(state.inventory.fish, 3); assert.equal(state.inventory.firefly_bait, 3);
+  assert.deepEqual(state.fishing.catches, {});
+  assert.equal(state.completedExplorations, 0);
+});

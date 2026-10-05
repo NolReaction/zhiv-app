@@ -238,6 +238,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
     private fun create(c: Connection, user: UUID, state: EconomyState, command: EconomyCommand): String {
         val item = EconomyRules.catalog.items.firstOrNull { it.id == command.targetId && it.tradable }
             ?: throw AuthFailure("ECONOMY_MARKET_ITEM", "Этот предмет нельзя выставить на рынок", 400)
+        if ((state.buildings["home"] ?: 1) < EconomyMarketRules.requiredHomeLevel(item.id))
+            throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома", 409)
         val marketConfig = EconomyRules.catalog.market
         EconomyMarketRules.validatePrice(command.quantity, command.totalPrice, item.baseSellPrice, marketConfig.maxPriceMultiplier)
         val active = c.economyRows("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'", user) { it.getInt(1) }.single()

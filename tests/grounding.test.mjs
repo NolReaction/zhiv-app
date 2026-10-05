@@ -423,3 +423,24 @@ test('a continuous gardening rig reaches the renderer without changing the opaqu
   assert.equal(sprite, pixelSprite('idle', 'left', 0, undefined, rig));
   assert.equal(y + heroSpriteContact(sprite, 'idle', 0).bottom / 48 * height, 200);
 });
+
+
+test("small-view building shadows reuse scale levels while panning and preserve night opacity", () => {
+  const { site, image } = fixture(), ctx = recordingContext();
+  let scale = .2, pan = 0;
+  ctx.getTransform = () => ({ a: scale, b: 0, c: 0, d: scale, e: pan, f: pan });
+  ctx.globalAlpha = .6;
+  drawSiteGrounding(ctx, site, image);
+  const first = ctx.draws[0].args[0];
+  assert.ok(first.width <= 32 && first.height <= 32);
+  assert.ok(first.pixels.size > 0, "downsampling keeps the building contact");
+  pan = 130;
+  drawSiteGrounding(ctx, site, image, 1);
+  assert.equal(ctx.draws[2].args[0], first);
+  assert.equal(ctx.draws[2].alpha, .6 * .42);
+  assert.equal(ctx.globalAlpha, .6);
+  scale = 1;
+  drawSiteGrounding(ctx, site, image);
+  assert.ok(ctx.draws[4].args[0].width > first.width, "zooming retains detail");
+  assert.deepEqual(ctx.draws[4].args.slice(1), ctx.draws[0].args.slice(1));
+});

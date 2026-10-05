@@ -24,12 +24,13 @@ class EconomyMarketRulesTest {
     }
 
     @Test fun `whole lot price allows exact cap but no overflow or one coin over`() {
-        EconomyMarketRules.validatePrice(2, 30, 3)
-        EconomyMarketRules.validatePrice(2, 6, 3)
-        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 5, 3) }
-        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 31, 3) }
-        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 1, 3) }
-        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(0, 1, 3) }
+        EconomyMarketRules.validatePrice(2, 300, 30)
+        EconomyMarketRules.validatePrice(2, 60, 30)
+        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 50, 30) }
+        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 310, 30) }
+        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 61, 30) }
+        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(2, 10, 30) }
+        assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(0, 10, 30) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(1, Long.MAX_VALUE, Long.MAX_VALUE) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(1, 1, 0) }
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, 1_000_000_000, Long.MAX_VALUE) }
@@ -42,10 +43,13 @@ class EconomyMarketRulesTest {
         assertEquals(4, EconomyMarketRules.requiredHomeLevel("reinforced_parts"))
         assertEquals(1, EconomyMarketRules.requiredHomeLevel("fish_mooncarp"))
         assertEquals(1, EconomyMarketRules.requiredHomeLevel("worm_bait"))
+        assertEquals(2, EconomyMarketRules.requiredHomeLevel("glow_bait"))
+        assertEquals(3, EconomyMarketRules.requiredHomeLevel("firefly_bait"))
+        assertEquals(4, EconomyMarketRules.requiredHomeLevel("fish_shark"))
         assertEquals(Int.MAX_VALUE, EconomyMarketRules.requiredHomeLevel("pearls"))
-        assertTrue(EconomyMarketRules.eligible("tools", 1, 100, 4))
-        assertFalse(EconomyMarketRules.eligible("tools", 1, 100, 3))
-        assertFalse(EconomyMarketRules.eligible("tools", 1, 99, 4))
+        assertTrue(EconomyMarketRules.eligible("tools", 1, 1000, 4))
+        assertFalse(EconomyMarketRules.eligible("tools", 1, 1000, 3))
+        assertFalse(EconomyMarketRules.eligible("tools", 1, 990, 4))
         assertFalse(EconomyMarketRules.eligible("fish_mooncarp", 1, 31, 4))
         for (item in EconomyRules.catalog.items.filter { it.tradable }) {
             assertTrue(EconomyMarketRules.requiredHomeLevel(item.id) in 1..5, item.id)

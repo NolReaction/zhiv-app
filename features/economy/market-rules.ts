@@ -19,8 +19,15 @@ export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog 
       { ...recipe.requiredBuildings, [recipe.buildingId]: Math.max(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?? 0) })),
     ...catalog.explorations.filter(route => (route.rewards[itemId] ?? 0) > 0).map(route => requirements(route.requiredHomeLevel, route.requiredBuildings)),
   ];
-  // All fish species and bait are sold by Pleska from the start; buying never unlocks catches.
-  if (catalog.fishing?.fish.some(item => item.itemId === itemId) || catalog.fishing?.baits.some(item => item.itemId === itemId)) sources.push(1);
+  const bait = catalog.fishing?.baits.find(item => item.itemId === itemId);
+  if (bait) sources.push(bait.requiredHomeLevel);
+  const fish = catalog.fishing?.fish.find(item => item.itemId === itemId);
+  if (fish) {
+    const hookHome = fish.requiredHookId
+      ? catalog.fishing?.hooks.find(hook => hook.id === fish.requiredHookId)?.requiredHomeLevel ?? Infinity : 1;
+    for (const route of catalog.explorations.filter(route => catalog.fishing?.routeIds.includes(route.id)))
+      sources.push(Math.max(hookHome, requirements(route.requiredHomeLevel, route.requiredBuildings)));
+  }
   return Math.min(...sources);
 }
 

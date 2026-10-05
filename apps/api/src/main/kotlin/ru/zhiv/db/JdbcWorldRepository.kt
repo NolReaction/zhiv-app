@@ -30,6 +30,14 @@ private fun Connection.worldSave(user: UUID, state: WorldState) {
     worldUpdate("UPDATE world_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp() WHERE user_id=?",worldJson.encodeToString(state),user)
 }
 
+/** Same app_users lock and database transaction as the paid economy receipt. */
+internal fun syncWorldWardrobe(c: Connection, user: UUID, owned: List<String>) {
+    c.worldUpdate("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb) ON CONFLICT DO NOTHING", user, worldJson.encodeToString(WorldState()))
+    val before = checkNotNull(c.worldRow(user)).state
+    val inventory = (before.inventory + owned).distinct()
+    if (inventory != before.inventory) c.worldSave(user, before.copy(inventory = inventory))
+}
+
 /** Game taps still count for records and achievements. They do not mint economy currency. */
 @Suppress("UNUSED_PARAMETER")
 internal fun creditWorldTaps(c: Connection, user: UUID, sourceKey: String, taps: Int, now: OffsetDateTime) = Unit
@@ -93,7 +101,8 @@ class JdbcWorldRepository(private val source: DataSource): WorldRepository {
                 val economy = readEconomyProfile(c, current.id).state
                 val legacy = checkNotNull(c.worldRow(current.id)).state
                 val synced = legacy.copy(resources=WorldResources(), houseLevel=economy.buildings["home"] ?: 1,
-                    workshop=(economy.buildings["workshop"] ?: 0)>0, workshopLevel=economy.buildings["workshop"] ?: 0)
+                    workshop=(economy.buildings["workshop"] ?: 0)>0, workshopLevel=economy.buildings["workshop"] ?: 0,
+                    inventory=(legacy.inventory + economy.wardrobe).distinct())
                 if (synced != legacy) c.worldSave(current.id, synced)
                 val result=block(c,current,now); c.commit(); result
             } catch(error: Exception) { c.rollback(); throw error }

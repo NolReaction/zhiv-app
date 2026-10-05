@@ -78,6 +78,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val buildings: Map<String, Int>, val jobs: List<EconomyJob> = emptyList(), val migration: EconomyMigration,
     val completedExplorations: Long = 0, val fishing: EconomyFishing = EconomyFishing(),
     val fishingCastSeed: String? = null, val progression: EconomyProgression = EconomyProgression(),
+    val wardrobe: List<String> = listOf("moss", "amber_scarf"),
     val rareDropState: EconomyRareDropClock? = null, val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 1, val pearlScale: Int? = null,
 )
 @Serializable data class EconomyItem(val id: String, val name: String, val category: String, val baseSellPrice: Long, val tradable: Boolean = true)
@@ -120,7 +121,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val wallet: EconomyWallet, val inventory: Map<String, Long>, val buildings: Map<String, Int>,
     val jobs: List<EconomyJob>, val migration: EconomyMigration, val catalog: EconomyCatalog,
     val storage: EconomyStorage, val completedExplorations: Long = 0, val fishing: EconomyFishing = EconomyFishing(),
-    val progression: EconomyProgression = EconomyProgression(), val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
+    val progression: EconomyProgression = EconomyProgression(), val wardrobe: List<String> = listOf("moss", "amber_scarf"), val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
 )
 @Serializable data class EconomyCommand(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,

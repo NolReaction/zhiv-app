@@ -312,6 +312,7 @@ test("cheats use the economy account, real catalog levels and server commands wi
     ["grant-coins-10000", ["grant_currency", "coins", 10000]],
     ["grant-pearls-5000", ["grant_currency", "pearls", 5000]],
     ["grant-item", ["grant_item", "wood", 100]],
+    ["grant-all-fishing-gear", ["grant_fishing_gear", "all", 1]],
     ["set-building-level", ["set_building_level", "home", 2]],
     ["grant-upgrade-cost", ["grant_upgrade_cost", "home", 1]],
   ]) {
@@ -447,4 +448,19 @@ test("Pleska DEV readout shows her own needs and returns to free behavior withou
   view.elements.find(element => element.type === "button" && labelText(element) === "Свободное поведение").props.onClick();
   assert.deepEqual(view.calls.patches, [{ residentPreview: null }]);
   assert.deepEqual(view.calls.actions, []);
+});
+
+
+test("DEV inventory browser exposes fish, consumable bait and permanent tackle as separate searchable categories", () => {
+  const view = cheats();
+  assert.match(view.markup, /Найти предмет|Название или ID/);
+  const categories = view.elements.find(element => element.type === "select" && element.props.value === "all");
+  assert.deepEqual(Children.toArray(categories.props.children).map(option => option.props.value),
+    ["all", "materials", "food", "fish", "rods", "hooks", "bait", "relics", "wardrobe"]);
+  const items = view.elements.find(element => element.type === "select" && element.props.value === "wood");
+  const ids = Children.toArray(items.props.children).map(option => option.props.value);
+  for (const id of ["fish_shark", "fish", "firefly_bait", "leviathan_hook", "starfall_rod", "ancient_core"]) assert.ok(ids.includes(id), id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.match(view.markup, /data-item-icon="wood"/);
+  assert.deepEqual(view.commands, []);
 });

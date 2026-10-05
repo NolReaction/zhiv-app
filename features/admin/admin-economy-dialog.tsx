@@ -14,7 +14,7 @@ const ledgerLabels: Record<string, string> = {
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
   start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
   start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата",
-  sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
+  sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
   equip_fishing_bait: "Выбор наживки", start_fishing: "Начало рыбалки", market_create: "Выставление на рынок",
   market_buy: "Покупка на рынке", market_sell: "Продажа на рынке", market_cancel: "Возврат с рынка",
   daily_reward: "Подарок за вход", achievement_reward: "Жемчуг за достижение",

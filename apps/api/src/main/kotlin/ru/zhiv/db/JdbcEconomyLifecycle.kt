@@ -79,7 +79,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     val inventory = (a.inventory.keys + b.inventory.keys).associateWith { add(a.inventory[it] ?: 0, b.inventory[it] ?: 0,ECONOMY_MAX_ITEMS) }
     val buildings = (a.buildings.keys + b.buildings.keys).associateWith { maxOf(a.buildings[it] ?: 0, b.buildings[it] ?: 0) }
     saveEconomyProfile(c, target, a.copy(wallet=a.wallet.copy(coins=add(a.wallet.coins,b.wallet.coins), pearls=add(a.wallet.pearls,b.wallet.pearls,ECONOMY_MAX_PEARLS)),
-        inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations,ECONOMY_MAX_ITEMS),
+        wardrobe=(a.wardrobe+b.wardrobe).distinct().sorted(), inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations,ECONOMY_MAX_ITEMS),
         fishing=a.fishing.copy(ownedRods=(a.fishing.ownedRods+b.fishing.ownedRods).distinct(),
             ownedHooks=(a.fishing.ownedHooks+b.fishing.ownedHooks).distinct(),
             catches=(a.fishing.catches.keys+b.fishing.catches.keys).associateWith {

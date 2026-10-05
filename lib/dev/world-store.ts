@@ -1,4 +1,4 @@
-import { initializeDevEconomy, creditDevLegacyJourney, getDevEconomyBuildingLevels } from "@/lib/dev/economy-store";
+import { initializeDevEconomy, creditDevLegacyJourney, getDevEconomyBuildingLevels, getDevEconomyWardrobe } from "@/lib/dev/economy-store";
 import { naturalItems } from "@/features/game/game-rewards";
 // Development adapter only. Production requests are handled by Ktor/PostgreSQL.
 import { getDevIdentity, getDevItemStreak } from "@/lib/dev/api-store";
@@ -36,6 +36,7 @@ export function getDevWorld(token: string | undefined, now = Date.now()): WorldS
   initializeDevEconomy(token, now);
   const { owner, value } = profile(token, now);
   const buildings = getDevEconomyBuildingLevels(token, now);
+  syncDevWorldWardrobe(token, getDevEconomyWardrobe(token, now), now);
   if (value.state.houseLevel !== buildings.home || workshopLevel(value.state) !== buildings.workshop) {
     value.state.houseLevel = buildings.home;
     value.state.workshop = buildings.workshop > 0;
@@ -120,3 +121,13 @@ export function getDevCollectionCount(owner: string): number { return collection
 
 /** Read-only legacy ownership for the unified book; does not create a world profile. */
 export function getDevCollectionFinds(owner: string): readonly string[] { return store().get(owner)?.state.collection ?? []; }
+
+/** Legacy ownership projection has no initialization or currency side effect. */
+export function getDevLegacyWardrobe(owner: string): readonly string[] { return store().get(owner)?.state.inventory ?? []; }
+export function syncDevWorldWardrobe(token: string | undefined, owned: readonly string[], now = Date.now()): void {
+  const { value } = profile(token, now);
+  const inventory = [...new Set([...value.state.inventory, ...owned])];
+  if (inventory.length !== value.state.inventory.length || inventory.some((id, index) => id !== value.state.inventory[index])) {
+    value.state.inventory = inventory; value.revision++;
+  }
+}
