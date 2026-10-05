@@ -82,7 +82,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
   return <div className={styles.pantry} aria-busy={economy.busy || undefined}>
     {recovery}
     <div className={styles.capacity} data-full={available === 0 || undefined}>
-      <div><span>Занято мест</span><strong>{number(occupied)} <span>/ {number(capacity)}</span></strong></div>
+      <div><span className={styles.capacityLabel}><Package size={17} aria-hidden="true" />Занято мест</span><strong>{number(occupied)} <span>/ {number(capacity)}</span></strong></div>
       <progress value={Math.min(capacity, occupied)} max={Math.max(1, capacity)} aria-label={`Кладовая: занято ${occupied} из ${capacity} мест`} />
       <p className={styles.muted}>{available > 0 ? `Свободно ${number(available)}` : "Все места заняты"}{reserved > 0 && ` · На рынке ${number(reserved)}`}</p>
     </div>

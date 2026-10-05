@@ -2,6 +2,8 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { ForestCookingFrame } from "./forest-cooking";
 import { drawGroundedHero } from "./grounding";
 import type { WorldPoint } from "./tiled/types";
+import type { ForestProductionFrame } from "./economy-production-state";
+import { drawForestCookingPot, drawForestCookingSteam } from "./forest-cooking-pot";
 
 type Appearance = { palette: string; head: string | null; neck: string | null };
 type CookingArm = { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint };
@@ -49,8 +51,8 @@ export function forestCookingHeroRig(frame: ForestCookingFrame, still = false) {
     phase, work, side, wave, pose, crouch: action === "prepare" ? Math.round(work * 2) : 0 };
 }
 
-/** A portable pot and low board are grounded beside Mochlik. These are practice
- * props until real recipes exist; no inventory item is hidden or spent here. */
+/** The rehearsal's tools use the same grounded pot art as the real kitchen.
+ * A paint never consumes an ingredient or advances a production job. */
 export function drawForestCookingHero(ctx: CanvasRenderingContext2D, frame: ForestCookingFrame,
   appearance: Appearance | undefined, still: boolean, shadow = true) {
   if (![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0) return;
@@ -91,36 +93,7 @@ export function drawForestCookingHero(ctx: CanvasRenderingContext2D, frame: Fore
     }
     oval(board.x - side * size * .145, board.y - size * .026, size * .035, size * .017, "#7f9b4d");
   };
-  const drawPot = () => {
-    // A three-stone trivet places the pot on the ground without inventing a new
-    // permanent campfire or a table at the character's head height.
-    for (const offset of [-.09, 0, .09]) {
-      oval(pot.x + size * offset, pot.y + size * .055, size * .048, size * .032, "#73766c");
-      oval(pot.x + size * offset - size * .008, pot.y + size * .046, size * .035, size * .017, "#94978b");
-    }
-    oval(pot.x, pot.y - size * .015, size * .148, size * .088, "#405157");
-    oval(pot.x - size * .01, pot.y - size * .025, size * .13, size * .073, "#637e7d");
-    oval(pot.x, pot.y - size * .078, size * .148, size * .054, "#35484d");
-    oval(pot.x, pot.y - size * .081, size * .123, size * .034, "#bb9861");
-    oval(pot.x - size * .025, pot.y - size * .088, size * .07, size * .018, "#d0b077");
-    for (const offset of [-1, 1]) {
-      ctx.strokeStyle = "#405157"; ctx.lineWidth = size * .029;
-      ctx.beginPath(); ctx.ellipse(pot.x + offset * size * .153, pot.y - size * .044, size * .033, size * .026, 0, 0, TAU); ctx.stroke();
-    }
-    for (let index = 0; index < 3; index++) {
-      const angle = index * 2.1 + (still ? 0 : phase * TAU);
-      oval(pot.x + Math.cos(angle) * size * .074, pot.y - size * .082 + Math.sin(angle) * size * .015,
-        size * .016, size * .009, index === 1 ? "#75935e" : "#e2bf83");
-    }
-    if (action === "stir" && !still) {
-      for (let index = 0; index < 3; index++) {
-        const bubble = (phase * 5 + index / 3) % 1;
-        ctx.strokeStyle = `rgba(242,224,178,${(1 - bubble) * .5})`; ctx.lineWidth = size * .008;
-        ctx.beginPath(); ctx.ellipse(pot.x + (index - 1) * size * .06, pot.y - size * .088,
-          size * (.008 + bubble * .016), size * (.004 + bubble * .007), 0, 0, TAU); ctx.stroke();
-      }
-    }
-  };
+  const drawPot = () => drawForestCookingPot(ctx, pot, size, { time: phase * 4, still, steam: frame.steam });
   const drawBowl = () => {
     oval(bowl.x, bowl.y + size * .004, size * .115, size * .06, "#795438");
     oval(bowl.x, bowl.y - size * .022, size * .12, size * .039, "#c3965e");
@@ -167,18 +140,23 @@ export function drawForestCookingHero(ctx: CanvasRenderingContext2D, frame: Fore
     frame: still ? 0 : frame.frame, appearance, shadow, rig: { gardening: true, crouch: rig.crouch },
     breathe: still ? 0 : Math.sin(phase * TAU) * .003 });
   if (!back) drawWork();
-  if (frame.steam > 0 && !still) {
-    const opacity = ctx.globalAlpha;
-    for (let index = 0; index < 3; index++) {
-      const age = (phase * (action === "stir" ? 3 : 2) + index / 3) % 1;
-      const drift = Math.sin(age * Math.PI * 1.5 + index) * size * .045;
-      const sx = pot.x + (index - 1) * size * .05, sy = pot.y - size * (.13 + age * .24);
-      ctx.globalAlpha = opacity * unit(frame.steam) * Math.sin(age * Math.PI) * .32;
-      ctx.strokeStyle = "#f1edcf"; ctx.lineWidth = size * (.018 + age * .02); ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(sx + drift, sy);
-      ctx.bezierCurveTo(sx + drift + size * .03, sy - size * .03, sx + drift - size * .035, sy - size * .07,
-        sx + drift - size * .01, sy - size * .105); ctx.stroke();
-    }
-  }
+  drawForestCookingSteam(ctx, pot, size, phase * 8, frame.steam, still);
   ctx.restore();
+}
+
+/** The authored hearth owns placement, while the job owns working/ready.
+ * Rendering a closed ready pot never collects a batch or restarts the fire. */
+export function drawForestProductionCooking(ctx: CanvasRenderingContext2D, frame: ForestProductionFrame, still: boolean) {
+  if (frame.stationId !== "dryer" || ![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0) return;
+  const pot = { x: frame.x, y: frame.y - frame.size * .13 }, working = frame.phase === "working";
+  ctx.save();
+  drawForestCookingPot(ctx, pot, frame.size, { time: frame.elapsed, still, steam: working ? .75 : 0,
+    covered: !working, onHearth: true, burner: working });
+  drawForestCookingSteam(ctx, pot, frame.size, frame.elapsed, working ? .75 : 0, still);
+  ctx.restore();
+}
+
+export function forestProductionCookingBounds(frame: Pick<ForestProductionFrame, "x" | "y" | "size">) {
+  return { x: frame.x - frame.size * .24, y: frame.y - frame.size * .72,
+    width: frame.size * .48, height: frame.size * .77 };
 }

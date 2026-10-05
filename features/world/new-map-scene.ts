@@ -48,7 +48,9 @@ import { drawForestFishingHero } from "./forest-fishing-painter";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { fishingPropsBounds } from "./fishing-props";
 import { forestCookingBounds, type ForestCookingFrame } from "./forest-cooking";
-import { drawForestCookingHero } from "./forest-cooking-painter";
+import { drawForestCookingHero, drawForestProductionCooking } from "./forest-cooking-painter";
+import { forestProductionFrames, syncForestProduction, type ForestProductionFrame } from "./economy-production-state";
+import { drawForestProductionStation } from "./forest-production-painter";
 import { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, noticeCookingPreview } from "./dev/forest-cooking-preview";
 import { forestTrailDestination } from "./forest-trails";
 
@@ -103,6 +105,7 @@ export type NewMapPaintPreview = {
   actorAway?: boolean;
   fishing?: ForestFishingFrame | null;
   cooking?: ForestCookingFrame | null;
+  productions?: readonly ForestProductionFrame[];
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
 };
 
@@ -167,6 +170,13 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const warming = automatic && fire && preview?.campfireVisit ? campfireVisitFrame(preview.campfireVisit, fire, actor, still) : null;
   const behindFires = (life?.campfires ?? []).filter(item => item.position.y < actor.y);
   const frontFires = (life?.campfires ?? []).filter(item => item.position.y >= actor.y);
+  const productions = preview?.productions ?? forestProductionFrames(options.economyProduction, world, selectedVisuals, timestamp, elapsed, dev?.showBuildings !== false);
+  const paintProduction = (front: boolean) => {
+    for (const frame of productions) if ((frame.y >= actor.y) === front) {
+      if (frame.stationId === "dryer") drawForestProductionCooking(context, frame, still);
+      else drawForestProductionStation(context, frame, still);
+    }
+  };
   const foregroundBush = heroVisible && walking?.bush && forestBushForegroundActive(walking.bush, still)
     ? world.bushes?.find(bush => bush.id === walking.bush!.id) : undefined;
   const foregroundTerrain = foregroundBush?.imageId && forestBushArtworkAvailable(world, foregroundBush)
@@ -197,6 +207,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     options: { levels: selectedLevels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
   drawForestCampfires(context, behindFires, elapsed, still);
+  paintProduction(false);
   drawForestGardenPlants(context, world, life?.garden);
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined);
   // A moving cutout may own the artwork while its actor is still in front.
@@ -234,10 +245,16 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
   drawForestCampfires(context, frontFires, elapsed, still);
+  paintProduction(true);
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
     showBuildings: dev?.showBuildings, levels: selectedLevels };
+  // A confirmed cooking burner may glow during a cold evening without changing
+  // the weather-owned fire or making its natural flame paint over the kettle.
+  const cookingFires = (life?.campfires ?? []).map(fire => productions.some(frame => frame.fireId === fire.id && frame.phase === "working")
+    ? { ...fire, flame: Math.max(fire.flame, .45), embers: Math.max(fire.embers, .4) } : fire);
   drawForestAtmosphere(context, world, { ...atmosphere, groundBirdsPainted: true }, () => { drawForestLighting(context, world, lighting);
-    drawForestCampfireGlow(context, life?.campfires ?? [], elapsed, still, lighting.night, heroVisible ? actor : undefined); });
+    drawForestCampfireGlow(context, cookingFires, elapsed, still, lighting.night, heroVisible ? actor : undefined,
+      productions.flatMap(frame => frame.fireId ? [frame.fireId] : [])); });
   drawForestLighthouseBeams(context, world, lighting);
   drawForestLightEmitters(context, world, lighting);
   drawBuildingDetails(context, world, lighting);
@@ -269,6 +286,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
 
   const explorationNow = () => economicTimestamp + Math.max(0, performance.now() - economicReceivedAt);
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
+  function syncProduction() {
+    const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
+    syncForestProduction(state, options.economyProduction, owner);
+  }
   // DEV rehearsals use the same travel/animation controller with a local clock.
   // A confirmed account job always owns the hero and its economic deadline.
   function displayedJourney(): { journey: EconomySceneJourney | null | undefined; now: number } {
@@ -407,11 +428,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds(), visitors };
   }
   function preview(): NewMapPaintPreview {
+    syncProduction();
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
     const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       residents: residentFrames(), fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
+      productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
       fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit,
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
@@ -466,7 +489,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       }
       if (dev?.scenarioEvent?.kind === "fishing" && !dev.lifeEvent) startFishingPreview(dev.scenarioEvent.id);
     }
-    syncExploration(); syncGarden(); syncCooking(); updateObservation(true);
+    syncExploration(); syncGarden(); syncCooking(); syncProduction(); updateObservation(true);
   }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
@@ -570,8 +593,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           const persistence = !forestPersistenceOverridden(dev, levels);
           stop();
           if (persistence) session.saveMemory(); else session.suspendPersistence();
+          const production = state.economyProduction;
           session.release();
           session = connect(timestamp, persistence); state = session.state;
+          // Loaded geometry changes the forest fingerprint, not the economic
+          // revision fence. Preserve removals across artwork/camera handoffs.
+          syncForestProduction(state, production);
         }
       }
       art = new Map(images); visuals = next; syncOwner();

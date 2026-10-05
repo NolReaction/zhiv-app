@@ -4,7 +4,7 @@ import { Heart, Leaf, Search, Sprout } from "lucide-react";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { formatDayCount } from "@/lib/daily-streak";
-import { collectionCount, worldCatalog } from "./model";
+import { BOOK_COLLECTION_COUNT, COLLECTION_CHAPTERS, collectionBookEntries } from "./collection-book";
 import type { WorldController } from "./use-world";
 import { useForestObservation, type ForestObservation } from "./use-forest-observation";
 import { takeOverForestSession } from "./forest-session";
@@ -55,6 +55,8 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
 }) {
   const state = world.snapshot?.state;
   const houseLevel = economy.snapshot?.buildings.home ?? state?.houseLevel;
+  const bookCount = state && economy.snapshot ? COLLECTION_CHAPTERS.reduce((total, chapter) =>
+    total + collectionBookEntries(chapter.id, state.collection, economy.snapshot).filter(entry => entry.owned).length, 0) : null;
   const sync = observation?.memory.sync;
   const memoryWarning = sync ? ["offline", "other-device", "error"].includes(sync.mode) : observation?.memory.status === "unavailable";
 
@@ -84,7 +86,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
     <dl className={styles.stats} aria-label="Достижения Мохлика">
       <div><dt>Дом</dt><dd>{houseLevel === undefined ? "—" : `${houseLevel} ур.`}</dd></div>
       <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? "—"}</dd></div>
-      <div><dt>Находки</dt><dd>{state ? `${collectionCount(state.collection)} / ${worldCatalog.finds.length}` : "—"}</dd></div>
+      <div><dt>Книга находок</dt><dd>{bookCount === null ? "—" : `${bookCount} / ${BOOK_COLLECTION_COUNT}`}</dd></div>
       {!!state?.completedJourneys && <div><dt>Прежние походы</dt><dd>{state.completedJourneys}</dd></div>}
       <div><dt>Лучшая серия отметок</dt><dd>{formatDayCount(bestStreakDays)}</dd></div>
     </dl>

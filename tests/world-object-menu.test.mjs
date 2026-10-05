@@ -11,6 +11,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 const helpers = await vite.ssrLoadModule("/features/economy/world-stations.ts");
 const { WorldObjectMenu, WorldObjectSale } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
+const { ProductionActivity } = await vite.ssrLoadModule("/features/economy/production-activity.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
@@ -31,6 +32,29 @@ function job(overrides = {}) {
     startedAt: new Date(now - 100_000).toISOString(), finishesAt: new Date(now + 500_000).toISOString(), rewards: { berries: 6 },
     cost: { coins: 0, items: {} }, catalogVersion: 2, ...overrides };
 }
+
+test("workbench illustration follows only an active production timer and stops for ready or construction jobs", () => {
+  const recipe = economyCatalog.recipes.find(entry => entry.buildingId === "dryer");
+  const active = job({ targetId: recipe.buildingId, recipeId: recipe.id, rewards: recipe.rewards });
+  const state = snapshot({ buildings: { home: 1, dryer: 1, warehouse: 1 }, jobs: [active] });
+  assert.match(render("campfire", controller({ snapshot: state })), /data-production-activity="dryer"/);
+  active.finishesAt = new Date(now).toISOString();
+  assert.doesNotMatch(render("campfire", controller({ snapshot: state })), /data-production-activity/);
+  active.finishesAt = "invalid";
+  assert.equal(renderToStaticMarkup(createElement(ProductionActivity, { job: active, now })), "");
+  active.startedAt = new Date(now + 1_000).toISOString();
+  active.finishesAt = new Date(now + 500_000).toISOString();
+  assert.doesNotMatch(render("campfire", controller({ snapshot: state })), /data-production-activity/);
+  assert.equal(renderToStaticMarkup(createElement(ProductionActivity, { job: active, now: NaN })), "");
+  active.startedAt = active.finishesAt;
+  assert.doesNotMatch(render("campfire", controller({ snapshot: state })), /data-production-activity/);
+  active.startedAt = new Date(now - 100_000).toISOString();
+  active.finishesAt = new Date(now + 500_000).toISOString();
+  active.kind = "construction"; active.targetLevel = 2; active.recipeId = null;
+  assert.doesNotMatch(render("campfire", controller({ snapshot: state })), /data-production-activity/);
+  state.jobs = [];
+  assert.doesNotMatch(render("campfire", controller({ snapshot: state })), /data-production-activity/);
+});
 function render(place, economy = controller(), extra = {}) {
   return renderToStaticMarkup(createElement(WorldObjectMenu, { selection: { place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 }, economy, onClose() {}, ...extra }));
 }

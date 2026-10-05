@@ -9,7 +9,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { forestCookingFrame, forestCookingBounds, FOREST_COOKING_ACTION_SECONDS, FOREST_COOKING_CYCLE_SECONDS } =
   await vite.ssrLoadModule("/features/world/forest-cooking.ts");
-const { forestCookingHeroRig, drawForestCookingHero } = await vite.ssrLoadModule("/features/world/forest-cooking-painter.ts");
+const { forestCookingHeroRig, drawForestCookingHero, drawForestProductionCooking, forestProductionCookingBounds } =
+  await vite.ssrLoadModule("/features/world/forest-cooking-painter.ts");
 const actions = ["prepare", "stir", "taste", "serve"], directions = ["front", "left", "right", "back"];
 const frame = (action, phase = .5, direction = "front") => ({ x: 200, y: 200, size: 36, action, phase, direction, frame: 0, steam: .5 });
 
@@ -98,6 +99,9 @@ test("the painter restores its caller and respects actual feet, wearables and fi
       if (key in target) return target[key];
       if (key === "save") return () => saved.push({ ...target });
       if (key === "restore") return () => Object.assign(target, saved.pop());
+      if (key === "createLinearGradient") return (...args) => {
+        calls.push({ key, args }); return { addColorStop() {} };
+      };
       return (...args) => { calls.push({ key, args }); for (const number of args.filter(value => typeof value === "number")) assert.ok(Number.isFinite(number)); };
     } });
   };
@@ -115,4 +119,64 @@ test("the painter restores its caller and respects actual feet, wearables and fi
     drawForestCookingHero(context(), { ...frame("stir"), size: NaN }, undefined, false);
     assert.equal(calls.length, painted);
   } finally { globalThis.document = previousDocument; }
+});
+
+function productionContext() {
+  const calls = [], saved = [], state = { globalAlpha: .6, fillStyle: "before", strokeStyle: "before" };
+  const ctx = new Proxy(state, { get(target, key) {
+    if (key in target) return target[key];
+    if (key === "save") return () => saved.push({ ...target });
+    if (key === "restore") return () => {
+      for (const property of Object.keys(target)) delete target[property];
+      Object.assign(target, saved.pop());
+    };
+    return (...args) => {
+      for (const value of args.filter(value => typeof value === "number")) assert.ok(Number.isFinite(value));
+      calls.push({ method: key, args, fill: target.fillStyle, stroke: target.strokeStyle, alpha: target.globalAlpha });
+      if (key === "createLinearGradient") return { addColorStop() {} };
+    };
+  } });
+  return { ctx, calls, state, sample: () => JSON.parse(JSON.stringify(calls)) };
+}
+const production = { jobId: "confirmed-local-kitchen", recipeId: "dry_berries", stationId: "dryer",
+  phase: "working", x: 707.398, y: 670.076, size: 40, elapsed: 8 };
+
+test("confirmed kitchen work simmers at the authored hearth without owning a hero, job or timer", () => {
+  const first = productionContext(), second = productionContext(), before = structuredClone(production);
+  for (const surface of [first, second]) {
+    drawForestProductionCooking(surface.ctx, production, false);
+    assert.deepEqual(surface.state, { globalAlpha: .6, fillStyle: "before", strokeStyle: "before" });
+    assert.ok(surface.calls.some(call => call.method === "fill" && call.fill === "#e9993e"), "daytime working pot has a small controlled burner");
+    assert.ok(surface.calls.some(call => call.method === "stroke" && call.stroke === "#faf1d4"), "hot soup releases bounded steam");
+    assert.equal(surface.calls.some(call => call.method === "drawImage"), false, "the real station never invents another Mochlik");
+    assert.deepEqual(surface.calls.find(call => call.method === "translate").args,
+      [production.x, production.y - production.size * .13], "the pot stands over the authored ground center");
+  }
+  assert.deepEqual(first.sample(), second.sample(), "both cameras read the same paused/shared clock");
+  assert.deepEqual(production, before);
+  const bounds = forestProductionCookingBounds(production);
+  assert.ok(bounds.x <= production.x - production.size * .19 && bounds.x + bounds.width >= production.x + production.size * .19);
+  assert.ok(bounds.y <= production.y - production.size * .62 && bounds.y + bounds.height >= production.y + production.size * .02);
+});
+
+test("a ready batch remains under a static lid until its confirmed job disappears", () => {
+  const first = productionContext(), later = productionContext();
+  drawForestProductionCooking(first.ctx, { ...production, phase: "ready" }, false);
+  drawForestProductionCooking(later.ctx, { ...production, phase: "ready", elapsed: 900 }, false);
+  assert.deepEqual(first.sample(), later.sample(), "ready has no residual burner, boiling or steam motion");
+  assert.equal(first.calls.some(call => call.fill === "#e9993e" || call.stroke === "#faf1d4"), false);
+  assert.ok(first.calls.some(call => call.fill === "#b29660"), "a closed lid has a readable wooden knob");
+  for (const invalid of [{ ...production, stationId: "quarry" }, { ...production, size: NaN }, { ...production, size: 0 }]) {
+    const surface = productionContext(); drawForestProductionCooking(surface.ctx, invalid, false);
+    assert.equal(surface.calls.length, 0);
+  }
+});
+
+test("reduced motion freezes the kitchen and removes rising steam and simmer bubbles", () => {
+  const first = productionContext(), later = productionContext();
+  drawForestProductionCooking(first.ctx, production, true);
+  drawForestProductionCooking(later.ctx, { ...production, elapsed: 1e9 }, true);
+  assert.deepEqual(first.sample(), later.sample());
+  assert.ok(first.calls.some(call => call.fill === "#e9993e"), "the same working state retains a static burner");
+  assert.equal(first.calls.some(call => call.stroke === "#faf1d4" || typeof call.stroke === "string" && call.stroke.startsWith("rgba(252,237,194,")), false);
 });

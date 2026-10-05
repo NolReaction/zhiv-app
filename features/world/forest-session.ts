@@ -11,6 +11,7 @@ import { forgetForestObservation } from "./forest-observer";
 import { createForestMemorySync, type ForestMemorySyncEnvironment, type ForestMemoryTransport } from "./forest-memory-sync";
 import { createPleskMind, type PleskMind } from "./plesk-mind";
 import type { ForestJourneyTravel } from "./forest-journey-travel";
+import type { EconomySceneProduction } from "./economy-production-state";
 
 type View = "circle" | "world";
 type Member = { view: View; active: boolean; changed: (ownerChanged: boolean) => void };
@@ -29,6 +30,8 @@ export type ForestSessionState = {
   pendingAttention: boolean;
   /** Transient display state only; economic jobs are restored from the economy API. */
   explorationId?: string | null;
+  /** Latest confirmed production revision; transient and never saved as forest memory. */
+  economyProduction?: EconomySceneProduction;
   /** Shared cosmetic departure/return; deliberately omitted from saved memory. */
   journeyTravel?: ForestJourneyTravel;
   /** Isolated DEV playback clocks; never included in forest memory. */

@@ -47,6 +47,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/clearing-activity.ts"),
       ...await vite.ssrLoadModule("/features/world/new-map-scene.ts"),
       ...await vite.ssrLoadModule("/features/world/economy-scene-state.ts"),
+      ...await vite.ssrLoadModule("/features/world/economy-production-state.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-observer.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-journey-travel.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts"),
@@ -3294,4 +3295,43 @@ test("cooking waits for outdoor feet and a real tap finishes the current cycle w
     clock.advance(1);
     assert.equal(probe.state.cookingPreview, undefined, "a tap does not leave the consumed preview queued for another start");
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+
+test("production props use one confirmed job across both cameras, preserve ready until claim and reject stale background work", async () => {
+  const campfires=[{ id: "clearing-campfire", position: { x: 680, y: 665 }, seat: { x: 640, y: 684 }, radius: 10 }];
+  const { mountHabitat, connectForestSession, TILED_WORLD, forestProductionFrames } = await modules({ campfires, navigation: livingNavigation });
+  const env=browser(), views=[]; let probe;
+  try {
+    const end=Date.parse("2026-10-05T12:00:00Z"), owner="1234-5678-ABCD";
+    const production={ ownerPublicId:owner, revision:5, jobs:[{ id:"confirmed-dryer", stationId:"dryer", stationLevel:1,
+      recipeId:"dry_berries", startedAt:new Date(end-7200000).toISOString(), finishesAt:new Date(end).toISOString() }] };
+    const initial={ ...options, serverNow:end-1000, presenceKey:`zhiv:mochlik:presence:${owner}`, economyProduction:production };
+    const callbacks={ activity() {}, ready() {}, failure:assert.fail };
+    const circle=mountHabitat(env.surface(),initial,callbacks); views.push(circle);
+    const world=mountHabitat(env.surface(),{ ...initial,view:"world" },callbacks); views.push(world);
+    env.finishPath("/test-ground.webp"); await flush();
+    probe=connectForestSession(initial.presenceKey,TILED_WORLD,"circle",end-1000,0,()=>{}, { persistence:false, sync:false });
+    const state=probe.state, clearing=structuredClone(state.clearing), fire=structuredClone(state.life.campfires);
+    assert.equal(state.economyProduction.revision,5);
+    for (const view of views) {
+      const surface=env.surface(); view.paintWorld(surface.context);
+      assert.ok(surface.calls.some(call => call.method==="translate" && Math.abs(call.args[0]-680)<.01 && Math.abs(call.args[1]-(665-40*.13))<.01),"the installed real dryer job paints the anchored cooking prop");
+    }
+    const ready=forestProductionFrames(state.economyProduction,TILED_WORLD,{},end,0);
+    assert.equal(ready[0].phase,"ready");
+    world.setTime(end+1000); world.paintWorld(env.surface().context);
+    assert.equal(state.economyProduction.jobs.length,1,"reaching the timer cannot claim or delete food");
+    world.configure({ ...initial,view:"world",serverNow:end+1000,economyProduction:{ ...production,revision:6,jobs:[] } });
+    circle.configure({ ...initial,backgrounded:true });
+    assert.deepEqual(state.economyProduction.jobs,[],"a background circle cannot resurrect a claimed job");
+    for (const view of views) {
+      const surface=env.surface(); view.paintWorld(surface.context);
+      assert.ok(!surface.calls.some(call => call.method==="translate" && Math.abs(call.args[0]-680)<.01 && Math.abs(call.args[1]-(665-40*.13))<.01),"both cameras stop drawing the claimed cooking prop");
+    }
+    world.dispose(); views.pop(); circle.configure(initial); await flush();
+    assert.deepEqual(state.economyProduction.jobs,[],"camera handoff retains the removal revision");
+    assert.deepEqual(state.life.campfires,fire,"cooking is a visual projection and does not kindle weather-owned fire state");
+    assert.deepEqual(state.clearing,clearing,"a multi-hour job never forces the hero into cooking animation or movement");
+  } finally { probe?.release(); views.forEach(view=>view.dispose()); env.restore(); }
 });

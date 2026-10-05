@@ -8,13 +8,21 @@ function stone(ctx: CanvasRenderingContext2D, r: number, i: number, warmth: numb
   const a = i / 9 * TAU, x = Math.cos(a) * r * .9, y = Math.sin(a) * r * .5;
   const rx = r * (.23 + i % 3 * .015), ry = r * .16;
   ellipse(ctx, x + r * .025, y + ry * .48, rx * 1.06, ry * .9, "rgba(23,24,17,.28)");
-  ellipse(ctx, x, y, rx, ry, i % 2 ? "#585b4c" : "#676551");
+  ellipse(ctx, x, y + ry * .1, rx, ry, i % 2 ? "#505447" : "#62604f");
   // A small faceted upper face, with its warm edge pointing towards the coals.
-  ctx.fillStyle = i % 2 ? "#83836b" : "#969074";
+  ctx.fillStyle = i % 2 ? "#8c8b75" : "#a29a7f";
   ctx.beginPath(); ctx.moveTo(x - rx, y - ry * .15);
   ctx.lineTo(x - rx * .43, y - ry * .95); ctx.lineTo(x + rx * .45, y - ry * .85);
   ctx.lineTo(x + rx * .88, y - ry * .1); ctx.lineTo(x + rx * .25, y + ry * .18);
   ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#bbb191";
+  ctx.beginPath(); ctx.moveTo(x - rx * .43, y - ry * .95);
+  ctx.lineTo(x + rx * .45, y - ry * .85); ctx.lineTo(x + rx * .14, y - ry * .48);
+  ctx.lineTo(x - rx * .66, y - ry * .46); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#696956"; ctx.lineWidth = r * .025; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(x + rx * .25, y - ry * .78);
+  ctx.lineTo(x + rx * .08, y - ry * .23); ctx.lineTo(x + rx * .3, y + ry * .08); ctx.stroke();
+  ellipse(ctx, x - rx * .38, y + ry * .26, rx * .3, ry * .16, "#73735b");
   const alpha = ctx.globalAlpha;
   ctx.globalAlpha = alpha * warmth * .45;
   ellipse(ctx, x - Math.cos(a) * rx * .45, y - Math.sin(a) * ry * .5, rx * .5, ry * .28, "#efaa64");
@@ -24,20 +32,30 @@ function stone(ctx: CanvasRenderingContext2D, r: number, i: number, warmth: numb
 }
 function logs(ctx: CanvasRenderingContext2D, r: number) {
   ctx.lineCap = "round";
-  for (const angle of [-.28, .4]) {
+  for (const [index, angle] of [-.28, .4].entries()) {
     ctx.save(); ctx.rotate(angle);
-    ctx.strokeStyle = "#2c2119"; ctx.lineWidth = r * .3;
-    ctx.beginPath(); ctx.moveTo(-r * .58, 0); ctx.lineTo(r * .57, 0); ctx.stroke();
-    ctx.strokeStyle = "#785337"; ctx.lineWidth = r * .11;
-    ctx.beginPath(); ctx.moveTo(-r * .48, -r * .065); ctx.lineTo(r * .42, -r * .065); ctx.stroke();
-    ellipse(ctx, r * .56, 0, r * .105, r * .13, "#947048");
-    ellipse(ctx, r * .57, 0, r * .043, r * .062, "#523923");
+    ctx.strokeStyle = "#2c2119"; ctx.lineWidth = r * .31;
+    ctx.beginPath(); ctx.moveTo(-r * .61, 0); ctx.lineTo(r * .57, 0); ctx.stroke();
+    ctx.strokeStyle = index ? "#765337" : "#85613f"; ctx.lineWidth = r * .19;
+    ctx.beginPath(); ctx.moveTo(-r * .6, -r * .035); ctx.lineTo(r * .56, -r * .035); ctx.stroke();
+    ctx.strokeStyle = "#ac8352"; ctx.lineWidth = r * .037;
+    ctx.beginPath(); ctx.moveTo(-r * .55, -r * .095);
+    ctx.lineTo(-r * .12, -r * .075); ctx.lineTo(r * .49, -r * .105); ctx.stroke();
+    ellipse(ctx, r * .59, 0, r * .115, r * .145, "#b5915b");
+    ellipse(ctx, r * .6, 0, r * .075, r * .102, "#795838");
+    ellipse(ctx, r * .606, -r * .005, r * .05, r * .071, "#c09a62");
+    ellipse(ctx, r * .612, -r * .01, r * .022, r * .032, "#725033");
+    ctx.strokeStyle = "#5e442e"; ctx.lineWidth = r * .021;
+    ctx.beginPath(); ctx.moveTo(r * .6, 0); ctx.lineTo(r * .66, r * .08); ctx.stroke();
     // Broken charcoal bands follow the wood, avoiding evenly striped logs.
     ctx.strokeStyle = "#211e17"; ctx.lineWidth = r * .045;
-    for (const offset of [-.25, .02, .29]) {
+    for (const offset of [-.31, .015, .27]) {
       ctx.beginPath(); ctx.moveTo(r * offset, -r * .105);
       ctx.lineTo(r * (offset + .035), -r * .025); ctx.lineTo(r * (offset + .015), r * .08); ctx.stroke();
     }
+    ctx.strokeStyle = "#473425"; ctx.lineWidth = r * .027;
+    ctx.beginPath(); ctx.moveTo(-r * .49, r * .065);
+    ctx.lineTo(-r * .2, r * .03); ctx.lineTo(r * .41, r * .07); ctx.stroke();
     ctx.restore();
   }
 }
@@ -57,16 +75,21 @@ export function drawForestCampfires(ctx: CanvasRenderingContext2D, fires: readon
     ctx.save(); ctx.translate(x, y);
     if (!emissionOnly) {
       ellipse(ctx, 0, r * .25, r * 1.35, r * .65, "rgba(27,31,17,.13)");
-      ellipse(ctx, 0, 0, r * .92, r * .55, "#403a28");
-      ellipse(ctx, 0, -.2, r * .74, r * .4, "#28251d");
+      ellipse(ctx, 0, 0, r * .98, r * .58, "#726047");
+      ellipse(ctx, 0, r * .018, r * .89, r * .51, "#4d4535");
+      ellipse(ctx, 0, -.2, r * .74, r * .4, "#302c23");
+      ellipse(ctx, -r * .15, r * .06, r * .51, r * .27, "#736957");
+      ellipse(ctx, r * .18, -r * .09, r * .36, r * .2, "#514b3b");
       for (let i = 0; i < 7; i++) {
         const a = i * 2.4;
-        ellipse(ctx, Math.cos(a) * r * .53, Math.sin(a) * r * .27, r * .07, r * .035, i % 2 ? "#666151" : "#302b21");
+        ellipse(ctx, Math.cos(a) * r * .53, Math.sin(a) * r * .27, r * .08, r * .043, i % 2 ? "#9d9076" : "#302b21");
       }
       for (let i = 5; i < 9; i++) stone(ctx, r, i, heat * breath, fire.wetness);
       logs(ctx, r);
     }
     if (fire.embers > .02) {
+      ctx.globalAlpha = alpha * fire.embers * .18;
+      ellipse(ctx, 0, r * .02, r * .63, r * .31, "#e17c38");
       for (let i = 0; i < 6; i++) {
         ctx.globalAlpha = alpha * fire.embers * (.76 + Math.sin(time * 1.7 + phase + i * 2) * .16);
         const ex = (i - 2.5) * r * .16, ey = Math.sin(i * 2) * r * .14;
@@ -84,6 +107,9 @@ export function drawForestCampfires(ctx: CanvasRenderingContext2D, fires: readon
       tongue(ctx, -r * .25, r * .24, height * (.78 + Math.sin(time * 3.1 + phase) * .1), sway - r * .08);
       tongue(ctx, r * .22, r * .25, height * (.85 + Math.sin(time * 3.7 + phase + 1) * .09), sway + r * .06);
       tongue(ctx, 0, r * .3, height, sway);
+      ctx.fillStyle = "#ffad46"; ctx.globalAlpha = alpha * heat * .42;
+      tongue(ctx, -r * .18, r * .1, height * .6, sway * .4 - r * .05);
+      tongue(ctx, r * .18, r * .09, height * .56, sway * .6 + r * .04);
       const core = ctx.createLinearGradient(0, -height * .66, 0, 0);
       core.addColorStop(0, "rgba(255,215,133,0)"); core.addColorStop(.5, "#ffd789"); core.addColorStop(1, "#ffeab3");
       ctx.fillStyle = core; ctx.globalAlpha = alpha * heat * .73;
@@ -124,7 +150,8 @@ export function drawForestCampfires(ctx: CanvasRenderingContext2D, fires: readon
   }
 }
 /** Dynamic pools are cheap gradients; they do not invalidate the cached night texture. */
-export function drawForestCampfireGlow(ctx: CanvasRenderingContext2D, fires: readonly ForestCampfire[], elapsed: number, still: boolean, night: number, actor?: { x: number; y: number; size: number }) {
+export function drawForestCampfireGlow(ctx: CanvasRenderingContext2D, fires: readonly ForestCampfire[], elapsed: number, still: boolean, night: number,
+  actor?: { x: number; y: number; size: number }, coveredFireIds: readonly string[] = []) {
   if (night <= 0) return;
   ctx.save(); ctx.globalCompositeOperation = "screen";
   for (const fire of fires) {
@@ -139,9 +166,9 @@ export function drawForestCampfireGlow(ctx: CanvasRenderingContext2D, fires: rea
     ctx.fillStyle = glow; ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
   // Emissive color survives night shading, but stays behind the hero when occluded.
-  const exposed = fires.filter(fire => !actor || fire.position.y >= actor.y
+  const exposed = fires.filter(fire => !coveredFireIds.includes(fire.id) && (!actor || fire.position.y >= actor.y
     || Math.abs(fire.position.x - actor.x) > actor.size * .42 + fire.radius * .6
-    || fire.position.y < actor.y - actor.size);
+    || fire.position.y < actor.y - actor.size));
   drawForestCampfires(ctx, exposed, elapsed, still, true);
   ctx.restore();
 }

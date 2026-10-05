@@ -10,6 +10,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { WorldProfileContent } = await vite.ssrLoadModule("/features/world/world-profile-menu.tsx");
 const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/model.ts");
+const { newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const freshEconomy = () => ({ ...newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 3, workshopLevel: 0 }), catalog: economyCatalog, completedExplorations: 7 });
 
 const observation = {
   activity: "Исследует куст", detail: "Увлёкся интересной находкой", mood: "Любопытничает",
@@ -22,7 +25,7 @@ function profile(overrides = {}) {
   const calls = [];
   const tree = WorldProfileContent({
     world: { snapshot: { state: { ...newWorldState(), houseLevel: 1, collection: [worldCatalog.finds[0].id] } } },
-    economy: { snapshot: { buildings: { home: 3 }, completedExplorations: 7 } },
+    economy: { snapshot: freshEconomy() },
     displayName: "Дима", level: 12, bestStreakDays: 21, observation,
     onCall: () => calls.push("call"), onTakeOver: () => calls.push("takeover"), ...overrides,
   });
@@ -43,7 +46,7 @@ test("map profile uses the authoritative home level and completed progress witho
   assert.match(markup, /Уровень 12/);
   assert.match(markup, /<dt>Дом<\/dt><dd>3 ур\.<\/dd>/);
   assert.match(markup, /<dt>Исследования<\/dt><dd>7<\/dd>/);
-  assert.ok(markup.includes(`1 / ${worldCatalog.finds.length}`));
+  assert.match(markup, /<dt>Книга находок<\/dt><dd>1 \/ 14<\/dd>/);
   assert.match(markup, /21 день/);
   assert.deepEqual(elements.filter(element => element.type === "button").map(buttonText), ["Позвать Мохлика"]);
   assert.doesNotMatch(markup, /Кладовая|Гардероб|Обустроить дом|Прежние походы/);
@@ -56,11 +59,23 @@ test("profile reports stable feelings rather than animation phases, percentages 
   assert.equal(markup, profile({ observation: { ...observation, activity: "Провожает бабочку", detail: "Другая анимация" } }).markup);
 });
 
+test("profile counts the same permanent book pages as collections, excluding old river souvenirs and bought fish", () => {
+  const state = freshEconomy();
+  state.progression.collections.finds = ["acorn", "quartz_cluster"];
+  state.fishing.catches = { fish: 3 };
+  state.inventory = { fish_mooncarp: 5 };
+  const view = profile({ economy: { snapshot: state }, world: { snapshot: { state: {
+    ...newWorldState(), collection: ["acorn", "river_pearl"],
+  } } } });
+  assert.match(view.markup, /<dt>Книга находок<\/dt><dd>3 \/ 14<\/dd>/);
+});
+
 test("missing observations cannot call the character; missing economy is not presented as zero progress", () => {
   const view = profile({ observation: null, economy: { snapshot: null } });
   assert.match(view.markup, /когда полянка загрузится/);
   assert.match(view.markup, /<dt>Дом<\/dt><dd>1 ур\.<\/dd>/);
   assert.match(view.markup, /<dt>Исследования<\/dt><dd>—<\/dd>/);
+  assert.match(view.markup, /<dt>Книга находок<\/dt><dd>—<\/dd>/);
   assert.equal(view.elements.find(element => element.type === "button").props.disabled, true);
   assert.doesNotMatch(view.markup, /Полон сил|Память сохранена/);
   assert.match(profile({ world: { snapshot: { state: { ...newWorldState(), completedJourneys: 2 } } } }).markup, /<dt>Прежние походы<\/dt><dd>2<\/dd>/);

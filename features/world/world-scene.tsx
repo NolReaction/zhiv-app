@@ -1,4 +1,5 @@
 "use client";
+import type { EconomySceneProduction } from "@/features/world/economy-production-state";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { LocateFixed, LoaderCircle, Scan } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
@@ -21,13 +22,13 @@ import { createMapAnchorStore } from "./map-anchor-store";
 import { useGardenCollection } from "@/features/economy/garden-collection-context";
 import styles from "./world.module.css";
 
-type Props = { hideJourneyStatus?: boolean; hideMapControls?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
+type Props = { hideJourneyStatus?: boolean; hideMapControls?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
   constructionEconomy?: EconomyController; onOpenConstruction?: (stationId: string) => void; hideConstructionStatus?: boolean;
   selectedObjectId?: string | null; onObjectSelection?: (selection: MapObjectSelection | null) => void;
   onResident?: (id: "plesk") => void;
   openObjectRequest?: { id: number; place: WorldPlace };
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ hideJourneyStatus = false, hideMapControls = false, constructionEconomy, onOpenConstruction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
+export function WorldScene({ hideJourneyStatus = false, hideMapControls = false, constructionEconomy, onOpenConstruction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
   const garden = useGardenCollection();
   const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
@@ -35,7 +36,7 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
   useEffect(() => { time.current = now; engine.current?.setTime(now); }, [now]);
   const previousWake = useRef(wakeSignal), pendingWake = useRef(0);
   const { lampOn, dusk } = habitatLighting(now, timeZone);
-  const latest = useRef({ state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, garden });
+  const latest = useRef({ state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, garden });
   const selection = useRef({ selectedObjectId, onObjectSelection });
   const objectRequest = useRef(openObjectRequest), handledObjectRequest = useRef<number | null>(null);
   const applyObjectRequest = useCallback(() => {
@@ -62,10 +63,10 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
   }, [constructionActive, completions]);
   const [reload, setReload] = useState(0);
   useEffect(() => {
-    latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, garden };
+    latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, garden };
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    engine.current?.update({ lampOn, dusk, paused: false, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, cancelledExplorations, economyBuildings, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
-  }, [state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, garden]);
+    engine.current?.update({ lampOn, dusk, paused: false, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
+  }, [state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, garden]);
   useEffect(() => { selection.current = { selectedObjectId, onObjectSelection }; }, [selectedObjectId, onObjectSelection]);
   useEffect(() => { engine.current?.setSelectedObject(selectedObjectId ?? null); }, [selectedObjectId]);
   useEffect(() => { objectRequest.current = openObjectRequest; applyObjectRequest(); }, [openObjectRequest, applyObjectRequest]);
@@ -74,7 +75,7 @@ export function WorldScene({ hideJourneyStatus = false, hideMapControls = false,
     const abort = new AbortController();
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const options = (): SceneOptions => ({ serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, paused: false, view: "world", reducedMotion: media.matches,
-      worldState: latest.current.state, economyJourney: latest.current.economyJourney, cancelledExplorations: latest.current.cancelledExplorations, economyBuildings: latest.current.economyBuildings, economyGarden: latest.current.garden?.crop, gardenHarvestRequest: latest.current.garden?.request, onGardenHarvestEvent: latest.current.garden?.sceneEvent, worldGifts: latest.current.gifts, items: latest.current.items,
+      worldState: latest.current.state, economyJourney: latest.current.economyJourney, cancelledExplorations: latest.current.cancelledExplorations, economyBuildings: latest.current.economyBuildings, economyProduction: latest.current.economyProduction, economyGarden: latest.current.garden?.crop, gardenHarvestRequest: latest.current.garden?.request, onGardenHarvestEvent: latest.current.garden?.sceneEvent, worldGifts: latest.current.gifts, items: latest.current.items,
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     void import("./map-engine").then(module => {
       if (disposed) return null;

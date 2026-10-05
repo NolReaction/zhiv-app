@@ -11,6 +11,7 @@ import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSal
 import { ConstructionSpeedup } from "./construction-speedup";
 import { useGardenCollection } from "./garden-collection-context";
 import { berryCollectionStatus } from "./garden-collection";
+import { ProductionActivity, productionIsActive } from "./production-activity";
 import { marketItemUnlocked, marketMinimumPrice, marketRequiredHomeLevel } from "./market-rules";
 import styles from "./economy-panel.module.css";
 
@@ -123,8 +124,9 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
   const caption = job.kind === "construction" ? "Строительство" : job.kind === "exploration" ? "Мохлик в пути" : buildingName(state, job.targetId);
   const rewardCount = Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0);
   const storageBlocked = job.kind !== "construction" && rewardCount > state.storage.available;
+  const working = productionIsActive(job, now);
   return <article className={styles.card} data-ready={ready}>
-    <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={21} aria-hidden /></span><div><span className={styles.eyebrow}>{ready ? "Готово" : caption}</span><h3>{jobTitle(state, job)}</h3></div></div>
+    <div className={styles.cardHeader}><span className={styles.iconTile} data-working={working || undefined}>{working ? <ProductionActivity job={job} now={now} /> : <Icon size={21} aria-hidden />}</span><div><span className={styles.eyebrow}>{ready ? "Готово" : caption}</span><h3>{jobTitle(state, job)}</h3></div></div>
     {Object.keys(job.rewards).length > 0 && <Rewards state={state} value={job.rewards} />}
     {!ready && <progress className={styles.progress} value={progress} max={1} aria-label={`${jobTitle(state, job)}: выполнено ${Math.floor(progress * 100)}%`} />}
     <div className={styles.jobFooter}>
@@ -241,7 +243,7 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
   const occupied = state.jobs.some(job => (job.kind === "production" || job.kind === "construction") && job.targetId === recipe.buildingId);
   const reason = unmetRequirement(state, required) ?? (maximum < 1 ? "Для этого заказа нужно расширить склад" : occupied ? "Здание занято текущим заказом" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null);
   const choices = Array.from({ length: maximum }, (_, index) => index + 1);
-  return <article className={styles.card}><h3>{recipe.name}</h3>
+  return <article className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
     <Rewards state={state} value={recipe.rewards} quantity={quantity} />
     <RequirementList state={state} required={required} navigate={navigate} />
     <Cost state={state} cost={recipe.cost} quantity={quantity} />
