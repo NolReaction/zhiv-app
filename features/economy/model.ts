@@ -21,19 +21,26 @@ export const economyFishingSchema = z.object({
 }).default({ ownedRods: ["reed_rod"], equippedRodId: "reed_rod", equippedBaitId: null, catches: {} });
 export const economyFishingCatalogSchema = z.object({
   routeIds: z.array(id).min(1).max(100),
-  fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare"]),
+  fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
     weight: count.positive().max(1000), affinity: count.max(10), buyPrice: balance.positive() })).min(1).max(100),
   rods: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100) })).min(1).max(100),
   baits: z.array(z.object({ itemId: id, description: z.string(), price: balance.positive(), rareBonus: count.max(100) })).max(100),
 });
+export const economyRareDropsSchema = z.object({ version: z.literal(1), requiredHomeLevel: count.positive().max(5),
+  minSeconds: count.positive().max(31_536_000), maxSeconds: count.positive().max(31_536_000), itemIds: z.array(id).length(3),
+}).refine(value => value.maxSeconds >= value.minSeconds && new Set(value.itemIds).size === value.itemIds.length);
+export const economyRareDropDeliverySchema = z.object({ version: z.literal(1), seconds: count.positive(), itemId: id.nullable() });
+export type EconomyRareDropClock = { version: 1; remainingSeconds: number; itemId: string };
 export const economyCatalogSchema = z.object({
+  rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
   version: z.literal(2), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400) }),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000),
     showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
-  items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance.positive(), tradable: z.boolean() })).max(1000),
+  items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance, tradable: z.boolean() })
+    .refine(item => item.category === "special" ? item.baseSellPrice === 0 && !item.tradable : item.baseSellPrice > 0)).max(1000),
   buildings: z.array(z.object({ id, name: z.string(), description: z.string(), levels: z.array(z.object({
     level: z.number().int().min(1).max(100), seconds: count, cost: economyCostSchema, requiredHomeLevel: z.number().int().min(1).max(5),
     requiredBuildings, warehouseCapacity: count.positive().nullish(),
@@ -60,8 +67,11 @@ export const economyJobSchema = z.object({
   rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2)]),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, baitId: id.nullable(), fishId: id }).nullish(),
+  rareDrop: economyRareDropDeliverySchema.nullish(),
 }).refine(job => !job.collection || job.kind === "production" && job.targetId === "garden" && (job.rewards.berries ?? 0) > 0,
-  "Berry collection requires a garden production order");
+  "Berry collection requires a garden production order")
+  .refine(job => !job.rareDrop || job.kind === "exploration" && (!job.rareDrop.itemId || job.rewards[job.rareDrop.itemId] === 1),
+    "Rare materials belong to a saved exploration delivery");
 export const economyStorageSchema = z.object({ capacity: count, used: count, reserved: count, available: count, overflow: count });
 export const economyViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40), revision: count, serverTime: z.string().datetime(),
@@ -103,7 +113,7 @@ export type EconomyResult = z.infer<typeof economyResultSchema>;
 export type EconomyMarketListing = z.infer<typeof economyMarketListingSchema>;
 export type MarketView = z.infer<typeof marketViewSchema>;
 export type EconomyProgression = z.infer<typeof economyProgressionSchema>;
-export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { fishingCastSeed?: string | null };
+export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null };
 
 export type EconomyFishing = z.infer<typeof economyFishingSchema>;
 export type EconomyFishingCatalog = z.infer<typeof economyFishingCatalogSchema>;

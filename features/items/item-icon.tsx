@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { naturalItemArt } from "./art-natural";
+import { relicItemArt } from "./art-relics";
 import { craftedItemArt } from "./art-crafted";
 import { collectionArt } from "./art-collection";
 import { equipmentArt } from "./art-equipment";
@@ -40,7 +41,7 @@ const currencyArt: Record<string, ReactNode> = {
   pearls: collectionArt.river_pearl,
 };
 
-const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...equipmentArt, ...currencyArt, ...fishingArt };
+const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...relicItemArt, ...equipmentArt, ...currencyArt, ...fishingArt };
 export const itemIconIds: readonly string[] = Object.keys(itemArt);
 export const collectionIconIds: readonly string[] = Object.keys(collectionArt);
 

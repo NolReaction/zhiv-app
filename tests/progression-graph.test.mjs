@@ -8,11 +8,12 @@ const catalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/
 const source = readFileSync(new URL("../features/progression/graph.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const context = { exports: {}, require: specifier => {
+  if (specifier === "@/apps/api/src/main/resources/world/progression-rewards-catalog.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8")) };
   assert.equal(specifier, "@/features/economy/model");
   return { economyCatalog: catalog };
 } };
 vm.runInNewContext(code, context);
-const { progressionGraph: graph, buildProgressionGraph, getPrerequisiteIds, buildingLabels, progressionLocations } = context.exports;
+const { progressionGraph: graph, buildProgressionGraph, getPrerequisiteIds, getProgressionResourceSource, buildingLabels, progressionLocations } = context.exports;
 const layoutSource = readFileSync(new URL("../features/progression/layout.ts", import.meta.url), "utf8");
 const layoutCode = ts.transpileModule(layoutSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const layoutContext = { exports: {}, require: specifier => {
@@ -85,10 +86,52 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 147);
+  assert.equal(graph.nodes.length, 150);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 16);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 17);
+});
+
+test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
+  assert.equal(node("daily_rewards").status, "active");
+  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /3 жемчужины/);
+  assert.match(node("daily_rewards").description, /20 часов/); assert.match(node("daily_rewards").description, /Пропуск не сбрасывает/);
+  assert.match(node("pearls").description, /до 43/); assert.match(node("achievements").description, /до 43/);
+  assert(hasEdge("daily_rewards", "pearls", "flow")); assert(hasEdge("achievements", "pearls", "flow"));
+  assert.equal(node("pearl_trader").status, "plan");
+  assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind === "plan"));
+  assert(!getPrerequisiteIds(graph, "b:home:5").has("pearl_trader"));
+  assert.match(node("market").description, /обмен реликвиями 1:1/);
+});
+
+test("rare materials share a real post-home-three exploration source without a fake recipe or coin purchase", () => {
+  const source = node("rare_materials");
+  assert.equal(source.kind, "acquisition"); assert.equal(source.status, "active"); assert.equal(source.phase, 3);
+  assert.deepEqual(plain(source.requirements), { home: 3 });
+  assert.deepEqual(plain(source.rareDrops), catalog.rareDrops);
+  assert.equal(source.rewards, undefined); assert.equal(source.seconds, undefined); assert.equal(source.cost, undefined);
+  assert.match(source.description, /один общий счётчик/); assert.match(source.description, /48 до 144/);
+  assert.match(source.description, /равновероятных/); assert.match(source.description, /Конкретный тип не гарантирован/);
+  assert.match(source.description, /купить или продать за монеты нельзя/);
+  assert(hasEdge("b:home:3", source.id, "requirement"));
+  for (const route of catalog.explorations) assert(hasEdge(`e:${route.id}`, source.id, "any"));
+  for (const item of catalog.rareDrops.itemIds) {
+    assert.equal(getProgressionResourceSource(graph, item).id, source.id, "Cost buttons resolve the earned source");
+    assert(!graph.nodes.some(value => value.rewards?.[item]), "No guaranteed trip, recipe or merchant reward");
+  }
+  assert(hasEdge(source.id, "b:home:4", "cost")); assert(hasEdge(source.id, "b:home:5", "cost"));
+  assert(!hasEdge(source.id, "b:home:3", "cost"));
+  const prerequisites = getPrerequisiteIds(graph, source.id, false);
+  assert(prerequisites.has("b:home:3"));
+  assert(!graph.nodes.some(value => value.kind === "exploration" && prerequisites.has(value.id)), "Alternative trips are not all mandatory");
+  assert(!getPrerequisiteIds(graph, "b:home:4", false).has(source.id));
+  assert(getPrerequisiteIds(graph, "b:home:4").has(source.id));
+  const changed = structuredClone(catalog); changed.rareDrops.minSeconds = 60 * 3600; changed.rareDrops.maxSeconds = 180 * 3600;
+  const before = JSON.stringify(changed), custom = buildProgressionGraph(changed);
+  const customSource = custom.nodes.find(value => value.id === source.id);
+  assert.match(customSource.description, /60 до 180/); assert.match(customSource.description, /120 часов/);
+  customSource.rareDrops.itemIds.reverse();
+  assert.equal(JSON.stringify(changed), before, "Graph keeps its own copy of drop metadata");
 });
 
 test("fishing is current while other profiles and Pleska's home stay optional proposals", () => {

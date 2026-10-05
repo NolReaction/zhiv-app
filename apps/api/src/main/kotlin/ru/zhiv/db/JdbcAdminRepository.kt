@@ -269,7 +269,8 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         val table = if (kind == "item") "game_items" else "game_achievements"
         val column = if (kind == "item") "item_id" else "achievement_id"
         val granted = if (kind == "achievement" && rewardId in ru.zhiv.game.GameRewards.achievements.keys.drop(7))
-            recordAchievementTiers(c,target,rewardId,ru.zhiv.game.GameRewards.achievements.getValue(rewardId),instant)
+            recordAchievementTiers(c,target,rewardId,ru.zhiv.game.GameRewards.achievements.getValue(rewardId),instant,rewardEligible=false)
+        else if (kind == "achievement") c.update("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible) VALUES (?,?,?,false) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
         else c.update("INSERT INTO $table(user_id,$column,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
         c.one("""
             INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,reward_id,granted)

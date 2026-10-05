@@ -207,6 +207,27 @@
       "category": "fishing",
       "baseSellPrice": 2,
       "tradable": true
+    },
+    {
+      "id": "ancient_core",
+      "name": "Древнее ядро",
+      "category": "special",
+      "baseSellPrice": 0,
+      "tradable": false
+    },
+    {
+      "id": "moon_crystal",
+      "name": "Лунный кристалл",
+      "category": "special",
+      "baseSellPrice": 0,
+      "tradable": false
+    },
+    {
+      "id": "living_resin",
+      "name": "Живая смола",
+      "category": "special",
+      "baseSellPrice": 0,
+      "tradable": false
     }
   ],
   "buildings": [
@@ -273,7 +294,8 @@
               "cut_stone": 90,
               "bricks": 100,
               "cloth": 25,
-              "metal_parts": 30
+              "metal_parts": 30,
+              "living_resin": 1
             }
           },
           "requiredHomeLevel": 3,
@@ -296,7 +318,9 @@
               "bricks": 220,
               "glass": 90,
               "reinforced_parts": 45,
-              "cloth": 60
+              "cloth": 60,
+              "ancient_core": 1,
+              "moon_crystal": 1
             }
           },
           "requiredHomeLevel": 4,
@@ -2220,5 +2244,16 @@
   },
   "localBuyer": {
     "payoutBps": 6000
+  },
+  "rareDrops": {
+    "version": 1,
+    "requiredHomeLevel": 3,
+    "minSeconds": 172800,
+    "maxSeconds": 518400,
+    "itemIds": [
+      "ancient_core",
+      "moon_crystal",
+      "living_resin"
+    ]
   }
 }

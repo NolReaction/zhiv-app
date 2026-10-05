@@ -35,13 +35,25 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 @Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int)
 @Serializable data class EconomyFishingCatalog(val routeIds: List<String>, val fish: List<EconomyFishSpec>,
     val rods: List<EconomyRodSpec>, val baits: List<EconomyBaitSpec>)
+@Serializable data class EconomyRareDropSpec(val version: Int = 1, val requiredHomeLevel: Int,
+    val minSeconds: Long, val maxSeconds: Long, val itemIds: List<String>) {
+    init { require(version == 1 && requiredHomeLevel in 1..5 && minSeconds in 1L..31_536_000L && maxSeconds in minSeconds..31_536_000L
+        && itemIds.size == 3 && itemIds.distinct().size == itemIds.size) }
+}
+@Serializable data class EconomyRareDropClock(val version: Int = 1, val remainingSeconds: Long, val itemId: String)
+@Serializable data class EconomyRareDropDelivery(val version: Int = 1, val seconds: Long, val itemId: String? = null) {
+    init { require(version == 1 && seconds > 0) }
+}
 @Serializable data class EconomyJob(
     val id: String, val kind: String, val targetId: String, val recipeId: String? = null,
     val targetLevel: Int? = null, val startedAt: String, val finishesAt: String,
     val rewards: Map<String, Long> = emptyMap(), val cost: EconomyCost = EconomyCost(), val catalogVersion: Int = 1,
-    val collection: EconomyCollection? = null, val fishing: EconomyFishingCatch? = null,
+    val collection: EconomyCollection? = null, val fishing: EconomyFishingCatch? = null, val rareDrop: EconomyRareDropDelivery? = null,
 ) {
-    init { require(collection == null || kind == "production" && targetId == "garden" && (rewards["berries"] ?: 0L) > 0L) }
+    init {
+        require(collection == null || kind == "production" && targetId == "garden" && (rewards["berries"] ?: 0L) > 0L)
+        require(rareDrop == null || kind == "exploration" && (rareDrop.itemId == null || rewards[rareDrop.itemId] == 1L))
+    }
 }
 @Serializable data class EconomyBookCollection(
     val finds: List<String> = emptyList(), val travelSeconds: Long = 0, val quarrySeconds: Long = 0,
@@ -55,6 +67,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val buildings: Map<String, Int>, val jobs: List<EconomyJob> = emptyList(), val migration: EconomyMigration,
     val completedExplorations: Long = 0, val fishing: EconomyFishing = EconomyFishing(),
     val fishingCastSeed: String? = null, val progression: EconomyProgression = EconomyProgression(),
+    val rareDropState: EconomyRareDropClock? = null,
 )
 @Serializable data class EconomyItem(val id: String, val name: String, val category: String, val baseSellPrice: Long, val tradable: Boolean = true)
 @Serializable data class EconomyBuildingLevel(
@@ -86,6 +99,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val recipes: List<EconomyRecipe>, val explorations: List<EconomyExploration>, val market: EconomyMarketConfig = EconomyMarketConfig(),
     val constructionSpeedup: EconomyConstructionSpeedup, val fishing: EconomyFishingCatalog? = null,
     val localBuyer: EconomyLocalBuyer = EconomyLocalBuyer(),
+    val rareDrops: EconomyRareDropSpec? = null,
 )
 @Serializable data class EconomyStorage(
     val capacity: Long, val used: Long, val reserved: Long, val available: Long, val overflow: Long,

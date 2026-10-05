@@ -6,6 +6,7 @@ import ru.zhiv.economy.ECONOMY_MAX_BALANCE
 import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomyCollectionProgress
+import ru.zhiv.economy.EconomyRareDrops
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
@@ -38,9 +39,12 @@ private fun economyStateForReview(c: Connection, user: UUID): EconomyState {
 /** Review is read-only: in particular, it cannot mint a migration grant. */
 internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): List<String> {
     val states = listOf(economyStateForReview(c, target), economyStateForReview(c, source))
-    val escrow = c.prepareStatement("""SELECT item_id,sum(quantity) FROM economy_market_listings
-        WHERE seller_id IN (?,?) AND status='active' GROUP BY item_id""").use { statement ->
+    val escrow = c.prepareStatement("""SELECT item_id,sum(quantity) FROM (
+        SELECT item_id,quantity FROM economy_market_listings WHERE seller_id IN (?,?) AND status='active'
+        UNION ALL SELECT offered_item_id,1::bigint FROM economy_barter_offers WHERE seller_id IN (?,?) AND status='active'
+        ) held GROUP BY item_id""").use { statement ->
         statement.setObject(1,target); statement.setObject(2,source)
+        statement.setObject(3,target); statement.setObject(4,source)
         statement.executeQuery().use { rows -> buildMap<String, Long> { while (rows.next()) put(rows.getString(1),rows.getLong(2)) } }
     }
     val combinedInventory = (states.flatMap { it.inventory.keys } + escrow.keys).distinct().associateWith { item ->
@@ -78,7 +82,8 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
             catches=(a.fishing.catches.keys+b.fishing.catches.keys).associateWith {
                 minOf(ECONOMY_MAX_BALANCE,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
         fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,
-        progression=EconomyCollectionProgress.merge(a.progression,b.progression)), recordAwards=false)
+        progression=EconomyCollectionProgress.merge(a.progression,b.progression),
+        rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
         SELECT ?,request_id,signature,message,accepted_revision FROM economy_commands WHERE user_id=? ON CONFLICT DO NOTHING""", target, source)
@@ -91,6 +96,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
 
 /** Keep the one-time conversion audit attached to the retired UUID. No new grant on reset. */
 internal fun removeEconomyProfile(c: Connection, user: UUID) {
+    c.lifecycleEconomyUpdate("DELETE FROM economy_barter_showcases WHERE user_id=?", user)
     c.lifecycleEconomyUpdate("DELETE FROM economy_market_showcases WHERE user_id=?", user)
     c.lifecycleEconomyUpdate("DELETE FROM economy_commands WHERE user_id=?", user)
     c.lifecycleEconomyUpdate("DELETE FROM economy_ledger WHERE user_id=?", user)

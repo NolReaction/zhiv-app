@@ -32,12 +32,13 @@ import hudStyles from "./world-map-hud.module.css";
 import { WorldObjectMenu } from "@/features/economy/world-object-menu";
 import { WorldResidentDialog } from "./world-resident-dialog";
 import { WorldCharacters } from "./world-characters";
+import { DailyRewardsMap } from "@/features/game/daily-rewards";
 
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "help";
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
-export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, open: worldIsOpen, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
@@ -50,6 +51,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
   const [charactersOpen, setCharactersOpen] = useState(false);
+  const [dailyOpen, setDailyOpen] = useState(false);
   const leavingCharacters = useRef(false);
   const [expeditionSector, setExpeditionSector] = useState<SectorId>("forest");
   const [residentOpen, setResidentOpen] = useState(false);
@@ -87,6 +89,9 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [hasWorld]);
   const clearObject = useCallback(() => { selectedId.current = null; setSelection(null); }, []);
+  const openDailyRewards = useCallback(() => {
+    clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(false); setDailyOpen(true);
+  }, [clearObject]);
   const closeQuick = useCallback(() => {
     setQuickMenu(null); setCharactersOpen(false);
     if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
@@ -142,12 +147,13 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (!escapeHandlerRef) return;
     // Radix handles Escape in document capture, before a popover's own key handler.
     escapeHandlerRef.current = () => {
+      if (dailyOpen) { setDailyOpen(false); return true; }
       if (quickMenu) { closeQuick(); return true; }
       if (selection) { closeObject(); return true; }
       return false;
     };
     return () => { escapeHandlerRef.current = null; };
-  }, [escapeHandlerRef, quickMenu, selection, closeObject, closeQuick]);
+  }, [escapeHandlerRef, quickMenu, selection, closeObject, closeQuick, dailyOpen]);
   const onObjectSelection = useCallback((next: MapObjectSelection | null) => {
     if (next === null) { selectedId.current = null; setSelection(null); }
     else if (selectedId.current === next.objectId) setSelection(next);
@@ -227,11 +233,11 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const SheetIcon = panel === "help" ? Info : panel === "economy" ? Store : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
     <WorldScene economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
-      hideJourneyStatus hideMapControls={quickMenu !== null || selection !== null || residentOpen || charactersOpen} onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
-      constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen}
+      hideJourneyStatus hideMapControls={quickMenu !== null || selection !== null || residentOpen || charactersOpen || dailyOpen} onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
+      constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
-    {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && quickUpgrade === null && !residentOpen && !charactersOpen}
+    {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && quickUpgrade === null && !residentOpen && !charactersOpen && !dailyOpen}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header ref={topHud} className={hudStyles.hud}>
@@ -248,6 +254,9 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           <button className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} onClick={() => openPanel("help")} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
+      <div className={styles.rewardsHud}><DailyRewardsMap ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
+        open={dailyOpen} onOpenChange={setDailyOpen} onRequestOpen={openDailyRewards}
+        canAutoOpen={worldIsOpen && !dailyOpen && panel === null && quickMenu === null && selection === null && quickUpgrade === null && !residentOpen && !charactersOpen} /></div>
       <WorldInventoryGains key={ownerPublicId} economy={economy} hud={topHud} />
     </header>
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}

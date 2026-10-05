@@ -446,9 +446,10 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
                 val token = tokens.issue()
                 val user = JdbcZhivRepository(isolated).bootstrap("Прежняя лавка", tokens.issue().hash, token.hash, 365)
                 val repo = JdbcEconomyRepository(isolated)
-                repo.snapshot(token.hash)
                 val lot = UUID.randomUUID(); val request = UUID.randomUUID()
                 isolated.connection.use { c ->
+                    c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", user.id) { true }
+                    ensureEconomyProfile(c, user.id)
                     val state = readEconomyProfile(c, user.id).state.copy(wallet=EconomyWallet(123, 20),
                         inventory=mapOf("berries" to 17L), buildings=mapOf("home" to 2, "warehouse" to 1), completedExplorations=1)
                     c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb,revision=7 WHERE user_id=?", economyJson.encodeToString(state), user.id)

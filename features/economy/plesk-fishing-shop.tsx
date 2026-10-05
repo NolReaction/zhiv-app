@@ -9,6 +9,7 @@ import { fishSpeciesId } from "@/features/world/fish-species";
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { fishingState } from "./fishing";
+import { FishRarityBadge, FishRarityScale } from "./fish-rarity";
 import { PantrySale } from "./world-pantry-menu";
 import { itemName, number } from "./world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
@@ -17,7 +18,6 @@ import styles from "./plesk-fishing-shop.module.css";
 type ReadyProps = { economy: EconomyController; state: EconomyView };
 type FishingCatalog = NonNullable<EconomyView["catalog"]["fishing"]>;
 type ShopTab = "fish" | "tackle" | "collection";
-const rarityNames = { common: "Обычная", uncommon: "Необычная", rare: "Редкая" };
 const tabs = [{ id: "fish", name: "Улов", icon: Fish }, { id: "tackle", name: "Снасти", icon: FishingRod }, { id: "collection", name: "Коллекция", icon: BookOpen }] as const;
 
 function Price({ value }: { value: number }) {
@@ -63,10 +63,10 @@ function FishCounter({ economy, state, catalog }: ReadyProps & { catalog: Fishin
   return <>
     <p className={styles.intro}>«Улов куплю, а к ужину — выбирай рыбку с моего прилавка!»</p>
     <div className={styles.fishList} aria-label="Рыба на прилавке">{catalog.fish.map(fish => <button type="button" key={fish.itemId} className={styles.fishChoice} aria-pressed={fish === selected} onClick={() => setSelection(fish.itemId)}>
-      <FishIcon species={fishSpeciesId(fish.itemId)} size={44} /><span><strong>{itemName(state, fish.itemId)}</strong><small>{rarityNames[fish.rarity]}</small></span><span className={styles.stock}>×{number(state.inventory[fish.itemId] ?? 0)}</span>
+      <FishIcon species={fishSpeciesId(fish.itemId)} size={44} /><span><strong>{itemName(state, fish.itemId)}</strong><FishRarityBadge rarity={fish.rarity} /></span><span className={styles.stock}>×{number(state.inventory[fish.itemId] ?? 0)}</span>
     </button>)}</div>
     {selected && <><p className={styles.description}>{selected.description}</p><PleskFishTrade key={selected.itemId} economy={economy} state={state} itemId={selected.itemId} /></>}
-    <p className={styles.footnote}>Покупка пополняет кладовую. В коллекцию попадает только собственный полученный улов.</p>
+    <FishRarityScale /><p className={styles.footnote}>Покупка пополняет кладовую. В коллекцию попадает только собственный полученный улов.</p>
   </>;
 }
 
@@ -141,7 +141,7 @@ export function PleskFishingCollection({ state, catalog }: { state: EconomyView;
     <div className={styles.collection} aria-label="Пойманные виды рыб">{catalog.fish.map(fish => {
       const caught = catches[fish.itemId] ?? 0;
       return <article className={styles.specimen} key={fish.itemId} data-discovered={caught > 0}>
-        <FishIcon species={fishSpeciesId(fish.itemId)} size={64} /><h3>{itemName(state, fish.itemId)}</h3><span className={styles.rarity}>{rarityNames[fish.rarity]}</span><p>{caught > 0 ? `Поймано: ${number(caught)}` : "Ещё не поймана"}</p>
+        <FishIcon species={fishSpeciesId(fish.itemId)} size={64} /><h3>{itemName(state, fish.itemId)}</h3><FishRarityBadge rarity={fish.rarity} /><p>{caught > 0 ? `Поймано: ${number(caught)}` : "Ещё не поймана"}</p>
       </article>;
     })}</div>
     <section className={styles.section} aria-label="Коллекция удочек"><h2>Удочки · {catalog.rods.filter(rod => ownedRods.includes(rod.id)).length} / {catalog.rods.length}</h2>{catalog.rods.map(rod => <div className={styles.collectedRod} key={rod.id}><FishingRodIcon rodId={rod.id} size={34} /><span>{rod.name}</span><small>{ownedRods.includes(rod.id) ? "В коллекции" : "У Плёски"}</small></div>)}</section>

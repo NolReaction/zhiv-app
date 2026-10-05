@@ -42,9 +42,24 @@ test("catch expectation changes exactly one fish and keeps bait spending distinc
   const bait = math.catchPortfolio("reed_rod", "crumb_bait");
   assert(bait.expectedFishRevenue - initial.expectedFishRevenue < bait.baitPurchaseCoins);
   assert.equal(math.sourceHome("charcoal"), 2); assert.equal(math.sourceHome("resin"), 3); assert.equal(math.sourceHome("tools"), 4);
-  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, 29);
+  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, 32);
   const chargedRoute = readEconomyCatalog();
   chargedRoute.explorations.find(r => r.id === "shore").cost = { coins: 7, items: { wood: 2 } };
   const charged = economicMath(chargedRoute).profile("fish");
   near(charged.coins, 7 / 3.55); near(charged.slotMinutes.woodlot, 8 / 3.55);
+});
+
+test("rare materials have one shared earned-time clock and no invented NPC price or additive production work", () => {
+  const report = auditEconomicMath(readEconomyCatalog());
+  for (const p of report.profiles.filter(profile => profile.acquisition)) {
+    assert.equal(p.sourceHome, 3); assert.equal(p.referenceHome, 3);
+    assert.deepEqual(p.slotMinutes, {});
+    assert.equal(p.oneUnitNpcRevenue, 0); assert.equal(p.slotOpportunityCoins, null);
+    assert.equal(p.acquisition.coinPurchasePrice, null);
+    assert.equal(p.acquisition.meanAnySeconds / 3600, 96);
+    assert.equal(p.acquisition.expectedSpecificSeconds / 3600, 288);
+    assert.equal(p.acquisition.expectedCompleteSetSeconds / 3600, 528);
+    assert.equal(p.acquisition.finiteSpecificGuarantee, false);
+  }
+  assert.equal(report.profiles.filter(profile => profile.acquisition).length, 3);
 });

@@ -12,6 +12,7 @@ export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
   world: WorldController; economy: EconomyController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
   wakeSignal: number;
+  isOnline?: boolean; onSessionLost?: () => void;
   bestStreakDays: number; items?: readonly GameItemId[];
 };
 export default function WorldPortal(props: WorldPortalProps) {

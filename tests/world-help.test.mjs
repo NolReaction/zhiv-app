@@ -12,7 +12,7 @@ const { WorldHelp } = await vite.ssrLoadModule("/features/world/world-help.tsx")
 const { worldHelpTopics, searchWorldHelp } = await vite.ssrLoadModule("/features/world/world-help-content.ts");
 const { worldCatalog, newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
 const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
 
 test("help search handles Russian spelling, word order, whitespace and missing results", () => {
   const topics = worldHelpTopics();
@@ -41,7 +41,7 @@ test("help uses current catalog rules and marks unavailable mechanics while rebu
   assert.match(get("wardrobe").note, /пока нельзя изготовить.*полученные вещи можно менять/);
   assert.match(get("collection").paragraphs.join(" "), /Каменоломня.*минерала/);
   assert.match(get("collection").paragraphs.join(" "), /после получения результата.*повторный запрос/);
-  assert.match(get("collection").note, /Редкие расходуемые материалы.*пока не введены/);
+  assert.match(get("collection").note, /Реликвии.*отдельно в кладовой.*расходуются/);
   assert.doesNotMatch(worldHelpTopics(false).find(topic => topic.id === "journeys").paragraphs.join(" "), /временно недоступны|началось раньше/);
 });
 
@@ -61,14 +61,15 @@ test("help directs each map action to its focused menu", () => {
   assert.doesNotMatch(topics.flatMap(topic => [...(topic.steps ?? []), ...(topic.paragraphs ?? []), topic.note ?? ""]).join(" "), /Как Мохлик\?/);
 });
 
-test("guide separates construction, production and pearl spending without promising unreleased income", () => {
+test("guide separates construction and production while describing released pearl income", () => {
   const topics = worldHelpTopics(), get = id => topics.find(topic => topic.id === id);
   const pearls = get("pearls");
   assert.ok(pearls.steps.join(" ").includes(`${economyCatalog.constructionSpeedup.secondsPerPearl / 60} минут`));
   assert.match(pearls.steps.join(" "), /Подтвердите завершение.*цена снизится.*меньшая сумма.*готова — ничего/);
   assert.match(pearls.note, /только на строительство.*не на производство или вылазки/);
   assert.match(pearls.note, /дождитесь таймера и завершите бесплатно/);
-  assert.match(pearls.note, /способы её заработка ещё готовятся/);
+  assert.match(pearls.note, /в подарках за вход и достижениях/);
+  assert.match(pearls.note, /Покупка валюты за реальные деньги пока не подключена/);
   assert.match(get("construction").paragraphs.join(" "), /При уменьшении движения/);
   assert.match(get("future-world").paragraphs.join(" "), /Их восстановление.*ещё готовятся/);
   assert.doesNotMatch(topics.flatMap(topic => topic.paragraphs ?? []).join(" "), /ускорения пока не подключены|Жемчуг зарезервирован/);
@@ -108,10 +109,27 @@ test("world HUD keeps help visible and moves secondary actions under More", asyn
 test("pantry shortcut is visible before opening a building and includes reserved storage", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const world = { snapshot: { state: newWorldState(), gifts: [] }, now: Date.parse("2026-10-03T12:00:00Z"), act() {} };
-  const economy = { snapshot: { wallet: { coins: 150, pearls: 2 }, buildings: { home: 1, warehouse: 1 }, jobs: [], storage: { used: 180, reserved: 20, capacity: 200, available: 0, overflow: 0 } }, now: world.now };
-  const markup = renderToStaticMarkup(createElement(WorldView, { world, economy, ownerPublicId: "pantry-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
+  const economy = { snapshot: { ownerPublicId: "AAAA-0000-0001", revision: 1, serverTime: new Date(world.now).toISOString(), catalog: economyCatalog,
+    wallet: { coins: 150, pearls: 2 }, buildings: { home: 1, warehouse: 1 }, inventory: { wood: 180 }, jobs: [],
+    migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, completedExplorations: 0,
+    storage: { used: 180, reserved: 20, capacity: 200, available: 0, overflow: 0 } }, now: world.now };
+  economy.snapshot = economyViewSchema.parse(economy.snapshot);
+  const markup = renderToStaticMarkup(createElement(WorldView, { world, economy, ownerPublicId: economy.snapshot.ownerPublicId, timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
   assert.match(markup, /aria-label="Кладовая: занято 200 из 200 мест" data-full="true"/);
   assert.match(markup, /<span>Кладовая<\/span>/);
   assert.doesNotMatch(markup, /200 \/ 200/, "capacity stays in the accessible label and pantry rather than enlarging the dock");
   assert.doesNotMatch(markup, /data-upgrade-station/);
+});
+
+test("released gift, relic and fish-rarity rules are searchable without inventing future catches", () => {
+  const topics = worldHelpTopics(), get = id => topics.find(topic => topic.id === id);
+  assert.match(get("rewards").paragraphs.join(" "), /семи шагам.*UTC.*20 часов.*Пропуск сохраняет/);
+  assert.match(get("rewards").paragraphs.join(" "), /Забрать подарок.*само по себе ничего не начисляет/);
+  assert.match(get("rewards").paragraphs.join(" "), /один раз.*полученные раньше/);
+  assert.match(get("relics").paragraphs[0], /Древнее ядро.*Лунный кристалл.*Живая смола/);
+  assert.match(get("relics").paragraphs[0], /от 48 до 144 часов/);
+  assert.match(get("relics").paragraphs.join(" "), /одну реликвию за одну другую/);
+  assert.match(get("plesk").paragraphs.join(" "), /Эпические и легендарные виды появятся позже/);
+  assert.ok(searchWorldHelp(topics, "подарки жемчуг").some(topic => topic.id === "rewards"));
+  assert.ok(searchWorldHelp(topics, "смола обмен").some(topic => topic.id === "relics"));
 });

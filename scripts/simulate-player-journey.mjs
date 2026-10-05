@@ -3,12 +3,36 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "vite";
 
 // Read-only player policy: every state change uses the shipped TS domain rules.
-// No market, legacy grant, admin command, backdating or tap income. The default
-// has no pearls; an explicit research scenario may start with a declared budget.
+// No market, daily/achievement reward claims, legacy grant, admin command,
+// backdating or tap income. The default has no pearls; an explicit research
+// scenario may start with a declared budget. Relics use actual exploration jobs.
 const root = fileURLToPath(new URL("..", import.meta.url));
 const epoch = Date.parse("2026-10-05T00:00:00Z"), day = 86400, hour = 3600;
 const firstVisit = 7 * hour;
 export const journeyOrder = ["woodlot:1", "workshop:1", "home:2", "quarry:1", "kiln:1", "garden:2", "warehouse:2", "woodlot:2", "quarry:2", "kiln:2", "dryer:1", "dryer:2", "workshop:2", "home:3", "garden:3", "warehouse:3", "woodlot:3", "quarry:3", "kiln:3", "workshop:3", "dryer:3", "home:4", "woodlot:4", "quarry:4", "kiln:4", "workshop:4", "warehouse:4", "garden:4", "dryer:4", "home:5", "garden:5", "warehouse:5", "woodlot:5", "quarry:5", "kiln:5", "workshop:5", "dryer:5"];
+export const DEFAULT_JOURNEY_RARE_SEED = 0x0672026;
+
+/** Research-only reproducible entropy, independent of commands and fish seeds. */
+export function createJourneyRareRandom(seed) {
+  assert(Number.isSafeInteger(seed) && seed > 0 && seed <= 0xffffffff, "Invalid research relic seed");
+  let value = seed, draws = 0;
+  return {
+    integer(exclusiveMaximum) {
+      assert(Number.isSafeInteger(exclusiveMaximum) && exclusiveMaximum > 0 && exclusiveMaximum <= 0xffffffff, "Invalid relic draw bound");
+      // Xorshift32 visits all nonzero uint32 values. Subtract one and reject
+      // the incomplete tail before modulo; a full period has equal bin sizes.
+      const limit = Math.floor(0xffffffff / exclusiveMaximum) * exclusiveMaximum;
+      for (;;) {
+        value ^= value << 13; value ^= value >>> 17; value ^= value << 5; value >>>= 0; draws++;
+        const sample = value - 1;
+        if (sample < limit) return sample % exclusiveMaximum;
+      }
+    },
+    snapshot: () => ({ value, draws }),
+    restore(snapshot) { value = snapshot.value; draws = snapshot.draws; },
+    get draws() { return draws; },
+  };
+}
 
 export async function loadJourneyRules() {
   const vite = await createServer({ appType: "custom", configFile: false, root, logLevel: "silent",
@@ -19,12 +43,18 @@ export async function loadJourneyRules() {
 }
 
 export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy = {}) {
-  const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false, pearlBudget = 0 } = policy;
+  const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false, pearlBudget = 0, rareSeed = DEFAULT_JOURNEY_RARE_SEED } = policy;
   assert(Number.isSafeInteger(pearlBudget) && pearlBudget >= 0 && pearlBudget <= 1_000_000_000, "Invalid research pearl budget");
+  assert(["active16h", "visits2", "visits3"].includes(mode), "Invalid visit policy");
+  const rareRandom = createJourneyRareRandom(rareSeed);
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
   let clock = firstVisit, sequence = 0, castSequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null, pearlsSpent = 0;
   const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, items = new Map(catalog.items.map(item => [item.id, item]));
+  const relicIds = catalog.items.filter(item => item.category === "special").map(item => item.id);
+  const relicReceived = Object.fromEntries(relicIds.map(id => [id, 0]));
+  const relicSpent = Object.fromEntries(relicIds.map(id => [id, 0]));
+  const relicFinds = []; let eligibleExplorationSeconds = 0;
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
   const uuid = () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}`;
@@ -33,6 +63,8 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
   const command = (action, targetId, quantity = 1, totalPrice = 0) => {
     if (action === "start_exploration" && catalog.fishing.routeIds.includes(targetId)) action = "start_fishing";
     const next = structuredClone(state);
+    const entropy = rareRandom.snapshot();
+    const previousJob = action === "claim_job" ? state.jobs.find(job => job.id === targetId) : null;
     try {
       let generated = 0;
       // The nth cast gets the same server-generated seed in every scenario.
@@ -40,7 +72,7 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
       const jobId = () => action === "start_fishing" && ++generated === 2
         ? `00000000-0000-4000-9000-${(castSequence + 1).toString(16).padStart(12, "0")}` : uuid();
       rules.applyEconomyCommand(next, { requestId: uuid(), ownerPublicId: "0000-0000-0001", expectedRevision: commands,
-        action, targetId, quantity, totalPrice }, epoch + clock * 1000, jobId);
+        action, targetId, quantity, totalPrice }, epoch + clock * 1000, jobId, {}, rareRandom.integer);
       if (action === "start_fishing" && generated >= 2) castSequence++;
       if (action === "sell" || action === "sell_fish") revenue += next.wallet.coins - state.wallet.coins;
       if (action === "speedup_construction") {
@@ -49,10 +81,32 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
         milestones[`${job.targetId}:${job.targetLevel}`] = (clock - firstVisit) / day;
         events.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), building: `${job.targetId}:${job.targetLevel}`, coins: next.wallet.coins });
       }
+      if (action === "claim_job" && previousJob?.rareDrop) {
+        assert.equal(previousJob.kind, "exploration", "Only completed exploration jobs accrue relic time");
+        eligibleExplorationSeconds += previousJob.rareDrop.seconds;
+        for (const id of relicIds) if (previousJob.rewards[id]) {
+          assert.equal(previousJob.rareDrop.itemId, id);
+          assert.equal(next.inventory[id] - (state.inventory[id] ?? 0), previousJob.rewards[id]);
+          relicReceived[id] += previousJob.rewards[id];
+          relicFinds.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), route: previousJob.targetId,
+            itemId: id, eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)) });
+        }
+      }
+      if (action === "start_construction") {
+        const job = next.jobs.find(j => j.kind === "construction" && j.targetId === targetId);
+        for (const id of relicIds) if (job.cost.items[id]) {
+          assert.equal((state.inventory[id] ?? 0) - (next.inventory[id] ?? 0), job.cost.items[id]);
+          relicSpent[id] += job.cost.items[id];
+        }
+      }
       Object.assign(state, next); commands++; actions[action] = (actions[action] ?? 0) + 1;
       if (action === "start_production") productionRecipes[targetId] = (productionRecipes[targetId] ?? 0) + quantity;
       lastFailure = null; return true;
-    } catch (error) { lastFailure = error.code ?? error.message; failures[lastFailure] = (failures[lastFailure] ?? 0) + 1; return false; }
+    } catch (error) {
+      rareRandom.restore(entropy); // A rejected transition cannot shift the sample path.
+      if (error instanceof assert.AssertionError) throw error;
+      lastFailure = error.code ?? error.message; failures[lastFailure] = (failures[lastFailure] ?? 0) + 1; return false;
+    }
   };
   const cash = rewards => Object.entries(rewards).reduce((sum, [id, amount]) => sum + (catalog.fishing.fish.some(f => f.itemId === id)
     ? items.get(id).baseSellPrice * amount : rules.economyLocalSellPrice(items.get(id).baseSellPrice, amount, catalog.localBuyer)), 0);
@@ -81,12 +135,12 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     }
   }
   function demand(target) {
-    const needed = {}, planned = { ...state.inventory }, recipeWants = new Map();
+    const needed = {}, planned = { ...state.inventory }, recipeWants = new Map(); let needsRelic = false;
     // The paid current upgrade must never manufacture its cost twice.
     if (state.jobs.some(j => j.kind === "construction" && j.targetId === target.id)) {
-      if (!prepareNextConstruction) return { needed, recipeWants };
+      if (!prepareNextConstruction) return { needed, recipeWants, needsRelic };
       const key = journeyOrder[targetIndex + 1];
-      if (!key) return { needed, recipeWants };
+      if (!key) return { needed, recipeWants, needsRelic };
       const [id, level] = key.split(":");
       target = { id, key, ...catalog.buildings.find(b => b.id === id).levels.find(l => l.level === Number(level)) };
     }
@@ -108,6 +162,9 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
       needed[id] = (needed[id] ?? 0) + amount;
       const owned = Math.min(planned[id] ?? 0, amount); planned[id] = (planned[id] ?? 0) - owned;
       if (owned >= amount) return;
+      // A rare requirement has no recipe or guaranteed route reward. The
+      // player must complete ordinary eligible explorations until it is found.
+      if (items.get(id)?.category === "special") { needsRelic = true; return; }
       assert(!path.includes(id), `Policy cycle: ${path.join(" -> ")} -> ${id}`);
       const source = jointSources.get(id) ?? sources(id)[0];
       if (!source && prepareNextConstruction) return;
@@ -119,11 +176,12 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
       for (const [input, quantity] of Object.entries(source.cost.items)) expand(input, quantity * batches, [...path, id]);
     };
     for (const [id, amount] of Object.entries(target.cost.items)) expand(id, amount);
-    return { needed, recipeWants };
+    return { needed, recipeWants, needsRelic };
   }
   const sellExcess = needed => {
     let sold = false;
     for (const [id, amount] of Object.entries(state.inventory)) {
+      if (items.get(id)?.category === "special") continue;
       const futureUses = preserveFutureCraftedStock && journeyOrder.slice(targetIndex).some(key => {
         const [building, level] = key.split(":");
         return catalog.buildings.find(b => b.id === building).levels.find(l => l.level === Number(level)).cost.items[id] > 0;
@@ -184,7 +242,17 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     const income = d => cash(d.rewards) / (isActive ? d.seconds : Math.max(1, Math.ceil(d.seconds / gap)));
     for (const id of ["garden", "woodlot", "quarry", null]) {
       if (id ? busy.has(id) : state.jobs.some(j => j.kind === "exploration" || j.collection?.startedAt)) continue;
-      const d = freeDefinitions.filter(d => id ? d.buildingId === id : !d.buildingId).sort((a, b) => income(b) - income(a))[0];
+      const d = freeDefinitions.filter(d => id ? d.buildingId === id : !d.buildingId).sort((a, b) => {
+        // When a visible upgrade lacks a relic, prefer free routes that bank
+        // more authored travel time between visits. Never inspect the private
+        // clock or pending type, never skip real costs or building requirements.
+        if (!id && plan.needsRelic && (state.buildings.home ?? 1) >= (catalog.rareDrops?.requiredHomeLevel ?? Infinity)) {
+          const travel = route => isActive ? 1 : route.seconds / Math.max(1, Math.ceil(route.seconds / gap));
+          const difference = travel(b) - travel(a);
+          if (difference) return difference;
+        }
+        return income(b) - income(a);
+      })[0];
       if (d && command(d.buildingId ? "start_production" : "start_exploration", d.id)) { if (id) busy.add(id); }
     }
   }
@@ -214,9 +282,14 @@ export function simulateJourney({ rules, catalog }, mode, maxDays = 1600, policy
     homeDays: Object.fromEntries([2, 3, 4, 5].map(l => [l, milestones[`home:${l}`] == null ? null : Number(milestones[`home:${l}`].toFixed(3))])),
     commands, saleRevenue: revenue, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
     ...(pearlBudget > 0 ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
-    ...(jointBatchPlanning ? { productionRecipes } : {}) };
+    ...(jointBatchPlanning ? { productionRecipes } : {}),
+    excludedIncome: ["daily_rewards", "achievement_rewards", "taps", "player_market", "legacy_grants"],
+    rareMaterials: { seed: rareSeed, generator: "xorshift32-rejection-v1", draws: rareRandom.draws,
+      eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)), received: relicReceived,
+      spentOnConstruction: relicSpent, inventory: Object.fromEntries(relicIds.map(id => [id, state.inventory[id] ?? 0])), finds: relicFinds } };
   assert.equal(state.wallet.pearls, pearlBudget - pearlsSpent); assert(state.wallet.coins >= 0);
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
+  for (const id of relicIds) assert.equal(relicReceived[id] - relicSpent[id], state.inventory[id] ?? 0, "Relics must be conserved from actual claims through construction");
   return report;
 }
 

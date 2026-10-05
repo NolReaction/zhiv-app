@@ -8,7 +8,7 @@ import java.util.UUID
 internal fun recordGameAchievement(connection: Connection, userId: UUID, id: String, at: OffsetDateTime) {
     connection.prepareStatement("""
         INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,?,?)
-        ON CONFLICT(user_id,achievement_id) DO NOTHING
+        ON CONFLICT(user_id,achievement_id) DO UPDATE SET reward_eligible=true WHERE NOT game_achievements.reward_eligible
     """.trimIndent()).use {
         it.setObject(1,userId); it.setString(2,id); it.setObject(3,at); it.executeUpdate()
     }
@@ -18,11 +18,10 @@ internal fun recordFriendAchievement(connection: Connection, userId: UUID, at: O
     connection.prepareStatement("""
         INSERT INTO game_achievements(user_id,achievement_id,unlocked_at)
         SELECT ?, 'five_friends', ?::timestamptz
-        WHERE NOT EXISTS (SELECT 1 FROM game_achievements WHERE user_id=? AND achievement_id='five_friends')
-          AND (SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends)=5
-        ON CONFLICT(user_id,achievement_id) DO NOTHING
+        WHERE (SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends)=5
+        ON CONFLICT(user_id,achievement_id) DO UPDATE SET reward_eligible=true WHERE NOT game_achievements.reward_eligible
     """.trimIndent()).use {
-        it.setObject(1,userId); it.setObject(2,at); it.setObject(3,userId); it.setObject(4,userId); it.executeUpdate()
+        it.setObject(1,userId); it.setObject(2,at); it.setObject(3,userId); it.executeUpdate()
     }
 }
 
@@ -55,15 +54,17 @@ internal fun recordMergedAchievements(connection: Connection, userId: UUID, at: 
 }
 
 /** New stages have their own durable dates. Admin grants do not modify counters. */
-internal fun recordAchievementTiers(connection: Connection, userId: UUID, id: String, progress: Long, at: OffsetDateTime): Boolean {
+internal fun recordAchievementTiers(connection: Connection, userId: UUID, id: String, progress: Long, at: OffsetDateTime, rewardEligible: Boolean = true): Boolean {
     val levels = ru.zhiv.game.GameRewards.tiers.getValue(id).mapIndexedNotNull { index, target ->
         if (progress >= target) index + 1 else null
     }
     if (levels.isEmpty()) return false
-    val baseInserted = connection.economyUpdate("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING", userId,id,at) > 0
+    val baseInserted = connection.economyUpdate("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", userId,id,at,rewardEligible) > 0
+    if (rewardEligible) connection.economyUpdate("UPDATE game_achievements SET reward_eligible=true WHERE user_id=? AND achievement_id=? AND NOT reward_eligible",userId,id)
     var inserted = baseInserted
     levels.forEach { level ->
-        if (connection.economyUpdate("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", userId,id,level,at) > 0) inserted = true
+        if (connection.economyUpdate("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at,reward_eligible) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING", userId,id,level,at,rewardEligible) > 0) inserted = true
+        if (rewardEligible) connection.economyUpdate("UPDATE game_achievement_tiers SET reward_eligible=true WHERE user_id=? AND achievement_id=? AND level=? AND NOT reward_eligible",userId,id,level)
     }
     return inserted
 }
@@ -95,7 +96,7 @@ internal fun recordSecurityAchievements(connection: Connection, userId: UUID) {
         UNION ALL
         SELECT ?, 'saved_recovery_code', clock_timestamp()
         WHERE EXISTS (SELECT 1 FROM account_recovery_codes WHERE user_id IN (SELECT user_id FROM account_history_user_ids(?)))
-        ON CONFLICT(user_id,achievement_id) DO NOTHING
+        ON CONFLICT(user_id,achievement_id) DO UPDATE SET reward_eligible=true WHERE NOT game_achievements.reward_eligible
     """.trimIndent()).use {
         for (index in 1..4) it.setObject(index,userId)
         it.executeUpdate()

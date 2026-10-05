@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { getEconomy, getEconomyMarket, sendEconomyCommand, sendEconomyDevCommand, sendMarketCommand } from "./api";
 import { createEconomySession } from "./session";
+import { getEconomyBarter, sendBarterCommand } from "./barter-api";
 
 function receiptStorage() {
   try { return typeof window === "undefined" ? undefined : window.sessionStorage; } catch { return undefined; }
@@ -11,6 +12,7 @@ export function useEconomy(owner: string | null, onSessionLost: () => void) {
   const session = useMemo(() => createEconomySession(owner, {
     get: getEconomy, send: sendEconomyCommand,
     market: getEconomyMarket, trade: sendMarketCommand,
+    barter: signal => owner ? getEconomyBarter(owner, signal) : Promise.reject(new Error("Войдите в профиль")), barterTrade: sendBarterCommand,
     dev: process.env.NODE_ENV === "development" ? sendEconomyDevCommand : undefined,
   }, () => {}, receiptStorage()), [owner]);
   useEffect(() => { session.setSessionLost(onSessionLost); }, [session, onSessionLost]);
@@ -29,6 +31,6 @@ export function useEconomy(owner: string | null, onSessionLost: () => void) {
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
   }, [session, owner]);
-  return { ...view, now: view.snapshot ? session.now() : now, act: session.act, actMarket: session.actMarket, actDev: session.actDev, devAvailable: session.devAvailable, retry: session.retry, refresh: session.refresh, refreshMarket: session.refreshMarket };
+  return { ...view, now: view.snapshot ? session.now() : now, act: session.act, actMarket: session.actMarket, actBarter: session.actBarter, actDev: session.actDev, devAvailable: session.devAvailable, retry: session.retry, refresh: session.refresh, refreshMarket: session.refreshMarket, refreshBarter: session.refreshBarter };
 }
 export type EconomyController = ReturnType<typeof useEconomy>;

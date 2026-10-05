@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, Trees } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, Trees } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "./model";
@@ -13,9 +13,10 @@ import { useGardenCollection } from "./garden-collection-context";
 import { berryCollectionStatus } from "./garden-collection";
 import { ProductionActivity, productionIsActive } from "./production-activity";
 import { marketItemUnlocked, marketMinimumPrice, marketRequiredHomeLevel } from "./market-rules";
+import { BarterMarket } from "./barter-market";
 import styles from "./economy-panel.module.css";
 
-export type EconomyTab = "overview" | "buildings" | "production" | "exploration" | "market" | "inventory";
+export type EconomyTab = "overview" | "buildings" | "production" | "exploration" | "market" | "barter" | "inventory";
 type ReadyEconomy = EconomyController & { snapshot: EconomyView };
 type Recipe = EconomyView["catalog"]["recipes"][number];
 type Item = EconomyView["catalog"]["items"][number];
@@ -28,10 +29,11 @@ const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "production", label: "Производство", Icon: Hammer },
   { id: "exploration", label: "Вылазки", Icon: Compass },
   { id: "market", label: "Рынок", Icon: Store },
+  { id: "barter", label: "Обмен", Icon: ArrowLeftRight },
   { id: "inventory", label: "Склад", Icon: Package },
 ];
 const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame };
-const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары" };
+const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары", special: "Особые материалы" };
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
 const buildingName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const number = (value: number) => value.toLocaleString("ru-RU");
@@ -438,6 +440,7 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
   useEffect(() => { void refreshMarket(); }, [refreshMarket]);
   return <div className={`${styles.stack} ${styles.market}`} aria-label="Лесной рынок">
     <StorageStatus state={state} navigate={navigate} compact condensed />
+    <button type="button" className={styles.textButton} onClick={() => navigate("barter")}><ArrowLeftRight size={16} aria-hidden />Обмен особыми материалами<ArrowRight size={15} aria-hidden /></button>
     <nav className={styles.subnav} aria-label="Раздел рынка"><button aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
     {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Торговля с игроками откроется после обустройства дома и первой разведки.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур. · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</p><button onClick={() => navigate((state.buildings.home ?? 1) < limits.requiredHomeLevel ? "buildings" : "exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Местный торговец уже покупает товары в разделе «Склад».</p></div></div>}
     {marketError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
@@ -486,6 +489,7 @@ export function EconomyPanel({ economy, initialTab = "overview", initialFocusId,
         {tab === "exploration" && <Exploration economy={controller} navigate={navigate} focusId={focusId} />}
         {tab === "inventory" && <Inventory economy={controller} navigate={navigate} focusId={focusId} />}
         {tab === "market" && <Market economy={controller} navigate={navigate} />}
+        {tab === "barter" && <BarterMarket economy={controller} onMarket={() => navigate("market")} onHome={() => navigate("buildings", "home")} />}
       </div>}
   </section>;
 }

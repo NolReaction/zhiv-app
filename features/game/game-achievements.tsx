@@ -9,6 +9,10 @@ import { getGameAchievements, type GameAchievement, type GameAchievements, type 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import boardStyles from "./game-leaderboard.module.css";
 import styles from "./game-achievements.module.css";
+import { ItemIcon } from "@/features/items/item-icon";
+import type { AchievementReward, GameRewards, GameRewardClaim } from "./game-rewards-api";
+import { useGameRewards } from "./use-game-rewards";
+import { RewardRecovery } from "./daily-rewards";
 
 const roman = ["I", "II", "III", "IV"];
 
@@ -36,8 +40,13 @@ export function achievementSummary(data: GameAchievements | null) {
     totalTiers: VISIBLE_GAME_ACHIEVEMENTS.reduce((sum, quest) => sum + quest.tiers.length, 0) };
 }
 
-export function AchievementCard({ quest, state }: { quest: GameAchievementDefinition; state?: GameAchievement }) {
+export function AchievementCard({ quest, state, rewardRows = [], claimBlocked = false, pending, onClaim }: {
+  quest: GameAchievementDefinition; state?: GameAchievement; rewardRows?: readonly AchievementReward[]; claimBlocked?: boolean;
+  pending?: GameRewardClaim | null; onClaim?: (level: number) => void;
+}) {
   const view = achievementPresentation(quest, state), multi = quest.tiers.length > 1;
+  const nextReward = rewardRows.find(row => row.eligible);
+  const claiming = pending?.kind === "achievement" && pending.achievementId === quest.id;
   const stage = view.complete ? "Все ступени получены" : multi && view.unlocked ? `Далее · ступень ${roman[(view.next?.level ?? 1) - 1]}`
     : view.unlocked ? "Получено" : state ? "В процессе" : "Нет данных";
   return <article className={styles.quest} data-achievement-id={quest.id} data-unlocked={view.unlocked || undefined} data-complete={view.complete || undefined}>
@@ -62,20 +71,32 @@ export function AchievementCard({ quest, state }: { quest: GameAchievementDefini
           aria-label={`Ступень ${roman[tier.level - 1]}: ${quest.id === "home_builder" ? "дом уровня " : "цель "}${tier.target}${tier.unlockedAt ? ", получена" : ", ещё не получена"}`}>
           {tier.unlockedAt && <Check size={10} aria-hidden="true" />}
           <span>{quest.id === "home_builder" ? `Дом ${tier.target}` : tier.target.toLocaleString("ru-RU")}</span>
+          {rewardRows.find(row => row.level === tier.level)?.pearls ? <span className={styles.tierPearls}><ItemIcon itemId="pearls" size={13} />{rewardRows.find(row => row.level === tier.level)!.pearls}</span> : null}
         </li>)}
       </ol>}
     </div>
+    {rewardRows.length > 0 && <div className={styles.rewardBlock}>
+      {multi ? <span>Жемчуг за каждую ступень</span> : <span><ItemIcon itemId="pearls" size={19} /><strong>{rewardRows[0].pearls}</strong> за медаль</span>}
+      {nextReward && onClaim ? <button type="button" disabled={claimBlocked} aria-label={`Получить ${nextReward.pearls} жемчужин за достижение «${quest.title}», ступень ${roman[nextReward.level - 1]}`}
+        onClick={() => onClaim(nextReward.level)}>{claiming ? "Получаем…" : multi ? `Забрать ${roman[nextReward.level - 1]}` : "Забрать"}<ItemIcon itemId="pearls" size={17} /><strong>{nextReward.pearls}</strong></button>
+        : rewardRows.every(row => row.claimedAt || row.pearls === 0) ? <small><Check size={12} aria-hidden="true" />Жемчуг получен</small>
+          : rewardRows.some(row => row.blockedReason === "admin_grant") ? <small>Жемчуг станет доступен после выполнения цели.</small> : null}
+    </div>}
     <details className={styles.questDetails}><summary>Как получить</summary><p>{quest.hint}</p></details>
   </article>;
 }
 
-export function GameAchievementsList({ data, loading = false }: { data: GameAchievements | null; loading?: boolean }) {
+export function GameAchievementsList({ data, loading = false, rewards, claimBlocked = false, pending, onClaim }: {
+  data: GameAchievements | null; loading?: boolean; rewards?: GameRewards | null; claimBlocked?: boolean; pending?: GameRewardClaim | null;
+  onClaim?: (id: GameAchievement["id"], level: number) => void;
+}) {
   return <div className={styles.groups} aria-busy={loading}>
     {([{ id: "world", title: "Мир и хозяйство" }, { id: "personal", title: "Ритм и связи" }] as const).map(group => <section className={styles.group} key={group.id} aria-label={group.title}>
       <h3 className={styles.groupTitle}>{group.title}</h3>
       <ol className={styles.quests} aria-label={`Достижения: ${group.title}`}>
         {VISIBLE_GAME_ACHIEVEMENTS.filter(quest => quest.category === group.id).map(quest => <li key={quest.id}>
-          <AchievementCard quest={quest} state={data?.achievements.find(item => item.id === quest.id)} />
+          <AchievementCard quest={quest} state={data?.achievements.find(item => item.id === quest.id)} rewardRows={rewards?.achievementRewards.filter(row => row.achievementId === quest.id)}
+            claimBlocked={claimBlocked} pending={pending} onClaim={onClaim ? level => onClaim(quest.id, level) : undefined} />
         </li>)}
       </ol>
     </section>)}
@@ -89,14 +110,15 @@ export async function loadGameAchievements(ownerPublicId: string, signal: AbortS
   return result;
 }
 
-export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost }: {
-  ownerPublicId: string; isOnline: boolean; onSessionLost: () => void;
+export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost, onRewardsClaimed }: {
+  ownerPublicId: string; isOnline: boolean; onSessionLost: () => void; onRewardsClaimed?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<GameAchievements | null>(null);
   const [completedLoad, setCompletedLoad] = useState<{ ownerPublicId: string; reload: number } | null>(null);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  const rewards = useGameRewards(ownerPublicId, isOnline, onSessionLost, () => { onRewardsClaimed?.(); setReload(value => value + 1); });
   const trigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -132,10 +154,12 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost 
   const loading = isOnline && (completedLoad?.ownerPublicId !== ownerPublicId || completedLoad?.reload !== reload);
   const visibleError = completedLoad?.ownerPublicId === ownerPublicId ? error : "";
   const summary = achievementSummary(visible);
+  const claimablePearls = rewards.data?.achievementRewards.reduce((sum, row) => sum + (row.eligible ? row.pearls : 0), 0) ?? 0;
+  const claimBlocked = !isOnline || rewards.loading || rewards.busy || rewards.pending !== null || rewards.uncertain || rewards.retryAt > rewards.now;
   const refresh = () => { if (isOnline && !loading) setReload(value => value + 1); };
   return <>
     <button type="button" ref={trigger} className={styles.trigger} aria-haspopup="dialog"
-      onClick={() => { if (isOnline) setReload(value => value + 1); setOpen(true); }}>
+      onClick={() => { if (isOnline) { setReload(value => value + 1); void rewards.refresh(); } setOpen(true); }}>
       <Award size={17} aria-hidden="true" />Достижения
       {visible && <span>{summary.earned}/{summary.total}</span>}
     </button>
@@ -145,19 +169,23 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost 
       }}>
         <DialogHeader>
           <DialogTitle className={boardStyles.title}><Award size={23} aria-hidden="true" />Достижения</DialogTitle>
-          <DialogDescription className={styles.description}>Открывайте новые ступени. Полученные медали остаются с вами.</DialogDescription>
+          <DialogDescription className={styles.description}>Открывайте ступени и забирайте жемчуг. Медали остаются с вами; прежние заслуженные награды тоже доступны.</DialogDescription>
         </DialogHeader>
         <div className={styles.summary}>
           <div className={styles.summaryText}>
             <strong>{visible ? `Получено ${summary.earned} из ${summary.total}` : `${summary.total} достижений для Мохлика`}</strong>
             <span>{visible ? `Ступени: ${summary.tiers} из ${summary.totalTiers}` : "Исследования, хозяйство и личные победы"}</span>
+            {claimablePearls > 0 && <span className={styles.claimable}><ItemIcon itemId="pearls" size={17} />Можно забрать: {claimablePearls}</span>}
           </div>
           <button type="button" disabled={loading || !isOnline} aria-label="Обновить достижения" onClick={refresh}><RefreshCw size={17} aria-hidden="true" /></button>
         </div>
         {!isOnline ? <p className={styles.notice} role="status">{visible ? "Офлайн · показаны последние загруженные достижения." : "Для загрузки достижений нужен интернет."}</p>
           : visibleError ? <p className={styles.error} role="status">{visibleError}{visible && " Показаны последние загруженные данные."}</p>
             : !visible && loading ? <p className={styles.notice} role="status">Загружаем достижения…</p> : null}
-        <GameAchievementsList data={visible} loading={loading && isOnline} />
+        <RewardRecovery controller={rewards} isOnline={isOnline} />
+        {rewards.result?.claim.kind === "achievement" && <p className={styles.rewardReceived} role="status"><Check size={15} aria-hidden="true" />{rewards.result.message}</p>}
+        <GameAchievementsList data={visible} loading={loading && isOnline} rewards={rewards.data} claimBlocked={claimBlocked} pending={rewards.pending}
+          onClaim={(id, level) => void rewards.claimAchievement(id, level)} />
       </DialogContent>
     </Dialog>
   </>;

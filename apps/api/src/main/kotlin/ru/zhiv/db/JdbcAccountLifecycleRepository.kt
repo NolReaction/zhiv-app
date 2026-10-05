@@ -267,9 +267,14 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM economy_ledger t WHERE user_id IN (?,?) ORDER BY user_id,source_key",
             "SELECT to_jsonb(t)::text FROM economy_market_listings t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM economy_market_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM economy_barter_offers t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
+            "SELECT to_jsonb(t)::text FROM economy_barter_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
             "SELECT to_jsonb(t)::text FROM game_items t WHERE user_id IN (?,?) ORDER BY user_id,item_id",
             "SELECT to_jsonb(t)::text FROM game_achievements t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id",
             "SELECT to_jsonb(t)::text FROM game_achievement_tiers t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id,level",
+            "SELECT to_jsonb(t)::text FROM game_daily_rewards t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM game_reward_claims t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM game_achievement_reward_claims t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id,level",
             "SELECT to_jsonb(t)::text FROM account_merge_sources t WHERE target_user_id IN (?,?) ORDER BY source_user_id"
         )
         val digest=MessageDigest.getInstance("SHA-256")
@@ -327,8 +332,12 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         """.trimIndent(),target)
     }
     private fun tombstone(c: Connection,id: UUID) {
+        c.update("DELETE FROM game_reward_claims WHERE user_id=?",id)
+        c.update("DELETE FROM game_daily_rewards WHERE user_id=?",id)
+        c.update("DELETE FROM game_achievement_reward_claims WHERE user_id=?",id)
         removeEconomyProfile(c, id)
         c.update("DELETE FROM economy_market_receipts WHERE user_id=?", id)
+        c.update("DELETE FROM economy_barter_receipts WHERE user_id=?", id)
         c.update("DELETE FROM forest_memory_receipts WHERE user_id=?",id)
         c.update("DELETE FROM forest_memory WHERE user_id=?",id)
         c.update("DELETE FROM user_incidents WHERE user_id=?",id)
@@ -411,29 +420,35 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         ensureEconomyProfile(c, s.other)
         cancelEconomyMarketListings(c, id)
         cancelEconomyMarketListings(c, s.other)
+        cancelEconomyBarterOffers(c, id)
+        cancelEconomyBarterOffers(c, s.other)
         mergeEconomyProfiles(c, id, s.other)
         mergeEconomyMarketReceipts(c, id, s.other)
+        mergeEconomyBarterReceipts(c, id, s.other)
         mergeWorldProfiles(c,id,s.other)
         mergeForestMemory(c,id,s.other)
         mergeGameProgress(c,id,s.other)
         c.update("""
-            INSERT INTO game_achievements(user_id,achievement_id,unlocked_at)
-            SELECT ?,achievement_id,unlocked_at FROM game_achievements WHERE user_id=?
+            INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible)
+            SELECT ?,achievement_id,unlocked_at,reward_eligible FROM game_achievements WHERE user_id=?
             ON CONFLICT(user_id,achievement_id) DO UPDATE
-                SET unlocked_at=LEAST(game_achievements.unlocked_at,EXCLUDED.unlocked_at)
+                SET unlocked_at=LEAST(game_achievements.unlocked_at,EXCLUDED.unlocked_at),
+                    reward_eligible=game_achievements.reward_eligible OR EXCLUDED.reward_eligible
         """.trimIndent(),id,s.other)
         val awardTime=c.one("SELECT clock_timestamp()") { it.getObject(1,OffsetDateTime::class.java) }!!
         c.update("""
-            INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at)
-            SELECT ?,achievement_id,level,unlocked_at FROM game_achievement_tiers WHERE user_id=?
+            INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at,reward_eligible)
+            SELECT ?,achievement_id,level,unlocked_at,reward_eligible FROM game_achievement_tiers WHERE user_id=?
             ON CONFLICT(user_id,achievement_id,level) DO UPDATE
-                SET unlocked_at=LEAST(game_achievement_tiers.unlocked_at,EXCLUDED.unlocked_at)
+                SET unlocked_at=LEAST(game_achievement_tiers.unlocked_at,EXCLUDED.unlocked_at),
+                    reward_eligible=game_achievement_tiers.reward_eligible OR EXCLUDED.reward_eligible
         """.trimIndent(),id,s.other)
         c.update("""
             INSERT INTO game_items(user_id,item_id,unlocked_at)
             SELECT ?,item_id,unlocked_at FROM game_items WHERE user_id=?
             ON CONFLICT(user_id,item_id) DO UPDATE SET unlocked_at=LEAST(game_items.unlocked_at,EXCLUDED.unlocked_at)
         """,id,s.other)
+        mergeProgressionRewards(c,id,s.other)
         recordMergedAchievements(c,id,awardTime)
         tombstone(c,s.other)
         saveReceipt(c,"merge",previewHash,id,sessionHash,browserHash)
@@ -445,6 +460,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         proof(c,id,sessionHash,browserHash,"delete","current") ?: proofRequired()
         cancelEconomyMarketListings(c, id)
         c.update("DELETE FROM player_feedback WHERE user_id=?",id)
+        cancelEconomyBarterOffers(c, id)
         clearCapabilities(c,id);closeSocial(c,id,true);tombstone(c,id)
         saveReceipt(c,"delete",requestHash,id,sessionHash,browserHash)
         Unit

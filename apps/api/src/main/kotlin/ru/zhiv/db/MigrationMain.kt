@@ -20,7 +20,7 @@ fun main() {
                 it.execute("REVOKE UPDATE, DELETE ON direct_invite_redemptions FROM zhiv_app")
                 it.execute("REVOKE UPDATE, DELETE ON admin_actions FROM zhiv_app")
                 it.execute("REVOKE UPDATE ON world_ledger, world_commands FROM zhiv_app")
-                it.execute("REVOKE UPDATE ON economy_commands, economy_ledger, economy_conversion_audit, economy_market_receipts FROM zhiv_app")
+                it.execute("REVOKE UPDATE ON economy_commands, economy_ledger, economy_conversion_audit, economy_market_receipts, economy_barter_receipts, game_reward_claims FROM zhiv_app")
                 it.execute("REVOKE ALL ON account_group_owner_transfers FROM zhiv_app")
                 it.execute("GRANT EXECUTE ON FUNCTION account_transfer_group_owner(uuid,uuid,uuid,bytea,bytea,bytea) TO zhiv_app")
             }

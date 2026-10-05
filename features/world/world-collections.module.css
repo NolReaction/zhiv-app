@@ -47,3 +47,5 @@
 .kept { font-size:10px; margin:13px 0 0; }
 @media (min-width:620px) { .finds { grid-template-columns:repeat(3,minmax(0,1fr)); } .page { padding:25px 24px 16px; } .library .chapters button { font-size:12px; } }
 @media (max-width:340px) { .library .chapters button { flex-direction:column; font-size:10px; gap:3px; } .page { padding:18px 11px 11px; } }
+
+.find > [data-fish-rarity] { margin-bottom:6px; }

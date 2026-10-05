@@ -77,3 +77,29 @@
 .pantry .expand { padding-inline: 8px; border: 1px solid #b4ba8c; background: #e0e3bd; }
 .pantry .market { padding-inline: 8px; }
 @media (max-width: 360px) { .saleControls { grid-template-columns: minmax(0, 1fr) 68px; }.saleControls > button { grid-column: 1 / -1; justify-self: end; }.items { grid-template-columns: repeat(3, minmax(0, 1fr)); }.pantry .item { min-height: 73px; } }
+
+.pantry .pantryTabs { display:flex; gap:5px; padding:4px; border:1px solid #c5bc98; border-radius:11px; background:#ded6b6; }
+.pantry .pantryTabs button { flex:1; min-height:37px; padding:6px 8px; color:#617152; }
+.pantry .pantryTabs button[aria-selected='true'] { background:#f2e9cf; border-color:#a5b182; color:#435c40; box-shadow:0 1px 3px #72674a20; }
+.pantryTabs small { min-width:14px; margin-left:3px; font-size:10px; font-variant-numeric:tabular-nums; color:#758060; }
+.pantryPanel { display:grid; gap:11px; min-width:0; }
+.relics { display:grid; gap:10px; }
+.relicIntro { color:#637154; font-size:11px; line-height:1.5; }
+.relicList { display:grid; gap:8px; }
+.relicCard { --relic-border:#b7ab78; --relic-glow:#c9b97930; border:1px solid var(--relic-border); border-radius:12px; padding:10px; background:linear-gradient(115deg,#f5ead1,#e7e3c7); box-shadow:0 0 12px var(--relic-glow),inset 0 1px #fff6dc; }
+.relicCard[data-relic='moon_crystal'] { --relic-border:#adaabd; --relic-glow:#b1abc13a; background:linear-gradient(115deg,#f3eade,#e1dfdc); }
+.relicCard[data-relic='living_resin'] { --relic-border:#abb683; --relic-glow:#b0c59535; background:linear-gradient(115deg,#f1e7ca,#e2e7c9); }
+.relicCard[data-owned='false'] { box-shadow:inset 0 1px #fff6dc; }
+.relicHeading { display:flex; align-items:center; gap:10px; min-width:0; }
+.relicArt { display:grid; place-items:center; width:56px; height:56px; flex:0 0 56px; border-radius:50%; background:radial-gradient(ellipse,#d2c99855,transparent 72%); }
+.relicCard[data-owned='false'] .relicArt { opacity:.6; }
+.relicHeading > div { flex:1; min-width:0; }
+.relicHeading h3 { font-size:12px; color:#475d43; overflow-wrap:anywhere; }
+.relicHeading small { display:block; margin-top:3px; font-size:10px; color:#748167; }
+.relicHeading > strong { color:#718357; font-size:14px; font-variant-numeric:tabular-nums; }
+.relicUses { border-top:1px solid #b8ba9760; padding-top:7px; margin-top:7px !important; font-size:10px; line-height:1.45; color:#687455; }
+.relicActions { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 10px; }
+.relicGuard { display:flex; align-items:center; gap:9px; padding:10px; border:1px solid #b3b689; border-radius:10px; background:#ebe3c7; }
+.relicGuard h3 { font-size:12px; margin-bottom:3px; }
+.relicGuard p { font-size:10px; color:#687455; line-height:1.5; }
+.pantry .item .itemRarity { flex:0 0 auto; font-size:9px; padding:2px 3px; }

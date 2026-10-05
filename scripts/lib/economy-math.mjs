@@ -16,6 +16,7 @@ export function economicMath(catalog) {
   const items = new Map(catalog.items.map(i => [i.id, i]));
   const buildings = new Map(catalog.buildings.map(b => [b.id, b]));
   const fish = new Set(catalog.fishing?.fish.map(f => f.itemId) ?? []);
+  const rare = new Set(catalog.rareDrops?.itemIds ?? []);
   const liquidation = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum +
     (fish.has(id) ? items.get(id).baseSellPrice * quantity : Math.floor(items.get(id).baseSellPrice * quantity * (catalog.localBuyer?.payoutBps ?? 10000) / 10000)), 0);
   const homeCache = new Map();
@@ -33,6 +34,7 @@ export function economicMath(catalog) {
     ...(d.buildingId ? [buildingHome(d.buildingId, d.buildingLevel)] : []),
     ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)));
   const sourceHome = itemId => Math.min(...[...catalog.recipes, ...catalog.explorations].filter(d => d.rewards[itemId] > 0).map(definitionHome),
+    ...(rare.has(itemId) ? [catalog.rareDrops.requiredHomeLevel] : []),
     ...(fish.has(itemId) || catalog.fishing?.baits.some(b => b.itemId === itemId) ? [1] : []));
   const primitive = new Map();
   for (const r of catalog.recipes.filter(r => r.seconds < 14400 && Object.keys(r.rewards).length === 1)) {
@@ -67,6 +69,19 @@ export function economicMath(catalog) {
         requireLevels(result.producerLevels, p.producerLevels);
         result.coins += p.coins * scale; result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
+    } else if (rare.has(id)) {
+      const spec = catalog.rareDrops, meanSeconds = (spec.minSeconds + spec.maxSeconds) / 2;
+      result.reference = "shared completed-exploration clock; no NPC or coin-market purchase";
+      result.referenceHome = spec.requiredHomeLevel;
+      result.producerLevels.home = spec.requiredHomeLevel;
+      // These are expectations, not a deterministic recipe or a zero-cost NPC item.
+      // The same expedition hours yield other types, so individual expectations cannot be summed.
+      result.acquisition = { kind: "rare_drop", clock: "shared_exploration", requiredHomeLevel: spec.requiredHomeLevel,
+        minClockSeconds: spec.minSeconds, maxClockSeconds: spec.maxSeconds, meanAnySeconds: meanSeconds,
+        maxDeliveryRoundingSeconds: Math.max(...catalog.explorations.map(route => route.seconds)),
+        typeProbability: 1 / spec.itemIds.length, expectedSpecificSeconds: meanSeconds * spec.itemIds.length,
+        expectedCompleteSetSeconds: meanSeconds * spec.itemIds.length * spec.itemIds.reduce((sum, _, index) => sum + 1 / (index + 1), 0),
+        finiteSpecificGuarantee: false, coinPurchasePrice: null };
     } else if (id === "fish") {
       const portfolio = catchPortfolio(), output = portfolio.output.fish;
       result.reference = "steady-state starter catch portfolio";
@@ -138,7 +153,7 @@ export function auditEconomicMath(catalog) {
   const profiles = catalog.items.map(i => ({ ...math.profile(i.id), name: i.name, basePrice: i.baseSellPrice,
     startup: math.startup(math.profile(i.id).producerLevels),
     oneUnitNpcRevenue: math.liquidation({ [i.id]: 1 }),
-    slotOpportunityCoins: Object.entries(math.profile(i.id).slotMinutes).reduce((sum, [slot, minutes]) => sum + minutes * math.stationBenchmarks[slot].coinsPerMinute, 0) }));
+    slotOpportunityCoins: i.category === "special" ? null : Object.entries(math.profile(i.id).slotMinutes).reduce((sum, [slot, minutes]) => sum + minutes * math.stationBenchmarks[slot].coinsPerMinute, 0) }));
   const batches = catalog.recipes.map(math.batch);
   for (const p of profiles) assert(Object.values(p.slotMinutes).every(x => Number.isFinite(x) && x >= 0), `${p.itemId}: invalid minutes`);
   for (const r of batches) assert(r.incrementalMargin > 0, `${r.id}: nonpositive actual sale margin`);

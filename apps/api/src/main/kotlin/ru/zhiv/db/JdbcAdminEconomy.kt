@@ -16,7 +16,10 @@ private fun economyObservationSql(): String {
         .joinToString(",") { "(${it.level},${checkNotNull(it.warehouseCapacity)})" }
     return """
         WITH moment AS (SELECT ?::timestamptz AS at), warehouse_levels(level,capacity) AS (VALUES $levels),
-        escrow AS (SELECT seller_id,sum(quantity) AS reserved FROM economy_market_listings WHERE status='active' GROUP BY seller_id),
+        escrow AS (SELECT seller_id,sum(quantity) AS reserved FROM (
+            SELECT seller_id,quantity FROM economy_market_listings WHERE status='active'
+            UNION ALL SELECT seller_id,1::bigint FROM economy_barter_offers WHERE status='active'
+        ) held GROUP BY seller_id),
         stocks AS (
             SELECT u.id,u.public_id,u.display_name,e.state,e.revision,e.updated_at,e.user_id IS NOT NULL AS initialized,
                 (e.state->'wallet'->>'coins')::bigint AS coins,(e.state->'wallet'->>'pearls')::bigint AS pearls,

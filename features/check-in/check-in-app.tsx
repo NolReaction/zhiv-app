@@ -1664,6 +1664,7 @@ export function CheckInApp() {
           gamePendingTaps={game.pendingTaps}
           legacyGame={legacyGame}
           onRefreshGame={() => { void game.refresh(); }}
+          onRewardsClaimed={() => { void economy.refresh(); }}
           nowMs={adjustedNow}
           isOnline={isOnline}
           clickerStats={{
@@ -1702,6 +1703,7 @@ export function CheckInApp() {
       {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
         origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world} economy={economy}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
+        isOnline={isOnline} onSessionLost={loseSession}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
       <footer className={styles.footer}>

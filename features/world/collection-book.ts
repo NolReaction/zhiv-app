@@ -24,10 +24,10 @@ export function collectionBookEntries(chapter: CollectionChapter, inherited: rea
   if (chapter === "fishing") return (economy?.catalog.fishing ?? economyCatalog.fishing)?.fish.map(fish => ({
     id: fish.itemId, name: economyCatalog.items.find(item => item.id === fish.itemId)?.name ?? fish.itemId,
     description: fish.description, owned: (economy?.fishing.catches[fish.itemId] ?? 0) > 0,
-    source: "Поймайте на берегу и заберите улов", illustration: "item" as const,
+    rarity: fish.rarity, source: "Поймайте на берегу и заберите улов", illustration: "item" as const,
   })) ?? [];
   const entries = chapter === "travel" ? worldCatalog.finds.filter(find => find.group === "forest") : quarryCollectionFinds;
-  return entries.map(find => ({ ...find, owned: finds.has(find.id), illustration: "collection" as const,
+  return entries.map(find => ({ ...find, rarity: undefined, owned: finds.has(find.id), illustration: "collection" as const,
     source: chapter === "travel" ? "Завершайте лесные вылазки" : "Получайте результаты шахты и каменных маршрутов" }));
 }
 

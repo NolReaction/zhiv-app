@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { AppNotifications } from "@/components/app-notifications";
+import { MobileGestureGuard } from "@/components/mobile-gesture-guard";
 import { AppLifecycle } from "@/features/updates/app-lifecycle-view";
 import runtimeArt from "@/features/world/runtime-art.json";
 import "./globals.css";
@@ -47,6 +48,7 @@ export default function RootLayout({
     <html lang="ru" suppressHydrationWarning>
       <head><link rel="preload" as="image" href={runtimeArt.homePreview} fetchPriority="high" /></head>
       <body>
+        <MobileGestureGuard />
         {children}
         <AppNotifications />
         <ServiceWorkerRegistration />

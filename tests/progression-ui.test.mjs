@@ -45,3 +45,13 @@ test("branch opens the free start while keeping places, equipment and future wor
   assert.match(html, /Внутри места/);
   assert.match(html, /data-node-id="mine_interior"[^>]*data-status="plan"/);
 });
+
+test("branch renders the rare acquisition node as a selectable active source rather than guaranteed production", () => {
+  const rareButton = html.match(/<button\b[^>]*data-node-id="rare_materials"[\s\S]*?<\/button>/)?.[0];
+  assert(rareButton);
+  assert.match(rareButton, /data-kind="acquisition"/);
+  assert.match(rareButton, /data-status="active"/);
+  assert.match(rareButton, /aria-label="Реликвии исследований"/);
+  assert.match(rareButton, /Реликвии исследований/);
+  assert.doesNotMatch(rareButton, /data-kind="(?:recipe|market)"/);
+});

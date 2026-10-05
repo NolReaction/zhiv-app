@@ -45,6 +45,16 @@
 .tierTrack li[data-earned] { border-color: rgba(182,206,135,.25); background: rgba(158,186,111,.08); color: #d5e3ba; }
 .tierTrack li[aria-current="step"] { border-color: rgba(225,204,143,.45); color: #e9d7ab; }
 .questDetails { grid-column: 1 / -1; min-width: 0; padding-top: 8px; border-top: 1px solid rgba(198,214,184,.09); }
+.rewardBlock { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border: 1px solid #b8be98; border-radius: 12px; background: #e6d9b7; color: #394d3e; }
+.rewardBlock > span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+.rewardBlock > small { display: inline-flex; align-items: center; gap: 4px; color: #59624d; font-size: 10px; line-height: 1.4; }
+.rewardBlock button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 8px 10px; border: 1px solid #466347; border-radius: 10px; background: #466347; color: #f6eed7; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.rewardBlock button:hover:not(:disabled) { background: #39573d; }
+.rewardBlock button:disabled { opacity: .5; cursor: default; }
+.rewardBlock button:focus-visible { outline: 2px solid #355e48; outline-offset: 3px; }
+.tierPearls { display: inline-flex; align-items: center; gap: 1px; padding-left: 3px; border-left: 1px solid #aabc8640; }
+.summaryText .claimable { display: inline-flex; align-items: center; gap: 4px; color: #e4dcb0; }
+.rewardReceived { display: flex; align-items: center; gap: 7px; margin: 0; color: #d8e5bd; font-size: 13px; line-height: 1.5; }
 .questDetails summary { width: fit-content; min-height: 26px; color: #b4c39f; font-size: 12px; cursor: pointer; border-radius: 4px; }
 .questDetails p { margin: 3px 0 0; color: #a7b498; font-size: 12px; line-height: 1.5; }
 .notice, .error { margin: 0; font-size: 14px; line-height: 1.5; color: #b9c6ad; }

@@ -1,6 +1,7 @@
 import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/features/economy/model";
+import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
-export type ProgressionNodeKind = "location" | "building" | "recipe" | "exploration" | "world" | "collection" | "equipment" | "milestone" | "market" | "project";
+export type ProgressionNodeKind = "location" | "building" | "recipe" | "exploration" | "acquisition" | "world" | "collection" | "equipment" | "milestone" | "market" | "project";
 
 export type ProgressionNode = {
   id: string;
@@ -17,6 +18,8 @@ export type ProgressionNode = {
   cost?: EconomyCost;
   seconds?: number;
   rewards?: Record<string, number>;
+  /** Possible items share one clock; these are not guaranteed per-trip rewards. */
+  rareDrops?: NonNullable<EconomyCatalog["rareDrops"]>;
   /** Building ids map to minimum levels; completedExplorations is a cumulative counter. */
   requirements: Record<string, number>;
   children: string[];
@@ -105,6 +108,7 @@ const projectDefinitions: WorldDefinition[] = [
   ["tackle", "Новые снасти", "🪝", "Будущее расширение мастерской и рыбалки новыми снастями. Уровень верстака для открытия ещё не выбран."],
   ["public_profiles", "Чужие профили", "👥", "План: смотреть уровень и достижения других игроков; позднее — их обустройство. Собственный уровень и достижения уже работают. Просмотр чужого хозяйства и его правила ещё не реализованы."],
   ["pleska_home", "Домик Плёски", "🏠", "Будущий домик жительницы. Место, внешний вид, уровни и игровые правила ещё не утверждены. Действующие лавка и рыбалка не требуют этой постройки."],
+  ["pearl_trader", "Ограниченный торговец", "", "Будущий торговец реликвиями за жемчуг: ограничение запасов, цены и расписание ещё не утверждены. Сейчас такого магазина нет; реликвии получают в исследованиях или меняют между игроками."],
 ];
 
 /** A read-only map of current game rules and explicitly separate world proposals. */
@@ -114,6 +118,8 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   const byId = new Map<string, ProgressionNode>();
   const edgeIds = new Set<string>();
   const items = new Map(catalog.items.map(item => [item.id, item]));
+  const dailyPearls = progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0);
+  const achievementPearls = Object.values(progressionRewards.achievementPearls).flat().reduce((sum, count) => sum + count, 0);
 
   function add(node: ProgressionNode) {
     if (byId.has(node.id)) throw new Error(`Duplicate progression node: ${node.id}`);
@@ -135,9 +141,12 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   fixed("start", "Начало", "🌱", 0, "Есть дом 1, ягодный куст 1 и кладовая 1, без монет и материалов. Закажите ягоды и через «В путь» отправьте Мохлика в бесплатную лесную разведку. Получите результаты; часть продайте, древесину, камень и волокно оставьте для стройки. Первые цели — лесозаготовки 1, верстак 1 и дом 2. Тапы не дают хозяйственную валюту.");
   fixed("trader", "Быстрая продажа", "🧑‍🌾", 0, `Продажа из кладовой с начала игры: ${100 - (catalog.localBuyer?.payoutBps ?? 10000) / 100}% уценки от базовой цены, итог стопки округляется вниз. Сырую рыбу выгоднее продать Плёске по полной базовой цене. Рынок игроков открывается позднее; покупатель там не гарантирован.`);
   fixed("coins", "Монеты", "🪙", 0, "Выручка за товары идёт на строительство и улучшения. Монеты не занимают место на складе.");
-  fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку: 1 жемчужина за каждые начатые ${catalog.constructionSpeedup.secondsPerPearl / 60} минут остатка. Цена подтверждается перед списанием. Бесплатный путь — дождаться таймера. Производство и вылазки не ускоряются; получение и покупка жемчуга ещё готовятся.`);
+  fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку: 1 жемчужина за каждые начатые ${catalog.constructionSpeedup.secondsPerPearl / 60} минут остатка. Цена подтверждается перед списанием. Бесплатный путь — дождаться таймера. Производство и вылазки не ускоряются. Источники: ${dailyPearls} жемчужины за полный цикл ежедневных наград и до ${achievementPearls} за самостоятельно полученные ступени достижений, однократно. Покупка жемчуга и торговец реликвиями ещё не реализованы.`);
+  fixed("daily_rewards", "Ежедневные награды", "", 0, `Цикл из ${progressionRewards.daily.length} получений: монеты, обычные материалы и суммарно ${dailyPearls} жемчужины. Следующая награда доступна в следующие сутки UTC и не ранее чем через ${progressionRewards.dailyMinimumHours} часов после предыдущей. Пропуск не сбрасывает шаг. Забрать нужно вручную; переполненная кладовая не расходует награду. Реликвий в цикле нет.`, "milestone");
   edge("start", "trader", "available");
   edge("start", "pearls", "available");
+  edge("start", "daily_rewards", "available");
+  edge("daily_rewards", "pearls", "flow"); edge("daily_rewards", "coins", "flow");
   edge("trader", "coins", "flow");
   for (const location of progressionLocations) {
     fixed(location.id, location.title, location.icon, 0, location.description, "location");
@@ -224,6 +233,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   fixed("claimed", `Любая ${catalog.market.requiredExplorations} вылазка`, "✅", 1, `Завершить любой маршрут и получить награду. Для рынка нужно завершённых вылазок: ${catalog.market.requiredExplorations}. Подходит любой маршрут, а не все десять.`, "milestone");
   const market = fixed("market", "Рынок игроков", "⚖️", catalog.market.requiredHomeLevel, `Личная витрина: до ${catalog.market.showcaseSlots} лотов, до ${catalog.market.showcasePerSeller} от продавца, смена раз в ${catalog.market.showcaseRefreshSeconds / 60} минут. Купленные лоты не заменяются до смены. Товары доступны с уровня дома, необходимого для их источника: свою мастерскую иметь необязательно. Цена не ниже полной базовой стоимости. Рынок дополняет собственное производство; покупатель не гарантирован.`, "market");
   market.requirements = { home: catalog.market.requiredHomeLevel, completedExplorations: catalog.market.requiredExplorations };
+  market.description += " После дома 3 при открытом рынке доступен отдельный обмен реликвиями 1:1, без монет и жемчуга. Обычные объявления реликвии не принимают.";
   edge(buildingNodeId("home", catalog.market.requiredHomeLevel), market.id);
   if (catalog.market.requiredExplorations > 0) edge("claimed", market.id);
 
@@ -238,12 +248,19 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     if (node.kind === "exploration") edge(node.id, "claimed", "any");
   }
 
-  const sources = new Map(catalog.items.map(item => [item.id, nodes.filter(node =>
-    (node.kind === "recipe" || node.kind === "exploration") && node.rewards?.[item.id],
-  ).sort((a, b) => a.requirements.home - b.requirements.home || (a.level || 0) - (b.level || 0))]));
+  if (catalog.rareDrops) {
+    const rare = catalog.rareDrops, meanHours = (rare.minSeconds + rare.maxSeconds) / 7200;
+    const source = fixed("rare_materials", "Реликвии исследований", "", rare.requiredHomeLevel,
+      `После дома ${rare.requiredHomeLevel} подтверждённые часы любых вылазок, включая рыбалку, двигают один общий счётчик. Сервер выбирает порог от ${rare.minSeconds / 3600} до ${rare.maxSeconds / 3600} часов, в среднем ${meanHours} часов, и один из ${rare.itemIds.length} равновероятных типов. Находка выдаётся при получении пересёкшей порог поездки; перерасход переносится. Длинный маршрут учитывает свою длительность, короткий не даёт дополнительного розыгрыша. Отмена не двигает счётчик и не меняет результат. Конкретный тип не гарантирован. Реликвии можно обменивать между игроками, купить или продать за монеты нельзя.`, "acquisition");
+    source.requirements = { home: rare.requiredHomeLevel };
+    source.rareDrops = { ...rare, itemIds: [...rare.itemIds] };
+    edge(buildingNodeId("home", rare.requiredHomeLevel), source.id);
+    for (const route of catalog.explorations) edge(`e:${route.id}`, source.id, "any");
+  }
+
   for (const node of nodes) {
     for (const itemId of Object.keys(node.cost?.items || {})) {
-      const source = sources.get(itemId)?.[0];
+      const source = getProgressionResourceSource({ nodes, edges }, itemId);
       if (!source) throw new Error(`No progression source for resource ${itemId}`);
       edge(source.id, node.id, "cost");
     }
@@ -251,6 +268,8 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   }
 
   for (const [id, label, icon, description, kind] of worldDefinitions) fixed(id, label, icon, 6, description, kind);
+  byId.get("achievements")!.description += ` За самостоятельно полученные ступени можно вручную забрать до ${achievementPearls} жемчужин суммарно, каждую награду только один раз. Администраторская выдача достижения не создаёт валютную награду.`;
+  edge("achievements", "pearls", "flow");
   edge("start", "pleska", "available");
   edge("pleska", "fishing_catches", "flow");
   for (const id of catalog.fishing?.routeIds ?? []) edge("pleska", `e:${id}`, "flow");
@@ -273,6 +292,8 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   edge("place:quarry", "mine_interior", "plan");
   edge("player_level", "public_profiles", "plan"); edge("achievements", "public_profiles", "plan");
   edge("pleska", "pleska_home", "plan");
+  edge("pearls", "pearl_trader", "plan");
+  if (catalog.rareDrops) edge("rare_materials", "pearl_trader", "plan");
   edge("bridge_ruin", "bridge", "plan"); edge("lighthouse_ruin", "lighthouse", "plan");
   for (const [source, target] of [
     ["r:make_planks", "bridge"], ["r:make_rope", "bridge"], ["r:make_tools", "bridge"], ["bridge", "far_bank"],
@@ -290,6 +311,12 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
 }
 
 export const progressionGraph = buildProgressionGraph();
+
+/** Shared by graph costs and UI source links; chance sources never become recipes. */
+export function getProgressionResourceSource(graph: ProgressionGraph, itemId: string): ProgressionNode | undefined {
+  return graph.nodes.filter(node => node.rewards?.[itemId] || node.rareDrops?.itemIds.includes(itemId))
+    .sort((a, b) => (a.requirements.home ?? 0) - (b.requirements.home ?? 0) || (a.level ?? 0) - (b.level ?? 0))[0];
+}
 
 /** Includes the selected node; flow/any/contains are informational, and proposals never gate an active node. */
 export function getPrerequisiteIds(graph: ProgressionGraph, nodeId: string, includeCosts = true): Set<string> {

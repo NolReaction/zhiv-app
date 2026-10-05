@@ -4,7 +4,7 @@ import { auditEconomyProgression, readEconomyCatalog } from "../scripts/audit-ec
 
 test("economy catalog has useful chains, reachable upgrades, sufficient storage and a market-proof pacing floor", () => {
   const report = auditEconomyProgression(readEconomyCatalog());
-  assert.equal(report.itemCount, 29);
+  assert.equal(report.itemCount, 32);
   assert.equal(report.buildingCount, 8);
   assert.equal(report.constructionOrder.length, 37);
 });
@@ -78,5 +78,19 @@ test("bulk limits, overnight yield and ingredient conservation cannot silently r
   ]) {
     const catalog = readEconomyCatalog(); mutate(catalog.recipes.find(r => r.id === id));
     assert.throws(() => auditEconomyProgression(catalog), pattern, id);
+  }
+});
+
+test("rare source audit rejects ordinary prices NPC stock deterministic recipes and early upgrade gates", () => {
+  for (const mutate of [
+    c => c.items.find(item => item.id === "living_resin").baseSellPrice = 1,
+    c => c.items.find(item => item.id === "living_resin").tradable = true,
+    c => c.fishing.baits.push({ itemId: "living_resin", price: 20, rareBonus: 0 }),
+    c => c.recipes[0].rewards.living_resin = 1,
+    c => c.buildings.find(building => building.id === "home").levels[1].cost.items.living_resin = 1,
+    c => c.explorations[0].seconds = c.rareDrops.minSeconds,
+  ]) {
+    const catalog = readEconomyCatalog(); mutate(catalog);
+    assert.throws(() => auditEconomyProgression(catalog), /Special|Early homes|One trip/);
   }
 });

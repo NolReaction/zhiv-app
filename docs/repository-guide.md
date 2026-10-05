@@ -125,3 +125,5 @@
 `features/mochlik/home-layout.ts`, `lantern-light.ts` и `features/world/route-props.ts`, `water-ambience.ts`, `bird-ambience.ts`, `weather-visitors.ts`, `map-layout.ts` относятся к прежней карте. Они сохранены для совместимости и последующего переноса. **Новый свет — в `forest-lighting.ts`, новый дождь — в `forest-rain.ts`.** Общие модули Мохлика продолжают использоваться: `pixel-sprite.ts` рисует героя, `lighting.ts` задаёт расписание ночи, а `scene.ts` выбирает текущий рендер.
 
 История решений и отчёты — в [индексе документации](README.md#история-и-материалы); актуальный этап — в [WORK_STATE.md](../WORK_STATE.md).
+
+Награды и реликвии: [правила](game/rewards-and-relics.md), общий `progression-rewards-catalog.json`, `features/game/progression-rewards.ts`, `features/economy/rare-drops.ts`, `features/economy/barter-model.ts`; серверные `JdbcProgressionRewardsRepository`/`JdbcEconomyBarterRepository`, миграции V38–V39.

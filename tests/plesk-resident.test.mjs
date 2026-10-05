@@ -173,13 +173,15 @@ test("reduced motion stays at the personal pier at every clock value", () => {
 });
 
 test("the authored island keeps Плёск at the upper wooden pier, separate from the hero, at every building level", () => {
+  const authoredBase = TILED_WORLD.destinations.find(marker => marker.id === PLESK.fishingDestination).position;
+  const authoredHeroFishing = TILED_WORLD.destinations.find(marker => marker.id === "fishing").position;
   for (let level = 0; level <= 5; level++) {
     const world = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: Math.max(1, level), workshop: level, quarry: level });
     const nav = createWorldNavigation(world), frames = sample(world, undefined, 2);
     const base = world.destinations.find(marker => marker.id === "plesk-fishing").position;
     const heroFishing = world.destinations.find(marker => marker.id === "fishing").position;
-    assert.deepEqual(base, { x: 1214, y: 744 });
-    assert.deepEqual(heroFishing, { x: 986.955311049695, y: 935.111122699067 });
+    assert.deepEqual(base, authoredBase, "building previews preserve the current authored personal fishing marker");
+    assert.deepEqual(heroFishing, authoredHeroFishing, "building previews preserve the current authored hero fishing marker");
     assert.ok(frames.every(Boolean));
     assert.ok(frames.some(frame => frame.action === "trade" && frame.destinationId === "plesk-trade"), `local trade at level ${level}`);
     assert.ok(frames.some(frame => frame.action === "rest" && frame.destinationId === "plesk-rest"), `local rest at level ${level}`);

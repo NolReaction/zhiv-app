@@ -34,6 +34,7 @@ import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
 import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales } from "@/lib/dev/economy-store";
 import { resetDevWorldStoreForTests, getDevCollectionFinds } from "@/lib/dev/world-store";
+import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
 import {
   calculateRollingStreak,
@@ -134,6 +135,7 @@ type RecoveryCodeRecord = {userId:string;active:boolean;consumedAt?:number;retry
 
 type Store = {
   achievementAwards: Map<string, Map<GameAchievementId, string>>;
+  achievementRewardEligibility: Map<string, Map<string, boolean>>;
   achievementTierAwards: Map<string, Map<GameAchievementId, Map<number, string>>>;
   personNicknames: Map<string, string>;
   favoritePeople: Set<string>;
@@ -172,6 +174,7 @@ const globalStore = globalThis as typeof globalThis & { __zhivDevStore?: Store }
 function store(): Store {
   globalStore.__zhivDevStore ??= {
     achievementAwards: new Map(),
+    achievementRewardEligibility: new Map(),
     achievementTierAwards: new Map(),
     personNicknames: new Map(),
     favoritePeople: new Set(),
@@ -194,6 +197,7 @@ function store(): Store {
     recoveryCodes: new Map(),
   };
   globalStore.__zhivDevStore.achievementAwards ??= new Map();
+  globalStore.__zhivDevStore.achievementRewardEligibility ??= new Map();
   globalStore.__zhivDevStore.achievementTierAwards ??= new Map();
   globalStore.__zhivDevStore.directInviteLinks ??= new Map();
   globalStore.__zhivDevStore.directInviteRedemptions ??= new Map();
@@ -209,6 +213,7 @@ export function resetDevStoreForTests() {
   resetDevForestMemoryStoreForTests();
   resetDevWorldStoreForTests();
   resetDevEconomyStoreForTests();
+  resetDevProgressionRewardsForTests();
 }
 
 function randomToken(bytesCount = 32): string {
@@ -652,13 +657,18 @@ export function getDevFriendPublicIds(token: string | undefined): string[] | nul
   return user ? friendPublicIdsForUser(user.id) : null;
 }
 
-function awardAchievement(userId: string, id: GameAchievementId, unlockedAt: string) {
+function awardAchievement(userId: string, id: GameAchievementId, unlockedAt: string, eligible = true) {
   let awards = store().achievementAwards.get(userId);
   if (!awards) {
     awards = new Map();
     store().achievementAwards.set(userId, awards);
   }
-  if (!awards.has(id)) awards.set(id, unlockedAt);
+  const alreadyOwned = awards.has(id);
+  if (!alreadyOwned) awards.set(id, unlockedAt);
+  let eligibility = store().achievementRewardEligibility.get(userId);
+  if (!eligibility) store().achievementRewardEligibility.set(userId, eligibility = new Map());
+  const key = `${id}:1`;
+  if (eligible || !eligibility.has(key)) eligibility.set(key, eligible || alreadyOwned);
 }
 
 function awardFriendAchievement(userId: string, now: string) {
@@ -672,15 +682,22 @@ export function awardDevGameTaps(ownerPublicId: string, lifetimeTaps: number, no
   if (userId && bestSeries >= 10_000) awardAchievement(userId, "ten_thousand_series", new Date(now).toISOString());
 }
 
-function awardAchievementTiers(userId: string, id: GameAchievementId, progress: number, at: string) {
+function awardAchievementTiers(userId: string, id: GameAchievementId, progress: number, at: string, eligible = true) {
   let userTiers = store().achievementTierAwards.get(userId);
   if (!userTiers) store().achievementTierAwards.set(userId, userTiers = new Map());
   let dates = userTiers.get(id);
   if (!dates) userTiers.set(id, dates = new Map());
   GAME_ACHIEVEMENT_TARGETS[id].forEach((target, index) => {
-    if (progress >= target && !dates!.has(index + 1)) dates!.set(index + 1, at);
+    if (progress >= target) {
+      const alreadyOwned = dates!.has(index + 1);
+      if (!alreadyOwned) dates!.set(index + 1, at);
+      let eligibility = store().achievementRewardEligibility.get(userId);
+      if (!eligibility) store().achievementRewardEligibility.set(userId, eligibility = new Map());
+      const key = `${id}:${index + 1}`;
+      if (eligible || !eligibility.has(key)) eligibility.set(key, eligible || alreadyOwned);
+    }
   });
-  if (dates.has(1)) awardAchievement(userId, id, dates.get(1)!);
+  if (dates.has(1) && progress >= GAME_ACHIEVEMENT_TARGETS[id][0]) awardAchievement(userId, id, dates.get(1)!, eligible);
 }
 
 /** Ordinary successful economic writes call this before the response is returned. */
@@ -1678,4 +1695,17 @@ export function redeemDevRecoveryCode(code:string,retrySecret:string):{token:str
   store().sessions.set(token,{userId:row.userId,expiresAt:Date.now()+365*24*60*60_000});
   row.active=false;row.consumedAt=Date.now();row.retryHash=recoveryHash(retrySecret);row.sessionToken=token;
   return {token,me:asMe(store().users.get(row.userId)!)};
+}
+
+/** Historical dates with no eligibility flag are grandfathered; new admin grants are cosmetic. */
+export function getDevAchievementRewardEligibility(owner: string, id: GameAchievementId, level: number): boolean {
+  const user = store().publicIds.get(owner);
+  return user ? store().achievementRewardEligibility.get(user)?.get(`${id}:${level}`) ?? true : false;
+}
+/** Trusted DEV/admin test adapter; does not change the actual qualifying counters. */
+export function grantDevAchievementForAdmin(owner: string, id: GameAchievementId, now = Date.now()): void {
+  const user = store().publicIds.get(owner);
+  if (!user) return;
+  if (Object.keys(GAME_ACHIEVEMENT_TARGETS).indexOf(id) < 7) awardAchievement(user, id, new Date(now).toISOString(), false);
+  else awardAchievementTiers(user, id, GAME_ACHIEVEMENT_TARGETS[id].at(-1)!, new Date(now).toISOString(), false);
 }

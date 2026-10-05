@@ -24,6 +24,21 @@ export function auditEconomyProgression(catalog) {
   unique(catalog.recipes, "recipe");
   unique(catalog.explorations, "exploration");
   assert.equal(catalog.version, 2);
+  const rare = catalog.rareDrops;
+  const special = [...items.values()].filter(item => item.category === "special");
+  assert([...items.values()].every(item => Number.isSafeInteger(item.baseSellPrice)
+    && (item.category === "special" ? item.baseSellPrice === 0 && !item.tradable : item.baseSellPrice > 0)), "Special materials have no coin price or ordinary trade");
+  if (rare) {
+    assert.equal(rare.version, 1);
+    assert.equal(rare.requiredHomeLevel, 3, "Rare materials must not slow the first two house upgrades");
+    assert.equal(rare.minSeconds, 48 * 3600); assert.equal(rare.maxSeconds, 144 * 3600);
+    assert.equal(new Set(rare.itemIds).size, 3);
+    assert.deepEqual([...rare.itemIds].sort(), special.map(item => item.id).sort(), "Every special material needs a rare-drop source");
+    assert(catalog.explorations.every(route => route.seconds > 0 && route.seconds < rare.minSeconds), "One trip must stay below the shortest rare-drop interval");
+    assert([...catalog.recipes, ...catalog.explorations].every(entry => Object.keys(entry.rewards).every(id => !rare.itemIds.includes(id))), "Special materials cannot become guaranteed production or route rewards");
+    assert(catalog.buildings.find(building => building.id === "home").levels.filter(level => level.level <= 3)
+      .every(level => Object.keys(level.cost.items).every(id => !rare.itemIds.includes(id))), "Early homes must not require rare materials");
+  } else assert.equal(special.length, 0, "Special materials require a bounded rare-drop source");
   const nodes = new Map();
   const itemUses = new Set();
   const requirements = definition => ({
@@ -82,6 +97,7 @@ export function auditEconomyProgression(catalog) {
   const merchantItems = [];
   if (catalog.fishing) {
     const fishing = catalog.fishing;
+    assert([...fishing.fish, ...fishing.baits].every(entry => items.get(entry.itemId)?.category !== "special"), "Special materials cannot enter coin-based NPC stock");
     unique(fishing.rods, "rod");
     assert.equal(new Set(fishing.fish.map(fish => fish.itemId)).size, fishing.fish.length, "Duplicate fish ID");
     assert.equal(new Set(fishing.baits.map(bait => bait.itemId)).size, fishing.baits.length, "Duplicate bait ID");
@@ -155,6 +171,11 @@ export function auditEconomyProgression(catalog) {
       for (const item of Object.keys(definition.rewards)) {
         if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
       }
+    }
+    // A successful available exploration can eventually deliver each equally likely
+    // special material; this is earned play time, never a coin purchase assumption.
+    if (rare && completed.home >= rare.requiredHomeLevel && catalog.explorations.some(route => hasRequirements(route) && hasMaterials(route.cost))) {
+      for (const item of rare.itemIds) if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
     }
     // Repeatable free produce supplies coins, so fixed-price NPC stock is reachable.
     // This does not assume another player supplies a missing progression material.

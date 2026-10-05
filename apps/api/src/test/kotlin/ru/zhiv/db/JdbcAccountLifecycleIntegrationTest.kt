@@ -10,6 +10,7 @@ import kotlinx.serialization.encodeToString
 import ru.zhiv.world.*
 import ru.zhiv.economy.*
 import ru.zhiv.forest.*
+import ru.zhiv.game.ProgressionRewardClaim
 import ru.zhiv.installZhivApi
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.Test
@@ -90,6 +91,63 @@ class JdbcAccountLifecycleIntegrationTest {
     }
     private fun sharing(a: Account,b: Account,mode: String) {
         execute("INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode) VALUES (?,?,?) ON CONFLICT(actor_user_id,recipient_user_id) DO UPDATE SET sharing_mode=EXCLUDED.sharing_mode",a.id,b.id,mode)
+    }
+
+    @Test fun `merge preserves farther rare clock with its type and never initializes a new draw`(): Unit=runBlocking {
+        val a=account(); val b=account(); val c=account(); val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source)
+        listOf(a,b,c).forEach { economy.snapshot(it.session) }
+        val near=EconomyRareDropClock(remainingSeconds=500,itemId="living_resin")
+        val far=EconomyRareDropClock(remainingSeconds=400000,itemId="moon_crystal")
+        for ((account,clock) in listOf(a to near,b to far)) {
+            val state=source.connection.use { readEconomyProfile(it,account.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state.copy(
+                buildings=state.buildings+("home" to 3),rareDropState=clock,inventory=mapOf("ancient_core" to 1))),account.id)
+        }
+        val first=readyMerge(a,b,browser)
+        auth.confirmMerge(a.session,browser,first)
+        assertEquals(far,source.connection.use { readEconomyProfile(it,a.id).state.rareDropState })
+        assertEquals(2L,economy.snapshot(a.session).inventory["ancient_core"])
+        auth.confirmMerge(a.session,browser,first)
+        assertEquals(far,source.connection.use { readEconomyProfile(it,a.id).state.rareDropState })
+        auth.confirmMerge(c.session,browser,readyMerge(c,a,browser))
+        assertEquals(far,source.connection.use { readEconomyProfile(it,c.id).state.rareDropState })
+        assertFalse(economyJson.encodeToString(economy.snapshot(c.session)).contains("rareDropState"))
+    }
+
+    @Test fun `paid rewards invalidate preview then merge unions daily receipts and keeps duplicate tier payments without reopening`(): Unit=runBlocking {
+        val a=account(); val b=account(); val browser=tokens.issue().hash
+        val rewards=JdbcProgressionRewardsRepository(source); val economy=JdbcEconomyRepository(source)
+        fun publicId(account: Account)=checkNotNull(scalar("SELECT public_id FROM app_users WHERE id=?",account.id))
+        fun request(account: Account,achievement: String?=null)=ProgressionRewardClaim(UUID.randomUUID().toString(),publicId(account),
+            if(achievement==null) "daily" else "achievement",achievement,if(achievement==null) null else 1)
+        listOf(a,b).forEach { current ->
+            economy.snapshot(current.session)
+            execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'thousand_taps','2020-01-01T00:00:00Z')",current.id)
+        }
+        val preview=readyMerge(a,b,browser)
+        val paidA=rewards.claim(a.session,request(a,"thousand_taps")); val paidB=rewards.claim(b.session,request(b,"thousand_taps"))
+        assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,preview) }.code)
+        val dayA=rewards.claim(a.session,request(a)); val dayB=rewards.claim(b.session,request(b))
+        val walletA=economy.snapshot(a.session).wallet; val walletB=economy.snapshot(b.session).wallet
+        val final=readyMerge(a,b,browser); auth.confirmMerge(a.session,browser,final)
+        val merged=economy.snapshot(a.session); val view=rewards.snapshot(a.session)
+        assertEquals(walletA.coins+walletB.coins,merged.wallet.coins)
+        assertEquals(walletA.pearls+walletB.pearls,merged.wallet.pearls,"past legitimate payments are not clawed back")
+        assertEquals("1",scalar("SELECT count(*) FROM game_achievement_reward_claims WHERE user_id=? AND achievement_id='thousand_taps'",a.id))
+        assertEquals(minOf(paidA.claim.claimedAt,paidB.claim.claimedAt),view.achievementRewards.single { it.achievementId=="thousand_taps" }.claimedAt)
+        assertEquals(dayB.rewards.daily.lastClaimAt,view.daily.lastClaimAt); assertFalse(view.daily.claimable); assertEquals(2,view.daily.step)
+        assertEquals("4",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_daily_rewards WHERE user_id=?",b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_reward_claims WHERE user_id=?",b.id))
+        assertEquals("ACHIEVEMENT_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(a.session,request(a,"thousand_taps")) }.code)
+        val replay=rewards.claim(a.session,ProgressionRewardClaim(dayA.requestId,publicId(a),"daily"))
+        assertTrue(replay.replayed); assertEquals(dayA.claim,replay.claim); assertEquals(merged.wallet,replay.economy.wallet)
+        assertEquals("REWARD_REQUEST_CONFLICT",assertFailsWith<AuthFailure> {
+            rewards.claim(a.session,ProgressionRewardClaim(dayB.requestId,publicId(a),"daily")) }.code)
+        auth.confirmMerge(a.session,browser,final)
+        assertEquals(merged.wallet,economy.snapshot(a.session).wallet)
     }
 
     @Test fun `proof requires matching owner session browser and action and cannot be replayed`(): Unit=runBlocking {

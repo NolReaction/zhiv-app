@@ -115,6 +115,10 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
             }
             if (c.economyRows("SELECT 1 FROM economy_market_receipts WHERE user_id=? AND request_id=?", actor.id, requestId) { true }.isNotEmpty())
                 economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
+            if (c.economyRows("SELECT 1 FROM economy_barter_receipts WHERE user_id=? AND request_id=?", actor.id, requestId) { true }.isNotEmpty())
+                economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
+            if (c.economyRows("SELECT 1 FROM game_reward_claims WHERE user_id=? AND request_id=?", actor.id, requestId) { true }.isNotEmpty())
+                economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
             val before = readEconomyProfile(c, actor.id)
             if (before.revision != command.expectedRevision) economyFailure("ECONOMY_REVISION_CONFLICT", "Хозяйство уже изменилось. Обновите состояние и повторите действие.")
             if (command.action in setOf("start_exploration", "start_fishing", "start_collection") && c.economyRows(

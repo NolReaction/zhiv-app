@@ -15,8 +15,10 @@ import javax.sql.DataSource
 
 /** Callers hold the common account lock, shared by production, market and lifecycle writes. */
 internal fun reservedEconomyMarketItems(c: Connection, user: UUID): Map<String, Long> =
-    c.economyRows("""SELECT item_id,sum(quantity) FROM economy_market_listings
-        WHERE seller_id=? AND status='active' GROUP BY item_id""", user) { it.getString(1) to it.getLong(2) }.toMap()
+    c.economyRows("""SELECT item_id,sum(quantity) FROM (
+        SELECT item_id,quantity FROM economy_market_listings WHERE seller_id=? AND status='active'
+        UNION ALL SELECT offered_item_id,1::bigint FROM economy_barter_offers WHERE seller_id=? AND status='active'
+        ) held GROUP BY item_id""", user, user) { it.getString(1) to it.getLong(2) }.toMap()
 
 /** Escrow occupies warehouse space; returning it must also work for preserved old overflow. */
 internal fun assertEconomyMarketCapacity(
@@ -201,6 +203,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                 return@transaction EconomyResult(economyView(c, user.id, user.publicId, now(c)), receipt.message, receipt.revision, true)
             }
             if (c.economyRows("SELECT 1 FROM economy_commands WHERE user_id=? AND request_id=?", user.id, requestId) { true }.isNotEmpty())
+                throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия", 409)
+            if (c.economyRows("SELECT 1 FROM economy_barter_receipts WHERE user_id=? AND request_id=? UNION ALL SELECT 1 FROM game_reward_claims WHERE user_id=? AND request_id=?", user.id, requestId, user.id, requestId) { true }.isNotEmpty())
                 throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия", 409)
             val before = readEconomyProfile(c, user.id)
             if (before.revision != command.expectedRevision)
