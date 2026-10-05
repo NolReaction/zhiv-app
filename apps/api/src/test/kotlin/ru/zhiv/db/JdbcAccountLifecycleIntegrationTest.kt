@@ -590,7 +590,7 @@ class JdbcAccountLifecycleIntegrationTest {
         }
         economy.snapshot(a.session);economy.snapshot(b.session);prepare(a,5);prepare(b,8)
         val before=economy.snapshot(b.session)
-        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,9)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,90)
         market.command(b.session,listing)
         val listingId=UUID.fromString(market.market(b.session).mine.single().id)
         assertEquals(5L,economy.snapshot(b.session).inventory["berries"])
@@ -606,7 +606,7 @@ class JdbcAccountLifecycleIntegrationTest {
         assertFailsWith<AuthFailure> { market.command(a.session,listing.copy(ownerPublicId=merged.ownerPublicId,expectedRevision=merged.revision)) }
         auth.confirmMerge(a.session,browser,key)
         assertEquals(13L,economy.snapshot(a.session).inventory["berries"])
-        val active=EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"create_listing","berries",2,6)
+        val active=EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"create_listing","berries",2,60)
         market.command(a.session,active)
         prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'",a.id))
@@ -623,7 +623,7 @@ class JdbcAccountLifecycleIntegrationTest {
             execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
         }
         val before=economy.snapshot(b.session)
-        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,9)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,90)
         market.command(b.session,listing)
         val listingId=UUID.fromString(market.market(b.session).mine.single().id)
         prove(a,browser,"merge");prove(a,browser,"merge","other",b)
@@ -644,7 +644,7 @@ class JdbcAccountLifecycleIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(sourceState),b.id)
         val before=economy.snapshot(b.session)
-        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",20,60)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",20,600)
         market.command(b.session,listing)
         val listingId=UUID.fromString(market.market(b.session).mine.single().id)
         val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
@@ -668,7 +668,7 @@ class JdbcAccountLifecycleIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(other),b.id)
         val snapshot=economy.snapshot(b.session)
-        market.command(b.session,EconomyCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"create_listing","berries",20,60))
+        market.command(b.session,EconomyCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"create_listing","berries",20,600))
         val beforeA=economy.snapshot(a.session);val beforeB=economy.snapshot(b.session)
         prove(a,browser,"merge");prove(a,browser,"merge","other",b)
         val key=tokens.issue().hash

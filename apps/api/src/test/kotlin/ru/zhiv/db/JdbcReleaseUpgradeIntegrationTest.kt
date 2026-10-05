@@ -91,7 +91,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("40", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("41", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -153,7 +153,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("40", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("41", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -214,7 +214,9 @@ class JdbcReleaseUpgradeIntegrationTest {
             source.connection.use { c ->
                 val row = readEconomyProfile(c, player.id)
                 assertEquals(20L, row.revision)
-                assertEquals(expected, row.state)
+                assertEquals(expected.copy(wardrobe = expected.wardrobe.sorted()), row.state)
+                assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
+                    economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "V34 changes only storage buildings")
             }
             // Isolate V34 with its own rows; the latest repository requires V39 barter tables.
             val preserved = source.connection.use { readEconomyProfile(it, player.id) }
@@ -233,10 +235,13 @@ class JdbcReleaseUpgradeIntegrationTest {
                 assertEquals(EconomyRules.initial(100, 81, 49, 4, 2), EconomyMoney.redenominate(initialized))
             }
             DatabaseFactory.migrate(source)
-            val upgraded = JdbcEconomyRepository(source).snapshot(token.hash)
+            assertEquals(22L, source.connection.use { readEconomyProfile(it, player.id).revision }, "V40 and V41 each convert once")
+            val economy = JdbcEconomyRepository(source)
+            val upgraded = economy.snapshot(token.hash)
             assertEquals(EconomyStorage(200, 720, 30, 0, 550), upgraded.storage)
             assertEquals(listOf(oldJob.copy(cost = oldJob.cost.copy(coins = 30))), upgraded.jobs)
-            assertEquals(21L, upgraded.revision)
+            assertEquals(23L, upgraded.revision, "The first current read initializes the merchant stock once")
+            assertEquals(upgraded.revision, economy.snapshot(token.hash).revision)
         }
     }
 

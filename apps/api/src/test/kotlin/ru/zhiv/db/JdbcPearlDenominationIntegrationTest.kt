@@ -46,7 +46,10 @@ class JdbcPearlDenominationIntegrationTest {
             source.connection.use { c ->
                 val current = readEconomyProfile(c, player.id)
                 assertEquals(8L, current.revision)
-                assertEquals(EconomyMoney.redenominate(state), current.state)
+                val expected = EconomyMoney.redenominate(state)
+                assertEquals(expected.copy(wardrobe = expected.wardrobe.sorted()), current.state)
+                assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
+                    economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "Migration preserves stored ownership order")
                 assertEquals(EconomyWallet(1230, 50_000_000_000L), current.state.wallet)
                 assertEquals(listOf(1 to 1, 10 to 10), c.economyRows("SELECT currency_scale,pearl_scale FROM economy_ledger WHERE user_id=? ORDER BY source_key", player.id) { it.getInt(1) to it.getInt(2) })
                 assertEquals(listOf(100L, 100L), c.economyRows("SELECT pearls,pearl_scale FROM economy_ledger WHERE user_id=? ORDER BY source_key", player.id) { EconomyMoney.pearls(it.getLong(1), it.getInt(2)) })

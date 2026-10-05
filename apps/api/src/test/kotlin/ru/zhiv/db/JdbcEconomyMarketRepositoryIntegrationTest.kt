@@ -489,7 +489,9 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
                 isolated.connection.use { c ->
                     c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", user.id) { true }
                     c.economyUpdate("INSERT INTO economy_profiles(user_id,state) VALUES (?,economy_v2_initial_state('{}'::jsonb))", user.id)
-                    val state = readEconomyProfile(c, user.id).state.copy(wallet=EconomyWallet(123, 20),
+                    val historical = c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", user.id) {
+                        economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
+                    val state = historical.copy(wallet=EconomyWallet(123, 20),
                         inventory=mapOf("berries" to 17L), buildings=mapOf("home" to 2, "warehouse" to 1), completedExplorations=1)
                     c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb,revision=7 WHERE user_id=?", economyJson.encodeToString(state), user.id)
                     c.economyUpdate("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,'berries',3,3)", lot, user.id)
@@ -504,14 +506,17 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
                 showcaseMigration.migrate(); showcaseMigration.migrate()
                 assertEquals(before, tables.associateWith(::rows))
                 DatabaseFactory.migrate(isolated)
+                assertEquals(9L, isolated.connection.use { readEconomyProfile(it, user.id).revision }, "V40 and V41 each convert once")
                 val upgraded = JdbcEconomyMarketRepository(isolated)
                 val view = upgraded.market(token.hash)
                 assertEquals(30L, view.mine.single().totalPrice, "old quote changes denomination without losing the offer")
-                assertEquals(3L, repo.snapshot(token.hash).storage.reserved)
-                val cancel = EconomyCommand(UUID.randomUUID().toString(), user.publicId, 8, "cancel_listing", lot.toString())
+                val current = repo.snapshot(token.hash)
+                assertEquals(10L, current.revision, "Current merchant stock is initialized once after both conversions")
+                assertEquals(3L, current.storage.reserved)
+                val cancel = EconomyCommand(UUID.randomUUID().toString(), user.publicId, current.revision, "cancel_listing", lot.toString())
                 val result = upgraded.command(token.hash, cancel)
                 assertEquals(20L, result.state.inventory["berries"])
-                assertEquals(EconomyWallet(1230, 200), result.state.wallet)
+                assertEquals(EconomyWallet(1230, 1000), result.state.wallet)
                 assertTrue(upgraded.command(token.hash, cancel).replayed)
             }
         } finally { source.connection.use { c -> c.autoCommit = true; c.economyUpdate("DROP DATABASE $database WITH (FORCE)") } }

@@ -71,7 +71,11 @@ class JdbcProgressionRewardsIntegrationTest {
     @Test fun `different keys serialize one daily claim and current date is server UTC`()=runBlocking<Unit> {
         val p=player(); val both=List(2) { async(Dispatchers.IO) { runCatching { rewards.claim(p.hash,command(p)) } } }.awaitAll()
         assertEquals(1,both.count { it.isSuccess }); assertEquals("DAILY_REWARD_COOLDOWN",(both.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
-        assertEquals("true",scalar("SELECT last_claim_date=(last_claim_at AT TIME ZONE 'UTC')::date FROM game_daily_rewards WHERE user_id=?",p.id))
+        assertTrue(source.connection.use { c ->
+            c.economyRows("SELECT last_claim_date=(last_claim_at AT TIME ZONE 'UTC')::date FROM game_daily_rewards WHERE user_id=?",p.id) {
+                it.getBoolean(1)
+            }.single()
+        },"the daily claim date must match its server timestamp in UTC")
     }
     @Test fun `storage failure leaves sequence and receipt intact and retries after capacity is freed`()=runBlocking<Unit> {
         val p=player(); rewards.snapshot(p.hash)

@@ -301,7 +301,10 @@ class EconomyRulesTest {
 
     @Test fun `production pays inputs at start and snapshots an entire finite batch`() {
         val recipe = EconomyRules.catalog.recipes.single { it.id == "make_planks" }
-        val before = requirements(stocked(), recipe.requiredHomeLevel, recipe.requiredBuildings + (recipe.buildingId to recipe.buildingLevel))
+        // Only stock this recipe's inputs/output: all catalog items no longer fit even in warehouse five.
+        val before = requirements(stocked().copy(inventory = mapOf("wood" to 100L, "planks" to 100L)),
+            recipe.requiredHomeLevel, recipe.requiredBuildings + (recipe.buildingId to recipe.buildingLevel))
+        assertEquals(0L, EconomyRules.storage(before).overflow)
         val started = apply(before, "start_production", "make_planks", 3)
         assertEquals(100L - recipe.cost.items.getValue("wood") * 3, started.inventory["wood"])
         assertEquals(100L, started.inventory["planks"])
@@ -445,7 +448,7 @@ class EconomyRulesTest {
         assertFailsWith<AuthFailure> { EconomyRules.apply(stocked(), command("start_construction", "home", 2), now) }
     }
 
-    /** Fixed-price NPC goods are reachable once a repeatable source can earn coins;
+    /** Rotating NPC bait offers are reachable once a repeatable source can earn coins;
      * this does not assume a player-market listing supplies a missing material. */
     private fun fishingMerchantItems(): Set<String> {
         val fishing = EconomyRules.catalog.fishing ?: return emptySet()
@@ -471,7 +474,7 @@ class EconomyRulesTest {
         for ((previous, fish) in fishing.fish.zipWithNext())
             assertTrue(fish.affinity * previous.weight >= previous.affinity * fish.weight,
                 "Stronger tackle must not favour cheaper fish over rarer fish")
-        return (fishing.fish.map { it.itemId } + fishing.baits.map { it.itemId }).toSet()
+        return fishing.baits.map { it.itemId }.toSet()
     }
 
     @Test fun `catalog dependency graph has obtainable inputs and meaningful processing margins`() {
@@ -495,8 +498,16 @@ class EconomyRulesTest {
         val merchantItems = fishingMerchantItems()
         var available = setOf<String>()
         repeat(10) {
-            for (expedition in EconomyRules.catalog.explorations)
-                if (expedition.cost.items.keys.all { it in available }) available = available + expedition.rewards.keys
+            for (expedition in EconomyRules.catalog.explorations) {
+                if (!available.containsAll(expedition.cost.items.keys)) continue
+                available = available + expedition.rewards.keys
+                // This source-only graph ignores levels, but requires a repeatable, affordable journey.
+                // Rare materials are eventual outcomes of completed work, not guaranteed route rewards.
+                EconomyRules.catalog.rareDrops?.let { available = available + it.itemIds }
+                EconomyRules.catalog.fishing?.takeIf { expedition.id in it.routeIds }?.let { fishing ->
+                    available = available + fishing.fish.map { it.itemId }
+                }
+            }
             for (recipe in EconomyRules.catalog.recipes)
                 if (recipe.cost.items.keys.all { it in available }) available = available + recipe.rewards.keys
             if (EconomyRules.catalog.items.any { it.tradable && it.id in available }) available = available + merchantItems
@@ -592,18 +603,37 @@ class EconomyRulesTest {
     @Test fun `catalog progression can unlock every item and building without a dependency cycle`() {
         val buildings = EconomyRules.initial().buildings.toMutableMap()
         val merchantItems = fishingMerchantItems()
+        val fishing = EconomyRules.catalog.fishing
         val items = mutableSetOf<String>()
         fun unlocked(home: Int, required: Map<String, Int>) = (buildings["home"] ?: 1) >= home && required.all { (id, level) -> (buildings[id] ?: 0) >= level }
         repeat(100) {
+            val reachableExplorations = mutableSetOf<String>()
             for (exploration in EconomyRules.catalog.explorations) {
-                if (unlocked(exploration.requiredHomeLevel, exploration.requiredBuildings) && items.containsAll(exploration.cost.items.keys))
+                if (unlocked(exploration.requiredHomeLevel, exploration.requiredBuildings) && items.containsAll(exploration.cost.items.keys)) {
+                    reachableExplorations.add(exploration.id)
                     items.addAll(exploration.rewards.keys)
+                }
             }
             for (recipe in EconomyRules.catalog.recipes) {
                 if ((buildings[recipe.buildingId] ?: 0) >= recipe.buildingLevel && unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && items.containsAll(recipe.cost.items.keys))
                     items.addAll(recipe.rewards.keys)
             }
-            if (EconomyRules.catalog.items.any { it.tradable && it.id in items }) items.addAll(merchantItems)
+            EconomyRules.catalog.rareDrops?.takeIf {
+                unlocked(it.requiredHomeLevel, emptyMap()) && reachableExplorations.isNotEmpty()
+            }?.let { items.addAll(it.itemIds) }
+            val canEarnCoins = EconomyRules.catalog.items.any { it.tradable && it.id in items }
+            if (canEarnCoins && fishing != null) {
+                items.addAll(merchantItems.filter { id ->
+                    unlocked(fishing.baits.single { it.itemId == id }.requiredHomeLevel, emptyMap())
+                })
+            }
+            if (fishing != null && fishing.routeIds.any { it in reachableExplorations }) {
+                for (fish in fishing.fish) {
+                    val hook = fish.requiredHookId?.let { id -> fishing.hooks.single { it.id == id } }
+                    if (hook == null || (unlocked(hook.requiredHomeLevel, emptyMap()) && (hook.price == 0L || canEarnCoins)))
+                        items.add(fish.itemId)
+                }
+            }
             for (building in EconomyRules.catalog.buildings) {
                 val upgrade = building.levels.find { it.level == (buildings[building.id] ?: 0) + 1 } ?: continue
                 if (unlocked(upgrade.requiredHomeLevel, upgrade.requiredBuildings) && items.containsAll(upgrade.cost.items.keys))

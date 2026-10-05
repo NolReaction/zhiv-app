@@ -23,6 +23,7 @@ import ru.zhiv.relationships.RequestAction
 import ru.zhiv.relationships.DirectRequestMutationSnapshot
 import ru.zhiv.relationships.DirectRequestActionSnapshot
 import ru.zhiv.config.AppConfig
+import ru.zhiv.game.GameRewards
 import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
 import java.time.OffsetDateTime
@@ -528,15 +529,25 @@ class JdbcGameRepositoryIntegrationTest {
                     c.commit()
                 }
                 DatabaseFactory.migrate(db)
-                db.connection.use { c ->
+                val migratedAwards = db.connection.use { c ->
                     c.prepareStatement("SELECT count(*) FROM game_achievements WHERE user_id=?").use {
                         it.setObject(1,owner.id)
                         it.executeQuery().use { rows -> assertTrue(rows.next());assertEquals(3,rows.getInt(1),"migration must award before the first achievements read") }
                     }
+                    c.economyRows("SELECT achievement_id,unlocked_at FROM game_achievements WHERE user_id=?",owner.id) {
+                        it.getString(1) to it.getObject(2,OffsetDateTime::class.java).toInstant().toString()
+                    }.toMap()
                 }
                 val first=JdbcGameRepository(db).achievements(owner.hash).achievements
-                assertEquals(listOf(7L,1000L,5L,0L,0L,0L,0L),first.map { it.progress })
-                assertTrue(first.take(3).all { it.unlockedAt!=null }); assertTrue(first.drop(3).all { it.unlockedAt==null })
+                val earned = mapOf("seven_day_streak" to 7L,"thousand_taps" to 1000L,"five_friends" to 5L)
+                // The expanded catalog also reports the starter house at level one;
+                // it has not earned the first home-builder tier (level two).
+                val expectedProgress = GameRewards.tiers.keys.associateWith { if(it=="home_builder") 1L else 0L } + earned
+                assertEquals(GameRewards.tiers.keys.toList(),first.map { it.id })
+                assertEquals(expectedProgress,first.associate { it.id to it.progress })
+                assertEquals(earned.keys,migratedAwards.keys)
+                assertEquals(migratedAwards,first.filter { it.unlockedAt!=null }.associate { it.id to it.unlockedAt })
+                assertTrue(first.filter { it.id !in earned }.all { it.tiers.all { tier -> tier.unlockedAt==null } })
                 db.connection.use { c ->
                     c.prepareStatement("UPDATE circles SET archived_at=clock_timestamp() WHERE kind='DIRECT' AND ? IN (direct_user_low_id,direct_user_high_id)").use { it.setObject(1,owner.id);it.executeUpdate() };c.commit()
                 }
@@ -604,7 +615,12 @@ class JdbcGameRepositoryIntegrationTest {
         val fresh=player()
         identities.updateTimeZone(fresh.hash,"Pacific/Kiritimati",UUID.randomUUID())
         val unearned=games.achievements(fresh.hash).achievements
-        assertTrue(unearned.all { it.progress==0L && it.unlockedAt==null },"reconciliation never imports device-local counters or dates")
+        val expectedProgress=GameRewards.tiers.keys.associateWith { if(it=="home_builder") 1L else 0L }
+        assertEquals(GameRewards.tiers.keys.toList(),unearned.map { it.id })
+        assertEquals(expectedProgress,unearned.associate { it.id to it.progress },"only the server's starter house has initial progress")
+        assertTrue(unearned.all { award -> award.unlockedAt==null && award.tiers.all { tier ->
+            tier.progress==expectedProgress.getValue(award.id) && tier.unlockedAt==null
+        } },"reconciliation never imports device-local counters or dates")
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",fresh.id))
     }
 

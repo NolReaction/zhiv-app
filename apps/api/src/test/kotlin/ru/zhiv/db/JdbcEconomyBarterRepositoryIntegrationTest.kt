@@ -290,8 +290,11 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
                 val listing=UUID.randomUUID();val request=UUID.randomUUID()
                 isolated.connection.use{c->
                     c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE",user.id){true}
-                    ensureEconomyProfile(c,user.id)
-                    val old=readEconomyProfile(c,user.id).state
+                    // V38 has the frozen v2 initializer; the current writer requires V40+.
+                    c.economyUpdate("INSERT INTO economy_profiles(user_id,state) VALUES (?,economy_v2_initial_state('{}'::jsonb))",user.id)
+                    val old=c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?",user.id){
+                        economyJson.decodeFromString<EconomyState>(it.getString(1))
+                    }.single()
                     c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb,revision=7 WHERE user_id=?",economyJson.encodeToString(old.copy(
                         wallet=EconomyWallet(123,9),inventory=mapOf("ancient_core" to 1L,"berries" to 2L),buildings=old.buildings+("home" to 3))),user.id)
                     c.economyUpdate("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,'berries',1,3)",listing,user.id)
@@ -301,13 +304,19 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
                 fun rows(table:String)=isolated.connection.use{c->c.economyRows("SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text FROM $table t"){it.getString(1)}.single()}
                 val tables=listOf("economy_profiles","economy_market_listings","economy_market_receipts","economy_ledger","game_reward_claims")
                 val before=tables.associateWith(::rows)
-                DatabaseFactory.migrate(isolated);DatabaseFactory.migrate(isolated)
+                // First prove V39 is additive, before the explicit later currency conversions.
+                val barterMigration=Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("39").load()
+                barterMigration.migrate();barterMigration.migrate()
                 assertEquals(before,tables.associateWith(::rows))
+                DatabaseFactory.migrate(isolated);DatabaseFactory.migrate(isolated)
+                assertEquals(9L,isolated.connection.use{readEconomyProfile(it,user.id).revision})
                 val repository=JdbcEconomyBarterRepository(isolated)
-                val command=EconomyBarterCommand(UUID.randomUUID().toString(),user.publicId,7,"create_offer","ancient_core","moon_crystal")
+                val current=JdbcEconomyRepository(isolated).snapshot(token.hash)
+                assertEquals(10L,current.revision,"Current merchant stock is initialized once after both conversions")
+                val command=EconomyBarterCommand(UUID.randomUUID().toString(),user.publicId,current.revision,"create_offer","ancient_core","moon_crystal")
                 val result=repository.command(token.hash,command)
                 assertEquals(2L,result.state.storage.reserved,"coin listing and barter share warehouse escrow")
-                assertEquals(EconomyWallet(123,9),result.state.wallet)
+                assertEquals(EconomyWallet(1230,450),result.state.wallet)
                 assertTrue(repository.command(token.hash,command).replayed)
             }
         } finally {source.connection.use{c->c.autoCommit=true;c.economyUpdate("DROP DATABASE $database WITH (FORCE)")}}

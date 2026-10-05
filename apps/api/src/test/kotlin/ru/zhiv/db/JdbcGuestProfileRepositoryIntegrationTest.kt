@@ -110,8 +110,9 @@ class JdbcGuestProfileRepositoryIntegrationTest {
         execute("INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode) VALUES (?,?,'OFF')",b.id,a.id)
         unavailable(a,circle)
         ok(relationships.updateSharing(b.hash,circle,SharingMode.LATEST_ONLY));profiles.profile(a.hash,circle)
-        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='test' WHERE id=?",b.id);unavailable(a,circle)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Integration test moderation ban' WHERE id=?",b.id);unavailable(a,circle)
         execute("UPDATE app_users SET banned_at=NULL,ban_reason=NULL WHERE id=?",b.id)
+        assertEquals(b.publicId,profiles.profile(a.hash,circle).user.publicId)
         execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE user_id=?",a.id)
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure>{profiles.profile(a.hash,circle)}.code)
     }
