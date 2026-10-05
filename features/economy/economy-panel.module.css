@@ -114,20 +114,46 @@
 .stockGrid small { color: #b8cba2; font-size: .75rem; }
 .offerPrice { display: inline-flex; align-items: center; gap: 5px; color: var(--economy-gold); font-size: 1.05rem; font-weight: 650; white-space: nowrap; }
 .offerMeta { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-.shopHeading { display: flex; align-items: center; gap: 12px; padding: 22px 16px 16px; border: 1px solid #b6c7943d; border-radius: 16px; background: repeating-linear-gradient(90deg, #76965b 0 24px, #c5cc9e 24px 48px) top / 100% 8px no-repeat, linear-gradient(125deg, #364a2e, #1d2d20); }
-.shopHeading > svg { flex-shrink: 0; color: var(--economy-gold); }
-.showcaseInfo { display: grid; gap: 10px; }
-.showcaseInfo strong { display: block; margin-bottom: 6px; font-size: .85rem; }
-.showcaseInfo button { justify-self: start; }
-.shopGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 12px; align-items: start; }
-.offerCard { min-width: 0; border-bottom: 5px solid #675337; background: linear-gradient(160deg, #293c29, #19281e); }
-.offerCard .cardHeader { align-items: flex-start; }
-.offerCard h3, .offerCard .muted { overflow-wrap: anywhere; }
-.offerCard .offerMeta { flex-wrap: wrap; }
-.offerCard > button { width: 100%; }
+.market { container-type: inline-size; gap: 10px; }
+.storage[data-condensed] { gap: 5px; padding: 9px 10px; border-radius: 10px; font-size: .75rem; }
+.storage[data-condensed] .progress { height: 3px; }
+.storageSummary { display: flex; flex-wrap: wrap; gap: 3px 10px; color: var(--economy-muted); font-size: .6875rem; }
+.storageSummary > span { white-space: nowrap; }
+.market .subnav { gap: 5px; }
+.market .subnav button { padding: 7px 5px; font-size: .75rem; border-radius: 10px; }
+.showcaseInfo { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.showcaseInfo > div { min-width: 0; display: grid; gap: 3px; }
+.showcaseInfo strong { display: block; font-size: .8rem; }
+.showcaseInfo .muted { font-size: .72rem; }
+.showcaseInfo button { flex: 0 0 auto; padding: 7px 9px; gap: 5px; font-size: .6875rem; border-radius: 10px; }
+.marketRules { color: var(--economy-muted); font-size: .72rem; }
+.marketRules summary { cursor: pointer; min-height: 32px; display: list-item; padding-block: 7px; }
+.marketRules p { padding: 4px 0 6px; }
+.marketNote { display: grid; gap: 3px; color: var(--economy-muted); font-size: .72rem; }
+.marketNote strong { font-size: .8rem; font-weight: 550; color: #d5e1c8; }
+.shopGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; align-items: start; }
+.offerCard { gap: 6px; min-width: 0; padding: 10px; border-radius: 12px; border-bottom: 3px solid #675337; background: linear-gradient(160deg, #293c29, #19281e); }
+.offerCard .cardHeader { align-items: flex-start; gap: 7px; }
+.offerCard .iconTile { width: 28px; height: 28px; border-radius: 8px; }
+.offerCard .cardHeader > div { gap: 4px; }
+.offerCard h3 { font-size: .78rem; line-height: 1.3; }
+.offerSeller { color: var(--economy-muted); font-size: .6875rem; line-height: 1.35; overflow-wrap: anywhere; }
+.offerCard .offerMeta { flex-wrap: wrap; justify-content: flex-start; gap: 2px 5px; padding-top: 2px; }
+.offerCard .offerPrice { max-width: 100%; white-space: normal; font-size: .95rem; line-height: 1.2; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.offerPriceLabel { color: #d1d7ba; font-size: .6875rem; }
+.offerUnit { color: var(--economy-muted); font-size: .6875rem; overflow-wrap: anywhere; }
+.offerCard > button { width: 100%; padding: 7px 5px; margin-top: 3px; font-size: .73rem; line-height: 1.3; border-radius: 9px; }
+.offerCard .hint { font-size: .6875rem; gap: 4px; }
+.offerCard .textButton { font-size: .6875rem; }
+.offerCard .confirmation { gap: 7px; padding-top: 7px; outline: none; }
+.offerCard .confirmation p { font-size: .72rem; }
+.offerCard .confirmation .actions { display: grid; gap: 5px; }
+.offerCard .confirmation button { width: 100%; padding: 7px 5px; font-size: .72rem; line-height: 1.3; border-radius: 9px; }
+.offerCard .confirmation:focus-visible { outline: 2px solid #e2eebd; outline-offset: 3px; border-radius: 5px; }
+@container (min-width: 540px) { .shopGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; }.offerCard { padding: 12px; }.offerCard h3 { font-size: .82rem; }.offerSeller, .offerUnit, .offerPriceLabel { font-size: .6875rem; } }
 .confirmation { display: grid; gap: 10px; border-top: 1px solid var(--economy-line); padding-top: 12px; }
 .confirmation p { font-size: .82rem; }
 .skeleton { height: 96px; border: 1px solid #c5dbac20; border-radius: 16px; background: #c5dbac09; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-@media (max-width: 359px) { .shortcuts { grid-template-columns: 1fr; } .fields { grid-template-columns: 1fr; } .card { padding: 12px; } .navigation button { padding-inline: 9px; } .walletLabel { display: none; } }
+@media (max-width: 359px) { .market .offerCard { padding: 9px; }.offerCard .cardHeader { flex-direction: column; gap: 5px; }.offerCard .cardHeader > div { width: 100%; }.showcaseInfo { gap: 5px; }.showcaseInfo strong { font-size: .75rem; }.showcaseInfo button { padding-inline: 6px; font-size: .6875rem; }.shortcuts { grid-template-columns: 1fr; } .fields { grid-template-columns: 1fr; } .card { padding: 12px; } .navigation button { padding-inline: 9px; } .walletLabel { display: none; } }
 @media (prefers-reduced-motion: reduce) { .panel *, .wallet * { animation: none !important; transition: none !important; } }

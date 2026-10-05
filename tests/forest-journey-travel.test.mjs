@@ -14,6 +14,8 @@ const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/fore
 const { requestClearingSleep, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
 const { forestJourneyWalking, forestJourneyEnding, forestJourneyActorAway, forestJourneyFishingFrame, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/forest-journey-travel.ts");
 const { FOREST_FISHING_FIRST_CATCH_SECONDS, FOREST_FISHING_CYCLE_SECONDS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
+const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
+const { fishingTackleFrame } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
@@ -40,6 +42,15 @@ function finishVisual(state, job, now, cancelled = []) {
   syncForestJourneyTravel(state, scene, job, now, false, cancelled);
   assert.equal(forestJourneyEnding(state), false);
 }
+function assertTravelTackle(frame) {
+  assert.ok(frame);
+  assert.equal(Boolean(frame.carryingBasket), false, "a journey frame cannot request a carried fishing basket");
+  assert.equal(frame.waterTarget, undefined);
+  const rig = forestFishingHeroRig(frame, false), rod = fishingTackleFrame(frame, false, rig);
+  assert.equal(rig.drawBasket, false); assert.equal(rod.visible, true);
+  assert.deepEqual(rod.grip, rig.nearHand);
+  assert.ok(rod.tip.y < rod.grip.y - frame.size * .5, "journey travel holds its visible pole upward");
+}
 
 test("new confirmed shore jobs walk, fish visibly, then return without owning server rewards", () => {
   for (const route of ["shore", "shore_camp"]) {
@@ -47,6 +58,7 @@ test("new confirmed shore jobs walk, fish visibly, then return without owning se
     syncForestJourneyTravel(state, scene, null, start, false);
     syncForestJourneyTravel(state, scene, job, start, false);
     assert.equal(state.journeyTravel.phase, "leaving"); assert.equal(forestJourneyActorAway(state, job, start), false);
+    assertTravelTackle(forestJourneyFishingFrame(state, scene));
     advance(state, job, start, 110, () => state.journeyTravel.phase === "fishing");
     assert.equal(state.journeyTravel.phase, "fishing");
     assert.deepEqual(state.clearing.position, state.journeyTravel.shore);
@@ -56,6 +68,7 @@ test("new confirmed shore jobs walk, fish visibly, then return without owning se
     syncForestJourneyTravel(state, scene, job, start + 600_000, false);
     finishVisual(state, job, start + 600_000);
     assert.equal(state.journeyTravel.phase, "returning"); assert.equal(forestJourneyActorAway(state, job, start + 600_000), false);
+    assertTravelTackle(forestJourneyFishingFrame(state, scene));
     advance(state, job, start + 600_000, 110, () => !state.journeyTravel);
     assert.equal(state.journeyTravel, undefined); assert.deepEqual(state.clearing.position, home);
     session.release();
@@ -333,13 +346,13 @@ test("deadlines finish a visible reel, catch and pack before settling without re
       const folded = forestJourneyFishingFrame(state, scene);
       assert.equal(folded.action, "rest"); assert.equal(folded.settling.phase, 0);
       assert.strictEqual(folded.settling.from, ending.source);
-      assert.equal(folded.waterTarget, undefined, "the destination pose carries its basket instead of aiming a new cast");
+      assert.equal(folded.waterTarget, undefined, "the fold ends at the travel pose without aiming a new cast");
       assert.deepEqual(folded.settling.from.waterTarget, ending.source.waterTarget);
       finishVisual(state, job, start + 600_000);
       const returning = forestJourneyFishingFrame(state, scene);
       assert.equal(state.journeyTravel.phase, "returning"); assert.equal(returning.carryingFish, true);
       assert.equal(returning.basketSpecies, ending.source.basketSpecies, "the last packed species replaces any older displayed fish");
-      assert.equal(returning.carryingBasket, true); assert.deepEqual(state.clearing.position, feet);
+      assertTravelTackle(returning); assert.deepEqual(state.clearing.position, feet);
     } finally { session.release(); }
   }
 });
@@ -366,7 +379,7 @@ test("claim or cancellation during waiting folds the exact visible tackle and ca
       finishVisual(state, null, timestamp, cancel ? [job.id] : []);
       const returning = forestJourneyFishingFrame(state, scene);
       assert.equal(returning.carryingFish, false); assert.equal(returning.basketSpecies, undefined);
-      assert.equal(returning.carryingBasket, true, "empty fishing basket is still held on the return path");
+      assertTravelTackle(returning);
     } finally { session.release(); }
   }
 });
@@ -384,7 +397,7 @@ test("a cancellation receipt cleans an already visible catch but carries no old 
     assert.equal(forestJourneyActorAway(state, job, start + 90_000), false);
     const returning = forestJourneyFishingFrame(state, scene);
     assert.equal(returning.carryingFish, false); assert.equal(returning.basketSpecies, undefined);
-    assert.equal(returning.carryingBasket, true); assert.deepEqual(job, original);
+    assertTravelTackle(returning); assert.deepEqual(job, original);
     assert.ok(!JSON.stringify(captureForestMemory(state, scene)).includes(job.id));
   } finally { session.release(); }
 });

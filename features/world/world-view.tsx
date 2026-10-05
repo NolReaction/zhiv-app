@@ -323,10 +323,10 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}>
       <DialogPortal>
       <DialogOverlay className={styles.sheetScrim} />
-      <DialogPrimitive.Content data-slot="dialog-content" className={styles.sheet}
+      <DialogPrimitive.Content data-slot="dialog-content" className={styles.sheet} data-market={panel === "economy" && economyTab === "market" || undefined} data-book={panel === "collection" || undefined}
         onCloseAutoFocus={event => { event.preventDefault(); if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); else if (selectedId.current) worldElement.current?.querySelector<HTMLElement>('[role="dialog"][data-place]')?.focus({ preventScroll: true }); else if (panelReturn.current?.isConnected) panelReturn.current.focus(); else document.getElementById("world-exit")?.focus(); }}>
         <div className={styles.sheetHeader}>
-          <DialogTitle>{panel === "help" ? "Справка по игре" : panel === "economy" ? "Рынок" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Коллекции" : "Путешествия"}</DialogTitle>
+          <DialogTitle>{panel === "help" ? "Справка по игре" : panel === "economy" ? "Лесной рынок" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Книга находок" : "Путешествия"}</DialogTitle>
           <button onClick={() => setPanel(null)} aria-label="Закрыть панель"><X size={21} /></button>
         </div>
         <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите тему через поиск или раскройте нужный раздел." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
@@ -352,12 +352,12 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
             return <article key={item.id} className={styles.item} data-owned={owned}><span className={styles.itemSwatch} style={{ background: `${item.color}26` }}><ItemIcon itemId={item.id} size={38} /></span>
               <div><h3>{item.name}</h3><p>{item.slot === "palette" ? "Цвет мха" : item.slot === "head" ? "Головной убор" : item.slot === "rod" ? "Снаряжение для рыбалки" : "Шарф"}</p></div>
               {owned ? <button disabled={locked || equipped && item.slot === "palette"} onClick={() => act("equip", equipped ? `remove_${item.slot}` : item.id)}>{equipped ? item.slot === "palette" ? "Выбран" : item.slot === "rod" ? "Убрать" : "Снять" : item.slot === "rod" ? "Взять" : "Надеть"}</button>
-                : item.id === "explorer_cap" || item.id === "willow_rod" ? <span className={styles.kicker}><LockKeyhole size={13} />{item.id === "willow_rod" ? "За коллекцию рыбалки" : "За лесной альбом"}</span>
+                : item.id === "explorer_cap" || item.id === "willow_rod" ? <span className={styles.kicker}><LockKeyhole size={13} />Награда прежних путешествий</span>
                   : <span className={styles.kicker}>Новые рецепты появятся позже</span>}
             </article>;
           })}</div>
         </div>}
-        {panel === "collection" && <WorldCollections state={state} gifts={snapshot.gifts} />}
+        {panel === "collection" && <WorldCollections state={state} economy={economy.snapshot} gifts={snapshot.gifts} />}
 
           <WorldFeedback world={world} />
         </div>

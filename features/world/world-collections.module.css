@@ -1,0 +1,49 @@
+.library { width:100%; color:var(--world-text,#ece8d6); }
+.heading { display:flex; align-items:center; gap:12px; }
+.heading > svg { color:#d8c791; }
+.heading > div { flex:1; }
+.heading span { font-size:9px; letter-spacing:.16em; color:#b6b7a3; }
+.heading h2 { margin:3px 0; font-size:22px; font-weight:650; }
+.heading > strong { font-size:14px; color:#d5c69d; }
+.intro,.kept { font-size:12px; line-height:1.55; color:#babdaa; }
+.chapters { display:flex; gap:6px; margin:18px 0 0; position:relative; z-index:1; }
+.library .chapters button { display:flex; align-items:center; justify-content:center; gap:6px; flex:1; min-width:0; min-height:44px; padding:9px 7px; border:1px solid #7c816e; border-radius:10px 10px 0 0; background:#263b31; color:#c6cdbb; font-size:11px; cursor:pointer; }
+.library .chapters button[aria-selected='true'] { background:#e6d9b7; color:#435747; border-color:#cfbf97; border-bottom-color:#e6d9b7; }
+.library .chapters button:focus-visible,.library .footer button:focus-visible,.archive summary:focus-visible { outline:2px solid #81bea4; outline-offset:3px; }
+.book { position:relative; padding:0 0 7px 7px; background:#715e44; border-radius:0 0 16px 9px; box-shadow:0 9px 20px #101f2340; }
+.book::before { content:''; position:absolute; left:0; top:0; bottom:7px; width:7px; background:#65543e; border-radius:0 0 0 5px; }
+.page { position:relative; background:#e6d9b7; color:#394d3e; padding:22px 17px 13px; border-radius:0 0 13px 4px; border:1px solid #cfbf97; min-height:340px; }
+.page::before { content:''; position:absolute; inset:0 auto 0 0; width:7px; background:linear-gradient(90deg,#b4a58052,transparent); pointer-events:none; }
+.pageHeading > span { color:#7a7960; font-size:9px; letter-spacing:.13em; }
+.pageHeading h3 { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:5px 0 15px; font-size:22px; font-weight:650; }
+.pageHeading small { font-size:12px; color:#778067; }
+.progress,.rule,.complete { padding:10px 11px; margin:0 0 12px; border-radius:8px; background:#cbbb9338; font-size:11px; line-height:1.55; }
+.progress p { margin:0 0 7px; }
+.progress progress { display:block; width:100%; height:7px; accent-color:#69836b; }
+.progress small { display:block; margin-top:7px; color:#6c735b; }
+.complete { display:flex; align-items:center; gap:7px; color:#486548; }
+.sources { font-size:10px; line-height:1.5; color:#73785f; margin:0 0 13px; }
+.finds { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.find { border:1px solid #bfb5948c; border-radius:9px; padding:10px 8px; text-align:center; background:#f6edda4f; }
+.art { display:flex; align-items:center; justify-content:center; position:relative; min-height:70px; }
+.art > svg:first-child { filter:grayscale(1); opacity:.23; }
+.find[data-owned='true'] .art > svg:first-child { filter:none; opacity:1; }
+.art > span,.art > svg:last-child:not(:first-child) { position:absolute; right:3px; bottom:4px; }
+.art > span { color:#8c8c74; font-size:18px; }
+.art > svg:last-child:not(:first-child) { color:#557853; }
+.find h4 { margin:5px 0; font-size:12px; font-weight:650; }
+.find p { font-size:10px; min-height:30px; margin:0; line-height:1.45; color:#71755d; }
+.find small { display:block; font-size:9px; margin-top:8px; color:#898872; }
+.find[data-owned='true'] small { color:#577852; }
+.archive { border-top:1px solid #bdb390; margin-top:17px; padding-top:12px; font-size:11px; color:#6d735b; }
+.archive summary { cursor:pointer; min-height:26px; }
+.archive p { font-size:10px; }
+.archive > div { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.archive span { display:flex; align-items:center; gap:6px; font-size:10px; }
+.footer { margin-top:18px; display:flex; align-items:center; justify-content:space-between; gap:7px; padding-top:11px; border-top:1px solid #bdb390; }
+.library .footer button { display:flex; align-items:center; justify-content:center; gap:3px; min-height:35px; border:0; background:transparent; color:#4a6450; padding:4px; cursor:pointer; font-size:11px; }
+.library .footer button:disabled { opacity:.3; cursor:default; }
+.footer > span { color:#939077; font-size:10px; }
+.kept { font-size:10px; margin:13px 0 0; }
+@media (min-width:620px) { .finds { grid-template-columns:repeat(3,minmax(0,1fr)); } .page { padding:25px 24px 16px; } .library .chapters button { font-size:12px; } }
+@media (max-width:340px) { .library .chapters button { flex-direction:column; font-size:10px; gap:3px; } .page { padding:18px 11px 11px; } }

@@ -10,7 +10,7 @@ const { pleskSprite, pleskSpriteRig, PLESK_SPRITE_CACHE_LIMIT } = await vite.ssr
 const { drawPleskResident, pleskFishingAnchors } = await vite.ssrLoadModule("/features/world/plesk-painter.ts");
 const { pleskLocalPlaces } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
 const { default: actualWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
-const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, fishingBasketHandle, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 function canvas() {
   const result = { width: 0, height: 0, pixels: new Map() }; let offset = 0, scale = 1;
@@ -383,7 +383,7 @@ test("a downward cast swings a full rod instead of shrinking it through the hand
   }
 });
 
-test("the real Pleska painter stows ordinary tackle and keeps every visible rod outside her face", () => {
+test("the real Pleska painter carries the walking rod upright and keeps every visible rod outside her face", () => {
   for (const direction of ["front", "left", "right"]) for (const action of ["idle", "walk", "cast", "fish", "catch", "greet"]) {
     for (const hasWater of [false, true]) for (const phase of [0, .25, .5, .75, 1]) {
       const waterTarget = hasWater ? direction === "front" ? { x: 24, y: 105 }
@@ -395,13 +395,17 @@ test("the real Pleska painter stows ordinary tackle and keeps every visible rod 
       // bypass the exact branch that paints the character and the prop.
       const anchors = pleskFishingAnchors(frame, body, false), facing = anchors.bodyDirection ?? direction;
       const tackle = fishingTackleFrame({ ...frame, direction: facing }, false, anchors);
-      if (action === "walk" || action === "greet" || action === "idle" && !hasWater) {
+      if (action === "greet" || action === "idle" && !hasWater) {
         assert.equal(tackle.visible, false, `${action}/${direction}: ordinary tiny paws do not carry a raised fishing pole`);
         assert.equal(ctx.translations.some(at => Math.hypot(at.x - tackle.grip.x, at.y - tackle.grip.y) < .001), false,
           "stowed tackle is absent from the actual painter, not just its metadata");
         continue;
       }
-      assert.equal(tackle.visible, true, `${action}/${direction}: active fishing keeps its rod`);
+      assert.equal(tackle.visible, true, `${action}/${direction}: the current rod stays visible`);
+      if (action === "walk") {
+        assert.ok(tackle.tip.y < tackle.grip.y - frame.size * .8, "movement carries the rod upward");
+        assert.equal(anchors.drawBasket, false, "walking never carries the ground basket, even beside water");
+      }
       const faceX = body.head.x + (facing === "right" ? 2 : facing === "left" ? -2 : 0);
       for (let i = 1; i <= 20; i++) {
         const x = tackle.grip.x + (tackle.tip.x - tackle.grip.x) * i / 20;
@@ -437,58 +441,40 @@ test("Pleska keeps her rod in the same paw and supports the fish below its outli
 });
 
 
-test("a carried basket hangs from Pleska's paw, sways with her step, and has its own cached pose", () => {
-  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet"]) {
-    const positions = new Set();
-    for (let frame = 0; frame < 8; frame++) {
-      const empty = pleskSprite(action, direction, frame, frame / 7);
-      const carried = pleskSprite(action, direction, frame, frame / 7, false, { carryingBasket: true });
-      assert.notStrictEqual(carried, empty, "carrying a basket cannot reuse the rod-holding raster");
-      assert.strictEqual(carried, pleskSprite(action, direction, frame, frame / 7, false, { carryingBasket: true }));
-      const rig = pleskSpriteRig(carried), handle = fishingBasketHandle(rig.basket, 48), hand = rig.basketPalm;
-      assert.ok(Math.hypot(hand.x - handle.x, hand.y - handle.y) <= .51, `${direction}/${action}/${frame} clasps the handle within pixel rounding`);
+test("obsolete carrying flags cannot replace Pleska's tiny native paws with a basket-holding pose", () => {
+  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet", "trade"])
+    for (const still of [false, true]) for (let frame = 0; frame < 8; frame++) {
+      const normal = pleskSprite(action, direction, frame, frame / 7, still);
+      const obsolete = pleskSprite(action, direction, frame, frame / 7, still, { carryingBasket: true });
+      assert.strictEqual(obsolete, normal, "legacy input is ignored and reuses the same bounded native cache entry");
+      const rig = pleskSpriteRig(obsolete);
+      assert.equal(rig.basketPalm, undefined, "there is no held basket palm in the native rig");
       assert.equal(rig.contact.bottom, 45);
-      assert.ok(rig.basket.y + 48 * .27 * .43 < rig.contact.bottom, "a carried basket clears the ground");
-      const side = direction === "left" || direction === "right";
-      const emptyArm = rig.arms[side ? 0 : 1];
-      if (action !== "greet") assert.ok(emptyArm.palm.y > emptyArm.shoulder.y, "the empty opposite paw hangs naturally");
-      if (side) assert.ok((rig.basket.x - rig.head.x) * (direction === "left" ? -1 : 1) > 0,
-        "the visible arm carries the basket ahead of the body, never behind the tail");
-      for (const arm of rig.arms) {
-        assert.ok(Math.hypot(arm.elbow.x - arm.shoulder.x, arm.elbow.y - arm.shoulder.y) <= 7.1);
-        assert.ok(Math.hypot(arm.palm.x - arm.elbow.x, arm.palm.y - arm.elbow.y) <= 7.1);
-      }
-      positions.add(JSON.stringify(rig.basket));
+      for (const palm of rig.palms) assert.ok(Math.abs(palm.position.x - rig.head.x) <= 10,
+        "ordinary paws remain tucked against the body");
     }
-    assert.equal(positions.size > 1, action === "walk", "only actual steps swing the carried basket");
-    const still = pleskSprite(action, direction, 0, 0, true, { carryingBasket: true });
-    for (const frame of [2, 7, 10000]) assert.strictEqual(pleskSprite(action, direction, frame, .9, true, { carryingBasket: true }), still);
-  }
-  assert.strictEqual(pleskSprite("fish", "front", 3, .5, false, { carryingBasket: true }),
-    pleskSprite("fish", "front", 3, .5), "the carrying flag does not replace an active fishing pose");
 });
 
-test("Pleska carries and sets down one compact basket with short paws and no rod in each direction", () => {
-  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet", "trade"]) {
-    const frame = { x: 100, y: 160, size: 36, direction, action, phase: .4, frame: 3,
-      carryingFish: true, basketFilled: true };
-    const ctx = context(); drawPleskResident(ctx, frame, false);
-    const [sprite] = ctx.draws[0].args, body = pleskSpriteRig(sprite), scale = frame.size / 48;
-    const anchors = pleskFishingAnchors(frame, body, false), { grip, basket } = anchors;
-    const handle = fishingBasketHandle(basket, frame.size, anchors.basketScale);
-    assert.equal(anchors.basketScale, .8, "shore, carrying and trading use one basket size");
-    assert.equal(body.arms.length, 0); assert.ok(anchors.farArm.reachable && anchors.nearArm.reachable);
-    assert.equal(ctx.translations.some(point => Math.hypot(point.x - grip.x, point.y - grip.y) < .01), false,
-      "the carried basket suppresses rod painting instead of leaving a pole in the other paw");
-    if (action !== "trade") {
-      assert.ok(Math.hypot(anchors.farHand.x - handle.x, anchors.farHand.y - handle.y) < 1e-9,
-        "the real paw carries the handle rather than floating fingers");
-      assert.ok(ctx.palms.slice(-2).every(([left, top, width, height]) => Math.abs(left - handle.x) <= scale * 1.01
-        && width === scale && top < handle.y && top + height > handle.y));
-      assert.equal(ctx.events.at(-1), "palm", "fingers clasp the painted handle from the foreground");
+test("Pleska walks with an upward rod and a free tiny paw while stored fish never creates a carried basket", () => {
+  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet", "trade"])
+    for (const still of [false, true]) {
+      const frame = { x: 100, y: 160, size: 36, direction, action, phase: .4, frame: 3,
+        carryingFish: true, carryingBasket: true, basketFilled: true };
+      const ctx = context(); drawPleskResident(ctx, frame, still);
+      const body = pleskSpriteRig(ctx.draws[0].args[0]), anchors = pleskFishingAnchors(frame, body, still);
+      const tackle = fishingTackleFrame(frame, still, anchors);
+      assert.equal(anchors.drawBasket, false, "fish stock is preserved independently of the ground basket's visibility");
+      assert.equal(ctx.strokes.some(stroke => stroke.color === "#715035"), false,
+        "the actual painter emits no basket wall or handle on the route or at the trader");
+      assert.equal(body.arms.length, 0);
+      assert.ok(anchors.farArm.reachable && anchors.nearArm.reachable);
+      assert.equal(tackle.visible, action !== "trade");
+      assert.ok(tackle.tip.y < tackle.grip.y - frame.size * .8, "the carried prop is upright rather than dragging a float below the feet");
+      assert.ok(Math.hypot(anchors.farHand.x - frame.x, anchors.farHand.y - (frame.y - frame.size * .22)) < frame.size * .11,
+        "the free paw rests beside the belly instead of reaching for a removed handle");
+      assert.equal(ctx.translations.some(point => Math.hypot(point.x - tackle.grip.x, point.y - tackle.grip.y) < .01), action !== "trade",
+        "the upward rod is painted at its true gripping paw, and stowed for trading");
     }
-    assert.equal(fishingTackleFrame(frame, false, { grip, basket, hideRod: true }).visible, false);
-  }
 });
 
 

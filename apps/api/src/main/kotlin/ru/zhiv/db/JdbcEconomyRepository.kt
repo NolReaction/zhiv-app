@@ -22,8 +22,11 @@ internal fun <T> Connection.economyRows(sql: String, vararg values: Any?, read: 
 }
 internal data class EconomyProfileRow(val revision: Long, val state: EconomyState)
 internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow = c.economyRows(
-    "SELECT revision,state FROM economy_profiles WHERE user_id=?", user) {
-    EconomyProfileRow(it.getLong(1), economyJson.decodeFromString<EconomyState>(it.getString(2)))
+    """SELECT e.revision,e.state,coalesce(w.state->'collection','[]'::jsonb)
+        FROM economy_profiles e LEFT JOIN world_profiles w ON w.user_id=e.user_id WHERE e.user_id=?""", user) {
+    val state = economyJson.decodeFromString<EconomyState>(it.getString(2))
+    val inherited = economyJson.decodeFromString<List<String>>(it.getString(3))
+    EconomyProfileRow(it.getLong(1), state.copy(progression = EconomyCollectionProgress.inherit(state.progression, inherited)))
 }.single()
 
 /** Caller holds app_users FOR NO KEY UPDATE. The audit remains a permanent
@@ -54,16 +57,17 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
         WHERE user_id=? AND state->'resources'<>'{"sparks":0,"wood":0,"stone":0}'::jsonb""", user)
 }
 
-internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState) {
+internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, recordAwards: Boolean = true) {
     val count = c.economyUpdate("""UPDATE economy_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp()
         WHERE user_id=? AND revision<9007199254740991""", economyJson.encodeToString(state), user)
     if (count != 1) economyFailure("ECONOMY_REVISION_CONFLICT", "Состояние хозяйства изменилось. Обновите страницу.")
+    if (recordAwards) recordEconomyAchievements(c, user, state)
 }
 internal fun economyView(c: Connection, user: UUID, publicId: String, now: Instant): EconomyView {
     val row = readEconomyProfile(c, user)
     val s = row.state
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs, s.migration,
-        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing)
+        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression)
 }
 
 class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository {

@@ -385,10 +385,30 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals(b.id,people.findSessionUserId(b.session))
     }
 
+    @Test fun `merge does not award personal find from source inherited ownership before world union`() = runBlocking<Unit> {
+        val a=account(); val b=account(); val browser=tokens.issue().hash
+        val inherited=listOf("acorn","feather","fern_leaf","moon_moth","river_stone","winged_seed")
+        execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb),(?,?::jsonb)",
+            a.id,worldJson.encodeToString(WorldState(collection=listOf("acorn"))),b.id,worldJson.encodeToString(WorldState(collection=inherited)))
+        val economy=JdbcEconomyRepository(source)
+        economy.snapshot(a.session); economy.snapshot(b.session)
+        for (owner in listOf(a,b)) {
+            val current=source.connection.use { readEconomyProfile(it,owner.id).state }
+            val half=current.copy(progression=current.progression.copy(collections=current.progression.collections.copy(travelSeconds=3600)))
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(half),owner.id)
+        }
+        val preview=readyMerge(a,b,browser); auth.confirmMerge(a.session,browser,preview)
+        assertEquals(7200L,economy.snapshot(a.session).progression.collections.travelSeconds)
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=? AND achievement_id='lucky_find'",a.id))
+        assertNull(JdbcGameRepository(source).achievements(a.session).achievements.single { it.id=="lucky_find" }.unlockedAt)
+    }
+
     @Test fun `merge unions achievements at earliest award time and deletion clears them`() = runBlocking<Unit> {
         val a=account(); val b=account(); val browser=tokens.issue().hash
         execute("INSERT INTO game_profiles(user_id,lifetime_taps) VALUES (?,700),(?,400)",a.id,b.id)
         execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'five_friends','2026-01-02T00:00:00Z'),(?,'five_friends','2026-01-01T00:00:00Z'),(?,'seven_day_streak','2026-01-03T00:00:00Z')",a.id,b.id,b.id)
+        execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'explorer','2026-01-02T00:00:00Z'),(?,'explorer','2026-01-01T00:00:00Z')",a.id,b.id)
+        execute("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at) VALUES (?,'explorer',1,'2026-01-02T00:00:00Z'),(?,'explorer',1,'2026-01-01T00:00:00Z'),(?,'explorer',2,'2026-01-03T00:00:00Z')",a.id,b.id,b.id)
         execute("INSERT INTO account_recovery_codes(user_id,code_hash,revoked_at) VALUES (?,?,clock_timestamp())",b.id,tokens.issue().hash)
         val preview=readyMerge(a,b,browser)
         auth.confirmMerge(a.session,browser,preview)
@@ -400,8 +420,11 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("2026-01-03T00:00:00Z",awards.single { it.id=="seven_day_streak" }.unlockedAt)
         assertEquals(1000L,awards.single { it.id=="thousand_taps" }.progress,"merged verified lifetime totals may cross a new threshold")
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",b.id))
+        assertEquals(listOf("2026-01-01T00:00:00Z","2026-01-03T00:00:00Z",null),awards.single { it.id=="explorer" }.tiers.map { it.unlockedAt })
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=?",b.id))
         prove(a,browser,"delete"); auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id IN (?,?)",a.id,b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id IN (?,?)",a.id,b.id))
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { game.achievements(a.session) }.code)
     }
 
@@ -633,5 +656,25 @@ class JdbcAccountLifecycleIntegrationTest {
             for (table in listOf("forest_memory", "forest_memory_receipts")) assertEquals("0", scalar("SELECT count(*) FROM $table WHERE user_id=?", target.id))
             assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { memory.read(target.session, targetPublicId, client) }.code)
         }
+    }
+    @Test fun `merge combines collection remainders once and preserves confirmed counters`() = runBlocking<Unit> {
+        val a = account(); val b = account(); val browser = tokens.issue().hash
+        val repo = JdbcEconomyRepository(source)
+        repo.snapshot(a.session); repo.snapshot(b.session)
+        for (owner in listOf(a, b)) {
+            val stored = source.connection.use { readEconomyProfile(it, owner.id).state }
+            val progress = ru.zhiv.economy.EconomyProgression(routes = mapOf("forest" to 2L), recipes = mapOf("cut_planks" to 1L),
+                collections = ru.zhiv.economy.EconomyBookCollection(travelSeconds = 3600))
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stored.copy(progression = progress)), owner.id)
+        }
+        val key = readyMerge(a, b, browser)
+        auth.confirmMerge(a.session, browser, key)
+        val merged = repo.snapshot(a.session)
+        assertEquals(mapOf("forest" to 4L), merged.progression.routes)
+        assertEquals(mapOf("cut_planks" to 2L), merged.progression.recipes)
+        assertEquals(7200L, merged.progression.collections.travelSeconds)
+        assertEquals(listOf("acorn"), merged.progression.collections.finds)
+        auth.confirmMerge(a.session, browser, key)
+        assertEquals(merged.progression, repo.snapshot(a.session).progression)
     }
 }

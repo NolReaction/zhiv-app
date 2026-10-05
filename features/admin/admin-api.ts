@@ -136,7 +136,8 @@ export function revokeAdminSessions(targetPublicId: string, body: AdminRevokeReq
 const rewardIdSchema = z.string().refine(id => [...GAME_ITEMS, ...GAME_ACHIEVEMENTS].some(item => item.id === id));
 const rewardsSchema = z.object({ publicId, serverTime: instant,
   items: z.array(z.custom<GameItemId>(id => GAME_ITEMS.some(item => item.id === id))).max(4),
-  achievements: z.array(z.custom<GameAchievementId>(id => GAME_ACHIEVEMENTS.some(item => item.id === id))).max(7),
+  achievements: z.array(z.custom<GameAchievementId>(id => GAME_ACHIEVEMENTS.some(item => item.id === id))).max(GAME_ACHIEVEMENTS.length)
+    .refine(items => new Set(items).size === items.length),
 });
 export type AdminRewards = z.infer<typeof rewardsSchema>;
 export type AdminGrantRequest = AdminRevokeRequest & { kind: "item" | "achievement"; rewardId: GameItemId | GameAchievementId };

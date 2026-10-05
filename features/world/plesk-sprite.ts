@@ -1,5 +1,5 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
-import { fishingCatchFrame, fishingPackCenter, fishingBasketHandle, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, type FishingAction, type FishingMotion } from "./fishing-props";
+import { fishingCatchFrame, fishingPackCenter, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, type FishingAction, type FishingMotion } from "./fishing-props";
 import type { WorldPoint } from "./tiled/types";
 
 /** The resident is built from the same opaque integer-pixel primitives as
@@ -10,7 +10,6 @@ export type PleskSpriteRig = {
   grip: WorldPoint; heldFish: WorldPoint; restingFish: WorldPoint; basket: WorldPoint;
   head: WorldPoint; tail: WorldPoint; feet: readonly WorldPoint[];
   palms: readonly { position: WorldPoint; near: boolean }[];
-  basketPalm?: WorldPoint;
   arms: readonly { shoulder: WorldPoint; elbow: WorldPoint; palm: WorldPoint }[];
   ears: readonly WorldPoint[]; flower: WorldPoint;
 };
@@ -45,12 +44,11 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const blink = !still && clockFrame === 30 && !["cast", "bite", "reel", "catch"].includes(action);
   const closedEyes = blink || action === "rest" && (still || clockFrame >= 4);
   const fishScale = Math.round(Math.max(.7, Math.min(1.5, (Number.isFinite(motion?.catchScale) ? motion!.catchScale! : motion?.outcome === "large" ? 1.35 : 1))) * 20) / 20;
-  const carryingBasket = Boolean(motion?.carryingBasket && ["walk", "idle", "greet"].includes(action));
   const externalArms = Boolean(shore?.externalArms && ["walk", "idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest", "greet", "trade"].includes(action));
   const basketScale = Math.round(Math.max(.6, Math.min(1, shore?.basketScale ?? 1)) * 20) / 20;
   const shoreLean = externalArms ? Math.round(Math.max(-3, Math.min(3, Number.isFinite(shore?.lean) ? shore!.lean! : 0))) : 0;
   const shoreCrouch = externalArms ? Math.round(Math.max(0, Math.min(3, Number.isFinite(shore?.crouch) ? shore!.crouch! : 0))) : 0;
-  const key = `${externalArms}:${shoreLean}:${shoreCrouch}:${basketScale}:${carryingBasket}:${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}:${fishScale}:${motion?.outcome === "miss"}`;
+  const key = `${externalArms}:${shoreLean}:${shoreCrouch}:${basketScale}:${action}:${direction}:${index}:${stage}:${closedEyes}:${variation}:${fishScale}:${motion?.outcome === "miss"}`;
   const saved = cache.get(key);
   if (saved) { cache.delete(key); cache.set(key, saved); return saved; }
 
@@ -104,10 +102,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const farShoulder = point(sideView ? 24 + lean : 17, 31 + rise + Math.min(crouch, 3));
   let grip = point(36, 34 + rise + Math.min(crouch, 3));
   let otherHand = point(sideView ? 29 : 16, 35 + rise + crouch);
-  // The basket hangs outside the body, lifted clear of the planted sole. Its
-  // modest pendulum follows the step; the same handle anchors the carrying paw.
-  const basket = carryingBasket ? point((sideView ? 38 : 10) + Math.round(step / 2), 39 + rise)
-    : ["walk", "idle", "greet"].includes(action) ? point(sideView ? 21 - step : 16, 40 - step)
+  const basket = ["walk", "idle", "greet"].includes(action) ? point(sideView ? 21 - step : 16, 40 - step)
       : point(sideView ? 14 : 7, 41);
   const restingFish = point(sideView ? 18 : 13, 33);
   let heldFish = point(restingFish.x, restingFish.y - (action === "catch" ? Math.round(Math.sin(phasePart * Math.PI) * 2) : 0));
@@ -156,19 +151,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
       (phasePart - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE));
     else otherHand = wrist;
   }
-  if (carryingBasket) {
-    const handle = fishingBasketHandle(basket, PLESK_SPRITE_SIZE, basketScale);
-    if (sideView) {
-      // In profile the visible shoulder carries the basket ahead of the hip.
-      // Routing the far arm around the tail looked like a limb growing from it.
-      grip = point(handle.x, handle.y);
-      otherHand = action === "greet" ? point(20, 25 + (index % 2)) : point(22 - Math.round(step / 2), 36 + rise);
-    } else {
-      otherHand = point(handle.x, handle.y);
-      if (action !== "greet") grip = point(34, 36 + rise - Math.round(step / 2));
-    }
-  }
-  const compactPaws = !externalArms && !carryingBasket && ["idle", "walk", "greet", "rest", "trade"].includes(action);
+  const compactPaws = !externalArms && ["idle", "walk", "greet", "rest", "trade"].includes(action);
   if (compactPaws) {
     // Ordinary gestures are tiny paws resting against the fur, not a second
     // pair of long legs. The visible tip moves a few pixels; no V-shaped arm
@@ -305,7 +288,6 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   rigs.set(canvas, { contact: { bottom, left: Math.min(...planted.map(foot => foot.x - 4)), right: Math.max(...planted.map(foot => foot.x + 5)) },
     grip: mirror(action === "greet" ? otherHand : grip), heldFish: mirror(heldFish), restingFish: mirror(restingFish), basket: mirror(basket),
     head: mirror(head), tail: mirror(tail), feet: mappedFeet, arms, ears: ears.map(mirror), flower: mirror(flower),
-    ...(carryingBasket ? { basketPalm: mirror(sideView ? grip : otherHand) } : {}),
     palms: [{ position: mirror(otherHand), near: false }, { position: mirror(grip), near: true }] });
   cache.set(key, canvas);
   if (cache.size > PLESK_SPRITE_CACHE_LIMIT) cache.delete(cache.keys().next().value!);

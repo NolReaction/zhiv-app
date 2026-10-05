@@ -64,12 +64,13 @@ function RequirementList({ state, required, navigate }: { state: EconomyView; re
   })}</ul>;
 }
 
-function StorageStatus({ state, navigate, compact = false }: { state: EconomyView; navigate: Navigate; compact?: boolean }) {
+function StorageStatus({ state, navigate, compact = false, condensed = false }: { state: EconomyView; navigate: Navigate; compact?: boolean; condensed?: boolean }) {
   const { capacity, used, reserved, available, overflow } = state.storage;
-  return <div className={styles.storage} data-full={available === 0}>
+  return <div className={styles.storage} data-full={available === 0} data-condensed={condensed || undefined}>
     <div className={styles.actions}><strong><Package size={16} aria-hidden />Склад · ур. {state.buildings.warehouse ?? 1}</strong><span>{number(used + reserved)} / {number(capacity)}</span></div>
     <progress className={styles.progress} value={Math.min(capacity, used + reserved)} max={capacity} aria-label={`Склад: занято ${used + reserved} из ${capacity}`} />
-    <p className={styles.muted}>В запасах: {number(used)} · На прилавках: {number(reserved)} · Свободно: {number(available)}</p>
+    {condensed ? <p className={styles.storageSummary}><span>Запасы: {number(used)}</span><span>На прилавках: {number(reserved)}</span><span>Свободно: {number(available)}</span></p>
+      : <p className={styles.muted}>В запасах: {number(used)} · На прилавках: {number(reserved)} · Свободно: {number(available)}</p>}
     {overflow > 0 && <p className={styles.hint}>Прежние запасы сохранены. Сверх вместимости: {number(overflow)}. Используйте или продайте часть вещей, либо расширьте склад.</p>}
     {!compact && <><p className={styles.muted}>Каждая единица товара занимает одно место. Место для выставленных лотов зарезервировано до продажи — отмена всегда вернёт вещи.</p><button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button></>}
   </div>;
@@ -364,19 +365,27 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
 function OfferCard({ economy, offer, owned, navigate }: { economy: ReadyEconomy; offer: EconomyMarketListing; owned?: boolean; navigate: Navigate }) {
   const { snapshot: state, busy, uncertain } = economy;
   const [confirm, setConfirm] = useState(false);
+  const confirmation = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), wasConfirming = useRef(false);
+  useEffect(() => {
+    if (confirm) confirmation.current?.focus({ preventScroll: true });
+    else if (wasConfirming.current) trigger.current?.focus({ preventScroll: true });
+    wasConfirming.current = confirm;
+  }, [confirm]);
   const enough = state.wallet.coins >= offer.totalPrice, unlocked = canTrade(state), room = offer.quantity <= state.storage.available;
   const requiredHome = marketRequiredHomeLevel(offer.itemId, state.catalog);
   const itemUnlocked = marketItemUnlocked(state, offer.itemId, state.catalog);
   const oldPrice = offer.totalPrice < marketMinimumPrice(offer.itemId, offer.quantity, state.catalog);
   const expired = Boolean(economy.market?.showcase && economy.now >= Date.parse(economy.market.showcase.refreshAt));
   const disabled = busy || uncertain || (!owned && (!enough || !unlocked || !room || !itemUnlocked || oldPrice || expired));
-  return <article className={`${styles.card} ${styles.offerCard}`}>
-    <div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={offer.itemId} size={22} /></span><div><h3>{itemName(state, offer.itemId)} × {number(offer.quantity)}</h3><p className={styles.muted}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
-    <div className={styles.offerMeta}><span className={styles.offerPrice}><ItemIcon itemId="coins" size={18} />{number(offer.totalPrice)}<span className={styles.sr}>монет за весь лот</span></span><span className={styles.muted}>{(offer.totalPrice / offer.quantity).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} за шт.</span></div>
-    <p className={styles.muted}>Весь лот · {Number.isFinite(requiredHome) ? `С дома ${requiredHome} ур.` : "Пока недоступен"}</p>
+  const label = `${itemName(state, offer.itemId)} × ${number(offer.quantity)}`;
+  const actionLabel = owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : expired ? "Обновите витрину" : !itemUnlocked ? (Number.isFinite(requiredHome) ? `Нужен дом ${requiredHome} ур.` : "Товар пока недоступен") : oldPrice ? "Предложение недоступно" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет";
+  return <article className={`${styles.card} ${styles.offerCard}`} role="listitem" aria-label={label} data-market-offer={offer.id}>
+    <div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={offer.itemId} size={22} /></span><div><h3>{label}</h3><p className={styles.offerSeller}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
+    <div className={styles.offerMeta}><span className={styles.offerPrice}><ItemIcon itemId="coins" size={16} />{number(offer.totalPrice)}<span className={styles.sr}> монет</span></span><span className={styles.offerPriceLabel}>за весь лот</span></div>
+    <p className={styles.offerUnit}>{(offer.totalPrice / offer.quantity).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} за шт. · {Number.isFinite(requiredHome) ? `Дом ${requiredHome}+` : "Пока недоступен"}</p>
     {owned && oldPrice && <p className={styles.hint}>Цена ниже нового минимума. Этот лот скрыт от покупателей: верните товар на склад и выставьте заново.</p>}
-    {confirm ? <div className={styles.confirmation}><p>{owned ? "Снять предложение и вернуть все предметы на склад?" : `Получите ${number(offer.quantity)} шт. за ${number(offer.totalPrice)} монет. Покупается весь лот.`}</p><div className={styles.actions}><button disabled={busy || uncertain} onClick={() => setConfirm(false)}>Назад</button><button className={styles.primary} disabled={disabled} onClick={() => { if (disabled) return; if (owned) void economy.actMarket("cancel_listing", offer.id); else void economy.actMarket("buy_listing", offer.id, offer.quantity, offer.totalPrice); }}>{owned ? "Снять с продажи" : "Подтвердить покупку"}</button></div></div>
-      : <button disabled={disabled} onClick={() => { if (!disabled) setConfirm(true); }}>{owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : expired ? "Обновите витрину" : !itemUnlocked ? (Number.isFinite(requiredHome) ? `Нужен дом ${requiredHome} ур.` : "Товар пока недоступен") : oldPrice ? "Предложение недоступно" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет"}</button>}
+    {confirm ? <div ref={confirmation} className={styles.confirmation} role="group" tabIndex={-1} aria-label={`${owned ? "Возврат на склад" : "Подтверждение покупки"}: ${label}`}><p>{owned ? "Снять предложение и вернуть все предметы на склад?" : `Получите ${number(offer.quantity)} шт. за ${number(offer.totalPrice)} монет. Покупается весь лот.`}</p><div className={styles.actions}><button disabled={busy || uncertain} onClick={() => setConfirm(false)}>Назад</button><button className={styles.primary} disabled={disabled} aria-label={`${owned ? "Снять с продажи" : "Подтвердить покупку"}: ${label}${owned ? "" : ` за ${number(offer.totalPrice)} монет`}`} onClick={() => { if (disabled) return; if (owned) void economy.actMarket("cancel_listing", offer.id); else void economy.actMarket("buy_listing", offer.id, offer.quantity, offer.totalPrice); }}>{owned ? "Снять с продажи" : "Подтвердить покупку"}</button></div></div>
+      : <button ref={trigger} disabled={disabled} aria-label={`${actionLabel}: ${label}${owned ? "" : ` за ${number(offer.totalPrice)} монет`}`} onClick={() => { if (!disabled) setConfirm(true); }}>{actionLabel}</button>}
     {!owned && !room && <div className={styles.hint}><Package size={15} aria-hidden /><div>Лот занимает {number(offer.quantity)} мест, свободно {number(state.storage.available)}.<br /><button className={styles.textButton} onClick={() => navigate("inventory")}>Освободить место<ArrowRight size={15} aria-hidden /></button></div></div>}
   </article>;
 }
@@ -425,22 +434,23 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
   const refreshLabel = refreshIn === 0 ? "Обновить витрину" : "Проверить наличие";
   const refreshMarket = economy.refreshMarket;
   useEffect(() => { void refreshMarket(); }, [refreshMarket]);
-  return <div className={styles.stack}><div className={styles.shopHeading}><Store size={24} aria-hidden /><div><h2>Лесной рынок</h2><p className={styles.muted}>Лавки игроков · товары для вашего уровня дома</p></div></div>
-    <StorageStatus state={state} navigate={navigate} compact />
+  return <div className={`${styles.stack} ${styles.market}`} aria-label="Лесной рынок">
+    <StorageStatus state={state} navigate={navigate} compact condensed />
     <nav className={styles.subnav} aria-label="Раздел рынка"><button aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
     {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Торговля с игроками откроется после обустройства дома и первой разведки.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур. · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</p><button onClick={() => navigate((state.buildings.home ?? 1) < limits.requiredHomeLevel ? "buildings" : "exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Местный торговец уже покупает товары в разделе «Склад».</p></div></div>}
     {marketError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
     {!market && !marketError && <p className={styles.muted} role="status">Открываем прилавки…</p>}
     {market && section === "browse" && <>
-      <div className={styles.showcaseInfo}><div><strong>Ваша витрина · {market.listings.length} / {showcase?.slots ?? limits.showcaseSlots}</strong><p className={styles.muted}>До {showcase?.maxPerSeller ?? limits.showcasePerSeller} лотов от одной лавки. Новая подборка раз в {economyDuration(showcase?.refreshSeconds ?? limits.showcaseRefreshSeconds)}.</p>
-        {unlocked && refreshIn !== null && <p className={styles.muted}>{refreshIn > 0 ? `До смены витрины: ${economyDuration(refreshIn)}. Купленные и снятые лоты до смены не заменяются.` : "Можно открыть новую витрину."}</p>}
-      </div><button disabled={busy || uncertain} onClick={() => void refreshMarket()}><RefreshCw size={16} aria-hidden />{refreshLabel}</button></div>
-      {market.listings.length ? <div className={styles.shopGrid}>{market.listings.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} />)}</div>
+      <div className={styles.showcaseInfo}><div><strong>Ваша витрина · {market.listings.length} / {showcase?.slots ?? limits.showcaseSlots}</strong>
+        {unlocked && refreshIn !== null && <p className={styles.muted}>{refreshIn > 0 ? `Смена через ${economyDuration(refreshIn)}` : "Доступна новая витрина"}</p>}
+      </div><button disabled={busy || uncertain} onClick={() => void refreshMarket()}><RefreshCw size={14} aria-hidden />{refreshLabel}</button></div>
+      <details className={styles.marketRules}><summary>Как обновляются предложения</summary><p>До {showcase?.maxPerSeller ?? limits.showcasePerSeller} лотов от одной лавки. Новая подборка раз в {economyDuration(showcase?.refreshSeconds ?? limits.showcaseRefreshSeconds)}. Купленные и снятые лоты до смены не заменяются.</p></details>
+      {market.listings.length ? <div className={styles.shopGrid} role="list" aria-label="Предложения игроков">{market.listings.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} />)}</div>
         : <div className={styles.empty}><Store size={32} aria-hidden /><h3>Прилавки пока свободны</h3><p className={styles.muted}>В вашей подборке нет доступных лотов. Предложения могли закончиться или пока не появиться. Новые товары попадут в следующую витрину.</p><button disabled={!unlocked} onClick={() => setSection("sell")}>Выставить товар</button></div>}
     </>}
-    {market && (section === "sell" || section === "mine") && <p className={styles.hint}><Store size={16} aria-hidden />Ваша лавка · занято {market.mine.length} из {limits.maxListings} мест. Новое предложение появится у покупателей при смене их витрины.</p>}
+    {market && (section === "sell" || section === "mine") && <p className={styles.marketNote}><strong>Ваша лавка · {market.mine.length} / {limits.maxListings}</strong><span>Новые лоты появятся у покупателей при смене витрины.</span></p>}
     {market && section === "sell" && unlocked && <ListingForm economy={economy} />}
-    {market && section === "mine" && (market.mine.length ? <div className={styles.stack}>{market.mine.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} owned />)}</div>
+    {market && section === "mine" && (market.mine.length ? <div className={styles.shopGrid} role="list" aria-label="Ваши предложения">{market.mine.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} owned />)}</div>
       : <div className={styles.empty}><ShoppingBasket size={32} aria-hidden /><h3>У вас ещё нет предложений</h3><p className={styles.muted}>Выберите товар и цену. После покупки монеты поступят в кошелёк.</p><button onClick={() => setSection("sell")}>Выставить товар</button></div>)}
   </div>;
 }

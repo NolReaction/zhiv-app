@@ -10,6 +10,7 @@ after(() => vite.close());
 const { fishingTackleFrame, fishingLineFrame, fishingPropsBounds, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const { forestFishingHeroRig, drawForestFishingHero } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
 const { fishingShoreRig } = await vite.ssrLoadModule("/features/world/fishing-shore-rig.ts");
+const { drawPleskResident } = await vite.ssrLoadModule("/features/world/plesk-painter.ts");
 const { fishingWaterTarget, fishingDirection } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
 const { default: actualWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
 const base = { x: 200, y: 200, size: 50, direction: "front", action: "fish", phase: .5, frame: 0,
@@ -62,23 +63,95 @@ test("the rod stays attached to its hand with a real length through every downwa
   }
 });
 
-test("carried rods stay outside the face and caught fish use the opposite free paw", () => {
+test("caught fish use the opposite free paw without covering the supporting contact", () => {
   for (const direction of ["front", "left", "right", "back"]) {
-    const frame = { ...base, direction, action: "idle", waterTarget: undefined };
-    const hand = forestFishingHeroRig(frame, false), tackle = fishingTackleFrame(frame, false, hand);
-    for (let sample = 0; sample <= 30; sample++) {
-      const t = sample / 30, x = tackle.grip.x + (tackle.tip.x - tackle.grip.x) * t;
-      const y = tackle.grip.y + (tackle.tip.y - tackle.grip.y) * t;
-      const inFace = ((x - frame.x) / (frame.size * .3)) ** 2 + ((y - frame.y + frame.size * .56) / (frame.size * .25)) ** 2 < 1;
-      assert.equal(inFace, false, "the idle pole cannot pass through eyes or muzzle");
-    }
-    const catchFrame = { ...frame, action: "catch", carryingFish: true };
+    const catchFrame = { ...base, direction, action: "catch", carryingFish: true };
     const caught = forestFishingHeroRig(catchFrame, false);
-    assert.ok((caught.grip.x - frame.x) * (caught.heldFish.x - frame.x) < 0);
+    assert.ok((caught.grip.x - catchFrame.x) * (caught.heldFish.x - catchFrame.x) < 0);
     const fish = fishingCatchFrame(catchFrame, false, caught);
     assert.deepEqual(caught.farHand, fish.wrist);
     assert.ok(Math.hypot(caught.farHand.x - fish.center.x, caught.farHand.y - fish.center.y) >= fish.size * .219,
       "the paw supports the outline rather than covering the center of the fish");
+  }
+});
+
+test("upward travel rods clear both residents' actually painted eyes and muzzle", () => {
+  function overlapsPixel(polygon, left, top, width, height) {
+    const right = left + width, bottom = top + height;
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[j], b = polygon[i], dx = b.x - a.x, dy = b.y - a.y;
+      if ((a.y > top) !== (b.y > top) && left < (b.x - a.x) * (top - a.y) / (b.y - a.y) + a.x) inside = !inside;
+      let lo = 0, hi = 1, intersects = true;
+      for (const [p, q] of [[-dx, a.x - left], [dx, right - a.x], [-dy, a.y - top], [dy, bottom - a.y]]) {
+        if (p === 0) { if (q < 0) intersects = false; }
+        else if (p < 0) lo = Math.max(lo, q / p);
+        else hi = Math.min(hi, q / p);
+      }
+      if (intersects && lo <= hi) return true;
+    }
+    return inside;
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  globalThis.document = { createElement() {
+    let scaleX = 1, scaleY = 1, translateX = 0, translateY = 0;
+    const pixels = new Map(), context = { fillStyle: "", fillRect(x, y, w, h) {
+      const left = Math.min(translateX + scaleX * x, translateX + scaleX * (x + w));
+      const right = Math.max(translateX + scaleX * x, translateX + scaleX * (x + w));
+      const top = Math.min(translateY + scaleY * y, translateY + scaleY * (y + h));
+      const bottom = Math.max(translateY + scaleY * y, translateY + scaleY * (y + h));
+      for (let row = top; row < bottom; row++) for (let column = left; column < right; column++) pixels.set(`${column}:${row}`, this.fillStyle);
+    }, translate(x, y) { translateX += scaleX * x; translateY += scaleY * y; },
+    scale(x, y) { scaleX *= x; scaleY *= y; } };
+    return { width: 48, height: 48, pixels, getContext() { return context; } };
+  } };
+  try {
+    for (const style of ["mochlik", "plesk"]) for (const direction of ["front", "left", "right"]) {
+      for (const action of ["walk", "idle", "rest"]) for (const frameIndex of [0, 1, 2, 3]) for (const size of [50, 120]) {
+        const frame = { ...base, id: "plesk", destinationId: "plesk-trade", size, direction, action, frame: frameIndex, phase: .5,
+          waterTarget: undefined, carryingFish: true, rodId: "willow_rod" };
+        const shafts = [], stack = [];
+        let transform = [1, 0, 0, 1, 0, 0], color, path = [], body;
+        const ctx = new Proxy({ globalAlpha: 1, drawImage(sprite, x, y, width, height) { body = { sprite, x, y, width, height }; } },
+          { get: (target, key) => target[key] ?? ((...args) => {
+          const [a, b, c, d, e, f] = transform;
+          if (key === "save") stack.push([...transform]);
+          if (key === "restore") transform = stack.pop();
+          if (key === "translate") transform = [a, b, c, d, e + a * args[0] + c * args[1], f + b * args[0] + d * args[1]];
+          if (key === "rotate") {
+            const co = Math.cos(args[0]), si = Math.sin(args[0]);
+            transform = [a * co + c * si, b * co + d * si, c * co - a * si, d * co - b * si, e, f];
+          }
+          if (key === "scale") transform = [a * args[0], b * args[0], c * args[1], d * args[1], e, f];
+          if (key === "beginPath") path = [];
+          if (key === "moveTo" || key === "lineTo") path.push({ x: a * args[0] + c * args[1] + e, y: b * args[0] + d * args[1] + f });
+          if (key === "fill" && color === fishingRodAppearance("willow_rod").shaft && path.length >= 3) shafts.push([...path]);
+        }), set: (target, key, value) => { target[key] = value; if (key === "fillStyle") color = value; return true; } });
+        if (style === "mochlik") drawForestFishingHero(ctx, frame, undefined, false, false);
+        else drawPleskResident(ctx, frame, false);
+        assert.ok(body?.sprite.pixels, "the regression captures the real generated source pixels");
+        if (style === "plesk" && action === "rest") {
+          assert.equal(shafts.length, 0, "the native no-water resting pose stows its rod");
+          continue;
+        }
+        assert.ok(shafts.length, "the real traveling painter draws a curved and tapered shaft");
+        let protectedPixels = 0;
+        for (const [key, color] of body.sprite.pixels) {
+          const [x, y] = key.split(":").map(Number);
+          const facial = style === "mochlik" ? color === "#30291d"
+            || color === "#514d32" && x >= 17 && x <= 30 && y >= 20 && y <= 29
+            : ["#2b3a42", "#765746"].includes(color);
+          if (!facial) continue;
+          protectedPixels++;
+          assert.equal(shafts.some(polygon => overlapsPixel(polygon, body.x + x * body.width / 48,
+            body.y + y * body.height / 48, body.width / 48, body.height / 48)), false,
+          `${style}/${direction}/${action}/${frameIndex}: the real shaft cannot cover facial source pixel ${key}/${color}`);
+        }
+        assert.ok(protectedPixels > 0);
+      }
+    }
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "document", descriptor); else delete globalThis.document;
   }
 });
 
@@ -249,12 +322,59 @@ test("the last reel frame lands continuously in the supporting hand and the same
   }
 });
 
-test("Mochlik carries his compact basket by the same physical handle in every facing", async () => {
-  const {fishingBasketHandle}=await vite.ssrLoadModule('/features/world/fishing-props.ts');
-  for(const direction of ['left','right','front','back'])for(const size of [36,56,120]){
-    const frame={...base,size,direction,action:'walk',carryingFish:true,waterTarget:undefined};
-    const rig=forestFishingHeroRig(frame,false);
-    assert.deepEqual(rig.farHand,fishingBasketHandle(rig.basket,size,rig.basketScale));
+test("both residents walk with an upward rod and a free paw even when their catch metadata is present", () => {
+  for (const style of ["mochlik", "plesk"]) for (const direction of ["left", "right", "front", "back"]) {
+    for (const size of [36, 56, 120]) for (const still of [false, true]) for (const action of ["walk", "idle", "rest"]) {
+      for (const carryingFish of [false, true]) for (const carryingBasket of [false, true]) {
+        const frame = { ...base, size, direction, action, carryingFish, carryingBasket, waterTarget: undefined };
+        const rig = fishingShoreRig(frame, still, style), rod = fishingTackleFrame(frame, still, rig);
+        assert.equal(rig.traveling, true); assert.equal(rig.drawBasket, false, "a stored catch cannot turn into a carried basket");
+        assert.equal(rod.visible, true); assert.deepEqual(rod.grip, rig.nearHand);
+        assert.ok(rod.tip.y < rod.grip.y - size * .5, `${style}/${direction}/${action}: the travel pole points upward`);
+        const handle = { x: rig.basket.x, y: rig.basket.y - size * .288 * rig.basketScale };
+        assert.ok(Math.hypot(rig.farHand.x - handle.x, rig.farHand.y - handle.y) > size * .05,
+          "the free paw cannot keep holding an invisible basket handle");
+        const colors = new Set(), ctx = new Proxy({}, { get: () => () => {}, set: (_target, key, value) => {
+          if (key === "fillStyle") colors.add(value); return true;
+        } });
+        drawFishingProps(ctx, frame, still, rig);
+        assert.equal(colors.has("#bd925c"), false, "the real props painter draws no basket wall during travel");
+        assert.ok(colors.has(fishingRodAppearance(frame.rodId).shaft), "the upward travel rod stays visible");
+      }
+    }
+  }
+});
+
+test("both body painters omit the basket on the return while preserving their visible travel rod", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  globalThis.document = { createElement() { return { width: 48, height: 48,
+    getContext() { return new Proxy({}, { get: () => () => {}, set: () => true }); } }; } };
+  try {
+    for (const style of ["mochlik", "plesk"]) for (const direction of ["left", "right", "front", "back"]) {
+      for (const carryingFish of [false, true]) for (const size of [50, 120]) {
+        const frame = { ...base, size, direction, id: "plesk", destinationId: "plesk-trade",
+          action: "walk", waterTarget: undefined, carryingFish, carryingBasket: true, rodId: "willow_rod" };
+        const colors = new Set(), ctx = new Proxy({ globalAlpha: 1 }, { get: (target, key) => target[key] ?? (() => {}),
+          set: (target, key, value) => { target[key] = value; if (key === "fillStyle") colors.add(value); return true; } });
+        if (style === "mochlik") drawForestFishingHero(ctx, frame, undefined, false, false);
+        else drawPleskResident(ctx, frame, false);
+        assert.equal(colors.has("#bd925c"), false, `${style}/${direction}: body painter cannot override the no-carry rig`);
+        assert.ok(colors.has(fishingRodAppearance("willow_rod").shaft), `${style}/${direction}: the rod is not hidden by catch metadata`);
+      }
+    }
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "document", descriptor); else delete globalThis.document;
+  }
+});
+
+test("a basket needs a finite shore target and cannot appear on a walking frame", () => {
+  for (const style of ["mochlik", "plesk"]) for (const action of ["walk", "idle", "rest", "cast", "fish", "bite", "reel", "catch", "pack"]) {
+    for (const waterTarget of [undefined, { x: NaN, y: 247 }, { x: 204, y: Infinity }]) {
+      const frame = { ...base, action, waterTarget, carryingFish: true, carryingBasket: true };
+      assert.equal(fishingShoreRig(frame, false, style).drawBasket, false,
+        `${style}/${action}: stale catch metadata or invalid water cannot create a basket`);
+    }
+    assert.equal(fishingShoreRig({ ...base, action: "walk", carryingFish: true }, false, style).drawBasket, false);
   }
 });
 
@@ -443,21 +563,107 @@ test("Mochlik paints short pixel forearms and the supporting catch paw emerges i
   }
 });
 
-test("departure folds the exact visible cast or waiting line, then meets the basket-carrying travel pose", () => {
-  for (const action of ["idle", "cast", "fish", "bite", "rest"]) for (const phase of [0, .2, .78, 1]) {
-    const from = { ...shoreFrame("mochlik", 50), action, phase, carryingFish: false };
-    const source = fishingShoreRig(from, false), tackle = fishingTackleFrame(from, false, source);
+test("departure folds the full rod while its basket stays on the ground until the empty-handed travel pose", () => {
+  for (const style of ["mochlik", "plesk"]) for (const size of [36, 50, 120])
+    for (const action of ["idle", "cast", "fish", "bite", "rest"]) for (const phase of [0, .2, .78, 1]) {
+    const from = { ...shoreFrame(style, size), action, phase, carryingFish: false };
+    const source = fishingShoreRig(from, false, style), tackle = fishingTackleFrame(from, false, source);
     const sourceLine = fishingLineFrame(from, false, source, tackle);
     const settling = { ...from, action: "rest", phase: 1, waterTarget: undefined, carryingBasket: true,
       settling: { from, phase: 0 } };
-    const start = fishingShoreRig(settling, false), startTackle = fishingTackleFrame(settling, false, start);
+    const start = fishingShoreRig(settling, false, style), startTackle = fishingTackleFrame(settling, false, start);
     for (const key of ["nearHand", "farHand", "rodTip", "basket", "anatomicalSide"]) assert.deepEqual(start[key], source[key]);
+    assert.equal(start.drawBasket, true);
     assert.deepEqual(start.nearArm.elbow, source.nearArm.elbow);
     assert.deepEqual(start.farArm.elbow, source.farArm.elbow);
     assert.deepEqual(startTackle.reel, tackle.reel, "the actual same-side folding begins at the old reel anchor");
     assert.deepEqual(fishingLineFrame(settling, false, start, startTackle).float, sourceLine.float);
-    const end = fishingShoreRig({ ...settling, settling: { from, phase: 1 } }, false);
-    const walking = fishingShoreRig({ ...settling, action: "walk", frame: 0, settling: undefined }, false);
-    for (const key of ["nearHand", "farHand", "rodTip", "basket"]) assert.deepEqual(end[key], walking[key]);
+    const walkingFrame = { ...settling, action: "walk", frame: 0, settling: undefined };
+    const walking = fishingShoreRig(walkingFrame, false, style), walkingTackle = fishingTackleFrame(walkingFrame, false, walking);
+    const minimumLength = Math.min(distance(startTackle.grip, startTackle.tip), distance(walkingTackle.grip, walkingTackle.tip));
+    let previous = startTackle;
+    for (let step = 1; step < 20; step++) {
+      const foldingFrame = { ...settling, settling: { from, phase: step / 20 } };
+      const rig = fishingShoreRig(foldingFrame, false, style), pole = fishingTackleFrame(foldingFrame, false, rig);
+      assert.deepEqual(rig.basket, source.basket, "folding cannot slide a ground basket toward the free paw");
+      assert.equal(rig.drawBasket, true);
+      assert.deepEqual(pole.grip, rig.nearHand);
+      assert.ok(distance(pole.grip, pole.tip) >= minimumLength - 1e-8, "opposite pole tips rotate without collapsing the shaft");
+      assert.ok(distance(previous.tip, pole.tip) < size * .25, "the upward fold has no positional jump");
+      previous = pole;
+      if ([1, 10, 19].includes(step)) {
+        const colors = new Set(), ctx = new Proxy({}, { get: () => () => {},
+          set: (_target, key, value) => { if (key === "fillStyle") colors.add(value); return true; } });
+        drawFishingProps(ctx, foldingFrame, false, rig);
+        assert.ok(colors.has("#bd925c"), "the grounded basket remains actually painted until folding finishes");
+      }
+    }
+    const endFrame = { ...settling, settling: { from, phase: 1 } }, end = fishingShoreRig(endFrame, false, style);
+    const endTackle = fishingTackleFrame(endFrame, false, end);
+    assert.equal(end.drawBasket, false); assert.equal(walking.drawBasket, false);
+    for (const key of ["nearHand", "farHand", "rodTip"]) assert.deepEqual(end[key], walking[key]);
+    for (const key of ["grip", "tip", "reel", "bobber"]) assert.deepEqual(endTackle[key], walkingTackle[key]);
+    assert.deepEqual(fishingLineFrame(endFrame, false, end, endTackle).float,
+      fishingLineFrame(walkingFrame, false, walking, walkingTackle).float);
+    assert.ok(endTackle.tip.y < endTackle.grip.y - size * .5);
+  }
+});
+
+test("the released supporting paw lifts out of the basket before returning inward", () => {
+  for (const style of ["mochlik", "plesk"]) for (const direction of ["front", "left", "right", "back"]) {
+    for (const size of [36, 50, 120]) for (const catchScale of [.85, 1, 1.35]) {
+      const frame = { ...shoreFrame(style, size), direction, action: "pack", carryingFish: true, catchScale, outcome: "small" };
+      const at = phase => fishingShoreRig({ ...frame, phase }, false, style);
+      const contact = at(FISHING_PACK_RELEASE), fish = fishingCatchFrame({ ...frame, phase: FISHING_PACK_RELEASE }, false, contact);
+      assert.deepEqual(contact.farHand, fish.wrist, "the exact release keeps the supporting outline contact inside the rim");
+      assert.ok(distance(at(FISHING_PACK_RELEASE - 1e-6).farHand, at(FISHING_PACK_RELEASE + 1e-6).farHand) < size * 1e-5,
+        "release cannot teleport the hand to the basket's top edge");
+      const basketSize = size * .4 * contact.basketScale, wallTop = contact.basket.y - basketSize * .345;
+      let highest = contact.farHand.y, previous = contact.farHand;
+      for (let step = 1; step <= 64; step++) {
+        const rig = at(FISHING_PACK_RELEASE + (1 - FISHING_PACK_RELEASE) * step / 64), hand = rig.farHand;
+        highest = Math.min(highest, hand.y);
+        assert.equal(rig.farArm.reachable, true, "withdrawal keeps the fixed short bones in reach");
+        assert.ok(distance(previous, hand) < size * .035, "the withdrawal arc has no hand jump");
+        const movedInward = (Math.abs(contact.farHand.x - frame.x) - Math.abs(hand.x - frame.x)) > size * .06;
+        const overWall = Math.abs(hand.x - contact.basket.x) <= basketSize * .525 + size / 48;
+        if (movedInward && overWall) assert.ok(hand.y + size / 48 <= wallTop + 1e-8,
+          `${style}/${direction}/H${size}: a released paw clears the painted front wall before its inward return`);
+        previous = hand;
+      }
+      assert.ok(highest < wallTop - size * .05, "the hand rises visibly above the rim during withdrawal");
+      assert.deepEqual(at(1).farHand, fishingShoreRig({ ...frame, action: "rest", phase: 0 }, false, style).farHand);
+    }
+  }
+});
+
+test("Mochlik's tiny packing cuff remains visible over the actually painted basket front", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  globalThis.document = { createElement() { return { width: 48, height: 48, getContext() { return { fillRect() {} }; } }; } };
+  try {
+    for (const direction of ["front", "left", "right"]) for (const size of [50, 120]) {
+      for (const phase of [.6, FISHING_PACK_RELEASE, .72, .78, .84]) {
+        const frame = { ...shoreFrame("mochlik", size), direction, action: "pack", phase, carryingFish: true, catchScale: 1.35 };
+        const rig = forestFishingHeroRig(frame, false), events = [], rectangles = [];
+        const ctx = new Proxy({ globalAlpha: 1, fillStyle: "",
+          fill() { if (this.fillStyle === "#bd925c") events.push("basket-front"); },
+          fillRect(...args) { rectangles.push({ args, color: this.fillStyle, event: events.length }); events.push("pixel"); },
+        }, { get: (target, key) => target[key] ?? (() => {}) });
+        drawForestFishingHero(ctx, frame, undefined, false, false);
+        const front = events.indexOf("basket-front"), pixel = size / 48;
+        assert.ok(front >= 0, "the regression observes the actual basket front wall");
+        assert.ok(rectangles.some(({ args: [x, y, w, h], color, event }) => color === "#f4e4ae"
+          && event > front && w === pixel * 2 && h === pixel * 2
+          && rig.farHand.x >= x && rig.farHand.x <= x + w && rig.farHand.y >= y && rig.farHand.y <= y + h),
+        `${direction}/${phase}/H${size}: the actual packing wrist is repainted above the basket front`);
+        const foregroundSkin = rectangles.filter(({ color, event }) => ["#d8bf83", "#f4e4ae"].includes(color) && event > front);
+        assert.ok(foregroundSkin.every(({ args: [, , w, h] }) => w <= pixel * 2 && h <= pixel * 2),
+          "the foreground repair is confined to the tiny cuff and palm");
+        assert.ok(foregroundSkin.every(({ args: [x, y, w, h] }) => Math.hypot(x + w / 2 - rig.farHand.x, y + h / 2 - rig.farHand.y) <= pixel * 4),
+          "repainting a whole forearm over the basket is forbidden");
+      }
+    }
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "document", descriptor); else delete globalThis.document;
   }
 });

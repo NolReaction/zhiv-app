@@ -5,6 +5,7 @@ import ru.zhiv.auth.AuthFailure
 import ru.zhiv.economy.ECONOMY_MAX_BALANCE
 import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyRules
+import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
@@ -76,7 +77,8 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         fishing=a.fishing.copy(ownedRods=(a.fishing.ownedRods+b.fishing.ownedRods).distinct(),
             catches=(a.fishing.catches.keys+b.fishing.catches.keys).associateWith {
                 minOf(ECONOMY_MAX_BALANCE,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
-        fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed))
+        fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,
+        progression=EconomyCollectionProgress.merge(a.progression,b.progression)), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
         SELECT ?,request_id,signature,message,accepted_revision FROM economy_commands WHERE user_id=? ON CONFLICT DO NOTHING""", target, source)

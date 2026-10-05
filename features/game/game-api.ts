@@ -1,6 +1,7 @@
 import { playerTagSchema } from "@/lib/player-tag";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
+import { GAME_ACHIEVEMENT_TARGETS } from "@/features/game/achievement-progress";
 
 const count = z.number().int().nonnegative().safe();
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -55,20 +56,34 @@ const gameLeaderboardSchema = z.object({
   leaderboardOptIn: z.boolean(),
 });
 
-const gameAchievementIdSchema = z.enum(["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code", "full_collection"]);
+const gameAchievementIdSchema = z.enum(["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code", "full_collection",
+  "first_path", "familiar_trails", "explorer", "master_recipes", "home_builder", "river_atlas", "first_sale", "lucky_find"]);
+const gameAchievementTierSchema = z.object({ level: count.positive(), progress: count,
+  target: count.positive(), unlockedAt: z.string().datetime().nullable() });
 const gameAchievementSchema = z.object({
   id: gameAchievementIdSchema,
   progress: count,
   target: z.number().int().positive().safe(),
   unlockedAt: z.string().datetime().nullable(),
-}).refine(value => value.target === ({ seven_day_streak: 7, thousand_taps: 1000, five_friends: 5, ten_thousand_series: 10000, linked_email: 1, saved_recovery_code: 1, full_collection: 12 })[value.id]
-  && value.progress <= value.target && (!value.unlockedAt || value.progress === value.target));
-const gameAchievementsSchema = z.object({
+  tiers: z.array(gameAchievementTierSchema).min(1).max(4).optional(),
+}).refine(value => {
+  const targets: readonly number[] = GAME_ACHIEVEMENT_TARGETS[value.id];
+  if (!value.tiers) return Object.keys(GAME_ACHIEVEMENT_TARGETS).indexOf(value.id) < 7 && value.target === targets[0]
+    && value.progress <= value.target && (!value.unlockedAt || value.progress === value.target);
+  if (value.tiers.length !== targets.length || value.tiers.some((tier, index) => tier.level !== index + 1 || tier.target !== targets[index]
+    || tier.progress > tier.target || !!tier.unlockedAt && tier.progress !== tier.target
+    || !!tier.unlockedAt && index > 0 && !value.tiers![index - 1].unlockedAt)) return false;
+  const current = value.tiers.find(tier => !tier.unlockedAt) ?? value.tiers[value.tiers.length - 1];
+  return value.unlockedAt === value.tiers[0].unlockedAt && value.target === current.target && value.progress === current.progress;
+});
+export const gameAchievementsSchema = z.object({
   ownerPublicId: owner,
   serverTime: z.string().datetime(),
-  achievements: z.array(gameAchievementSchema).min(3).max(7)
+  achievements: z.array(gameAchievementSchema).min(3).max(15)
     .refine(items => new Set(items.map(item => item.id)).size === items.length
-      && (items.length === 7 || items.length === 6 || items.length === 3 && items.every(item => ["seven_day_streak", "thousand_taps", "five_friends"].includes(item.id)))) ,
+      && ([3, 6, 7, 15].includes(items.length))
+      && items.every((item, index) => item.id === Object.keys(GAME_ACHIEVEMENT_TARGETS)[index])
+      && (items.length === 15 ? items.every(item => !!item.tiers) : items.every(item => !item.tiers))),
 });
 
 export type GameProgress = z.infer<typeof gameProgressSchema>;
@@ -79,6 +94,7 @@ export type GameLeaderboardMetric = GameLeaderboard["metric"];
 export type GameLeaderboardScope = GameLeaderboard["scope"];
 export type GameAchievementId = z.infer<typeof gameAchievementIdSchema>;
 export type GameAchievement = z.infer<typeof gameAchievementSchema>;
+export type GameAchievementTier = z.infer<typeof gameAchievementTierSchema>;
 export type GameAchievements = z.infer<typeof gameAchievementsSchema>;
 export type GameSessionRequest = { requestId: string; ownerPublicId: string };
 export type GameBatchRequest = { sessionId: string; sequence: number; tapCount: number; runId: string; tapTimes?: number[] };
@@ -136,7 +152,7 @@ export function getGameLeaderboard(scope: GameLeaderboardScope = "global", signa
   return gameRequest(`/api/v1/game/leaderboard?scope=${scope}&metric=${metric}`, gameLeaderboardSchema, "GET", undefined, signal);
 }
 export function getGameAchievements(signal?: AbortSignal): Promise<GameAchievements> {
-  return gameRequest("/api/v1/game/achievements?catalog=4", gameAchievementsSchema, "GET", undefined, signal);
+  return gameRequest("/api/v1/game/achievements?catalog=5", gameAchievementsSchema, "GET", undefined, signal);
 }
 export function updateGameVisibility(body: GameVisibilityRequest, signal?: AbortSignal): Promise<GameProgress> {
   return gameRequest("/api/v1/game/visibility", gameProgressSchema, "PATCH", body, signal);

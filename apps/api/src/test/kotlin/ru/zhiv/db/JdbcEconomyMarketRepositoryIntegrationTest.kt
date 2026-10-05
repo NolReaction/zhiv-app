@@ -86,6 +86,21 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     }
     private fun expireShowcase(player: Player) { execute("UPDATE economy_market_showcases SET refresh_at=clock_timestamp()-interval '1 second' WHERE user_id=?", player.id) }
 
+    @Test fun `only confirmed player payment awards first sale to seller inside the transaction`() = runBlocking<Unit> {
+        val seller=player(); val buyer=player(berries=0)
+        val cancelled=offer(seller)
+        assertEquals(0L,scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=? AND achievement_id='first_sale'",seller.id))
+        market.command(seller.hash,command(seller,"cancel_listing",cancelled.id))
+        val lot=offer(seller); val buy=purchase(buyer,lot)
+        market.command(buyer.hash,buy)
+        assertEquals(1L,scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=? AND achievement_id='first_sale'",seller.id))
+        assertEquals(0L,scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=? AND achievement_id='first_sale'",buyer.id))
+        val game=JdbcGameRepository(source)
+        val date=game.achievements(seller.hash).achievements.single { it.id=="first_sale" }.unlockedAt
+        assertNotNull(date); assertTrue(market.command(buyer.hash,buy).replayed)
+        assertEquals(date,game.achievements(seller.hash).achievements.single { it.id=="first_sale" }.unlockedAt)
+    }
+
     @Test fun `escrow creation retry and cancellation conserve the original finite lot`() = runBlocking<Unit> {
         val p = player()
         val create = command(p, "create_listing", quantity = 3, price = 9)

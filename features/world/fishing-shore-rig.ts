@@ -1,5 +1,5 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
-import { fishingBasketHandle, fishingCatchFrame, fishingPackCenter, fishingReelHand, fishingTackleFrame, fishingLineFrame,
+import { fishingCatchFrame, fishingPackCenter, fishingReelHand, fishingTackleFrame, fishingLineFrame,
   FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, type FishingPropFrame } from "./fishing-props";
 import type { WorldPoint } from "./tiled/types";
 
@@ -15,6 +15,22 @@ function shorePole(frame: FishingPropFrame, grip: WorldPoint, turn = 0) {
   const dx = target.x - grip.x, dy = target.y - grip.y, distance = Math.max(.001, Math.hypot(dx, dy));
   const length = Math.min(frame.size * .82, distance * .78), angle = Math.atan2(dy, dx) + turn;
   return { x: grip.x + Math.cos(angle) * length, y: grip.y + Math.sin(angle) * length };
+}
+
+/** Fold the full pole outward before carrying it upright; blending opposite
+ * tips directly would briefly shrink the shaft into the gripping paw. */
+function foldPole(from: { grip: WorldPoint; rodTip: WorldPoint }, to: { grip: WorldPoint; rodTip: WorldPoint },
+  grip: WorldPoint, t: number): WorldPoint {
+  if (t === 0) return from.rodTip;
+  if (t === 1) return to.rodTip;
+  const a = { x: from.rodTip.x - from.grip.x, y: from.rodTip.y - from.grip.y };
+  const b = { x: to.rodTip.x - to.grip.x, y: to.rodTip.y - to.grip.y };
+  const angle = Math.atan2(a.y, a.x);
+  let turn = Math.atan2(b.y, b.x) - angle;
+  if (turn > Math.PI) turn -= Math.PI * 2;
+  if (turn < -Math.PI) turn += Math.PI * 2;
+  const length = Math.hypot(a.x, a.y) + (Math.hypot(b.x, b.y) - Math.hypot(a.x, a.y)) * t;
+  return { x: grip.x + Math.cos(angle + turn * t) * length, y: grip.y + Math.sin(angle + turn * t) * length };
 }
 
 /** Two fixed short bones: targets cannot stretch a paw across the torso. */
@@ -76,8 +92,7 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   const release = packing ? smooth((phase - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE)) : 0;
   const lifting = action === "catch" ? smooth((phase - .2) / .55) : 0;
   const basketShoulder = (plesk ? .23 : -.23);
-  const farOffset = plesk && action === "trade" ? basketShoulder + (-.1 - basketShoulder) * smooth((phase - .1) / .15)
-    : traveling ? basketShoulder : packing ? basketShoulder + (-.1 - basketShoulder) * release
+  const farOffset = packing ? basketShoulder + (-.1 - basketShoulder) * release
     : action === "catch" ? -.1 + (basketShoulder + .1) * lifting
       : -.1;
   const farShoulder = { x: x + bodyOffset + side * size * farOffset, y: y - size * .28 };
@@ -87,7 +102,7 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   const landed = { x: gripX, y: y - size * .22 };
   const biteGrip = { x: gripX, y: y - size * .23 };
   const restingGrip = { ...waiting };
-  const desiredGrip = traveling ? action === "greet" ? { x: x + side * size * .1, y: y - size * (.2 + .05 * Math.sin(phase * Math.PI)) } : restingGrip
+  const desiredGrip = traveling ? { x: x + side * size * .18, y: y - size * .24 }
     : landing ? landed : resting ? mix(landed, restingGrip, smooth(phase / .4))
     : casting ? mix(raised, waiting, castStroke) : preparing ? mix(restingGrip, raised, smooth(phase))
       : pulling ? mix(biteGrip, landed, smooth(phase)) : action === "bite" ? mix(waiting, biteGrip, hookSet)
@@ -96,15 +111,10 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   const grip = nearArm.hand;
   const heldFish = { x: x + basketSide * size * .25, y: y - size * .27 };
   const basketScale = plesk ? .8 : .775;
-  const carryingBasket = frame.carryingBasket || frame.carryingFish;
   // At the basket's widest painted rim the half-width is .168size; .46 puts
   // that rim beyond Pleska's .23size torso with a visible gap on the ground.
-  const basket = { x: x + side * size * (plesk ? .46 : traveling ? -.29 : -.4),
-    y: y - size * (plesk ? traveling ? .144 : .1296 : traveling ? .15 : .173 * basketScale) };
-  if (plesk && action === "trade") {
-    const placed = smooth(phase / .2);
-    basket.y += size * .0144 * placed;
-  }
+  const basket = { x: x + side * size * (plesk ? .46 : -.4),
+    y: y - size * (plesk ? .1296 : .173 * basketScale) };
   const actualFish = packing ? fishingPackCenter(heldFish, basket, size, phase, basketScale) : heldFish;
   if (packing) {
     // Shore baskets sit beside the short paws: clear the rim with a low arc,
@@ -113,23 +123,25 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   }
   const turn = casting ? -.6 * side * (1 - castStroke) : preparing ? -.6 * side * smooth(phase) : 0;
   const aimedTip = shorePole(frame, grip, turn);
-  const carriedTip = shorePole({ ...frame, waterTarget: undefined }, grip);
-  const rodTip = resting ? mix(aimedTip, carriedTip, smooth(phase / .4))
-    : preparing ? mix(carriedTip, aimedTip, smooth(phase)) : aimedTip;
+  const restingTip = shorePole({ ...frame, waterTarget: undefined }, grip);
+  const carriedTip = { x: grip.x + side * size * .3, y: grip.y - size * .85 };
+  const rodTip = traveling ? carriedTip : resting ? mix(aimedTip, restingTip, smooth(phase / .4))
+    : preparing ? mix(restingTip, aimedTip, smooth(phase)) : aimedTip;
   const releaseGrip = mix(raised, waiting, smooth((.34 - .18) / .34));
   const releaseStroke = smooth((.34 - .18) / .34);
   const releaseTip = shorePole(frame, releaseGrip, -.6 * side * (1 - releaseStroke));
   const castOrigin = { x: releaseTip.x, y: releaseTip.y + size * .16 };
   const castArc = Math.min(size * .22, Math.max(0, (frame.waterTarget?.y ?? castOrigin.y) - castOrigin.y) * .4);
   const anchors = { grip, heldFish: actualFish, basket, basketScale, rodTip, rodElevation: 0, rodLength: .82, detailScale: .45, anatomicalSide: side, castOrigin, castArc,
-    tautLine: true, keepRod: true, drawBasket: Boolean(frame.waterTarget || carryingBasket) };
+    tautLine: true, keepRod: true, drawBasket: !traveling && Boolean(frame.waterTarget
+      && [frame.waterTarget.x, frame.waterTarget.y].every(Number.isFinite)) };
   const catchFrame = fishingCatchFrame(frame, still, anchors);
   const relaxed = { x: x - side * size * .1, y: y - size * .22 };
   const reelHand = fishingReelHand(frame, still, anchors);
   const support = fishingReelHand(frame, true, anchors);
-  const desiredFar = plesk && action === "trade" ? mix(fishingBasketHandle(basket, size, basketScale), relaxed, smooth((phase - .1) / .15))
-    : traveling && carryingBasket ? fishingBasketHandle(basket, size, basketScale)
-    : action === "catch" ? catchFrame.wrist : packing ? mix(catchFrame.wrist, relaxed, smooth((phase - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE)))
+  const withdraw = mix(catchFrame.wrist, relaxed, release);
+  withdraw.y -= size * .18 * Math.sin(release * Math.PI);
+  const desiredFar = traveling ? relaxed : action === "catch" ? catchFrame.wrist : packing ? withdraw
       : pulling ? mix(reelHand, escape ? relaxed : catchFrame.wrist, escape ? smooth((phase - .65) / .35) : handoff)
         : preparing ? mix(relaxed, support, smooth(phase / .45))
           : casting || action === "fish" || action === "bite" ? support : relaxed;
@@ -145,12 +157,14 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   const sourceLine = fishingLineFrame(frame.settling.from, false, from, sourceTackle);
   result.settlingLine = { bobber: sourceTackle.bobber, control: sourceLine.control, floatPart: sourceLine.floatPart };
   const t = smooth(frame.settling.phase);
+  const targetPole = { grip: result.grip, rodTip: result.rodTip };
   result.nearShoulder = mix(from.nearShoulder, result.nearShoulder, t);
   result.farShoulder = mix(from.farShoulder, result.farShoulder, t);
   result.grip = result.nearHand = mix(from.grip, result.grip, t);
   result.farHand = mix(from.farHand, result.farHand, t);
-  result.rodTip = mix(from.rodTip, result.rodTip, t);
-  result.basket = mix(from.basket, result.basket, t);
+  result.rodTip = foldPole(from, targetPole, result.grip, t);
+  result.basket = from.basket;
+  result.drawBasket = from.drawBasket && t < 1;
   result.nearArm = arm(result.nearShoulder, result.nearHand, side);
   result.farArm = arm(result.farShoulder, result.farHand, -side);
   result.lean = from.lean + (result.lean - from.lean) * t;

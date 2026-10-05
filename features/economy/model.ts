@@ -47,6 +47,12 @@ export const economyCatalogSchema = z.object({
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
 });
 export const economyCatalog = economyCatalogSchema.parse(catalogJson);
+export const economyBookCollectionSchema = z.object({
+  finds: z.array(id).max(100).default([]), travelSeconds: balance.default(0), quarrySeconds: balance.default(0),
+}).default({ finds: [], travelSeconds: 0, quarrySeconds: 0 });
+export const economyProgressionSchema = z.object({
+  routes: quantities.default({}), recipes: quantities.default({}), collections: economyBookCollectionSchema,
+}).default({ routes: {}, recipes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } });
 export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGranted: count.max(500), woodGranted: count.max(30), stoneGranted: count.max(30) });
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
@@ -61,7 +67,7 @@ export const economyViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40), revision: count, serverTime: z.string().datetime(),
   wallet: z.object({ coins: balance, pearls: balance }), inventory: quantities, buildings: z.record(id, count.max(100)),
   jobs: z.array(economyJobSchema).max(100), migration: economyMigrationSchema, catalog: economyCatalogSchema,
-  completedExplorations: count, storage: economyStorageSchema, fishing: economyFishingSchema,
+  completedExplorations: count, storage: economyStorageSchema, fishing: economyFishingSchema, progression: economyProgressionSchema,
 });
 const commandBase = {
   requestId: uuid, ownerPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/), expectedRevision: count.max(Number.MAX_SAFE_INTEGER - 1), targetId: id,
@@ -96,7 +102,8 @@ export type MarketCommand = z.infer<typeof marketCommandSchema>;
 export type EconomyResult = z.infer<typeof economyResultSchema>;
 export type EconomyMarketListing = z.infer<typeof economyMarketListingSchema>;
 export type MarketView = z.infer<typeof marketViewSchema>;
-export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing"> & { fishingCastSeed?: string | null };
+export type EconomyProgression = z.infer<typeof economyProgressionSchema>;
+export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { fishingCastSeed?: string | null };
 
 export type EconomyFishing = z.infer<typeof economyFishingSchema>;
 export type EconomyFishingCatalog = z.infer<typeof economyFishingCatalogSchema>;

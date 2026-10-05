@@ -44,7 +44,7 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   }
   ctx.save();
   const props = { ...frame, basketFilled: frame.basketFilled ?? (frame.carryingFish && action !== "catch" && (action !== "pack" || phase >= FISHING_PACK_RELEASE)) };
-  const drawProps = () => drawFishingProps(ctx, props, still, { ...rig, drawBasket: Boolean(frame.waterTarget || frame.carryingFish || frame.carryingBasket) });
+  const drawProps = () => drawFishingProps(ctx, props, still, rig);
   if (direction === "back") { arm(farArm); arm(nearArm); drawProps(); }
   else { arm(farArm); arm(nearArm); }
   drawGroundedHero(ctx, { x, y, size, pose: rig.pose, direction: rig.bodyDirection, frame: still ? 0 : frame.frame, appearance, shadow,
@@ -53,8 +53,9 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   // The shoulder stays behind the torso, but the supporting forearm emerges
   // in front to wind, unhook and lower the fish. The body cannot erase it.
   if (direction !== "back") {
-    if (["catch", "pack"].includes(action) || rig.traveling && (frame.carryingFish || frame.carryingBasket)) arm(farArm, true);
+    if (["catch", "pack"].includes(action)) arm(farArm, true);
     paw(farArm); paw(nearArm); drawProps();
+    if (action === "pack") paw(farArm);
   }
   {
     const tackle = fishingTackleFrame(props, still, rig);

@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
+import { quarryCollectionArt } from "./art-quarry-collection";
 
 /** Collection finds share the item icon's 48 × 48 drawing surface. */
 export const collectionArt: Record<string, ReactNode> = {
+  ...quarryCollectionArt,
   acorn: (
     <>
       <path d="M14 21h23c0 12-6 19-13 22-7-3-12-11-10-22Z" fill="#b77842" />

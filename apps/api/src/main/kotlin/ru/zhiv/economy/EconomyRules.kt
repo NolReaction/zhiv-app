@@ -292,7 +292,8 @@ object EconomyRules {
                             catches[fish.itemId] = minOf(ECONOMY_MAX_BALANCE, (catches[fish.itemId] ?: 0) + job.rewards.getValue(fish.itemId)) }
                         state.fishing.copy(catches = catches)
                     } else state.fishing,
-                    fishingCastSeed = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) null else state.fishingCastSeed)
+                    fishingCastSeed = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) null else state.fishingCastSeed,
+                    progression = EconomyCollectionProgress.advance(state.progression, job))
                 addItems(next.inventory, reservedItems)
                 assertStorageTransition(state, next, reservedItems)
                 next to

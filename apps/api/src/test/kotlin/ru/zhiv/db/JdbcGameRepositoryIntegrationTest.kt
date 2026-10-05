@@ -477,12 +477,23 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(3,json.getValue("achievements").jsonArray.size)
         val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
-        for (query in listOf("catalog=5","catalog=3&catalog=3"))
+        for (query in listOf("catalog=6","catalog=3&catalog=3"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
         val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
         val current=client.get("/api/v1/game/achievements?catalog=4") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(7,Json.parseToJsonElement(current.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
+        for (version in listOf(1,2,3,4)) {
+            val old=client.get("/api/v1/game/achievements?catalog=$version") { header(HttpHeaders.Cookie,cookie) }
+            val cards=Json.parseToJsonElement(old.bodyAsText()).jsonObject.getValue("achievements").jsonArray
+            assertTrue(cards.all { "tiers" !in it.jsonObject }, "old catalogue must not gain new fields")
+        }
+        val stages=client.get("/api/v1/game/achievements?catalog=5") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,stages.status)
+        val cards=Json.parseToJsonElement(stages.bodyAsText()).jsonObject.getValue("achievements").jsonArray
+        assertEquals(15,cards.size)
+        assertTrue(cards.all { it.jsonObject.getValue("tiers").jsonArray.isNotEmpty() })
+        assertEquals(4,cards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="home_builder" }.jsonObject.getValue("tiers").jsonArray.size)
         for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
 

@@ -99,10 +99,10 @@ V34 добавляет отсутствующие `warehouse: 1` и `kiln: 0`, �
 
 ### Добавить находку или награду за коллекцию
 
-1. В `catalog.json → finds` задайте `id`, `name`, `description`, `symbol`, `group` и явный источник выдачи. Старые маршруты больше не запускаются; изменение `routes[].finds` не добавит новую находку в уже сохранённое путешествие. Связь новых исследований с альбомом пока не реализована. Для нового символа обновите `findIcons` в [world-view.tsx](../../features/world/world-view.tsx), иначе используется лист.
-2. Для новой группы обновите группировку панелей [world-view.tsx](../../features/world/world-view.tsx) и обе функции `collectionRewards`: [features/world/model.ts](../../features/world/model.ts) и Ktor [WorldModel.kt](../../apps/api/src/main/kotlin/ru/zhiv/world/WorldModel.kt). Сейчас явно сопоставлены `forest → explorer_cap`, `fishing → willow_rod`.
-3. При изменении полного числа находок согласуйте цель `full_collection` в `GAME_ACHIEVEMENTS`, [game-api.ts](../../features/game/game-api.ts) (проверка `target`), Ktor `GameRewards.achievements` и локальном расчёте достижений. Решите судьбу уже выданной награды; не отзывайте её случайно пересчётом.
-4. Проверьте выдачу недостающей находки, повтор `claim_journey`, завершение группы, старую коллекцию и недействительные ID: [tests/world.test.mjs](../../tests/world.test.mjs), [game-achievements.test.mjs](../../tests/game-achievements.test.mjs), Ktor `JdbcWorldRepositoryIntegrationTest`.
+1. Для действующей книги изменяйте общий [collections-catalog.json](../../apps/api/src/main/resources/world/collections-catalog.json), источники и период получения. Главы путешествий и каменоломни используют подтверждённое время полученных заданий; рыбалка — собственные `fishing.catches`. Правила — [книга и достижения](../game/collections-and-achievements.md).
+2. Рисунок нового ID добавьте в `features/items/art-collection.tsx`; подписи и представление глав — в `features/world/collection-book.ts` и `world-collections.tsx`. Получение должно совпадать в TypeScript и Kotlin, а не происходить в React.
+3. Старый `catalog.json` и `collectionRewards` сохраняют совместимость прежних путешествий и наград. Не увеличивайте исторический порог `full_collection` при добавлении новых страниц и не отзывайте уже полученные вещи.
+4. Проверьте короткие/длинные занятия, повтор `claim_job`, отмену, заполненный склад, сохранённые находки, объединение аккаунтов и старые снимки без нового поля. Старый `claim_journey` продолжает выдавать только сохранённый результат прежнего похода.
 
 ### Изменить производство, стройку или исследование
 
@@ -119,7 +119,8 @@ V34 добавляет отсутствующие `warehouse: 1` и `kiln: 0`, �
 - Уровни: `features/game/clicker-story.ts → CLICKER_LEVELS`, `getClickerLevel()`, `CLICKER_ICON_LEVELS`; значки — [game-level-icon.tsx](../../features/game/game-level-icon.tsx). Основа — подтверждённые `lifetimeTaps`, отдельного XP нет. Проверьте точный порог, значение перед ним и верхнюю границу; начисления тапов менять не требуется.
 - Достижение: `features/game/game-rewards.ts → GAME_ACHIEVEMENTS`; в [game-api.ts](../../features/game/game-api.ts) обновите enum ID, цели и допустимый размер/состав ответа. Добавьте иконку в `public/achievements/` с учётом пути в [achievement-medal.tsx](../../features/game/achievement-medal.tsx).
 - Сервер: [game/GameRewards.kt](../../apps/api/src/main/kotlin/ru/zhiv/game/GameRewards.kt), расчёт/запись в [db/GameAchievementWrites.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/GameAchievementWrites.kt) и [db/JdbcGameRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcGameRepository.kt); локально — [lib/dev/api-store.ts](../../lib/dev/api-store.ts). Проверьте allowlist выдачи и клиентские схемы в админке. Для нового ID нужна новая миграция CHECK-ограничений `game_achievements` и `admin_actions` (образец — V28), старую V28 не редактируйте.
-- Дата выдачи сохраняется, повтор не создаёт новую награду. Проверьте чтение старым каталогом, выдачу, повтор, слияние аккаунтов и административную выдачу: [tests/game-achievements.test.mjs](../../tests/game-achievements.test.mjs), [admin-api.test.mjs](../../tests/admin-api.test.mjs), Ktor `JdbcGameRepositoryIntegrationTest`, `JdbcAdminRepositoryIntegrationTest`.
+- Каталог `5` использует ступени с отдельными датами в `game_achievement_tiers` (V37). Старые каталоги получают прежний ответ без `tiers`; `game_achievements` сохраняет первую дату. Административная выдача добавляет все недостающие ступени, не меняя счётчики. Слияние сохраняет ранние даты.
+- Дата выдачи сохраняется, повтор не создаёт новую награду. Проверьте чтение старым каталогом, переход каждой ступени, выдачу, повтор, слияние аккаунтов и административную выдачу: [tests/game-achievements.test.mjs](../../tests/game-achievements.test.mjs), [admin-api.test.mjs](../../tests/admin-api.test.mjs), Ktor `JdbcGameRepositoryIntegrationTest`, `JdbcAdminRepositoryIntegrationTest`.
 
 ## Локальная имитация
 

@@ -14,6 +14,15 @@ after(() => vite.close());
 const serverTime = "2026-09-07T12:00:00Z";
 const publicId = "7K3P-2Q9M-W8ZR";
 
+test("admin reward ownership accepts the expanded catalog and rejects duplicate achievements", async () => {
+  const { GAME_ACHIEVEMENTS } = await vite.ssrLoadModule("/features/game/game-rewards.ts");
+  const achievements = GAME_ACHIEVEMENTS.map(item => item.id);
+  globalThis.fetch = async () => Response.json({ publicId, serverTime, items: [], achievements });
+  assert.deepEqual((await api.getAdminRewards(publicId)).achievements, achievements);
+  globalThis.fetch = async () => Response.json({ publicId, serverTime, items: [], achievements: ["master_recipes", "master_recipes"] });
+  await assert.rejects(api.getAdminRewards(publicId));
+});
+
 test("player management preserves a lost grant request through rate limiting", async () => {
   const body = { requestId: "9a272b65-8ada-4b0d-aad8-6a6ef845f41b", confirmationPublicId: publicId, reason: "World reward correction", action: "grant_resource", target: "wood", amount: 20 };
   const sent = [];

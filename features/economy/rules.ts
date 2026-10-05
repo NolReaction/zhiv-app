@@ -1,6 +1,7 @@
 import { ECONOMY_MAX_BALANCE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 
 import { fishingState, fishingTripCost, selectFishingCatch } from "./fishing";
+import { advanceEconomyProgression, newEconomyProgression } from "./collection-progress";
 import { economyLocalSellPrice } from "./local-sale";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
@@ -56,7 +57,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     inventory: { ...(migration.woodGranted ? { wood: migration.woodGranted } : {}), ...(migration.stoneGranted ? { stone: migration.stoneGranted } : {}) },
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
-    jobs: [], migration, completedExplorations: 0, fishing: fishingState({}) };
+    jobs: [], migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression() };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
   if (!canAffordEconomy(state, cost)) fail("ECONOMY_RESOURCES", "Не хватает монет или материалов");
@@ -206,6 +207,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
         creditEconomyItems(state, job.rewards);
       }
+      state.progression = advanceEconomyProgression(state.progression, job);
       if (job.kind === "exploration") state.completedExplorations = Math.min(ECONOMY_MAX_BALANCE, state.completedExplorations + 1);
       if (job.kind === "exploration" && economyCatalog.fishing?.routeIds.includes(job.targetId)) {
         const current = fishingState(state), catches = { ...current.catches };

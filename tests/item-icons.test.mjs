@@ -11,6 +11,7 @@ after(() => vite.close());
 const { ItemIcon, CollectionIcon, itemIconIds, collectionIconIds } = await vite.ssrLoadModule("/features/items/item-icon.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { worldCatalog } = await vite.ssrLoadModule("/features/world/model.ts");
+const { quarryCollectionFinds } = await vite.ssrLoadModule("/features/world/collection-book.ts");
 const { WorldCollections } = await vite.ssrLoadModule("/features/world/world-collections.tsx");
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
 
@@ -21,9 +22,9 @@ test("every economic item, currency and wardrobe item has artwork", () => {
 });
 
 test("collection finds each have their own illustration despite shared legacy symbols", () => {
-  assert.deepEqual([...collectionIconIds].sort(), worldCatalog.finds.map(find => find.id).sort());
-  const drawings = worldCatalog.finds.map(find => render(CollectionIcon, { findId: find.id }).replace(/data-collection-icon="[^"]+"/, ""));
-  assert.equal(new Set(drawings).size, worldCatalog.finds.length);
+  assert.deepEqual([...collectionIconIds].sort(), [...worldCatalog.finds, ...quarryCollectionFinds].map(find => find.id).sort());
+  const drawings = [...worldCatalog.finds, ...quarryCollectionFinds].map(find => render(CollectionIcon, { findId: find.id }).replace(/data-collection-icon="[^"]+"/, ""));
+  assert.equal(new Set(drawings).size, worldCatalog.finds.length + quarryCollectionFinds.length);
 });
 
 test("repeated icons need no external asset or shared SVG ids at compact and large sizes", () => {
@@ -46,15 +47,14 @@ test("standalone labels are accessible and unknown ids have a safe fallback", ()
   assert.match(render(CollectionIcon, { findId: "constructor", label: "Находка" }), /role="img" aria-label="Находка"/);
 });
 
-test("collections render all illustrated finds and preserve earned status and rewards", () => {
+test("book keeps illustrated forest finds and saved ownership without the retired album", () => {
   const state = { collection: ["acorn", "old_float"], inventory: ["explorer_cap"], completedJourneys: 7 };
   const html = render(WorldCollections, { state, gifts: [] });
-  assert.equal((html.match(/data-collection-icon=/g) ?? []).length, 12);
-  assert.equal((html.match(/data-owned="true"/g) ?? []).length, 2);
-  assert.equal((html.match(/В альбоме/g) ?? []).length, 2);
-  assert.match(html, /Шляпа следопыта · получена/);
-  assert.match(html, /Ивовая удочка · за все 6 находок/);
-  assert.match(html, /data-item-icon="explorer_cap"/);
-  assert.match(html, /data-item-icon="willow_rod"/);
-  for (const find of worldCatalog.finds) assert.ok(html.includes(find.name));
+  assert.equal((html.match(/data-collection-icon=/g) ?? []).length, 6);
+  assert.equal((html.match(/data-owned="true"/g) ?? []).length, 1);
+  assert.match(html, /Книга коллекций/);
+  assert.match(html, /Путешествия/); assert.match(html, /Рыбалка/); assert.match(html, /Каменоломня/);
+  assert.match(html, /Полученную раньше одежду можно надеть/);
+  assert.doesNotMatch(html, /Лесной альбом|В альбоме/);
+  for (const find of worldCatalog.finds.filter(find => find.group === "forest")) assert.ok(html.includes(find.name));
 });

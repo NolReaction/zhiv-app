@@ -1,0 +1,14 @@
+{
+  "version": 5,
+  "targets": {
+    "seven_day_streak": [7], "thousand_taps": [1000], "five_friends": [5], "ten_thousand_series": [10000],
+    "linked_email": [1], "saved_recovery_code": [1], "full_collection": [12],
+    "first_path": [1], "familiar_trails": [3], "explorer": [10, 50, 200], "master_recipes": [5, 10],
+    "home_builder": [2, 3, 4, 5], "river_atlas": [4], "first_sale": [1], "lucky_find": [1]
+  },
+  "biomes": {
+    "forest": ["forest", "forest_camp", "old_woodland", "uplands"],
+    "shore": ["shore", "shore_camp", "coastal_deposits"],
+    "caves": ["cave", "deep_cave", "abandoned_quarry"]
+  }
+}

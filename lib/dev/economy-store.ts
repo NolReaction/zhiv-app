@@ -1,11 +1,12 @@
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash } from "node:crypto";
 import { marketListingEligible, marketMinimumPrice } from "@/features/economy/market-rules";
-import { getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
-import { consumeDevLegacyEconomy, hasDevLegacyJourney } from "@/lib/dev/world-store";
+import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
+import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
+import { inheritEconomyCollection } from "@/features/economy/collection-progress";
 import { fishingState } from "@/features/economy/fishing";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
 
@@ -36,6 +37,7 @@ function profile(token: string | undefined, now: number) {
     store().profiles.set(owner, value);
   }
   value.state.fishing ??= fishingState({});
+  value.state.progression = inheritEconomyCollection(value.state.progression, getDevCollectionFinds(owner));
   value.state.buildings.warehouse ??= 1;
   value.state.buildings.kiln ??= 0;
   return { owner, value };
@@ -75,6 +77,8 @@ function escrowItems(owner: string, excluding?: string): Record<string, number> 
 }
 function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number): EconomyResult {
   value.state = next; bump(value);
+  if (!["grant_currency", "grant_item", "grant_upgrade_cost", "set_building_level", "finish_jobs"].includes(command.action))
+    awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
     signature: JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]),
     message, acceptedRevision: value.revision,
@@ -270,5 +274,19 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   next.wallet.coins -= listing.totalPrice;
   seller.state.wallet.coins += listing.totalPrice; bump(seller);
   listing.status = "sold"; listing.closedAt = new Date(now).toISOString();
+  awardDevMarketSale(listing.sellerPublicId, now);
   return { ...commit(owner, value, next, command, "Покупка получена, монеты отправлены продавцу", now), listing: publicListing(listing, owner, token) };
+}
+
+/** Achievement reads must not initialize an economy, mint conversion grants or expose the private cast seed. */
+export function getDevEconomyAchievementState(owner: string): Pick<EconomyState, "completedExplorations" | "buildings" | "fishing" | "progression"> | null {
+  const state = store().profiles.get(owner)?.state;
+  if (!state) return null;
+  return { completedExplorations: state.completedExplorations, buildings: { ...state.buildings }, fishing: structuredClone(fishingState(state)),
+    progression: inheritEconomyCollection(state.progression, getDevCollectionFinds(owner)) };
+}
+
+/** A verified completed trade, not a listing attempt, qualifies the seller. */
+export function getDevConfirmedMarketSales(owner: string): number {
+  return [...store().listings.values()].some(listing => listing.sellerPublicId === owner && listing.status === "sold") ? 1 : 0;
 }

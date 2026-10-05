@@ -39,7 +39,9 @@ test("help uses current catalog rules and marks unavailable mechanics while rebu
   assert.match(get("journeys").paragraphs.join("\n"), /Одновременно идёт одно исследование/);
   assert.match(get("market").paragraphs[1], /Свой лот купить нельзя/);
   assert.match(get("wardrobe").note, /пока нельзя изготовить.*полученные вещи можно менять/);
-  assert.match(get("collection").note, /Новые исследования дают товары на склад/);
+  assert.match(get("collection").paragraphs.join(" "), /Каменоломня.*минерала/);
+  assert.match(get("collection").paragraphs.join(" "), /после получения результата.*повторный запрос/);
+  assert.match(get("collection").note, /Редкие расходуемые материалы.*пока не введены/);
   assert.doesNotMatch(worldHelpTopics(false).find(topic => topic.id === "journeys").paragraphs.join(" "), /временно недоступны|началось раньше/);
 });
 

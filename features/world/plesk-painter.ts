@@ -1,5 +1,5 @@
 import type { PleskResidentFrame } from "./plesk-resident";
-import { drawFishingProps, fishingPropsBounds, fishingCatchFrame, fishingTackleFrame, fishingBasketHandle, fishingPackCenter, fishingReelHand } from "./fishing-props";
+import { drawFishingProps, fishingPropsBounds, fishingCatchFrame, fishingTackleFrame, fishingPackCenter, fishingReelHand } from "./fishing-props";
 import { fishingDirection } from "./forest-fishing";
 import { fishingShoreRig, type FishingShoreRig } from "./fishing-shore-rig";
 import { pleskSprite, pleskSpriteRig, PLESK_SPRITE_SIZE, type PleskSpriteRig } from "./plesk-sprite";
@@ -17,16 +17,16 @@ const usesShoreRig = (frame: PleskResidentFrame) => !frame.wildlife && (["cast",
     && ["idle", "rest"].includes(frame.action)));
 const shoreFrame = (frame: PleskResidentFrame) => ({ ...frame, rodId: "willow_rod", direction: frame.waterTarget
   && [frame.waterTarget.x, frame.waterTarget.y].every(Number.isFinite) ? fishingDirection(frame, frame.waterTarget) : frame.direction });
-const usesCarryRig = (frame: PleskResidentFrame) => Boolean(!frame.wildlife && frame.carryingFish
-  && ["walk", "idle", "greet", "trade"].includes(frame.action) && !usesShoreRig(frame));
+const usesTravelRig = (frame: PleskResidentFrame) => Boolean(!frame.wildlife && !usesShoreRig(frame)
+  && (frame.action === "walk" || frame.carryingFish && ["idle", "greet", "trade"].includes(frame.action)));
 
 /** Props interpolate in world coordinates rather than the raster's phase
  * buckets. In particular, mirrored catches land at the basket painter's exact
  * asymmetric fish center without a one-pixel release jump. */
 export function pleskFishingAnchors(frame: PleskResidentFrame, rig: PleskSpriteRig, still: boolean) {
   if (usesShoreRig(frame)) return fishingShoreRig(shoreFrame(frame), still, "plesk");
-  if (usesCarryRig(frame)) return { ...fishingShoreRig({ ...frame, rodId: "willow_rod", waterTarget: undefined,
-    carryingBasket: true }, still, "plesk"), hideRod: true };
+  if (usesTravelRig(frame)) return { ...fishingShoreRig({ ...frame, rodId: "willow_rod", waterTarget: undefined }, still, "plesk"),
+    hideRod: frame.action === "trade" };
   const scale = frame.size / PLESK_SPRITE_SIZE;
   const world = (point: WorldPoint): WorldPoint => ({ x: frame.x - frame.size / 2 + point.x * scale,
     y: frame.y - rig.contact.bottom * scale + point.y * scale });
@@ -38,7 +38,7 @@ export function pleskFishingAnchors(frame: PleskResidentFrame, rig: PleskSpriteR
   } else if (frame.action === "catch") {
     heldFish = { x: resting.x, y: resting.y - Math.sin(phase * Math.PI) * 2 * scale };
   }
-  return { grip: world(rig.grip), heldFish, basket, basketScale: .8,
+  return { grip: world(rig.grip), heldFish, basket, basketScale: .8, drawBasket: false,
     hideRod: frame.wildlife || ["walk", "greet"].includes(frame.action) || frame.action === "idle" && !frame.waterTarget
       || frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action) };
 }
@@ -55,10 +55,9 @@ export function pleskWildlifeHand(frame: PleskResidentFrame): WorldPoint {
  * painter. Only local limb geometry changes; feet do not bounce off the shore. */
 export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskResidentFrame, still: boolean) {
   if (![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0) return;
-  const shore = usesShoreRig(frame), carrying = usesCarryRig(frame), directed = shore ? shoreFrame(frame) : frame;
-  const carryingBasket = !shore && frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action);
-  const props = { ...directed, rodId: "willow_rod", carryingBasket };
-  const shoreRig = shore || carrying ? fishingShoreRig({ ...props, ...(carrying ? { waterTarget: undefined, carryingBasket: true } : {}) }, still, "plesk") : undefined;
+  const shore = usesShoreRig(frame), traveling = usesTravelRig(frame), directed = shore ? shoreFrame(frame) : frame;
+  const props = { ...directed, rodId: "willow_rod", carryingBasket: false };
+  const shoreRig = shore || traveling ? fishingShoreRig({ ...props, ...(traveling ? { waterTarget: undefined } : {}) }, still, "plesk") : undefined;
   const sprite = pleskSprite(frame.action, directed.direction, frame.frame, frame.phase, still, props,
     shoreRig ? { externalArms: true, lean: shoreRig.lean, crouch: shoreRig.crouch, basketScale: .8 } : { basketScale: .8 });
   const rig = pleskSpriteRig(sprite)!;
@@ -70,7 +69,7 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   ctx.fillStyle = "rgba(28,43,35,.2)"; ctx.beginPath();
   ctx.ellipse(frame.x, frame.y, size * .2, size * .035, 0, 0, Math.PI * 2); ctx.fill();
   ctx.imageSmoothingEnabled = false;
-  const anchors = shoreRig ? { ...shoreRig, ...(carrying ? { hideRod: true } : {}) } : pleskFishingAnchors(frame, rig, still);
+  const anchors = shoreRig ? { ...shoreRig, hideRod: traveling && frame.action === "trade" } : pleskFishingAnchors(frame, rig, still);
   const back = directed.direction === "back";
   const arm = (part: FishingShoreRig["nearArm"], near: boolean, forearmOnly = false) => {
     // Match the body's 48 px grid: short stepped fur segments, not a smooth
@@ -106,10 +105,11 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   }
   ctx.drawImage(sprite, origin.x, origin.y, size, size);
   if (shoreRig && !back) {
-    if (["catch", "pack"].includes(frame.action) || carrying) arm(shoreRig.farArm, false, true);
+    if (["catch", "pack"].includes(frame.action)) arm(shoreRig.farArm, false, true);
     paw(shoreRig.farArm, false); paw(shoreRig.nearArm, true);
   }
   if (!shoreRig || !back) drawFishingProps(ctx, props, still, anchors);
+  if (shoreRig && !back && frame.action === "pack") paw(shoreRig.farArm, false);
   // Full paws belong behind props. Only two small fingers overlap the handle
   // or lower fish outline, leaving the fish's head and body readable.
   const tackle = fishingTackleFrame(props, still, anchors);
@@ -125,12 +125,6 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
         ctx.fillRect(shoreRig.farHand.x - scale * .55, shoreRig.farHand.y - scale * .35, scale * 1.1, scale * .7);
       }
     }
-  }
-  if (carryingBasket) {
-    const handle = fishingBasketHandle(anchors.basket, size, .8);
-    ctx.fillStyle = "#9ab7bb";
-    ctx.fillRect(handle.x - scale, handle.y - scale, scale, scale * 2);
-    ctx.fillRect(handle.x + scale, handle.y - scale, scale, scale * 2);
   }
   const fish = fishingCatchFrame(props, still, anchors);
   if (fish.visible && (frame.action === "pack" || frame.phase >= .18)) {

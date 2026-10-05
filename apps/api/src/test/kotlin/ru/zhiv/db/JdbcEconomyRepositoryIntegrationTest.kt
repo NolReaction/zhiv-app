@@ -62,6 +62,27 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `qualifying exploration claim persists stages before modal read and retries preserve dates`() = runBlocking<Unit> {
+        val p=player(); val initial=economy.snapshot(p.hash)
+        val started=economy.command(p.hash,command(p,initial,"start_exploration","forest")).state
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=?",p.id))
+        val state=source.connection.use { readEconomyProfile(it,p.id).state }
+        val finishAt=Instant.parse("2000-01-01T00:00:00Z")
+        val ready=state.copy(completedExplorations=9,jobs=state.jobs.map { it.copy(
+            startedAt=finishAt.minusSeconds(1800).toString(),finishesAt=finishAt.toString()) })
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(ready),p.id)
+        val request=command(p,started,"claim_job",started.jobs.single().id)
+        economy.command(p.hash,request)
+        val first=scalar("SELECT unlocked_at FROM game_achievement_tiers WHERE user_id=? AND achievement_id='explorer' AND level=1",p.id)
+        assertEquals("1",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=? AND achievement_id='first_path'",p.id))
+        assertTrue(economy.command(p.hash,request).replayed)
+        assertEquals(first,scalar("SELECT unlocked_at FROM game_achievement_tiers WHERE user_id=? AND achievement_id='explorer' AND level=1",p.id))
+        val award=JdbcGameRepository(source).achievements(p.hash).achievements.single { it.id=="explorer" }
+        assertEquals(10L,award.progress); assertEquals(50L,award.target)
+        assertNotNull(award.tiers.first().unlockedAt); assertNull(award.tiers[1].unlockedAt)
+        assertEquals(1L,economy.snapshot(p.hash).progression.routes.getValue("forest"))
+    }
+
     @Test fun `discounted sales persist one rounded payment and reject stale minimum without consuming goods`() = runBlocking<Unit> {
         val p = player()
         economy.snapshot(p.hash)
@@ -638,5 +659,41 @@ class JdbcEconomyRepositoryIntegrationTest {
         } finally {
             source.connection.use { c -> c.autoCommit = true; c.economyUpdate("DROP DATABASE $database WITH (FORCE)") }
         }
+    }
+    @Test fun `book delivery persists once under the same claim receipt`() = runBlocking<Unit> {
+        val p = player()
+        val view = economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        val start = Instant.parse("2000-01-01T00:00:00Z")
+        val route = EconomyRules.catalog.explorations.single { it.id == "forest_camp" }
+        val job = EconomyJob(UUID.randomUUID().toString(), "exploration", route.id,
+            startedAt = start.toString(), finishesAt = start.plusSeconds(route.seconds).toString(), rewards = route.rewards, catalogVersion = 2)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(original.copy(jobs = listOf(job))), p.id)
+        val collect = command(p, view, "claim_job", job.id)
+        val first = economy.command(p.hash, collect)
+        val replay = economy.command(p.hash, collect)
+        assertFalse(first.replayed); assertTrue(replay.replayed)
+        assertEquals(first.state.progression, replay.state.progression)
+        assertEquals(mapOf("forest_camp" to 1L), first.state.progression.routes)
+        assertEquals(28800L, first.state.progression.collections.travelSeconds)
+        assertEquals(4, first.state.progression.collections.finds.size)
+        assertEquals(first.state.progression, source.connection.use { readEconomyProfile(it, p.id).state.progression })
+    }
+
+    @Test fun `legacy forest ownership joins the book without inventing activity or losing river keepsakes`() = runBlocking<Unit> {
+        val p = player()
+        val world = JdbcWorldRepository(source)
+        world.snapshot(p.hash)
+        economy.snapshot(p.hash)
+        val inherited = WorldState(collection = listOf("acorn", "feather", "river_pearl"))
+        execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?", worldJson.encodeToString(inherited), p.id)
+        val before = economy.snapshot(p.hash)
+        assertEquals(listOf("acorn", "feather"), before.progression.collections.finds)
+        assertEquals(0L, before.progression.collections.travelSeconds)
+        assertTrue(before.progression.routes.isEmpty()); assertTrue(before.progression.recipes.isEmpty())
+        assertEquals(inherited.collection, world.snapshot(p.hash).state.collection)
+        val repeated = economy.snapshot(p.hash)
+        assertEquals(before.revision, repeated.revision)
+        assertEquals(before.progression, repeated.progression)
     }
 }

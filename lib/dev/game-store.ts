@@ -126,11 +126,11 @@ export function getDevGameLeaderboard(token: string | undefined, scope: GameLead
   } };
 }
 
-export function getDevGameAchievements(token: string | undefined, now = Date.now()): DevGameResult<GameAchievements> {
+export function getDevGameAchievements(token: string | undefined, now = Date.now(), catalog = 4): DevGameResult<GameAchievements> {
   const identity = getDevIdentity(token);
   if (!identity) return error("UNAUTHORIZED");
   const lifetimeTaps = store().profiles.get(identity.user.publicId)?.lifetimeTaps ?? 0;
-  return { kind: "ok", value: getDevAchievements(token, lifetimeTaps, now, store().profiles.get(identity.user.publicId)?.bestSeries ?? 0, getDevCollectionCount(identity.user.publicId))! };
+  return { kind: "ok", value: getDevAchievements(token, lifetimeTaps, now, store().profiles.get(identity.user.publicId)?.bestSeries ?? 0, getDevCollectionCount(identity.user.publicId), catalog)! };
 }
 
 export function createDevGameSession(token: string | undefined, ownerPublicId: string, requestId: string, now = Date.now()): DevGameResult<GameSession> {

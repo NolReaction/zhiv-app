@@ -392,6 +392,22 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
         assertFalse(response.bodyAsText().contains("cpuPercent"))
     }
+    @Test fun `admin grant fills missing stages despite existing first stage without forging progress`() = runBlocking<Unit> {
+        val admin=user(); val target=user(); val repo=repository(admin)
+        execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'explorer','2026-01-01T00:00:00Z')",target.id)
+        execute("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at) VALUES (?,'explorer',1,'2026-01-01T00:00:00Z')",target.id)
+        val key=UUID.randomUUID()
+        val request=ru.zhiv.admin.AdminGrantRequest(key.toString(),target.publicId,"achievement","explorer","Проверка выдачи всех этапов")
+        val first=repo.grantReward(admin.hash,target.publicId,key,request)
+        assertTrue(first.granted); assertEquals(first,repo.grantReward(admin.hash,target.publicId,key,request))
+        val next=UUID.randomUUID()
+        assertFalse(repo.grantReward(admin.hash,target.publicId,next,request.copy(requestId=next.toString())).granted)
+        val award=JdbcGameRepository(source).achievements(target.hash).achievements.single { it.id=="explorer" }
+        assertEquals("2026-01-01T00:00:00Z",award.unlockedAt)
+        assertEquals(3,award.tiers.count { it.unlockedAt!=null }); assertEquals(200L,award.progress)
+        assertEquals(0L,JdbcEconomyRepository(source).snapshot(target.hash).completedExplorations)
+    }
+
     @Test fun `reward grants are authorized independent idempotent and immutable`() = runBlocking<Unit> {
         val admin=user(); val target=user(); val other=user(); val repo=repository(admin)
         val key=UUID.randomUUID()

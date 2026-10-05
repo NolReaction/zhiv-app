@@ -117,3 +117,6 @@ export function creditDevWorldTaps(owner: string, sourceKey: string, taps: numbe
 }
 
 export function getDevCollectionCount(owner: string): number { return collectionCount(store().get(owner)?.state.collection ?? []); }
+
+/** Read-only legacy ownership for the unified book; does not create a world profile. */
+export function getDevCollectionFinds(owner: string): readonly string[] { return store().get(owner)?.state.collection ?? []; }

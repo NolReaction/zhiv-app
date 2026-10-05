@@ -357,7 +357,8 @@ export function drawFishingProps(ctx: CanvasRenderingContext2D, frame: FishingPr
   const basketOnGround = frame.action === "trade" || frame.action === "pack" || frame.action === "rest"
     || frame.action === "catch" || !!waterAction(frame);
   const basket = anchors.basket ?? { x: frame.x + side * size * (basketOnGround ? .4 : .23), y: frame.y - size * (basketOnGround ? .08 : .3) };
-  const showBasket = anchors.drawBasket !== false && (anchors.drawBasket === true || frame.carryingFish || basketOnGround);
+  const showBasket = anchors.drawBasket ?? Boolean(frame.waterTarget
+    && [frame.waterTarget.x, frame.waterTarget.y].every(Number.isFinite) && !["walk", "greet", "trade"].includes(frame.action));
   const basketScale = anchors.basketScale ?? 1;
   if (showBasket) drawBasket(ctx, basket.x, basket.y, size * .4 * basketScale,
     frame.basketFilled ?? (frame.carryingFish && (frame.action !== "pack" || phase >= FISHING_PACK_RELEASE)), frame.basketSpecies ?? frame.species, false, side);

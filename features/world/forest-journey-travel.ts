@@ -69,7 +69,7 @@ function fishingFrameAt(state: ForestSessionState, scene: FixedWorldScene, trave
     direction: fishingDirection(travel.shore, travel.waterTarget),
     ...(travel.waterTarget ? action : { action: "rest" as const, phase: 0, frame: 0, carryingFish: false }),
     ...(travel.waterTarget ? { waterTarget: fishingCastTarget(scene, travel.waterTarget, state.clearing.size, action.castIndex ?? 0) } : {}),
-    carryingBasket: true, rodId: travel.rodId };
+    rodId: travel.rodId };
 }
 
 function beginFishingEnd(state: ForestSessionState, scene: FixedWorldScene, travel: ForestJourneyTravel) {
@@ -98,7 +98,7 @@ export function forestJourneyFishingFrame(state: ForestSessionState, scene: Fixe
     if (body.residing || body.homeSleeping || body.bush?.occupied || body.opacity < 1) return null;
     return { ...state.clearing.position, size: state.clearing.size, direction: body.direction,
       action: body.pose === "walk" ? "walk" : "idle", phase: 0, frame: body.frame,
-      carryingFish: Boolean(travel.carryingFish), carryingBasket: true, basketSpecies: travel.basketSpecies, rodId: travel.rodId };
+      carryingFish: Boolean(travel.carryingFish), basketSpecies: travel.basketSpecies, rodId: travel.rodId };
   }
   if (travel.phase !== "fishing" || !isClearingAtPoint(state.clearing, travel.shore)) return null;
   const ending = travel.ending;

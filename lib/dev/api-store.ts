@@ -1,6 +1,7 @@
 import { rollingStreakStartedAt } from "@/lib/daily-streak";
 import { isTimeZone, nextLocalDay } from "@/lib/time-zone";
 import type { GameAchievementId, GameAchievements } from "@/features/game/game-api";
+import { GAME_ACHIEVEMENT_TARGETS, economyAchievementProgress, type AchievementProgressState } from "@/features/game/achievement-progress";
 import type {
   CheckInResponse,
   CheckInCalendarResponse,
@@ -31,8 +32,8 @@ import { activeUserStatus, normalizeUserStatus, validStatusDuration } from "@/li
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
-import { resetDevEconomyStoreForTests } from "@/lib/dev/economy-store";
-import { resetDevWorldStoreForTests } from "@/lib/dev/world-store";
+import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales } from "@/lib/dev/economy-store";
+import { resetDevWorldStoreForTests, getDevCollectionFinds } from "@/lib/dev/world-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
 import {
   calculateRollingStreak,
@@ -133,6 +134,7 @@ type RecoveryCodeRecord = {userId:string;active:boolean;consumedAt?:number;retry
 
 type Store = {
   achievementAwards: Map<string, Map<GameAchievementId, string>>;
+  achievementTierAwards: Map<string, Map<GameAchievementId, Map<number, string>>>;
   personNicknames: Map<string, string>;
   favoritePeople: Set<string>;
   recipientSharing: Map<string, SharingRecord>;
@@ -170,6 +172,7 @@ const globalStore = globalThis as typeof globalThis & { __zhivDevStore?: Store }
 function store(): Store {
   globalStore.__zhivDevStore ??= {
     achievementAwards: new Map(),
+    achievementTierAwards: new Map(),
     personNicknames: new Map(),
     favoritePeople: new Set(),
     recipientSharing: new Map(),
@@ -191,6 +194,7 @@ function store(): Store {
     recoveryCodes: new Map(),
   };
   globalStore.__zhivDevStore.achievementAwards ??= new Map();
+  globalStore.__zhivDevStore.achievementTierAwards ??= new Map();
   globalStore.__zhivDevStore.directInviteLinks ??= new Map();
   globalStore.__zhivDevStore.directInviteRedemptions ??= new Map();
   globalStore.__zhivDevStore.recoveryCodes ??= new Map();
@@ -668,7 +672,31 @@ export function awardDevGameTaps(ownerPublicId: string, lifetimeTaps: number, no
   if (userId && bestSeries >= 10_000) awardAchievement(userId, "ten_thousand_series", new Date(now).toISOString());
 }
 
-export function getDevAchievements(token: string | undefined, lifetimeTaps: number, now: number, bestSeries = 0, collectionCount = 0): GameAchievements | null {
+function awardAchievementTiers(userId: string, id: GameAchievementId, progress: number, at: string) {
+  let userTiers = store().achievementTierAwards.get(userId);
+  if (!userTiers) store().achievementTierAwards.set(userId, userTiers = new Map());
+  let dates = userTiers.get(id);
+  if (!dates) userTiers.set(id, dates = new Map());
+  GAME_ACHIEVEMENT_TARGETS[id].forEach((target, index) => {
+    if (progress >= target && !dates!.has(index + 1)) dates!.set(index + 1, at);
+  });
+  if (dates.has(1)) awardAchievement(userId, id, dates.get(1)!);
+}
+
+/** Ordinary successful economic writes call this before the response is returned. */
+export function awardDevEconomyAchievements(ownerPublicId: string, state: AchievementProgressState, now: number) {
+  const userId = store().publicIds.get(ownerPublicId);
+  if (!userId) return;
+  const progress = economyAchievementProgress(state, getDevConfirmedMarketSales(ownerPublicId), getDevCollectionFinds(ownerPublicId));
+  for (const [id, value] of Object.entries(progress)) awardAchievementTiers(userId, id as GameAchievementId, value, new Date(now).toISOString());
+}
+
+export function awardDevMarketSale(ownerPublicId: string, now: number) {
+  const userId = store().publicIds.get(ownerPublicId);
+  if (userId) awardAchievementTiers(userId, "first_sale", 1, new Date(now).toISOString());
+}
+
+export function getDevAchievements(token: string | undefined, lifetimeTaps: number, now: number, bestSeries = 0, collectionCount = 0, catalog = 4): GameAchievements | null {
   const user = sessionUser(token);
   if (!user) return null;
   const serverTime = new Date(now);
@@ -688,14 +716,28 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
   for (const value of values) {
     if (value.progress >= value.target) awardAchievement(user.id, value.id, serverTime.toISOString());
   }
+  const state = getDevEconomyAchievementState(user.publicId);
+  const economic = economyAchievementProgress(state, getDevConfirmedMarketSales(user.publicId), getDevCollectionFinds(user.publicId));
+  for (const [id, progress] of Object.entries(economic)) awardAchievementTiers(user.id, id as GameAchievementId, progress, serverTime.toISOString());
   const awards = store().achievementAwards.get(user.id);
+  const legacy = values.map(value => {
+    const unlockedAt = awards?.get(value.id) ?? null;
+    return { ...value, progress: unlockedAt ? value.target : Math.min(value.progress, value.target), unlockedAt };
+  });
+  const expanded = catalog === 5 ? [...legacy.map(value => ({ ...value, tiers: [{ level: 1, target: value.target, progress: value.progress, unlockedAt: value.unlockedAt }] })),
+    ...Object.entries(economic).map(([id, progress]) => {
+      const typedId = id as GameAchievementId, dates = store().achievementTierAwards.get(user.id)?.get(typedId);
+      const targets = GAME_ACHIEVEMENT_TARGETS[typedId];
+      const floor = targets.filter((_, index) => dates?.has(index + 1)).at(-1) ?? 0;
+      const tiers = targets.map((target, index) => ({ level: index + 1, target,
+        progress: dates?.has(index + 1) ? target : Math.min(target, Math.max(floor, progress)), unlockedAt: dates?.get(index + 1) ?? null }));
+      const current = tiers.find(tier => !tier.unlockedAt) ?? tiers[tiers.length - 1];
+      return { id: typedId, target: current.target, progress: current.progress, unlockedAt: tiers[0].unlockedAt, tiers };
+    })] : legacy;
   return {
     ownerPublicId: user.publicId,
     serverTime: serverTime.toISOString(),
-    achievements: values.map(value => {
-      const unlockedAt = awards?.get(value.id) ?? null;
-      return { ...value, progress: unlockedAt ? value.target : Math.min(value.progress, value.target), unlockedAt };
-    }),
+    achievements: expanded,
   };
 }
 

@@ -51,6 +51,39 @@ internal fun recordMergedAchievements(connection: Connection, userId: UUID, at: 
     recordFriendAchievement(connection,userId,at)
     recordSecurityAchievements(connection,userId)
     recordCollectionAchievement(connection,userId,at)
+    recordEconomyAchievements(connection,userId,at = at)
+}
+
+/** New stages have their own durable dates. Admin grants do not modify counters. */
+internal fun recordAchievementTiers(connection: Connection, userId: UUID, id: String, progress: Long, at: OffsetDateTime): Boolean {
+    val levels = ru.zhiv.game.GameRewards.tiers.getValue(id).mapIndexedNotNull { index, target ->
+        if (progress >= target) index + 1 else null
+    }
+    if (levels.isEmpty()) return false
+    val baseInserted = connection.economyUpdate("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING", userId,id,at) > 0
+    var inserted = baseInserted
+    levels.forEach { level ->
+        if (connection.economyUpdate("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", userId,id,level,at) > 0) inserted = true
+    }
+    return inserted
+}
+
+internal fun readEconomyAchievementProgress(connection: Connection, userId: UUID,
+    state: ru.zhiv.economy.EconomyState? = null): Map<String, Long> {
+    val current = state ?: if (connection.economyRows("SELECT 1 FROM economy_profiles WHERE user_id=?",userId) { true }.isNotEmpty())
+        readEconomyProfile(connection,userId).state else null
+    val inherited = connection.economyRows("SELECT state->'collection' FROM world_profiles WHERE user_id=?",userId) {
+        ru.zhiv.economy.economyJson.decodeFromString<List<String>>(it.getString(1) ?: "[]")
+    }.firstOrNull().orEmpty()
+    val sold = connection.economyRows("SELECT EXISTS(SELECT 1 FROM economy_market_listings WHERE status='sold' AND seller_id IN (SELECT user_id FROM account_history_user_ids(?)))",userId) { it.getBoolean(1) }.single()
+    return ru.zhiv.game.economyAchievementProgress(current,sold,inherited)
+}
+
+/** Caller holds the same user lock as the qualifying economic write. */
+internal fun recordEconomyAchievements(connection: Connection, userId: UUID, state: ru.zhiv.economy.EconomyState? = null,
+    at: OffsetDateTime? = null) {
+    val instant = at ?: connection.economyRows("SELECT clock_timestamp()") { it.getObject(1,OffsetDateTime::class.java) }.single()
+    readEconomyAchievementProgress(connection,userId,state).forEach { (id, progress) -> recordAchievementTiers(connection,userId,id,progress,instant) }
 }
 
 /** Only verified identities and activated code hashes qualify; never raw secrets. */
