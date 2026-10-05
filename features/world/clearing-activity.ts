@@ -1,7 +1,8 @@
 import { campfireFootprint } from "./forest-campfire";
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
-import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
+import { bushConcealStart } from "./forest-bush-conceal";
+import type { FixedWorldScene, WorldBush, WorldPath, WorldPoint } from "./tiled/types";
 import { canTraverse, canTraverseWorldObstacle, createWorldNavigation, findWorldPath, isWalkable,
   withWorldNavigationObstacle, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./steering";
@@ -10,7 +11,7 @@ import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type
 import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
-type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint };
+type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint; concealStart: number };
 type BushBurst = { at: number; strength: number; seed: number };
 type BushEffect = { id: string; elapsed: number; seed: number; emitted: number; bursts: BushBurst[] };
 type ActionStep = { pose: PixelPose; seconds: number; direction?: PixelDirection };
@@ -108,6 +109,9 @@ function inside(point: WorldPoint, polygon: WorldPoint[]) {
   }
   return result;
 }
+function clearingBush(bush: WorldBush): ClearingBush {
+  return { id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide }, concealStart: bushConcealStart(bush) };
+}
 function intersects(a: WorldPoint, b: WorldPoint, c: WorldPoint, d: WorldPoint) {
   const cross = (p: WorldPoint, q: WorldPoint, r: WorldPoint) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
   return cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0;
@@ -142,7 +146,8 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
   if (bush && (!finitePoint(bush.entry) || !finitePoint(bush.hide) || bush.points.length < 3
     || bush.points.some(point => !finitePoint(point)) || !inside(bush.hide, bush.points))) return "invalid-bush";
   if (bush && distance(path.points.at(-1)!, bush.entry) > .001) return "bush-end-away-from-entry";
-  if (bush && (distance(bush.entry, bush.hide) < actor.size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump)) return "invalid-bush-corridor";
+  if (bush && (distance(bush.entry, bush.hide) < actor.size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump
+    || bushConcealStart(bush) >= 1 - 1e-8)) return "invalid-bush-corridor";
   const radius = Math.min(focus.width * .3, WORLD_INTERACTION_LIMITS.localRouteRadius), clearance = actor.size * .1;
   const points = [{ ...actor.spawn }, ...path.points.slice(1)];
   let length = 0;
@@ -223,7 +228,7 @@ function compileRoute(path: WorldPath, home: WorldPoint, scene: FixedWorldScene)
   for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + distance(points[i - 1], points[i]));
   const bush = path.bushId ? scene.bushes?.find(item => item.id === path.bushId) : undefined;
   return { id: path.id, points, distances, length: distances.at(-1)!, activity: path.activity ?? "look", pauseSeconds: path.pauseSeconds,
-    ...(bush ? { bush: { id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide } } } : {}) };
+    ...(bush ? { bush: clearingBush(bush) } : {}) };
 }
 export function createClearingActivity(scene: FixedWorldScene, seed = Math.random() * 0x100000000): ClearingActivityState {
   const diagnostics = clearingRouteDiagnostics(scene), home = { ...scene.actor?.spawn ?? { x: scene.focus.x + scene.focus.width / 2, y: scene.focus.y + scene.focus.height / 2 } };
@@ -417,7 +422,7 @@ function startDynamicInteraction(state: ClearingActivityState, interaction: Worl
   if (!approach) { state.behavior.reason = `${interaction.kind}-unreachable`; return false; }
   const route: ClearingRoute = { ...navigatedRoute(state, approach.points, interaction.id,
     interaction.kind === "bush" ? "bush" : "look", interaction.kind === "home" && approach.departure.length > 1),
-    ...(interaction.kind === "bush" ? { bush: { id: interaction.id, entry: { ...interaction.entry }, hide: { ...interaction.hide } },
+    ...(interaction.kind === "bush" ? { bush: { id: interaction.id, entry: { ...interaction.entry }, hide: { ...interaction.hide }, concealStart: interaction.concealStart },
       pauseSeconds: interaction.pauseSeconds } : {}) };
   state.activeInteraction = { kind: interaction.kind, route, departure: approach.departure.map(point => ({ ...point })) };
   state.freeRoute = null; state.freePurpose = null; state.routeIndex = -1;
@@ -920,7 +925,13 @@ function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame>
     return age < 0 || age > 1.3 ? sum : sum + item.strength * smooth(age / .08) * Math.exp(-age * 3.5)
       * (.8 + .2 * Math.cos(age * 20));
   }, 0);
-  const foliage = { id, rustle: clamp(rustle), occlude: Boolean(routeBush), occupied: bushStage(state.stage),
+  // A live HMR session can still own a route compiled before this depth field
+  // existed. Only its airborne phases use the safe temporal fallback.
+  const start = routeBush && Number.isFinite(routeBush.concealStart) && routeBush.concealStart >= 0 && routeBush.concealStart < 1 - 1e-8
+    ? routeBush.concealStart : 0;
+  const conceal = routeBush && ["bush-enter", "bush-hidden", "bush-exit"].includes(state.stage)
+    ? state.stage === "bush-hidden" ? 1 : smooth((state.bushProgress - start) / (1 - start)) : 0;
+  const foliage = { id, rustle: clamp(rustle), occlude: conceal >= 1, occupied: bushStage(state.stage),
     elapsed: matchingEffect?.elapsed ?? 0, bursts: matchingEffect?.bursts ?? [] };
   if (!routeBush || !bushStage(state.stage)) return { bush: foliage };
   const timing = bushJumpTiming(routeBush, state.size);
@@ -947,7 +958,7 @@ function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame>
     pose = t < .3 ? "jump" : t < .85 ? "shake" : "blink";
     frame = Math.floor(t * 5) % 4;
   }
-  return { bush: foliage, lift, compression: clamp(compression), pose, frame };
+  return { bush: foliage, opacity: 1 - conceal, lift, compression: clamp(compression), pose, frame };
 }
 
 export function clearingActivityFrame(state: ClearingActivityState, options: { still?: boolean } = {}): ClearingActivityFrame {

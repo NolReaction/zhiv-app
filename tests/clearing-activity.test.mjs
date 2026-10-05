@@ -12,6 +12,7 @@ const { createClearingActivity, advanceClearingActivity, clearingActivityFrame,
   clearingRouteDiagnostics, isClearingAtHome, returnClearingHome, noticeClearingActivity,
   requestClearingSleep, canStartClearingLife, CLEARING_HOME_IDLE_SECONDS, CLEARING_AWAKE_GRACE_SECONDS } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { bushConcealStart } = await vite.ssrLoadModule("/features/world/forest-bush-conceal.ts");
 const conditions = { enabled: true, blocked: false, dusk: 0, rain: 0 };
 const point = (x, y) => ({ x, y });
 const route = (id = "first", activity = "look") => ({ id, behavior: "clearing", activity,
@@ -389,6 +390,37 @@ test("bush routes require an authored reachable entry and validate the whole jum
   }
 });
 
+test("bush depth declines a boundary-only corridor and stays finite for old live routes", () => {
+  const polygon = rect(0, 0, 10, 10);
+  assert.equal(bushConcealStart({ points: polygon, entry: point(-5, 5), hide: point(5, 5) }), .5);
+  assert.equal(bushConcealStart({ points: polygon, entry: point(0, 5), hide: point(5, 5) }), 0);
+  assert.equal(bushConcealStart({ points: polygon, entry: point(5, 5), hide: point(5, 5) }), 0);
+  assert.equal(bushConcealStart({ points: polygon, entry: point(-5, 5), hide: point(0, 5) }), 1);
+  const boundary = structuredClone(TILED_WORLD), bush = boundary.bushes[0];
+  bush.points = rect(540, 590, 40, 10); bush.hide = point(540, 590);
+  const declined = createClearingActivity(boundary, 17);
+  assert.equal(declined.diagnostics.find(item => item.id === boundary.paths.find(path => path.bushId === bush.id).id).reason,
+    "invalid-bush-corridor", "a tangent endpoint cannot finish a smooth conceal transition");
+  assert.equal(declined.interactions.diagnostics.find(item => item.id === bush.id).reason, "invalid-bush-corridor");
+  assert.equal(requestClearingBush(declined), false);
+  for (const stale of [undefined, NaN, 1]) {
+    const state = createClearingActivity(TILED_WORLD, 17);
+    requestClearingBush(state); until(state, s => s.stage === "bush-prepare");
+    const routeBush = state.activeInteraction?.route.bush ?? state.routes[state.routeIndex].bush;
+    routeBush.concealStart = stale;
+    assert.equal(clearingActivityFrame(state).opacity, 1, "old preparation stays fully visible");
+    let faded = false, hidden = false;
+    for (let t = 0; t < 20 && !hidden; t += .0125) {
+      advanceClearingActivity(state, .0125, conditions);
+      const frame = clearingActivityFrame(state);
+      assert.ok(Number.isFinite(frame.opacity));
+      faded ||= frame.opacity > 0 && frame.opacity < 1;
+      hidden ||= state.stage === "bush-hidden";
+    }
+    assert.ok(faded && hidden); assert.equal(clearingActivityFrame(state).opacity, 0);
+  }
+});
+
 test("only the final authored bush entry may extend the local radius and every safety check still applies", () => {
   const extended = () => {
     const source = bushScene();
@@ -447,10 +479,10 @@ test("bush play walks, anticipates, jumps behind foliage, rustles, exits, lands 
     started ||= state.stage === "outbound";
     jumped ||= (frame.lift ?? 0) > 5;
     if (state.stage === "bush-hidden") {
-      hidden = true; assert.equal(frame.opacity, 1); assert.equal(frame.bush.occlude, true);
+      hidden = true; assert.equal(frame.opacity, 0); assert.equal(frame.bush.occlude, true);
       assert.deepEqual(state.position, bushScene().bushes[0].hide);
       rustled ||= frame.bush.rustle > .4;
-    } else assert.equal(frame.opacity, 1, "ground travel is hidden by foliage, never faded in empty air");
+    } else if (!["bush-enter", "bush-exit"].includes(state.stage)) assert.equal(frame.opacity, 1, "approach and preparation stay visible");
     if (state.stage !== "home") assert.equal(frame.attention, true, "explicit DEV scene finishes even if automatic life is off");
   }
   assert.ok(jumped && hidden && rustled);
@@ -577,7 +609,7 @@ test("requesting a bush scene wakes from home sleep and resets the inactivity de
 });
 
 
-test("bush entry and emergence keep opaque body geometry continuous behind an uninterrupted contour", () => {
+test("bush entry and emergence fade only after ground contact while keeping body geometry continuous", () => {
   const state = createClearingActivity(bushScene(), 7);
   requestClearingBush(state);
   let previous = clearingActivityFrame(state), started = false, tucked = false, returned = false;
@@ -586,11 +618,12 @@ test("bush entry and emergence keep opaque body geometry continuous behind an un
     const frame = clearingActivityFrame(state);
     started ||= state.stage === "outbound";
     returned ||= state.stage === "return";
-    assert.equal(frame.opacity, 1, "foliage provides hiding; the actor never disappears by alpha");
+    assert.ok(frame.opacity >= 0 && frame.opacity <= 1);
+    assert.ok(Math.abs(frame.opacity - previous.opacity) < .15, `${state.stage}: concealment changes continuously`);
     assert.ok(Math.abs((frame.lift ?? 0) - (previous.lift ?? 0)) < 1, `${state.stage}: lift should settle without a pop`);
     assert.ok(Math.abs((frame.compression ?? 0) - (previous.compression ?? 0)) < .1, `${state.stage}: body tucks continuously`);
     if (state.stage !== "home") {
-      assert.equal(frame.bush?.occlude, true, `${state.stage}: the same contour covers every part of the approach and retreat`);
+      assert.equal(frame.bush?.occlude, frame.opacity === 0, `${state.stage}: foreground begins only after the body is hidden`);
       assert.equal(frame.bush.occupied, state.stage.startsWith("bush-"));
     }
     if (state.stage === "bush-hidden") {
@@ -600,6 +633,32 @@ test("bush entry and emergence keep opaque body geometry continuous behind an un
     previous = frame;
   }
   assert.ok(tucked && returned);
+});
+
+test("real bush depth preserves the complete approach and anticipatory pose at several actor sizes", () => {
+  for (const size of [36, 50, 65]) {
+    const source = structuredClone(TILED_WORLD); source.actor.size = size;
+    const state = createClearingActivity(source, 17);
+    assert(requestClearingBush(state));
+    until(state, s => s.stage === "bush-prepare");
+    const bush = state.activeInteraction?.route.bush ?? state.routes[state.routeIndex].bush;
+    assert(bush.concealStart > .5 && bush.concealStart < 1, "contact is calculated from the actual leaf contour");
+    let faded = false, hidden = false, emerged = false;
+    for (let elapsed = 0; elapsed < 20 && !emerged; elapsed += .0125) {
+      advanceClearingActivity(state, .0125, conditions);
+      const frame = clearingActivityFrame(state);
+      if (state.stage === "bush-prepare" || state.stage === "bush-enter" && state.bushProgress <= bush.concealStart) {
+        assert.equal(frame.opacity, 1); assert.equal(frame.bush.occlude, false);
+      }
+      if (state.stage === "bush-enter" && frame.opacity > 0 && frame.opacity < 1) faded = true;
+      if (state.stage === "bush-hidden") { hidden = true; assert.equal(frame.opacity, 0); }
+      if (state.stage === "bush-exit" && hidden && state.bushProgress < bush.concealStart) {
+        assert.equal(frame.opacity, 1); assert.equal(frame.bush.occlude, false); emerged = true;
+      }
+      assert.deepEqual(clearingActivityFrame(state, { still: true }).opacity, frame.opacity);
+    }
+    assert(faded && hidden && emerged);
+  }
 });
 
 test("bush contact emits bounded one-shot berry bursts that freeze and finish after leaving", () => {

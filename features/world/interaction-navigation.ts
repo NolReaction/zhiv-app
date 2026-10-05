@@ -3,6 +3,7 @@ import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
 import interactionLimits from "./interaction-limits.json";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
+import { bushConcealStart } from "./forest-bush-conceal";
 
 type InteractionAccess = {
   id: string; entry: WorldPoint;
@@ -11,7 +12,7 @@ type InteractionAccess = {
   departure: WorldPoint[];
 };
 export type WorldHomeInteraction = InteractionAccess & { kind: "home"; doorway: WorldPoint };
-export type WorldBushInteraction = InteractionAccess & { kind: "bush"; hide: WorldPoint; pauseSeconds?: number };
+export type WorldBushInteraction = InteractionAccess & { kind: "bush"; hide: WorldPoint; concealStart: number; pauseSeconds?: number };
 export type WorldInteraction = WorldHomeInteraction | WorldBushInteraction;
 export type WorldInteractions = {
   home: WorldHomeInteraction | null; bushes: WorldBushInteraction[];
@@ -112,7 +113,8 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
     let reason: string | null = null;
     if (!finite(bush.entry) || !finite(bush.hide) || bush.points.length < 3 || !bush.points.every(finite)
       || !inside(bush.hide, bush.points)) reason = "invalid-bush";
-    else if (distance(bush.entry, bush.hide) < size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump) reason = "invalid-bush-corridor";
+    else if (distance(bush.entry, bush.hide) < size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump
+      || bushConcealStart(bush) >= 1 - 1e-8) reason = "invalid-bush-corridor";
     else if (!forestBushArtworkAvailable(scene, bush)) reason = "missing-bush-artwork";
     else if (!isWalkable(nav, bush.entry)) reason = "unreachable-bush-entry";
     else if (!corridorClear(scene, bush.entry, bush.hide, nav.radius)) reason = "blocked-bush-corridor";
@@ -122,7 +124,7 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
       if (!visibleFoot(scene, point, size, Math.sin(t * Math.PI) * size * .28)) { reason = "outside-focus"; break; }
     }
     record(bush.id, reason);
-    if (!reason) result.bushes.push({ kind: "bush", id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide },
+    if (!reason) result.bushes.push({ kind: "bush", id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide }, concealStart: bushConcealStart(bush),
       dock: { ...bush.entry }, departure: copy([bush.entry]) });
   }
   return result;

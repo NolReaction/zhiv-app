@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, LockKeyhole, MoreHorizontal, Package, Shirt, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, LockKeyhole, MoreHorizontal, Package, PawPrint, Shirt, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "./decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -49,7 +49,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const requestedObjectReturn = useRef<HTMLElement | null>(null);
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
-  const [moreCharactersOpen, setMoreCharactersOpen] = useState(false);
+  const [charactersOpen, setCharactersOpen] = useState(false);
+  const leavingCharacters = useRef(false);
   const [expeditionSector, setExpeditionSector] = useState<SectorId>("forest");
   const [residentOpen, setResidentOpen] = useState(false);
   const [residentFromCharacters, setResidentFromCharacters] = useState(false);
@@ -86,13 +87,13 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   }, [hasWorld]);
   const clearObject = useCallback(() => { selectedId.current = null; setSelection(null); }, []);
   const closeQuick = useCallback(() => {
-    setQuickMenu(null); setMoreCharactersOpen(false);
+    setQuickMenu(null); setCharactersOpen(false);
     if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
   }, []);
   const openQuick = useCallback((next: QuickMenu, sector: SectorId = "forest") => {
     quickReturn.current = worldElement.current?.querySelector<HTMLElement>(`[data-world-quick="${next}"]`) ?? null;
     if (next === "expeditions") setExpeditionSector(sector);
-    clearObject(); setPanel(null); setMoreCharactersOpen(false); setQuickMenu(next);
+    clearObject(); setPanel(null); setCharactersOpen(false); setQuickMenu(next);
   }, [clearObject]);
   const openResident = useCallback(() => {
     residentReturn.current = quickMenu ? quickReturn.current : document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -102,12 +103,17 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   }, [clearObject, quickMenu]);
   const closeResident = useCallback(() => {
     setResidentOpen(false);
-    if (residentFromCharacters) { setMoreCharactersOpen(true); setQuickMenu("more"); }
+    if (residentFromCharacters) setCharactersOpen(true);
   }, [residentFromCharacters]);
   const openCharacterResident = (id: "plesk") => {
     if (id !== "plesk") return;
+    leavingCharacters.current = true; setCharactersOpen(false);
     openResident(); setResidentFromCharacters(true);
   };
+  const openCharacters = () => {
+    leavingCharacters.current = false; clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(true);
+  };
+  const closeCharacters = () => { setCharactersOpen(false); setQuickMenu("more"); };
   const leaveResident = (next: () => void) => {
     leavingResident.current = true; setResidentFromCharacters(false); setResidentOpen(false); next();
   };
@@ -219,11 +225,11 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
     <WorldScene economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
-      hideJourneyStatus hideMapControls={quickMenu !== null || selection !== null || residentOpen} onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
-      constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen}
+      hideJourneyStatus hideMapControls={quickMenu !== null || selection !== null || residentOpen || charactersOpen} onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
+      constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
-    {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && quickUpgrade === null && !residentOpen}
+    {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && quickUpgrade === null && !residentOpen && !charactersOpen}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header ref={topHud} className={hudStyles.hud}>
@@ -259,7 +265,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         <button data-world-quick="more" aria-haspopup="dialog" aria-expanded={quickMenu === "more"} aria-controls={quickMenu === "more" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("more")}><MoreHorizontal size={19} aria-hidden="true" /><span>Ещё</span></button>
       </nav>
     </div>
-    {quickMenu && <section ref={quickFrame} id="world-quick-menu" className={hudStyles.quickMenu} data-kind={quickMenu} data-characters-open={quickMenu === "more" && moreCharactersOpen || undefined} role="dialog" aria-modal="false" aria-labelledby="world-quick-title" tabIndex={-1}
+    {quickMenu && <section ref={quickFrame} id="world-quick-menu" className={hudStyles.quickMenu} data-kind={quickMenu} role="dialog" aria-modal="false" aria-labelledby="world-quick-title" tabIndex={-1}
       onPointerDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeQuick(); } }}>
       <header className={hudStyles.quickHeader}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickTitle}</h2><button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick}><X size={18} aria-hidden="true" /></button></header>
       <div className={hudStyles.quickBody}>
@@ -267,7 +273,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={openResident} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={openResident} />}
         {quickMenu === "more" && <div className={hudStyles.moreActions}>
-          <WorldCharacters expanded={moreCharactersOpen} onToggle={() => setMoreCharactersOpen(open => !open)} onResident={openCharacterResident} />
+          <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={hudStyles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" />Рынок</button>
           <button onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" />Гардероб</button>
           <button onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" />Коллекции</button>
@@ -275,6 +281,12 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         </div>}
       </div>
     </section>}
+    <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (leavingCharacters.current) { leavingCharacters.current = false; return; }
+        worldElement.current?.querySelector<HTMLElement>('[data-world-characters-trigger]')?.focus({ preventScroll: true });
+      }} />
     <WorldResidentDialog open={residentOpen} economy={economy} onClose={closeResident} onBack={residentFromCharacters ? closeResident : undefined}
       onFishing={() => leaveResident(() => openQuick("expeditions", "shore"))}
       onOpenPantry={() => leaveResident(() => openQuick("pantry"))}
@@ -283,7 +295,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         if (leavingResident.current) { leavingResident.current = false; quickFrame.current?.focus({ preventScroll: true }); return; }
         if (residentFromCharacters) {
           setResidentFromCharacters(false);
-          worldElement.current?.querySelector<HTMLElement>('[data-world-character="plesk"]')?.focus({ preventScroll: true });
+          // The gallery lives in a portal; its own open autofocus restores the card.
           return;
         }
         if (residentReturn.current?.isConnected) residentReturn.current.focus({ preventScroll: true });

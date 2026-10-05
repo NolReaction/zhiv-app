@@ -36,8 +36,8 @@ export type FishingShoreRig = {
 export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: "mochlik" | "plesk" = "mochlik"): FishingShoreRig {
   const { x, size, action, direction } = frame, phase = still ? .5 : clamp(frame.phase);
   const plesk = style === "plesk";
-  const arm = (shoulder: WorldPoint, hand: WorldPoint, bend: number) => fishingArm(shoulder, hand, size, bend,
-    plesk ? { upper: .12, lower: .13 } : undefined);
+  const arm = (shoulder: WorldPoint, hand: WorldPoint, bend: number, far = false) => fishingArm(shoulder, hand, size, bend,
+    !plesk && far ? { upper: .15, lower: .16 } : { upper: .12, lower: .13 });
   const walking = action === "walk" && !still;
   const y = frame.y - (walking && frame.frame % 2 ? size / 24 : 0);
   const side = direction === "left" ? -1 : 1;
@@ -54,7 +54,7 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   const effort = pulling && frame.variation === "struggle" && !still ? Math.sin(phase * Math.PI) * (1 + Math.sin(phase * Math.PI * 6)) / 2 : 0;
   const escape = frame.outcome === "miss", check = frame.variation === "check" ? Math.sin(phase * Math.PI) : 0;
   const handoff = pulling ? smooth((phase - FISHING_REEL_HANDOFF) / (1 - FISHING_REEL_HANDOFF)) : 0;
-  const lean = packing ? -side * Math.sin(phase * Math.PI) : casting ? side * (-1 + castStroke * 2)
+  const lean = packing ? (plesk ? side : -side) * Math.sin(phase * Math.PI) : casting ? side * (-1 + castStroke * 2)
     : preparing ? -side * smooth(phase) : pulling ? -side * (1 - smooth(phase)) * (1 + effort)
       : action === "bite" ? side * (1 - hookSet * 3 + smooth((phase - .5) / .5)) : action === "fish" ? side : 0;
   const crouch = packing ? Math.round(Math.sin(phase * Math.PI) * 2) : pulling ? Math.round(effort)
@@ -62,14 +62,18 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   const bodyOffset = Math.round(lean) * size / 48;
   // Shoulders remain anatomical through all phase buckets, including the end
   // of a waiting/check action. Only the free hand leaves the reel at handoff.
-  const nearShoulder = { x: x + bodyOffset + side * size * (plesk ? .16 : .15), y: y - size * (plesk ? .31 : .26) };
-  const farShoulder = { x: x + bodyOffset + (plesk ? side * size * .12 : 0), y: y - size * (plesk ? .31 : .26) };
-  const gripX = x + size * (side * (plesk ? .23 : .32) + ux * (plesk ? .02 : .05));
-  const waiting = { x: gripX, y: y - size * (plesk ? .33 : .29) };
-  const raised = { x: gripX + (plesk ? side * size * .045 - ux * size * .035 : -ux * size * .055), y: y - size * (plesk ? .34 : .36) };
-  const landed = { x: x + side * size * (plesk ? .18 : .22), y: y - size * (plesk ? .3 : .29) };
-  const biteGrip = { x: gripX - side * size * (plesk ? .025 : .045) - ux * size * (plesk ? .02 : .035), y: y - size * (plesk ? .35 : .34) };
-  const restingGrip = { x: x + side * size * (plesk ? .18 : .22), y: y - size * (plesk ? .3 : .23) };
+  const nearShoulder = { x: x + bodyOffset + side * size * (plesk ? .16 : .19), y: y - size * .31 };
+  // The supporting shoulder turns toward the basket only during the real
+  // handoff. Waiting never pulls it around the body at a phase boundary.
+  const farOffset = plesk ? .23 : landing || resting || traveling ? -.16
+    : pulling ? .11 - .27 * handoff : preparing ? -.16 + .27 * smooth(phase / .45) : .11;
+  const farShoulder = { x: x + bodyOffset + side * size * farOffset, y: y - size * .31 };
+  const gripX = x + size * (side * (plesk ? .23 : .25) + ux * .02);
+  const waiting = { x: gripX, y: y - size * (plesk ? .33 : .3) };
+  const raised = { x: gripX + (plesk ? side * size * .045 - ux * size * .035 : -ux * size * .025), y: y - size * .34 };
+  const landed = { x: x + side * size * (plesk ? .18 : .23), y: y - size * (plesk ? .3 : .29) };
+  const biteGrip = { x: gripX - side * size * (plesk ? .025 : .035) - ux * size * .02, y: y - size * (plesk ? .35 : .33) };
+  const restingGrip = { x: x + side * size * (plesk ? .18 : .23), y: y - size * (plesk ? .3 : .26) };
   const desiredGrip = traveling ? plesk && action === "greet" ? { x: x + side * size * .2, y: y - size * (.3 + .12 * Math.sin(phase * Math.PI)) } : restingGrip
     : landing ? landed : resting ? mix(landed, restingGrip, smooth(phase / .4))
     : casting ? mix(raised, waiting, castStroke) : preparing ? mix(restingGrip, raised, smooth(phase))
@@ -77,19 +81,21 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
         : { ...waiting, y: waiting.y - size * check * .015 };
   const nearArm = arm(nearShoulder, desiredGrip, side);
   const grip = nearArm.hand;
-  const heldFish = { x: x + side * size * (plesk ? .19 : -.23), y: y - size * (plesk ? .27 : .28) };
+  const heldFish = { x: x + side * size * (plesk ? .25 : -.23), y: y - size * (plesk ? .27 : .28) };
   const basketScale = plesk ? .8 : .775;
   const carryingBasket = frame.carryingBasket || frame.carryingFish;
-  const basket = { x: x + side * size * (plesk ? traveling ? .23 : .29 : traveling ? -.29 : -.4),
-    y: y - size * (plesk ? traveling ? .19 : .144 : traveling ? .15 : .173 * basketScale) };
+  // At the basket's widest painted rim the half-width is .168size; .46 puts
+  // that rim beyond Pleska's .23size torso with a visible gap on the ground.
+  const basket = { x: x + side * size * (plesk ? .46 : traveling ? -.29 : -.4),
+    y: y - size * (plesk ? traveling ? .144 : .1296 : traveling ? .15 : .173 * basketScale) };
   if (plesk && action === "trade") {
     const placed = smooth(phase / .2);
-    basket.x += side * size * .06 * placed; basket.y += size * .046 * placed;
+    basket.y += size * .0144 * placed;
   }
   const actualFish = packing ? fishingPackCenter(heldFish, basket, size, phase, basketScale) : heldFish;
-  if (plesk && packing) {
-    // Her basket sits beside the short paws: clear its rim with a low arc,
-    // without lifting a large catch back across the muzzle.
+  if (packing) {
+    // Shore baskets sit beside the short paws: clear the rim with a low arc,
+    // without lifting a large catch back across the eyes or muzzle.
     actualFish.y += Math.sin(smooth(phase / FISHING_PACK_RELEASE) * Math.PI) * size * .12;
   }
   let elevation = plesk ? landing ? 1.05 : resting ? 1.05 - .1 * smooth(phase / .4)
@@ -118,7 +124,7 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
       : pulling ? mix(reelHand, escape ? relaxed : catchFrame.wrist, escape ? smooth((phase - .65) / .35) : handoff)
         : preparing ? mix(relaxed, support, smooth(phase / .45))
           : casting || action === "fish" || action === "bite" ? support : relaxed;
-  const farArm = arm(farShoulder, desiredFar, -side);
+  const farArm = arm(farShoulder, desiredFar, -side, true);
   const pose: PixelPose = action === "walk" ? "fishing-walk" : escape && action === "rest" ? "blink"
     : resting || traveling ? "idle" : action === "bite" || pulling && escape && phase < .6 ? "wonder"
       : action === "catch" ? "present" : "fish";
@@ -137,7 +143,7 @@ export function fishingShoreRig(frame: FishingPropFrame, still: boolean, style: 
   result.rodTip = mix(from.rodTip, result.rodTip, t);
   result.basket = mix(from.basket, result.basket, t);
   result.nearArm = arm(result.nearShoulder, result.nearHand, side);
-  result.farArm = arm(result.farShoulder, result.farHand, -side);
+  result.farArm = arm(result.farShoulder, result.farHand, -side, true);
   result.lean = from.lean + (result.lean - from.lean) * t;
   result.crouch = Math.round(from.crouch + (result.crouch - from.crouch) * t);
   result.pose = t < 1 ? from.pose : result.pose;

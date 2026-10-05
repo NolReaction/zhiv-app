@@ -225,6 +225,22 @@ test("a completed deposit rests once, then prepares the next cast without resett
   assert.ok(preparing.grip.y < paused.grip.y, "only the check stage starts the new backswing");
 });
 
+test("Pleska's ground basket rim clears her painted torso instead of covering the chest and paws", () => {
+  const base = { x: 1214, y: 744, size: 36, direction: "front", frame: 0,
+    waterTarget: pleskLocalPlaces(actualWorld).waterTarget, species: "fish_mooncarp", catchScale: 1.35, outcome: "large" };
+  for (const action of ["fish", "catch", "pack", "idle"]) for (const phase of [0, .2, .5, .67, 1]) {
+    const frame = { ...base, action, phase, carryingFish: ["catch", "pack"].includes(action) };
+    const ctx = context(); drawPleskResident(ctx, frame, false);
+    const [sprite, originX] = ctx.draws[0].args, body = pleskSpriteRig(sprite);
+    const anchors = pleskFishingAnchors(frame, body, false), pixel = frame.size / 48;
+    const torsoRight = Math.max(...[...sprite.pixels.keys()].map(key => key.split(":").map(Number))
+      .filter(([, y]) => y >= 30 && y <= 41).map(([x]) => originX + (x + 1) * pixel));
+    const rimLeft = anchors.basket.x - frame.size * .4 * anchors.basketScale * .525;
+    assert.ok(rimLeft >= torsoRight + pixel * .5, `${action}/${phase}: the widest painted rim must leave a visible half-pixel gap`);
+    assert.ok(anchors.farArm.reachable && anchors.nearArm.reachable, "moving the basket cannot disconnect its supporting paw");
+  }
+});
+
 test("the round face keeps its short muzzle inside the skull and its clip on one anatomical temple", () => {
   const front = pleskSpriteRig(pleskSprite("idle", "front", 0));
   const back = pleskSpriteRig(pleskSprite("idle", "back", 0));

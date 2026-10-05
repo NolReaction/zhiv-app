@@ -63,28 +63,28 @@ test("the library has one implemented resident and four nameless immutable unkno
   for (const id of ["unknown", "home", "mochlik", "", "__proto__"]) assert.equal(worldCharacterResident(id), null);
 });
 
-test("disclosure labels its state and exposes only Pleska as a conversation action", () => {
-  let toggles = 0;
-  const residents = [], props = { expanded: false, onToggle() { toggles++; }, onResident: id => residents.push(id) };
-  const closed = WorldCharacters(props);
-  const trigger = elements(closed).find(element => element.props["data-world-characters-trigger"] !== undefined);
-  assert.equal(trigger.props["aria-expanded"], false); trigger.props.onClick(); assert.equal(toggles, 1);
-  const closedHtml = renderToStaticMarkup(closed);
-  assert.match(closedHtml, /Персонажи/); assert.doesNotMatch(closedHtml, /Плёска|<ul|<canvas/);
-  const opened = WorldCharacters({ ...props, expanded: true });
-  const html = renderToStaticMarkup(opened), buttons = elements(opened).filter(element => element.type === "button");
-  assert.match(html, /aria-expanded="true" aria-controls="world-characters-list"/);
-  assert.match(html, /<ul[^>]+aria-label="Персонажи леса"/);
-  assert.equal(buttons.filter(element => element.props.disabled).length, 4);
-  for (const button of buttons.filter(element => element.props.disabled)) {
-    assert.equal(button.props.onClick, undefined); assert.equal(button.props["aria-haspopup"], undefined);
-    assert.equal(button.props["aria-label"], "Неизвестный персонаж, пока недоступен");
+test("a separate modal gallery has one large animated resident and four nameless noninteractive silhouettes", () => {
+  const residents = []; let closed = 0;
+  const gallery = WorldCharacters({ open: true, onClose() { closed++; }, onCloseAutoFocus() {}, onResident: id => residents.push(id) });
+  assert.equal(gallery.props.open, true);
+  gallery.props.onOpenChange(false); assert.equal(closed, 1);
+  const nodes = elements(gallery), list = nodes.find(element => element.type === "ul");
+  const html = renderToStaticMarkup(list);
+  const available = nodes.find(element => element.props["data-world-character"] === "plesk");
+  assert.equal(available.props["aria-haspopup"], "dialog"); available.props.onClick(); assert.deepEqual(residents, ["plesk"]);
+  assert.equal(nodes.filter(element => element.props["aria-label"] === "Неизвестный персонаж, пока недоступен").length, 4);
+  for (const node of nodes.filter(element => element.props["aria-label"] === "Неизвестный персонаж, пока недоступен")) {
+    assert.equal(node.type, "div"); assert.equal(node.props.onClick, undefined); assert.equal(node.props.tabIndex, undefined);
   }
-  const available = buttons.find(element => element.props["data-world-character"] === "plesk");
-  assert.equal(available.props["aria-haspopup"], "dialog"); available.props.onClick();
-  assert.deepEqual(residents, ["plesk"]);
+  assert.equal(elements(available).find(element => element.type.name === "PleskPortrait").props.animated, true);
+  assert.equal(list.props.children[0].key, "plesk", "the only available resident is first");
+  assert.equal((html.match(/<canvas/g) ?? []).length, 1);
   assert.equal((html.match(/class="[^\"]*question[^\"]*"/g) ?? []).length, 4);
   assert.doesNotMatch(html, /Шишколап|Лопоух|Камнешмыг|Листохвост|Разблокировать|Купить|<img/);
+  const content = nodes.find(element => element.props["data-slot"] === "dialog-content");
+  let prevented = false, focused = false;
+  content.props.onOpenAutoFocus({ target: { querySelector(selector) { assert.equal(selector, '[data-world-character="plesk"]'); return { focus() { focused = true; } }; } }, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(focused, true, "portal autofocus targets its own card, not the world DOM");
 });
 
 function navigation() {
@@ -93,7 +93,7 @@ function navigation() {
   const savedElement = Object.getOwnPropertyDescriptor(globalThis, "HTMLElement");
   const focused = [];
   class Element { constructor(name) { this.name = name; this.isConnected = true; } focus() { focused.push(this.name); } }
-  const trigger = new Element("more"), card = new Element("plesk"), map = new Element("map");
+  const trigger = new Element("more"), characterTrigger = new Element("characters"), card = new Element("plesk"), map = new Element("map");
   Object.defineProperty(globalThis, "HTMLElement", { value: Element, configurable: true });
   Object.defineProperty(globalThis, "document", { value: { activeElement: map }, configurable: true });
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
@@ -105,7 +105,7 @@ function navigation() {
   let view;
   const render = () => {
     hooks.render(); view = WorldView(props);
-    view.props.ref.current = { querySelector(selector) { return selector.includes("data-world-character") ? card : trigger; } };
+    view.props.ref.current = { querySelector(selector) { return selector.includes("data-world-characters-trigger") ? characterTrigger : selector.includes("data-world-character=") ? card : trigger; } };
     return elements(view);
   };
   const find = callback => render().find(callback);
@@ -117,44 +117,51 @@ function navigation() {
   return { find, component, render, focused, restore };
 }
 
-test("More reveals characters, then Back, close and Escape's close action restore the expanded list and card focus", () => {
+test("More opens a separate gallery; conversation Back/close return there and gallery close restores its menu trigger", () => {
   for (const exit of ["onBack", "onClose"]) {
     const nav = navigation();
     try {
       nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
-      let library = nav.component("WorldCharacters"); assert.equal(library.props.expanded, false);
-      library.props.onToggle(); library = nav.component("WorldCharacters"); assert.equal(library.props.expanded, true);
-      library.props.onResident("plesk");
+      assert.equal(nav.component("WorldCharacters").props.open, false);
+      nav.find(element => element.props["data-world-characters-trigger"] !== undefined).props.onClick();
+      let library = nav.component("WorldCharacters"); assert.equal(library.props.open, true);
+      assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined, "More is gone behind the gallery");
+      library.props.onResident("plesk"); library = nav.component("WorldCharacters"); assert.equal(library.props.open, false);
+      let prevented = false; library.props.onCloseAutoFocus({ preventDefault() { prevented = true; } });
+      assert.equal(prevented, true); assert.deepEqual(nav.focused, [], "switching modals must not focus the hidden More menu");
       let dialog = nav.component("WorldResidentDialog"); assert.equal(dialog.props.open, true); assert.equal(typeof dialog.props.onBack, "function");
-      assert.equal(nav.component("WorldCharacters"), undefined, "the quick menu closes behind the modal");
       dialog.props[exit](); dialog = nav.component("WorldResidentDialog"); assert.equal(dialog.props.open, false);
-      library = nav.component("WorldCharacters"); assert.equal(library.props.expanded, true);
-      let prevented = false; dialog.props.onCloseAutoFocus({ preventDefault() { prevented = true; } });
-      assert.equal(prevented, true); assert.deepEqual(nav.focused, ["plesk"]);
-      nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
-      nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
-      assert.equal(nav.component("WorldCharacters").props.expanded, false, "a fresh More visit starts folded");
+      assert.equal(nav.component("WorldCharacters").props.open, true);
+      dialog.props.onCloseAutoFocus({ preventDefault() {} });
+      assert.deepEqual(nav.focused, [], "gallery open autofocus owns focus inside its portal");
+      library = nav.component("WorldCharacters"); library.props.onClose();
+      library = nav.component("WorldCharacters"); assert.equal(library.props.open, false);
+      library.props.onCloseAutoFocus({ preventDefault() {} });
+      assert.deepEqual(nav.focused, ["characters"]);
+      assert.ok(nav.find(element => element.props.id === "world-quick-menu"));
+      assert.ok(nav.find(element => element.props["data-world-characters-trigger"] !== undefined));
     } finally { nav.restore(); }
   }
 });
 
-test("map and pantry conversation entries keep their return paths, while fishing leaves the library", () => {
+test("map and pantry conversation entries keep their return paths, while fishing leaves the gallery", () => {
   const nav = navigation();
   try {
     nav.component("WorldScene").props.onResident("plesk");
     let dialog = nav.component("WorldResidentDialog"); assert.equal(dialog.props.onBack, undefined);
     dialog.props.onClose(); dialog = nav.component("WorldResidentDialog"); dialog.props.onCloseAutoFocus({ preventDefault() {} });
-    assert.deepEqual(nav.focused, ["map"]); assert.equal(nav.component("WorldCharacters"), undefined);
+    assert.deepEqual(nav.focused, ["map"]); assert.equal(nav.component("WorldCharacters").props.open, false);
     nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
     nav.component("WorldPantryMenu").props.onOpenFishingShop();
     dialog = nav.component("WorldResidentDialog"); assert.equal(dialog.props.onBack, undefined);
     dialog.props.onClose(); dialog = nav.component("WorldResidentDialog"); dialog.props.onCloseAutoFocus({ preventDefault() {} });
     assert.deepEqual(nav.focused, ["map", "more"]);
     nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
-    nav.component("WorldCharacters").props.onToggle(); nav.component("WorldCharacters").props.onResident("plesk");
+    nav.find(element => element.props["data-world-characters-trigger"] !== undefined).props.onClick();
+    nav.component("WorldCharacters").props.onResident("plesk");
     nav.component("WorldResidentDialog").props.onFishing();
     assert.equal(nav.component("WorldResidentDialog").props.open, false);
-    assert.equal(nav.component("WorldCharacters"), undefined);
+    assert.equal(nav.component("WorldCharacters").props.open, false);
     assert.equal(nav.component("WorldExpeditionsMenu").props.initialSector, "shore");
   } finally { nav.restore(); }
 });

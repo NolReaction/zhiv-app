@@ -1,6 +1,8 @@
 "use client";
 
-import { ChevronDown, PawPrint } from "lucide-react";
+import { ArrowRight, PawPrint, X } from "lucide-react";
+import { Dialog as DialogPrimitive } from "radix-ui";
+import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PleskPortrait } from "./plesk-portrait";
 import { WORLD_CHARACTERS, worldCharacterResident, type WorldCharacter } from "./world-characters-model";
 import styles from "./world-characters.module.css";
@@ -19,33 +21,40 @@ function CharacterSilhouette({ character }: { character: Extract<WorldCharacter,
   </span>;
 }
 
-/** A controlled disclosure: keyboard focus stays on its trigger when expanded,
- * and Tab reaches the one available resident. Unknown slots have no action. */
-export function WorldCharacters({ expanded, onToggle, onResident }: {
-  expanded: boolean; onToggle: () => void; onResident: (id: "plesk") => void;
+/** A full gallery, separate from the compact More menu. The modal owns keyboard
+ * focus; only the implemented resident can open a conversation. */
+export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus }: {
+  open: boolean; onClose: () => void; onResident: (id: "plesk") => void;
+  onCloseAutoFocus: (event: Event) => void;
 }) {
-  return <div className={styles.library}>
-    <button type="button" className={styles.trigger} data-world-characters-trigger
-      aria-expanded={expanded} aria-controls={expanded ? "world-characters-list" : undefined} onClick={onToggle}>
-      <PawPrint size={18} aria-hidden="true" />
-      <span className={styles.triggerLabel}><span>Персонажи</span><small>Жители леса</small></span>
-      <ChevronDown size={15} className={styles.chevron} data-expanded={expanded || undefined} aria-hidden="true" />
-    </button>
-    {expanded && <div id="world-characters-list" className={styles.contents}>
-      <p className={styles.hint}>Другие жители пока недоступны.</p>
-      <ul className={styles.grid} aria-label="Персонажи леса">
-        {WORLD_CHARACTERS.map(character => <li key={character.id}>
-          {character.available ? <button type="button" className={styles.card} data-world-character={character.id}
-            aria-label={`${character.name} — ${character.role}. Открыть разговор`} aria-haspopup="dialog"
-            onClick={() => { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); }}>
-            <PleskPortrait className={styles.portrait} />
-            <strong>{character.name}</strong><small>Рыбачка</small>
-          </button> : <button type="button" className={`${styles.card} ${styles.locked}`} disabled
-            aria-label="Неизвестный персонаж, пока недоступен">
-            <CharacterSilhouette character={character} /><small>Недоступен</small>
-          </button>}
-        </li>)}
-      </ul>
-    </div>}
-  </div>;
+  return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
+    <DialogPortal>
+      <DialogOverlay className={styles.scrim} />
+      <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog}
+        onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={event => {
+          const card = (event.target as HTMLElement).querySelector<HTMLButtonElement>('[data-world-character="plesk"]');
+          if (card) { event.preventDefault(); card.focus({ preventScroll: true }); }
+        }}>
+        <header className={styles.header}>
+          <div><DialogTitle className={styles.title}><PawPrint size={22} aria-hidden="true" />Персонажи</DialogTitle>
+            <DialogDescription className={styles.description}>Загляните к знакомым жителям леса.</DialogDescription></div>
+          <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть персонажей"><X size={22} aria-hidden="true" /></button>
+        </header>
+        <ul className={styles.grid} aria-label="Персонажи леса">
+          {[...WORLD_CHARACTERS].sort((a, b) => Number(b.available) - Number(a.available)).map(character => <li key={character.id}>
+            {character.available ? <button type="button" className={`${styles.card} ${styles.available}`} data-world-character={character.id}
+              aria-label={`${character.name} — ${character.role}. Открыть разговор`} aria-haspopup="dialog"
+              onClick={() => { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); }}>
+              <span className={styles.stage}><PleskPortrait animated className={styles.portrait} /></span>
+              <strong>{character.name}</strong><small>{character.role}</small>
+              <span className={styles.visit}>Заглянуть <ArrowRight size={15} aria-hidden="true" /></span>
+            </button> : <div className={`${styles.card} ${styles.locked}`} aria-label="Неизвестный персонаж, пока недоступен">
+              <span className={styles.stage}><CharacterSilhouette character={character} /></span>
+              <strong>Неизвестный житель</strong><small>Пока недоступен</small>
+            </div>}
+          </li>)}
+        </ul>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  </Dialog>;
 }

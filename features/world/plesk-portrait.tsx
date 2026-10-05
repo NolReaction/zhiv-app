@@ -2,16 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import { pleskSprite } from "./plesk-sprite";
+import { pleskPortraitPose, startPleskPortraitAnimation, type PleskPortraitPose } from "./plesk-portrait-animation";
 
-/** The portrait uses the same resident art as the map, without another asset or
- * animation clock. Accessible names belong to the surrounding card/dialog. */
-export function PleskPortrait({ className }: { className?: string }) {
+/** Accessible names belong to the card/dialog. The gallery animates the same
+ * pixel poses as the resident, on a separate visibility-aware display clock. */
+export function PleskPortrait({ className, animated = false }: { className?: string; animated?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    const ctx = canvas.current?.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, 96, 96); ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(pleskSprite("greet", "front", 0, .3, true), 6, 6, 84, 84);
-  }, []);
-  return <canvas ref={canvas} className={className} width={96} height={96} aria-hidden="true" />;
+    const element = canvas.current, ctx = element?.getContext("2d");
+    if (!element || !ctx) return;
+    const draw = ({ action, frame, phase, still }: PleskPortraitPose) => {
+      ctx.clearRect(0, 0, 192, 192); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(pleskSprite(action, "front", frame, phase, still), 0, 0, 192, 192);
+    };
+    if (animated) return startPleskPortraitAnimation(draw, element.ownerDocument.defaultView ?? window, element.ownerDocument);
+    draw(pleskPortraitPose(0, true));
+  }, [animated]);
+  return <canvas ref={canvas} className={className} width={192} height={192} aria-hidden="true" />;
 }

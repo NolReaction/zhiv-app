@@ -172,6 +172,12 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const foregroundTerrain = foregroundBush?.imageId && forestBushArtworkAvailable(world, foregroundBush)
     ? world.terrain.find(terrain => terrain.id === foregroundBush.imageId) : undefined;
   const foregroundImage = foregroundTerrain && images.get(foregroundTerrain.image);
+  const paintBush = () => {
+    if (!walking?.bush || !heroVisible) return;
+    const growth = life?.garden?.bushes.find(bush => bush.id === walking.bush!.id)?.growth;
+    drawForestBush(context, world, images, { ...walking.bush, ripe: growth === undefined || growth >= .98 }, elapsed, still);
+    if (walking.bush.occlude || walking.bush.rustle > 0) drawForestGardenPlants(context, world, life?.garden);
+  };
   context.save();
   context.beginPath(); context.rect(0, 0, world.width, world.height); context.clip();
   paintFixedWorld(context, world, { images, visuals: selectedVisuals, actor: null, dusk: Number(atmosphere.dusk),
@@ -193,6 +199,9 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestCampfires(context, behindFires, elapsed, still);
   drawForestGardenPlants(context, world, life?.garden);
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined);
+  // A moving cutout may own the artwork while its actor is still in front.
+  // Rustling never promotes leaves over an approaching or emerging body.
+  if (!walking?.bush?.occlude) paintBush();
   drawForestResidents(context, world, elapsed, still, actor.y, "behind", preview?.residents);
   for (const bird of groundBirds) if (bird.groundY! < actor.y) drawForestBird(context, bird);
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
@@ -220,11 +229,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestResidents(context, world, elapsed, still, actor.y, "front", preview?.residents);
   drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined, "front");
   for (const bird of groundBirds) if (bird.groundY! >= actor.y) drawForestBird(context, bird);
-  if (walking?.bush && heroVisible) {
-    const growth = life?.garden?.bushes.find(bush => bush.id === walking.bush!.id)?.growth;
-    drawForestBush(context, world, images, { ...walking.bush, ripe: growth === undefined || growth >= .98 }, elapsed, still);
-    if (walking.bush.occlude || walking.bush.rustle > 0) drawForestGardenPlants(context, world, life?.garden);
-  }
+  if (walking?.bush?.occlude) paintBush();
   if (walking?.homeSleeping && home && heroVisible && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }

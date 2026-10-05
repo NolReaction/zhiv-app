@@ -18,13 +18,22 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   const { phase, nearArm, farArm } = rig;
   const armShade = direction === "back" ? appearance?.palette === "fern" ? "#345649" : appearance?.palette === "autumn" ? "#7a5637" : "#58683b" : "#d8bf83";
   const armLight = direction === "back" ? appearance?.palette === "fern" ? "#49816b" : appearance?.palette === "autumn" ? "#b27b42" : "#7c8845" : "#f4e4ae";
-  function arm({ shoulder, elbow, hand }: { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint }) {
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.strokeStyle = armShade; ctx.lineWidth = size * .082;
-    ctx.beginPath(); ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y); ctx.stroke();
-    ctx.strokeStyle = armLight; ctx.lineWidth = size * .052;
-    ctx.beginPath(); ctx.moveTo(shoulder.x, shoulder.y - size * .013); ctx.lineTo(elbow.x, elbow.y - size * .013);
-    ctx.lineTo(hand.x, hand.y - size * .013); ctx.stroke();
+  const scale = size / 48, origin = { x: x - size / 2, y: y - size * 45 / 48 };
+  function segment(start: WorldPoint, end: WorldPoint, width: number, color: string) {
+    const a = { x: Math.round((start.x - origin.x) / scale), y: Math.round((start.y - origin.y) / scale) };
+    const b = { x: Math.round((end.x - origin.x) / scale), y: Math.round((end.y - origin.y) / scale) };
+    const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1);
+    ctx.fillStyle = color;
+    for (let step = 0; step <= steps; step++) {
+      ctx.fillRect(origin.x + (Math.round(a.x + (b.x - a.x) * step / steps) - 1) * scale,
+        origin.y + (Math.round(a.y + (b.y - a.y) * step / steps) - 1) * scale, width * scale, width * scale);
+    }
+  }
+  function arm({ shoulder, elbow, hand }: { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint }, forearmOnly = false) {
+    if (!forearmOnly) segment(shoulder, elbow, 3, armShade);
+    segment(elbow, hand, 3, armShade);
+    if (!forearmOnly) segment(shoulder, elbow, 2, armLight);
+    segment(elbow, hand, 2, armLight);
   }
   ctx.save();
   const props = { ...frame, basketFilled: frame.basketFilled ?? (frame.carryingFish && action !== "catch" && (action !== "pack" || phase >= FISHING_PACK_RELEASE)) };
@@ -34,7 +43,9 @@ export function drawForestFishingHero(ctx: CanvasRenderingContext2D, frame: Fore
   drawGroundedHero(ctx, { x, y, size, pose: rig.pose, direction: rig.bodyDirection, frame: still ? 0 : frame.frame, appearance, shadow,
     rig: { gardening: true, crouch: rig.crouch, lean: rig.lean, fishingStance: rig.fishingStance },
     breathe: still ? 0 : Math.sin(phase * Math.PI * 2) * .004 });
-  if (direction !== "back") { arm(nearArm); drawProps(); }
+  // The shoulder stays behind the torso, but the supporting forearm emerges
+  // in front to wind, unhook and lower the fish. The body cannot erase it.
+  if (direction !== "back") { arm(farArm, true); arm(nearArm); drawProps(); }
   {
     const tackle = fishingTackleFrame(props, still, rig);
     if (tackle.visible) {

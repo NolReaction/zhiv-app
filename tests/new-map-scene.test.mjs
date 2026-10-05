@@ -1420,9 +1420,9 @@ function sampleFishingHero(scene, env, loaded, state, world, still = false) {
   return { ...sample, hasPose: (...poses) => poses.includes(rig.pose) };
 }
 
-function bushMaskAfterBody(sample, bush = clearingBush) {
-  if (!sample.body) return false;
-  const calls = sample.calls.slice(sample.calls.indexOf(sample.body) + 1);
+function bushMask(sample, bush = clearingBush, afterBody = false) {
+  if (afterBody && !sample.body) return false;
+  const calls = afterBody ? sample.calls.slice(sample.calls.indexOf(sample.body) + 1) : sample.calls;
   const start = calls.findIndex(call => call.method === "moveTo"
     && call.args[0] === bush.points[0].x && call.args[1] === bush.points[0].y);
   if (start < 0) return false;
@@ -1434,10 +1434,9 @@ function bushMaskAfterBody(sample, bush = clearingBush) {
 }
 
 function bushParticleDraws(sample) {
-  if (!sample.body) return [];
   // In this quiet, unlit fixture the actor's contact shadow precedes its sprite;
-  // berry ellipses are painted afterward, outside the foliage clip.
-  return sample.calls.slice(sample.calls.indexOf(sample.body) + 1)
+  // berry ellipses remain visible when the actor is fully concealed.
+  return (sample.body ? sample.calls.slice(sample.calls.indexOf(sample.body) + 1) : sample.calls)
     .filter(call => call.method === "ellipse" || call.method === "arc");
 }
 
@@ -1927,7 +1926,7 @@ test("a separate bush cutout moves to the foreground once without repainting the
     for (const [label, bushFrame, reducedMotion, showHero, foreground, misplaced = false] of [
       ["idle", undefined, false, true, false],
       ["enter", { id: bush.id, occlude: true, rustle: 0 }, false, true, true],
-      ["rustle", { id: bush.id, occlude: false, rustle: .8, elapsed: .5 }, false, true, true],
+      ["rustle", { id: bush.id, occlude: false, rustle: .8, elapsed: .5 }, false, true, false],
       ["still without encounter clock", { id: bush.id, occlude: false, rustle: .8 }, true, true, false],
       ["frozen encounter", { id: bush.id, occlude: true, rustle: .8, elapsed: .5 }, true, true, true],
       ["hidden hero", { id: bush.id, occlude: true, rustle: .8 }, false, false, false],
@@ -1950,8 +1949,8 @@ test("a separate bush cutout moves to the foreground once without repainting the
         assert.ok(bodyIndex >= 0);
         assert.ok(bushDraws.every(call => calls.indexOf(call) > bodyIndex), `${label}: no static duplicate behind the moving leaves`);
       } else {
-        assert.equal(bushDraws.length, 1, `${label}: the idle cutout belongs to the terrain pass`);
-        if (showHero) assert.ok(calls.indexOf(bushDraws[0]) < bodyIndex);
+        if (label !== "rustle") assert.equal(bushDraws.length, 1, `${label}: the idle cutout belongs to the terrain pass`);
+        if (showHero) assert.ok(bushDraws.every(call => calls.indexOf(call) < bodyIndex), `${label}: leaves stay behind the visible body`);
       }
     }
   } finally { worldDevStore.reset(); env.restore(); }
@@ -2002,17 +2001,15 @@ test("DEV bush interaction walks, jumps, hides and returns while automatic life 
       stages.add(probe.state.clearing.stage);
       for (const pose of ["walk", "jump", "crouch", "shake", "blink"]) if (sample.hasPose(pose)) poses.add(pose);
       lifted ||= frame.lift > 0 && sample.hasPose("jump");
-      assert.ok(sample.body, `${probe.state.clearing.stage}: the bush never removes the rendered actor`);
-      assert.equal(frame.opacity, 1, "foliage, not an opacity switch, hides the actor");
+      assert.equal(Boolean(sample.body), frame.opacity > 0, `${probe.state.clearing.stage}: body drawing follows its physical visibility`);
       if (probe.state.clearing.stage !== "home") {
-        assert.equal(frame.bush?.occlude, true, `${probe.state.clearing.stage}: route boundaries cannot toggle the foreground off`);
+        assert.equal(frame.bush?.occlude, frame.opacity === 0, `${probe.state.clearing.stage}: a route cannot cover an actor that is still in front`);
       }
       if (probe.state.clearing.stage === "bush-hidden") {
         hidden = true;
-        assert.ok(bushMaskAfterBody(sample), "the hidden actor remains drawn behind the authored leaf contour");
+        assert.equal(frame.opacity, 0, "the tucked actor is fully concealed inside the leaves");
       }
       if (frame.bush?.occlude) {
-        assert.ok(bushMaskAfterBody(sample), `${probe.state.clearing.stage}: foliage stays in front throughout approach and return`);
         foreground = true;
       }
       particles ||= bushParticleDraws(sample).length > 0;
@@ -2048,10 +2045,17 @@ test("an occupied garden tap opens its menu and explicit attention starts a cont
     assert.equal(scene.hitPet(touch.x, touch.y), false, "an empty bush is not a ghost character touch target");
     worldDevStore.triggerLife("bush");
     clock.until(() => probe.state.clearing.stage === "outbound", "the request begins its authored approach", 20);
-    assert.ok(bushMaskAfterBody(sampleHero(scene, env, pixelSprite)), "the foreground exists before the character reaches the bush");
+    assert.equal(bushMask(sampleHero(scene, env, pixelSprite), clearingBush, true), false,
+      "the approach cannot place the entire crown above the character");
     assert.equal(scene.hitPet(touch.x, touch.y), false, "an approach mask does not make the still-empty bush an occupied touch target");
+    clock.until(() => probe.state.clearing.stage === "bush-prepare", "the visible resident prepares beside the bush", 200);
+    const preparing = circlePoint(scene.position());
+    assert.equal(scene.hitVisiblePet(preparing.x, preparing.y), true,
+      "the body remains reachable for interruption during preparation");
     clock.until(() => probe.state.clearing.stage === "bush-hidden", "the character enters the actual bush", 200);
-    assert.ok(bushMaskAfterBody(sampleHero(scene, env, pixelSprite)));
+    const hiddenSample = sampleHero(scene, env, pixelSprite);
+    assert.equal(hiddenSample.body, undefined);
+    assert.ok(bushMask(hiddenSample), "the leaves remain visible without a concealed body draw");
     assert.equal(scene.hitPet(touch.x, touch.y), true, "the authored foliage makes its hidden resident reachable");
     const hiddenBody = scene.position(), hiddenBodyTouch = circlePoint(hiddenBody);
     assert.equal(scene.hitVisiblePet(hiddenBodyTouch.x, hiddenBodyTouch.y), false,
@@ -2098,7 +2102,8 @@ test("a hidden bush resident survives camera handoff and pause without restartin
     assert.deepEqual(probe.state.clearing, snapshot, "opening the world preserves the exact scene phase");
     assert.equal(env.frames.size, 1);
     const circleSample = sampleHero(circle, env, pixelSprite), worldSample = sampleHero(world, env, pixelSprite);
-    assert.ok(bushMaskAfterBody(circleSample)); assert.ok(bushMaskAfterBody(worldSample));
+    assert.equal(circleSample.body, undefined); assert.equal(worldSample.body, undefined);
+    assert.ok(bushMask(circleSample)); assert.ok(bushMask(worldSample));
     const berries = bushParticleDraws(circleSample);
     assert.ok(berries.length, "handoff occurs with airborne berries, not only an empty effect clock");
     assert.deepEqual(bushParticleDraws(worldSample), berries, "both cameras share each berry's exact position");
@@ -2110,15 +2115,17 @@ test("a hidden bush resident survives camera handoff and pause without restartin
       clock.step(60_000);
       assert.deepEqual(probe.state.clearing, frozen, `${mode} cannot advance the bush choreography`);
       const stillSample = sampleHero(world, env, pixelSprite);
-      assert.ok(bushMaskAfterBody(stillSample), `${mode} keeps the actor behind its foliage`);
+      assert.ok(bushMask(stillSample), `${mode} keeps the foliage visible`);
+      assert.equal(stillSample.body, undefined, `${mode} keeps the actor fully concealed`);
       assert.deepEqual(bushParticleDraws(stillSample), bushParticleDraws(frozenSample), `${mode} freezes the falling berries`);
-      assert.deepEqual(stillSample.body.args, frozenSample.body.args, `${mode} preserves the tucked pose and body position`);
+      assert.equal(frozenSample.body, undefined);
       world.configure({ ...initial, view: "world" }); clock.step();
     }
     const beforeReturn = structuredClone(probe.state.clearing);
     world.dispose(); circle.configure(initial); await flush();
     assert.deepEqual(probe.state.clearing, beforeReturn);
-    assert.ok(bushMaskAfterBody(sampleHero(circle, env, pixelSprite)));
+    const resumed = sampleHero(circle, env, pixelSprite);
+    assert.equal(resumed.body, undefined); assert.ok(bushMask(resumed));
     clock.until(() => probe.state.clearing.stage === "home", "returning to the circle finishes the existing outing", 240);
     assert.ok(sampleHero(circle, env, pixelSprite).body);
   } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
