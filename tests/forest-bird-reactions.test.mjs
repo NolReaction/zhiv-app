@@ -326,3 +326,13 @@ test("sudden weather during a ground hop or low takeoff preserves that pose and 
   }
   }
 });
+
+test("Pleska can startle a nearby bird while Mochlik stays far away, once per shared tick", () => {
+  const birds=[bird("resident-neighbour",100,100)],visitors=[{x:600,y:600,size:56,moving:false},{x:105,y:115,size:50,moving:true}];
+  const single=createBirdReactions(),both=createBirdReactions();
+  for(let i=0;i<20;i++){
+    advanceBirdReactions(single,birds,.025,undefined,bounds,visitors[1]);
+    advanceBirdReactions(both,birds,.025,undefined,bounds,visitors);
+  }
+  assert.equal(both.escapes.size,1);assert.deepEqual(both,single);
+});

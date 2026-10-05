@@ -11,7 +11,7 @@ import { advanceClearingActivity, canStartClearingInteraction, canStartClearingL
   requestClearingBush, requestClearingPoint, requestClearingSleep, requestClearingOutside, returnClearingHome,
   setClearingNavigationObstacle, baseClearingNavigation } from "./clearing-activity";
 import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction, emitFaunaStimulus,
-  interruptFaunaInteraction, requestFaunaInteraction } from "./forest-fauna";
+  interruptFaunaInteraction, requestFaunaInteraction, type FaunaVisitor } from "./forest-fauna";
 import { findWorldPath } from "./navigation";
 import { advanceForestGarden, cancelForestGarden, gardenActionAvailable, gardenEligibleBushes,
   gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, gardenBasketApproach, gardenBasketFootprint,
@@ -29,6 +29,7 @@ export type ForestDirectorOptions = {
   heroScale?: number; reducedMotion?: boolean; navigationMode?: "auto" | "routes";
   /** Actual birds from the shared scene clock, never fabricated by the actor. */
   birds?: readonly ForestBird[];
+  visitors?: readonly FaunaVisitor[];
 };
 export type ForestDirectorState = {
   elapsed: number; nextDecisionAt: number; seed: number; reason: string;

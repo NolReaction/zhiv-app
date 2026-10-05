@@ -406,3 +406,41 @@ test('after rain the same residents leave at individual times and the recovery c
   assert.ok(Math.max(...departures.values())-Math.min(...departures.values())>1);
   assert.deepEqual(state.entities.map(e=>e.id),ids);
 });
+
+test('a resident shares the real population, reaches her paw and releases it without owning Mochlik',()=>{
+  for (const dusk of [0,1]) {
+    const state=createForestFauna(scene),kind=dusk?'firefly':'butterfly';
+    const visitor={id:'plesk',x:160,y:165,size:50,direction:'front',hand:{x:172,y:145},available:true};
+    state.nextVisitorAt=0;
+    const options={...conditions,dusk,visitors:[visitor],blocked:true};
+    advance(state,.025,options);
+    assert.equal(state.visitorEncounters.length,1);
+    const encounter=state.visitorEncounters[0],e=state.entities.find(e=>e.id===encounter.entityId);
+    assert.equal(encounter.kind,kind);assert.equal(state.encounter,null);
+    assert.equal(requestFaunaInteraction(state,kind,actor,{...conditions,dusk},true),true);
+    assert.notEqual(state.encounter.entityId,e.id,'one animal cannot be on two paws');
+    let touched=false;
+    advance(state,18,options,()=>{
+      if(encounter.phase==='perch'){touched=true;assert.ok(distanceBetween(e,visitor.hand)<.7)}
+      assert.equal(faunaRenderFrame(state)[dusk?'fireflies':'butterflies'].filter(p=>p.id===e.id).length,1);
+    });
+    assert.ok(touched);assert.equal(state.visitorEncounters.length,0);
+    assert.equal(state.entities.length,18);
+  }
+});
+
+test('resident encounters respect pauses, weather, busy hands and movement without teleporting an animal',()=>{
+  for (const change of [v=>({...v,available:false}),v=>({...v,x:v.x+4}),v=>v]) {
+    const state=createForestFauna(scene);state.nextVisitorAt=0;
+    const visitor={id:'plesk',x:160,y:165,size:50,hand:{x:172,y:145},available:true};
+    const options={...conditions,visitors:[visitor]};advance(state,1,options);
+    assert.equal(state.visitorEncounters.length,1);
+    const frozen=structuredClone(state);
+    advance(state,1,{...options,paused:true});assert.deepEqual(state,frozen);
+    advance(state,1,{...options,reducedMotion:true});assert.deepEqual(state,frozen);
+    const e=state.entities.find(e=>e.id===state.visitorEncounters[0].entityId),before={x:e.x,y:e.y};
+    const changed=change(visitor);const next={...options,visitors:[changed],rain:changed===visitor?1:0};
+    advance(state,.025,next);assert.equal(state.visitorEncounters[0].phase,'interrupt');
+    assert.ok(distanceBetween(e,before)<1);advance(state,.7,next);assert.equal(state.visitorEncounters.length,0);
+  }
+});

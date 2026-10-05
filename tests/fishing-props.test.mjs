@@ -80,7 +80,7 @@ test("carried rods stay outside the face and caught fish use the opposite free p
 
 test("close front and back water targets cannot swing the pole inward across a resident's head", () => {
   for (const side of [-1, 1]) for (const action of ["cast", "fish", "bite", "reel"]) {
-    const grip = { x: base.x + side * base.size * .25, y: base.y - base.size * .27 };
+    const grip = { x: base.x + side * base.size * .25, y: base.y - base.size * .4 };
     for (let index = 0; index <= 40; index++) {
       const tackle = fishingTackleFrame({ ...base, action, direction: side < 0 ? "back" : "front",
         phase: index / 40, waterTarget: { x: base.x, y: base.y + 10 } }, false, { grip });
@@ -166,7 +166,7 @@ test("basket sides mask all species and the same mask settles before pack releas
     assert.deepEqual(entering.fishes, [true], "only the single entering fish is masked");
     assert.ok(released.basketWalls.every(value => !value), "the basket wall itself is never clipped");
     const xs = released.clips[0].map(point => point[0]);
-    assert.ok(Math.max(...xs) - Math.min(...xs) < base.size * .27, "no fish tail can paint outside either basket side");
+    assert.ok(Math.max(...xs) - Math.min(...xs) < base.size * .4, "no fish tail can paint outside either basket side");
     assert.equal(entering.clips[0].length, released.clips[0].length);
     entering.clips[0].forEach((point, index) => point.forEach((value, axis) =>
       assert.ok(Math.abs(value - released.clips[0][index][axis]) < 1e-8, "mask has no jump at release")));
@@ -199,8 +199,17 @@ test("the last reel frame lands continuously in the supporting hand and the same
         assert.deepEqual(fish.center, fishingBasketFishCenter(hands.basket, frame.size));
         assert.equal(fish.visible, false);
         assert.ok(Math.abs(fish.angle - (direction === "left" ? -Math.PI + .2 : -.2)) < 1e-9);
-        assert.ok(Math.abs(fish.size - frame.size * .243) < 1e-9);
+        assert.ok(Math.abs(fish.size - frame.size * .22) < 1e-9);
       }
     }
+  }
+});
+
+test("Mochlik carries the enlarged basket by the same physical handle in every facing", async () => {
+  const {fishingBasketHandle}=await vite.ssrLoadModule('/features/world/fishing-props.ts');
+  for(const direction of ['left','right','front','back'])for(const size of [36,56,120]){
+    const frame={...base,size,direction,action:'walk',carryingFish:true,waterTarget:undefined};
+    const rig=forestFishingHeroRig(frame,false);
+    assert.deepEqual(rig.farHand,fishingBasketHandle(rig.basket,size));
   }
 });

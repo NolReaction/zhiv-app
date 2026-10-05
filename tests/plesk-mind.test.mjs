@@ -53,7 +53,7 @@ test("long autonomous life stays on personal routes, reacts to fatigue and retur
     assert.ok(frame.destinationId.startsWith("plesk-"));
     if (["cast", "fish", "bite", "reel", "catch"].includes(frame.action)) {
       assert.equal(frame.direction, "front", "live AI keeps her face visible at the personal pier");
-      assert.deepEqual(frame.waterTarget, pleskLocalPlaces(world).waterTarget);
+      assert.ok(Math.hypot(frame.waterTarget.x - pleskLocalPlaces(world).waterTarget.x, frame.waterTarget.y - pleskLocalPlaces(world).waterTarget.y) <= 8);
     }
     assert.ok(mind.catchCount >= 0 && mind.catchCount <= PLESK_MIND_LIMITS.basket && Number.isInteger(mind.catchCount));
     assert.ok(Object.values(mind.needs).every(value => Number.isFinite(value) && value >= 0 && value <= 1));

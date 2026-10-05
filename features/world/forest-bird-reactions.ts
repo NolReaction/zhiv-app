@@ -46,7 +46,7 @@ export function createBirdReactions(): BirdReactionState {
 }
 
 function proximity(state: BirdReactionState, birds: readonly ForestBird[], dt: number,
-  bounds?: BirdReactionBounds, visitor?: BirdVisitor) {
+  bounds?: BirdReactionBounds, visitorInput?: BirdVisitor | readonly BirdVisitor[]) {
   const visible = new Set(birds.map(bird => bird.id));
   for (const [id, escape] of state.escapes) {
     if (visible.has(id)) escape.lastSeenAt = state.elapsed;
@@ -54,12 +54,16 @@ function proximity(state: BirdReactionState, birds: readonly ForestBird[], dt: n
     if (state.elapsed - escape.lastSeenAt > 12 && state.elapsed - escape.startedAt >= escape.duration) state.escapes.delete(id);
   }
   for (const id of state.proximity.keys()) if (!visible.has(id)) state.proximity.delete(id);
-  if (!visitor || !bounds || !finitePoint(visitor) || !Number.isFinite(visitor.size) || visitor.size <= 0
-    || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0
-    || visitor.x < 0 || visitor.y < 0 || visitor.x > bounds.width || visitor.y > bounds.height) return;
-  for (const bird of birds.slice(0, 16).sort((a, b) => Math.hypot(a.x - visitor.x, a.y - visitor.y) - Math.hypot(b.x - visitor.x, b.y - visitor.y))) {
+  if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) return;
+  const visitors: readonly BirdVisitor[] = (Array.isArray(visitorInput) ? visitorInput : visitorInput ? [visitorInput] : [])
+    .filter(visitor => finitePoint(visitor) && Number.isFinite(visitor.size) && visitor.size > 0
+      && visitor.x >= 0 && visitor.y >= 0 && visitor.x <= bounds.width && visitor.y <= bounds.height).slice(0, 8);
+  if (!visitors.length) return;
+  for (const bird of birds.slice(0, 16).sort((a, b) => (a.id ?? "").localeCompare(b.id ?? ""))) {
     const lowLanding = bird.surface === "ground" && bird.state === "landing" && bird.groundY !== undefined;
     if (!bird.id || !bird.perchId || !resting(bird) && !lowLanding || !finitePoint(bird) || bird.opacity < .5 || state.escapes.has(bird.id)) continue;
+    const threatDistance = (visitor: BirdVisitor) => Math.hypot(bird.x - visitor.x, bird.y + bird.size * 3.3 - visitor.y) / visitor.size - (visitor.moving ? .5 : 0);
+    const visitor = visitors.reduce((nearest, actor) => threatDistance(actor) < threatDistance(nearest) ? actor : nearest);
     const distance = Math.hypot(bird.x - visitor.x, bird.y + bird.size * 3.3 - visitor.y);
     const memory = state.proximity.get(bird.id) ?? { calm: 0, alarm: 0 };
     if (!visitor.moving && distance < visitor.size * 2.2) memory.calm = Math.min(1, memory.calm + dt / 10);
@@ -128,7 +132,7 @@ function weatherDeparture(state: BirdReactionState, birds: readonly ForestBird[]
  * The session calls this once per active step; zero dt also ignores new stimuli.
  */
 export function advanceBirdReactions(state: BirdReactionState, baseBirds: readonly ForestBird[],
-  dt: number, stimulus?: BirdReactionStimulus, bounds?: BirdReactionBounds, visitor?: BirdVisitor,
+  dt: number, stimulus?: BirdReactionStimulus, bounds?: BirdReactionBounds, visitor?: BirdVisitor | readonly BirdVisitor[],
   weather?: BirdReactionWeather): void {
   if (!Number.isFinite(dt) || dt <= 0) return;
   state.elapsed += dt;

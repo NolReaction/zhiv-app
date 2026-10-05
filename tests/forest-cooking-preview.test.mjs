@@ -12,12 +12,33 @@ const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/f
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
 const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { requestClearingSleep, advanceClearingActivity, clearingActivityFrame } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, cookingPreviewDuration } =
+const { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, cookingPreviewDuration, noticeCookingPreview } =
   await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts");
 const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
 const create = () => connectForestSession(undefined, scene, "world", 1_000_000, 0, () => {}, { persistence: false, sync: false });
 const selection = { id: 1, action: "sequence", repeat: false };
+
+test("taps preserve cooking hands, feet and clock, then greet once after the current cycle", () => {
+  for (const action of ["sequence", "prepare", "stir", "taste", "serve"]) {
+    const session = create(), state = session.state, selected = { id: 8, action, repeat: true };
+    try {
+      startCookingPreview(state, selected);
+      state.elapsed = 2;
+      const before = cookingPreviewFrame(state, selected), feet = { ...state.clearing.position };
+      for (let i = 0; i < 8; i++) assert.equal(noticeCookingPreview(state, selected), true);
+      assert.deepEqual(cookingPreviewFrame(state, selected), before);
+      assert.equal(state.clearing.frozen, true);
+      const finish = state.cookingPreview.attentionAt;
+      state.elapsed = finish - .01; advanceCookingPreview(state, selected);
+      assert.ok(state.cookingPreview); assert.deepEqual(state.clearing.position, feet);
+      state.elapsed = finish; advanceCookingPreview(state, selected);
+      assert.equal(state.cookingPreview, undefined); assert.equal(state.clearing.frozen, false);
+      assert.equal(noticeCookingPreview(state, selected), false);
+      assert.deepEqual(state.clearing.position, feet);
+    } finally { session.release(); }
+  }
+});
 
 test("outdoor cooking freezes actual feet, reads without mutation and ends exactly once without saved rewards", () => {
   const session = create(), state = session.state;

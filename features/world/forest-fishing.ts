@@ -46,6 +46,35 @@ export function fishingWaterTarget(scene: FixedWorldScene, base: WorldPoint, siz
   }
 }
 
+const castTargets = new WeakMap<FixedWorldScene, Map<string, WorldPoint>>();
+/** Seeded once per cast; bounded variations retain the full ripple inside
+ * authored water and outside every exclusion, including tiny islands. */
+export function fishingCastTarget(scene: FixedWorldScene, center: WorldPoint, size: number, seed: number): WorldPoint {
+  let cache = castTargets.get(scene); if (!cache) { cache = new Map(); castTargets.set(scene, cache); }
+  const key = `${center.x}:${center.y}:${size}:${seed}`;
+  const cached = cache.get(key); if (cached) return { ...cached };
+  let value = seed >>> 0;
+  const random = () => { value = (Math.imul(value, 1664525) + 1013904223) >>> 0; return value / 4294967296; };
+  const radius = Math.min(8, size * .15), clearance = size * .25;
+  let chosen = center;
+  if (scene.water && [center.x, center.y, size, seed].every(Number.isFinite) && size > 0) {
+    const polygons = [...scene.water.surfaces, ...scene.water.exclusions];
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const angle = random() * Math.PI * 2, reach = radius * Math.sqrt(random());
+      const point = { x: center.x + Math.cos(angle) * reach, y: center.y + Math.sin(angle) * reach };
+      if (!isForestWater(scene, point)) continue;
+      const unsafe = polygons.some(polygon => polygon.points.some((a, index, points) => {
+        const b = points[(index + 1) % points.length], dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((point.x-a.x)*dx+(point.y-a.y)*dy)/(dx*dx+dy*dy||1)));
+        return Math.hypot(point.x-a.x-dx*t,point.y-a.y-dy*t) <= clearance;
+      }));
+      if (!unsafe) { chosen = point; break; }
+    }
+  }
+  if (cache.size >= 256) cache.delete(cache.keys().next().value!);
+  cache.set(key, chosen); return { ...chosen };
+}
+
 type FishingStage = FishingMotion & { action: FishingAction; seconds: number; start: number; end: number };
 type FishingCast = {
   outcome: NonNullable<FishingMotion["outcome"]>; catchScale: number; prepare: number; cast: number;
@@ -71,14 +100,14 @@ const stages: FishingStage[] = [];
 const catches: number[] = [], packed: number[] = [];
 const packedSpecies: { at: number; species: FishSpeciesId }[] = [];
 let duration = 0, firstCastEnd = 0;
-for (const cast of casts) {
+for (const [castIndex, cast] of casts.entries()) {
   const add = (action: FishingAction, seconds: number, variation: FishingMotion["variation"] = "calm") => {
     if (action === "catch") catches.push(duration);
     if (action === "pack") {
       const at = duration + seconds * FISHING_PACK_RELEASE;
       packed.push(at); packedSpecies.push({ at, species: cast.species });
     }
-    stages.push({ action, seconds, variation, outcome: cast.outcome, catchScale: cast.catchScale, species: cast.species, start: duration, end: duration + seconds });
+    stages.push({ action, seconds, castIndex, variation, outcome: cast.outcome, catchScale: cast.catchScale, species: cast.species, start: duration, end: duration + seconds });
     duration += seconds;
   };
   add("idle", cast.prepare, "check"); add("cast", cast.cast);
@@ -118,7 +147,7 @@ export function fishingActionFrame(elapsed: number, still = false, firstCatchSpe
   const basketSpecies = firstCatchSpecies && loops === 0 && stock.packed === 1 ? firstCatchSpecies
     : packedNow ? castSpecies(packedNow.species, loops)
     : loops > 0 ? castSpecies(packedSpecies[packedSpecies.length - 1].species, loops - 1) : undefined;
-  return { action: stage.action, phase: local / stage.seconds, frame: Math.floor(local * 4) % 4,
+  return { castIndex: loops * casts.length + (stage.castIndex ?? 0), action: stage.action, phase: local / stage.seconds, frame: Math.floor(local * 4) % 4,
     carryingFish: stock.caught > 0, basketFilled: stock.packed > 0,
     variation: stage.variation, outcome: stage.outcome, catchScale: stage.catchScale,
     species: firstCatchSpecies && loops === 0 && age < firstCastEnd ? firstCatchSpecies : castSpecies(stage.species, loops), basketSpecies };

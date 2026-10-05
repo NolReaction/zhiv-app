@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingActionFrame, fishingWaterTarget, FOREST_FISHING_CYCLE_SECONDS, FOREST_FISHING_FIRST_CATCH_SECONDS, forestFishingCatchState, FISHING_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
+const { fishingActionFrame, fishingWaterTarget, fishingCastTarget, FOREST_FISHING_CYCLE_SECONDS, FOREST_FISHING_FIRST_CATCH_SECONDS, forestFishingCatchState, FISHING_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
 const { isForestWater } = await vite.ssrLoadModule("/features/world/forest-water.ts");
 const { FISHING_PACK_RELEASE } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
 const polygon = (x, y, width, height) => ({ points: [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }] });
@@ -41,7 +41,7 @@ test("four deterministic casts vary waiting, line checks, failed bites and large
   for (const action of ["idle", "cast", "fish", "bite", "reel", "catch", "pack", "rest"]) assert.ok(actions.has(action));
   assert.ok(sizes.size >= 3 && missedReels > 0 && largeReels > 0);
   assert.equal(previousCaught, 3); assert.equal(previousPacked, 3);
-  assert.deepEqual(fishingActionFrame(FOREST_FISHING_CYCLE_SECONDS), { ...first, carryingFish: true, basketFilled: true,
+  assert.deepEqual(fishingActionFrame(FOREST_FISHING_CYCLE_SECONDS), { ...first, castIndex: 4, carryingFish: true, basketFilled: true,
     species: "fish_reedperch", basketSpecies: "fish_silverfin" });
   assert.deepEqual(forestFishingCatchState(FOREST_FISHING_CYCLE_SECONDS), { caught: 3, packed: 3 });
 });
@@ -151,4 +151,20 @@ test("missing, malformed, distant or over-budget water never invents a fishing p
   assert.equal(fishingWaterTarget(scene(), base, NaN), undefined);
   assert.equal(fishingWaterTarget({ ...scene(), water: { surfaces: [{ points: [{ x: NaN, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }] }], exclusions: [] } }, base, 36), undefined);
   assert.equal(fishingWaterTarget({ ...scene(), water: { surfaces: Array(FISHING_WATER_LIMITS.polygons + 1).fill(polygon(0, 0, 300, 300)), exclusions: [] } }, base, 36), undefined);
+});
+
+ test("cast targets vary within a small radius, stay fixed during a cast and keep ripples out of land", () => {
+  const world=scene(); world.water.exclusions=[polygon(157,130,2,2)];
+  const center=fishingWaterTarget(world,{x:100,y:150},48),targets=new Set();
+  for(let seed=0;seed<150;seed++){
+    const point=fishingCastTarget(world,center,48,seed);targets.add(JSON.stringify(point));
+    assert.deepEqual(point,fishingCastTarget(world,center,48,seed));
+    assert.ok(Math.hypot(point.x-center.x,point.y-center.y)<=7.2+1e-9);
+    for(let angle=0;angle<Math.PI*2;angle+=.1)assert.ok(isForestWater(world,{x:point.x+Math.cos(angle)*12,y:point.y+Math.sin(angle)*12}));
+  }
+  assert.ok(targets.size>20);
+  for(let elapsed=0;elapsed<FOREST_FISHING_CYCLE_SECONDS;elapsed+=.1){
+    const frame=fishingActionFrame(elapsed);
+    if(frame.action==='cast') assert.equal(fishingActionFrame(elapsed+.01).castIndex,frame.castIndex);
+  }
 });

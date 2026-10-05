@@ -1,5 +1,5 @@
 import type { PleskResidentFrame } from "./plesk-resident";
-import { drawFishingProps, fishingPropsBounds, fishingCatchFrame, fishingTackleFrame, fishingBasketHandle, fishingBasketFishCenter, FISHING_PACK_RELEASE } from "./fishing-props";
+import { drawFishingProps, fishingPropsBounds, fishingCatchFrame, fishingTackleFrame, fishingBasketHandle, fishingPackCenter } from "./fishing-props";
 import { pleskSprite, pleskSpriteRig, PLESK_SPRITE_SIZE, type PleskSpriteRig } from "./plesk-sprite";
 import type { WorldBounds, WorldPoint } from "./tiled/types";
 
@@ -22,14 +22,20 @@ export function pleskFishingAnchors(frame: PleskResidentFrame, rig: PleskSpriteR
   const phase = still ? .5 : Math.max(0, Math.min(1, Number.isFinite(frame.phase) ? frame.phase : 0));
   let heldFish = world(rig.heldFish);
   if (frame.action === "pack") {
-    const part = Math.min(1, phase / FISHING_PACK_RELEASE), eased = part * part * (3 - 2 * part);
-    const target = fishingBasketFishCenter(basket, frame.size);
-    heldFish = { x: resting.x + (target.x - resting.x) * eased, y: resting.y + (target.y - resting.y) * eased };
+    heldFish = fishingPackCenter(resting, basket, frame.size, phase);
   } else if (frame.action === "catch") {
     heldFish = { x: resting.x, y: resting.y - Math.sin(phase * Math.PI) * 2 * scale };
   }
   return { grip: world(rig.grip), heldFish, basket,
-    hideRod: frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action) };
+    hideRod: frame.wildlife || frame.carryingFish && ["walk", "idle", "greet"].includes(frame.action) };
+}
+
+/** The insect lands on the same visible raised paw used by the pixel painter. */
+export function pleskWildlifeHand(frame: PleskResidentFrame): WorldPoint {
+  const sprite = pleskSprite(frame.carryingFish ? "rest" : "greet", frame.direction, 0, .5, false);
+  const rig = pleskSpriteRig(sprite)!, hand = rig.palms.find(palm => palm.near)!.position;
+  return { x: frame.x + (hand.x - 24) * frame.size / 48,
+    y: frame.y + (hand.y - rig.contact.bottom) * frame.size / 48 };
 }
 
 /** The complete 48 px joint rig shares contact and hand anchors with the prop

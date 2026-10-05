@@ -21,7 +21,8 @@ import { drawWaterDebug } from "./dev/water-debug";
 import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity } from "./clearing-activity";
 import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, requestForestGardenHarvest, type ForestDirectorOptions } from "./forest-director";
 import { syncForestGardenProduction } from "./forest-garden";
-import { faunaInteractionFrame, faunaRenderFrame, type ForestFaunaState } from "./forest-fauna";
+import { faunaInteractionFrame, faunaRenderFrame, residentFaunaEncounter, type ForestFaunaState } from "./forest-fauna";
+import { pleskWildlifeHand } from "./plesk-painter";
 import { campfireVisitFrame, type CampfireVisit } from "./forest-campfire";
 import { drawForestCampfires, drawForestCampfireGlow } from "./forest-campfire-painter";
 import { forestBirdFrame } from "./forest-birds";
@@ -48,7 +49,7 @@ import type { ForestFishingFrame } from "./forest-fishing";
 import { fishingPropsBounds } from "./fishing-props";
 import { forestCookingBounds, type ForestCookingFrame } from "./forest-cooking";
 import { drawForestCookingHero } from "./forest-cooking-painter";
-import { startCookingPreview, advanceCookingPreview, cookingPreviewFrame } from "./dev/forest-cooking-preview";
+import { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, noticeCookingPreview } from "./dev/forest-cooking-preview";
 import { forestTrailDestination } from "./forest-trails";
 
 const REACTION_SECONDS = .9;
@@ -283,7 +284,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function residentFrames() {
     const rehearsal = dev?.residentPreview;
-    const natural = state.pleskMind ? pleskMindFrame(state.pleskMind, world, reducedMotion(options, dev)) : null;
+    let natural = state.pleskMind ? pleskMindFrame(state.pleskMind, world, reducedMotion(options, dev)) : null;
+    const encounter = residentFaunaEncounter(state.fauna, "plesk");
+    if (natural && encounter && !["interrupt", "release"].includes(encounter.phase)) {
+      natural = { ...natural, action: natural.carryingFish ? "rest" : "greet", phase: .5, frame: 0, direction: encounter.direction, wildlife: true };
+    }
     return previewForestResidents(world, state.elapsed, reducedMotion(options, dev), rehearsal ?? null,
       rehearsal && rehearsal.id === state.residentPreview?.id ? state.residentPreview.startedAt : state.elapsed, natural ? [natural] : []);
   }
@@ -383,11 +388,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function directorOptions(blocked = false): ForestDirectorOptions {
     const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
     const cooking = state.cookingPreview;
+    const resident = state.pleskMind ? pleskMindFrame(state.pleskMind, world, false) : null;
+    const visitors = resident ? [{ ...resident, hand: pleskWildlifeHand(resident),
+      available: !dev?.residentPreview && !state.pleskMind?.noticePending && (!resident.carryingFish || resident.action === "rest")
+        && ["idle", "rest", "greet"].includes(resident.action) }] : [];
     return { autoLife: !cooking && dev?.autoLife !== false, blocked: blocked || exploring() || forestJourneyWalking(state)
       || Boolean(cooking && cooking.startedAt !== null), actorAway: actorAway(),
       explicitTravel: !blocked && (forestJourneyWalking(state) || Boolean(cooking && cooking.startedAt === null)), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
-      reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds() };
+      reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds(), visitors };
   }
   function preview(): NewMapPaintPreview {
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
@@ -471,6 +480,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (state.pleskMind) {
         const resident = pleskMindFrame(state.pleskMind, world, false);
         advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk,
+          wildlife: !dev?.residentPreview && Boolean(residentFaunaEncounter(state.fauna, "plesk")
+            && !["interrupt", "release"].includes(residentFaunaEncounter(state.fauna, "plesk")!.phase)),
           playerNear: Boolean(resident && !actorAway() && dev?.showHero !== false
             && Math.hypot(resident.x - state.clearing.position.x, resident.y - state.clearing.position.y) < 90) });
       }
@@ -480,10 +491,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       syncCooking();
       advanceForestDirector(state, step, directorOptions(manual));
       const stimulus = state.director.stimulus;
+      const resident = state.pleskMind ? pleskMindFrame(state.pleskMind, world, false) : null;
+      const birdVisitors = [
+        ...(actorAway() || dev?.showHero === false || clearingActivityFrame(state.clearing).residing ? []
+          : [{ ...state.clearing.position, size: state.clearing.size * (dev?.heroScale ?? 1), moving: clearingActivityFrame(state.clearing).pose === "walk" }]),
+        ...(resident ? [{ x: resident.x, y: resident.y, size: resident.size, moving: resident.action === "walk" }] : []),
+      ];
       advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
         ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength }
-        : undefined, world, actorAway() || dev?.showHero === false || clearingActivityFrame(state.clearing).residing ? undefined
-          : { ...state.clearing.position, size: state.clearing.size * (dev?.heroScale ?? 1), moving: clearingActivityFrame(state.clearing).pose === "walk" },
+        : undefined, world, birdVisitors,
         { rain: environment.rain, dusk: environment.dusk, forced: state.birdStarted !== null || dev?.birds === "on" });
       if (stimulus) state.lastBirdStimulus = stimulus.id;
       previous = now; session.publish();
@@ -630,7 +646,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   prepareArtwork();
   function notice() {
     if (disposed || exploring() || !session.isSimulationAllowed()) return;
-    advanceCookingPreview(state, null);
+    if (noticeCookingPreview(state, dev?.cookingPreview)) {
+      if (active()) session.publish();
+      resume(); return;
+    }
     const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
     noticeForestDirector(state, still || manualPose);
     // Static accessibility / explicit DEV poses use a bounded feedback timer.

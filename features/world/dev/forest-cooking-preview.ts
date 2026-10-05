@@ -1,11 +1,11 @@
 import { canStartClearingInteraction, clearingActivityFrame, requestClearingOutside } from "../clearing-activity";
 import { FOREST_COOKING_ACTION_SECONDS, FOREST_COOKING_CYCLE_SECONDS, forestCookingFrame,
   type CookingAction, type ForestCookingFrame } from "../forest-cooking";
-import { cancelForestDirector } from "../forest-director";
+import { cancelForestDirector, noticeForestDirector } from "../forest-director";
 import type { ForestSessionState } from "../forest-session";
 
 export type CookingPreviewSelection = { id: number; action: "sequence" | CookingAction; repeat: boolean };
-export type CookingPreviewClock = { id: number; startedAt: number | null; requestedAt: number };
+export type CookingPreviewClock = { id: number; startedAt: number | null; requestedAt: number; attentionAt?: number };
 type CookingSession = ForestSessionState & { cookingPreview?: CookingPreviewClock };
 type PreviewOptions = { blocked?: boolean; still?: boolean };
 const labels: Record<CookingPreviewSelection["action"], string> = {
@@ -26,6 +26,19 @@ function ready(state: CookingSession) {
 }
 export function cookingPreviewDuration(selection: CookingPreviewSelection): number {
   return selection.action === "sequence" ? FOREST_COOKING_CYCLE_SECONDS : FOREST_COOKING_ACTION_SECONDS[selection.action];
+}
+
+/** A tap waits for the current complete gesture/cycle. Repeated taps never
+ * restart its clock or detach a utensil from the hand halfway through cooking. */
+export function noticeCookingPreview(state: CookingSession, selection: CookingPreviewSelection | null | undefined): boolean {
+  const preview = state.cookingPreview;
+  if (!preview || !selection || preview.id !== selection.id) return false;
+  if (preview.attentionAt === undefined) {
+    const duration = cookingPreviewDuration(selection);
+    const age = preview.startedAt === null ? 0 : Math.max(0, state.elapsed - preview.startedAt);
+    preview.attentionAt = (Math.floor(age / duration) + 1) * duration;
+  }
+  return true;
 }
 
 /** Existing route ownership handles every exit. Cooking may freeze only visible
@@ -69,9 +82,11 @@ export function advanceCookingPreview(state: CookingSession, selection: CookingP
     preview.startedAt = state.elapsed;
   }
   const age = Math.max(0, state.elapsed - preview.startedAt);
-  if (!selection.repeat && age >= cookingPreviewDuration(selection)) {
+  if (!selection.repeat && age >= cookingPreviewDuration(selection)
+    || preview.attentionAt !== undefined && age >= preview.attentionAt) {
     state.cookingPreview = undefined; state.clearing.frozen = false;
     state.director.reason = "Репетиция готовки завершена — можно выбрать новое занятие";
+    if (preview.attentionAt !== undefined) noticeForestDirector(state, Boolean(options.still));
     return;
   }
   state.clearing.frozen = true;

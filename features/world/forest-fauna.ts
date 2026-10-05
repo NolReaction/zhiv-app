@@ -14,6 +14,7 @@ export type ForestFaunaEntity = WorldPoint & {
   target: WorldPoint | null; anchorId: string | null; anchorOffset: WorldPoint; cooldownUntil: number;
   /** Kept after hero release, until this individual reaches its orbit or shelter. */
   interactionToken: number | null;
+  visitingResident?: boolean;
   stimulusCooldownUntil: number; nextRestAt: number; restUntil: number;
   shelterReadyAt: number | null;
   landingRetryAt: number; landingExpiresAt: number;
@@ -25,10 +26,13 @@ export type FaunaEncounterPhase = "notice" | "raise" | "approach" | "perch" | "r
 export type FaunaEncounter = {
   token: number; entityId: string; kind: FaunaSpecies; phase: FaunaEncounterPhase;
   elapsed: number; phaseElapsed: number; direction: PixelDirection; actor: FaunaActor;
+  visitorId?: string; hand?: WorldPoint;
 };
+export type FaunaVisitor = FaunaActor & { id: string; hand: WorldPoint; available: boolean };
 export type ForestFaunaState = {
   elapsed: number; entities: ForestFaunaEntity[]; habitats: WorldHabitat[];
   encounter: FaunaEncounter | null; nextEncounterAt: number; sequence: number;
+  visitorEncounters: FaunaEncounter[]; nextVisitorAt: number;
   visibility: { butterflies: boolean; fireflies: boolean }; width: number; height: number;
   dusk: number; firefliesForced: boolean; lastReason: string | null;
 };
@@ -41,6 +45,7 @@ export type ForestFaunaOptions = ForestFaunaConditions & {
   actor?: FaunaActor; paused?: boolean; reducedMotion?: boolean;
   /** A frozen actor/pose also freezes a held encounter, but other fauna keep living. */
   freezeEncounter?: boolean; wind?: WorldPoint;
+  visitors?: readonly FaunaVisitor[];
 };
 export type FaunaRenderParticle = ForestFirefly & { id: string; species: FaunaSpecies; mode: FaunaMode; glow?: number };
 export type FaunaInteractionFrame = HeroAnchorPose & {
@@ -168,7 +173,7 @@ export function createForestFauna(scene: FixedWorldScene, seed = hash(scene.id))
       if (individual) { entities.push(individual); counts[habitat.species]++; }
     }
   }
-  return { elapsed: 0, entities, habitats, encounter: null, nextEncounterAt: 0, sequence: 0,
+  return { elapsed: 0, entities, habitats, encounter: null, nextEncounterAt: 0, sequence: 0, visitorEncounters: [], nextVisitorAt: 5,
     width: scene.width, height: scene.height, visibility: { butterflies: true, fireflies: true },
     dusk: 0, firefliesForced: false, lastReason: null };
 }
@@ -183,17 +188,34 @@ function permitted(species: FaunaSpecies, options: ForestFaunaConditions) {
   return !options.blocked && enabled !== "off" && options.rain < .35
     && isFaunaActiveAtTime(species, options.dusk);
 }
-function candidate(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActor, options: ForestFaunaConditions, forced: boolean) {
-  if (state.encounter || state.elapsed < state.nextEncounterAt || !permitted(kind, options)
+// A visit may leave the ambient habitat towards a resident, but still uses
+// its authored exclusions and a swept flight path. No map points are changed.
+const visitFields = new WeakMap<WorldHabitat, WorldHabitat>();
+function visitorHabitat(state: ForestFaunaState, habitat: WorldHabitat): WorldHabitat {
+  let field = visitFields.get(habitat);
+  if (!field) {
+    field = { ...habitat, points: [{ x: 0, y: 0 }, { x: state.width, y: 0 },
+      { x: state.width, y: state.height }, { x: 0, y: state.height }] };
+    visitFields.set(habitat, field);
+  }
+  return field;
+}
+function candidate(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActor, options: ForestFaunaConditions, forced: boolean,
+  hand?: WorldPoint) {
+  if (!hand && (state.encounter || state.elapsed < state.nextEncounterAt) || !permitted(kind, options)
     || ![actor.x, actor.y, actor.size].every(Number.isFinite) || actor.size <= 0) return null;
-  const reach = forced ? Math.min(140, actor.size * 2.4) : Math.min(95, actor.size * 1.55);
+  const reach = hand ? 600 : forced ? Math.min(140, actor.size * 2.4) : Math.min(95, actor.size * 1.55);
   let best: ForestFaunaEntity | null = null, nearest = reach;
   for (const e of state.entities) {
     if (e.species !== kind || e.interactionToken !== null || e.cooldownUntil > state.elapsed || e.alertness > .4
       || !["fly", "rest", "rest-seek"].includes(e.mode)) continue;
-    const habitat = state.habitats.find(h => h.id === e.habitatId);
+    const source = state.habitats.find(h => h.id === e.habitatId);
+    if (hand && source && !source.exclusions?.length && !habitatContains(source, hand, 2.1)) continue;
+    const habitat = source && hand ? visitorHabitat(state, source) : source;
     // Forest residents cannot be invited through the excluded home clearing.
-    if (habitat?.exclusions?.length && !habitatContains(habitat, heroHandAnchor(actor, { pose: "greet", frame: 0, direction: "front" }), 2.1)) continue;
+    const target = hand ?? heroHandAnchor(actor, { pose: "greet", frame: 0, direction: "front" });
+    if (habitat && (hand || habitat.exclusions?.length) && !habitatContains(habitat, target, 2.1)) continue;
+    if (hand && habitat && !habitatFlightTarget(habitat, e, target, state.elapsed)) continue;
     const d = distance(e, actor);
     if (d < nearest) { nearest = d; best = e; }
   }
@@ -374,7 +396,8 @@ export function emitFaunaStimulus(state: ForestFaunaState, stimulus: FaunaStimul
 
 /** Continuous acceleration and braking preserve velocity across every mode change. */
 function steer(state: ForestFaunaState, e: ForestFaunaEntity, target: WorldPoint, dt: number, velocity: WorldPoint = { x: 0, y: 0 }, wind?: WorldPoint) {
-  const habitat = state.habitats.find(h => h.id === e.habitatId);
+  const source = state.habitats.find(h => h.id === e.habitatId);
+  const habitat = source && e.visitingResident ? visitorHabitat(state, source) : source;
   const constrained = habitat?.exclusions?.length ? habitat : null;
   const before = point(e);
   if (constrained) {
@@ -428,14 +451,15 @@ function advanceEncounter(state: ForestFaunaState, dt: number, options: ForestFa
   }
 }
 function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number, options: ForestFaunaOptions) {
-  const encounter = state.encounter?.entityId === e.id ? state.encounter : null;
-  if (encounter && options.freezeEncounter) return;
+  const encounter = state.encounter?.entityId === e.id ? state.encounter
+    : state.visitorEncounters?.find(visit => visit.entityId === e.id);
+  if (encounter && !encounter.visitorId && options.freezeEncounter) return;
   e.alertness *= Math.exp(-dt / 10);
   e.familiarity *= Math.exp(-dt / 100);
   e.modeElapsed += dt;
   if (encounter && ["approach", "perch"].includes(e.mode)) {
     const pose = { pose: "greet", frame: 0, direction: encounter.direction } as const;
-    const hand = heroHandAnchor(encounter.actor, pose);
+    const hand = encounter.hand ?? heroHandAnchor(encounter.actor, pose);
     steer(state, e, hand, dt);
     if (encounter.phase === "approach" && distance(e, hand) < .65 && Math.hypot(e.vx, e.vy) < 1.6) {
       setMode(e, "perch"); encounter.phase = "perch"; encounter.phaseElapsed = 0;
@@ -462,7 +486,7 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
     steer(state, e, live, dt, { x: live.vx, y: live.vy }, options.wind);
     if (distance(e, live) < 2.5 && Math.hypot(e.vx - live.vx, e.vy - live.vy) < 3) {
       setMode(e, "fly");
-      releaseAnimalReservation(state, e);
+      releaseAnimalReservation(state, e); e.visitingResident = false;
     }
     return;
   }
@@ -510,6 +534,49 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
   steer(state, e, live, dt, { x: live.vx, y: live.vy }, options.wind);
 }
 
+/** Residents reserve real individuals independently of Mochlik. A busy/moving
+ * resident releases the same animal from its last actual point, never a copy. */
+function advanceVisitorEncounters(state: ForestFaunaState, dt: number, options: ForestFaunaOptions) {
+  const visits = state.visitorEncounters ?? (state.visitorEncounters = []);
+  const visitors = options.visitors ?? [];
+  const conditions = { ...options, blocked: false };
+  for (const visit of [...visits]) {
+    const visitor = visitors.find(actor => actor.id === visit.visitorId);
+    const e = state.entities.find(entity => entity.id === visit.entityId);
+    visit.elapsed += dt; visit.phaseElapsed += dt;
+    const released = visit.phase === "release" || visit.phase === "interrupt";
+    if (!released && (!visitor?.available || !e || !permitted(visit.kind, conditions)
+      || distance(visitor, visit.actor) > .5 || Math.abs(visitor.size - visit.actor.size) > .01
+      || visit.hand && distance(visitor.hand, visit.hand) > .5 || visit.elapsed > 55)) {
+      visit.phase = "interrupt"; visit.phaseElapsed = 0;
+      if (e) depart(state, e);
+    } else if (visit.phase === "notice" && visit.phaseElapsed >= .65) {
+      visit.phase = "approach"; visit.phaseElapsed = 0;
+    } else if (visit.phase === "perch" && visit.phaseElapsed >= 2.5) {
+      visit.phase = "release"; visit.phaseElapsed = 0; if (e) { e.familiarity = Math.min(1, e.familiarity + .15); depart(state, e); }
+    } else if (released && visit.phaseElapsed >= .6) {
+      visits.splice(visits.indexOf(visit), 1); state.nextVisitorAt = state.elapsed + 24;
+    }
+  }
+  if (state.elapsed < state.nextVisitorAt || visits.length) return;
+  state.nextVisitorAt = state.elapsed + 3;
+  const kind: FaunaSpecies = options.dusk >= .55 ? "firefly" : "butterfly";
+  for (const visitor of visitors.slice(0, 8)) {
+    if (!visitor.available || ![visitor.hand.x, visitor.hand.y].every(Number.isFinite)) continue;
+    const e = candidate(state, kind, visitor, conditions, false, visitor.hand);
+    if (!e) continue;
+    const visit: FaunaEncounter = { token: ++state.sequence, entityId: e.id, kind, phase: "notice",
+      elapsed: 0, phaseElapsed: 0, direction: visitor.direction ?? "front", actor: { ...visitor },
+      visitorId: visitor.id, hand: { ...visitor.hand } };
+    visits.push(visit); e.visitingResident = true; e.interactionToken = visit.token; e.anchorId = null; setMode(e, "approach");
+    break;
+  }
+}
+
+export function residentFaunaEncounter(state: ForestFaunaState, visitorId: string) {
+  return state.visitorEncounters?.find(visit => visit.visitorId === visitorId) ?? null;
+}
+
 /** Exactly one session clock owner calls this; rendering and both cameras only read state. */
 export function advanceForestFauna(state: ForestFaunaState, dt: number, options: ForestFaunaOptions) {
   if (!Number.isFinite(dt) || dt <= 0 || options.paused || options.reducedMotion) return;
@@ -521,6 +588,7 @@ export function advanceForestFauna(state: ForestFaunaState, dt: number, options:
   const individuals = [...state.entities].sort((a, b) => a.id.localeCompare(b.id));
   for (let remaining = elapsed; remaining > 1e-9;) {
     const step = Math.min(1 / 40, remaining); remaining -= step; state.elapsed += step;
+    advanceVisitorEncounters(state, step, options);
     advanceEncounter(state, step, options);
     for (const e of individuals) advanceEntity(state, e, step, options);
   }

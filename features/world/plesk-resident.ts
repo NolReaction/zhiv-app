@@ -20,6 +20,7 @@ export type PleskResidentFrame = WorldPoint & FishingMotion & {
   carryingFish: boolean;
   /** Fish already deposited, separate from the catch held in the paws. */
   basketFilled?: boolean;
+  wildlife?: boolean;
   waterTarget?: WorldPoint;
 };
 

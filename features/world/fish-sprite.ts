@@ -2,7 +2,7 @@ import { FISH_SPECIES, fishShapes, fishSpeciesId, type FishColor, type FishSpeci
 
 export type FishSpriteFrame = {
   x: number; y: number; size: number; species?: FishSpeciesId; angle?: number;
-  tailSwing?: number; underwater?: boolean;
+  tailSwing?: number; underwater?: boolean; flipY?: boolean;
 };
 
 /** Code-native fish art. Callers own time, opacity, water clipping and economics. */
@@ -13,7 +13,7 @@ export function drawFishSprite(ctx: CanvasRenderingContext2D, frame: FishSpriteF
     ? part === "outline" || part === "eye" || part === "mark" ? "#345c59" : part === "belly" ? "#75968a" : "#547b70"
     : colors[part];
   ctx.save(); ctx.translate(frame.x, frame.y);
-  ctx.rotate(Number.isFinite(frame.angle) ? frame.angle! : 0); ctx.scale(frame.size, frame.size);
+  ctx.rotate(Number.isFinite(frame.angle) ? frame.angle! : 0); ctx.scale(frame.size, frame.size * (frame.flipY ? -1 : 1));
   ctx.lineJoin = "round"; ctx.lineCap = "round";
   for (const shape of fishShapes(species, frame.tailSwing)) {
     // Tiny underwater pupils and scales flicker under moving surface highlights.

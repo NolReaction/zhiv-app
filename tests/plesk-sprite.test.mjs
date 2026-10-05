@@ -76,7 +76,7 @@ test("casting, reeling and packing articulate the hand which holds the matching 
   const mouth = fishingBasketFishCenter(packed.basket, 48);
   assert.ok(Math.hypot(packed.heldFish.x - mouth.x, packed.heldFish.y - mouth.y) < .75, "fish lands at the actual basket mouth within pixel rounding");
   assert.deepEqual(packed.grip, held.grip, "the occupied rod stays in its own paw");
-  assert.ok(Math.hypot(packed.basket.x - packed.heldFish.x, packed.basket.y - packed.heldFish.y) < 6);
+  assert.ok(Math.hypot(packed.basket.x - packed.heldFish.x, packed.basket.y - packed.heldFish.y) < 48 * .17);
   assert.notEqual(signature(pleskSprite("idle", "front", 30)), signature(pleskSprite("idle", "front", 6)), "eyes blink independently");
 });
 
@@ -261,11 +261,15 @@ test("a carried basket hangs from Pleska's paw, sways with her step, and has its
       const carried = pleskSprite(action, direction, frame, frame / 7, false, { carryingBasket: true });
       assert.notStrictEqual(carried, empty, "carrying a basket cannot reuse the rod-holding raster");
       assert.strictEqual(carried, pleskSprite(action, direction, frame, frame / 7, false, { carryingBasket: true }));
-      const rig = pleskSpriteRig(carried), handle = fishingBasketHandle(rig.basket, 48), hand = rig.palms[0].position;
+      const rig = pleskSpriteRig(carried), handle = fishingBasketHandle(rig.basket, 48), hand = rig.basketPalm;
       assert.ok(Math.hypot(hand.x - handle.x, hand.y - handle.y) <= .51, `${direction}/${action}/${frame} clasps the handle within pixel rounding`);
       assert.equal(rig.contact.bottom, 45);
       assert.ok(rig.basket.y + 48 * .27 * .43 < rig.contact.bottom, "a carried basket clears the ground");
-      if (action !== "greet") assert.ok(rig.arms[1].palm.y > rig.arms[1].shoulder.y, "the empty opposite paw hangs naturally");
+      const side = direction === "left" || direction === "right";
+      const emptyArm = rig.arms[side ? 0 : 1];
+      if (action !== "greet") assert.ok(emptyArm.palm.y > emptyArm.shoulder.y, "the empty opposite paw hangs naturally");
+      if (side) assert.ok((rig.basket.x - rig.head.x) * (direction === "left" ? -1 : 1) > 0,
+        "the visible arm carries the basket ahead of the body, never behind the tail");
       for (const arm of rig.arms) {
         assert.ok(Math.hypot(arm.elbow.x - arm.shoulder.x, arm.elbow.y - arm.shoulder.y) <= 7.1);
         assert.ok(Math.hypot(arm.palm.x - arm.elbow.x, arm.palm.y - arm.elbow.y) <= 7.1);
@@ -339,7 +343,7 @@ test("the actual Pleska painter moves smoothly into the exact basket center at e
       const endpoint = fishingBasketFishCenter(anchors.basket, size);
       const part = Math.min(1, phase / FISHING_PACK_RELEASE), eased = part * part * (3 - 2 * part);
       const expected = { x: packedStart.x + (endpoint.x - packedStart.x) * eased,
-        y: packedStart.y + (endpoint.y - packedStart.y) * eased };
+        y: packedStart.y + (endpoint.y - packedStart.y) * eased - Math.sin(eased * Math.PI) * size * .16 };
       assert.ok(gap(painted.fish[0], expected) < 1e-10, `${direction}/H${size}/phase${phase} uses continuous raw phase`);
       assert.ok(gap(painted.fish[0], fishingCatchFrame(frame, false, anchors).center) < 1e-10,
         "painted fish and supporting fingers share the same center");
@@ -353,5 +357,31 @@ test("the actual Pleska painter moves smoothly into the exact basket center at e
     const stillFirst = recordedFish({ ...base, action: "pack", phase: .12 }, true).fish[0];
     const stillLater = recordedFish({ ...base, action: "pack", phase: .93, frame: 7 }, true).fish[0];
     assert.deepEqual(stillFirst, stillLater, "reduced motion freezes the same continuous pose");
+  }
+});
+
+test("the live map gives Pleska real daytime and nighttime visitors with exact palm contacts", async () => {
+  const {TILED_WORLD:world}=await vite.ssrLoadModule('/features/world/presentation.ts');
+  const {createForestFauna,advanceForestFauna,residentFaunaEncounter}=await vite.ssrLoadModule('/features/world/forest-fauna.ts');
+  const {createPleskMind,advancePleskMind,pleskMindFrame}=await vite.ssrLoadModule('/features/world/plesk-mind.ts');
+  const {pleskWildlifeHand}=await vite.ssrLoadModule('/features/world/plesk-painter.ts');
+  for(const dusk of [0,1]){
+    const fauna=createForestFauna(world),mind=createPleskMind(world),ids=fauna.entities.map(e=>e.id),contacts=new Set();
+    for(let t=0;t<900;t+=.1){
+      const active=residentFaunaEncounter(fauna,'plesk'),pause=!!active&&!['release','interrupt'].includes(active.phase);
+      const feet={...mind.position};advancePleskMind(mind,world,.1,{dusk,rain:0,wildlife:pause});
+      if(pause)assert.deepEqual(mind.position,feet);
+      const r=pleskMindFrame(mind,world,false),hand=pleskWildlifeHand(r);
+      advanceForestFauna(fauna,.1,{dusk,rain:0,visitors:[{...r,hand,
+        available:(!r.carryingFish||r.action==='rest')&&['idle','rest','greet'].includes(r.action)}]});
+      const visit=residentFaunaEncounter(fauna,'plesk');
+      if(visit?.phase==='perch'){
+        const e=fauna.entities.find(e=>e.id===visit.entityId);contacts.add(visit.token);
+        assert.equal(e.species,dusk?'firefly':'butterfly');
+        assert.ok(Math.hypot(e.x-hand.x,e.y-hand.y)<.7);
+      }
+    }
+    assert.ok(contacts.size>0,`dusk=${dusk} must actually reach her paw`);
+    assert.deepEqual(fauna.entities.map(e=>e.id),ids);
   }
 });

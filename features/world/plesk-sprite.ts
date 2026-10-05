@@ -1,5 +1,5 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
-import { fishingCatchFrame, fishingBasketFishCenter, fishingBasketHandle, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, type FishingAction, type FishingMotion } from "./fishing-props";
+import { fishingCatchFrame, fishingPackCenter, fishingBasketHandle, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, type FishingAction, type FishingMotion } from "./fishing-props";
 import type { WorldPoint } from "./tiled/types";
 
 /** The resident is built from the same opaque integer-pixel primitives as
@@ -10,6 +10,7 @@ export type PleskSpriteRig = {
   grip: WorldPoint; heldFish: WorldPoint; restingFish: WorldPoint; basket: WorldPoint;
   head: WorldPoint; tail: WorldPoint; feet: readonly WorldPoint[];
   palms: readonly { position: WorldPoint; near: boolean }[];
+  basketPalm?: WorldPoint;
   arms: readonly { shoulder: WorldPoint; elbow: WorldPoint; palm: WorldPoint }[];
   ears: readonly WorldPoint[]; flower: WorldPoint;
 };
@@ -100,7 +101,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   let otherHand = point(sideView ? 29 : 16, 35 + rise + crouch);
   // The basket hangs outside the body, lifted clear of the planted sole. Its
   // modest pendulum follows the step; the same handle anchors the carrying paw.
-  const basket = carryingBasket ? point((sideView ? 13 : 10) - Math.round(step / 2), 39 + rise)
+  const basket = carryingBasket ? point((sideView ? 38 : 10) + Math.round(step / 2), 39 + rise)
     : ["walk", "idle", "greet"].includes(action) ? point(sideView ? 21 - step : 16, 40 - step)
       : point(sideView ? 14 : 7, 41);
   const restingFish = point(sideView ? 18 : 13, 33);
@@ -117,9 +118,8 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     grip = point(35, 31);
   } else if (action === "pack") {
     grip = point(35, 31);
-    const t = Math.min(1, phasePart / FISHING_PACK_RELEASE), eased = t * t * (3 - 2 * t);
-    const target = fishingBasketFishCenter(mirror(basket), PLESK_SPRITE_SIZE);
-    heldFish = lerp(restingFish, { x: direction === "left" ? PLESK_SPRITE_SIZE - target.x : target.x, y: target.y }, eased);
+    const packed = fishingPackCenter(mirror(restingFish), mirror(basket), PLESK_SPRITE_SIZE, phasePart);
+    heldFish = { x: direction === "left" ? PLESK_SPRITE_SIZE - packed.x : packed.x, y: packed.y };
   } else if (action === "trade") {
     grip = point(35 + (index > 3 ? 1 : 0), 32 + (index > 3 ? -1 : 1));
     otherHand = point(16, 35);
@@ -153,8 +153,15 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   }
   if (carryingBasket) {
     const handle = fishingBasketHandle(basket, PLESK_SPRITE_SIZE);
-    otherHand = point(handle.x, handle.y);
-    if (action !== "greet") grip = point(34 + (sideView ? Math.round(step / 2) : 0), 36 + rise - Math.round(step / 2));
+    if (sideView) {
+      // In profile the visible shoulder carries the basket ahead of the hip.
+      // Routing the far arm around the tail looked like a limb growing from it.
+      grip = point(handle.x, handle.y);
+      otherHand = action === "greet" ? point(20, 25 + (index % 2)) : point(22 - Math.round(step / 2), 36 + rise);
+    } else {
+      otherHand = point(handle.x, handle.y);
+      if (action !== "greet") grip = point(34, 36 + rise - Math.round(step / 2));
+    }
   }
   const reachable = (from: WorldPoint, to: WorldPoint) => {
     const distance = Math.hypot(to.x - from.x, to.y - from.y);
@@ -184,7 +191,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     rect(to.x, to.y - 1, 2, 1, near ? c.shine : c.light);
   };
   if (!back) drawTail();
-  if (sideView && !carryingBasket) drawArm(farShoulder, otherHand, false);
+  if (sideView) drawArm(farShoulder, otherHand, false);
   const bodyCompression = Math.min(2, crouch);
   oval(body.x, body.y, resting ? 13 : 11, resting ? 9 : 11 - bodyCompression, c.outline);
   oval(body.x, body.y - 1, resting ? 12 : 10, resting ? 8 : 10 - bodyCompression, c.dark);
@@ -262,7 +269,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     rect(head.x - 3, head.y + 6, 5, 1, c.dark);
   }
   if (direction !== "left") drawFlower();
-  if (!sideView || carryingBasket) drawArm(farShoulder, otherHand, false);
+  if (!sideView) drawArm(farShoulder, otherHand, false);
   drawArm(shoulder, grip, true);
 
   const mappedFeet = feet.map(mirror), bottom = Math.max(...mappedFeet.map(foot => foot.y + 3));
@@ -270,6 +277,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   rigs.set(canvas, { contact: { bottom, left: Math.min(...planted.map(foot => foot.x - 4)), right: Math.max(...planted.map(foot => foot.x + 5)) },
     grip: mirror(action === "greet" ? otherHand : grip), heldFish: mirror(heldFish), restingFish: mirror(restingFish), basket: mirror(basket),
     head: mirror(head), tail: mirror(tail), feet: mappedFeet, arms, ears: ears.map(mirror), flower: mirror(flower),
+    ...(carryingBasket ? { basketPalm: mirror(sideView ? grip : otherHand) } : {}),
     palms: [{ position: mirror(otherHand), near: false }, { position: mirror(grip), near: true }] });
   cache.set(key, canvas);
   if (cache.size > PLESK_SPRITE_CACHE_LIMIT) cache.delete(cache.keys().next().value!);

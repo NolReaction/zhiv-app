@@ -1,3 +1,4 @@
+import { fishingCastTarget } from "./forest-fishing";
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import { FISHING_PACK_RELEASE, type FishingMotion } from "./fishing-props";
 import type { ForestTrail } from "./forest-trails";
@@ -9,7 +10,7 @@ import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type PleskIntent = "fish" | "trade" | "rest" | "look" | "greet" | "tackle";
 export type PleskNeeds = { energy: number; patience: number; social: number };
-export type PleskEnvironment = { rain: number; dusk: number; playerNear?: boolean };
+export type PleskEnvironment = { rain: number; dusk: number; playerNear?: boolean; wildlife?: boolean };
 export type PleskObservation = {
   action: PleskAction; intent: PleskIntent; reason: string; needs: PleskNeeds;
   catchCount: number; destinationId: string; decisions: number;
@@ -20,7 +21,7 @@ export type PleskMind = {
   elapsed: number; position: WorldPoint; stopId: string; needs: PleskNeeds; catchCount: number;
   intent: PleskIntent; reason: string; decisions: number; recent: PleskIntent[]; seed: number;
   stage: MindStage; age: number; queue: MindStage[]; noticePending: boolean; greetAfter: number;
-  basketSpecies?: FishSpeciesId;
+  basketSpecies?: FishSpeciesId; castTarget?: WorldPoint;
   scene: FixedWorldScene; available: boolean; observation: PleskObservation;
 };
 export const PLESK_MIND_LIMITS = { maxDelta: 1, transitions: 8, recent: 6, basket: 3 } as const;
@@ -95,6 +96,7 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
   if (trail) stages.push({ action: "walk", duration: pleskTravelTime(trail), target, trail });
   const add = (action: PleskAction, duration: number, extra: Partial<MindStage> = {}) => stages.push({ action, duration, target, ...extra });
   if (choice.intent === "fish") {
+    mind.castTarget = places.waterTarget ? fishingCastTarget(mind.scene, places.waterTarget, PLESK.size, mind.seed) : undefined;
     const draw = random(mind), outcome = draw < .19 ? "miss" : draw > .79 ? "large" : "small";
     const species: FishSpeciesId = outcome === "large" ? "fish_mooncarp" : draw < .4 ? "fish" : draw < .6 ? "fish_silverfin" : "fish_reedperch";
     const motion: FishingMotion = { outcome, catchScale: outcome === "large" ? 1.35 : 1, species };
@@ -147,6 +149,14 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
   const places = pleskLocalPlaces(scene);
   if (!places) { mind.available = false; mind.reason = "Личный пирс недоступен — ждёт безопасной разметки."; observe(mind); return; }
   if (!acceptScene(mind, scene, places)) { observe(mind); return; }
+  if (environment.wildlife && !mind.noticePending) {
+    const step = Math.min(PLESK_MIND_LIMITS.maxDelta, dt);
+    mind.elapsed += step;
+    mind.needs.patience = clamp(mind.needs.patience + step * .012);
+    mind.needs.social = clamp(mind.needs.social - step * .012);
+    mind.reason = "Замерла и протянула лапку лесному гостю.";
+    observe(mind); return;
+  }
   const env = { rain: clamp(environment.rain), dusk: clamp(environment.dusk), playerNear: Boolean(environment.playerNear) };
   if (mind.stage.action === "fish" && mind.age > 1 && (env.rain > .82 || mind.noticePending && mind.elapsed >= mind.greetAfter)) {
     mind.reason = env.rain > .82 ? "Начался сильный дождь — аккуратно сматывает леску." : "Гость позвал — сматывает леску, чтобы ответить.";
@@ -193,5 +203,5 @@ export function pleskMindFrame(mind: PleskMind | null, scene: FixedWorldScene, s
     basketSpecies: stage.deposit && phase >= FISHING_PACK_RELEASE ? stage.species : mind.basketSpecies,
     ...(stage.variation ? { variation: stage.variation } : {}), ...(stage.outcome ? { outcome: stage.outcome } : {}),
     ...(stage.catchScale ? { catchScale: stage.catchScale } : {}),
-    ...(places.waterTarget && stage.target.id === places.base.id && !stage.trail ? { waterTarget: { ...places.waterTarget } } : {}) };
+    ...(places.waterTarget && stage.target.id === places.base.id && !stage.trail ? { waterTarget: { ...(mind.castTarget ?? places.waterTarget) } } : {}) };
 }

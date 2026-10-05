@@ -3215,7 +3215,7 @@ test("confirmed expeditions interrupt cooking and a rejected rehearsal is never 
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
-test("cooking waits for a sleeping actor to walk outside and a real tap stops it without replaying the request", async () => {
+test("cooking waits for outdoor feet and a real tap finishes the current cycle without replaying the request", async () => {
   const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, cookingPreviewFrame, clearingActivityFrame } = await modules({ sites: [clearingHome], paths: [clearingHomePath] });
   const env = browser(); let scene, probe;
   try {
@@ -3241,8 +3241,13 @@ test("cooking waits for a sleeping actor to walk outside and a real tap stops it
     assert.ok(frame); assert.equal(actor.opacity, 1); assert.ok(!actor.residing && !actor.lift);
     assert.ok(distanceBetween(probe.state.clearing.position, indoorFeet) > 0, "the actor actually left the indoor position");
     assert.deepEqual({ x: frame.x, y: frame.y }, probe.state.clearing.position);
+    const startedAt = probe.state.cookingPreview.startedAt;
     scene.notice();
-    assert.equal(probe.state.cookingPreview, undefined);
+    assert.equal(probe.state.cookingPreview.startedAt, startedAt, "tap does not break the visible cooking gesture");
+    const attentionAt = probe.state.cookingPreview.attentionAt;
+    clock.advance(1); scene.notice();
+    assert.equal(probe.state.cookingPreview.attentionAt, attentionAt, "repeat taps do not extend the cycle");
+    clock.until(() => !probe.state.cookingPreview, "cooking completes before greeting", 650);
     clock.advance(1);
     assert.equal(probe.state.cookingPreview, undefined, "a tap does not leave the consumed preview queued for another start");
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }

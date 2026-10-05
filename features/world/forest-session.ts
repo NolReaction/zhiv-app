@@ -34,7 +34,7 @@ export type ForestSessionState = {
   /** Isolated DEV playback clocks; never included in forest memory. */
   residentPreview?: { id: number; startedAt: number };
   fishingPreview?: { id: number; startedAt: number };
-  cookingPreview?: { id: number; startedAt: number | null; requestedAt: number };
+  cookingPreview?: { id: number; startedAt: number | null; requestedAt: number; attentionAt?: number };
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;

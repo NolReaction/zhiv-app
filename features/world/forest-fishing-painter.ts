@@ -1,5 +1,5 @@
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
-import { drawFishingProps, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, fishingTackleFrame, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand } from "./fishing-props";
+import { drawFishingProps, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF, fishingTackleFrame, fishingCatchFrame, fishingPackCenter, fishingBasketHandle, fishingReelHand } from "./fishing-props";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { drawGroundedHero } from "./grounding";
 import type { WorldPoint } from "./tiled/types";
@@ -34,12 +34,12 @@ export function forestFishingHeroRig(frame: ForestFishingFrame, still: boolean) 
   const handoff = smooth((phase - FISHING_REEL_HANDOFF) / (1 - FISHING_REEL_HANDOFF));
   const farShoulder = { x: x - side * size * (pulling ? .1 + .1 * handoff : .2), y: y - size * .255 };
   const nearShoulder = { x: x + side * size * .2, y: y - size * .255 };
-  const placing = mix(heldFish, fishingBasketFishCenter(basket, size), smooth(phase / FISHING_PACK_RELEASE));
+  const placing = fishingPackCenter(heldFish, basket, size, phase);
   const actualFish = packing ? placing : heldFish;
   const catchFrame = fishingCatchFrame(frame, still, { grip, heldFish: actualFish, basket });
   const relaxed = { x: x - side * size * (.23 - check * .05), y: y - size * (.18 + check * .13) };
   const nearHand = action === "rest" ? { x: x + side * size * .24, y: y - size * .18 } : grip;
-  const farHand = traveling && frame.carryingFish ? { x: basket.x, y: basket.y - size * .15 }
+  const farHand = traveling && frame.carryingFish ? fishingBasketHandle(basket, size)
     : action === "catch" ? catchFrame.wrist : packing ? mix(catchFrame.wrist, relaxed, smooth((phase - FISHING_PACK_RELEASE) / (1 - FISHING_PACK_RELEASE)))
       : pulling ? mix(mix(relaxed, fishingReelHand(frame, still, { grip }), still ? 1 : smooth(phase / .12)),
         escape ? relaxed : catchFrame.wrist, escape ? smooth((phase - .65) / .35) : handoff)
