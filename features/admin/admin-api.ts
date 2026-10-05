@@ -4,6 +4,7 @@ import type { GameAchievementId } from "@/features/game/game-api";
 import { ApiError } from "@/lib/check-in-api";
 import { playerTagSchema } from "@/lib/player-tag";
 import { worldStateSchema } from "@/features/world/model";
+import { economyStorageSchema, economyViewSchema } from "@/features/economy/model";
 
 const count = z.number().int().nonnegative().safe();
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
@@ -89,6 +90,44 @@ export function getAdminAudit(options: { offset: number; limit: number }, signal
   return adminRequest(`audit?offset=${options.offset}&limit=${options.limit}`, auditSchema, signal);
 }
 export const getAdminMonitoring = (signal?: AbortSignal, rangeMinutes = 60) => adminRequest(`monitoring?rangeMinutes=${rangeMinutes}`, monitoringSchema, signal);
+
+const economyPlayerSchema = z.object({ publicId, displayName: z.string(), initialized: z.boolean(),
+  updatedAt: instant.nullable(), revision: count.nullable(), coins: count.nullable(), pearls: count.nullable(),
+  homeLevel: count.nullable(), completedExplorations: count.nullable(), storage: economyStorageSchema.nullable(),
+  runningJobs: count, readyJobs: count, awaitingCollectionJobs: count, blockedReadyJobs: count,
+}).refine(value => value.initialized
+  ? [value.updatedAt, value.revision, value.coins, value.pearls, value.homeLevel, value.completedExplorations, value.storage].every(v => v !== null)
+  : [value.updatedAt, value.revision, value.coins, value.pearls, value.homeLevel, value.completedExplorations, value.storage].every(v => v === null),
+"Uninitialized economy must remain distinct from an empty wallet");
+const economySchema = z.object({ ...page, summary: z.object({ players: count, initializedPlayers: count,
+  uninitializedPlayers: count, coins: count, pearls: count, runningJobs: count, readyJobs: count,
+  storageBlockedPlayers: count, overflowPlayers: count, updatedLast24Hours: count }), players: z.array(economyPlayerSchema).max(100),
+}).refine(value => value.summary.players === value.summary.initializedPlayers + value.summary.uninitializedPlayers
+  && value.total <= value.summary.players && value.players.length <= value.limit,
+"Economy page counts must agree");
+const signedCount = z.number().int().safe();
+const economyDetailSchema = z.object({ publicId, displayName: z.string(), serverTime: instant, updatedAt: instant.nullable(),
+  economy: economyViewSchema.nullable(), jobStatuses: z.array(z.object({ jobId: z.string().uuid(),
+    status: z.enum(["running", "awaiting_collection", "collecting", "ready"]), storageBlocked: z.boolean() })
+    .refine(job => !job.storageBlocked || job.status === "ready")).max(100),
+  ledger: z.array(z.object({ kind: z.string().min(1).max(100), coins: signedCount, pearls: signedCount,
+    items: z.record(z.string().min(1).max(80), signedCount), createdAt: instant })).max(30),
+}).refine(value => value.economy ? value.economy.ownerPublicId === value.publicId
+  && value.economy.serverTime === value.serverTime && value.updatedAt !== null
+  && value.jobStatuses.length === value.economy.jobs.length
+  && new Set(value.jobStatuses.map(job => job.jobId)).size === value.jobStatuses.length
+  && value.jobStatuses.every(job => value.economy!.jobs.some(item => item.id === job.jobId))
+  : value.updatedAt === null && value.jobStatuses.length === 0, "Economy detail must match its player and jobs");
+export type AdminEconomy = z.infer<typeof economySchema>;
+export type AdminEconomyPlayer = z.infer<typeof economyPlayerSchema>;
+export type AdminEconomyDetail = z.infer<typeof economyDetailSchema>;
+export type AdminEconomySort = "updated" | "coins" | "progress" | "ready";
+export function getAdminEconomy(options: { q: string; sort: AdminEconomySort; offset: number; limit: number }, signal?: AbortSignal) {
+  const query = new URLSearchParams({ q: options.q, sort: options.sort, offset: String(options.offset), limit: String(options.limit) });
+  return adminRequest(`economy?${query}`, economySchema.refine(value => value.offset === options.offset && value.limit === options.limit), signal);
+}
+export const getAdminEconomyPlayer = (target: string, signal?: AbortSignal) => adminRequest(
+  `users/${encodeURIComponent(target)}/economy`, economyDetailSchema.refine(value => value.publicId === target), signal);
 export function revokeAdminSessions(targetPublicId: string, body: AdminRevokeRequest, signal?: AbortSignal) {
   return adminRequest(`users/${encodeURIComponent(targetPublicId)}/revoke-sessions`,
     z.object({ requestId: z.string().uuid(), affectedSessions: count, createdAt: instant }), signal, body);

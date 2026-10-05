@@ -54,6 +54,18 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                 val sort = call.parameter("sort", "created").takeIf { it in setOf("created", "activity", "taps", "review") } ?: badQuery()
                 call.respond(repository.users(hash, query, sort, offset, limit))
             }
+            get("/economy") {
+                val hash = call.adminSessionHash(config, codec)
+                val (offset, limit) = call.page()
+                val query = call.parameter("q", "").trim().takeIf { it.length <= 100 && it.none(Char::isISOControl) } ?: badQuery()
+                val sort = call.parameter("sort", "updated").takeIf { it in setOf("updated", "coins", "progress", "ready") } ?: badQuery()
+                call.respond(repository.economy(hash, query, sort, offset, limit))
+            }
+            get("/users/{publicId}/economy") {
+                val hash = call.adminSessionHash(config, codec)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                call.respond(repository.economyPlayer(hash, target))
+            }
             get("/users/{publicId}/rewards") {
                 val hash = call.adminSessionHash(config, codec)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()

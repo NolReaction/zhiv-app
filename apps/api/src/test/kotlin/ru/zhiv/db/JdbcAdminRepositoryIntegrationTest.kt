@@ -7,6 +7,7 @@ import io.ktor.http.*
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import kotlinx.serialization.encodeToString
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -17,6 +18,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.admin.AdminConfig
 import ru.zhiv.admin.AdminPlayerCommand
+import ru.zhiv.economy.*
 import ru.zhiv.identity.PlayerTag
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
@@ -86,6 +88,8 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(401, assertFailsWith<AuthFailure> { repo.access(tokens.issue().hash) }.status)
         assertEquals(403, assertFailsWith<AuthFailure> { repository().access(admin.hash) }.status)
         val denied = listOf<suspend () -> Any>(
+            { repo.economy(visitor.hash,"","updated",0,25) },
+            { repo.economyPlayer(visitor.hash,admin.publicId) },
             { repo.player(visitor.hash,admin.publicId) },
             { repo.tapActivity(visitor.hash,admin.publicId) },
             { repo.managePlayer(visitor.hash,admin.publicId,UUID.randomUUID(),AdminPlayerCommand(UUID.randomUUID().toString(),admin.publicId,"Attempt unauthorized grant","grant_resource","wood",10)) },
@@ -96,6 +100,58 @@ class JdbcAdminRepositoryIntegrationTest {
         for (operation in denied) assertEquals(403, assertFailsWith<AuthFailure> { operation() }.status)
         execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?", admin.hash)
         assertEquals(401, assertFailsWith<AuthFailure> { repo.overview(admin.hash, 30) }.status)
+        assertEquals(401, assertFailsWith<AuthFailure> { repo.economy(admin.hash,"","updated",0,25) }.status)
+        assertEquals(401, assertFailsWith<AuthFailure> { repo.economyPlayer(admin.hash,visitor.publicId) }.status)
+    }
+
+    @Test fun `economy observations never initialize absent gameplay or reveal a fishing seed`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val target = user("Новый игрок"); val repo = repository(admin)
+        val detail = repo.economyPlayer(admin.hash,target.publicId)
+        assertNull(detail.economy); assertNull(detail.updatedAt); assertTrue(detail.jobStatuses.isEmpty())
+        val page = repo.economy(admin.hash,target.publicId,"updated",0,25)
+        assertEquals(1L,page.total); assertFalse(page.players.single().initialized)
+        assertNull(page.players.single().coins); assertNull(page.players.single().storage)
+        assertEquals("0",scalar("SELECT count(*) FROM economy_profiles WHERE user_id=?",target.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_conversion_audit WHERE user_id=?",target.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=?",target.id))
+        val initialized = EconomyRules.initial().copy(fishingCastSeed="private-seed-must-not-leak")
+        execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",target.id,economyJson.encodeToString(initialized))
+        assertFalse(Json.encodeToString(repo.economyPlayer(admin.hash,target.publicId)).contains("private-seed"))
+        assertEquals(404,assertFailsWith<AuthFailure> { repo.economyPlayer(admin.hash,"0000-0000-0001") }.status)
+    }
+
+    @Test fun `economy page and detail use actual profiles escrow collection deadlines and bounded ledger`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val target = user("100%_хозяйство"); val retired = user("Удалённый")
+        val repo = repository(admin)
+        val end = "2000-01-01T00:00:00Z"
+        val ready = EconomyJob(UUID.randomUUID().toString(),"production","woodlot","gather_wood",startedAt=end,finishesAt=end,rewards=mapOf("wood" to 6L))
+        val collecting = ready.copy(id=UUID.randomUUID().toString(),targetId="garden",recipeId="grow_berries",rewards=mapOf("berries" to 4L),
+            collection=EconomyCollection("berry_harvest",8,null,null))
+        val future = ready.copy(id=UUID.randomUUID().toString(),finishesAt="2100-01-01T00:00:00Z")
+        val state = EconomyRules.initial().copy(wallet=EconomyWallet(321,7),inventory=mapOf("wood" to 190L),jobs=listOf(ready,collecting,future),completedExplorations=5)
+        execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",target.id,economyJson.encodeToString(state))
+        execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",retired.id,economyJson.encodeToString(state))
+        execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",retired.id)
+        execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",UUID.randomUUID(),target.id,"wood",5,10)
+        repeat(35) { execute("INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items) VALUES (?,?,'sell',-2,1,'{\"wood\":-1}'::jsonb)",target.id,"observation:$it") }
+        val before = scalar("SELECT state::text || revision::text || updated_at::text FROM economy_profiles WHERE user_id=?",target.id)
+        val page = repo.economy(admin.hash,"%_","ready",0,1)
+        assertEquals(1L,page.total); assertEquals(2L,page.summary.players)
+        assertEquals(1L,page.summary.initializedPlayers); assertEquals(1L,page.summary.uninitializedPlayers)
+        assertEquals(321L,page.summary.coins); assertEquals(7L,page.summary.pearls)
+        assertEquals(1L,page.summary.runningJobs); assertEquals(1L,page.summary.readyJobs); assertEquals(1L,page.summary.storageBlockedPlayers)
+        val player = page.players.single()
+        assertEquals(target.publicId,player.publicId); assertEquals(5L,player.storage!!.reserved); assertEquals(5L,player.storage.available)
+        assertEquals(1L,player.awaitingCollectionJobs); assertEquals(1L,player.blockedReadyJobs)
+        val detail = repo.economyPlayer(admin.hash,target.publicId)
+        assertEquals(player.storage,detail.economy!!.storage)
+        assertEquals(setOf("running","ready","awaiting_collection"),detail.jobStatuses.map { it.status }.toSet())
+        assertEquals(ready.id,detail.jobStatuses.single { it.storageBlocked }.jobId)
+        assertEquals(30,detail.ledger.size); assertEquals(-2L,detail.ledger.first().coins); assertEquals(-1L,detail.ledger.first().items["wood"])
+        assertEquals(before,scalar("SELECT state::text || revision::text || updated_at::text FROM economy_profiles WHERE user_id=?",target.id))
+        assertTrue(repo.economy(admin.hash,"%_","coins",1,1).players.isEmpty())
+        assertEquals(400,assertFailsWith<AuthFailure> { repo.economy(admin.hash,"","unknown",0,25) }.status)
+        assertEquals(400,assertFailsWith<AuthFailure> { repo.economy(admin.hash,"","ready",0,101) }.status)
     }
 
     @Test fun `expired sessions and retired accounts lose administrator access`() = runBlocking<Unit> {
@@ -264,6 +320,16 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(setOf("publicId", "displayName", "serverTime"), Json.parseToJsonElement(accepted.bodyAsText()).jsonObject.keys)
         assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/admin/overview?days=7&days=30") { header(HttpHeaders.Cookie, cookie) }.status)
         assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/admin/users?limit=101") { header(HttpHeaders.Cookie, cookie) }.status)
+        for (path in listOf("/api/v1/admin/economy","/api/v1/admin/users/${target.publicId}/economy")) {
+            assertEquals(HttpStatusCode.Unauthorized,client.get(path).status)
+            assertEquals(HttpStatusCode.Forbidden,client.get(path) { header(HttpHeaders.Cookie,"${production.cookieName}=${visitor.raw}") }.status)
+            val economy = client.get(path) { header(HttpHeaders.Cookie,cookie) }
+            assertEquals(HttpStatusCode.OK,economy.status)
+            assertEquals("no-store",economy.headers[HttpHeaders.CacheControl])
+            assertEquals("noindex, nofollow",economy.headers["X-Robots-Tag"])
+        }
+        assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/admin/economy?sort=coins&sort=ready") { header(HttpHeaders.Cookie,cookie) }.status)
+        assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/admin/economy?limit=101") { header(HttpHeaders.Cookie,cookie) }.status)
         val body = """{"requestId":"${UUID.randomUUID()}","confirmationPublicId":"${target.publicId}","reason":"Проверка защиты от CSRF"}"""
         for (origin in listOf<String?>(null, "https://evil.example")) {
             val blocked = client.post("/api/v1/admin/users/${target.publicId}/revoke-sessions") {

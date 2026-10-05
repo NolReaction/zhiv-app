@@ -29,8 +29,12 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
     private fun <T> Connection.one(sql: String, vararg values: Any?, map: (ResultSet) -> T): T? = rows(sql, *values, map = map).firstOrNull()
     private fun Connection.count(sql: String, vararg values: Any?): Long = one(sql, *values) { it.getLong(1) } ?: 0L
     private fun ResultSet.time(column: String): String? = getObject(column, OffsetDateTime::class.java)?.toInstant()?.toString()
-    private suspend fun <T> tx(block: (Connection) -> T): T = withContext(Dispatchers.IO) {
+    private suspend fun <T> tx(readOnlySnapshot: Boolean = false, block: (Connection) -> T): T = withContext(Dispatchers.IO) {
         source.connection.use { c ->
+            if (readOnlySnapshot) {
+                c.transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ
+                c.isReadOnly = true
+            }
             c.autoCommit = false
             try {
                 c.update("SET LOCAL statement_timeout = '8s'")
@@ -57,6 +61,20 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
     override suspend fun access(sessionHash: ByteArray): AdminAccess = tx { c ->
         val actor = actor(c, sessionHash)
         AdminAccess(actor.publicId, actor.displayName, now(c).toInstant().toString())
+    }
+
+    override suspend fun economy(sessionHash: ByteArray, query: String, sort: String, offset: Int, limit: Int): AdminEconomy = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        pagination(offset, limit)
+        if (query.length > 100 || query.any(Char::isISOControl)) invalid()
+        if (sort !in setOf("updated", "coins", "progress", "ready")) invalid()
+        readAdminEconomy(c, query.trim(), sort, offset, limit, now(c))
+    }
+
+    override suspend fun economyPlayer(sessionHash: ByteArray, targetPublicId: String): AdminEconomyDetail = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        readAdminEconomyPlayer(c, targetPublicId, now(c))
+            ?: fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
     }
 
     override suspend fun overview(sessionHash: ByteArray, days: Int): AdminOverview = tx { c ->
