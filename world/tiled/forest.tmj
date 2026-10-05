@@ -7660,7 +7660,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -9410,7 +9410,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -16999,10 +16999,49 @@
                  "width":0,
                  "x":672.731234339253,
                  "y":998.474779387733
+                }, 
+                {
+                 "height":0,
+                 "id":420,
+                 "name":"plesk-torch-1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"color",
+                         "type":"color",
+                         "value":"#ffffb45d"
+                        }, 
+                        {
+                         "name":"flicker",
+                         "type":"float",
+                         "value":0.1
+                        }, 
+                        {
+                         "name":"intensity",
+                         "type":"float",
+                         "value":1
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"torch"
+                        }, 
+                        {
+                         "name":"radius",
+                         "type":"float",
+                         "value":85
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1200.87541069282,
+                 "y":684.858008048534
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -18701,12 +18740,12 @@
                          "y":439.213657991198
                         }, 
                         {
-                         "x":462.660729380477,
-                         "y":449.204096190947
+                         "x":453.445719629711,
+                         "y":453.275844685471
                         }, 
                         {
-                         "x":482.185069910117,
-                         "y":456.537329882577
+                         "x":470.39842953123,
+                         "y":462.752103900536
                         }, 
                         {
                          "x":469.229324231311,
@@ -20293,8 +20332,8 @@
                  "type":"",
                  "visible":true,
                  "width":0,
-                 "x":986.955311049695,
-                 "y":935.111122699067
+                 "x":994.048767336271,
+                 "y":934.224440663245
                 }, 
                 {
                  "height":0,
@@ -20324,7 +20363,7 @@
                  "width":0,
                  "x":957.975313565464,
                  "y":233.461266672494
-                },
+                }, 
                 {
                  "height":0,
                  "id":417,
@@ -20332,15 +20371,23 @@
                  "opacity":1,
                  "point":true,
                  "properties":[
-                        { "name":"pauseSeconds", "type":"float", "value":18 },
-                        { "name":"role", "type":"string", "value":"destination" }],
+                        {
+                         "name":"pauseSeconds",
+                         "type":"float",
+                         "value":18
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"destination"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
                  "width":0,
-                 "x":1214,
-                 "y":744
-                },
+                 "x":1209.22886536454,
+                 "y":752.647681526763
+                }, 
                 {
                  "height":0,
                  "id":418,
@@ -20348,15 +20395,23 @@
                  "opacity":1,
                  "point":true,
                  "properties":[
-                        { "name":"pauseSeconds", "type":"float", "value":20 },
-                        { "name":"role", "type":"string", "value":"destination" }],
+                        {
+                         "name":"pauseSeconds",
+                         "type":"float",
+                         "value":20
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"destination"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
                  "width":0,
                  "x":1157,
                  "y":697
-                },
+                }, 
                 {
                  "height":0,
                  "id":419,
@@ -20364,8 +20419,16 @@
                  "opacity":1,
                  "point":true,
                  "properties":[
-                        { "name":"pauseSeconds", "type":"float", "value":12 },
-                        { "name":"role", "type":"string", "value":"destination" }],
+                        {
+                         "name":"pauseSeconds",
+                         "type":"float",
+                         "value":12
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"destination"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -20387,7 +20450,6 @@
                 {
                  "height":0,
                  "id":391,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"home-north-canopy",
                  "opacity":1,
                  "polygon":[
@@ -20899,6 +20961,12 @@
                          "x":-8.81942968036242,
                          "y":13.4975561819409
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -20909,7 +20977,6 @@
                 {
                  "height":0,
                  "id":392,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"eastern-passage-north-canopy",
                  "opacity":1,
                  "polygon":[
@@ -21045,6 +21112,12 @@
                          "x":1.31872970158349,
                          "y":-1.82188580853574
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -21055,7 +21128,6 @@
                 {
                  "height":0,
                  "id":393,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"eastern-passage-south-canopy",
                  "opacity":1,
                  "polygon":[
@@ -21199,6 +21271,12 @@
                          "x":1.75304777851579,
                          "y":-0.434753463741686
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -21209,7 +21287,6 @@
                 {
                  "height":0,
                  "id":395,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"workshop-north-canopy",
                  "opacity":1,
                  "polygon":[
@@ -21593,6 +21670,12 @@
                          "x":-18.3033455385154,
                          "y":25.5039229127283
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -21603,7 +21686,6 @@
                 {
                  "height":0,
                  "id":396,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"western-fork-canopy",
                  "opacity":1,
                  "polygon":[
@@ -21799,6 +21881,12 @@
                          "x":-42.960021444247,
                          "y":-9.15974411484689
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -21809,7 +21897,6 @@
                 {
                  "height":0,
                  "id":399,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"home-west-canopy",
                  "opacity":1,
                  "polygon":[
@@ -22081,6 +22168,12 @@
                          "x":57.0037373608534,
                          "y":-2.21953087107238
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -22091,7 +22184,6 @@
                 {
                  "height":0,
                  "id":400,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"home-south-boulder",
                  "opacity":1,
                  "polygon":[
@@ -22155,6 +22247,12 @@
                          "x":3.48310693138274,
                          "y":3.77954156384089
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -22165,7 +22263,6 @@
                 {
                  "height":0,
                  "id":404,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"workshop-south-canopy",
                  "opacity":1,
                  "polygon":[
@@ -22381,6 +22478,12 @@
                          "x":0,
                          "y":1.81155559344427
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -22391,7 +22494,6 @@
                 {
                  "height":0,
                  "id":406,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"quarry-west-approach-canopy",
                  "opacity":1,
                  "polygon":[
@@ -22599,6 +22701,12 @@
                          "x":28.7974155344609,
                          "y":-42.8073017061004
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -22609,7 +22717,6 @@
                 {
                  "height":0,
                  "id":408,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"quarry-east-approach-canopy",
                  "opacity":1,
                  "polygon":[
@@ -22817,6 +22924,12 @@
                          "x":-43.6026344396919,
                          "y":-55.2083561495569
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -22827,7 +22940,6 @@
                 {
                  "height":0,
                  "id":410,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"woodlot-east-canopy",
                  "opacity":1,
                  "polygon":[
@@ -22971,6 +23083,12 @@
                          "x":46.0573113798827,
                          "y":5.3793664428494
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -22981,7 +23099,6 @@
                 {
                  "height":0,
                  "id":413,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"northeast-trail-canopy",
                  "opacity":1,
                  "polygon":[
@@ -23293,6 +23410,12 @@
                          "x":70.8996505540501,
                          "y":46.16268401587
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -23303,7 +23426,6 @@
                 {
                  "height":0,
                  "id":414,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"eastern-clearing-south-canopy",
                  "opacity":1,
                  "polygon":[
@@ -23571,6 +23693,12 @@
                          "x":-1.65880750172323,
                          "y":-3.14667514108822
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -23581,7 +23709,6 @@
                 {
                  "height":0,
                  "id":415,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"eastern-clearing-north-canopy",
                  "opacity":1,
                  "polygon":[
@@ -23701,6 +23828,12 @@
                          "x":-14.6433774386855,
                          "y":22.9037441989697
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -23711,7 +23844,6 @@
                 {
                  "height":0,
                  "id":416,
-                 "properties":[{ "name":"role", "type":"string", "value":"occluder" }],
                  "name":"northern-entry-canopy",
                  "opacity":1,
                  "polygon":[
@@ -23831,6 +23963,12 @@
                          "x":-22.6202566706675,
                          "y":-16.4650847874927
                         }],
+                 "properties":[
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"occluder"
+                        }],
                  "rotation":0,
                  "type":"",
                  "visible":true,
@@ -23845,7 +23983,7 @@
          "y":0
         }],
  "nextlayerid":122,
- "nextobjectid":420,
+ "nextobjectid":421,
  "orientation":"orthogonal",
  "properties":[
         {
