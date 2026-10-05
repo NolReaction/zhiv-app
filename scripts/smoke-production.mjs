@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { request } from "node:https";
+import { readFileSync } from "node:fs";
 
 // Creates disposable profiles ONLY in the CI Compose stack, never a live deployment.
 assert.equal(process.env.CI, "true", "Run only against the isolated CI stack");
 const origin = "https://localhost";
+const economyCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 async function api(method, path, { cookie, body, expected = 200, key = randomUUID(), source = origin } = {}) {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const result = await new Promise((resolve, reject) => {
@@ -224,7 +226,7 @@ const worldEarned = await api("GET", "/api/v1/world", { cookie: owner.cookie });
 assert.equal(worldEarned.data.state.resources.sparks, 0);
 const travel = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldEarned.data.revision, action: "start_journey", target: "first_path" };
 await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel, expected: 409 });
-// V32–V35 must work under the restricted runtime role, including immutable command receipts.
+// The current economy must work under the restricted runtime role, including immutable command receipts.
 await api("GET", "/api/v1/economy", { expected: 401 });
 const economyBefore = await api("GET", "/api/v1/economy", { cookie: owner.cookie });
 assert.equal(economyBefore.headers["cache-control"], "no-store");
@@ -232,7 +234,7 @@ assert.deepEqual(economyBefore.data.wallet, { coins: 0, pearls: 0 });
 assert.equal(economyBefore.data.buildings.garden, 1);
 assert.equal(economyBefore.data.buildings.warehouse, 1);
 assert.equal(economyBefore.data.buildings.kiln, 0);
-assert.equal(economyBefore.data.catalog.version, 2);
+assert.equal(economyBefore.data.catalog.version, economyCatalog.version, "The running API must serve the checked-in economy catalog version");
 const warehouse = economyBefore.data.catalog.buildings.find(building => building.id === "warehouse");
 assert.deepEqual(economyBefore.data.storage, { capacity: warehouse.levels[0].warehouseCapacity, used: 0, reserved: 0, available: warehouse.levels[0].warehouseCapacity, overflow: 0 });
 const expedition = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId,
