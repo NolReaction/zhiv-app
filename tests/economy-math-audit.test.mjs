@@ -80,7 +80,7 @@ test("overnight catch has six species draws within a fixed catch volume and cons
   assert(camp.speciesDrawsPerJob / camp.slotMinutes.mochlik < best.speciesDrawsPerJob / best.slotMinutes.mochlik, 'Repeated short trips remain faster at collection discovery');
   assert.equal(best.baitPurchaseCoins, 260); assert.equal(camp.baitPurchaseCoins, 260);
   const report = auditEconomicMath(catalog);
-  assert.equal(report.fishingLoadouts.length, 125);
+  assert.equal(report.fishingLoadouts.length, 180);
   for (const loadout of report.fishingLoadouts.filter(row => row.baitId)) {
     const noBait = report.fishingLoadouts.find(row => row.rodId === loadout.rodId && row.hookId === loadout.hookId && !row.baitId);
     assert.ok(loadout.expectedFishRevenue - noBait.expectedFishRevenue < loadout.baitPurchaseCoins);
@@ -116,13 +116,14 @@ test("fish references use earned catches and the legendary hook gate rather than
 });
 
 
-test("each rod and hook can lead a distinct rarity objective instead of universally dominating cheaper gear", () => {
+test("each specialist rod and hook can lead a distinct rarity objective instead of universally dominating cheaper gear", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   const roles = ["common", "uncommon", "rare", "epic", "legendary"];
   const share = (portfolio, rarity) => catalog.fishing.fish.filter(fish => fish.rarity === rarity)
     .reduce((sum, fish) => sum + portfolio.probabilities[fish.itemId], 0);
   for (const [index, rarity] of roles.entries()) {
-    const rod = catalog.fishing.rods[index], hook = catalog.fishing.hooks[index];
+    const rod = catalog.fishing.rods.find(item => item.id === ["reed_rod", "river_rod", "willow_rod", "tide_rod", "starfall_rod"][index]),
+      hook = catalog.fishing.hooks.find(item => item.id === ["bare_hook", "barbed_hook", "silver_hook", "tide_hook", "leviathan_hook"][index]);
     const own = math.catchPortfolio(rod.id, null, "shore", hook.id);
     assert(catalog.fishing.rods.every(other => share(own, rarity) >= share(math.catchPortfolio(other.id, null, "shore", hook.id), rarity)), `${rod.id}: missing intended ${rarity} role`);
     assert(catalog.fishing.hooks.every(other => share(own, rarity) >= share(math.catchPortfolio(rod.id, null, "shore", other.id), rarity)), `${hook.id}: missing intended ${rarity} role`);

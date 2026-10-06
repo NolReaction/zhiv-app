@@ -44,28 +44,28 @@ test('stock is private to each player, gated by home, weighted by rarity and exc
     for (const random of [() => 0, max => max - 1]) {
       const shop = createFishingShop(state, now, random, '00000000-0000-4000-8000-000000000001');
       for (const offer of shop.offers) {
-        const item = (offer.kind === 'rod' ? spec.rods : offer.kind === 'hook' ? spec.hooks : spec.baits)
+        const item = (offer.kind === 'rod' ? spec.rods : offer.kind === 'hook' ? spec.hooks : offer.kind === 'fish' ? spec.fish : spec.baits)
           .find(item => (item.id ?? item.itemId) === offer.itemId);
-        assert.ok(item.requiredHomeLevel <= home);
-        assert.equal(offer.remaining, offer.kind === 'bait' ? 5 : 1);
+        assert.ok((item.requiredHomeLevel ?? 1) <= home);
+        assert.equal(offer.remaining, offer.kind === 'bait' ? 5 : offer.kind === 'fish' ? 3 : 1);
       }
     }
   }
   const first = createFishingShop(state, now, () => 0, '00000000-0000-4000-8000-000000000001');
   const last = createFishingShop(state, now, max => max - 1, '00000000-0000-4000-8000-000000000001');
-  assert.deepEqual(first.offers.map(offer => offer.itemId), ['river_rod', 'barbed_hook', 'crumb_bait', 'worm_bait']);
-  assert.deepEqual(last.offers.map(offer => offer.itemId), ['starfall_rod', 'leviathan_hook', 'firefly_bait', 'glow_bait']);
+  assert.deepEqual(first.offers.map(offer => offer.itemId), ['river_rod', 'barbed_hook', 'crumb_bait', 'fish']);
+  assert.deepEqual(last.offers.map(offer => offer.itemId), ['starfall_rod', 'leviathan_hook', 'firefly_bait', 'fish_rudd']);
   state.fishing.ownedRods = spec.rods.map(item => item.id); state.fishing.ownedHooks = spec.hooks.map(item => item.id);
-  assert.deepEqual(createFishingShop(state, now, () => 0).offers.map(offer => offer.kind), ['bait', 'bait', 'bait', 'bait']);
+  assert.deepEqual(createFishingShop(state, now, () => 0).offers.map(offer => offer.kind), ['bait', 'fish']);
 });
 
 test('only the stored offer can be bought, stock decrements once, replay and concurrent stale commands never double spend', () => {
-  const p = player(), initial = fund(p), offer = initial.fishingShop.offers.find(offer => offer.itemId === 'worm_bait');
+  const p = player(), initial = fund(p), offer = initial.fishingShop.offers.find(offer => offer.kind === 'bait');
   const wrong = command(p, initial, 'buy_fishing_item', offer.itemId, 1, offer.unitPrice);
   assert.throws(() => economy.commandDevEconomy(p.token, wrong, now), { code: 'ECONOMY_FISHING_SHOP_CHANGED' });
   const request = buy(p, initial, offer, 4), concurrent = { ...request, requestId: crypto.randomUUID() };
   const result = economy.commandDevEconomy(p.token, request, now);
-  assert.equal(result.state.inventory.worm_bait, 4); assert.deepEqual(result.state.fishing.catches, {});
+  assert.equal(result.state.inventory[offer.itemId], 4); assert.deepEqual(result.state.fishing.catches, {});
   assert.equal(result.state.fishingShop.offers.find(item => item.id === offer.id).remaining, 1);
   assert.equal(result.state.wallet.coins, initial.wallet.coins - 4 * offer.unitPrice);
   assert.equal(economy.commandDevEconomy(p.token, request, now).replayed, true);
@@ -78,6 +78,7 @@ test('only the stored offer can be bought, stock decrements once, replay and con
 
 test('paid refresh uses a bounded accepted pearl price and one durable receipt, invalidating every old offer', () => {
   const p = player(); fund(p); persisted(p).buildings.home = 5;
+  persisted(p).fishingShop = createFishingShop(persisted(p), now, max => max - 1);
   const before = read(p), shop = before.fishingShop;
   const request = command(p, before, 'refresh_fishing_shop', shop.id, 1, shop.refreshPricePearls);
   const cheaper = { ...request, totalPrice: shop.refreshPricePearls - 1 };
@@ -136,42 +137,81 @@ test('a pre-rotation purchase receipt with the old catalog target replays withou
 });
 
 
-test('paid replacement excludes every prior item including sold-out stock across repeated refreshes', () => {
-  const p = player(); fund(p);
-  const state = persisted(p); state.buildings.home = 5;
-  state.fishingShop = createFishingShop(state, now, () => 0);
+test('new supplies always keep distinct categories and paid changes exclude even sold-out IDs', () => {
+  const p = player(); fund(p); const state = persisted(p); state.buildings.home = 5;
   let seed = 1729;
   const random = max => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % max; };
-  for (let index = 0; index < 200; index++) {
+  let replaced = 0;
+  for (let index = 0; index < 1000; index++) {
+    state.fishingShop = createFishingShop(state, now, random);
     const old = structuredClone(state.fishingShop);
+    assert.deepEqual(old.offers.map(item => item.kind), ['rod', 'hook', 'bait', 'fish']);
     state.fishingShop.offers[0].remaining = 0;
-    assert.equal(canRefreshFishingShop(state), true);
+    if (!canRefreshFishingShop(state)) {
+      assert.equal(refreshFishingShop(state, now, () => { throw Error('must not draw'); }), null);
+      continue;
+    }
     const next = refreshFishingShop(state, now + index, random);
-    assert.equal(next.offers.length, old.offers.length);
-    assert.equal(new Set(next.offers.map(offer => offer.itemId)).size, next.offers.length);
+    assert.deepEqual(next.offers.map(item => item.kind), ['rod', 'hook', 'bait', 'fish']);
     assert.ok(next.offers.every(offer => !old.offers.some(previous => previous.itemId === offer.itemId)));
-    state.fishingShop = next;
+    replaced++;
+  }
+  assert.ok(replaced > 20, 'there are reachable paid changes without selling rarity guarantees');
+});
+
+test('shared Kotlin vectors keep category slots and fixed rare tickets with downward fallback', () => {
+  const p = player(); fund(p); const state = persisted(p); state.buildings.home = 5;
+  // Rare, rather than cheapest gear leaves guaranteed lower-tier replacements.
+  state.fishingShop = createFishingShop(state, now, max => max === 10000 ? 8000 : 0);
+  assert.deepEqual(state.fishingShop.offers.map(item => item.itemId), ['willow_rod', 'silver_hook', 'crumb_bait', 'fish']);
+  assert.equal(canRefreshFishingShop(state), true);
+  assert.deepEqual(refreshFishingShop(state, now, () => 0).offers.map(item => item.itemId),
+    ['river_rod', 'barbed_hook', 'worm_bait', 'fish_silverfin']);
+  const totals = [];
+  assert.deepEqual(refreshFishingShop(state, now, max => { totals.push(max); return max - 1; }).offers.map(item => item.itemId),
+    ['starfall_rod', 'leviathan_hook', 'firefly_bait', 'fish_rudd']);
+  assert.deepEqual(totals, [10000, 1, 10000, 1, 95, 2]);
+});
+
+test('all 10000 tickets per home keep exact legendary odds even after collecting every lesser model', () => {
+  const p = player(); fund(p); const state = persisted(p), spec = economyCatalog.fishing;
+  const expected = [0, 0, 0, 20, 50];
+  for (let home = 1; home <= 5; home++) {
+    state.buildings.home = home;
+    for (const exhausted of [false, true]) {
+      state.fishing.ownedRods = spec.rods.filter(item => exhausted ? item.rarity !== 'legendary' : item.price === 0).map(item => item.id);
+      state.fishing.ownedHooks = spec.hooks.filter(item => exhausted ? item.rarity !== 'legendary' : item.price === 0).map(item => item.id);
+      let rods = 0, hooks = 0;
+      for (let ticket = 0; ticket < 10000; ticket++) {
+        const shop = createFishingShop(state, now, max => max === 10000 ? ticket : 0, '00000000-0000-4000-8000-000000000001');
+        rods += shop.offers.some(item => item.itemId === 'starfall_rod');
+        hooks += shop.offers.some(item => item.itemId === 'leviathan_hook');
+        assert.ok(shop.offers.filter(item => item.kind === 'rod').length <= 1);
+        assert.ok(shop.offers.filter(item => item.kind === 'hook').length <= 1);
+      }
+      assert.equal(rods, expected[home - 1]); assert.equal(hooks, expected[home - 1]);
+    }
   }
 });
 
-test('replacement shares weighted deterministic vectors with Kotlin without guaranteed rod or hook slots', () => {
-  const p = player(); fund(p);
-  const state = persisted(p); state.buildings.home = 5;
-  state.fishingShop = createFishingShop(state, now, () => 0);
-  assert.deepEqual(refreshFishingShop(state, now, () => 0).offers.map(offer => offer.itemId),
-    ['willow_rod', 'tide_rod', 'starfall_rod', 'silver_hook']);
-  assert.deepEqual(refreshFishingShop(state, now, max => max - 1).offers.map(offer => offer.itemId),
-    ['firefly_bait', 'glow_bait', 'leviathan_hook', 'tide_hook']);
-  // Every item remains selected by its original rarity weight, not a guaranteed category slot.
-  const totals = [];
-  refreshFishingShop(state, now, max => { totals.push(max); return max - 1; });
-  assert.deepEqual(totals, [113, 103, 78, 74]);
+test('excluding prior rare offers cannot redistribute tickets into epic or legendary gear', () => {
+  const p = player(); fund(p); const state = persisted(p); state.buildings.home = 5;
+  state.fishingShop = createFishingShop(state, now, max => max === 10000 ? 8000 : 0);
+  const counts = { river_rod: 0, tide_rod: 0, starfall_rod: 0 };
+  for (let ticket = 0; ticket < 10000; ticket++) {
+    const next = refreshFishingShop(state, now, max => max === 10000 ? ticket : 0);
+    counts[next.offers.find(item => item.kind === 'rod').itemId]++;
+  }
+  assert.deepEqual(counts, { river_rod: 9250, tide_rod: 700, starfall_rod: 50 });
 });
 
-test('insufficient replacement stock never draws or charges and natural replenishment remains free', () => {
-  const p = player(), before = fund(p);
-  assert.equal(canRefreshFishingShop(persisted(p)), false);
-  assert.equal(refreshFishingShop(persisted(p), now, () => { throw Error('must not draw'); }), null);
+test('missing baseline replacement disables payment before draws and leaves natural replenishment free', () => {
+  const p = player(); fund(p); const state = persisted(p);
+  state.fishing.ownedRods.push('brook_rod'); state.fishing.ownedHooks.push('round_hook');
+  state.fishingShop = createFishingShop(state, now, () => 0);
+  const before = read(p);
+  assert.equal(canRefreshFishingShop(state), false);
+  assert.equal(refreshFishingShop(state, now, () => { throw Error('must not draw'); }), null);
   assert.throws(() => economy.commandDevEconomy(p.token,
     command(p, before, 'refresh_fishing_shop', before.fishingShop.id, 1, 100), now),
     { code: 'ECONOMY_FISHING_SHOP_NO_REPLACEMENT' });
@@ -180,24 +220,57 @@ test('insufficient replacement stock never draws or charges and natural replenis
   const next = read(p, Date.parse(before.fishingShop.refreshAt));
   assert.notEqual(next.fishingShop.id, before.fishingShop.id);
   assert.deepEqual(next.wallet, before.wallet);
-  assert.equal(next.fishingShop.offers.length, 4);
-});
-
-test('owning tackle cannot exhaust the weighted choice to guarantee the remaining legendary stock', () => {
-  const p = player(); fund(p);
-  const state = persisted(p); state.buildings.home = 5;
-  state.fishingShop = createFishingShop(state, now, () => 0);
-  state.fishing.ownedRods.push('willow_rod', 'tide_rod');
-  state.fishing.ownedHooks.push('silver_hook');
-  // Five alternatives with two legendaries would force at least one in four slots.
-  assert.equal(canRefreshFishingShop(state), false);
-  assert.equal(refreshFishingShop(state, now, () => { throw Error('must not draw'); }), null);
-  state.fishing.ownedHooks.push('tide_hook');
-  // Exactly four alternatives remain, so charging would force all four, including both legendaries.
-  assert.equal(canRefreshFishingShop(state), false);
-  assert.equal(refreshFishingShop(state, now, () => { throw Error('must not draw'); }), null);
+  state.buildings.home = 5;
   state.fishing.ownedRods = economyCatalog.fishing.rods.map(item => item.id);
   state.fishing.ownedHooks = economyCatalog.fishing.hooks.map(item => item.id);
   state.fishingShop = createFishingShop(state, now, () => 0);
-  assert.equal(canRefreshFishingShop(state), false, 'a bait-only counter has no new stock to sell for pearls');
+  assert.equal(canRefreshFishingShop(state), true, 'a completed tackle collection can still replace bait and fish');
+  assert.deepEqual(refreshFishingShop(state, now, () => 0).offers.map(item => item.kind), ['bait', 'fish']);
+});
+
+test('discount fish purchase has bounded stock, no collection unlock, no NPC arbitrage and durable replay', () => {
+  const p = player(), before = fund(p), offer = before.fishingShop.offers.find(item => item.kind === 'fish');
+  const fish = economyCatalog.fishing.fish.find(item => item.itemId === offer.itemId);
+  assert.equal(fish.rarity, 'common');
+  assert.equal(offer.unitPrice, Math.ceil(fish.buyPrice * 0.8));
+  for (const entry of economyCatalog.fishing.fish.filter(item => item.rarity === 'common')) {
+    const item = economyCatalog.items.find(item => item.id === entry.itemId);
+    assert.ok(Math.ceil(entry.buyPrice * 0.8) > item.baseSellPrice);
+  }
+  const request = buy(p, before, offer, 3);
+  const next = economy.commandDevEconomy(p.token, request, now).state;
+  assert.equal(next.inventory[offer.itemId], (before.inventory[offer.itemId] ?? 0) + 3);
+  assert.deepEqual(next.fishing.catches, before.fishing.catches);
+  assert.deepEqual(next.progression, before.progression);
+  assert.equal(next.fishingShop.offers.find(item => item.id === offer.id).remaining, 0);
+  assert.equal(economy.commandDevEconomy(p.token, request, now).replayed, true);
+  assert.throws(() => economy.commandDevEconomy(p.token, buy(p, next, offer), now), { code: 'ECONOMY_FISHING_STOCK' });
+});
+
+test('full storage rejects discounted fish atomically without spending coins or stock', () => {
+  const p = player(); fund(p); persisted(p).inventory.wood = 200;
+  const before = read(p), offer = before.fishingShop.offers.find(item => item.kind === 'fish');
+  assert.throws(() => economy.commandDevEconomy(p.token, buy(p, before, offer), now), { code: 'ECONOMY_STORAGE_FULL' });
+  assert.deepEqual(read(p), before);
+});
+
+test('invalid trusted random results cannot produce a shop', () => {
+  const p = player(); fund(p);
+  for (const random of [() => -1, max => max, () => NaN, () => 0.5]) {
+    assert.throws(() => createFishingShop(persisted(p), now, random), /Invalid trusted shop draw/);
+  }
+});
+
+test('ordinary paid offers really alternate within each category without a forced rarity promotion', () => {
+  const p = player(); fund(p); const state = persisted(p);
+  state.fishingShop = createFishingShop(state, now, () => 0);
+  for (let i = 0; i < 10; i++) {
+    const old = state.fishingShop;
+    assert.equal(canRefreshFishingShop(state), true);
+    const next = refreshFishingShop(state, now + i, () => 0);
+    assert.deepEqual(next.offers.map(item => item.kind), ['rod', 'hook', 'bait', 'fish']);
+    assert.ok(next.offers.every(item => !old.offers.some(previous => previous.itemId === item.itemId)));
+    assert.ok(['river_rod', 'brook_rod'].includes(next.offers[0].itemId));
+    state.fishingShop = next;
+  }
 });

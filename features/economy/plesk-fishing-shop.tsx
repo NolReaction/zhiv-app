@@ -1,19 +1,21 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Check, Clock3, Fish, FishingRod, Package, RefreshCw, Shell, Store } from "lucide-react";
+import { Anchor, ArrowRight, BookOpen, Bug, Check, Clock3, Fish, FishingRod, Package, RefreshCw, Store } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/fishing-rod-icon";
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { fishingOdds, fishingState } from "./fishing";
 import { canRefreshFishingShop } from "./fishing-shop";
-import { fishDiscovered, HiddenFishIcon, PlayerItemIcon } from "./fish-discovery";
-import { FishRarityBadge, FishRarityScale, FISH_RARITY_LEVELS } from "./fish-rarity";
+import { fishDiscovered, PlayerItemIcon } from "./fish-discovery";
+import { FishRarityBadge, FISH_RARITY_LEVELS } from "./fish-rarity";
 import { PantrySale } from "./world-pantry-menu";
 import { itemName, number } from "./world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
+import { PleskFishingCollection } from "./plesk-fishing-book";
 import styles from "./plesk-fishing-shop.module.css";
+export { PleskFishingCollection } from "./plesk-fishing-book";
 
 type ReadyProps = { economy: EconomyController; state: EconomyView };
 type FishingCatalog = NonNullable<EconomyView["catalog"]["fishing"]>;
@@ -131,6 +133,23 @@ export function PleskBaitOffer({ economy, state, bait }: ReadyProps & { bait: Fi
   </article>;
 }
 
+export function PleskFishOffer({ economy, state, fish }: ReadyProps & { fish: FishingCatalog["fish"][number] }) {
+  const { blocked, send } = useFishingCommand({ economy, state }), [quantityText, setQuantityText] = useState("1"), id = useId();
+  const offer = offerFor(state, fish.itemId), live = offerLive(state, economy.now, offer), price = offer?.unitPrice ?? fish.buyPrice;
+  const maximum = live ? Math.max(0, Math.min(offer!.remaining, state.catalog.maxBatch, state.storage.available, Math.floor(state.wallet.coins / price))) : 0;
+  const quantity = Number(quantityText), valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
+  const known = fish.itemId === "fish" || fishDiscovered(state, fish.itemId), name = known ? itemName(state, fish.itemId) : "Незнакомая рыба";
+  return <article className={styles.gearCard} data-gear-rarity={fish.rarity}>
+    <div className={styles.gearHeading}><PlayerItemIcon state={state} itemId={fish.itemId} size={48} /><div><h3>{name}</h3><FishRarityBadge rarity={fish.rarity} /><p>В запасе {number(state.inventory[fish.itemId] ?? 0)}</p></div></div>
+    <p className={styles.description}>{fish.itemId === "fish" ? "Для кухни и запаса." : "Из сегодняшнего привоза."} В книгу попадёт только ваш собственный улов.</p>
+    <div className={styles.discountPrice}>{price < fish.buyPrice && <del aria-label={`Обычная цена: ${number(fish.buyPrice)} монет`}><Price value={fish.buyPrice} /></del>}<Price value={price} /><span>за штуку</span></div>
+    {live ? <><div className={styles.quantity}><label htmlFor={id}>Купить штук</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><small>На прилавке {offer!.remaining}</small></div>
+      <button type="button" className={styles.primary} disabled={blocked || !valid} onClick={() => send("buy_fishing_item", offer!.id, quantity, quantity * price, valid)} aria-label={`Купить рыбу: ${name}`}><span>Купить рыбу</span>{Number.isSafeInteger(quantity) && quantity > 0 ? <Price value={quantity * price} /> : <span>—</span>}</button></>
+      : <p className={styles.hint}>Сегодня на прилавке закончилась.</p>}
+    {live && maximum === 0 && <p className={styles.hint}>{state.storage.available === 0 ? "Кладовая заполнена." : "Для покупки не хватает монет."}</p>}
+  </article>;
+}
+
 export function PleskMerchantHeader({ economy, state }: ReadyProps) {
   const shop = state.fishingShop, { blocked, send } = useFishingCommand({ economy, state });
   const [confirm, setConfirm] = useState<string | null>(null), refreshed = useRef<string | null>(null);
@@ -160,42 +179,38 @@ export function PleskMerchantHeader({ economy, state }: ReadyProps) {
 }
 
 function GearDetail({ economy, state, catalog, itemId }: ReadyProps & { catalog: FishingCatalog; itemId: string }) {
-  const rod = catalog.rods.find(entry => entry.id === itemId), hook = catalog.hooks.find(entry => entry.id === itemId), bait = catalog.baits.find(entry => entry.itemId === itemId);
-  return rod ? <PleskRodOffer economy={economy} state={state} rod={rod} /> : hook ? <PleskHookOffer economy={economy} state={state} hook={hook} /> : bait ? <PleskBaitOffer economy={economy} state={state} bait={bait} /> : null;
+  const rod = catalog.rods.find(entry => entry.id === itemId), hook = catalog.hooks.find(entry => entry.id === itemId), bait = catalog.baits.find(entry => entry.itemId === itemId), fish = catalog.fish.find(entry => entry.itemId === itemId);
+  return rod ? <PleskRodOffer economy={economy} state={state} rod={rod} /> : hook ? <PleskHookOffer economy={economy} state={state} hook={hook} /> : bait ? <PleskBaitOffer economy={economy} state={state} bait={bait} /> : fish ? <PleskFishOffer economy={economy} state={state} fish={fish} /> : null;
 }
 
+const merchantSlots = [{ kind: "rod", name: "Удочки", icon: FishingRod }, { kind: "hook", name: "Крючки", icon: Anchor }, { kind: "bait", name: "Наживки", icon: Bug }, { kind: "fish", name: "Рыба дня", icon: Fish }] as const;
 export function PleskTackleCounter({ economy, state, catalog }: ReadyProps & { catalog: FishingCatalog }) {
   const offers = state.fishingShop?.offers ?? [];
+  const previousStock = offers.filter(offer => offers.find(entry => entry.kind === offer.kind)?.id !== offer.id);
   const [selectedId, setSelectedId] = useState(() => offers[0]?.id);
   const selected = offers.find(offer => offer.id === selectedId) ?? offers[0];
   return <>
     <PleskMerchantHeader economy={economy} state={state} />
-    <div className={styles.offerGrid} aria-label="Предложения Плёски">{offers.map(offer => {
-      const entry = offer.kind === "rod" ? catalog.rods.find(rod => rod.id === offer.itemId) : offer.kind === "hook" ? catalog.hooks.find(hook => hook.id === offer.itemId) : catalog.baits.find(bait => bait.itemId === offer.itemId);
+    <div className={styles.offerGrid} aria-label="Предложения Плёски">{merchantSlots.map(slot => {
+      const offer = offers.find(entry => entry.kind === slot.kind);
+      if (!offer) return <div key={slot.kind} className={styles.emptyOffer}><slot.icon size={26} aria-hidden="true" /><strong>{slot.name}</strong><span>Ждём поставку</span></div>;
+      const entry = offer.kind === "rod" ? catalog.rods.find(rod => rod.id === offer.itemId) : offer.kind === "hook" ? catalog.hooks.find(hook => hook.id === offer.itemId) : offer.kind === "fish" ? catalog.fish.find(fish => fish.itemId === offer.itemId) : catalog.baits.find(bait => bait.itemId === offer.itemId);
       if (!entry) return null;
+      const name = offer.kind === "fish" && offer.itemId !== "fish" && !fishDiscovered(state, offer.itemId) ? "Незнакомая рыба" : "name" in entry ? entry.name : itemName(state, offer.itemId);
+      const discount = "buyPrice" in entry ? Math.max(0, Math.round((1 - offer.unitPrice / entry.buyPrice) * 100)) : 0;
       return <button type="button" key={offer.id} className={styles.offerTile} data-gear-rarity={entry.rarity} aria-pressed={selected?.id === offer.id} onClick={() => setSelectedId(offer.id)}>
-        <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={54} /> : <ItemIcon itemId={offer.itemId} size={44} />}</span>
-        <strong>{"name" in entry ? entry.name : itemName(state, offer.itemId)}</strong><FishRarityBadge rarity={entry.rarity} />
+        <small className={styles.offerKind}>{slot.name}{discount > 0 && <span>−{discount}%</span>}</small>
+        <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={54} /> : offer.kind === "fish" ? <PlayerItemIcon state={state} itemId={offer.itemId} size={44} /> : <ItemIcon itemId={offer.itemId} size={44} />}</span>
+        <strong>{name}</strong><FishRarityBadge rarity={entry.rarity} />
         <span className={styles.offerBottom}>{offer.remaining > 0 ? <><Price value={offer.unitPrice} /><small>×{offer.remaining}</small></> : <small><Check size={12} aria-hidden="true" />Раскуплено</small>}</span>
       </button>;
     })}</div>
+    {previousStock.length > 0 && <details className={styles.previousStock}><summary>Остатки прежней поставки · {previousStock.length}</summary><div>{previousStock.map(offer => <button key={offer.id} type="button" aria-pressed={selected?.id === offer.id} onClick={() => setSelectedId(offer.id)}>
+      <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? (offer.kind === "fish" && offer.itemId !== "fish" && !fishDiscovered(state, offer.itemId) ? "Незнакомая рыба" : itemName(state, offer.itemId))}</span>
+      {offer.remaining > 0 ? <Price value={offer.unitPrice} /> : <span>Раскуплено</span>}
+    </button>)}</div></details>}
     {selected && <GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} />}
 
-  </>;
-}
-
-export function PleskFishingCollection({ state, catalog }: { state: EconomyView; catalog: FishingCatalog }) {
-  const { catches } = fishingState(state), discovered = catalog.fish.filter(fish => fishDiscovered(state, fish.itemId)).length;
-  return <>
-    <div className={styles.collectionHeading}><Shell size={24} aria-hidden="true" /><div><h2>Рыбацкая коллекция</h2><p>Виды рыб: {discovered} / {catalog.fish.length}</p></div></div>
-    <p className={styles.description}>Забирайте добычу после рыбалки, чтобы открывать виды. Проданная рыба остаётся в коллекции.</p>
-    <FishRarityScale />
-    <div className={styles.collection} aria-label="Пойманные виды рыб">{catalog.fish.map(fish => {
-      const caught = catches[fish.itemId] ?? 0;
-      return <article className={styles.specimen} key={fish.itemId} data-discovered={caught > 0}>
-        {caught > 0 ? <PlayerItemIcon state={state} itemId={fish.itemId} size={64} /> : <HiddenFishIcon size={64} />}<h3>{caught > 0 ? itemName(state, fish.itemId) : "Неизвестная рыба"}</h3><FishRarityBadge rarity={fish.rarity} /><p>{caught > 0 ? `Поймано: ${number(caught)}` : "Пока скрыта"}</p>
-      </article>;
-    })}</div>
   </>;
 }
 

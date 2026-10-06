@@ -40,8 +40,26 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
 @Serializable data class EconomyFishingOffer(val id: String, val kind: String, val itemId: String, val unitPrice: Long, val remaining: Long)
 @Serializable data class EconomyFishingShop(val id: String, val openedAt: String, val refreshAt: String, val refreshPricePearls: Long, val offers: List<EconomyFishingOffer>)
-@Serializable data class EconomyFishingShopConfig(val refreshSeconds: Long = 21600, val refreshPricePearls: Long = 100, val slots: Int = 4, val baitStock: Long = 5) {
-    init { require(refreshSeconds in 1L..86400L && refreshPricePearls in 1L..ECONOMY_MAX_BALANCE && slots == 4 && baitStock in 1L..100L) }
+internal val fishingShopRarities = listOf("common", "uncommon", "rare", "epic", "legendary")
+private fun fishingShopDefaultGearRarityBps() = listOf(
+    mapOf("common" to 0, "uncommon" to 10000, "rare" to 0, "epic" to 0, "legendary" to 0),
+    mapOf("common" to 0, "uncommon" to 9000, "rare" to 1000, "epic" to 0, "legendary" to 0),
+    mapOf("common" to 0, "uncommon" to 8350, "rare" to 1400, "epic" to 250, "legendary" to 0),
+    mapOf("common" to 0, "uncommon" to 7800, "rare" to 1700, "epic" to 480, "legendary" to 20),
+    mapOf("common" to 0, "uncommon" to 7000, "rare" to 2250, "epic" to 700, "legendary" to 50),
+)
+@Serializable data class EconomyFishingShopConfig(
+    val refreshSeconds: Long = 21600, val refreshPricePearls: Long = 100, val slots: Int = 4,
+    val baitStock: Long = 5, val fishStock: Long = 3, val fishPriceBps: Int = 8000,
+    val gearRarityBpsByHome: List<Map<String, Int>> = fishingShopDefaultGearRarityBps(),
+) {
+    init {
+        require(refreshSeconds in 1L..86400L && refreshPricePearls in 1L..ECONOMY_MAX_BALANCE && slots == 4)
+        require(baitStock in 1L..100L && fishStock in 1L..100L && fishPriceBps in 1..9999)
+        require(gearRarityBpsByHome.size == 5 && gearRarityBpsByHome.all { row ->
+            row.keys == fishingShopRarities.toSet() && row.values.all { it in 0..10000 } && row.values.sum() == 10000
+        })
+    }
 }
 @Serializable data class EconomyFishingCatalog(val routeIds: List<String>, val fish: List<EconomyFishSpec>,
     val rods: List<EconomyRodSpec>, val baits: List<EconomyBaitSpec>, val shop: EconomyFishingShopConfig = EconomyFishingShopConfig(),

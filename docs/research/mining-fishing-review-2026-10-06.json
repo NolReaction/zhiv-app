@@ -3,8 +3,8 @@
   "reviewDate": "2026-10-06",
   "catalogVersion": 3,
   "sourceHashes": {
-    "../apps/api/src/main/resources/world/economy-catalog.json": "5ffca0e35986e1753b0b0d01f76e1fe1eb2463f2c32ed6ac3a3d8121dad9417f",
-    "../features/economy/rules.ts": "2d36bcd67ebdb47541f9056f523f6ab402765d4df12d32d98743ae54f5523811",
+    "../apps/api/src/main/resources/world/economy-catalog.json": "b2bf9d1fbaa0a46602bac80fd7b521849de1bea0cb618d41e17e1c187bbd2926",
+    "../features/economy/rules.ts": "b1f8c233aeeebd2a7968afd08d3378e81cf86a25d8834a540818881e8222e71c",
     "../features/economy/fishing.ts": "c93033314571dc4e67e9a34d468579a9811289153f7918f468a750c069ee160e",
     "./simulate-player-journey.mjs": "c972305b9fcb9f58edc3e62bdc4a1bb6b63a51f731f4dfce8fe99bd0ef9fd2c0",
     "./simulate-player-joint.mjs": "f50dc7b587728f3ca5f4997fccdda0095b006b0d939126c685a6d052bd33f990",
@@ -179,7 +179,7 @@
   "baitMargins": [
     {
       "routeId": "shore",
-      "testedCombinations": 100,
+      "testedCombinations": 144,
       "maximum": {
         "rodId": "reed_rod",
         "hookId": "bare_hook",
@@ -189,7 +189,7 @@
     },
     {
       "routeId": "shore_camp",
-      "testedCombinations": 100,
+      "testedCombinations": 144,
       "maximum": {
         "rodId": "willow_rod",
         "hookId": "silver_hook",

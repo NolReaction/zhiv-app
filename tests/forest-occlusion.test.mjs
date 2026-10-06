@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { occlusionRaster } from "./helpers/occlusion-raster.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -173,4 +174,104 @@ test("explicit prop bounds clip a distant float while keeping the actor's own de
   assert.equal(ctx.read(50, 52), undefined, "the float overlaps a mask outside the usual body envelope");
   assert.equal(ctx.read(57, 52), "line");
   ctx.paint(50, 52, "later"); assert.equal(ctx.read(50, 52), "later", "clips are restored");
+});
+
+function withRasterDocument(run) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "document"), allocated = [];
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement(tag) {
+    assert.equal(tag, "canvas"); const canvas = occlusionRaster(); allocated.push(canvas); return canvas;
+  } } });
+  try { run(allocated); } finally {
+    if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document;
+  }
+}
+
+test("the inward edge fades actor pixels, leaving its exterior crisp and interior completely hidden", () => {
+  withRasterDocument(() => {
+    const target = occlusionRaster(), ctx = target.getContext("2d"), shape = scene();
+    let calls = 0;
+    withForestOcclusion(ctx, shape, actor, paint => { calls++; paint.fillRect(20, 20, 100, 60); });
+    assert.equal(calls, 1, "the sprite is painted only once, not once per feather band");
+    assert.equal(target.alpha(39, 45), 1, "no fade outside the author’s contour");
+    assert.equal(target.alpha(80, 45), 1);
+    assert.equal(target.alpha(50, 45), 0, "the opaque canopy interior never shows the actor");
+    const alpha = [40, 41, 42, 43].map(x => target.alpha(x, 45));
+    assert.ok(alpha[0] < 1 && alpha[0] > alpha[1] && alpha[1] > alpha[2] && alpha[2] > 0 && alpha[3] === 0,
+      `continuous inward alpha falloff: ${alpha}`);
+    assert.equal(ctx.drawCalls.length, 1);
+    assert.deepEqual(ctx.drawCalls[0].matrix, [1, 0, 0, 1, 0, 0], "composite at physical pixel resolution");
+    assert.equal(ctx.globalCompositeOperation, "source-over");
+    assert.equal(ctx.globalAlpha, 1);
+  });
+});
+
+test("feather composition respects camera scaling, inherited opacity, concavity and overlapping crowns", () => {
+  withRasterDocument(() => {
+    const shape = scene([rectangle(), rectangle("overlap", 60, 30, 40, 50)]);
+    for (const scale of [1, 2]) {
+      const target = occlusionRaster(400, 400), ctx = target.getContext("2d");
+      ctx.setTransform(scale, 0, 0, scale, 6, 8); ctx.globalAlpha = .4;
+      withForestOcclusion(ctx, shape, actor, paint => paint.fillRect(20, 20, 110, 70));
+      const alpha = (x, y = 45) => target.alpha(x * scale + 6, y * scale + 8);
+      assert.ok(Math.abs(alpha(35) - .4) < 1e-8, "opacity is applied once");
+      assert.equal(alpha(50), 0); assert.equal(alpha(70), 0); assert.equal(alpha(90), 0);
+      assert.ok(alpha(40) > 0 && alpha(40) < .4);
+      assert.equal(ctx.globalAlpha, .4);
+      assert.deepEqual(ctx.getTransform(), { a: scale, b: 0, c: 0, d: scale, e: 6, f: 8 });
+    }
+    const target = occlusionRaster(), ctx = target.getContext("2d");
+    const crown = { id: "concave", frontY: 90, points: [
+      { x: 40, y: 30 }, { x: 90, y: 30 }, { x: 90, y: 50 },
+      { x: 60, y: 50 }, { x: 60, y: 80 }, { x: 40, y: 80 },
+    ] };
+    withForestOcclusion(ctx, scene([crown]), actor, paint => paint.fillRect(20, 20, 100, 70));
+    assert.equal(target.alpha(75, 65), 1, "an open notch remains open");
+    assert.equal(target.alpha(50, 65), 0);
+    assert.ok(target.alpha(59, 65) > 0 && target.alpha(59, 65) < 1);
+  });
+});
+
+test("mask textures are shared across cameras while each camera reuses its bounded actor surface", () => {
+  withRasterDocument(allocated => {
+    const shape = scene(), cameras = [occlusionRaster(), occlusionRaster()];
+    for (let frame = 0; frame < 3; frame++) for (const camera of cameras) {
+      const ctx = camera.getContext("2d"); ctx.clearRect();
+      withForestOcclusion(ctx, shape, actor, paint => paint.fillRect(20, 20, 100, 60));
+    }
+    assert.equal(allocated.length, 3, "two camera buffers plus one shared contour texture");
+    assert.equal(allocated.filter(canvas => canvas.getContext("2d").strokeCalls > 0).length, 1);
+    assert.ok(allocated.every(canvas => canvas.width * canvas.height <= 1024 * 1024));
+    const before = allocated.length;
+    withForestOcclusion(cameras[0].getContext("2d"), scene([rectangle("far", 900, 900)]), actor, paint => paint.fillRect(20, 20, 10, 10));
+    assert.equal(allocated.length, before, "remote crowns do not allocate a texture or actor buffer");
+  });
+});
+
+test("a failed sprite draw restores the scratch layer and never damages previously painted world pixels", () => {
+  withRasterDocument(() => {
+    const target = occlusionRaster(), ctx = target.getContext("2d"), shape = scene();
+    ctx.globalAlpha = .7; ctx.fillRect(60, 45, 1, 1); ctx.globalAlpha = 1;
+    assert.throws(() => withForestOcclusion(ctx, shape, actor, paint => { paint.fillRect(20, 20, 100, 60); throw new Error("sprite"); }), /sprite/);
+    assert.equal(target.alpha(60, 45), .7);
+    withForestOcclusion(ctx, shape, actor, paint => paint.fillRect(20, 20, 100, 60));
+    assert.equal(target.alpha(60, 45), .7, "masking erases only the isolated actor, never the world behind it");
+    assert.equal(target.alpha(35, 45), 1, "the reusable layer recovered after the exception");
+  });
+});
+
+test("extreme DEV zoom falls back to vector clips before any offscreen allocation", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement() {
+    assert.fail("oversized actor layers must not allocate GPU textures");
+  } } });
+  try {
+    const ctx = surface();
+    ctx.canvas = { width: 5000, height: 5000 }; ctx.globalCompositeOperation = "source-over";
+    ctx.getTransform = () => ({ a: 20, b: 0, c: 0, d: 20, e: 0, f: 0 }); ctx.setTransform = () => {};
+    withForestOcclusion(ctx, scene(), actor, paint => { paint.paint(60, 45); paint.paint(95, 45); });
+    assert.equal(ctx.read(60, 45), undefined); assert.equal(ctx.read(95, 45), "actor");
+    assert.equal(ctx.calls.filter(call => call === "clip").length, 1);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document;
+  }
 });

@@ -278,8 +278,9 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       const rod = offer.kind === "rod" ? catalog.rods.find(item => item.id === offer.itemId) : undefined;
       const hook = offer.kind === "hook" ? catalog.hooks.find(item => item.id === offer.itemId) : undefined;
       const bait = offer.kind === "bait" ? catalog.baits.find(item => item.itemId === offer.itemId) : undefined;
-      if (!rod && !hook && !bait) return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
-      requireHome(state, (rod ?? hook ?? bait)!.requiredHomeLevel);
+      const fish = offer.kind === "fish" ? catalog.fish.find(item => item.itemId === offer.itemId && item.rarity === "common") : undefined;
+      if (!rod && !hook && !bait && !fish) return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
+      requireHome(state, (rod ?? hook ?? bait)?.requiredHomeLevel ?? 1);
       if (command.quantity > economyCatalog.maxBatch || (rod || hook) && command.quantity !== 1)
         throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Проверьте количество товара", 400);
       if (rod && current.ownedRods.includes(rod.id)) return fail("ECONOMY_FISHING_OWNED", "Эта удочка уже есть в коллекции");
@@ -287,7 +288,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (command.quantity > offer.remaining) return fail("ECONOMY_FISHING_STOCK", "Плёска уже продала эту партию. Дождитесь новых предложений");
       const price = offer.unitPrice * command.quantity;
       if (price > command.totalPrice) return fail("ECONOMY_FISHING_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Плёски");
-      if (bait) {
+      if (bait || fish) {
         const inventory = { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + command.quantity };
         assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
       }

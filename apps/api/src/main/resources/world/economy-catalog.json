@@ -2386,6 +2386,22 @@
         }
       },
       {
+        "id": "brook_rod",
+        "name": "Ручьевая удочка",
+        "description": "Для смешанного улова обычной и необычной рыбы. Не заменяет снасти для редких обитателей глубин.",
+        "price": 12000,
+        "rareBonus": 1,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 120,
+          "uncommon": 135,
+          "rare": 60,
+          "epic": 50,
+          "legendary": 40
+        }
+      },
+      {
         "id": "willow_rod",
         "name": "Ивовая удочка",
         "description": "Для редких осторожных рыб. Уступает речной удочке по необычным видам и приливной — по эпическим.",
@@ -2530,6 +2546,22 @@
         }
       },
       {
+        "id": "round_hook",
+        "name": "Круглый крючок",
+        "description": "Для смешанного улова обычной и необычной рыбы. Для редких и глубоководных видов нужны другие снасти.",
+        "price": 8000,
+        "rareBonus": 1,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 115,
+          "uncommon": 125,
+          "rare": 60,
+          "epic": 50,
+          "legendary": 40
+        }
+      },
+      {
         "id": "silver_hook",
         "name": "Серебряный крючок",
         "description": "Тонкое жало для редкой рыбы. Уступает бородатому по необычным видам и приливному — по эпическим.",
@@ -2582,7 +2614,46 @@
       "refreshSeconds": 21600,
       "refreshPricePearls": 100,
       "slots": 4,
-      "baitStock": 5
+      "baitStock": 5,
+      "fishStock": 3,
+      "fishPriceBps": 8000,
+      "gearRarityBpsByHome": [
+        {
+          "common": 0,
+          "uncommon": 10000,
+          "rare": 0,
+          "epic": 0,
+          "legendary": 0
+        },
+        {
+          "common": 0,
+          "uncommon": 9000,
+          "rare": 1000,
+          "epic": 0,
+          "legendary": 0
+        },
+        {
+          "common": 0,
+          "uncommon": 8350,
+          "rare": 1400,
+          "epic": 250,
+          "legendary": 0
+        },
+        {
+          "common": 0,
+          "uncommon": 7800,
+          "rare": 1700,
+          "epic": 480,
+          "legendary": 20
+        },
+        {
+          "common": 0,
+          "uncommon": 7000,
+          "rare": 2250,
+          "epic": 700,
+          "legendary": 50
+        }
+      ]
     },
     "collectionDrawsByRoute": {
       "shore": 1,

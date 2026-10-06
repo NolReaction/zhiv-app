@@ -396,8 +396,9 @@ object EconomyRules {
                 val rod = spec.rods.find { offer.kind == "rod" && it.id == offer.itemId }
                 val hook = spec.hooks.find { offer.kind == "hook" && it.id == offer.itemId }
                 val bait = spec.baits.find { offer.kind == "bait" && it.itemId == offer.itemId }
-                if (rod == null && hook == null && bait == null) economyFailure("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет")
-                requireHome(state, rod?.requiredHomeLevel ?: hook?.requiredHomeLevel ?: checkNotNull(bait).requiredHomeLevel)
+                val fish = spec.fish.find { offer.kind == "fish" && it.itemId == offer.itemId && it.rarity == "common" }
+                if (rod == null && hook == null && bait == null && fish == null) economyFailure("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет")
+                requireHome(state, rod?.requiredHomeLevel ?: hook?.requiredHomeLevel ?: bait?.requiredHomeLevel ?: 1)
                 if (command.quantity > catalog.maxBatch || (rod != null || hook != null) && command.quantity != 1L) invalidEconomy()
                 if (rod != null && rod.id in state.fishing.ownedRods) economyFailure("ECONOMY_FISHING_OWNED", "Эта удочка уже есть в коллекции")
                 if (hook != null && hook.id in state.fishing.ownedHooks) economyFailure("ECONOMY_FISHING_OWNED", "Этот крючок уже есть в коллекции")

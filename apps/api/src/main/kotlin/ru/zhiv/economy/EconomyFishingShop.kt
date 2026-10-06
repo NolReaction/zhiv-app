@@ -4,69 +4,90 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.util.UUID
 
-/** Keep selection and replacement eligibility identical to fishing-shop.ts. */
+/** Keep integer selection and replacement eligibility identical to fishing-shop.ts. */
 object EconomyFishingShops {
     private val secure = SecureRandom()
+    private val categories = listOf("rod", "hook", "bait", "fish")
     private val rarityWeight = mapOf("common" to 100, "uncommon" to 60, "rare" to 25, "epic" to 10, "legendary" to 4)
-    private data class Candidate(val kind: String, val itemId: String, val price: Long, val remaining: Long, val weight: Int)
+    private data class Candidate(val kind: String, val itemId: String, val price: Long, val remaining: Long,
+        val rarity: String, val weight: Int)
     fun expired(shop: EconomyFishingShop?, now: Instant) = shop == null || !now.isBefore(Instant.parse(shop.refreshAt))
     private fun candidates(state: EconomyState): List<Candidate> {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         val home = state.buildings["home"] ?: 1
         return spec.rods.filter { it.price > 0 && it.requiredHomeLevel <= home && it.id !in state.fishing.ownedRods }
-            .map { Candidate("rod", it.id, it.price, 1, rarityWeight.getValue(it.rarity)) } +
+            .map { Candidate("rod", it.id, it.price, 1, it.rarity, 1) } +
             spec.hooks.filter { it.price > 0 && it.requiredHomeLevel <= home && it.id !in state.fishing.ownedHooks }
-                .map { Candidate("hook", it.id, it.price, 1, rarityWeight.getValue(it.rarity)) } +
+                .map { Candidate("hook", it.id, it.price, 1, it.rarity, 1) } +
             spec.baits.filter { it.requiredHomeLevel <= home }
-                .map { Candidate("bait", it.itemId, it.price, spec.shop.baitStock, rarityWeight.getValue(it.rarity)) }
+                .map { Candidate("bait", it.itemId, it.price, spec.shop.baitStock, it.rarity, rarityWeight.getValue(it.rarity)) } +
+            // Ordinary kitchen stock neither reveals nor sells the rare collection.
+            spec.fish.filter { it.rarity == "common" }
+                .map { Candidate("fish", it.itemId, (it.buyPrice * spec.shop.fishPriceBps + 9999) / 10000,
+                    spec.shop.fishStock, it.rarity, 1) }
     }
-    private fun take(pool: MutableList<Candidate>, chosen: MutableList<Candidate>, random: (Int) -> Int) {
-        if (pool.isEmpty()) return
-        val total = pool.sumOf { it.weight }
-        var draw = random(total)
-        require(draw in 0 until total)
-        for (index in pool.indices) {
-            draw -= pool[index].weight
-            if (draw < 0) { chosen += pool.removeAt(index); return }
+    private fun trustedDraw(random: (Int) -> Int, total: Int): Int = random(total).also { require(it in 0 until total) }
+    private fun take(pool: List<Candidate>, random: (Int) -> Int): Candidate? {
+        if (pool.isEmpty()) return null
+        var draw = trustedDraw(random, pool.sumOf { it.weight })
+        for (item in pool) {
+            draw -= item.weight
+            if (draw < 0) return item
         }
+        return null
     }
-    private fun stock(chosen: List<Candidate>, now: Instant, shopId: String): EconomyFishingShop {
+    private fun levelOdds(state: EconomyState): Map<String, Int> = checkNotNull(EconomyRules.catalog.fishing)
+        .shop.gearRarityBpsByHome[((state.buildings["home"] ?: 1) - 1).coerceIn(0, 4)]
+    private fun takeGear(pool: List<Candidate>, state: EconomyState, random: (Int) -> Int): Candidate? {
+        if (pool.isEmpty()) return null
+        val odds = levelOdds(state)
+        var draw = trustedDraw(random, 10000)
+        var tier = 0
+        while (tier < fishingShopRarities.lastIndex) {
+            draw -= odds.getValue(fishingShopRarities[tier])
+            if (draw < 0) break
+            tier++
+        }
+        // Missing, owned or excluded models can downgrade a roll, never upgrade it.
+        while (tier >= 0) {
+            val choices = pool.filter { it.rarity == fishingShopRarities[tier] }
+            if (choices.isNotEmpty()) return take(choices, random)
+            tier--
+        }
+        return null
+    }
+    private fun stock(pool: List<Candidate>, state: EconomyState, now: Instant, random: (Int) -> Int,
+        shopId: String): EconomyFishingShop {
         val config = checkNotNull(EconomyRules.catalog.fishing).shop
+        val chosen = categories.mapNotNull { kind ->
+            val options = pool.filter { it.kind == kind }
+            if (kind == "rod" || kind == "hook") takeGear(options, state, random) else take(options, random)
+        }
         return EconomyFishingShop(shopId, now.toString(), now.plusSeconds(config.refreshSeconds).toString(), config.refreshPricePearls,
             chosen.map { EconomyFishingOffer("$shopId:${it.itemId}", it.kind, it.itemId, it.price, it.remaining) })
     }
     fun create(state: EconomyState, now: Instant, random: (Int) -> Int = secure::nextInt,
-        shopId: String = UUID.randomUUID().toString()): EconomyFishingShop {
-        val pool = candidates(state)
-        val rods = pool.filter { it.kind == "rod" }.toMutableList()
-        val hooks = pool.filter { it.kind == "hook" }.toMutableList()
-        val baits = pool.filter { it.kind == "bait" }.toMutableList()
-        val chosen = mutableListOf<Candidate>()
-        take(rods, chosen, random); take(hooks, chosen, random); take(baits, chosen, random); take(baits, chosen, random)
-        while (chosen.size < checkNotNull(EconomyRules.catalog.fishing).shop.slots && baits.isNotEmpty()) take(baits, chosen, random)
-        return stock(chosen, now, shopId)
-    }
+        shopId: String = UUID.randomUUID().toString()): EconomyFishingShop = stock(candidates(state), state, now, random, shopId)
     private fun replacementPool(state: EconomyState): List<Candidate> {
-        // Include sold-out entries: a paid replacement cannot just restock the same item.
+        // Sold-out entries count too: paying cannot merely restock the same item.
         val previous = state.fishingShop?.offers?.map { it.itemId }?.toSet() ?: emptySet()
         return candidates(state).filter { it.itemId !in previous }
     }
-    private fun replacementSize(state: EconomyState) = minOf(state.fishingShop?.offers?.size ?: 0,
-        checkNotNull(EconomyRules.catalog.fishing).shop.slots)
     fun canRefresh(state: EconomyState): Boolean {
-        val size = replacementSize(state)
+        val previous = state.fishingShop?.offers
+        if (previous.isNullOrEmpty()) return false
         val pool = replacementPool(state)
-        return size > 0 && pool.size > size && pool.count { it.weight != rarityWeight.getValue("legendary") } >= size
+        val odds = levelOdds(state)
+        val lowestTier = fishingShopRarities.indexOfFirst { odds.getValue(it) > 0 }
+        // A paid change must offer a different item for every previous category.
+        // Do not increase rare odds or charge for losing an occupied gear slot.
+        return categories.filter { kind -> kind == "bait" || kind == "fish" || previous.any { it.kind == kind } }
+            .all { kind -> pool.any { it.kind == kind &&
+                (kind != "rod" && kind != "hook" || fishingShopRarities.indexOf(it.rarity) <= lowestTier) } }
     }
     fun refresh(state: EconomyState, now: Instant, random: (Int) -> Int = secure::nextInt,
         shopId: String = UUID.randomUUID().toString()): EconomyFishingShop? {
-        val pool = replacementPool(state).toMutableList()
-        val size = replacementSize(state)
-        // Do not guarantee the entire residual pool, including its rarest tackle.
-        if (size == 0 || pool.size <= size || pool.count { it.weight != rarityWeight.getValue("legendary") } < size) return null
-        val chosen = mutableListOf<Candidate>()
-        // No mandatory gear slots: a lone remaining legendary must still compete by weight.
-        while (chosen.size < size) take(pool, chosen, random)
-        return stock(chosen, now, shopId)
+        if (!canRefresh(state)) return null
+        return stock(replacementPool(state), state, now, random, shopId)
     }
 }

@@ -23,6 +23,13 @@ export const hookArt: Record<string, ReactNode> = {
     <path d="M25 17v15c0 6-5 10-10 8m-5-15 3-4" fill="none" stroke="#d6dfd5" strokeWidth="1.8" />
     <path d="m29 17 7-2 3 3" fill="none" stroke="#a6ab8d" strokeWidth="1.4" />
   </>,
+  round_hook: <>
+    <ellipse cx="31" cy="9" rx="4" ry="4.5" fill="#a3ad8e" />
+    <ellipse cx="31" cy="9" rx="1.5" ry="2" fill="#e8e2c9" strokeWidth="1.2" />
+    <path d="M33 13v16c0 11-7 16-15 14C7 41 5 31 11 23c3-4 8-6 13-4l4 4-10 1 3-3c-4 0-7 4-7 8-1 6 3 10 8 9 5-1 6-4 6-10V13Z" fill="#909a76" />
+    <path d="M31 17v12c0 9-6 13-13 11-7-2-9-10-4-15m1-3 4-1" fill="none" stroke="#d8d9ac" strokeWidth="2" />
+    <path d="m28 15 5 1m-5 2 5 1" fill="none" stroke="#687852" strokeWidth="1.3" />
+  </>,
   barbed_hook: <>
     <ellipse cx="31" cy="8" rx="4.5" ry="4.5" fill="#b7a17b" />
     <ellipse cx="31" cy="8" rx="1.6" ry="1.6" fill="#e7ddbd" strokeWidth="1.2" />

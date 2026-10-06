@@ -19,7 +19,8 @@ const stored = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publ
 const command = (p, action, targetId, extra = {}, at = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
   expectedRevision: read(p, at).revision, action, targetId: action === "buy_fishing_item" ? read(p, at).fishingShop.offers.find(offer => offer.itemId === targetId)?.id ?? targetId : targetId, quantity: 1, totalPrice: 0, ...extra });
 const issue = (p, action, targetId, extra = {}, at = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, extra, at), at).state;
-const fund = p => { read(p); stored(p).wallet.coins = 100_000; };
+const fund = p => { read(p); stored(p).wallet.coins = 100_000;
+  stored(p).fishingShop = createFishingShop(stored(p), now, () => 0); };
 
 test("old snapshots and profiles receive a free starter rod, never retroactive catch records", () => {
   const p = player(), snapshot = read(p);
@@ -92,6 +93,7 @@ test("stale quotes, unsupported items, bulk rods, full escrow storage and insuff
 
 test("loadout is validated, fishing spends one bait and locks catch before later equipment changes", () => {
   const p = player(); fund(p);
+  stored(p).fishingShop = createFishingShop(stored(p), now, max => max === 160 ? max - 1 : 0);
   assert.throws(() => issue(p, "equip_fishing_rod", "willow_rod"), { code: "ECONOMY_FISHING_ROD" });
   assert.throws(() => issue(p, "equip_fishing_bait", "worm_bait"), { code: "ECONOMY_RESOURCES" });
   issue(p, "buy_fishing_item", "river_rod", { totalPrice: 18000 }); issue(p, "equip_fishing_rod", "river_rod");
@@ -203,9 +205,10 @@ test("hooks are unique durable purchases, validated loadout and saved trip metad
   assert.equal(model.economyViewSchema.parse(old).fishing.equippedHookId, 'bare_hook');
 });
 
-test("fish are never sold by Pleska and fish received without a catch never opens collection", () => {
+test("fish outside the current offer cannot be bought and inventory alone never opens collection", () => {
   const p = player(); fund(p);
   for (const fish of model.economyCatalog.fishing.fish) {
+    if (read(p).fishingShop.offers.some(offer => offer.kind === "fish" && offer.itemId === fish.itemId)) continue;
     const before = read(p);
     assert.throws(() => issue(p, 'buy_fishing_item', fish.itemId, { totalPrice: fish.buyPrice }), { code: 'ECONOMY_FISHING_SHOP_CHANGED' });
     assert.deepEqual(read(p), before);

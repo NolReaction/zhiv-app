@@ -222,26 +222,26 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
     context.save(); context.globalAlpha *= walking?.opacity ?? 1;
-    withForestOcclusion(context, world, actor, () => {
+    withForestOcclusion(context, world, actor, actorContext => {
       if (mining) {
-        drawForestMiningHero(context,mining,dev?.equipment ?? options.worldState?.equipment,dev?.heroShadow);
+        drawForestMiningHero(actorContext,mining,dev?.equipment ?? options.worldState?.equipment,dev?.heroShadow);
         return;
       }
       if (fishing) {
-        drawForestFishingHero(context, fishing, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
+        drawForestFishingHero(actorContext, fishing, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
         return;
       }
       if (cooking) {
-        drawForestCookingHero(context, cooking, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
+        drawForestCookingHero(actorContext, cooking, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
         return;
       }
-      drawForestGardenProps(context, garden, "behind");
-      drawGroundedHero(context, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
+      drawForestGardenProps(actorContext, garden, "behind");
+      drawGroundedHero(actorContext, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
         ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
         appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
         rig: garden?.rig ?? routine?.rig });
-      if (routine) drawForestLifePartner(context, routine, elapsed);
-      drawForestGardenProps(context, garden, "front");
+      if (routine) drawForestLifePartner(actorContext, routine, elapsed);
+      drawForestGardenProps(actorContext, garden, "front");
     }, fishing ? fishingPropsBounds(fishing) : cooking ? forestCookingBounds(cooking) : undefined);
     context.restore();
   }

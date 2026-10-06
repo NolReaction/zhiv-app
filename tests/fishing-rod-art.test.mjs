@@ -111,3 +111,24 @@ test("compact and large SVG previews use each actual model without external asse
   const named = renderToStaticMarkup(createElement(FishingRodIcon, { rodId: "willow_rod", label: "Ивовая удочка" }));
   assert.match(named, /role="img" aria-label="Ивовая удочка"/); assert.doesNotMatch(named, /aria-hidden/);
 });
+
+test("brook has its own short wood-and-lashing model and a shallow spool without changing world anchors", () => {
+  const brook = fishingRodShapes("brook_rod"), shaftTip = shapes => shapes.filter(shape => shape.kind === "path")
+    .flatMap(shape => shape.commands).find(command => command[0] === "Q" && command[4] === 0);
+  assert.equal(fishingRodId("brook_rod"), "brook_rod");
+  assert.ok(shaftTip(brook)[3] < shaftTip(fishingRodShapes("river_rod"))[3], "the icon is a shorter bank pole");
+  assert.notDeepEqual(fishingRodAppearance("brook_rod"), fishingRodAppearance("river_rod"));
+  for (const other of ["reed_rod", "river_rod", "tide_rod"]) {
+    const withoutColor = shapes => shapes.map(shape => Object.fromEntries(Object.entries(shape)
+      .filter(([key]) => key !== "fill" && key !== "stroke")));
+    assert.notDeepEqual(withoutColor(brook), withoutColor(fishingRodShapes(other)), "a new color alone is insufficient");
+  }
+  const options = { length: .91, reel: { x: -.025, y: .06 }, crank: 1.4 };
+  const mounted = fishingRodShapes("brook_rod", options);
+  assert.equal(shaftTip(mounted)[3], options.length, "the real line-tip attachment is unchanged");
+  const knob = mounted.at(-1);
+  assert.equal(knob.kind, "ellipse");
+  assert.ok(Math.abs(knob.x - (options.reel.x + Math.cos(options.crank) * .035)) < 1e-10);
+  assert.ok(Math.abs(knob.y - (options.reel.y + Math.sin(options.crank) * .025)) < 1e-10,
+    "compact spool follows the existing ordinary-reel winding-paw path");
+});

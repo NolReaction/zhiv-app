@@ -23,14 +23,25 @@ export const economyFishingSchema = z.object({
 }).default({ ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
 export const economyFishingShopSchema = z.object({
   id: uuid, openedAt: z.string().datetime(), refreshAt: z.string().datetime(), refreshPricePearls: balance,
-  offers: z.array(z.object({ id, kind: z.enum(["rod", "hook", "bait"]), itemId: id, unitPrice: balance.positive(), remaining: count.max(100) })).max(4),
+  offers: z.array(z.object({ id, kind: z.enum(["rod", "hook", "bait", "fish"]), itemId: id, unitPrice: balance.positive(), remaining: count.max(100) })).max(4),
 });
 export type EconomyFishingShop = z.infer<typeof economyFishingShopSchema>;
 const rarityWeights = z.object({ common: count.positive().max(1000), uncommon: count.positive().max(1000),
   rare: count.positive().max(1000), epic: count.positive().max(1000), legendary: count.positive().max(1000) });
+const defaultGearShopOdds = [
+  { common: 0, uncommon: 10000, rare: 0, epic: 0, legendary: 0 },
+  { common: 0, uncommon: 9000, rare: 1000, epic: 0, legendary: 0 },
+  { common: 0, uncommon: 8350, rare: 1400, epic: 250, legendary: 0 },
+  { common: 0, uncommon: 7800, rare: 1700, epic: 480, legendary: 20 },
+  { common: 0, uncommon: 7000, rare: 2250, epic: 700, legendary: 50 },
+];
+const shopRarityOdds = z.object({ common: count.max(10000), uncommon: count.max(10000), rare: count.max(10000),
+  epic: count.max(10000), legendary: count.max(10000) }).refine(value => Object.values(value).reduce((a, b) => a + b, 0) === 10000);
 export const economyFishingCatalogSchema = z.object({
-  shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), slots: z.literal(4), baitStock: count.positive().max(100) })
-    .default({ refreshSeconds: 21600, refreshPricePearls: 100, slots: 4, baitStock: 5 }),
+  shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), slots: z.literal(4), baitStock: count.positive().max(100),
+    fishStock: count.positive().max(100).default(3), fishPriceBps: count.positive().max(9999).default(8000),
+    gearRarityBpsByHome: z.array(shopRarityOdds).length(5).default(defaultGearShopOdds) })
+    .default({ refreshSeconds: 21600, refreshPricePearls: 100, slots: 4, baitStock: 5, fishStock: 3, fishPriceBps: 8000, gearRarityBpsByHome: defaultGearShopOdds }),
   routeIds: z.array(id).min(1).max(100),
   collectionDrawsByRoute: z.record(id, count.positive().max(100)).default({}),
   fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),

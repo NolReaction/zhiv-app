@@ -31,6 +31,6 @@ export function drawForestResidents(ctx: CanvasRenderingContext2D, scene: FixedW
     if ((resident.y < heroY) !== (layer === "behind")) continue;
     const bounds = pleskRenderBounds(resident);
     if (!boundsInCanvas(view, bounds, 3)) continue;
-    withForestOcclusion(ctx, scene, resident, () => drawPleskResident(ctx, resident, still), bounds);
+    withForestOcclusion(ctx, scene, resident, target => drawPleskResident(target, resident, still), bounds);
   }
 }

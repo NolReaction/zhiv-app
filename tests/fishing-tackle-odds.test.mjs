@@ -13,7 +13,7 @@ const catalog = economyCatalog.fishing;
 const baits = [null, ...catalog.baits.map(bait => bait.itemId)];
 const odds = (rodId, hookId, baitId) => fishingOdds({}, catalog, { rodId, hookId, baitId });
 
-test("all 125 tackle combinations normalize and agree with the economic audit; only the best hook can catch a shark", () => {
+test("all 180 tackle combinations normalize and agree with the economic audit; only the best hook can catch a shark", () => {
   const math = economicMath(economyCatalog);
   const shark = catalog.fish.find(fish => fish.itemId === "fish_shark");
   const bestHook = catalog.hooks.reduce((best, hook) => hook.rareBonus > best.rareBonus ? hook : best);
@@ -26,24 +26,25 @@ test("all 125 tackle combinations normalize and agree with the economic audit; o
     assert.equal(chances.find(fish => fish.itemId === shark.itemId).probability > 0, hook.id === bestHook.id);
     combinations++;
   }
-  assert.equal(combinations, 125);
+  assert.equal(combinations, 180);
 });
 
 const classChance = (row, rarity) => row.filter(odd => catalog.fish.find(fish => fish.itemId === odd.itemId).rarity === rarity)
   .reduce((sum, odd) => sum + odd.probability, 0);
 
-test("each rod and hook wins a distinct collection target instead of a universal price ladder", () => {
-  const roles = ["common", "uncommon", "rare", "epic", "legendary"];
-  for (const hook of catalog.hooks) for (const baitId of baits) for (const [i, rod] of catalog.rods.entries()) {
-    if (roles[i] === "legendary" && hook.id !== "leviathan_hook") continue;
-    const target = classChance(odds(rod.id, hook.id, baitId), roles[i]);
+test("each specialist rod and hook wins a distinct collection target instead of a universal price ladder", () => {
+  const roles = { reed_rod: "common", river_rod: "uncommon", willow_rod: "rare", tide_rod: "epic", starfall_rod: "legendary",
+    bare_hook: "common", barbed_hook: "uncommon", silver_hook: "rare", tide_hook: "epic", leviathan_hook: "legendary" };
+  for (const hook of catalog.hooks) for (const baitId of baits) for (const rod of catalog.rods.filter(rod => roles[rod.id])) {
+    if (roles[rod.id] === "legendary" && hook.id !== "leviathan_hook") continue;
+    const target = classChance(odds(rod.id, hook.id, baitId), roles[rod.id]);
     for (const other of catalog.rods.filter(other => other.id !== rod.id))
-      assert.ok(target > classChance(odds(other.id, hook.id, baitId), roles[i]), `${rod.id} must keep its ${roles[i]} niche`);
+      assert.ok(target > classChance(odds(other.id, hook.id, baitId), roles[rod.id]), `${rod.id} must keep its ${roles[rod.id]} niche`);
   }
-  for (const rod of catalog.rods) for (const baitId of baits) for (const [i, hook] of catalog.hooks.entries()) {
-    const target = classChance(odds(rod.id, hook.id, baitId), roles[i]);
+  for (const rod of catalog.rods) for (const baitId of baits) for (const hook of catalog.hooks.filter(hook => roles[hook.id])) {
+    const target = classChance(odds(rod.id, hook.id, baitId), roles[hook.id]);
     for (const other of catalog.hooks.filter(other => other.id !== hook.id))
-      assert.ok(target > classChance(odds(rod.id, other.id, baitId), roles[i]), `${hook.id} must keep its ${roles[i]} niche`);
+      assert.ok(target > classChance(odds(rod.id, other.id, baitId), roles[hook.id]), `${hook.id} must keep its ${roles[hook.id]} niche`);
   }
 });
 
@@ -88,4 +89,16 @@ test("camp contains six stable independent collection draws, while short trips r
   const math = economicMath(economyCatalog).catchPortfolio("river_rod", "worm_bait", "shore_camp", "barbed_hook");
   assert.equal(math.speciesDrawsPerJob, 6);
   assert.ok(Math.abs(Object.values(math.output).reduce((sum, n) => sum + n, 0) - 24) < 1e-12);
+});
+
+test("affordable mixed gear trades ordinary catch share for uncommon share between the two specialists", () => {
+  for (const [mixed, plain, specialist, isRod] of [['brook_rod','reed_rod','river_rod',true],['round_hook','bare_hook','barbed_hook',false]]) {
+    for (const baitId of baits) {
+      const row = id => isRod ? odds(id,'bare_hook',baitId) : odds('reed_rod',id,baitId);
+      assert.ok(classChance(row(mixed),'common') < classChance(row(plain),'common'));
+      assert.ok(classChance(row(mixed),'common') > classChance(row(specialist),'common'));
+      assert.ok(classChance(row(mixed),'uncommon') > classChance(row(plain),'uncommon'));
+      assert.ok(classChance(row(mixed),'uncommon') < classChance(row(specialist),'uncommon'));
+    }
+  }
 });

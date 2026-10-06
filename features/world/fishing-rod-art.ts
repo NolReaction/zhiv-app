@@ -1,7 +1,7 @@
 /** Geometry shared by the equipped world prop and its shop/collection icon.
  * Prices and fishing bonuses belong to the economy catalog. Coordinates use
  * the gripping palm as origin, +x toward the tip, and one unit per actor size. */
-export const FISHING_ROD_IDS = ["reed_rod", "river_rod", "willow_rod", "tide_rod", "starfall_rod"] as const;
+export const FISHING_ROD_IDS = ["reed_rod", "brook_rod", "river_rod", "willow_rod", "tide_rod", "starfall_rod"] as const;
 export type FishingRodId = typeof FISHING_ROD_IDS[number];
 export type FishingRodAppearance = Readonly<{
   shaft: string; highlight: string; handle: string; reel: string; metal: string; wrap: string | null;
@@ -14,6 +14,8 @@ export type FishingRodShape = { fill?: RodColor; stroke?: RodColor; width?: numb
 );
 const reedRod: FishingRodAppearance = Object.freeze({ shaft: "#62472d", highlight: "#d1b27c", handle: "#765639",
   reel: "#586861", metal: "#d4bf8c", wrap: null });
+const brookRod: FishingRodAppearance = Object.freeze({ shaft: "#795438", highlight: "#d6af73", handle: "#ac7849",
+  reel: "#88633e", metal: "#ddc08b", wrap: "#718755" });
 const riverRod: FishingRodAppearance = Object.freeze({ shaft: "#674133", highlight: "#b98d60", handle: "#c5965e",
   reel: "#79563b", metal: "#e1c28d", wrap: "#5a493a" });
 const willowRod: FishingRodAppearance = Object.freeze({ shaft: "#886240", highlight: "#c3a169", handle: "#786044",
@@ -28,7 +30,7 @@ export function fishingRodId(value: unknown): FishingRodId {
   return FISHING_ROD_IDS.find(id => id === value) ?? "reed_rod";
 }
 export function fishingRodAppearance(rodId?: string): FishingRodAppearance {
-  return rodId === "starfall_rod" ? starfallRod : rodId === "tide_rod" ? tideRod : rodId === "river_rod" ? riverRod : rodId === "willow_rod" ? willowRod : reedRod;
+  return rodId === "starfall_rod" ? starfallRod : rodId === "tide_rod" ? tideRod : rodId === "brook_rod" ? brookRod : rodId === "river_rod" ? riverRod : rodId === "willow_rod" ? willowRod : reedRod;
 }
 
 export type FishingRodGeometryOptions = {
@@ -38,12 +40,13 @@ export type FishingRodGeometryOptions = {
 };
 const finite = (value: number | undefined, fallback: number) => Number.isFinite(value) ? value! : fallback;
 
-/** Reed: knotted bamboo + little winding spool. River: three slim sections,
+/** Reed: knotted bamboo + little winding spool. Brook: short plain wood,
+ * green lashings, a paddle grip and low wooden spool. River: three slim sections,
  * continuous cork grip and a compact rounded reel. Tide: heavier sections,
  * split grip and a deep hanging reel. Willow: bowed wood, leaf-shaped fittings
  * and a large round copper reel. The tip and gripping palm stay fixed. */
 export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOptions = {}): readonly FishingRodShape[] {
-  const id = fishingRodId(rodId), requestedLength = finite(options.length, 1), length = requestedLength > 0 ? requestedLength : 1;
+  const id = fishingRodId(rodId), requestedLength = finite(options.length, id === "brook_rod" ? .82 : 1), length = requestedLength > 0 ? requestedLength : 1;
   const side = finite(options.side, 1) < 0 ? -1 : 1;
   const bend = Math.max(0, Math.min(1.5, finite(options.tension, 0))) * .11 * side;
   const crank = finite(options.crank, .5), reel = options.reel ?? { x: -.025, y: .09 * side };
@@ -82,6 +85,29 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
     reelStart = shapes.length;
     ellipse(rx, ry, .047, .034, "handle", "shaft");
     for (const at of [-.02, 0, .02]) line([["M", rx + at, ry - .024], ["L", rx + at, ry + .024]], "metal", .011);
+  } else if (id === "brook_rod") {
+    // A plain single-piece pole with a carved paddle grip, no metal sections or
+    // deep hanging reel. Explicit rig length still preserves the line anchor.
+    shaft(0, 1, .023, .006);
+    line([["M", 0, -.007], ["Q", length * .5, bend - .007, length, 0]], "highlight", .012);
+    body([["M", -.10, -.022], ["Q", -.115, 0, -.10, .022], ["L", .055, .04],
+      ["Q", .09, .028, .075, -.025], ["L", -.10, -.022], ["Z"]], "handle", "shaft", .009);
+    for (const at of [-.065, .065]) {
+      band(at, .029, "wrap", .035);
+      line([["M", at - .01, -.027], ["L", at + .011, .028]], "metal", .006);
+    }
+    for (const at of [.34, .76]) {
+      const x = at * length, y = curveAt(at);
+      line([["M", x, y - .025], ["L", x, y + .025]], "wrap", .024);
+      ellipse(x + .006, y + .03 * side, .018, .015, undefined, "metal", .009);
+    }
+    line([["M", 0, .005 * side], ["L", rx, ry]], "wrap", .026);
+    reelStart = shapes.length;
+    ellipse(rx, ry, .048, .031, "reel", "shaft", .009);
+    for (const at of [-.036, .036]) ellipse(rx + at, ry, .01, .038, "handle", "shaft", .008);
+    for (const at of [-.014, .008]) line([["M", rx + at, ry - .024], ["L", rx + at, ry + .024]], "metal", .009);
+    line([["M", rx, ry], ["L", rx + Math.cos(crank) * .035, ry + Math.sin(crank) * .025]], "metal", .012);
+    ellipse(rx + Math.cos(crank) * .035, ry + Math.sin(crank) * .025, .016, .012, "handle");
   } else if (id === "river_rod" || id === "tide_rod") {
     const river = id === "river_rod";
     // River is a light cork-handled pole; Tide keeps the heavier stepped blank.

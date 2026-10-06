@@ -15,9 +15,14 @@ class EconomyFishingTest {
     private fun apply(state: EconomyState, action: String, target: String, quantity: Long = 1, price: Long = 0, at: Instant = now) =
         EconomyRules.apply(state, command(action, if (action == "buy_fishing_item") offerId(state, target) else target, quantity, price), at).first
     private fun offerId(state: EconomyState, itemId: String) = state.fishingShop?.offers?.find { it.itemId == itemId }?.id ?: itemId
-    private fun funded(): EconomyState {
+    private fun funded(baitId: String = "crumb_bait"): EconomyState {
         val state = EconomyRules.initial().copy(wallet = EconomyWallet(100_000))
-        return state.copy(fishingShop = EconomyFishingShops.create(state, now, { 0 }))
+        val shop = EconomyFishingShops.create(state, now, { 0 })
+        val bait = checkNotNull(EconomyRules.catalog.fishing).baits.single { it.itemId == baitId }
+        // An explicit saved offer keeps command tests independent of the rotating stock draw.
+        return state.copy(fishingShop = shop.copy(offers = shop.offers.map {
+            if (it.kind == "bait") it.copy(id = "${shop.id}:${bait.itemId}", itemId = bait.itemId, unitPrice = bait.price) else it
+        }))
     }
 
     @Test fun `old persisted json gets starter tackle without importing inventory as catches`() {
@@ -82,7 +87,7 @@ class EconomyFishingTest {
     }
 
     @Test fun `fishing locks equipment and one replacement species while claims alone advance collection`() {
-        var state = funded()
+        var state = funded("worm_bait")
         assertEquals("ECONOMY_FISHING_ROD", assertFailsWith<AuthFailure> { apply(state, "equip_fishing_rod", "willow_rod") }.code)
         assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(state, "equip_fishing_bait", "worm_bait") }.code)
         state = apply(state, "buy_fishing_item", "river_rod", price = 18000)

@@ -13,9 +13,12 @@ const { WorldPantryMenu, PantrySale, RelicPantrySection } = await vite.ssrLoadMo
 const { FISH_RARITY_LEVELS, FISH_RARITY_NAMES, FishRarityBadge, FishRarityScale } = await vite.ssrLoadModule("/features/economy/fish-rarity.tsx");
 const { economyCatalog, economyCatalogSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage, newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { PleskFishingShop, PleskFishingCollection } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
+const { PleskFishingShop } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
+const { PleskFishingBookPage, FISHING_BOOK_PAGE_SIZE } = await vite.ssrLoadModule("/features/economy/plesk-fishing-book.tsx");
 const { collectionBookEntries } = await vite.ssrLoadModule("/features/world/collection-book.ts");
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
+const fishPages = state => Array.from({ length: Math.ceil(state.catalog.fishing.fish.length / FISHING_BOOK_PAGE_SIZE) }, (_, page) =>
+  render(PleskFishingBookPage, { state, catalog: state.catalog.fishing, chapter: "fish", page })).join("");
 const fresh = (inventory = {}) => {
   const state = { ...newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 3, workshopLevel: 0 }),
     inventory, catalog: structuredClone(economyCatalog), ownerPublicId: "ME", revision: 1, serverTime: new Date().toISOString() };
@@ -83,7 +86,7 @@ test("existing species remain in the expanded grades across shop book and invent
   const state = fresh({ fish_mooncarp: 2 });
   const shop = render(PleskFishingShop, { economy: controller(state), onFishing() {}, onOpenPantry() {} });
   assert.doesNotMatch(shop, /Мои снасти|Ваши снасти/);
-  const book = render(PleskFishingCollection, { state, catalog: state.catalog.fishing });
+  const book = fishPages(state);
   assert.match(book, /data-fish-rarity="uncommon"/); assert.match(book, /data-fish-rarity="rare"/);
   assert.match(pantry(state), /data-fish-rarity="rare"/);
   const entries = collectionBookEntries("fishing", [], state);
@@ -91,7 +94,7 @@ test("existing species remain in the expanded grades across shop book and invent
   assert.equal(entries.find(entry => entry.id === "fish_shark").rarity, "legendary");
   assert.equal(entries.filter(entry => entry.owned).length, 0, "purchased stock never counts as caught");
   state.fishing.catches.fish_mooncarp = 1; state.inventory = {};
-  const collection = render(PleskFishingCollection, { state, catalog: state.catalog.fishing });
+  const collection = fishPages(state);
   assert.match(collection, /data-fish-rarity="rare"/); assert.match(collection, /Поймано: 1/);
   assert.equal(collectionBookEntries("fishing", [], state).filter(entry => entry.owned).length, 1);
 });

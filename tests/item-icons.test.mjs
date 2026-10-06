@@ -58,3 +58,15 @@ test("book keeps illustrated forest finds and saved ownership without the retire
   assert.doesNotMatch(html, /Лесной альбом|В альбоме/);
   for (const find of worldCatalog.finds.filter(find => find.group === "forest")) assert.ok(html.includes(find.name));
 });
+
+test("round hook has its own smooth curling silhouette instead of the barbed hook or unknown item", () => {
+  const stripId = html => html.replace(/data-item-icon="[^"]+"/, "");
+  const round = render(ItemIcon, { itemId: "round_hook", label: "Круглый крючок" });
+  assert.ok(itemIconIds.includes("round_hook"));
+  assert.match(round, /role="img" aria-label="Круглый крючок"/);
+  const plain = render(ItemIcon, { itemId: "round_hook" });
+  for (const itemId of ["bare_hook", "barbed_hook", "unknown"]) {
+    const geometry = html => stripId(html).replace(/(?:fill|stroke)="[^"]+"/g, "");
+    assert.notEqual(geometry(plain), geometry(render(ItemIcon, { itemId })), "shape differs even without color");
+  }
+});
