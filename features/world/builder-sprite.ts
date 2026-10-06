@@ -8,7 +8,7 @@ export type BuilderSpriteRig = {
   contact: { bottom: number; left: number; right: number };
   head: WorldPoint;
   feet: readonly WorldPoint[];
-  arms: readonly { shoulder: WorldPoint; palm: WorldPoint }[];
+  arms: readonly { hand: "left" | "right"; shoulder: WorldPoint; palm: WorldPoint }[];
   mallet: { grip: WorldPoint; head: WorldPoint; behindBody: boolean };
 };
 const cache = new Map<string, HTMLCanvasElement>();
@@ -69,22 +69,32 @@ export function builderSprite(action: BuilderAction, direction: PixelDirection, 
   const feet = side
     ? [point(19 + step, 43 - (step < 0 ? 1 : 0)), point(30 - step, 43 - (step > 0 ? 1 : 0))]
     : [point(18, 43 - (step < 0 ? 2 : 0)), point(30, 43 - (step > 0 ? 2 : 0))];
-  const shoulder = point(side ? 32 : 31, 31 + rise), farShoulder = point(side ? 25 : 16, 31 + rise);
-  const rest = point(side ? 35 : 34, 34 + rise);
+  // The same right paw keeps the mallet in every view: screen-left from the
+  // front, screen-right from behind, near on a right profile and far on a left.
+  // Keep the resting head down by the belt, away from the muzzle and eyes.
+  const toolBehind = back || mirrored, outward = !side && !back ? -1 : 1;
+  const shoulder = point(side ? 32 : back ? 31 : 16, 33 + rise);
+  const farShoulder = point(side ? (mirrored ? 27 : 25) : back ? 16 : 31, 33 + rise);
+  const rest = point(side ? 35 : back ? 27 : 14, 36 + rise);
   let palm = point(rest.x, rest.y + Math.round(step / 2));
-  let farPalm = point(side ? 27 : 16, 34 + rise - Math.round(step / 2));
+  let farPalm = point(side ? (mirrored ? 29 : 27) : back ? 16 : 33, 36 + rise - Math.round(step / 2));
+  const restHead = point(rest.x + outward, rest.y + 5);
+  let malletHead = point(restHead.x, restHead.y + Math.round(step / 2));
   if (action === "work") {
-    // One deliberate lift, tap and return; the final third is a settled pause.
-    const lifted = point(side ? 38 : 36, 28 + rise), struck = point(side ? 38 : 37, 34 + rise);
-    palm = p < .25 ? mix(rest, lifted, p / .25) : p < .4375 ? mix(lifted, struck, (p - .25) / .1875)
-      : p < .6875 ? mix(struck, rest, (p - .4375) / .25) : rest;
-    farPalm = point(side ? 29 : 19, 33 + rise);
+    // One short lift, tap and return. Interpolate the head with the grip so the
+    // handle never flips across the face between adjacent animation stages.
+    const lifted = point(side ? 37 : back ? 35 : 11, 31 + rise);
+    const struck = point(side ? 38 : back ? 37 : 10, 37 + rise);
+    const liftedHead = point(lifted.x + outward * 4, lifted.y);
+    const struckHead = point(struck.x + outward * 4, struck.y + 1);
+    const pose = (restPoint: WorldPoint, highPoint: WorldPoint, tapPoint: WorldPoint) =>
+      p < .25 ? mix(restPoint, highPoint, p / .25) : p < .4375 ? mix(highPoint, tapPoint, (p - .25) / .1875)
+        : p < .6875 ? mix(tapPoint, restPoint, (p - .4375) / .25) : restPoint;
+    palm = pose(rest, lifted, struck); malletHead = pose(restHead, liftedHead, struckHead);
+    farPalm = point(side ? (mirrored ? 29 : 27) : back ? 19 : 30, 35 + rise);
   } else if (action === "greet") {
     farPalm = point(farPalm.x + (p > .2 && p < .75 ? 1 : 0), farPalm.y - Math.round(Math.sin(p * Math.PI) * 4));
   }
-  const malletHead = action === "work" && p >= .3125 && p < .5625
-    ? point(palm.x + 4, palm.y - 1)
-    : point(palm.x + (action === "work" && p > 0 && p < .3125 ? Math.round(p / .25 * 4) - 1 : -1), palm.y - 6);
   const drawMallet = () => {
     segment(palm, malletHead, colors.outline, 3); segment(palm, malletHead, colors.handle);
     rect(malletHead.x - 4, malletHead.y - 2, 8, 5, colors.outline);
@@ -115,7 +125,8 @@ export function builderSprite(action: BuilderAction, direction: PixelDirection, 
     oval(foot.x, foot.y - 1, 3, 1, index === 0 && side ? colors.spine : colors.fur);
     rect(foot.x - 1, foot.y, 1, 1, colors.spine); rect(foot.x + 1, foot.y, 1, 1, colors.spine);
   }
-  if (back) { drawMallet(); drawPaw(shoulder, palm, true); drawPaw(farShoulder, farPalm, false); }
+  if (toolBehind) { drawMallet(); drawPaw(shoulder, palm, false); }
+  if (back) drawPaw(farShoulder, farPalm, false);
   oval(side ? 20 : 24, 26 + rise, side ? 14 : 16, 17, colors.outline);
   oval(side ? 20 : 24, 25 + rise, side ? 13 : 15, 16, colors.spine);
   const rows = side ? [[12, 10, 3], [10, 17, 3], [9, 24, 3], [11, 31, 3]] : [[15, 9, 3], [10, 16, 4], [9, 23, 4], [11, 30, 4]];
@@ -151,15 +162,16 @@ export function builderSprite(action: BuilderAction, direction: PixelDirection, 
     rect(side ? 31 : 23, 36 + rise, 3, 3, colors.brass);
     rect(side ? 24 : 16, 37 + rise, 5, 5, colors.spine);
     rect(side ? 25 : 17, 37 + rise, 4, 3, colors.handle);
-    drawPaw(farShoulder, farPalm, false);
-    drawMallet(); drawPaw(shoulder, palm, true);
+    drawPaw(farShoulder, farPalm, mirrored);
+    if (!toolBehind) { drawMallet(); drawPaw(shoulder, palm, true); }
   }
   const planted = feet.filter(foot => foot.y === 43).map(mirror);
   rigs.set(canvas, {
     contact: { bottom: 45, left: Math.min(...planted.map(foot => foot.x - 4)), right: Math.max(...planted.map(foot => foot.x + 5)) },
     head: mirror(head), feet: feet.map(mirror),
-    arms: [{ shoulder: mirror(farShoulder), palm: mirror(farPalm) }, { shoulder: mirror(shoulder), palm: mirror(palm) }],
-    mallet: { grip: mirror(palm), head: mirror(malletHead), behindBody: back },
+    arms: [{ hand: "left", shoulder: mirror(farShoulder), palm: mirror(farPalm) },
+      { hand: "right", shoulder: mirror(shoulder), palm: mirror(palm) }],
+    mallet: { grip: mirror(palm), head: mirror(malletHead), behindBody: toolBehind },
   });
   cache.set(key, canvas);
   if (cache.size > BUILDER_SPRITE_CACHE_LIMIT) cache.delete(cache.keys().next().value!);

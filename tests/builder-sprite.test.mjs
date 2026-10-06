@@ -76,15 +76,39 @@ test("the back has a pine-cone silhouette, with tools behind the body instead of
   assert.ok(toolPixels(builderSprite("work", "back", 0, .4375)) > 0, "only the short protruding head is visible on a tap");
 });
 
-test("left and right are mirrored whole rigs, including contacts and the grasped mallet", () => {
-  for (const action of actions) {
-    const left = builderSprite(action, "left", 3, .25), right = builderSprite(action, "right", 3, .25);
-    assert.equal(left.pixels.size, right.pixels.size);
+test("turning keeps the mallet in the right paw and puts the far arm behind the body", () => {
+  for (const action of actions) for (let phase = 0; phase <= 16; phase++) {
+    for (const direction of directions) {
+      const rig = builderSpriteRig(builderSprite(action, direction, 3, phase / 16));
+      assert.deepEqual(rig.mallet.grip, rig.arms.find(arm => arm.hand === "right").palm,
+        `${action}/${direction}: a turn does not hand the tool to the other paw`);
+      assert.equal(rig.mallet.behindBody, direction === "back" || direction === "left");
+    }
+    const left = builderSprite(action, "left", 3, phase / 16), right = builderSprite(action, "right", 3, phase / 16);
+    // Only the body/face mirrors. The dominant hand changes its depth, so a
+    // whole-canvas mirror would put the mallet back in the wrong hand.
     for (const [key, color] of right.pixels) {
-      const [x, y] = key.split(":").map(Number); assert.equal(left.pixels.get(`${47 - x}:${y}`), color);
+      const [x, y] = key.split(":").map(Number);
+      if (y < 28) assert.equal(left.pixels.get(`${47 - x}:${y}`), color);
     }
     const a = builderSpriteRig(left), b = builderSpriteRig(right);
+    assert.deepEqual(a.feet, b.feet.map(({ x, y }) => ({ x: 47 - x, y })));
     assert.equal(a.mallet.grip.x, 47 - b.mallet.grip.x); assert.equal(a.mallet.grip.y, b.mallet.grip.y);
+  }
+});
+
+test("the mallet stays below the profile's muzzle and moves continuously with its grip", () => {
+  for (const direction of ["left", "right"]) for (const action of actions) {
+    let previous;
+    for (let phase = 0; phase <= 16; phase++) {
+      const sprite = builderSprite(action, direction, 0, phase / 16), rig = builderSpriteRig(sprite);
+      assert.ok(rig.mallet.head.y - 2 >= rig.head.y + 8, `${action}/${direction}: no head in front of the face`);
+      assert.ok(Math.hypot(rig.mallet.grip.x - rig.mallet.head.x, rig.mallet.grip.y - rig.mallet.head.y) <= 6,
+        "the short handle stays attached to the paw");
+      if (previous) assert.ok(Math.hypot(rig.mallet.head.x - previous.x, rig.mallet.head.y - previous.y) <= 4,
+        "no sudden reversal between adjacent swing stages");
+      previous = rig.mallet.head;
+    }
   }
 });
 

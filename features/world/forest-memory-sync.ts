@@ -87,6 +87,10 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   let needsRead = true, takeOverRequested = false, failures = 0, lastAppliedRevision: number | null = null;
   let due = 0, leaseDeadline = 0, finalSnapshot: ForestMemoryPayload | null = null;
   let preserveLiveScene = false;
+  // A visible UI tab can park its full in-memory scene while releasing the
+  // writer. Only our acknowledged release revision can bridge a later acquire.
+  let parking = false, parkedRevision: number | null = null, resumeParkRevision: number | null = null;
+  function forgetParkedScene() { parking = false; parkedRevision = null; resumeParkRevision = null; }
   let status: ForestMemorySyncStatus = Object.freeze({ mode: "loading", revision: null, serverSavedAt: null, canTakeOver: false });
   const clone = (snapshot: ForestMemoryPayload): ForestMemoryPayload => JSON.parse(JSON.stringify(snapshot));
   const isLive = () => !disposed && !disabled;
@@ -136,7 +140,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   function stopWithError() { disabled = true; pending = null; retiring = false; clearTimer(); publish("error"); }
   function handleError(error: unknown) {
     if (!isLive()) return;
-    preserveLiveScene = false;
+    preserveLiveScene = false; forgetParkedScene();
     const api = error instanceof ApiError ? error : null;
     const code = api?.body && "code" in api.body ? api.body.code : undefined;
     if (api?.status === 401 || api?.status === 403 || code === "FOREST_MEMORY_ACCOUNT_CHANGED") { stopWithError(); return; }
@@ -161,7 +165,11 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
         const requestStarted = env.now();
         const remote = await timed(signal => transport.read(options.ownerPublicId, clientId, signal));
         if (!isLive()) return;
-        accept(remote, true, requestStarted); needsRead = false; failures = 0;
+        const unchangedPark = preserveLiveScene && parkedRevision !== null && remote.revision === parkedRevision
+          && !remote.lease.owned && remote.lease.token === null && remote.lease.expiresAt === null;
+        resumeParkRevision = unchangedPark ? parkedRevision : null;
+        accept(remote, !unchangedPark, requestStarted); needsRead = false; failures = 0;
+        if (!unchangedPark) parkedRevision = null;
       }
       if (!view || !isLive()) return;
       if (!pending) {
@@ -181,7 +189,17 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
       pending = null; failures = 0;
       // A replay may describe a later owner. Never treat its old receipt as permission to write.
       const currentReceipt = result.acceptedRevision === result.state.revision;
-      accept(result.state, sent.action !== "save" || result.replayed || !currentReceipt || !result.state.lease.owned, requestStarted);
+      const parkedRelease = sent.action === "release" && parking && !result.replayed && currentReceipt
+        && result.state.revision === sent.expectedRevision + 1 && !result.state.lease.owned
+        && result.state.lease.token === null && result.state.lease.expiresAt === null;
+      const resumedPark = sent.action === "acquire" && resumeParkRevision === sent.expectedRevision
+        && !result.replayed && currentReceipt && result.state.revision === sent.expectedRevision + 1
+        && result.state.lease.owned && Boolean(result.state.lease.token);
+      accept(result.state, !parkedRelease && !resumedPark
+        && (sent.action !== "save" || result.replayed || !currentReceipt || !result.state.lease.owned), requestStarted);
+      if (parkedRelease) parkedRevision = result.state.revision;
+      if (resumedPark) { lastAppliedRevision = result.state.revision; preserveLiveScene = false; forgetParkedScene(); }
+      else if (sent.action === "acquire" || result.replayed || !currentReceipt) forgetParkedScene();
       // A retiring save may finish after reactivation. Its acknowledgement must
       // not suppress the pending read's hydration (or its explicit live handoff).
       if (sent.action === "save" && currentReceipt && !needsRead) lastAppliedRevision = result.state.revision;
@@ -211,24 +229,30 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
     getStatus: () => status,
     isSimulationAllowed: () => disabled && status.mode === "disabled" || active && ownsLease() && (status.mode === "synced" || status.mode === "saving"),
     setActive(value: boolean, preserveCurrentScene = false) {
-      if (!value) preserveLiveScene = false;
+      if (!value) {
+        preserveLiveScene = false;
+        if (!preserveCurrentScene) forgetParkedScene();
+      }
       if (!isLive() || active === value) return;
       active = value; clearTimer();
       if (active) {
         // Offline/hidden changes never overwrite an existing server snapshot on reconnect.
         retiring = false; finalSnapshot = null;
         preserveLiveScene = preserveCurrentScene;
+        if (!preserveCurrentScene) forgetParkedScene();
         needsRead = true; lastAppliedRevision = null; publish("loading");
         schedule(0);
       } else {
         preserveLiveScene = false;
+        parking = preserveCurrentScene && ownsLease() && (status.mode === "synced" || status.mode === "saving");
+        parkedRevision = null; resumeParkRevision = null;
         finalSnapshot = ownsLease() ? clone(options.capture()) : null; retiring = true;
         if (!busy) void pump();
       }
     },
     flush() { if (!isLive() || !active) return; due = 0; if (!busy) schedule(0); },
-    takeOver() { if (!isLive() || !active || status.mode !== "other-device") return; takeOverRequested = true; needsRead = true; if (!busy) schedule(0); },
-    suspend() { if (!isLive()) return; leave(); disabled = true; retiring = false; publish("disabled"); },
-    release() { if (disposed) return; if (!disabled) leave(); disposed = true; disabled = true; retiring = false; clearTimer(); },
+    takeOver() { forgetParkedScene(); if (!isLive() || !active || status.mode !== "other-device") return; takeOverRequested = true; needsRead = true; if (!busy) schedule(0); },
+    suspend() { forgetParkedScene(); if (!isLive()) return; leave(); disabled = true; retiring = false; publish("disabled"); },
+    release() { forgetParkedScene(); if (disposed) return; if (!disabled) leave(); disposed = true; disabled = true; retiring = false; clearTimer(); },
   };
 }

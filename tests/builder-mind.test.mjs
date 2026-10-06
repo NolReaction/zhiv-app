@@ -115,9 +115,12 @@ test("unreachable and missing hosts settle safely without path searches every fr
 
 test("changed geometry replans from actual feet and never authorizes walking through a new blocker", () => {
   const scene = fixture(), mind = createBuilderMind(scene), construction = snapshot();
-  advance(mind, scene, construction, 2);
+  const initial = { ...mind.position };
+  advance(mind, scene, construction, .5);
+  assert.notDeepEqual(mind.position, initial, "change geometry while already on the approach");
   const position = { ...mind.position }, changed = structuredClone(scene);
   changed.navigation.obstacles.push({ id: "new-wall", points: rect(170, 160, 35, 40) });
+  assert.ok(isWalkable(builderLocalPlaces(changed).navigation, position), "the new wall is ahead of the worker, not under the feet");
   advanceBuilderMind(mind, changed, 0, { construction, now: start });
   assert.deepEqual(mind.position, position); assert.equal(mind.decisions, 2);
   advance(mind, changed, construction, 40); assert.equal(mind.action, "work");

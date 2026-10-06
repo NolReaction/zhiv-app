@@ -411,3 +411,124 @@ test("visible handoff preserves only an unchanged live lease; foreign, replaced 
     local.sync.release(); await settle();
   }
 });
+
+for (const interruption of ["ui-tab", "browser-tab"]) test(`parked ${interruption} preserves all three residents only after its unchanged release is reacquired`, async () => {
+  const env = clock(), remote = server(env, payload(.52)), key = `zhiv:mochlik:presence:${OWNER}`;
+  const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+  const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const document = { hidden: false };
+  Object.defineProperty(globalThis, "document", { value: document, configurable: true });
+  let session = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options);
+  try {
+    session.configure("circle", true, true); await env.advance();
+    const state = session.state, clearing = state.clearing, plesk = state.pleskMind, builder = state.builderMind;
+    clearing.position = { x: TILED_WORLD.actor.spawn.x + 2, y: TILED_WORLD.actor.spawn.y };
+    plesk.position = { x: plesk.position.x + 3, y: plesk.position.y };
+    builder.position = { x: builder.position.x + 4, y: builder.position.y };
+    state.elapsed = 25; plesk.elapsed = 25; builder.elapsed = 25;
+    const before = { hero: { ...clearing.position }, plesk: { ...plesk.position }, builder: { ...builder.position } };
+    if (interruption === "ui-tab") session.release({ retain: true });
+    else { document.hidden = true; session.configure("circle", false, true); }
+    await env.advance();
+    assert.equal(remote.holder, null, "an invisible forest does not hold the writer lease");
+    const writes = remote.calls.length;
+    await env.advance(600_000);
+    assert.equal(remote.calls.length, writes, "no idle save/poll/renewal loop");
+    assert.equal(state.elapsed, 25, "the full scene is paused, never advanced offline");
+    if (interruption === "ui-tab") session = connectForestSession(key, TILED_WORLD, "world", 0, 0, () => {}, options);
+    else document.hidden = false;
+    assert.strictEqual(session.state, state);
+    session.configure("world", true, true);
+    assert.equal(session.isOwner(), false, "the cached runtime cannot tick before a fresh server read and acquire");
+    await env.advance();
+    assert.equal(session.isOwner(), true);
+    assert.strictEqual(state.clearing, clearing); assert.strictEqual(state.pleskMind, plesk); assert.strictEqual(state.builderMind, builder);
+    assert.deepEqual({ hero: clearing.position, plesk: plesk.position, builder: builder.position }, before);
+    assert.equal(state.elapsed, 25); assert.equal(plesk.elapsed, 25); assert.equal(builder.elapsed, 25);
+    assert.equal(remote.calls.filter(command => command.action === "acquire").length, 2);
+  } finally {
+    session.release(); await settle();
+    if (documentDescriptor) Object.defineProperty(globalThis, "document", documentDescriptor); else delete globalThis.document;
+  }
+});
+
+for (const authority of ["foreign", "foreign-finished", "conflict", "read-error", "replayed-acquire", "replayed-release"]) {
+  test(`parked runtime hydrates when release/acquire continuity is not proven: ${authority}`, async () => {
+    const env = clock(), remote = server(env, payload(.61)), key = `zhiv:mochlik:presence:${OWNER}`;
+    const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+    let session = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options), other;
+    try {
+      session.configure("circle", true, true); await env.advance();
+      const clearing = session.state.clearing, plesk = session.state.pleskMind, builder = session.state.builderMind;
+      session.state.elapsed = 40;
+      if (authority === "replayed-release") {
+        const command = remote.transport.command;
+        remote.transport.command = async value => { const result = await command(value); return value.action === "release" ? { ...result, replayed: true } : result; };
+      }
+      session.release({ retain: true }); await env.advance();
+      if (["foreign", "foreign-finished"].includes(authority)) {
+        other = client(env, remote, .24); other.sync.setActive(true); await env.advance();
+        other.value.mind.needs.energy = .24; other.sync.flush(); await env.advance();
+        if (authority === "foreign-finished") { other.sync.setActive(false); await env.advance(); }
+      }
+      if (authority === "read-error") {
+        const read = remote.transport.read; let fail = true;
+        remote.transport.read = async (...args) => { if (fail) { fail = false; throw Error("offline"); } return read(...args); };
+      }
+      if (["conflict", "replayed-acquire"].includes(authority)) {
+        const command = remote.transport.command; let fail = true;
+        remote.transport.command = async value => {
+          if (value.action === "acquire" && fail) {
+            fail = false;
+            if (authority === "conflict") throw new ApiError("changed", 409, { code: "FOREST_MEMORY_REVISION_CONFLICT", message: "changed" });
+            return { ...await command(value), replayed: true };
+          }
+          return command(value);
+        };
+      }
+      session = connectForestSession(key, TILED_WORLD, "world", 0, 0, () => {}, options);
+      session.configure("world", true, true); await env.advance(1500);
+      assert.notStrictEqual(session.state.clearing, clearing);
+      assert.notStrictEqual(session.state.pleskMind, plesk); assert.notStrictEqual(session.state.builderMind, builder);
+      assert.equal(session.state.elapsed, 0, "unsafe transient paths and clocks are not restored");
+      assert.equal(session.isOwner(), authority !== "foreign");
+    } finally { session.release(); other?.sync.release(); await settle(); }
+  });
+}
+
+for (const action of ["save", "release"]) test(`visible park resume during its own ${action} acknowledgement preserves the live scene`, async () => {
+  const env = clock(), remote = server(env), a = client(env, remote, .52);
+  try {
+    a.sync.setActive(true); await env.advance();
+    const applied = a.applied.length, resolve = deferCommand(remote, action);
+    a.sync.setActive(false, true); await env.advance();
+    a.sync.setActive(true, true); await env.advance();
+    assert.equal(a.sync.isSimulationAllowed(), false, "unacknowledged authority cannot animate");
+    resolve(); await settle(); await env.advance();
+    assert.equal(a.sync.getStatus().mode, "synced"); assert.equal(a.sync.isSimulationAllowed(), true);
+    assert.equal(a.applied.length, applied, "our read/ack/acquire sequence never hydrates the paused runtime");
+    assert.ok(remote.reads.length >= 2);
+    assert.equal(remote.snapshot.mind.needs.energy, .52);
+  } finally { a.sync.release(); await settle(); }
+});
+
+test("a foreign writer winning between parked read and acquire prevents stale runtime continuity", async () => {
+  const env = clock(), remote = server(env), a = client(env, remote, .52);
+  try {
+    a.sync.setActive(true); await env.advance();
+    const applied = a.applied.length;
+    a.sync.setActive(false, true); await env.advance();
+    const command = remote.transport.command; let intercepted = false;
+    remote.transport.command = async value => {
+      if (value.action === "acquire" && !intercepted) {
+        intercepted = true;
+        await command({ ...value, clientId: uuid(), requestId: uuid(), takeover: false });
+      }
+      return command(value);
+    };
+    a.sync.setActive(true, true); await env.advance(250);
+    assert.equal(intercepted, true); assert.equal(a.sync.isSimulationAllowed(), false);
+    assert.equal(a.sync.getStatus().mode, "other-device");
+    assert.ok(a.applied.length > applied, "CAS loss forces authoritative hydration before any later simulation");
+  } finally { a.sync.release(); await settle(); }
+});

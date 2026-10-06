@@ -16,7 +16,7 @@ import type { ForestJourneyTravel } from "./forest-journey-travel";
 import type { EconomySceneProduction } from "./economy-production-state";
 
 type View = "circle" | "world";
-type Member = { view: View; active: boolean; changed: (ownerChanged: boolean) => void };
+type Member = { view: View; active: boolean; retain: boolean; changed: (ownerChanged: boolean) => void };
 export type ForestSessionState = {
   memory: ForestMemoryStatus;
   elapsed: number; timestamp: number; dusk: number; wetness: number;
@@ -46,8 +46,23 @@ export type ForestSessionState = {
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;
   key: string | undefined; sync?: ReturnType<typeof createForestMemorySync>; removeLifecycle?: () => void;
-  members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object; visibleHandoff?: boolean };
+  members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object; visibleHandoff?: boolean; retained?: boolean; retentionBlocked?: boolean };
 const sessions = new Map<string, Session>();
+
+function discardSession(identity: string | undefined, session: Session) {
+  session.sync?.release(); session.removeLifecycle?.(); session.memory.release();
+  if (identity !== undefined && sessions.get(identity) === session) sessions.delete(identity);
+  if (![...sessions.values()].some(other => other.key === session.key)) forgetForestObservation(session.key);
+}
+
+/** Account logout/replacement invalidates even a canvas whose cleanup runs later. */
+export function forgetForestSession(key: string | undefined) {
+  if (!key) return;
+  for (const [identity, session] of sessions) if (session.key === key) {
+    session.retentionBlocked = true;
+    if (!session.members.size) discardSession(identity, session);
+  }
+}
 
 export type ForestSessionOptions = { persistence?: boolean; environment?: ForestMemoryEnvironment | null;
   sync?: false | { transport?: ForestMemoryTransport; environment?: ForestMemorySyncEnvironment } };
@@ -63,6 +78,11 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   timestamp: number, dusk: number, changed: Member["changed"],
   options: ForestSessionOptions = {}) {
   const identity = key ? `account:${key}:${forestSceneFingerprint(scene)}` : undefined;
+  // Keep at most one unmounted forest, and never reuse another account's or
+  // another map geometry's parked routes. Mounted views still share as before.
+  for (const [parkedIdentity, parked] of sessions) if (!parked.members.size && parkedIdentity !== identity) {
+    discardSession(parkedIdentity, parked);
+  }
   let shared = identity === undefined ? undefined : sessions.get(identity);
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
@@ -97,29 +117,37 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
         },
       });
       state.memory.sync = current.sync.getStatus();
-      if (typeof window !== "undefined") {
-        const leave = () => { current.visibleHandoff = false; current.sync?.setActive(false); };
-        const resume = () => current.sync?.setActive(current.owner !== null && !document.hidden);
-        window.addEventListener("pagehide", leave); window.addEventListener("pageshow", resume);
-        current.removeLifecycle = () => { window.removeEventListener("pagehide", leave); window.removeEventListener("pageshow", resume); };
-      }
+    }
+    if (typeof window !== "undefined") {
+      const current = shared;
+      const leave = () => {
+        current.visibleHandoff = false; current.retained = false;
+        if (!current.members.size) discardSession(identity, current);
+        else current.sync?.setActive(false);
+      };
+      const resume = () => current.sync?.setActive(current.owner !== null && !document.hidden);
+      // With no canvas mounted there is no renderer visibility listener. A
+      // parked session has already released the lease; pagehide discards it.
+      window.addEventListener("pagehide", leave); window.addEventListener("pageshow", resume);
+      current.removeLifecycle = () => { window.removeEventListener("pagehide", leave); window.removeEventListener("pageshow", resume); };
     }
     if (identity !== undefined) sessions.set(identity, shared);
   }
   // DEV settings can change between mounting the circle and opening the map. They
   // suspend the shared account session; they must never create a second clock.
-  if (options.persistence === false) { shared.sync?.suspend(); shared.memory.suspend(); }
-  const session = shared, member: Member = { view, active: false, changed };
+  if (options.persistence === false) { shared.retentionBlocked = true; shared.sync?.suspend(); shared.memory.suspend(); }
+  const session = shared, member: Member = { view, active: false, retain: false, changed };
   let disposed = false;
   function select() {
     const eligible = [...session.members].filter(item => item.active);
     const next = eligible.find(item => item.view === "world") ?? eligible[0] ?? null;
-    if (next === session.owner) return;
     const previous = session.owner, visible = typeof document === "undefined" || !document.hidden;
-    const preserveLiveScene = Boolean(next && visible && (previous || session.visibleHandoff));
-    session.visibleHandoff = !next && visible && Boolean(previous);
+    const parked = !session.retentionBlocked && (session.retained || [...session.members].some(item => item.retain));
+    const preserveLiveScene = Boolean(parked || next && visible && (previous || session.visibleHandoff));
+    session.visibleHandoff = !next && Boolean(parked || visible && (previous || session.visibleHandoff));
     session.owner = next;
     session.sync?.setActive(next !== null && visible, preserveLiveScene);
+    if (next === previous) return;
     // Ownership is immediate; loop changes are deferred until newly mounted handles exist.
     queueMicrotask(() => { for (const item of session.members) item.changed(true); });
   }
@@ -129,9 +157,10 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
     isOwner: () => !disposed && session.owner === member && (session.sync?.isSimulationAllowed() ?? true),
     isSimulationAllowed: () => !disposed && (session.sync?.isSimulationAllowed() ?? true),
     isObservationOwner: () => !disposed && (session.owner === member || session.owner === null),
-    configure(nextView: View, active: boolean) {
+    configure(nextView: View, active: boolean, retainPausedScene = false) {
       if (disposed) return;
-      member.view = nextView; member.active = active; select();
+      member.view = nextView; member.active = active; member.retain = retainPausedScene;
+      select();
     },
     consumeControls(snapshot: object) {
       if (disposed || session.controls === snapshot) return false;
@@ -147,17 +176,19 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
       for (const item of session.members) item.changed(false);
     },
     /** Call before the first forced DEV action. A later reset of controls cannot save that altered simulation. */
-    suspendPersistence() { if (!disposed) { session.sync?.suspend(); session.memory.suspend(); } },
+    suspendPersistence() { if (!disposed) { session.retentionBlocked = true; session.sync?.suspend(); session.memory.suspend(); } },
     saveMemory() { if (!disposed) { session.memory.save(); session.sync?.flush(); } },
-    resetMemory() { if (!disposed) { session.sync?.suspend(); session.memory.reset(); } },
+    resetMemory() { if (!disposed) { session.retentionBlocked = true; session.sync?.suspend(); session.memory.reset(); } },
     takeOverMemory() { if (!disposed) session.sync?.takeOver(); },
-    release() {
+    release(options: { retain?: boolean } = {}) {
       if (disposed) return;
+      session.retained = Boolean(options.retain && identity && !session.retentionBlocked);
       disposed = true; session.members.delete(member); select();
       if (!session.members.size) {
-        session.sync?.release(); session.removeLifecycle?.(); session.memory.release();
-        if (identity !== undefined) sessions.delete(identity);
-        forgetForestObservation(key);
+        if (session.retained) {
+          session.memory.save();
+          for (const [otherIdentity, other] of sessions) if (other !== session && !other.members.size) discardSession(otherIdentity, other);
+        } else discardSession(identity, session);
       }
     },
   };

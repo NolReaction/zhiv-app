@@ -337,6 +337,14 @@ function TapCounter({ progress, result, count, isRecord }: {
   );
 }
 
+// Load the world module only when an existing account is actually left. This
+// also invalidates a parked scene whose canvas cleanup has not run yet.
+function forgetAccountForest(owner: string | null) {
+  if (owner) void import("@/features/world/forest-session")
+    .then(({ forgetForestSession }) => forgetForestSession(`zhiv:mochlik:presence:${owner}`))
+    .catch(() => undefined);
+}
+
 export function CheckInApp() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [identityError, setIdentityError] = useState<string | null>(null);
@@ -561,6 +569,7 @@ export function CheckInApp() {
   ]);
 
   const loseSession = useCallback(() => {
+    forgetAccountForest(clickerOwnerPublicId.current);
     identityRecovery.current?.dispose();
     void resolveStartupIncidents(null);
     closeWorld();
@@ -697,7 +706,10 @@ export function CheckInApp() {
     ) {
       clearPendingCheckIn();
     }
-    if (isAccountSwitch) closeWorld();
+    if (isAccountSwitch) {
+      forgetAccountForest(clickerOwnerPublicId.current);
+      closeWorld();
+    }
     clearPendingBootstrap();
     resetTransientCheckIn();
     setCheckInUnconfirmed(Boolean(pendingCheckIn.current));

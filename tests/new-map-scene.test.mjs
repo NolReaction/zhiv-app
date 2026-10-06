@@ -3679,3 +3679,46 @@ test("a loaded geometry handoff clones builder progress and a late camera joins 
     assert.equal(newMind.job, null); assert.equal(env.frames.size, 1);
   } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); worldDevStore.reset(); env.restore(); }
 });
+
+test("unmounting the final tab canvas retains Mochlik, Pleska and builder without an idle clock or remount teleport", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, forgetForestSession, worldDevStore } = await modules(builderFixture());
+  const env = browser(), views = []; let probe;
+  const initial = { ...options, reducedMotion: false, serverNow: 100_000,
+    presenceKey: "zhiv:mochlik:presence:tab-retention", economyConstruction: confirmedConstruction("tab-retention") };
+  try {
+    worldDevStore.reset();
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    let scene = mountHabitat(env.surface(), initial, callbacks); views.push(scene);
+    env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const state = probe.state, clock = sceneClock(env);
+    clock.advance(1.5);
+    const clearing = state.clearing, plesk = state.pleskMind, builder = state.builderMind;
+    assert.ok(builder.elapsed > 0); assert.ok(plesk.elapsed > 0);
+    assert.notDeepEqual(builder.position, builder.route.points[0], "the builder is already on his real route");
+    for (const view of ["world", "circle"]) {
+      const feet = { hero: { ...clearing.position }, plesk: { ...plesk.position }, builder: { ...builder.position } };
+      const age = state.elapsed, pleskAge = plesk.elapsed, builderAge = builder.elapsed;
+      const route = builder.route, builderDistance = builder.distance, pleskStage = plesk.stage;
+      probe.release(); probe = null;
+      scene.dispose(); await flush();
+      assert.equal(env.frames.size, 0, "no canvas means no autonomous or catch-up RAF");
+      env.tick(3_600_000);
+      assert.equal(state.elapsed, age);
+      scene = mountHabitat(env.surface(), { ...initial, view }, callbacks); views.push(scene); await flush();
+      probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+      assert.strictEqual(probe.state, state, "the gap had zero members, but the ordinary tab retains its session");
+      assert.strictEqual(state.clearing, clearing); assert.strictEqual(state.pleskMind, plesk); assert.strictEqual(state.builderMind, builder);
+      assert.deepEqual({ hero: clearing.position, plesk: plesk.position, builder: builder.position }, feet);
+      assert.equal(plesk.elapsed, pleskAge); assert.equal(builder.elapsed, builderAge);
+      assert.strictEqual(builder.route, route); assert.equal(builder.distance, builderDistance); assert.strictEqual(plesk.stage, pleskStage);
+      assert.equal(env.frames.size, 1, "one camera reacquires one clock");
+      env.tick(3_600_100); assert.equal(state.elapsed, age, "first resumed RAF reanchors time instead of simulating the inactive hour");
+    }
+    const active = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(active); await flush();
+    assert.equal(env.frames.size, 1, "an extra mounted camera shares the same clock");
+  } finally {
+    forgetForestSession(initial.presenceKey);
+    views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore();
+  }
+});

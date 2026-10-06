@@ -16,7 +16,7 @@ export type BuilderMind = {
   wait: number; wanderIndex: number; decisions: number; blocked: boolean;
   noticePending: boolean; greetAfter: number;
 };
-export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 3.8, greeting: 2, acceleration: BUILDER.size * .8 } as const;
+export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, greeting: 2, acceleration: BUILDER.size * 1.6 } as const;
 const length = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** A single session owns the feet and cosmetic clock. No setInterval, job

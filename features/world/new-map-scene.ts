@@ -519,7 +519,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     state.fishingPreview = { id, startedAt: state.elapsed };
   }
   function syncOwner() {
-    session.configure(options.view ?? "circle", active());
+    session.configure(options.view ?? "circle", active(), true);
     if (WORLD_DEV_ENABLED && session.isOwner()) {
       const resident = dev?.residentPreview;
       if (resident && state.residentPreview?.id !== resident.id) {
@@ -606,7 +606,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function dispose() {
     if (disposed) return;
     disposed = true; artworkVersion++; stop(); unsubscribe(); observer.disconnect(); art = null;
-    document.removeEventListener("visibilitychange", visibilityChanged); session.release();
+    document.removeEventListener("visibilitychange", visibilityChanged); session.release({ retain: true });
   }
   function prepareArtwork() {
     const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
