@@ -55,6 +55,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts"),
       ...await vite.ssrLoadModule("/features/world/builder-sprite.ts"),
       ...await vite.ssrLoadModule("/features/world/builder-mind.ts"),
+      ...await vite.ssrLoadModule("/lib/check-in-api.ts"),
     };
     builderRigForHero.set(loaded.pixelSprite, loaded.builderSpriteRig);
     return loaded;
@@ -3721,4 +3722,101 @@ test("unmounting the final tab canvas retains Mochlik, Pleska and builder withou
     forgetForestSession(initial.presenceKey);
     views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore();
   }
+});
+
+test("confirmed construction geometry keeps builder feet through server hydration, then walks home", async () => {
+  const authored = builderFixture(), site = authored.sites[0];
+  site.states.push({ level: 2, label: "Большая мастерская", image: "/test-builder-workshop-2.webp", geometry: {
+    bounds: { ...site.bounds, x: site.bounds.x - 10 }, anchor: { ...site.anchor, x: site.anchor.x - 10 },
+    entry: { ...site.entry, x: site.entry.x - 10 },
+    hitArea: site.hitArea.map(point => ({ ...point, x: point.x - 10 })),
+    collision: site.collision.map(point => ({ ...point, x: point.x - 10 })),
+  } });
+  const { mountHabitat, connectForestSession, forgetForestSession, previewWorldScene, TILED_WORLD, ApiError } = await modules(authored);
+  const env = browser(), views = [], probes = [];
+  try {
+    for (const mode of ["claim", "speedup", "speedup-on-route"]) {
+      const owner = mode === "claim" ? "1234-ABCD-EFGH" : mode === "speedup" ? "1234-ABCD-EFGJ" : "1234-ABCD-EFGK";
+      const key = `zhiv:mochlik:presence:${owner}`, timers = new Map();
+      let now = 100_000, serial = 0, revision = 0, holder = null, token = null, savedSnapshot = null;
+      const uuid = () => `00000000-0000-4000-8000-${(++serial).toString(16).padStart(12, "0")}`;
+      const environment = { now: () => now, randomUUID: uuid,
+        setTimeout(callback, delay) { const id = ++serial; timers.set(id, { at: now + delay, callback }); return id; },
+        clearTimeout(id) { timers.delete(id); } };
+      const serverView = client => ({ ownerPublicId: owner, revision, snapshot: structuredClone(savedSnapshot),
+        serverTime: new Date(now).toISOString(), updatedAt: null,
+        lease: { owned: holder === client, token: holder === client ? token : null,
+          expiresAt: holder ? new Date(now + 90_000).toISOString() : null } });
+      const reject = code => { throw new ApiError(code, 409, { code, message: code }); };
+      const transport = { async read(_owner, client) { return serverView(client); }, async command(command) {
+        if (command.expectedRevision !== revision) reject("FOREST_MEMORY_REVISION_CONFLICT");
+        if (command.action === "acquire") {
+          if (holder && holder !== command.clientId) reject("FOREST_MEMORY_ACTIVE_ELSEWHERE");
+          holder = command.clientId; token = uuid();
+        } else {
+          if (holder !== command.clientId || token !== command.leaseToken) reject("FOREST_MEMORY_LEASE_LOST");
+          if (command.action === "save") savedSnapshot = structuredClone(command.snapshot);
+          else { holder = null; token = null; }
+        }
+        revision++; return { state: serverView(command.clientId), acceptedRevision: revision, replayed: false };
+      } };
+      const pump = async (ms = 0) => {
+        const until = now + ms;
+        for (let limit = 0; ; limit++) {
+          assert.ok(limit < 100, "lease handoff settles without a request loop"); await flush();
+          const next = [...timers].filter(([, timer]) => timer.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
+          if (!next) break;
+          now = next[1].at; timers.delete(next[0]); next[1].callback();
+        }
+        now = until; await flush();
+      };
+      const sourceMap = previewWorldScene(TILED_WORLD, { workshop: 1 });
+      const source = connectForestSession(key, sourceMap, "circle", now, 0, () => {}, { sync: { environment, transport } }); probes.push(source);
+      const construction = confirmedConstruction(owner, 5);
+      const initial = { ...options, reducedMotion: false, serverNow: now, presenceKey: key,
+        economyBuildings: { workshop: 1 }, economyConstruction: construction };
+      const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+      const circle = mountHabitat(env.surface(), { ...initial, backgrounded: true }, callbacks); views.push(circle);
+      const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world);
+      if (mode === "claim") { env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); }
+      await flush(); await pump();
+      assert.equal(source.state.memory.sync.mode, "synced");
+      const clock = sceneClock(env);
+      if (mode === "speedup-on-route") clock.advance(.5);
+      else clock.until(() => source.state.builderMind.action === "work", "worker reaches the job before confirmed completion", 600);
+      const feet = { ...source.state.builderMind.position };
+      assert.ok(source.state.builderMind.elapsed > 0);
+      assert.ok(mode !== "speedup-on-route" || source.state.builderMind.route, "instant finish may arrive during approach");
+      if (mode === "claim") {
+        world.configure({ ...initial, view: "world", serverNow: 800_000 });
+        assert.equal(source.state.builderMind.ready, true);
+      }
+      source.saveMemory(); await pump(); assert.ok(savedSnapshot, "the replacement session receives real authoritative forest memory");
+      const targetMap = previewWorldScene(TILED_WORLD, { workshop: 2 });
+      const target = connectForestSession(key, targetMap, "circle", now, 0, () => {}, { sync: { environment, transport } }); probes.push(target);
+      const completed = { ...initial, view: "world", serverNow: mode === "claim" ? 800_000 : 100_000,
+        economyBuildings: { workshop: 2 }, economyConstruction: confirmedConstruction(owner, 6, []) };
+      world.configure(completed);
+      if (mode === "claim") env.finishPath("/test-builder-workshop-2.webp");
+      await flush();
+      assert.deepEqual(target.state.builderMind.position, feet, "artwork changes never relocate the worker");
+      const beforeHydration = target.state.builderMind;
+      await pump(15_000);
+      assert.equal(target.state.memory.sync.mode, "synced");
+      assert.notEqual(target.state.builderMind, beforeHydration, "the regression exercises asynchronous server hydration");
+      const current = target.state.builderMind;
+      assert.deepEqual(current.position, feet, "server memory has no NPC position and must not teleport him to rest");
+      assert.equal(current.job, null); assert.equal(target.state.economyConstruction.revision, 6);
+      assert.equal(current.action, mode === "speedup-on-route" ? "walk" : "finish");
+      assert.ok(current.route, "a fresh return route is built from the visible feet after hydration");
+      assert.deepEqual(current.route.points[0], feet);
+      const atHandoff = structuredClone(current);
+      circle.configure({ ...completed, view: "circle", backgrounded: true }); await flush();
+      assert.deepEqual(target.state.builderMind, atHandoff, "the late second camera cannot rewind the builder or replay completion");
+      clock.advance(2);
+      assert.notDeepEqual(current.position, feet, "the same worker visibly walks back after his completion nod");
+      assert.ok(distanceBetween(current.position, feet) <= 34 * 2, "there is no hidden return teleport");
+      world.dispose(); circle.dispose(); source.release(); target.release(); forgetForestSession(key); await pump();
+    }
+  } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); env.restore(); }
 });

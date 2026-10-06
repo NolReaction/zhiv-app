@@ -13,7 +13,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts"
 const now = Date.parse("2026-10-06T12:00:00Z");
 const job = { id: "paid-home-upgrade", kind: "construction", targetId: "home", targetLevel: 2, startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 90_000).toISOString() };
 function economy(jobs = [], overrides = {}) {
-  return { snapshot: { jobs, catalog: economyCatalog }, now, busy: false, uncertain: false, error: null, retryAt: 0,
+  return { snapshot: { ownerPublicId: "BUILDER-PLAYER", revision: 1, wallet: { coins: 0, pearls: 1000 }, jobs, catalog: economyCatalog }, now, busy: false, uncertain: false, error: null, retryAt: 0,
     act() { assert.fail("opening a builder conversation cannot issue economy commands"); }, retry() {}, ...overrides };
 }
 function elements(tree) {
@@ -42,7 +42,7 @@ test("a free builder is distinct from an unavailable account snapshot and ignore
   assert.doesNotMatch(html, /Свободен|К постройке/);
 });
 
-test("confirmed work shows its building and timer; the only action opens that upgrade", () => {
+test("confirmed work shows its building, timer and pearl completion; navigation only opens that upgrade", () => {
   const controller = economy([job]), opened = [], before = structuredClone(controller.snapshot);
   const { tree, html } = conversation(controller, id => opened.push(id));
   assert.match(html, /data-builder-status="working"/);
@@ -50,6 +50,8 @@ test("confirmed work shows its building and timer; the only action opens that up
   assert.match(html, new RegExp(economyCatalog.buildings.find(building => building.id === "home").name));
   assert.match(html, /Уровень 2/);
   assert.match(html, /Осталось 2 мин/);
+  assert.match(html, /Завершить сейчас за 25 жемчужин/);
+  assert.match(html, /data-construction-speedup="paid-home-upgrade"/);
   const buttons = elements(tree).filter(element => element.type === "button");
   assert.equal(buttons.length, 1); buttons[0].props.onClick();
   assert.deepEqual(opened, ["home"]);
@@ -62,10 +64,26 @@ test("finished but unclaimed work keeps the builder reserved and links to comple
   assert.match(html, /data-builder-status="ready"/);
   assert.match(html, /Работа закончена — завершите улучшение/);
   assert.doesNotMatch(html, /Свободен|Осталось/);
+  assert.doesNotMatch(html, /data-construction-speedup|жемчужин/);
   const button = elements(tree).find(element => element.type === "button");
   button.props.onClick(); assert.deepEqual(opened, ["home"]);
   const next = conversation(economy());
   assert.match(next.html, /data-builder-status="free"/);
+});
+
+test("a pending pearl command stays visible in the builder and retries respect transport cooldown", () => {
+  let retries = 0;
+  const controller = economy([job], { uncertain: true, error: "Нет связи", retryAt: now + 1000, retry() { retries++; } });
+  let view = conversation(controller);
+  assert.match(view.html, /Проверяем последнее действие/);
+  const retry = elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат");
+  assert.equal(retry.props.disabled, true);
+  retry.props.onClick(); assert.equal(retries, 0);
+  assert.match(view.html, /disabled=""[^>]*aria-label="Завершить сейчас за 25 жемчужин"/);
+  controller.now += 1000;
+  view = conversation(controller);
+  elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат").props.onClick();
+  assert.equal(retries, 1);
 });
 
 test("short remaining times count seconds and account changes do not retain a previous building", () => {

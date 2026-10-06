@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createBuilderMind, advanceBuilderMind, builderMindFrame, noticeBuilderMind } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
+const { createBuilderMind, advanceBuilderMind, builderMindFrame, noticeBuilderMind, BUILDER_MIND_LIMITS } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
 const { builderLocalPlaces, builderWorkStops, builderRoute } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
 const { BUILDER } = await vite.ssrLoadModule("/features/world/builder-types.ts");
 const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
@@ -69,10 +69,50 @@ test("absolute completion waits at the building until a confirmed claim, includi
   assert.deepEqual(mind.position, position); assert.equal(mind.job.id, "home");
   const beforeClaim = mind.elapsed;
   advanceBuilderMind(mind, scene, 0, { construction: snapshot([], 2), now: finish + 20_000 });
-  assert.equal(mind.job, null); assert.equal(mind.action, "walk"); assert.equal(mind.elapsed, beforeClaim);
+  assert.equal(mind.job, null); assert.equal(mind.action, "finish"); assert.equal(mind.elapsed, beforeClaim);
   assert.deepEqual(mind.position, position, "claim plans a safe return without teleporting");
   advance(mind, scene, snapshot([], 2), 20, finish + 20_000);
   assert.ok(mind.available); assert.notDeepEqual(mind.position, position);
+});
+
+test("work has a bounded single/double tap rhythm, a pouch check and a pause without changing job progress", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), construction = snapshot();
+  advance(mind, scene, construction, 30);
+  const position = { ...mind.position }, deadline = mind.job.finishesAt;
+  const frameAt = age => { mind.age = age; return builderMindFrame(mind, scene, false); };
+  assert.equal(frameAt(.55).phase, .25, "the first tap is measured");
+  for (const age of [2.475, 3.575]) {
+    const frame = frameAt(age);
+    assert.equal(frame.action, "work"); assert.ok(Math.abs(frame.phase - .25) < 1e-8, "two short taps follow");
+  }
+  assert.equal(frameAt(5.2).action, "inspect"); assert.equal(frameAt(7).action, "idle");
+  assert.equal(frameAt(8.8 + .55).action, "work");
+  assert.equal(mind.action, "work"); assert.equal(mind.job.finishesAt, deadline);
+  assert.deepEqual(mind.position, position);
+  mind.age = 5.2;
+  const still = builderMindFrame(mind, scene, true), before = structuredClone(mind);
+  for (let i = 0; i < 10; i++) assert.deepEqual(builderMindFrame(mind, scene, true), still);
+  assert.deepEqual(mind, before, "sampling never advances the activity");
+});
+
+test("a finish gesture pauses only animation, survives replanning and yields immediately to the next confirmed job", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), construction = snapshot();
+  advance(mind, scene, construction, 30);
+  const position = { ...mind.position }, direction = mind.direction, empty = snapshot([], 2);
+  advanceBuilderMind(mind, scene, 0, { now: finish, construction: empty });
+  assert.equal(mind.action, "finish"); assert.ok(mind.route);
+  advance(mind, scene, empty, .5, finish);
+  assert.deepEqual(mind.position, position); assert.equal(mind.direction, direction);
+  const replacementScene = structuredClone(scene), age = mind.age;
+  advanceBuilderMind(mind, replacementScene, 0, { now: finish, construction: empty });
+  assert.equal(mind.action, "finish"); assert.equal(mind.age, age); assert.deepEqual(mind.position, position);
+  const next = snapshot([job("warehouse", "next")], 3);
+  advanceBuilderMind(mind, replacementScene, 0, { now: start, construction: next });
+  assert.notEqual(mind.action, "finish"); assert.equal(mind.job.id, "next");
+  advance(mind, replacementScene, next, 20);
+  advanceBuilderMind(mind, replacementScene, 0, { now: finish, construction: snapshot([], 4) });
+  advance(mind, replacementScene, snapshot([], 4), BUILDER_MIND_LIMITS.finish + .2, finish);
+  assert.notEqual(mind.action, "finish", "the acknowledgement cannot hold the builder forever");
 });
 
 test("a speed-up/removal on the road returns from actual feet; replacement jobs take priority over wandering", () => {

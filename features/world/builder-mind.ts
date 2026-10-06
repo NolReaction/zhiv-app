@@ -16,7 +16,8 @@ export type BuilderMind = {
   wait: number; wanderIndex: number; decisions: number; blocked: boolean;
   noticePending: boolean; greetAfter: number;
 };
-export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, greeting: 2, acceleration: BUILDER.size * 1.6 } as const;
+export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8.8, finish: 1.4,
+  greeting: 2, acceleration: BUILDER.size * 1.6 } as const;
 const length = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** A single session owns the feet and cosmetic clock. No setInterval, job
@@ -85,6 +86,9 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
   const job = forestConstructionJob(env.construction, env.now);
   const key = job ? `${env.construction?.ownerPublicId}:${job.id}:${job.stationId}:${job.targetLevel}` : "";
   const changedJob = key !== mind.jobKey;
+  const finishedAtSite = !!mind.job && !job && !mind.route && !mind.blocked && mind.available;
+  const finishingAge = !job && mind.action === "finish" ? mind.age : null;
+  const workDirection = mind.direction;
   mind.job = job; mind.jobKey = key; mind.ready = !!job && env.now >= Date.parse(job.finishesAt);
   if (!places || (changedScene || !mind.available) && !isWalkable(places.navigation, mind.position)) {
     mind.available = false; mind.route = null; mind.speed = 0; mind.blocked = true; action(mind, "idle"); return null;
@@ -96,6 +100,11 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
     // Each new job or immutable geometry snapshot gets one bounded attempt.
     // Repeated camera paints and ready timers never retry a blocked route.
     beginRoute(mind, places, job ? builderWorkStops(scene, job) : [places.rest]);
+    if (finishedAtSite || finishingAge !== null) {
+      // Claim/speed-up changes the building, never the feet. Inspect the result
+      // once, then follow the already checked return path. A new job wins above.
+      action(mind, "finish"); mind.age = finishingAge ?? 0; mind.direction = workDirection;
+    }
   } else if (job && !mind.route && !mind.blocked) action(mind, mind.ready ? "idle" : "work");
   return places;
 }
@@ -109,6 +118,13 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   if (!places || !Number.isFinite(dt) || dt <= 0) return;
   const step = Math.min(BUILDER_MIND_LIMITS.maxDelta, dt);
   mind.elapsed += step; mind.age += step;
+  if (mind.action === "finish") {
+    if (mind.age >= BUILDER_MIND_LIMITS.finish) {
+      action(mind, mind.route ? "walk" : "idle");
+      if (!mind.route) mind.wait = 6;
+    }
+    return;
+  }
   if (mind.route) { walk(mind, places, step); return; }
   if (mind.job) return; // Including a finished order awaiting confirmed collection.
   if (mind.action === "greet") {
@@ -135,10 +151,21 @@ export function noticeBuilderMind(mind: BuilderMind | null): void {
 /** Circle, map and hit testing all read this frame; none advances the resident. */
 export function builderMindFrame(mind: BuilderMind | null, scene: FixedWorldScene, still: boolean): BuilderResidentFrame | null {
   if (!mind?.available || mind.scene !== scene) return null;
-  const phase = still ? .8 : mind.action === "work" ? mind.age % BUILDER_MIND_LIMITS.workCycle / BUILDER_MIND_LIMITS.workCycle
+  let displayAction = mind.action;
+  let phase = mind.action === "finish" ? Math.min(1, mind.age / BUILDER_MIND_LIMITS.finish)
     : mind.action === "greet" ? Math.min(1, mind.age / BUILDER_MIND_LIMITS.greeting) : mind.age % 6 / 6;
+  if (mind.action === "work") {
+    const time = mind.age % BUILDER_MIND_LIMITS.workRoutine, cycle = BUILDER_MIND_LIMITS.workCycle;
+    // One measured tap, two quicker taps, then a pouch check and a quiet look
+    // at the work. This is only a pose schedule; the job clock stays untouched.
+    if (time < cycle) phase = time / cycle;
+    else if (time < cycle * 2) phase = (time - cycle) % (cycle / 2) / (cycle / 2);
+    else if (time < cycle * 2 + 1.6) { displayAction = "inspect"; phase = (time - cycle * 2) / 1.6; }
+    else { displayAction = "idle"; phase = 0; }
+  }
+  if (still) { displayAction = mind.action === "work" ? "work" : "idle"; phase = 0; }
   return { id: "builder", ...mind.position, size: BUILDER.size, direction: mind.direction,
-    action: still && mind.action === "walk" ? "idle" : mind.action,
+    action: displayAction,
     frame: still ? 0 : mind.action === "walk" ? Math.floor(mind.walked / (BUILDER.size * .06)) % 8 : Math.floor(mind.age * 8) % 32,
     phase, ...(mind.job ? { targetId: mind.job.stationId } : {}) };
 }

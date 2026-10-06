@@ -16,6 +16,8 @@
 .building span { color: var(--forest-muted, #59624d); font-size: .8125rem; }
 .status p { margin: 0; font-size: .875rem; line-height: 1.55; }
 .timer { display: flex; align-items: center; gap: 8px; color: var(--forest-muted, #59624d); font-variant-numeric: tabular-nums; }
+.feedback { display: grid; gap: 8px; width: 100%; padding: 10px; border: 1px solid #b8a17a; border-radius: 10px; background: #f1e3c5; }
+.feedback button { justify-self: start; min-height: 44px; padding: 7px 10px; border: 1px solid #aa956c; border-radius: 8px; color: inherit; background: #fff3d8; font: inherit; font-size: .8125rem; cursor: pointer; }
 .action { display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 46px; padding: 10px 14px; border: 1px solid #466347; border-radius: 12px; color: #f8efd5; background: #466347; font: inherit; font-size: .875rem; cursor: pointer; }
 .action:hover { background: #38563d; }
 .dialog button:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }

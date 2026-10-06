@@ -2,12 +2,15 @@ import type { BuilderAction } from "./builder-types";
 
 export type BuilderPortraitPose = { action: BuilderAction; frame: number; phase: number; still: boolean };
 
-/** One little greeting and one mallet demonstration, with long calm pauses. */
+/** A greeting, one mallet demonstration and a pouch check, with calm pauses. */
 export function builderPortraitPose(seconds: number, still = false): BuilderPortraitPose {
   if (still) return { action: "idle", frame: 0, phase: 0, still: true };
   const time = Math.max(0, Number.isFinite(seconds) ? seconds : 0) % 24;
-  const action = time >= 3 && time < 5 ? "greet" : time >= 12 && time < 16 ? "work" : "idle";
-  return { action, frame: Math.floor(time * 8), phase: action === "greet" ? (time - 3) / 2 : action === "work" ? (time - 12) / 4 : 0, still: false };
+  const action = time >= 3 && time < 5 ? "greet" : time >= 12 && time < 16 ? "work"
+    : time >= 18 && time < 19.6 ? "inspect" : "idle";
+  const phase = action === "greet" ? (time - 3) / 2 : action === "work" ? (time - 12) / 4
+    : action === "inspect" ? (time - 18) / 1.6 : 0;
+  return { action, frame: Math.floor(time * 8), phase, still: false };
 }
 
 type PortraitWindow = Pick<Window, "requestAnimationFrame" | "cancelAnimationFrame" | "matchMedia">;

@@ -22,13 +22,13 @@ function clock({ hidden = false, reduce = false } = {}) {
   };
 }
 
-test("portrait greets and demonstrates one finite work cycle without driving the world", () => {
+test("portrait greets, demonstrates work and checks the pouch without driving the world", () => {
   const actions = new Set();
   for (let seconds = 0; seconds < 48; seconds += .125) {
     const pose = builderPortraitPose(seconds); actions.add(pose.action);
     assert.ok(pose.phase >= 0 && pose.phase < 1); assert.ok(pose.frame >= 0 && pose.frame < 192);
   }
-  assert.deepEqual([...actions], ["idle", "greet", "work"]);
+  assert.deepEqual([...actions], ["idle", "greet", "work", "inspect"]);
   assert.deepEqual(builderPortraitPose(13), { action: "work", frame: 104, phase: .25, still: false });
   assert.deepEqual(builderPortraitPose(37), builderPortraitPose(13));
   assert.deepEqual(builderPortraitPose(13, true), { action: "idle", frame: 0, phase: 0, still: true });

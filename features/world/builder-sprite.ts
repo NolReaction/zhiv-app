@@ -23,7 +23,7 @@ const colors = {
 const point = (x: number, y: number): WorldPoint => ({ x: Math.round(x), y: Math.round(y) });
 const mix = (a: WorldPoint, b: WorldPoint, t: number) => point(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
 const directions: readonly PixelDirection[] = ["front", "back", "left", "right"];
-const actions: readonly BuilderAction[] = ["idle", "walk", "work", "greet"];
+const actions: readonly BuilderAction[] = ["idle", "walk", "work", "inspect", "finish", "greet"];
 
 /** Pine-cone quills, short paws and a small wooden mallet are drawn entirely on
  * the same opaque source-pixel grid as the other forest residents. */
@@ -33,7 +33,7 @@ export function builderSprite(action: BuilderAction, direction: PixelDirection, 
   direction = directions.includes(direction) ? direction : "front";
   const clock = still ? 0 : Number.isFinite(frame) ? ((Math.trunc(frame) % 32) + 32) % 32 : 0;
   const index = action === "walk" ? clock % 8 : 0;
-  const stage = still ? 0 : ["work", "greet"].includes(action)
+  const stage = still ? 0 : ["work", "inspect", "finish", "greet"].includes(action)
     ? Math.round(Math.max(0, Math.min(1, Number.isFinite(phase) ? phase : 0)) * 16) : 0;
   const breathe = !still && action === "idle" && clock >= 8 && clock < 20 ? 1 : 0;
   const blink = !still && action === "idle" && clock === 30;
@@ -65,7 +65,9 @@ export function builderSprite(action: BuilderAction, direction: PixelDirection, 
   const bob = action === "walk" && [1, 2, 5, 6].includes(index) ? -1 : 0;
   const rise = bob - breathe;
   const p = stage / 16;
-  const head = point(side ? 29 : 24, 21 + rise);
+  const gesture = Math.sin(p * Math.PI);
+  const nod = action === "inspect" || action === "finish" ? Math.round(gesture) : 0;
+  const head = point(side ? 29 : 24, 21 + rise + nod);
   const feet = side
     ? [point(19 + step, 43 - (step < 0 ? 1 : 0)), point(30 - step, 43 - (step > 0 ? 1 : 0))]
     : [point(18, 43 - (step < 0 ? 2 : 0)), point(30, 43 - (step > 0 ? 2 : 0))];
@@ -94,6 +96,13 @@ export function builderSprite(action: BuilderAction, direction: PixelDirection, 
     farPalm = point(side ? (mirrored ? 29 : 27) : back ? 19 : 30, 35 + rise);
   } else if (action === "greet") {
     farPalm = point(farPalm.x + (p > .2 && p < .75 ? 1 : 0), farPalm.y - Math.round(Math.sin(p * Math.PI) * 4));
+  } else if (action === "inspect" || action === "finish") {
+    // The free paw checks the pouch or rests on the chest for a satisfied nod.
+    // The dominant paw keeps its mallet down; neither gesture crosses the face.
+    const checked = action === "inspect"
+      ? point(side ? (mirrored ? 27 : 28) : back ? 19 : 28, 37 + rise)
+      : point(side ? (mirrored ? 29 : 28) : back ? 18 : 29, 33 + rise);
+    farPalm = mix(farPalm, checked, gesture);
   }
   const drawMallet = () => {
     segment(palm, malletHead, colors.outline, 3); segment(palm, malletHead, colors.handle);

@@ -25,7 +25,7 @@ after(async () => {
   if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument); else delete globalThis.document;
   await vite.close();
 });
-const directions = ["front", "back", "left", "right"], actions = ["idle", "walk", "work", "greet"];
+const directions = ["front", "back", "left", "right"], actions = ["idle", "walk", "work", "inspect", "finish", "greet"];
 const signature = sprite => JSON.stringify([...sprite.pixels].sort(([a], [b]) => a.localeCompare(b)));
 
 test("all builder poses fit the source canvas and keep an opaque foot planted", () => {
@@ -76,6 +76,23 @@ test("the back has a pine-cone silhouette, with tools behind the body instead of
   assert.ok(toolPixels(builderSprite("work", "back", 0, .4375)) > 0, "only the short protruding head is visible on a tap");
 });
 
+test("checking the pouch and finishing nod once without swapping the mallet or sliding the feet", () => {
+  for (const direction of directions) for (const action of ["inspect", "finish"]) {
+    const start = builderSprite(action, direction, 0, 0), middle = builderSprite(action, direction, 0, .5);
+    const end = builderSprite(action, direction, 0, 1);
+    assert.equal(signature(start), signature(end), "a finite gesture returns to its resting pose");
+    const a = builderSpriteRig(start), b = builderSpriteRig(middle);
+    assert.deepEqual(a.mallet, b.mallet, "the right paw keeps the tool lowered");
+    assert.deepEqual(a.feet, b.feet, "checking the result does not shift world feet");
+    assert.notDeepEqual(a.arms[0].palm, b.arms[0].palm, "the free paw makes the gesture");
+    assert.equal(b.head.y, a.head.y + 1, "only a small nod, no head bounce");
+    if (direction === "back") assert.equal(signature(start), signature(middle), "the back occludes the chest gesture");
+    else assert.notEqual(signature(start), signature(middle));
+    for (const phase of [0, .5, 1]) assert.equal(builderSprite(action, direction, 1000, phase, true),
+      builderSprite(action, direction, 0, 0, true), "reduced motion remains still");
+  }
+});
+
 test("turning keeps the mallet in the right paw and puts the far arm behind the body", () => {
   for (const action of actions) for (let phase = 0; phase <= 16; phase++) {
     for (const direction of directions) {
@@ -118,11 +135,11 @@ test("reduced motion, invalid frames and finite pose caching do not grow with th
   assert.equal(builderSprite("walk", "left", 1), builderSprite("walk", "left", 1 + 320000));
   assert.equal(builderSprite("work", "right", NaN, NaN), builderSprite("work", "right", 0, 0));
   const first = builderSprite("idle", "front", 0), unique = new Set();
-  for (const direction of directions) for (const action of ["work", "greet"]) for (let step = 0; step <= 16; step++) {
+  for (const direction of directions) for (const action of ["work", "inspect", "finish", "greet"]) for (let step = 0; step <= 16; step++) {
     unique.add(builderSprite(action, direction, 0, step / 16));
   }
   for (const direction of directions) for (let frame = 0; frame < 32; frame++) unique.add(builderSprite("walk", direction, frame));
-  // More than the cache limit exists across four actions, while world clocks
+  // More than the cache limit exists across these actions, while world clocks
   // sharing a pose reuse the same canvas instead of creating another bitmap.
   for (const direction of directions) for (let frame = 0; frame < 32; frame++) unique.add(builderSprite("idle", direction, frame));
   assert.ok(unique.size > BUILDER_SPRITE_CACHE_LIMIT);

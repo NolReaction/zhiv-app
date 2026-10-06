@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, Clock3, Hammer, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { economyBuilderStatus } from "@/features/economy/builder-status";
+import { ConstructionSpeedup } from "@/features/economy/construction-speedup";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { worldDuration } from "@/features/economy/world-stations";
 import { BUILDER } from "./builder-types";
@@ -12,23 +13,32 @@ import styles from "./world-builder-dialog.module.css";
 
 type BuilderActions = { economy: EconomyController; onOpenConstruction: (stationId: string) => void };
 
-/** The resident shows confirmed work. Opening a building never starts or claims it. */
+/** The resident shows confirmed work; completing early uses the building's quoted action. */
 export function BuilderConversation({ economy, onOpenConstruction }: BuilderActions) {
   const state = economy.snapshot;
+  const retryBlocked = economy.busy || economy.now < economy.retryAt;
+  const retry = () => { if (!economy.busy && economy.now >= economy.retryAt) void economy.retry(); };
   if (!state) return <section className={styles.status} aria-label="Работа строителя">
     <p role={economy.error ? "alert" : "status"}>{economy.error ?? "Смотрим, как идут дела…"}</p>
-    {economy.error && <button type="button" className={styles.action} disabled={economy.busy || economy.now < economy.retryAt} onClick={() => void economy.retry()}>Попробовать ещё раз</button>}
+    {economy.error && <button type="button" className={styles.action} disabled={retryBlocked} onClick={retry}>Попробовать ещё раз</button>}
   </section>;
+  const feedback = (economy.error || economy.uncertain) && <div className={styles.feedback} role="alert">
+    <p>{economy.uncertain ? "Проверяем последнее действие." : economy.error}</p>
+    <button type="button" disabled={retryBlocked} onClick={retry}>{economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>
+  </div>;
   const status = economyBuilderStatus(state, economy.now);
   if (!status) return <section className={styles.status} aria-label="Работа строителя" data-builder-status="free">
+    {feedback}
     <span className={styles.badge}><Hammer size={15} aria-hidden="true" />Свободен</span>
     <p>Готов помочь с постройками. Выберите здание для улучшения.</p>
   </section>;
   const remaining = status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds);
   return <section className={styles.status} aria-label="Работа строителя" data-builder-status={status.ready ? "ready" : "working"}>
+    {feedback}
     <span className={styles.badge}>{status.ready ? <Check size={15} aria-hidden="true" /> : <Hammer size={15} aria-hidden="true" />}{status.ready ? "Готово" : "Занят улучшением"}</span>
     <div className={styles.building}><strong>{status.stationName}</strong>{status.job.targetLevel !== null && <span>Уровень {status.job.targetLevel}</span>}</div>
     {status.ready ? <p>Работа закончена — завершите улучшение.</p> : <p className={styles.timer}><Clock3 size={16} aria-hidden="true" />Осталось {remaining}</p>}
+    {!status.ready && <ConstructionSpeedup key={status.job.id} economy={{ ...economy, snapshot: state }} job={status.job} />}
     <button type="button" className={styles.action} onClick={() => onOpenConstruction(status.stationId)}>{status.ready ? "Завершить улучшение" : "К постройке"}<ArrowRight size={16} aria-hidden="true" /></button>
   </section>;
 }

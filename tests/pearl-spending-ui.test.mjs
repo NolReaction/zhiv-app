@@ -12,13 +12,20 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
   server: { middlewareMode: true, hmr: false, ws: false }, plugins: [{ name: "pearl-spending-handlers", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
     load(id) { if (id === `\0${hookModule}`) return `
-      let slots = [], cursor = 0;
-      export function reset() { slots = []; cursor = 0; }
+      let slots = [], cursor = 0, effects = [];
+      export function reset() { slots = []; cursor = 0; effects = []; }
       export function render() { cursor = 0; }
       export function useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = initial; return [slots[index], value => { slots[index] = value; }]; }
       export function useRef(initial) { const index = cursor++; if (!(index in slots)) slots[index] = { current: initial }; return slots[index]; }
       export function useId() { return 'pearl-' + cursor++; }
-      export function useEffect() {}
+      export function useEffect(callback, dependencies) {
+        const index = cursor++, previous = slots[index];
+        if (!previous || dependencies.some((value, i) => !Object.is(value, previous[i]))) {
+          slots[index] = dependencies; effects.push(callback);
+        }
+      }
+      export function flushEffects() { const pending = effects; effects = []; pending.forEach(callback => callback()); }
+      export const useLayoutEffect = useEffect;
     `; },
     transform(source, id) { if (mocked.some(file => id.endsWith(`/features/economy/${file}`))) return source.replace('from "react";', `from "${hookModule}";`); },
   }],
@@ -27,6 +34,8 @@ after(() => vite.close());
 const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { PleskMerchantHeader } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
 const { ConstructionSpeedup } = await vite.ssrLoadModule("/features/economy/construction-speedup.tsx");
+const { BuilderConversation } = await vite.ssrLoadModule("/features/world/world-builder-dialog.tsx");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-06T12:00:00Z");
 function harness(Component = PleskMerchantHeader) {
@@ -39,6 +48,7 @@ function harness(Component = PleskMerchantHeader) {
   const calls = [], economy = { snapshot: state, busy: false, uncertain: false, error: null, now, retryAt: 0,
     act(...args) { calls.push(args); }, refresh() {} };
   const job = { id: "house-job", kind: "construction", targetId: "home", targetLevel: 2, finishesAt: new Date(now + 300000).toISOString() };
+  state.jobs = [job];
   function render() {
     hooks.render(); const tree = Component({ state, economy, job }), nodes = [];
     function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }
@@ -47,7 +57,8 @@ function harness(Component = PleskMerchantHeader) {
       const node = nodes.find(element => element.type === "button" && (element.props["aria-label"] === label || element.props.children === label));
       assert.ok(node, `Missing button: ${label}`); return node;
     };
-    return { html: renderToStaticMarkup(tree), button };
+    const html = renderToStaticMarkup(tree); hooks.flushEffects();
+    return { html, button };
   }
   return { state, economy, job, calls, render };
 }
@@ -92,9 +103,82 @@ test("lack of replacement and uncertain balances have distinct explanations", ()
 
 test("construction confirmation displays halved prices and balance but sends the original maximum quote", () => {
   const h = harness(ConstructionSpeedup); let view = h.render();
-  view.button("Ускорить за 25 жемчужин").props.onClick(); assert.deepEqual(h.calls, []);
+  view.button("Завершить сейчас за 25 жемчужин").props.onClick(); assert.deepEqual(h.calls, []);
   view = h.render(); assert.match(view.html, />50</); assert.match(view.html, /<strong>25<\/strong>/);
-  view.button("Завершить сейчас за 25 жемчужин").props.onClick();
+  view.button("Подтвердить завершение за 25 жемчужин").props.onClick();
+  view.button("Подтвердить завершение за 25 жемчужин").props.onClick();
   assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 50]]);
   assert.equal(h.state.wallet.pearls, 100);
+});
+
+test("construction confirmation rechecks the job, owner, revision, wallet, time and transport even before rerender", () => {
+  for (const change of [
+    h => { h.economy.snapshot = { ...h.state, ownerPublicId: "OTHER" }; },
+    h => { h.economy.snapshot = { ...h.state, revision: 2 }; },
+    h => { h.economy.snapshot = { ...h.state, jobs: [] }; },
+    h => { h.job.kind = "production"; },
+    h => { h.state.wallet.pearls = 0; },
+    h => { h.economy.now += 300000; },
+    h => { h.economy.now -= 300000; },
+    h => { h.economy.busy = true; },
+    h => { h.economy.uncertain = true; },
+    h => { h.economy.retryAt = now + 1000; },
+  ]) {
+    const h = harness(ConstructionSpeedup);
+    h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
+    const confirm = h.render().button("Подтвердить завершение за 25 жемчужин");
+    change(h); confirm.props.onClick(); assert.deepEqual(h.calls, []);
+  }
+});
+
+test("construction quotes cannot cross rendered revisions or replaced jobs, and elapsed work has no pearl control", () => {
+  const h = harness(ConstructionSpeedup);
+  h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
+  const previous = h.render().button("Подтвердить завершение за 25 жемчужин");
+  h.economy.snapshot = { ...h.state, revision: 2 };
+  let view = h.render();
+  assert.match(view.html, /Данные обновились/);
+  assert.equal(view.button("Подтвердить завершение за 25 жемчужин").props.disabled, true);
+  previous.props.onClick(); assert.deepEqual(h.calls, []);
+  h.job.id = "another-house-job";
+  view = h.render(); assert.doesNotMatch(view.html, /Подтвердить завершение/);
+  previous.props.onClick(); assert.deepEqual(h.calls, []);
+  h.economy.now += 300000;
+  assert.equal(h.render().html, "");
+});
+
+test("a definitive construction failure allows confirmation again while uncertainty preserves the send latch", () => {
+  const h = harness(ConstructionSpeedup);
+  h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
+  h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
+  h.economy.busy = true; h.render();
+  h.economy.busy = false; h.economy.uncertain = true; h.economy.error = "Нет связи";
+  h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
+  assert.equal(h.calls.length, 1);
+  h.economy.uncertain = false; h.economy.error = "Улучшение не выполнено";
+  h.render();
+  h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
+  assert.equal(h.calls.length, 2);
+});
+
+test("both the builder and building expose the same confirmation bound to the active construction", () => {
+  for (const source of [BuilderConversation, WorldUpgradeContent]) {
+    const h = harness(props => {
+      const tree = source({ ...props, stationId: "home", onOpenConstruction() {}, onClose() {} });
+      let control;
+      function find(element) {
+        if (!isValidElement(element)) return;
+        if (element.type === ConstructionSpeedup) control = element;
+        Children.forEach(element.props.children, find);
+      }
+      find(tree); assert.ok(control, `${source.name} must offer immediate completion`);
+      assert.equal(control.props.job, props.job);
+      return ConstructionSpeedup(control.props);
+    });
+    h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
+    assert.deepEqual(h.calls, [], "opening the quote is free");
+    h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
+    assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 50]]);
+    assert.equal(h.state.wallet.pearls, 100, "only the server may debit the wallet");
+  }
 });

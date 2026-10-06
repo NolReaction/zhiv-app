@@ -63,20 +63,20 @@ test("a ready construction has one enabled completion action and reuses normal r
   assert.equal(claim({}).length, 1);
   assert.doesNotMatch(claim({})[0].attributes, /disabled/);
   for (const lock of [{ busy: true }, { uncertain: true }, { retryAt: now + 30_000 }]) assert.match(claim(lock)[0].attributes, /disabled/);
-  assert.doesNotMatch(render("home", { snapshot }), /data-construction-speedup|Ускорить за/);
+  assert.doesNotMatch(render("home", { snapshot }), /data-construction-speedup|Завершить сейчас за/);
 });
 
 test("active construction shows its real pearl quote without spending on first press", () => {
   const snapshot = state({ wallet: { coins: 1000, pearls: 400 }, jobs: [construction()] });
   const html = render("home", { snapshot });
-  const accelerate = buttons(html).find(button => /aria-label="Ускорить за 50 жемчужин"/.test(button.attributes));
+  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 50 жемчужин"/.test(button.attributes));
   assert.ok(accelerate);
   assert.doesNotMatch(accelerate.attributes, /disabled/);
   assert.match(accelerate.attributes, /aria-expanded="false"/);
   assert.match(html, /data-item-icon="pearls"/);
-  assert.doesNotMatch(html, /Завершить сейчас за/);
+  assert.doesNotMatch(html, /Подтвердить завершение за/);
   for (const lock of [{ busy: true }, { uncertain: true }, { retryAt: now + 30_000 }]) {
-    const button = buttons(render("home", { snapshot, ...lock })).find(button => /aria-label="Ускорить за/.test(button.attributes));
+    const button = buttons(render("home", { snapshot, ...lock })).find(button => /aria-label="Завершить сейчас за/.test(button.attributes));
     assert.match(button.attributes, /disabled/);
   }
 });
@@ -85,7 +85,7 @@ test("insufficient pearls explain the shortfall and the server catalog supplies 
   const snapshot = state({ jobs: [construction()] });
   snapshot.catalog.constructionSpeedup.secondsPerPearl = 100;
   const html = render("home", { snapshot });
-  const button = buttons(html).find(button => /aria-label="Ускорить за 125 жемчужин"/.test(button.attributes));
+  const button = buttons(html).find(button => /aria-label="Завершить сейчас за 125 жемчужин"/.test(button.attributes));
   assert.match(button.attributes, /disabled/);
   assert.match(text(html), /Не хватает жемчужин: 125/);
 });
