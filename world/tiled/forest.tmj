@@ -9616,10 +9616,10 @@
                                         }],
                                  "rotation":0,
                                  "type":"",
-                                 "visible":false,
+                                 "visible":true,
                                  "width":0,
-                                 "x":1128.23102980522,
-                                 "y":519.424593360092
+                                 "x":1123.03597927155,
+                                 "y":536.426576924841
                                 }],
                          "opacity":1,
                          "type":"objectgroup",
