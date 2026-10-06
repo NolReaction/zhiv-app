@@ -3562,6 +3562,59 @@ test("quarry production keeps one visible work sign by day and night, including 
   }finally{env.restore();}
 });
 
+test("unbuilt quarry art suppresses stale mining work signs in both cameras", async () => {
+  const quarry={id:"quarry",label:"Шахта",initialLevel:0,bounds:{x:660,y:590,width:55,height:48},
+    anchor:{x:688,y:638},entry:{x:680,y:640},doorway:{x:686,y:625},collision:[],hitArea:[],
+    states:[{level:0,label:"Руины",image:"/test-quarry-ruins.webp"},{level:1,label:"Шахта",image:"/test-quarry-built.webp"}]};
+  const {paintNewMap,TILED_WORLD,NEW_MAP_PET_SIZE,WORLD_DEV_DEFAULTS}=await modules({sites:[quarry]});
+  const env=browser();
+  try {
+    const cue={x:quarry.anchor.x,y:quarry.bounds.y-NEW_MAP_PET_SIZE*.12};
+    const mining={...quarry.entry,size:NEW_MAP_PET_SIZE,opacity:0,scale:1,pose:"idle",frame:0,direction:"back",
+      working:true,workCue:cue,doorway:quarry.doorway,elapsed:7};
+    for(const view of ["circle","world"]) for(const still of [false,true]) for(const level of [0,1]) {
+      const surface=env.surface();
+      paintNewMap(surface.context,new Map(),{...options,view,reducedMotion:still,economyBuildings:{quarry:level}},7,false,200_000,0,
+        {scene:TILED_WORLD,actorAway:true,mining,state:WORLD_DEV_DEFAULTS});
+      const signs=surface.calls.filter(call=>call.method==="ellipse" && call.args[0]===cue.x && call.args[1]===cue.y).length;
+      assert.equal(signs,level,"a previously working frame cannot paint pickaxes over ruins");
+    }
+  }finally{env.restore()}
+});
+
+test("a camera with unbuilt quarry art keeps a saved mining job off map and replans only after built art commits", async () => {
+  const quarry={id:"quarry",label:"Шахта",initialLevel:0,bounds:{x:660,y:590,width:55,height:48},
+    anchor:{x:688,y:638},entry:{x:680,y:640},doorway:{x:686,y:625},collision:[],hitArea:[],
+    states:[{level:0,label:"Руины",image:"/test-quarry-ruins.webp"},{level:1,label:"Шахта",image:"/test-quarry-built.webp"}]};
+  const {mountHabitat,connectForestSession,TILED_WORLD,worldDevStore,forestJourneyActorAway}=await modules({
+    ...fishingFixture(),sites:[quarry],destinations:[{id:"quarry",position:{x:674,y:649},pauseSeconds:15}]});
+  const env=browser();let camera,probe;
+  try {
+    worldDevStore.patch({...quietClearing,autoLife:false});
+    const journey={id:"paid-before-quarry-gate",routeId:"cave",startedAt:new Date(100_000).toISOString(),
+      finishesAt:new Date(700_000).toISOString(),rewards:{stone:8,ore:4}},original=structuredClone(journey);
+    const initial={...options,reducedMotion:false,serverNow:160_000,presenceKey:"quarry-ruins-saved-trip",
+      economyBuildings:{quarry:0},economyJourney:journey};
+    camera=mountHabitat(env.surface(),initial,{activity(){},ready(){},failure:assert.fail});
+    env.finish();env.finish();await flush();
+    probe=connectForestSession(initial.presenceKey,TILED_WORLD,"circle",160_000,0,()=>{});
+    const feet={...probe.state.clearing.position};
+    assert.equal(probe.state.journeyTravel,undefined,"the actual mounted controller receives unbuilt visual level");
+    assert.equal(forestJourneyActorAway(probe.state,journey,160_000),true);
+    camera.configure({...initial,economyBuildings:{quarry:1}});
+    assert.equal(probe.state.journeyTravel,undefined,"a pending picture cannot create an invisible portal");
+    env.finishPath("/test-quarry-built.webp");await flush();
+    assert.equal(probe.state.journeyTravel.phase,"leaving");
+    assert.deepEqual(probe.state.clearing.position,feet,"built art resumes the same trip without moving physical feet");
+    assert.equal(forestJourneyActorAway(probe.state,journey,160_000),false);
+    worldDevStore.patch({previewBuildings:true,levels:{quarry:0}});await flush();
+    assert.equal(probe.state.journeyTravel,undefined);
+    assert.equal(forestJourneyActorAway(probe.state,journey,160_000),true);
+    assert.deepEqual(probe.state.clearing.position,feet);
+    assert.deepEqual(journey,original);
+  }finally{camera?.dispose();probe?.release();worldDevStore.reset();env.restore()}
+});
+
 test("ordinary quarry production walks from base, shares the miner across cameras and yields safely to an expedition", async () => {
   const quarry={id:"quarry",label:"Шахта",initialLevel:1,bounds:{x:660,y:590,width:55,height:48},
     anchor:{x:688,y:638},entry:{x:680,y:640},doorway:{x:686,y:625},collision:[],hitArea:[],

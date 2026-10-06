@@ -16,7 +16,7 @@ const { forestJourneyMiningFrame,MINING_PORTAL_SECONDS }=await load("forest-mini
 const { drawForestMiningWork }=await load("forest-mining-painter");
 const { forestJobFishingPlan,forestJobFishingFrame,forestJobFishingCleanup }=await load("forest-job-fishing");
 const { canTraverse,isWalkable }=await load("navigation");
-const world=previewWorldScene(TILED_WORLD,initialPreviewLevels(TILED_WORLD));
+const world=previewWorldScene(TILED_WORLD,{...initialPreviewLevels(TILED_WORLD),quarry:1});
 const start=1_000_000;
 const job=(routeId,seconds=3600,rewards={stone:8,ore:4})=>({id:`real-${routeId}`,routeId,rewards,
   startedAt:new Date(start).toISOString(),finishesAt:new Date(start+seconds*1000).toISOString()});
@@ -122,6 +122,52 @@ test("the actual authored mine uses safe outdoor feet, enters its own portal and
     for(let n=0;n<2400 && s.journeyTravel;n++) step(s,j,start+3600_000+n*50);
     assert.equal(s.journeyTravel,undefined);assert.deepEqual(s.clearing.position,world.actor.spawn);
     assert.deepEqual(TILED_WORLD,original);
+  }finally{session.release()}
+});
+
+test("old paid mining trips retain their deadlines without entering or working inside an unbuilt quarry",()=>{
+  const ruins=previewWorldScene(TILED_WORLD,{...initialPreviewLevels(TILED_WORLD),quarry:0});
+  for(const route of ["cave","deep_cave","quarry_stone","quarry_work"]) for(const still of [false,true]) {
+    const session=connectForestSession(undefined,ruins,"world",start,0,()=>{},{persistence:false,sync:false});
+    const s=session.state,j=job(route),original=structuredClone(j),feet={...s.clearing.position};
+    try {
+      for(const now of [start,start+60_000,start+120_000]) {
+        syncForestJourneyTravel(s,ruins,j,now,still,[],false);
+        assert.equal(s.explorationId,j.id,"the existing economic job still owns its saved activity");
+        assert.equal(s.journeyTravel,undefined,"ruins provide no local mining portal or route");
+        assert.equal(forestJourneyMiningFrame(s,ruins,still),null);
+        assert.equal(forestJourneyActorAway(s,j,now),true);
+        assert.deepEqual(s.clearing.position,feet);
+      }
+      syncForestJourneyTravel(s,ruins,j,start+3600_000,still,[],false);
+      assert.equal(forestJourneyActorAway(s,j,start+3600_000),false);
+      assert.equal(s.journeyTravel,undefined);
+      assert.deepEqual(s.clearing.position,feet,"the finished legacy trip does not teleport into the ruins");
+      assert.deepEqual(j,original,"visual protection never edits paid dates, output or claim state");
+    }finally{session.release()}
+  }
+});
+
+test("switching quarry preview to ruins removes only local mining, then resumes from actual feet when built art returns",()=>{
+  const ruins=previewWorldScene(TILED_WORLD,{...initialPreviewLevels(TILED_WORLD),quarry:0});
+  const session=create(),s=session.state,j=job("cave"),original=structuredClone(j);
+  try {
+    syncForestJourneyTravel(s,world,j,start+60_000,false,[],true);
+    assert.equal(s.journeyTravel.phase,"working");
+    const feet={...s.clearing.position};
+    syncForestJourneyTravel(s,ruins,j,start+61_000,false,[],false);
+    assert.equal(s.journeyTravel,undefined);
+    assert.equal(forestJourneyMiningFrame(s,ruins),null);
+    assert.equal(forestJourneyActorAway(s,j,start+61_000),true);
+    assert.deepEqual(s.clearing.position,feet);
+    syncForestJourneyTravel(s,world,j,start+62_000,false,[],true);
+    assert.equal(s.journeyTravel.phase,"leaving","visible preview changes cannot cold-restore an interior");
+    assert.equal(s.journeyTravel.mining.prepared,false,"the tools are collected by walking home first");
+    assert.equal(forestJourneyActorAway(s,j,start+62_000),false);
+    assert.deepEqual(s.clearing.position,feet);
+    for(let n=0;n<4800 && s.journeyTravel?.phase!=="working";n++) step(s,j,start+62_000+n*50);
+    assert.equal(s.journeyTravel.phase,"working");
+    assert.deepEqual(j,original);
   }finally{session.release()}
 });
 

@@ -47,6 +47,32 @@ test("POST validates payload then atomically replays its original receipt", asyn
   const conflict = await POST(post({ ...cmd, quantity: 2 })); assert.equal(conflict.status, 409); assert.equal((await conflict.json()).code, "ECONOMY_REQUEST_CONFLICT");
 });
 
+test("HTTP rejects every mining route at an unbuilt quarry without spending or issuing a receipt", async () => {
+  const p = player();
+  economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.buildings = Object.fromEntries(model.economyCatalog.buildings.map(building => [building.id, 5]));
+  row.state.buildings.quarry = 0;
+  row.state.wallet.coins = 500_000;
+  row.state.inventory = { tools: 10, rope: 10, dried_berries: 10, smoked_fish: 10 };
+  const before = structuredClone((await (await GET(read())).json()));
+  for (const route of model.economyCatalog.explorations.filter(route => route.activity === "mining")) {
+    const cmd = { ...command(p), action: "start_exploration", targetId: route.id };
+    // A retry of a rejected request is rejected again, rather than replaying a success.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await POST(post(cmd));
+      assert.equal(response.status, 409, route.id);
+      assert.equal((await response.json()).code, "ECONOMY_BUILDING_REQUIRED", route.id);
+    }
+    const after = await (await GET(read())).json();
+    assert.equal(after.revision, before.revision);
+    assert.deepEqual(after.wallet, before.wallet);
+    assert.deepEqual(after.inventory, before.inventory);
+    assert.deepEqual(after.jobs, before.jobs);
+    assert.deepEqual(after.progression, before.progression);
+  }
+});
+
 test("cross-site writes and wrong content types cannot change economy", async () => {
   const p = player(), cmd = command(p), before = economy.getDevEconomy(p.token);
   for (const headers of [{ Origin: "https://evil.example" }, { "Sec-Fetch-Site": "cross-site" }]) {

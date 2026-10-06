@@ -107,3 +107,16 @@ test("mining is one actor activity with an upgrade benefit at every mine level",
   revived.recipes.push({ ...revived.explorations.find(route => route.id === "quarry_stone"), buildingId: "quarry", buildingLevel: 1 });
   assert.throws(() => auditEconomyProgression(revived), /duplicate character mining/);
 });
+
+test("every mining route requires a built quarry including early cave exploration", () => {
+  const catalog = readEconomyCatalog();
+  for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
+    assert.ok(route.requiredBuildings?.quarry >= 1, route.id);
+    const invalid = structuredClone(catalog);
+    delete invalid.explorations.find(candidate => candidate.id === route.id).requiredBuildings.quarry;
+    assert.throws(() => auditEconomyProgression(invalid), /mining requires a built quarry/, route.id);
+  }
+  for (const id of ["cave", "deep_cave"]) {
+    assert.equal(catalog.explorations.find(route => route.id === id).requiredBuildings.quarry, 1);
+  }
+});

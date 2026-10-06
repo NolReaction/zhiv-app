@@ -56,11 +56,28 @@ export function forestJourneyActorAway(state: ForestSessionState, journey: Econo
 
 /** Mine work is a local portal, not a new navigation corridor through rock. */
 function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, journey: EconomySceneJourney | null | undefined,
-  now: number, still: boolean, cancelled: readonly string[]) {
+  now: number, still: boolean, cancelled: readonly string[], quarryBuilt: boolean) {
   const active = economyJourneyAway(journey, now), miningJob = active && (mineRoutes.has(journey?.routeId ?? "") || journey?.routeId?.startsWith("quarry_"));
   if (!miningJob && !state.journeyTravel?.mining) return false;
   const id = miningJob ? journey!.id : null;
   let travel = state.journeyTravel;
+  if (!quarryBuilt) {
+    // Old paid trips still own their saved deadline and rewards. Unbuilt or
+    // previewed ruins cannot supply a local portal, mining clothes or work
+    // marks; keep the last safe feet for their ordinary off-map return.
+    if (travel?.mining) {
+      state.journeyTravel = undefined; travel = undefined;
+      releaseClearingPoint(state.clearing);
+    }
+    if (!miningJob) return false;
+    if (state.explorationId !== id) {
+      cancelForestDirector(state, "Отправился исследовать окрестности");
+      state.reaction = 0; state.animation = null;
+    }
+    state.explorationId = id;
+    state.director.reason = journey?.label || "Исследует окрестности";
+    return true;
+  }
   // A new assignment in reduced motion switches to its own static scene;
   // otherwise a frozen return from the old job would block it indefinitely.
   if (still && active && travel?.mining && journey?.id !== travel.jobId) {
@@ -227,13 +244,14 @@ export function forestJourneyFishingFrame(state: ForestSessionState, scene: Fixe
  * inventory or rewards. Reloading an ongoing shore job restores its visible
  * fishing place; newly confirmed jobs use the existing collision-safe walker. */
 export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedWorldScene,
-  journey: EconomySceneJourney | null | undefined, now: number, still: boolean, cancelledExplorations: readonly string[] = []) {
+  journey: EconomySceneJourney | null | undefined, now: number, still: boolean, cancelledExplorations: readonly string[] = [],
+  quarryBuilt = true) {
   // A background quarry job can become visible as soon as a fishing receipt
   // is claimed/cancelled. Let its already visible catch, tackle and walk home
   // finish before the miner takes over the same physical actor.
   const previousTravel = state.journeyTravel;
   if (!still && (mineRoutes.has(journey?.routeId ?? "") || journey?.routeId?.startsWith("quarry_")) && previousTravel && !previousTravel.mining && previousTravel.phase !== "away") journey = null;
-  if (syncMiningTravel(state,scene,journey,now,still,cancelledExplorations)) return;
+  if (syncMiningTravel(state,scene,journey,now,still,cancelledExplorations,quarryBuilt)) return;
   const active = economyJourneyAway(journey, now), id = active ? journey!.id : null;
   const observed = state.explorationId !== undefined, previous = state.explorationId;
   const current = state.journeyTravel;

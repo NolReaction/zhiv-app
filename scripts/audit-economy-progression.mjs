@@ -23,6 +23,9 @@ export function auditEconomyProgression(catalog) {
   const buildings = unique(catalog.buildings, "building");
   unique(catalog.recipes, "recipe");
   unique(catalog.explorations, "exploration");
+  for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
+    assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
+  }
   assert.equal(catalog.version, 3);
   assert.equal(catalog.currencyScale, 10);
   const rare = catalog.rareDrops;

@@ -18,12 +18,90 @@ class EconomyActorTest {
         buildings = EconomyRules.catalog.buildings.associate { it.id to it.levels.last().level },
         inventory = mapOf("wood" to 20L, "fiber" to 20L, "dried_berries" to 20L, "smoked_fish" to 20L, "tools" to 20L, "rope" to 20L))
     private val quarryRoutes get() = EconomyRules.catalog.explorations.filter { it.id.startsWith("quarry_") }
+    private val miningRoutes get() = EconomyRules.catalog.explorations.filter { it.activity == "mining" }
     private fun legacyMine(state: EconomyState, routeId: String = "quarry_stone"): EconomyState {
         val route = quarryRoutes.single { it.id == routeId }
         val job = EconomyJob(UUID.randomUUID().toString(), "production", "quarry", routeId,
             startedAt = now.toString(), finishesAt = now.plusSeconds(route.seconds).toString(),
             rewards = route.rewards, cost = route.cost, catalogVersion = 3)
         return state.copy(jobs = state.jobs + job)
+    }
+
+    @Test fun `every mining route requires a built quarry without changing balances jobs or rare clocks`() {
+        val locked = player().copy(buildings = player().buildings + ("quarry" to 0),
+            rareDropState = EconomyRareDropClock(1, 1800, "moon_crystal"))
+        val before = economyJson.encodeToString(locked)
+        for (route in miningRoutes) for (action in listOf("start_exploration", "start_fishing")) {
+            assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> {
+                apply(locked, action, route.id)
+            }.code, route.id)
+            assertEquals(before, economyJson.encodeToString(locked), route.id)
+        }
+    }
+
+    @Test fun `cave routes open with quarry one at their existing home levels and retain their costs rewards and timers`() {
+        for (id in listOf("cave", "deep_cave")) {
+            val route = miningRoutes.single { it.id == id }
+            val original = player().copy(buildings = player().buildings + mapOf("home" to route.requiredHomeLevel, "quarry" to 1))
+            val started = apply(original, "start_exploration", id)
+            val job = started.jobs.single()
+            assertEquals(id, job.targetId)
+            assertEquals(now.plusSeconds(route.seconds), readyAt(job))
+            assertEquals(route.cost, job.cost)
+            for ((item, amount) in route.rewards) assertEquals(amount, job.rewards[item])
+            for ((item, amount) in route.cost.items) assertEquals(original.inventory.getValue(item) - amount, started.inventory[item] ?: 0L)
+            assertEquals(1, started.buildings["quarry"])
+        }
+    }
+
+    @Test fun `cave trips and quarry construction exclude each other until their result is claimed`() {
+        val upgrade = EconomyRules.catalog.buildings.single { it.id == "quarry" }.levels.single { it.level == 2 }
+        for (id in listOf("cave", "deep_cave")) {
+            val ready = player().copy(buildings = player().buildings + ("quarry" to 1),
+                inventory = player().inventory + upgrade.cost.items)
+            val travelling = apply(ready, "start_exploration", id)
+            val trip = travelling.jobs.single()
+            val beforeTrip = economyJson.encodeToString(travelling)
+            for (at in listOf(now, readyAt(trip))) {
+                assertEquals("ECONOMY_BUILDING_BUSY", assertFailsWith<AuthFailure> {
+                    apply(travelling, "start_construction", "quarry", at)
+                }.code)
+                assertEquals(beforeTrip, economyJson.encodeToString(travelling))
+            }
+            val returned = apply(travelling, "cancel_exploration", trip.id, readyAt(trip))
+            val building = apply(returned, "start_construction", "quarry", readyAt(trip))
+            val construction = building.jobs.single()
+            val beforeConstruction = economyJson.encodeToString(building)
+            for (at in listOf(readyAt(trip), readyAt(construction))) {
+                assertEquals("ECONOMY_BUILDING_BUSY", assertFailsWith<AuthFailure> {
+                    apply(building, "start_exploration", id, at)
+                }.code)
+                assertEquals(beforeConstruction, economyJson.encodeToString(building))
+            }
+            val completed = apply(building, "claim_job", construction.id, readyAt(construction))
+            assertEquals(id, apply(completed, "start_exploration", id, readyAt(construction)).jobs.single().targetId)
+        }
+    }
+
+    @Test fun `paid cave snapshots at quarry zero keep their rewards or cancellation without new unlocks or refunds`() {
+        for (id in listOf("cave", "deep_cave")) for (cancel in listOf(false, true)) {
+            val route = miningRoutes.single { it.id == id }
+            val job = EconomyJob(UUID.randomUUID().toString(), "exploration", id,
+                startedAt = now.toString(), finishesAt = now.plusSeconds(route.seconds).toString(),
+                rewards = mapOf("stone" to 13L, "ore" to 9L),
+                cost = EconomyCost(250, mapOf("dried_berries" to 2L, "smoked_fish" to 2L)), catalogVersion = 1)
+            val saved = player().copy(buildings = player().buildings + ("quarry" to 0), inventory = emptyMap(), jobs = listOf(job))
+            val result = apply(saved, if (cancel) "cancel_exploration" else "claim_job", job.id, readyAt(job))
+            assertTrue(result.jobs.isEmpty())
+            assertEquals(saved.wallet, result.wallet, "historic coin costs are never recomputed or refunded")
+            assertEquals(if (cancel) emptyMap() else job.rewards, result.inventory)
+            assertEquals(0, result.buildings["quarry"])
+            assertEquals(if (cancel) 0L else 1L, result.completedExplorations)
+            assertEquals(if (cancel) 0L else 1L, result.progression.routes[id] ?: 0L)
+            assertEquals(if (cancel) 0L else route.seconds, result.progression.collections.quarrySeconds)
+            assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { apply(result, "claim_job", job.id, readyAt(job)) }.code)
+            assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> { apply(result, "start_exploration", id, readyAt(job)) }.code)
+        }
     }
 
     @Test fun `quarry and all routes exclude each other until delivery without changing spent resources or rare clocks`() {
@@ -138,7 +216,9 @@ class EconomyActorTest {
         assertEquals("ECONOMY_BUILDING_BUSY", assertFailsWith<AuthFailure> {
             apply(building, "start_exploration", "quarry_clay")
         }.code)
-        assertTrue(apply(building, "start_exploration", "cave").jobs.any { it.targetId == "cave" })
+        assertEquals("ECONOMY_BUILDING_BUSY", assertFailsWith<AuthFailure> {
+            apply(building, "start_exploration", "cave")
+        }.code)
     }
 
 }

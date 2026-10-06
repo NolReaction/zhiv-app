@@ -36,7 +36,7 @@ class EconomyCancellationTest {
         val route = EconomyRules.catalog.explorations.single { it.id == "deep_cave" }
         val initial = EconomyRules.initial().copy(wallet = EconomyWallet(73, 2),
             inventory = route.cost.items + ("fish" to 3L),
-            buildings = EconomyRules.initial().buildings + ("home" to route.requiredHomeLevel))
+            buildings = EconomyRules.initial().buildings + route.requiredBuildings + ("home" to route.requiredHomeLevel))
         val started = apply(initial, "start_exploration", route.id)
         assertNotEquals(initial.inventory, started.inventory)
         val historic = started.copy(jobs = started.jobs.map { it.copy(cost = it.cost.copy(coins = 25)) })

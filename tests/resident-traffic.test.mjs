@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { canTraverseResidents, residentTrafficDetour, residentClearance } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
+const { canTraverseResidents, residentTrafficDetour, residentClearance, RESIDENT_TRAFFIC_LIMITS } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
 const { createWorldNavigation, canTraverse, withWorldNavigationObstacle } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { createBuilderMind, advanceBuilderMind, builderMindFrame, requestBuilderVisit } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
 const { builderLocalPlaces, builderWorkStops } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
@@ -237,9 +237,10 @@ test("builder approaches around an occupied route, then keeps his work feet and 
   const now = Date.parse("2026-10-06T18:00:00Z"), job = { id: "home-job", stationId: "home", targetLevel: 2,
     startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 3600_000).toISOString() };
   const construction = { ownerPublicId: "traffic-owner", revision: 1, jobs: [job] };
+  const savedConstruction = structuredClone(construction);
   const mind = createBuilderMind(world), nav = builderLocalPlaces(world).navigation;
   advanceBuilderMind(mind, world, 0, { now, construction });
-  const end = mind.target.position, start = { ...mind.position };
+  const end = { ...mind.target.position }, start = { ...mind.position };
   const others = [occupant("mochlik", (start.x + end.x) / 2, (start.y + end.y) / 2, 50)];
   let detoured = false;
   for (let time = 0; time < 30 && mind.action !== "work"; time += .05) {
@@ -250,15 +251,36 @@ test("builder approaches around an occupied route, then keeps his work feet and 
     assert.ok(canTraverseResidents(before, mind.position, 40, others, "builder"));
     detoured ||= mind.trafficWaiting;
   }
-  assert.ok(detoured); assert.equal(mind.action, "work"); assert.deepEqual(mind.position, end);
+  assert.ok(detoured); assert.equal(mind.action, "work"); assert.equal(mind.route, null);
+  // Steering settles with less than .001 world units remaining. Keep that
+  // subpixel arrival tolerance while checking the selected work stop exactly.
+  assert.ok(distance(mind.position, end) <= .001, "arrival stays within the steering settle tolerance of the same work stop");
+  assert.deepEqual(mind.target.position, end);
   assert.equal(mind.job.finishesAt, job.finishesAt); assert.equal(builderMindFrame(mind, world, false).targetId, "home");
+  const settledFeet = { ...mind.position };
+  for (let frame = 0; frame < 80; frame++) {
+    advanceBuilderMind(mind, world, .05, { now, construction, occupants: others });
+    assert.equal(mind.action, "work"); assert.equal(mind.route, null);
+    assert.deepEqual(mind.position, settledFeet, "working feet never drift after arrival");
+    assert.deepEqual(mind.target.position, end, "traffic cannot replace the chosen work stop");
+    assert.equal(mind.job.finishesAt, job.finishesAt);
+  }
+  assert.deepEqual(construction, savedConstruction, "cosmetic detours and work cannot change the construction order");
   const firstWork = builderWorkStops(world, job)[0];
   const occupiedWork = occupant("mochlik", firstWork.position.x, firstWork.position.y - 20, 50);
   const cold = createBuilderMind(world, { awaitConstruction: true });
   advanceBuilderMind(cold, world, 0, { now, construction, occupants: [occupiedWork] });
   assert.equal(cold.action, "work"); assert.ok(distance(cold.position, occupiedWork.position) >= residentClearance(40, 50));
   const crowded = createBuilderMind(world, { awaitConstruction: true }), startFeet = { ...crowded.position };
-  advanceBuilderMind(crowded, world, 0, { now, construction, occupants: [occupant("mochlik", firstWork.position.x, firstWork.position.y, 50)] });
+  const blockedWork = [];
+  for (const stop of builderWorkStops(world, job)) {
+    if (!canTraverseResidents(stop.position, stop.position, 40, blockedWork, "builder")) continue;
+    blockedWork.push(occupant(`work-neighbour-${blockedWork.length}`, stop.position.x, stop.position.y, 50));
+  }
+  assert.ok(blockedWork.length <= RESIDENT_TRAFFIC_LIMITS.occupants, "all blockers fit the runtime occupant limit");
+  assert.ok(builderWorkStops(world, job).every(stop => !canTraverseResidents(stop.position, stop.position, 40, blockedWork, "builder")),
+    "the crowded fixture blocks every work candidate, including the far side of the building");
+  advanceBuilderMind(crowded, world, 0, { now, construction, occupants: blockedWork });
   assert.equal(crowded.action, "walk"); assert.deepEqual(crowded.position, startFeet, "if all work points are occupied, never restore on top of another hero");
 });
 

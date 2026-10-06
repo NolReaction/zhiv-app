@@ -126,8 +126,32 @@ test("locked routes explain all missing buildings and offer navigation only when
   assert.match(withoutNavigation, /<span>[^<]+ · нужен ур\. 3<\/span>/);
 });
 
+test("cave preparation explains the unbuilt quarry and guards departure until it is completed", () => {
+  for (const id of ["cave", "deep_cave"]) {
+    const state = snapshot({ buildings: { home: 3, warehouse: 5, quarry: 0 },
+      inventory: { dried_berries: 1, smoked_fish: 1 } });
+    const locked = sectorView("caves", state, {}, { selectedRoute: id, onNavigateStation() {} });
+    assert.ok(locked.html.includes(`${economyCatalog.buildings.find(building => building.id === "quarry").name} · нужен ур. 1`));
+    const depart = locked.depart(id);
+    assert.ok(depart);
+    assert.equal(depart.props.disabled, true);
+    depart.props.onClick();
+    assert.deepEqual(locked.calls, [], "calling a disabled handler cannot send a start command");
+    state.buildings.quarry = 1;
+    const open = sectorView("caves", state, {}, { selectedRoute: id });
+    assert.equal(open.depart(id).props.disabled, false);
+    open.depart(id).props.onClick();
+    assert.equal(open.calls.length, 1);
+    state.jobs = [job({ kind: "construction", targetId: "quarry", targetLevel: 2, rewards: {} })];
+    const upgrading = sectorView("caves", state, {}, { selectedRoute: id });
+    assert.equal(upgrading.depart(id).props.disabled, true);
+    upgrading.depart(id).props.onClick();
+    assert.deepEqual(upgrading.calls, []);
+  }
+});
+
 test("deep routes use actual consumable amounts, and missing provisions block departure", () => {
-  const state = snapshot({ buildings: { home: 3, warehouse: 1 }, inventory: { dried_berries: 1 } });
+  const state = snapshot({ buildings: { home: 3, warehouse: 1, quarry: 1 }, inventory: { dried_berries: 1 } });
   let html = route(renderPreparation("deep_cave", controller({ snapshot: state })), "deep_cave");
   assert.match(html, /Припасы для вылазки/);
   assert.match(html, /Не хватает припасов/);

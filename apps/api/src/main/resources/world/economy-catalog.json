@@ -1936,7 +1936,9 @@
         "stone": 8,
         "ore": 4
       },
-      "requiredBuildings": {},
+      "requiredBuildings": {
+        "quarry": 1
+      },
       "activity": "mining"
     },
     {
@@ -1956,7 +1958,9 @@
         "stone": 32,
         "ore": 16
       },
-      "requiredBuildings": {},
+      "requiredBuildings": {
+        "quarry": 1
+      },
       "activity": "mining"
     },
     {

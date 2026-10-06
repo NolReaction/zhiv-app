@@ -25,6 +25,7 @@ function player() {
   return { ...p, row };
 }
 const quarryRoutes = economyCatalog.explorations.filter(route => route.id.startsWith("quarry_"));
+const miningRoutes = economyCatalog.explorations.filter(route => route.activity === "mining");
 function legacyMine(p, routeId = "quarry_stone") {
   const route = quarryRoutes.find(route => route.id === routeId);
   const job = { id: crypto.randomUUID(), kind: "production", targetId: "quarry", recipeId: routeId, targetLevel: null,
@@ -33,6 +34,89 @@ function legacyMine(p, routeId = "quarry_stone") {
   p.row.state.jobs.push(job);
   return job;
 }
+
+test("every mining route rejects an unbuilt quarry before IDs randomness costs or revisions change", () => {
+  const p = player();
+  p.row.state.buildings.quarry = 0;
+  p.row.state.rareDropState = { version: 1, remainingSeconds: 1800, itemId: "moon_crystal" };
+  for (const route of miningRoutes) for (const action of ["start_exploration", "start_fishing"]) {
+    const request = command(p, action, route.id), before = structuredClone(p.row.state);
+    const state = structuredClone(before);
+    assert.throws(() => applyEconomyCommand(state, request, now,
+      () => assert.fail("locked mining generated a job ID"), {}, () => assert.fail("locked mining rolled a reward")),
+    { code: "ECONOMY_BUILDING_REQUIRED" }, route.id);
+    assert.deepEqual(state, before, route.id);
+    assert.throws(() => economy.commandDevEconomy(p.token, request, now), { code: "ECONOMY_BUILDING_REQUIRED" }, route.id);
+    assert.deepEqual(p.row.state, before, "rejected mining cannot change saved balances, jobs, clocks or revision");
+  }
+});
+
+test("cave routes open with the first completed quarry at their existing home levels", () => {
+  for (const id of ["cave", "deep_cave"]) {
+    const p = player(), route = miningRoutes.find(route => route.id === id);
+    p.row.state.buildings.home = route.requiredHomeLevel;
+    p.row.state.buildings.quarry = 1;
+    const before = structuredClone(p.row.state);
+    const started = issue(p, "start_exploration", id).state, job = started.jobs[0];
+    assert.equal(job.targetId, id);
+    assert.equal(Date.parse(job.finishesAt) - now, route.seconds * 1000);
+    assert.deepEqual(job.cost, route.cost);
+    for (const [item, amount] of Object.entries(route.rewards)) assert.equal(job.rewards[item], amount);
+    for (const [item, amount] of Object.entries(route.cost.items)) assert.equal(started.inventory[item] ?? 0, before.inventory[item] - amount);
+    assert.equal(started.buildings.quarry, 1);
+  }
+});
+
+test("cave trips and quarry construction exclude one another through the unclaimed deadline", () => {
+  const upgrade = economyCatalog.buildings.find(building => building.id === "quarry").levels.find(level => level.level === 2);
+  for (const id of ["cave", "deep_cave"]) {
+    const p = player(), route = miningRoutes.find(route => route.id === id);
+    p.row.state.buildings.quarry = 1;
+    p.row.state.inventory = { ...p.row.state.inventory, ...upgrade.cost.items };
+    const trip = issue(p, "start_exploration", id).state.jobs[0];
+    for (const at of [now, Date.parse(trip.finishesAt)]) {
+      read(p, at);
+      const before = structuredClone(p.row.state);
+      assert.throws(() => issue(p, "start_construction", "quarry", at), { code: "ECONOMY_BUILDING_BUSY" });
+      assert.deepEqual(p.row.state, before);
+    }
+    const tripFinish = Date.parse(trip.finishesAt);
+    issue(p, "cancel_exploration", trip.id, tripFinish);
+    const construction = issue(p, "start_construction", "quarry", tripFinish).state.jobs[0];
+    for (const at of [tripFinish, Date.parse(construction.finishesAt)]) {
+      read(p, at);
+      const before = structuredClone(p.row.state);
+      assert.throws(() => issue(p, "start_exploration", id, at), { code: "ECONOMY_BUILDING_BUSY" });
+      assert.deepEqual(p.row.state, before);
+    }
+    const constructionFinish = Date.parse(construction.finishesAt);
+    issue(p, "claim_job", construction.id, constructionFinish);
+    assert.equal(issue(p, "start_exploration", route.id, constructionFinish).state.jobs[0].targetId, route.id);
+  }
+});
+
+test("paid cave snapshots without a quarry remain claimable or cancellable without new unlocks or refunds", () => {
+  for (const id of ["cave", "deep_cave"]) for (const cancel of [false, true]) {
+    const p = player(), route = miningRoutes.find(route => route.id === id);
+    const job = { id: crypto.randomUUID(), kind: "exploration", targetId: id, targetLevel: null,
+      startedAt: new Date(now).toISOString(), finishesAt: new Date(now + route.seconds * 1000).toISOString(),
+      rewards: { stone: 13, ore: 9 }, cost: { coins: 250, items: { dried_berries: 2, smoked_fish: 2 } }, catalogVersion: 1 };
+    p.row.state.buildings.quarry = 0;
+    p.row.state.inventory = {};
+    p.row.state.jobs = [job];
+    const before = read(p), at = Date.parse(job.finishesAt);
+    const result = issue(p, cancel ? "cancel_exploration" : "claim_job", job.id, at).state;
+    assert.deepEqual(result.jobs, []);
+    assert.deepEqual(result.wallet, before.wallet, "historic coin costs are never recomputed or refunded");
+    assert.deepEqual(result.inventory, cancel ? {} : job.rewards);
+    assert.equal(result.buildings.quarry, 0);
+    assert.equal(result.completedExplorations, cancel ? 0 : 1);
+    assert.equal(result.progression.routes[id] ?? 0, cancel ? 0 : 1);
+    assert.equal(result.progression.collections.quarrySeconds, cancel ? 0 : route.seconds);
+    assert.throws(() => issue(p, "claim_job", job.id, at), { code: "ECONOMY_JOB_GONE" });
+    assert.throws(() => issue(p, "start_exploration", id, at), { code: "ECONOMY_BUILDING_REQUIRED" });
+  }
+});
 
 test("every quarry order excludes every route and equipped fishing before costs, IDs or randomness change", () => {
   const p = player(), mine = legacyMine(p);
@@ -189,5 +273,5 @@ test("focused mining keeps home and site gates and cannot overlap its upgrade", 
   p.row.state.inventory = { ...upgrade.cost.items };
   issue(p, "start_construction", "quarry");
   assert.throws(() => issue(p, "start_exploration", "quarry_clay"), { code: "ECONOMY_BUILDING_BUSY" });
-  assert.ok(issue(p, "start_exploration", "cave").state.jobs.some(job => job.targetId === "cave"));
+  assert.throws(() => issue(p, "start_exploration", "cave"), { code: "ECONOMY_BUILDING_BUSY" });
 });

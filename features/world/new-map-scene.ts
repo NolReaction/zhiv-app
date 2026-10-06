@@ -160,8 +160,9 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const selectedVisuals = preview?.visuals ?? visualsFor(currentLevels);
   const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
   const walking = preview?.clearing;
-  const actor = { x: preview?.mining?.x ?? walking?.x ?? NEW_MAP_SPAWN.x, y: preview?.mining?.y ?? walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
-  const mining = preview?.mining ? { ...preview.mining, size:actor.size } : null;
+  const visibleMining = selectedLevels.quarry > 0 ? preview?.mining : null;
+  const actor = { x: visibleMining?.x ?? walking?.x ?? NEW_MAP_SPAWN.x, y: visibleMining?.y ?? walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
+  const mining = visibleMining ? { ...visibleMining, size:actor.size } : null;
   const fishing = preview?.fishing ? { ...preview.fishing, size: actor.size } : null;
   const cooking = !fishing && preview?.cooking ? { ...preview.cooking, size: actor.size } : null;
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
@@ -280,7 +281,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   // Station status stays legible above the roof in both daylight and night.
   // The full map's production badge owns this roof whenever an order exists.
   // The circle and an expedition without production retain the animated picks.
-  if (dev?.showBuildings !== false && !(options.view === "world" && productions.some(frame => frame.stationId === "quarry"))) {
+  if (selectedLevels.quarry > 0 && dev?.showBuildings !== false && !(options.view === "world" && productions.some(frame => frame.stationId === "quarry"))) {
     const quarryProduction = productions.find(frame => frame.stationId === "quarry" && frame.phase === "working");
     const quarry = quarryProduction && world.sites.find(site => site.id === "quarry");
     const work = mining?.working ? mining : !mining && quarry && quarryProduction ? {
@@ -360,7 +361,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     syncProduction();
     if (economyJourneyAway(options.economyJourney, explorationNow())) state.fishingPreview = undefined;
     const { journey, now } = displayedJourney();
-    syncForestJourneyTravel(state, world, journey, now, reducedMotion(options, dev), options.cancelledExplorations);
+    syncForestJourneyTravel(state, world, journey, now, reducedMotion(options, dev), options.cancelledExplorations,
+      (visuals.quarry?.level ?? 0) > 0);
   }
   function residentFrames() {
     const rehearsal = dev?.residentPreview;

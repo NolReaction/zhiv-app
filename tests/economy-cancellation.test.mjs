@@ -46,6 +46,7 @@ test("abandoning a supplied trip never refunds its consumed provisions or histor
   const route = economyCatalog.explorations.find(item => item.id === "deep_cave");
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings.home = route.requiredHomeLevel;
+  Object.assign(row.state.buildings, route.requiredBuildings);
   row.state.inventory = { ...route.cost.items, fish: 3 };
   row.state.wallet = { coins: 730, pearls: 20 };
   const started = issue(p, "start_exploration", route.id).state, trip = started.jobs[0];

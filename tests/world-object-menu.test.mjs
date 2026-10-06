@@ -289,7 +289,7 @@ test("map menu is compact and nonmodal with place-specific production rather tha
 test("the mine has one actor route picker without production tabs and keeps upgrade gates", () => {
   const prepareCave = state => renderToStaticMarkup(createElement(WorldExpeditionSector, {
     sectorId: "caves", selectedRoute: "cave", onSelectRoute() {}, economy: controller({ snapshot: state }), state,
-    exploring: false, embeddedCaves: true, onOpenPantry() {},
+    exploring: false, embeddedCaves: true, onOpenPantry() {}, onNavigateStation() {},
   }));
   const initialState = snapshot();
   const initial = render("quarry", controller({ snapshot: initialState }));
@@ -307,12 +307,24 @@ test("the mine has one actor route picker without production tabs and keeps upgr
   assert.equal(disabled(button(initial, "Обустроить")), false);
   const unbuiltState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } });
   const unbuilt = render("quarry", controller({ snapshot: unbuiltState }));
-  const openCave = button(unbuilt, "Вход в пещеру");
-  assert.equal(disabled(openCave), false);
-  assert.doesNotMatch(openCave.attributes, /data-locked="true"/);
-  assert.equal(disabled(button(prepareCave(unbuiltState), "Отправиться")), false, "entry cave keeps the free home-two resource path");
+  const unbuiltCave = button(unbuilt, "Вход в пещеру");
+  assert.equal(disabled(unbuiltCave), false, "an unbuilt mine still allows inspecting a locked cave route");
+  assert.match(unbuiltCave.attributes, /data-locked="true"/);
+  const unbuiltPreparation = prepareCave(unbuiltState);
+  assert.equal(disabled(button(unbuiltPreparation, "Отправиться")), true, "home two alone cannot enter an unbuilt mine");
+  assert.equal(disabled(button(unbuiltPreparation, "Каменоломня · нужен ур. 1")), false, "the missing building links to its upgrade menu");
   assert.match(unbuilt, /data-route="quarry_clay"[^>]*data-locked="true"/);
   assert.match(unbuilt, /data-route="abandoned_quarry"[^>]*data-locked="true"/);
+  const builtState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 1 } });
+  assert.doesNotMatch(button(render("quarry", controller({ snapshot: builtState })), "Вход в пещеру").attributes, /data-locked="true"/);
+  assert.equal(disabled(button(prepareCave(builtState), "Отправиться")), false, "a completed quarry opens the cave without changing its free cost");
+  for (const finishesAt of [new Date(now + 500_000).toISOString(), new Date(now).toISOString()]) {
+    const upgradingState = snapshot({ buildings: builtState.buildings, jobs: [job({ kind: "construction", targetId: "quarry", recipeId: null, targetLevel: 2, rewards: {}, finishesAt })] });
+    const upgradingPreparation = prepareCave(upgradingState);
+    assert.equal(disabled(button(upgradingPreparation, "Отправиться")), true, "the site remains occupied until its construction result is claimed");
+    assert.match(upgradingPreparation, /Дождитесь улучшения шахты и заберите результат/);
+    assert.equal(disabled(button(render("quarry", controller({ snapshot: upgradingState })), "Ход улучшения")), false);
+  }
   const fullMine = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }) }));
   assert.doesNotMatch(fullMine, /data-route="quarry_shift"|data-route="quarry_deep_face"/);
   assert.match(fullMine, /data-route="quarry_supply"/);
