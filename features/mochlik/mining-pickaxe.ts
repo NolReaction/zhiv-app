@@ -17,4 +17,3 @@ export function drawMiningPickaxe(ctx: CanvasRenderingContext2D, x: number, y: n
   ctx.fillStyle = "#697f83"; ctx.fillRect(-1,-8,2,3);
   ctx.restore();
 }
-
