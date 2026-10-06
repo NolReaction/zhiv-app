@@ -220,7 +220,7 @@ class EconomyRulesTest {
 
         complete("start_exploration", "forest_camp")
         complete("start_construction", "quarry")
-        complete("start_production", "quarry_stone")
+        complete("start_exploration", "quarry_stone")
         complete("start_construction", "kiln")
         assertEquals(1, state.buildings["quarry"])
         assertEquals(1, state.buildings["kiln"])
@@ -267,7 +267,7 @@ class EconomyRulesTest {
     @Test fun `existing home one quarry and kiln keep producing and claiming their locked rewards`() {
         val existing = EconomyRules.initial().copy(buildings = EconomyRules.initial().buildings + mapOf("quarry" to 1, "kiln" to 1),
             inventory = mapOf("wood" to 4L))
-        for (recipe in listOf("quarry_stone", "quarry_stone_overnight", "make_charcoal")) {
+        for (recipe in listOf("make_charcoal")) {
             val started = apply(existing, "start_production", recipe)
             val job = started.jobs.single()
             val claimed = apply(started, "claim_job", job.id, at = Instant.parse(job.finishesAt))

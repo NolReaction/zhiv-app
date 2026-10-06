@@ -199,14 +199,14 @@ test("unaffordable stale foreign busy uncertain and cooling-down hooks cannot di
   assert.match(view.html, /Не хватает 1 монет/);
 });
 
-test("odds previews use authoritative loadout weights and explain the one-draw party instead of guaranteeing rarity", () => {
+test("odds previews use authoritative loadout weights and show every rarity target without a universal upgrade score", () => {
   const state = snapshot(), catalog = state.catalog.fishing, before = structuredClone(state);
   const override = { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" };
   const expected = fishingOdds(state, catalog, override);
   const html = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog, override, preview: true }));
   const percent = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(value * 100)}%`;
-  assert.match(html, /Шансы одного особого улова за вылазку/);
-  assert.match(html, /Остальные рыбы в партии — обычная рыба/);
+  assert.match(html, /Каждый особый улов проверяется отдельно/);
+  assert.match(html, /остальная партия — обычная рыба/);
   assert.match(html, /после выбора снасти перед отправлением/);
   assert.equal((html.match(/data-fish-odds=/g) ?? []).length, 12);
   for (const odd of expected) assert.ok(html.includes(`<dd>${percent(odd.probability)}</dd>`));
@@ -239,7 +239,7 @@ test("expired, sold-out and missing offers cannot dispatch a catalog purchase", 
 });
 
 test("refresh shows server price and timer, requires pearls, and opens confirmation before spending", () => {
-  const state = snapshot({ wallet: { coins: 0, pearls: 100 } }), calls = [];
+  const state = snapshot({ wallet: { coins: 0, pearls: 100 }, buildings: { home: 5, warehouse: 1 } }), calls = [];
   const view = inspect(PleskMerchantHeader, { state, economy: controller(state, { act(...args) { calls.push(args); } }) });
   assert.match(view.html, /6:00:00/);
   const button = view.control("Обновить предложения за 100 жемчужин"); assert.equal(button.props.disabled, false);
@@ -274,4 +274,16 @@ test("river fish remains a readable material without falsely opening the book", 
   const book = renderToStaticMarkup(createElement(PleskFishingCollection, { state, catalog: state.catalog.fishing }));
   assert.equal((book.match(/data-hidden-fish=/g) ?? []).length, 12);
   assert.match(book, /Виды рыб: 0 \/ 12/);
+});
+
+
+test("merchant disables paid replacement when there are not enough different eligible goods", () => {
+  const state = snapshot({ wallet: { coins: 0, pearls: 1000 } }), calls = [];
+  const view = inspect(PleskMerchantHeader, { state, economy: controller(state, { act(...args) { calls.push(args); } }) });
+  assert.match(view.html, /Плёска ждёт новую поставку/);
+  assert.match(view.html, /6:00:00/);
+  const button = view.control("Обновить предложения за 100 жемчужин");
+  assert.equal(button.props.disabled, true);
+  button.props.onClick();
+  assert.deepEqual(calls, []);
 });

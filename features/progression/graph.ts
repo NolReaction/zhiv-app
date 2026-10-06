@@ -45,7 +45,7 @@ export const progressionLocations = [
   { id: "place:woodlot", title: "Лесной участок", icon: "🌲", buildingIds: ["woodlot"], description: "Лес и существующий навес. Здесь обустраиваются лесозаготовки: сначала древесина и волокно, затем твёрдая древесина и смола." },
   { id: "place:workshop", title: "Мастерская", icon: "🛠️", buildingIds: ["workshop", "kiln"], description: "Одно здание мастерской: внутри отдельно развиваются верстак и печь. У каждого оборудования свои условия обустройства и рецепты." },
   { id: "campfire", title: "Костёр", icon: "🏕️", buildingIds: ["dryer"], description: "Существующий костёр служит местом отдыха и приготовления запасов. Заготовки еды развиваются здесь, без отдельного здания сушилки." },
-  { id: "place:quarry", title: "Шахта", icon: "⛏️", buildingIds: ["quarry"], description: "Заброшенная шахта уже есть на карте. Добыча начинается после её открытия по условиям хозяйства. Интерьер и его мини-карта относятся к будущему этапу." },
+  { id: "place:quarry", title: "Шахта", icon: "⛏️", buildingIds: ["quarry"], description: "Заброшенная шахта уже есть на карте. Мохлик сам добывает материалы: улучшения шахты открывают участки и длительные смены. Отдельного производства без персонажа нет. Интерьер и его мини-карта относятся к будущему этапу." },
 ] as const;
 const locationByBuilding = new Map<string, typeof progressionLocations[number]>(progressionLocations.flatMap(location => location.buildingIds.map(id => [id, location] as const)));
 const buildingIcons: Record<string, string> = { home: "🏠", garden: "🌱", woodlot: "🌲", quarry: "⛏️", kiln: "🔥", workshop: "🛠️", dryer: "♨️", warehouse: "📦" };
@@ -58,9 +58,9 @@ export const itemLabels: Record<string, string> = {
 export const progressionItemNames: Record<string, string> = Object.fromEntries(economyCatalog.items.map(item => [item.id, item.name]));
 
 const recipeLabels: Record<string, string> = {
-  garden_season: "Сад · 6ч", garden_supply: "Сад · 8ч", garden_abundance: "Сад · 8ч", woodlot_shift: "Лес · 6ч", hardwood_shift: "Лес · 8ч", woodland_shift: "Лес · 8ч", woodland_supply: "Лес · 8ч", quarry_shift: "Карьер · 8ч", quarry_deep_face: "Карьер · 8ч", quarry_supply: "Карьер · 8ч", workshop_overnight: "Материалы · 8ч", workshop_materials: "Материалы · 6ч", workshop_structures: "Строймат. · 8ч", workshop_assembly: "Сборка · 8ч", prepare_provisions: "Припасы · 6ч", prepare_expedition_provisions: "Припасы · 8ч", provisions_supply: "Припасы · 8ч", kiln_shift: "Плавка · 8ч", kiln_supply: "Печь · 12ч",
+  garden_season: "Сад · 6ч", garden_supply: "Сад · 8ч", garden_abundance: "Сад · 8ч", woodlot_shift: "Лес · 6ч", hardwood_shift: "Лес · 8ч", woodland_shift: "Лес · 8ч", woodland_supply: "Лес · 8ч", workshop_overnight: "Материалы · 8ч", workshop_materials: "Материалы · 6ч", workshop_structures: "Строймат. · 8ч", workshop_assembly: "Сборка · 8ч", prepare_provisions: "Припасы · 6ч", prepare_expedition_provisions: "Припасы · 8ч", provisions_supply: "Припасы · 8ч", kiln_shift: "Плавка · 8ч", kiln_supply: "Печь · 12ч",
 };
-const routeLabels: Record<string, string> = { forest: "Лесная разведка", shore: "Берег", forest_camp: "Лес · 8ч", shore_camp: "Берег · 8ч", cave: "Пещера", deep_cave: "Глубокий проход", old_woodland: "Старый лес", coastal_deposits: "Отложения", uplands: "Нагорье", abandoned_quarry: "Заброш. карьер" };
+const routeLabels: Record<string, string> = { quarry_stone: "Камень · 30 мин", quarry_stone_overnight: "Камень · 8ч", quarry_ore: "Руда · 45 мин", quarry_clay: "Глина · 45 мин", quarry_sand: "Песок · 45 мин", quarry_shift: "Шахта · 8ч", quarry_deep_face: "Глубокий забой · 8ч", quarry_supply: "Большая смена · 8ч", forest: "Лесная разведка", shore: "Берег", forest_camp: "Лес · 8ч", shore_camp: "Берег · 8ч", cave: "Пещера", deep_cave: "Глубокий проход", old_woodland: "Старый лес", coastal_deposits: "Отложения", uplands: "Нагорье", abandoned_quarry: "Заброш. карьер" };
 const productionOrder = ["garden", "woodlot", "quarry", "kiln", "workshop", "dryer", "warehouse"];
 const initialBuildings = new Set(["home", "garden", "warehouse"]);
 const buildingNodeId = (id: string, level: number) => `b:${id}:${level}`;
@@ -75,7 +75,7 @@ const worldDefinitions: WorldDefinition[] = [
   ["lighthouse_ruin", "Маяк · уровень 0", "🔦", "Существующий маяк на карте. Рисунок следующего состояния можно примерить в редакторе, но это ещё не игровое восстановление и не доступ к кораблям."],
   ["album", "Книга находок", "📖", "Три главы: путешествия, рыбалка и каменоломня. Находки отмечаются после получения результата занятия и остаются навсегда; продажа материалов не стирает страницы.", "collection"],
   ["travel_book", "Путешествия", "🍃", "Лесные вылазки пополняют книгу. Прежние лесные находки сохранены; зачтённое время открывает недостающие страницы без повторов.", "collection"],
-  ["quarry_book", "Каменоломня", "💎", "Работа каменоломни и исследования пещер открывают страницы с минералами. Это памятные находки, они не расходуются при строительстве и не занимают кладовую.", "collection"],
+  ["quarry_book", "Каменоломня", "💎", "Шахтные смены Мохлика и исследования пещер открывают страницы с минералами. Это памятные находки, они не расходуются при строительстве и не занимают кладовую.", "collection"],
   ["explorer_cap", "Шляпа следопыта", "👒", "Сохранённая награда прежних путешествий. Уже полученную вещь можно надеть.", "equipment"],
   ["willow_rod", "Ивовая удочка · прежняя награда", "🎣", "Сохранённая награда за полную прежнюю речную коллекцию. Это отдельная вещь от рыбацкой удочки, которую продаёт Плёска: награда альбома не открывает купленную снасть.", "equipment"],
   ["wardrobe", "Гардероб", "🧣", "Свои вещи, примерочная и магазин одежды за монеты или жемчуг. Шапки, шарфы и оттенки мха не занимают кладовую.", "equipment"],
@@ -87,13 +87,13 @@ const worldDefinitions: WorldDefinition[] = [
   ["tap_streak", "Серия тапов", "⚡", "Непрерывная серия тапов заканчивается после паузы 10 секунд. Она даёт лучший рекорд серии."],
   ["leaderboard", "Рейтинг и рекорды", "🏆", "Месячные тапы и лучшая непрерывная серия — две метрики рейтинга. Уровень по общему счёту не входит в эти рейтинги."],
   ["achievements", "Достижения со ступенями", "🏅", "Вылазки, освоенные рецепты, дом, собственный улов, находки и продажи дополняют прежние цели аккаунта. Все ступени одной цели находятся в одной карточке. Полученные награды сохраняются и не служат воротами хозяйственного развития."],
-  ["pleska", "Плёска · лавка и рыбалка", "🎣", "Открывается через «Ещё → Персонажи» или нажатием на жительницу берега. Плёска предлагает ограниченный набор удочек, крючков и наживок на шесть часов. Досрочное обновление стоит 100 жемчужин. Стартовая удочка бесплатна; купленные снасти выбираются перед следующей вылазкой. Плёска покупает сырую рыбу по полной базовой цене. Её декоративная рыбалка не выдаёт игроку товары."],
+  ["pleska", "Плёска · лавка и рыбалка", "🎣", "Открывается через «Ещё → Персонажи» или нажатием на жительницу берега. Плёска предлагает ограниченный набор удочек, крючков и наживок на шесть часов. Досрочное обновление стоит 100 жемчужин и заменяет все товары на другие. Если доступного ассортимента мало, остаётся бесплатная поставка по таймеру. Стартовая удочка бесплатна; купленные снасти выбираются перед следующей вылазкой. Плёска покупает сырую рыбу по полной базовой цене. Её декоративная рыбалка не выдаёт игроку товары."],
   ["public_profiles", "Профили друзей", "👥", "Нажмите имя друга в списке людей: видны уровень дома, завершённые вылазки, игровые достижения и найденные страницы книги. Нужны действующая связь и разрешённая видимость. Кошелёк, запасы, личные отметки и задания закрыты."],
-  ["fishing_catches", "Коллекция пойманной рыбы", "🐟", `В книге ${economyCatalog.fishing?.fish.length ?? 0} видов пяти разрядов, включая легендарную акулу. Запись появляется после получения собственного улова. Купленная рыба не открывает коллекцию. Удочка, крючок и наживка меняют шанс одного выбираемого вида за вылазку; остальные рыбы речные.`, "collection"],
+  ["fishing_catches", "Коллекция пойманной рыбы", "🐟", `В книге ${economyCatalog.fishing?.fish.length ?? 0} видов пяти разрядов, включая легендарную акулу. Запись появляется после получения собственного улова. Купленная рыба не открывает коллекцию. Удочка, крючок и наживка специализируют улов по разрядам. Стоянка даёт больше попыток для коллекции, короткая рыбалка — больше улова в час; редкий вид не гарантирован.`, "collection"],
 ];
 
 const projectDefinitions: WorldDefinition[] = [
-  ["mine_interior", "Шахта: интерьер", "⛏️", "Будущий внутренний экран шахты с собственной мини-картой. Он не требуется для действующих заказов добычи: их результат определяется серверным таймером, без непрерывного присутствия Мохлика у шахты."],
+  ["mine_interior", "Шахта: интерьер", "⛏️", "Будущий внутренний экран шахты с собственной мини-картой. Он не требуется для действующих шахтных смен: Мохлик уходит в шахту, результат определяется серверным таймером."],
   ["bridge", "Восстановить мост", "🌉", "На карте есть разрушенный мост уровня 0. Восстановление и проход ещё не реализованы."],
   ["far_bank", "Другой берег", "🗺️", "Предлагаемое открытие территории после восстановления моста."],
   ["regional_trips", "Новые территории", "🧭", "Предлагаемые региональные исследования за пределами нынешних маршрутов."],
@@ -193,13 +193,22 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
       }
     }
     for (const exploration of catalog.explorations.filter(value => value.requiredHomeLevel === level)) {
+      const mineLevel = exploration.requiredBuildings.quarry;
       add({
         id: `e:${exploration.id}`, title: exploration.name, label: routeLabels[exploration.id] || exploration.name,
         icon: exploration.id.includes("shore") ? "🎣" : exploration.id.includes("cave") || exploration.id.includes("quarry") ? "⛏️" : exploration.id === "coastal_deposits" ? "🏖️" : "🧭",
-        kind: "exploration", status: "active", phase: level, cost: cloneCost(exploration.cost), seconds: exploration.seconds,
-        rewards: { ...exploration.rewards }, requirements: { home: exploration.requiredHomeLevel, ...exploration.requiredBuildings }, children: [], description: `${exploration.description} Мохлик выполняет одну вылазку; таймер идёт и после закрытия приложения. Находки нужно получить, освободив место в кладовой.${catalog.fishing?.routeIds.includes(exploration.id) ? " В рыбалке со снастями одна рыба заменяется серверным выбранным видом; редкий улов не гарантирован." : ""}`,
+        kind: "exploration", status: "active", phase: level,
+        ...(mineLevel ? { buildingId: "quarry", locationId: "place:quarry", level: mineLevel } : {}), cost: cloneCost(exploration.cost), seconds: exploration.seconds,
+        rewards: { ...exploration.rewards }, requirements: { home: exploration.requiredHomeLevel, ...exploration.requiredBuildings }, children: [], description: `${exploration.description} Мохлик выполняет одну вылазку; таймер идёт и после закрытия приложения. Находки нужно получить, освободив место в кладовой.${catalog.fishing?.routeIds.includes(exploration.id) ? ` Снасти определяют ${catalog.fishing.collectionDrawsByRoute[exploration.id] ?? 1} попыток выбора вида из этой партии; редкий улов не гарантирован.` : ""}`,
       });
     }
+  }
+
+  // Character mining is opened by the mine, so its levels keep visible unlocks
+  // even though those activities are no longer passive production recipes.
+  for (const route of nodes.filter(node => node.kind === "exploration" && node.buildingId === "quarry")) {
+    const parent = byId.get(buildingNodeId("quarry", route.level!));
+    if (parent) { parent.children.push(route.id); edge(parent.id, route.id, "unlock"); }
   }
 
   // A producer may start later than its own level number: quarry 1 and kiln 1 need home 2.
@@ -231,7 +240,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     }
   }
 
-  fixed("claimed", `Любая ${catalog.market.requiredExplorations} вылазка`, "✅", 1, `Завершить любой маршрут и получить награду. Для рынка нужно завершённых вылазок: ${catalog.market.requiredExplorations}. Подходит любой маршрут, а не все десять.`, "milestone");
+  fixed("claimed", `Любая ${catalog.market.requiredExplorations} вылазка`, "✅", 1, `Завершить исследование или рыбалку и получить награду. Для рынка нужно завершённых вылазок: ${catalog.market.requiredExplorations}. Рабочие смены в шахте этот счётчик не повышают.`, "milestone");
   const market = fixed("market", "Рынок игроков", "⚖️", catalog.market.requiredHomeLevel, `Личная витрина: до ${catalog.market.showcaseSlots} лотов, до ${catalog.market.showcasePerSeller} от продавца, смена раз в ${catalog.market.showcaseRefreshSeconds / 60} минут. Купленные лоты не заменяются до смены. Товары доступны с уровня дома, необходимого для их источника: свою мастерскую иметь необязательно. Цена не ниже полной базовой стоимости. Рынок дополняет собственное производство; покупатель не гарантирован.`, "market");
   market.requirements = { home: catalog.market.requiredHomeLevel, completedExplorations: catalog.market.requiredExplorations };
   market.description += " После дома 3 при открытом рынке доступен отдельный обмен реликвиями 1:1, без монет и жемчуга. Обычные объявления реликвии не принимают.";
@@ -246,7 +255,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
       if (node.kind === "recipe" && buildingId === node.buildingId && requiredLevel === node.level) continue;
       edge(source, node.id);
     }
-    if (node.kind === "exploration") edge(node.id, "claimed", "any");
+    if (node.kind === "exploration" && !node.id.startsWith("e:quarry_")) edge(node.id, "claimed", "any");
   }
 
   if (catalog.rareDrops) {

@@ -77,7 +77,7 @@ internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, 
 internal fun economyView(c: Connection, user: UUID, publicId: String, now: Instant): EconomyView {
     val row = readEconomyProfile(c, user)
     val s = row.state
-    return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs, s.migration,
+    return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map(EconomyPublicJobs::project), s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop)
 }
 

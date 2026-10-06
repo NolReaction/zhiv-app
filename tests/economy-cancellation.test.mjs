@@ -84,12 +84,13 @@ test("cancellation targets a specific owned exploration and preserves unrelated 
 test("claim and cancel from the same revision allow exactly one outcome in either arrival order", () => {
   for (const winner of ["cancel_exploration", "claim_job"]) {
     const p = player(), started = issue(p, "start_exploration", "shore").state, trip = started.jobs[0];
+    const savedRewards = structuredClone(globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.jobs[0].rewards);
     const at = Date.parse(trip.finishesAt), loser = winner === "claim_job" ? "cancel_exploration" : "claim_job";
     const accepted = command(p, winner, trip.id, at), stale = command(p, loser, trip.id, at);
     const result = economy.commandDevEconomy(p.token, accepted, at);
     assert.throws(() => economy.commandDevEconomy(p.token, stale, at), { code: "ECONOMY_REVISION_CONFLICT" });
     assert.throws(() => issue(p, loser, trip.id, at), { code: "ECONOMY_JOB_GONE" });
-    assert.deepEqual(result.state.inventory, winner === "claim_job" ? trip.rewards : started.inventory);
+    assert.deepEqual(result.state.inventory, winner === "claim_job" ? savedRewards : started.inventory);
     assert.equal(result.state.completedExplorations, winner === "claim_job" ? 1 : 0);
     assert.deepEqual(read(p, at), result.state);
   }

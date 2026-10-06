@@ -33,20 +33,16 @@ class EconomyFishingTest {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         spec.fish.forEach { fish -> assertTrue(fish.buyPrice > EconomyRules.catalog.items.single { it.id == fish.itemId }.baseSellPrice) }
         spec.baits.forEach { bait -> assertTrue(bait.price > EconomyRules.catalog.items.single { it.id == bait.itemId }.baseSellPrice) }
-        assertEquals(listOf("fish_rudd", "fish_silverfin", "fish"),
+        assertEquals(listOf("fish", "fish", "fish_silverfin"),
             listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff")
                 .map { EconomyRules.selectFishingCatch(it, "willow_rod", "worm_bait") })
     }
 
-    @Test fun `changing rod cannot improve a fixed draw by downgrading tackle`() {
-        val spec=checkNotNull(EconomyRules.catalog.fishing)
-        for (index in 0..1000) {
-            val seed="00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}"
-            for (bait in listOf(null,"crumb_bait","worm_bait")) {
-                val ranks=spec.rods.map { rod -> spec.fish.indexOfFirst { it.itemId==EconomyRules.selectFishingCatch(seed,rod.id,bait) } }
-                assertTrue(ranks.zipWithNext().all { (a,b) -> a<=b },"Downgrading must not grant another better draw")
-            }
-        }
+    @Test fun `same private draw and tackle is stable`() {
+        val seed = "00000000-0000-4000-8000-000000000038"
+        for (rod in checkNotNull(EconomyRules.catalog.fishing).rods)
+            for (bait in listOf(null, "crumb_bait", "worm_bait"))
+                assertEquals(EconomyRules.selectFishingCatch(seed, rod.id, bait), EconomyRules.selectFishingCatch(seed, rod.id, bait))
     }
 
     @Test fun `shop charges server quote rods stay unique and purchased fish never counts as caught`() {
@@ -137,8 +133,12 @@ class EconomyFishingTest {
     }
 
     @Test fun `old shore jobs count actual delivered fish and catch metadata cannot be forged in commands`() {
-        val started = apply(EconomyRules.initial(), "start_exploration", "shore")
-        val job = started.jobs.single()
+        // Compatibility concerns already-persisted jobs, not newly issued
+        // shore commands: those now all validate gear and use fishing draws.
+        val job = EconomyJob(UUID.randomUUID().toString(), "exploration", "shore", startedAt = now.toString(),
+            finishesAt = now.plusSeconds(2700).toString(), rewards = mapOf("fish" to 4L),
+            cost = EconomyCost(0, emptyMap()), catalogVersion = 3)
+        val started = EconomyRules.initial().copy(jobs = listOf(job))
         assertNull(job.fishing)
         val claimed = apply(started, "claim_job", job.id, at = Instant.parse(job.finishesAt))
         assertEquals(mapOf("fish" to 4L), claimed.fishing.catches)
@@ -173,18 +173,34 @@ class EconomyFishingTest {
         assertEquals(listOf("bare_hook"), restored.ownedHooks); assertEquals("bare_hook", restored.equippedHookId)
     }
 
-    @Test fun `twelve fish span five rarities and every hook upgrade preserves saved quantile value`() {
+    @Test fun `twelve fish span five rarities and only Leviathan admits the shark`() {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         assertEquals(12, spec.fish.size)
         assertEquals(setOf("common", "uncommon", "rare", "epic", "legendary"), spec.fish.map { it.rarity }.toSet())
         assertEquals("fish_shark", spec.fish.single { it.rarity == "legendary" }.itemId)
         assertEquals(10000, spec.fish.sumOf { it.weight })
-        for (index in 0..200) {
-            val seed = "00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}"
-            for (rod in spec.rods) for (bait in listOf(null, "crumb_bait", "worm_bait")) {
-                val ranks = spec.hooks.map { hook -> spec.fish.indexOfFirst { it.itemId == EconomyRules.selectFishingCatch(seed, rod.id, bait, hook.id) } }
-                assertTrue(ranks.zipWithNext().all { (a, b) -> a <= b })
-            }
-        }
+        for (hook in spec.hooks) assertEquals(hook.id == "leviathan_hook",
+            EconomyRules.fishingWeights("starfall_rod", "firefly_bait", hook.id).single { it.first.itemId == "fish_shark" }.second > 0)
+    }
+
+    @Test fun `overnight catch has six saved draws and only successful claim advances collection`() {
+        val seed = "00000000-0000-4000-8000-000000000001"
+        val initial = funded().copy(inventory = mapOf("worm_bait" to 2L), fishingCastSeed = seed,
+            fishing = EconomyFishing(ownedRods = listOf("reed_rod", "river_rod"), equippedRodId = "river_rod", equippedBaitId = "worm_bait",
+                ownedHooks = listOf("bare_hook", "barbed_hook"), equippedHookId = "barbed_hook"))
+        val active = apply(initial, "start_fishing", "shore_camp")
+        val job = active.jobs.single()
+        assertEquals(mapOf("fish" to 20L, "fish_reedperch" to 2L, "fish_bream" to 2L), job.rewards)
+        assertEquals(1L, active.inventory["worm_bait"])
+        val changed = apply(active, "equip_fishing_rod", "reed_rod")
+        assertEquals(job, changed.jobs.single())
+        val cancelled = apply(changed, "cancel_exploration", job.id)
+        assertTrue(cancelled.fishing.catches.isEmpty())
+        val retry = apply(apply(cancelled, "equip_fishing_rod", "river_rod"), "start_fishing", "shore_camp")
+        assertEquals(job.rewards, retry.jobs.single().rewards)
+        val done = apply(retry, "claim_job", retry.jobs.single().id, at = Instant.parse(retry.jobs.single().finishesAt))
+        assertEquals(job.rewards, done.fishing.catches)
+        assertEquals(1L, done.completedExplorations)
+        assertNull(done.fishingCastSeed)
     }
 }

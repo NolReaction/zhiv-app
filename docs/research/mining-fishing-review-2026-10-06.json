@@ -1,0 +1,3747 @@
+{
+  "title": "Mining expeditions, fishing specializations and player progression",
+  "reviewDate": "2026-10-06",
+  "catalogVersion": 3,
+  "sourceHashes": {
+    "../apps/api/src/main/resources/world/economy-catalog.json": "5ffca0e35986e1753b0b0d01f76e1fe1eb2463f2c32ed6ac3a3d8121dad9417f",
+    "../features/economy/rules.ts": "2d36bcd67ebdb47541f9056f523f6ab402765d4df12d32d98743ae54f5523811",
+    "../features/economy/fishing.ts": "c93033314571dc4e67e9a34d468579a9811289153f7918f468a750c069ee160e",
+    "./simulate-player-journey.mjs": "c972305b9fcb9f58edc3e62bdc4a1bb6b63a51f731f4dfce8fe99bd0ef9fd2c0",
+    "./simulate-player-joint.mjs": "f50dc7b587728f3ca5f4997fccdda0095b006b0d939126c685a6d052bd33f990",
+    "./lib/economy-math.mjs": "14013045d6c6eab83ea00ce0695462ef213a88853fc6a31f97aa5435b00eb00b"
+  },
+  "method": {
+    "rules": "Real TypeScript commands, costs, claims, storage capacity and actor/building locks via Vite SSR; no gameplay grants",
+    "policy": "Prepare next construction, preserve future crafted stock, joint output planning; choose free material routes and idle income; no attempt to optimize player-market demand",
+    "visits3": "07:00,15:00,23:00 UTC; sessions at most ten minutes",
+    "visits2": "07:00,19:00 UTC; sessions at most ten minutes",
+    "active16h": "07:00–23:00 UTC, return at each ready event; jobs continue overnight",
+    "limitations": [
+      "Five deterministic examples, not quantiles or a representative player sample",
+      "No daily/achievement rewards, pearl purchases/speedups, market or tap income",
+      "Uses starter fishing gear; premium loadouts are analysed separately",
+      "Pending fishing species and relic types are not used for planning; only guaranteed pending output is reserved",
+      "The planner does not provision paid food routes; those are analytic comparisons only",
+      "Occupied slot-minutes are simultaneous resource reservations, not additive calendar duration",
+      "Every mining claim now contributes to the existing shared rare-material clock; specific types have no finite guarantee",
+      "Rare supply and market prices are not validated by progression reachability alone"
+    ]
+  },
+  "progressionAudit": {
+    "catalogVersion": 3,
+    "itemCount": 42,
+    "buildingCount": 8,
+    "recipeCount": 41,
+    "explorationCount": 18,
+    "homeStages": [
+      {
+        "level": 1,
+        "minimumSeconds": 0
+      },
+      {
+        "level": 2,
+        "minimumSeconds": 3000
+      },
+      {
+        "level": 3,
+        "minimumSeconds": 243300
+      },
+      {
+        "level": 4,
+        "minimumSeconds": 978300
+      },
+      {
+        "level": 5,
+        "minimumSeconds": 2771100
+      }
+    ],
+    "fullBaseMinimumSeconds": 5417100,
+    "totalConstructionCoins": 2521150,
+    "constructionOrder": [
+      "woodlot:1",
+      "workshop:1",
+      "dryer:1",
+      "home:2",
+      "garden:2",
+      "woodlot:2",
+      "quarry:1",
+      "kiln:1",
+      "warehouse:2",
+      "quarry:2",
+      "dryer:2",
+      "kiln:2",
+      "workshop:2",
+      "home:3",
+      "garden:3",
+      "woodlot:3",
+      "quarry:3",
+      "kiln:3",
+      "workshop:3",
+      "dryer:3",
+      "warehouse:3",
+      "home:4",
+      "woodlot:4",
+      "quarry:4",
+      "kiln:4",
+      "workshop:4",
+      "garden:4",
+      "dryer:4",
+      "warehouse:4",
+      "home:5",
+      "garden:5",
+      "woodlot:5",
+      "quarry:5",
+      "dryer:5",
+      "kiln:5",
+      "warehouse:5",
+      "workshop:5"
+    ]
+  },
+  "fishingRoles": [
+    {
+      "rarity": "common",
+      "rodId": "reed_rod",
+      "hookId": "bare_hook",
+      "baitId": "crumb_bait",
+      "probabilityPerDraw": 0.9756844300483649,
+      "expectedCatchesPerCamp": 5.854106580290189,
+      "expectedShortTripsPerTargetCatch": 1.0249215516849333,
+      "steadyStateCampsPerTargetCatch": 0.17082025861415556,
+      "finiteGuarantee": false
+    },
+    {
+      "rarity": "uncommon",
+      "rodId": "river_rod",
+      "hookId": "barbed_hook",
+      "baitId": "worm_bait",
+      "probabilityPerDraw": 0.3463905987688864,
+      "expectedCatchesPerCamp": 2.0783435926133182,
+      "expectedShortTripsPerTargetCatch": 2.886914378029079,
+      "steadyStateCampsPerTargetCatch": 0.4811523963381799,
+      "finiteGuarantee": false
+    },
+    {
+      "rarity": "rare",
+      "rodId": "willow_rod",
+      "hookId": "silver_hook",
+      "baitId": "glow_bait",
+      "probabilityPerDraw": 0.18034857287193734,
+      "expectedCatchesPerCamp": 1.082091437231624,
+      "expectedShortTripsPerTargetCatch": 5.544817927170869,
+      "steadyStateCampsPerTargetCatch": 0.9241363211951449,
+      "finiteGuarantee": false
+    },
+    {
+      "rarity": "epic",
+      "rodId": "tide_rod",
+      "hookId": "tide_hook",
+      "baitId": "firefly_bait",
+      "probabilityPerDraw": 0.03495860165593376,
+      "expectedCatchesPerCamp": 0.20975160993560255,
+      "expectedShortTripsPerTargetCatch": 28.60526315789474,
+      "steadyStateCampsPerTargetCatch": 4.767543859649123,
+      "finiteGuarantee": false
+    },
+    {
+      "rarity": "legendary",
+      "rodId": "starfall_rod",
+      "hookId": "leviathan_hook",
+      "baitId": "firefly_bait",
+      "probabilityPerDraw": 0.003937007874015748,
+      "expectedCatchesPerCamp": 0.023622047244094488,
+      "expectedShortTripsPerTargetCatch": 254,
+      "steadyStateCampsPerTargetCatch": 42.333333333333336,
+      "finiteGuarantee": false
+    }
+  ],
+  "fishingRoutes": [
+    {
+      "routeId": "shore",
+      "hours": 0.75,
+      "totalCatch": 4,
+      "speciesDraws": 1,
+      "catchesPerHour": 5.333333333333333,
+      "speciesDrawsPerHour": 1.3333333333333333,
+      "expectedStarterRevenue": 342.0713653789443,
+      "expectedStarterOrdinaryFish": 3.5903863167207315
+    },
+    {
+      "routeId": "shore_camp",
+      "hours": 8,
+      "totalCatch": 24,
+      "speciesDraws": 6,
+      "catchesPerHour": 3,
+      "speciesDrawsPerHour": 0.75,
+      "expectedStarterRevenue": 2052.428192273666,
+      "expectedStarterOrdinaryFish": 21.542317900324388
+    }
+  ],
+  "baitMargins": [
+    {
+      "routeId": "shore",
+      "testedCombinations": 100,
+      "maximum": {
+        "rodId": "reed_rod",
+        "hookId": "bare_hook",
+        "baitId": "crumb_bait",
+        "incrementalExpectedSaleProfit": -31.948900099625803
+      }
+    },
+    {
+      "routeId": "shore_camp",
+      "testedCombinations": 100,
+      "maximum": {
+        "rodId": "willow_rod",
+        "hookId": "silver_hook",
+        "baitId": "glow_bait",
+        "incrementalExpectedSaleProfit": -12.81522851341515
+      }
+    }
+  ],
+  "resourceRoutes": [
+    {
+      "routeId": "cave",
+      "homeLevel": 2,
+      "buildingRequirements": {},
+      "rewards": {
+        "stone": 8,
+        "ore": 4
+      },
+      "inputs": {},
+      "durationMinutes": 60,
+      "actorMinutesWithFoodAndTools": 60,
+      "outputEquivalentFocusedActorMinutes": 66,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 1.1,
+      "netDirectSaleCoins": 280
+    },
+    {
+      "routeId": "deep_cave",
+      "homeLevel": 3,
+      "buildingRequirements": {},
+      "rewards": {
+        "stone": 32,
+        "ore": 16
+      },
+      "inputs": {
+        "dried_berries": 1,
+        "smoked_fish": 1
+      },
+      "durationMinutes": 240,
+      "actorMinutesWithFoodAndTools": 265.14694,
+      "outputEquivalentFocusedActorMinutes": 264,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 0.995674,
+      "netDirectSaleCoins": 790
+    },
+    {
+      "routeId": "coastal_deposits",
+      "homeLevel": 3,
+      "buildingRequirements": {
+        "dryer": 2,
+        "kiln": 2
+      },
+      "rewards": {
+        "clay": 36,
+        "sand": 40,
+        "ore": 20
+      },
+      "inputs": {
+        "smoked_fish": 3,
+        "dried_berries": 3
+      },
+      "durationMinutes": 600,
+      "actorMinutesWithFoodAndTools": 675.440821,
+      "outputEquivalentFocusedActorMinutes": 562.5,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 0.832789,
+      "netDirectSaleCoins": 1230
+    },
+    {
+      "routeId": "abandoned_quarry",
+      "homeLevel": 5,
+      "buildingRequirements": {
+        "workshop": 4,
+        "quarry": 4,
+        "warehouse": 4
+      },
+      "rewards": {
+        "stone": 96,
+        "ore": 60,
+        "sand": 48,
+        "clay": 40
+      },
+      "inputs": {
+        "tools": 2,
+        "rope": 4,
+        "dried_berries": 4,
+        "smoked_fish": 4
+      },
+      "durationMinutes": 960,
+      "actorMinutesWithFoodAndTools": 1114.587762,
+      "outputEquivalentFocusedActorMinutes": 1341,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 1.203135,
+      "netDirectSaleCoins": 2880
+    },
+    {
+      "routeId": "quarry_stone",
+      "homeLevel": 2,
+      "buildingRequirements": {
+        "quarry": 1
+      },
+      "rewards": {
+        "stone": 8
+      },
+      "inputs": {},
+      "durationMinutes": 30,
+      "actorMinutesWithFoodAndTools": 30,
+      "outputEquivalentFocusedActorMinutes": 30,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 1,
+      "netDirectSaleCoins": 140
+    },
+    {
+      "routeId": "quarry_stone_overnight",
+      "homeLevel": 2,
+      "buildingRequirements": {
+        "quarry": 1
+      },
+      "rewards": {
+        "stone": 40
+      },
+      "inputs": {},
+      "durationMinutes": 480,
+      "actorMinutesWithFoodAndTools": 480,
+      "outputEquivalentFocusedActorMinutes": 150,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 0.3125,
+      "netDirectSaleCoins": 720
+    },
+    {
+      "routeId": "quarry_ore",
+      "homeLevel": 2,
+      "buildingRequirements": {
+        "quarry": 2
+      },
+      "rewards": {
+        "ore": 5
+      },
+      "inputs": {},
+      "durationMinutes": 45,
+      "actorMinutesWithFoodAndTools": 45,
+      "outputEquivalentFocusedActorMinutes": 45,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 1,
+      "netDirectSaleCoins": 180
+    },
+    {
+      "routeId": "quarry_clay",
+      "homeLevel": 2,
+      "buildingRequirements": {
+        "quarry": 2
+      },
+      "rewards": {
+        "clay": 8
+      },
+      "inputs": {},
+      "durationMinutes": 45,
+      "actorMinutesWithFoodAndTools": 45,
+      "outputEquivalentFocusedActorMinutes": 45,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 1,
+      "netDirectSaleCoins": 190
+    },
+    {
+      "routeId": "quarry_sand",
+      "homeLevel": 2,
+      "buildingRequirements": {
+        "quarry": 2
+      },
+      "rewards": {
+        "sand": 10
+      },
+      "inputs": {},
+      "durationMinutes": 45,
+      "actorMinutesWithFoodAndTools": 45,
+      "outputEquivalentFocusedActorMinutes": 45,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 1,
+      "netDirectSaleCoins": 180
+    },
+    {
+      "routeId": "quarry_shift",
+      "homeLevel": 3,
+      "buildingRequirements": {
+        "quarry": 3
+      },
+      "rewards": {
+        "stone": 24,
+        "ore": 8,
+        "clay": 10,
+        "sand": 10
+      },
+      "inputs": {},
+      "durationMinutes": 480,
+      "actorMinutesWithFoodAndTools": 480,
+      "outputEquivalentFocusedActorMinutes": 263.25,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 0.548438,
+      "netDirectSaleCoins": 1130
+    },
+    {
+      "routeId": "quarry_deep_face",
+      "homeLevel": 4,
+      "buildingRequirements": {
+        "quarry": 4
+      },
+      "rewards": {
+        "stone": 32,
+        "ore": 10,
+        "clay": 12,
+        "sand": 12
+      },
+      "inputs": {},
+      "durationMinutes": 480,
+      "actorMinutesWithFoodAndTools": 480,
+      "outputEquivalentFocusedActorMinutes": 331.5,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 0.690625,
+      "netDirectSaleCoins": 1420
+    },
+    {
+      "routeId": "quarry_supply",
+      "homeLevel": 5,
+      "buildingRequirements": {
+        "quarry": 5
+      },
+      "rewards": {
+        "stone": 36,
+        "ore": 14,
+        "clay": 14,
+        "sand": 14
+      },
+      "inputs": {},
+      "durationMinutes": 480,
+      "actorMinutesWithFoodAndTools": 480,
+      "outputEquivalentFocusedActorMinutes": 402.75,
+      "equivalentFocusedWorkPerOccupiedActorMinute": 0.839063,
+      "netDirectSaleCoins": 1720
+    }
+  ],
+  "craftExamples": [
+    {
+      "id": "make_planks",
+      "directHome": 1,
+      "referenceHome": 1,
+      "output": {
+        "planks": 1
+      },
+      "directInputs": {
+        "wood": 2
+      },
+      "slotMinutes": {
+        "workshop": 15,
+        "woodlot": 8
+      },
+      "rawInputs": {
+        "wood": 2
+      },
+      "byproducts": {},
+      "coins": 0,
+      "elementaryOutputMinutes": {
+        "workshop": 15,
+        "woodlot": 8
+      },
+      "directRevenue": 70,
+      "directInputOpportunity": 40,
+      "incrementalMargin": 30,
+      "baseMarketMargin": 40,
+      "baseMarketMarginPerStationHour": 160,
+      "maxBatch": 8,
+      "processMinutes": 15,
+      "stationMinutes": 15
+    },
+    {
+      "id": "make_rope",
+      "directHome": 1,
+      "referenceHome": 2,
+      "output": {
+        "rope": 1
+      },
+      "directInputs": {
+        "fiber": 3
+      },
+      "slotMinutes": {
+        "workshop": 10,
+        "woodlot": 7.5
+      },
+      "rawInputs": {
+        "fiber": 3
+      },
+      "byproducts": {},
+      "coins": 0,
+      "elementaryOutputMinutes": {
+        "workshop": 10,
+        "woodlot": 7.5
+      },
+      "directRevenue": 40,
+      "directInputOpportunity": 30,
+      "incrementalMargin": 10,
+      "baseMarketMargin": 20,
+      "baseMarketMarginPerStationHour": 120,
+      "maxBatch": 10,
+      "processMinutes": 10,
+      "stationMinutes": 10
+    },
+    {
+      "id": "make_tools",
+      "directHome": 4,
+      "referenceHome": 4,
+      "output": {
+        "tools": 1
+      },
+      "directInputs": {
+        "metal_parts": 1,
+        "planks": 2,
+        "rope": 1
+      },
+      "slotMinutes": {
+        "workshop": 160,
+        "kiln": 60,
+        "quarry": 27,
+        "mochlik": 27,
+        "woodlot": 35.5
+      },
+      "rawInputs": {
+        "ore": 3,
+        "wood": 7,
+        "fiber": 3
+      },
+      "byproducts": {},
+      "coins": 0,
+      "elementaryOutputMinutes": {
+        "workshop": 160,
+        "kiln": 60,
+        "quarry": 27,
+        "mochlik": 27,
+        "woodlot": 35.5
+      },
+      "directRevenue": 600,
+      "directInputOpportunity": 450,
+      "incrementalMargin": 150,
+      "baseMarketMargin": 220,
+      "baseMarketMarginPerStationHour": 146.66666666666666,
+      "maxBatch": 1,
+      "processMinutes": 90,
+      "stationMinutes": 90
+    }
+  ],
+  "samples": [
+    {
+      "catalogVersion": 3,
+      "currencyScale": 10,
+      "pearlScale": 50,
+      "mode": "visits3",
+      "complete": true,
+      "elapsedDays": 658.005,
+      "homeDays": {
+        "2": 2,
+        "3": 22,
+        "4": 99,
+        "5": 331.333
+      },
+      "commands": 30738,
+      "saleRevenue": 8637750,
+      "storageRecovery": 83,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 187
+      },
+      "actions": {
+        "start_exploration": 577,
+        "start_production": 6484,
+        "claim_job": 8471,
+        "start_collection": 1819,
+        "sell": 8479,
+        "start_construction": 37,
+        "start_fishing": 1375,
+        "sell_fish": 3496
+      },
+      "stoppedAt": null,
+      "milestones": [
+        {
+          "day": 0.3368,
+          "building": "woodlot:1",
+          "coins": 700
+        },
+        {
+          "day": 1,
+          "building": "workshop:1",
+          "coins": 250
+        },
+        {
+          "day": 2,
+          "building": "home:2",
+          "coins": 5340
+        },
+        {
+          "day": 2.3403,
+          "building": "quarry:1",
+          "coins": 9050
+        },
+        {
+          "day": 3.3333,
+          "building": "kiln:1",
+          "coins": 13110
+        },
+        {
+          "day": 4,
+          "building": "garden:2",
+          "coins": 16130
+        },
+        {
+          "day": 5.6667,
+          "building": "warehouse:2",
+          "coins": 24250
+        },
+        {
+          "day": 7,
+          "building": "woodlot:2",
+          "coins": 32750
+        },
+        {
+          "day": 8.6667,
+          "building": "quarry:2",
+          "coins": 44010
+        },
+        {
+          "day": 10,
+          "building": "kiln:2",
+          "coins": 51170
+        },
+        {
+          "day": 10.3333,
+          "building": "dryer:1",
+          "coins": 52590
+        },
+        {
+          "day": 11.6667,
+          "building": "dryer:2",
+          "coins": 62390
+        },
+        {
+          "day": 15.3333,
+          "building": "workshop:2",
+          "coins": 72040
+        },
+        {
+          "day": 22,
+          "building": "home:3",
+          "coins": 75770
+        },
+        {
+          "day": 23.6667,
+          "building": "garden:3",
+          "coins": 76580
+        },
+        {
+          "day": 31.0004,
+          "building": "warehouse:3",
+          "coins": 98190
+        },
+        {
+          "day": 34,
+          "building": "woodlot:3",
+          "coins": 101930
+        },
+        {
+          "day": 41.3333,
+          "building": "quarry:3",
+          "coins": 138660
+        },
+        {
+          "day": 48.3333,
+          "building": "kiln:3",
+          "coins": 189150
+        },
+        {
+          "day": 58,
+          "building": "workshop:3",
+          "coins": 254860
+        },
+        {
+          "day": 65,
+          "building": "dryer:3",
+          "coins": 319450
+        },
+        {
+          "day": 99,
+          "building": "home:4",
+          "coins": 585070
+        },
+        {
+          "day": 116.3333,
+          "building": "woodlot:4",
+          "coins": 733020
+        },
+        {
+          "day": 140.6667,
+          "building": "quarry:4",
+          "coins": 979980
+        },
+        {
+          "day": 166.6667,
+          "building": "kiln:4",
+          "coins": 1232270
+        },
+        {
+          "day": 195,
+          "building": "workshop:4",
+          "coins": 1474810
+        },
+        {
+          "day": 218.3333,
+          "building": "warehouse:4",
+          "coins": 1696220
+        },
+        {
+          "day": 228.335,
+          "building": "garden:4",
+          "coins": 1789490
+        },
+        {
+          "day": 239.6667,
+          "building": "dryer:4",
+          "coins": 1887700
+        },
+        {
+          "day": 331.3333,
+          "building": "home:5",
+          "coins": 2542410
+        },
+        {
+          "day": 359.0038,
+          "building": "garden:5",
+          "coins": 2815800
+        },
+        {
+          "day": 411.3333,
+          "building": "warehouse:5",
+          "coins": 3241240
+        },
+        {
+          "day": 459.6667,
+          "building": "woodlot:5",
+          "coins": 3795590
+        },
+        {
+          "day": 521.3333,
+          "building": "quarry:5",
+          "coins": 4565980
+        },
+        {
+          "day": 559.6667,
+          "building": "kiln:5",
+          "coins": 4913460
+        },
+        {
+          "day": 629.6667,
+          "building": "workshop:5",
+          "coins": 5772390
+        },
+        {
+          "day": 658,
+          "building": "dryer:5",
+          "coins": 6116600
+        }
+      ],
+      "productionRecipes": {
+        "grow_berries_overnight": 52,
+        "gather_wood_overnight": 46,
+        "make_planks": 683,
+        "make_rope": 1666,
+        "woodlot_shift": 119,
+        "make_charcoal": 434,
+        "fire_bricks": 95,
+        "smelt_iron": 104,
+        "workshop_overnight": 27,
+        "garden_season": 594,
+        "hardwood_shift": 213,
+        "weave_cloth": 168,
+        "make_glass": 250,
+        "cut_stone": 450,
+        "make_beams": 890,
+        "make_metal_parts": 336,
+        "woodland_shift": 985,
+        "charcoal_supply": 241,
+        "kiln_shift": 193,
+        "workshop_structures": 180,
+        "make_tools": 216,
+        "garden_supply": 327,
+        "make_reinforced_parts": 230,
+        "garden_abundance": 847,
+        "woodland_supply": 588
+      },
+      "explorationRoutes": {
+        "forest_camp": 9,
+        "shore_camp": 1375,
+        "cave": 1,
+        "quarry_stone_overnight": 27,
+        "quarry_ore": 39,
+        "quarry_clay": 32,
+        "quarry_shift": 54,
+        "quarry_deep_face": 353,
+        "quarry_supply": 62
+      },
+      "itemFlow": {
+        "wood": {
+          "received": 60266,
+          "sold": 52090,
+          "productionInputs": 8074,
+          "expeditionInputs": 0,
+          "constructionInputs": 66,
+          "remaining": 36
+        },
+        "stone": {
+          "received": 15984,
+          "sold": 13401,
+          "productionInputs": 2430,
+          "expeditionInputs": 0,
+          "constructionInputs": 153,
+          "remaining": 0
+        },
+        "fiber": {
+          "received": 25176,
+          "sold": 18798,
+          "productionInputs": 6378,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "berries": {
+          "received": 112724,
+          "sold": 112724,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "planks": {
+          "received": 845,
+          "sold": 0,
+          "productionInputs": 432,
+          "expeditionInputs": 0,
+          "constructionInputs": 413,
+          "remaining": 0
+        },
+        "rope": {
+          "received": 1774,
+          "sold": 0,
+          "productionInputs": 1634,
+          "expeditionInputs": 0,
+          "constructionInputs": 140,
+          "remaining": 0
+        },
+        "fish": {
+          "received": 29544,
+          "sold": 29544,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_silverfin": {
+          "received": 2320,
+          "sold": 2320,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_rudd": {
+          "received": 796,
+          "sold": 796,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_bream": {
+          "received": 44,
+          "sold": 44,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "ore": {
+          "received": 5029,
+          "sold": 931,
+          "productionInputs": 4098,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_reedperch": {
+          "received": 176,
+          "sold": 176,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_mooncarp": {
+          "received": 15,
+          "sold": 15,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "charcoal": {
+          "received": 2844,
+          "sold": 16,
+          "productionInputs": 2828,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "clay": {
+          "received": 5900,
+          "sold": 2984,
+          "productionInputs": 2886,
+          "expeditionInputs": 0,
+          "constructionInputs": 30,
+          "remaining": 0
+        },
+        "bricks": {
+          "received": 1924,
+          "sold": 976,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 948,
+          "remaining": 0
+        },
+        "iron_ingot": {
+          "received": 1366,
+          "sold": 103,
+          "productionInputs": 1156,
+          "expeditionInputs": 0,
+          "constructionInputs": 107,
+          "remaining": 0
+        },
+        "cloth": {
+          "received": 195,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 195,
+          "remaining": 0
+        },
+        "fish_dace": {
+          "received": 66,
+          "sold": 66,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "living_resin": {
+          "received": 53,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 51
+        },
+        "hardwood": {
+          "received": 25754,
+          "sold": 20738,
+          "productionInputs": 5000,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 16
+        },
+        "sand": {
+          "received": 5644,
+          "sold": 4144,
+          "productionInputs": 1500,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "moon_crystal": {
+          "received": 46,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 44
+        },
+        "ancient_core": {
+          "received": 59,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 57
+        },
+        "glass": {
+          "received": 500,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 500,
+          "remaining": 0
+        },
+        "cut_stone": {
+          "received": 810,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 810,
+          "remaining": 0
+        },
+        "beams": {
+          "received": 1250,
+          "sold": 0,
+          "productionInputs": 230,
+          "expeditionInputs": 0,
+          "constructionInputs": 1020,
+          "remaining": 0
+        },
+        "metal_parts": {
+          "received": 696,
+          "sold": 345,
+          "productionInputs": 216,
+          "expeditionInputs": 0,
+          "constructionInputs": 135,
+          "remaining": 0
+        },
+        "fish_pike": {
+          "received": 10,
+          "sold": 10,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "resin": {
+          "received": 13760,
+          "sold": 13060,
+          "productionInputs": 690,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 10
+        },
+        "fish_eel": {
+          "received": 5,
+          "sold": 5,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "tools": {
+          "received": 216,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 216,
+          "remaining": 0
+        },
+        "reinforced_parts": {
+          "received": 230,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 230,
+          "remaining": 0
+        }
+      },
+      "actorWorkHours": {
+        "quarry": 4022.25,
+        "exploration": 11064,
+        "collection": 4.0422
+      },
+      "excludedIncome": [
+        "daily_rewards",
+        "achievement_rewards",
+        "taps",
+        "player_market",
+        "legacy_grants"
+      ],
+      "rareMaterials": {
+        "seed": 6758438,
+        "generator": "xorshift32-rejection-v1",
+        "draws": 318,
+        "eligibleExplorationHours": 14768.25,
+        "received": {
+          "ancient_core": 59,
+          "moon_crystal": 46,
+          "living_resin": 53
+        },
+        "spentOnConstruction": {
+          "ancient_core": 2,
+          "moon_crystal": 2,
+          "living_resin": 2
+        },
+        "inventory": {
+          "ancient_core": 57,
+          "moon_crystal": 44,
+          "living_resin": 51
+        },
+        "firstFindByType": {
+          "ancient_core": {
+            "day": 47.0023,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 288.25
+          },
+          "moon_crystal": {
+            "day": 43.3346,
+            "route": "quarry_shift",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 200.25
+          },
+          "living_resin": {
+            "day": 30.0004,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 61.5
+          }
+        },
+        "firstTenFinds": [
+          {
+            "day": 30.0004,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 61.5
+          },
+          {
+            "day": 43.3346,
+            "route": "quarry_shift",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 200.25
+          },
+          {
+            "day": 47.0023,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 288.25
+          },
+          {
+            "day": 50.0031,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 360.25
+          },
+          {
+            "day": 53.6708,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 448.25
+          },
+          {
+            "day": 58.0054,
+            "route": "quarry_shift",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 552.25
+          },
+          {
+            "day": 62.6733,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 664.25
+          },
+          {
+            "day": 65.667,
+            "route": "quarry_shift",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 728.25
+          },
+          {
+            "day": 70.0013,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 832.25
+          },
+          {
+            "day": 73.3354,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 912.25
+          }
+        ],
+        "lastFind": {
+          "day": 656.3376,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 14736.25
+        }
+      }
+    },
+    {
+      "catalogVersion": 3,
+      "currencyScale": 10,
+      "pearlScale": 50,
+      "mode": "visits2",
+      "complete": true,
+      "elapsedDays": 979,
+      "homeDays": {
+        "2": 3,
+        "3": 32.5,
+        "4": 145.5,
+        "5": 491.5
+      },
+      "commands": 30543,
+      "saleRevenue": 8611770,
+      "storageRecovery": 88,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 224
+      },
+      "actions": {
+        "start_exploration": 578,
+        "start_production": 6425,
+        "claim_job": 8419,
+        "start_collection": 1814,
+        "sell": 8381,
+        "start_construction": 37,
+        "start_fishing": 1380,
+        "sell_fish": 3509
+      },
+      "stoppedAt": null,
+      "milestones": [
+        {
+          "day": 0.5035,
+          "building": "woodlot:1",
+          "coins": 700
+        },
+        {
+          "day": 1.5,
+          "building": "workshop:1",
+          "coins": 1020
+        },
+        {
+          "day": 3,
+          "building": "home:2",
+          "coins": 5500
+        },
+        {
+          "day": 3.5069,
+          "building": "quarry:1",
+          "coins": 9830
+        },
+        {
+          "day": 5,
+          "building": "kiln:1",
+          "coins": 13980
+        },
+        {
+          "day": 6,
+          "building": "garden:2",
+          "coins": 17480
+        },
+        {
+          "day": 8.5,
+          "building": "warehouse:2",
+          "coins": 25420
+        },
+        {
+          "day": 10.5,
+          "building": "woodlot:2",
+          "coins": 33370
+        },
+        {
+          "day": 13,
+          "building": "quarry:2",
+          "coins": 44630
+        },
+        {
+          "day": 15,
+          "building": "kiln:2",
+          "coins": 51790
+        },
+        {
+          "day": 15.0069,
+          "building": "dryer:1",
+          "coins": 53210
+        },
+        {
+          "day": 17.5,
+          "building": "dryer:2",
+          "coins": 62920
+        },
+        {
+          "day": 22.5,
+          "building": "workshop:2",
+          "coins": 74850
+        },
+        {
+          "day": 32.5,
+          "building": "home:3",
+          "coins": 83620
+        },
+        {
+          "day": 35.0001,
+          "building": "garden:3",
+          "coins": 85570
+        },
+        {
+          "day": 45.5,
+          "building": "warehouse:3",
+          "coins": 102370
+        },
+        {
+          "day": 50,
+          "building": "woodlot:3",
+          "coins": 107160
+        },
+        {
+          "day": 60.5,
+          "building": "quarry:3",
+          "coins": 138900
+        },
+        {
+          "day": 71,
+          "building": "kiln:3",
+          "coins": 191030
+        },
+        {
+          "day": 84.5,
+          "building": "workshop:3",
+          "coins": 250890
+        },
+        {
+          "day": 95.5,
+          "building": "dryer:3",
+          "coins": 320260
+        },
+        {
+          "day": 145.5,
+          "building": "home:4",
+          "coins": 584070
+        },
+        {
+          "day": 172,
+          "building": "woodlot:4",
+          "coins": 735940
+        },
+        {
+          "day": 208,
+          "building": "quarry:4",
+          "coins": 980350
+        },
+        {
+          "day": 247,
+          "building": "kiln:4",
+          "coins": 1240800
+        },
+        {
+          "day": 289.5,
+          "building": "workshop:4",
+          "coins": 1489400
+        },
+        {
+          "day": 326.5,
+          "building": "warehouse:4",
+          "coins": 1726770
+        },
+        {
+          "day": 341.0001,
+          "building": "garden:4",
+          "coins": 1818950
+        },
+        {
+          "day": 357,
+          "building": "dryer:4",
+          "coins": 1911510
+        },
+        {
+          "day": 491.5,
+          "building": "home:5",
+          "coins": 2517040
+        },
+        {
+          "day": 535.5001,
+          "building": "garden:5",
+          "coins": 2821050
+        },
+        {
+          "day": 613,
+          "building": "warehouse:5",
+          "coins": 3227340
+        },
+        {
+          "day": 685,
+          "building": "woodlot:5",
+          "coins": 3785720
+        },
+        {
+          "day": 776,
+          "building": "quarry:5",
+          "coins": 4549310
+        },
+        {
+          "day": 833,
+          "building": "kiln:5",
+          "coins": 4906940
+        },
+        {
+          "day": 938,
+          "building": "workshop:5",
+          "coins": 5763300
+        },
+        {
+          "day": 979,
+          "building": "dryer:5",
+          "coins": 6090620
+        }
+      ],
+      "productionRecipes": {
+        "grow_berries_overnight": 68,
+        "gather_wood_overnight": 50,
+        "make_planks": 683,
+        "make_rope": 1666,
+        "woodlot_shift": 115,
+        "make_charcoal": 434,
+        "fire_bricks": 95,
+        "smelt_iron": 104,
+        "workshop_overnight": 27,
+        "garden_season": 597,
+        "hardwood_shift": 213,
+        "weave_cloth": 168,
+        "make_glass": 205,
+        "cut_stone": 450,
+        "make_beams": 890,
+        "make_metal_parts": 336,
+        "woodland_shift": 983,
+        "charcoal_supply": 247,
+        "kiln_shift": 166,
+        "workshop_structures": 180,
+        "make_tools": 216,
+        "garden_supply": 314,
+        "make_reinforced_parts": 230,
+        "garden_abundance": 835,
+        "woodland_supply": 581,
+        "kiln_supply": 23
+      },
+      "explorationRoutes": {
+        "forest_camp": 9,
+        "shore_camp": 1380,
+        "cave": 1,
+        "quarry_stone_overnight": 24,
+        "quarry_ore": 39,
+        "quarry_clay": 32,
+        "quarry_shift": 54,
+        "quarry_deep_face": 354,
+        "quarry_supply": 65
+      },
+      "itemFlow": {
+        "wood": {
+          "received": 59986,
+          "sold": 51690,
+          "productionInputs": 8194,
+          "expeditionInputs": 0,
+          "constructionInputs": 66,
+          "remaining": 36
+        },
+        "stone": {
+          "received": 16004,
+          "sold": 13421,
+          "productionInputs": 2430,
+          "expeditionInputs": 0,
+          "constructionInputs": 153,
+          "remaining": 0
+        },
+        "fiber": {
+          "received": 24756,
+          "sold": 18378,
+          "productionInputs": 6378,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "berries": {
+          "received": 111616,
+          "sold": 111616,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "planks": {
+          "received": 845,
+          "sold": 0,
+          "productionInputs": 432,
+          "expeditionInputs": 0,
+          "constructionInputs": 413,
+          "remaining": 0
+        },
+        "rope": {
+          "received": 1774,
+          "sold": 0,
+          "productionInputs": 1634,
+          "expeditionInputs": 0,
+          "constructionInputs": 140,
+          "remaining": 0
+        },
+        "fish": {
+          "received": 29671,
+          "sold": 29650,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 21
+        },
+        "fish_silverfin": {
+          "received": 2333,
+          "sold": 2331,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 2
+        },
+        "fish_rudd": {
+          "received": 800,
+          "sold": 799,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 1
+        },
+        "fish_bream": {
+          "received": 44,
+          "sold": 44,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "ore": {
+          "received": 5081,
+          "sold": 917,
+          "productionInputs": 4164,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_reedperch": {
+          "received": 176,
+          "sold": 176,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_mooncarp": {
+          "received": 15,
+          "sold": 15,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "charcoal": {
+          "received": 2904,
+          "sold": 22,
+          "productionInputs": 2882,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "clay": {
+          "received": 5954,
+          "sold": 2948,
+          "productionInputs": 2976,
+          "expeditionInputs": 0,
+          "constructionInputs": 30,
+          "remaining": 0
+        },
+        "bricks": {
+          "received": 1984,
+          "sold": 1036,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 948,
+          "remaining": 0
+        },
+        "iron_ingot": {
+          "received": 1388,
+          "sold": 125,
+          "productionInputs": 1156,
+          "expeditionInputs": 0,
+          "constructionInputs": 107,
+          "remaining": 0
+        },
+        "cloth": {
+          "received": 195,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 195,
+          "remaining": 0
+        },
+        "fish_dace": {
+          "received": 66,
+          "sold": 66,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "living_resin": {
+          "received": 53,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 51
+        },
+        "hardwood": {
+          "received": 25614,
+          "sold": 20598,
+          "productionInputs": 5000,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 16
+        },
+        "sand": {
+          "received": 5698,
+          "sold": 4192,
+          "productionInputs": 1506,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "moon_crystal": {
+          "received": 46,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 44
+        },
+        "ancient_core": {
+          "received": 59,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 57
+        },
+        "glass": {
+          "received": 502,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 500,
+          "remaining": 2
+        },
+        "cut_stone": {
+          "received": 810,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 810,
+          "remaining": 0
+        },
+        "beams": {
+          "received": 1250,
+          "sold": 0,
+          "productionInputs": 230,
+          "expeditionInputs": 0,
+          "constructionInputs": 1020,
+          "remaining": 0
+        },
+        "metal_parts": {
+          "received": 696,
+          "sold": 345,
+          "productionInputs": 216,
+          "expeditionInputs": 0,
+          "constructionInputs": 135,
+          "remaining": 0
+        },
+        "fish_pike": {
+          "received": 10,
+          "sold": 10,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "resin": {
+          "received": 13674,
+          "sold": 12974,
+          "productionInputs": 690,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 10
+        },
+        "fish_eel": {
+          "received": 5,
+          "sold": 5,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "tools": {
+          "received": 216,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 216,
+          "remaining": 0
+        },
+        "reinforced_parts": {
+          "received": 230,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 230,
+          "remaining": 0
+        }
+      },
+      "actorWorkHours": {
+        "quarry": 4030.25,
+        "exploration": 11112,
+        "collection": 4.0289
+      },
+      "excludedIncome": [
+        "daily_rewards",
+        "achievement_rewards",
+        "taps",
+        "player_market",
+        "legacy_grants"
+      ],
+      "rareMaterials": {
+        "seed": 6758438,
+        "generator": "xorshift32-rejection-v1",
+        "draws": 318,
+        "eligibleExplorationHours": 14825,
+        "received": {
+          "ancient_core": 59,
+          "moon_crystal": 46,
+          "living_resin": 53
+        },
+        "spentOnConstruction": {
+          "ancient_core": 2,
+          "moon_crystal": 2,
+          "living_resin": 2
+        },
+        "inventory": {
+          "ancient_core": 57,
+          "moon_crystal": 44,
+          "living_resin": 51
+        },
+        "firstFindByType": {
+          "ancient_core": {
+            "day": 70.5,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 289
+          },
+          "moon_crystal": {
+            "day": 65,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 201
+          },
+          "living_resin": {
+            "day": 44.5,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 54.25
+          }
+        },
+        "firstTenFinds": [
+          {
+            "day": 44.5,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 54.25
+          },
+          {
+            "day": 65,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 201
+          },
+          {
+            "day": 70.5,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 289
+          },
+          {
+            "day": 75,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 361
+          },
+          {
+            "day": 80.5,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 449
+          },
+          {
+            "day": 87,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 553
+          },
+          {
+            "day": 93.5,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 657
+          },
+          {
+            "day": 98,
+            "route": "quarry_shift",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 729
+          },
+          {
+            "day": 104.5,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 833
+          },
+          {
+            "day": 109.5,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 913
+          }
+        ],
+        "lastFind": {
+          "day": 973.5,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 14737
+        }
+      }
+    },
+    {
+      "catalogVersion": 3,
+      "currencyScale": 10,
+      "pearlScale": 50,
+      "mode": "active16h",
+      "complete": true,
+      "elapsedDays": 259.366,
+      "homeDays": {
+        "2": 0.271,
+        "3": 7.208,
+        "4": 54.251,
+        "5": 140.667
+      },
+      "commands": 76601,
+      "saleRevenue": 3503770,
+      "storageRecovery": 10,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 23
+      },
+      "actions": {
+        "start_exploration": 1419,
+        "start_production": 19734,
+        "claim_job": 25636,
+        "start_collection": 5751,
+        "sell": 13281,
+        "start_fishing": 4448,
+        "sell_fish": 6295,
+        "start_construction": 37
+      },
+      "stoppedAt": null,
+      "milestones": [
+        {
+          "day": 0.0556,
+          "building": "woodlot:1",
+          "coins": 270
+        },
+        {
+          "day": 0.1289,
+          "building": "workshop:1",
+          "coins": 10
+        },
+        {
+          "day": 0.2709,
+          "building": "home:2",
+          "coins": 420
+        },
+        {
+          "day": 0.331,
+          "building": "quarry:1",
+          "coins": 940
+        },
+        {
+          "day": 0.4181,
+          "building": "kiln:1",
+          "coins": 1000
+        },
+        {
+          "day": 0.6164,
+          "building": "garden:2",
+          "coins": 1920
+        },
+        {
+          "day": 1.3889,
+          "building": "warehouse:2",
+          "coins": 9560
+        },
+        {
+          "day": 1.6389,
+          "building": "woodlot:2",
+          "coins": 11530
+        },
+        {
+          "day": 2.5243,
+          "building": "quarry:2",
+          "coins": 20640
+        },
+        {
+          "day": 3,
+          "building": "kiln:2",
+          "coins": 19540
+        },
+        {
+          "day": 3.0069,
+          "building": "dryer:1",
+          "coins": 19710
+        },
+        {
+          "day": 3.4236,
+          "building": "dryer:2",
+          "coins": 23210
+        },
+        {
+          "day": 5,
+          "building": "workshop:2",
+          "coins": 32150
+        },
+        {
+          "day": 7.2083,
+          "building": "home:3",
+          "coins": 49270
+        },
+        {
+          "day": 8,
+          "building": "garden:3",
+          "coins": 41890
+        },
+        {
+          "day": 11.4388,
+          "building": "warehouse:3",
+          "coins": 81000
+        },
+        {
+          "day": 12.1944,
+          "building": "woodlot:3",
+          "coins": 74560
+        },
+        {
+          "day": 15.2083,
+          "building": "quarry:3",
+          "coins": 103670
+        },
+        {
+          "day": 17.4375,
+          "building": "kiln:3",
+          "coins": 108560
+        },
+        {
+          "day": 21.6667,
+          "building": "workshop:3",
+          "coins": 149540
+        },
+        {
+          "day": 23.1667,
+          "building": "dryer:3",
+          "coins": 153500
+        },
+        {
+          "day": 54.2507,
+          "building": "home:4",
+          "coins": 547950
+        },
+        {
+          "day": 58.5,
+          "building": "woodlot:4",
+          "coins": 554270
+        },
+        {
+          "day": 66.4375,
+          "building": "quarry:4",
+          "coins": 601810
+        },
+        {
+          "day": 75.2292,
+          "building": "kiln:4",
+          "coins": 641390
+        },
+        {
+          "day": 84.0417,
+          "building": "workshop:4",
+          "coins": 650930
+        },
+        {
+          "day": 95.3958,
+          "building": "warehouse:4",
+          "coins": 759330
+        },
+        {
+          "day": 98.1255,
+          "building": "garden:4",
+          "coins": 752210
+        },
+        {
+          "day": 103.3333,
+          "building": "dryer:4",
+          "coins": 772080
+        },
+        {
+          "day": 140.6667,
+          "building": "home:5",
+          "coins": 816350
+        },
+        {
+          "day": 146.5643,
+          "building": "garden:5",
+          "coins": 763710
+        },
+        {
+          "day": 169.3264,
+          "building": "warehouse:5",
+          "coins": 844200
+        },
+        {
+          "day": 185.1528,
+          "building": "woodlot:5",
+          "coins": 887150
+        },
+        {
+          "day": 209.6458,
+          "building": "quarry:5",
+          "coins": 1035840
+        },
+        {
+          "day": 225.0833,
+          "building": "kiln:5",
+          "coins": 957170
+        },
+        {
+          "day": 248.0833,
+          "building": "workshop:5",
+          "coins": 925840
+        },
+        {
+          "day": 259.3472,
+          "building": "dryer:5",
+          "coins": 982620
+        }
+      ],
+      "productionRecipes": {
+        "grow_berries": 20,
+        "gather_wood": 8579,
+        "make_planks": 845,
+        "make_rope": 1801,
+        "garden_fiber": 6,
+        "grow_berries_large": 5732,
+        "gather_fiber": 1071,
+        "make_charcoal": 1898,
+        "fire_bricks": 237,
+        "smelt_iron": 462,
+        "weave_cloth": 195,
+        "make_glass": 250,
+        "cut_stone": 810,
+        "gather_hardwood": 837,
+        "make_beams": 1250,
+        "make_metal_parts": 351,
+        "make_tools": 216,
+        "gather_resin": 90,
+        "make_reinforced_parts": 230
+      },
+      "explorationRoutes": {
+        "forest": 12,
+        "shore": 4448,
+        "cave": 1,
+        "quarry_stone": 506,
+        "quarry_ore": 562,
+        "quarry_clay": 186,
+        "quarry_sand": 152
+      },
+      "itemFlow": {
+        "wood": {
+          "received": 42955,
+          "sold": 37047,
+          "productionInputs": 5837,
+          "expeditionInputs": 0,
+          "constructionInputs": 66,
+          "remaining": 5
+        },
+        "stone": {
+          "received": 4092,
+          "sold": 1509,
+          "productionInputs": 2430,
+          "expeditionInputs": 0,
+          "constructionInputs": 153,
+          "remaining": 0
+        },
+        "fiber": {
+          "received": 8664,
+          "sold": 2286,
+          "productionInputs": 6378,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "berries": {
+          "received": 57390,
+          "sold": 57390,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish": {
+          "received": 15940,
+          "sold": 15940,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_silverfin": {
+          "received": 1262,
+          "sold": 1262,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "planks": {
+          "received": 845,
+          "sold": 0,
+          "productionInputs": 432,
+          "expeditionInputs": 0,
+          "constructionInputs": 413,
+          "remaining": 0
+        },
+        "rope": {
+          "received": 1801,
+          "sold": 0,
+          "productionInputs": 1661,
+          "expeditionInputs": 0,
+          "constructionInputs": 140,
+          "remaining": 0
+        },
+        "ore": {
+          "received": 2814,
+          "sold": 42,
+          "productionInputs": 2772,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_rudd": {
+          "received": 426,
+          "sold": 426,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_reedperch": {
+          "received": 82,
+          "sold": 82,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_bream": {
+          "received": 25,
+          "sold": 25,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "charcoal": {
+          "received": 1898,
+          "sold": 0,
+          "productionInputs": 1898,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "clay": {
+          "received": 1488,
+          "sold": 36,
+          "productionInputs": 1422,
+          "expeditionInputs": 0,
+          "constructionInputs": 30,
+          "remaining": 0
+        },
+        "bricks": {
+          "received": 948,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 948,
+          "remaining": 0
+        },
+        "iron_ingot": {
+          "received": 924,
+          "sold": 6,
+          "productionInputs": 811,
+          "expeditionInputs": 0,
+          "constructionInputs": 107,
+          "remaining": 0
+        },
+        "cloth": {
+          "received": 195,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 195,
+          "remaining": 0
+        },
+        "fish_pike": {
+          "received": 4,
+          "sold": 4,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "living_resin": {
+          "received": 11,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 9
+        },
+        "moon_crystal": {
+          "received": 18,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 16
+        },
+        "sand": {
+          "received": 1520,
+          "sold": 20,
+          "productionInputs": 1500,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "glass": {
+          "received": 500,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 500,
+          "remaining": 0
+        },
+        "fish_dace": {
+          "received": 36,
+          "sold": 36,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "cut_stone": {
+          "received": 810,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 810,
+          "remaining": 0
+        },
+        "hardwood": {
+          "received": 5022,
+          "sold": 22,
+          "productionInputs": 5000,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "beams": {
+          "received": 1250,
+          "sold": 0,
+          "productionInputs": 230,
+          "expeditionInputs": 0,
+          "constructionInputs": 1020,
+          "remaining": 0
+        },
+        "ancient_core": {
+          "received": 17,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 15
+        },
+        "fish_mooncarp": {
+          "received": 8,
+          "sold": 8,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "metal_parts": {
+          "received": 351,
+          "sold": 0,
+          "productionInputs": 216,
+          "expeditionInputs": 0,
+          "constructionInputs": 135,
+          "remaining": 0
+        },
+        "tools": {
+          "received": 216,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 216,
+          "remaining": 0
+        },
+        "resin": {
+          "received": 720,
+          "sold": 30,
+          "productionInputs": 690,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "reinforced_parts": {
+          "received": 230,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 230,
+          "remaining": 0
+        },
+        "fish_eel": {
+          "received": 3,
+          "sold": 3,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_sturgeon": {
+          "received": 2,
+          "sold": 2,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        }
+      },
+      "actorWorkHours": {
+        "quarry": 929,
+        "exploration": 3341.25,
+        "collection": 12.78
+      },
+      "excludedIncome": [
+        "daily_rewards",
+        "achievement_rewards",
+        "taps",
+        "player_market",
+        "legacy_grants"
+      ],
+      "rareMaterials": {
+        "seed": 6758438,
+        "generator": "xorshift32-rejection-v1",
+        "draws": 94,
+        "eligibleExplorationHours": 4151.25,
+        "received": {
+          "ancient_core": 17,
+          "moon_crystal": 18,
+          "living_resin": 11
+        },
+        "spentOnConstruction": {
+          "ancient_core": 2,
+          "moon_crystal": 2,
+          "living_resin": 2
+        },
+        "inventory": {
+          "ancient_core": 15,
+          "moon_crystal": 16,
+          "living_resin": 9
+        },
+        "firstFindByType": {
+          "ancient_core": {
+            "day": 24.3867,
+            "route": "quarry_stone",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 284
+          },
+          "moon_crystal": {
+            "day": 19.0627,
+            "route": "shore",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 194.25
+          },
+          "living_resin": {
+            "day": 10.4388,
+            "route": "shore",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 54.75
+          }
+        },
+        "firstTenFinds": [
+          {
+            "day": 10.4388,
+            "route": "shore",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 54.75
+          },
+          {
+            "day": 19.0627,
+            "route": "shore",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 194.25
+          },
+          {
+            "day": 24.3867,
+            "route": "quarry_stone",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 284
+          },
+          {
+            "day": 29.1254,
+            "route": "shore",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 359.75
+          },
+          {
+            "day": 34.3761,
+            "route": "shore",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 448.25
+          },
+          {
+            "day": 40.5642,
+            "route": "shore",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 551.75
+          },
+          {
+            "day": 47.1254,
+            "route": "shore",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 656.75
+          },
+          {
+            "day": 51.2507,
+            "route": "shore",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 725.75
+          },
+          {
+            "day": 57.4392,
+            "route": "quarry_stone",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 828.5
+          },
+          {
+            "day": 62.3761,
+            "route": "shore",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 909.25
+          }
+        ],
+        "lastFind": {
+          "day": 257.5955,
+          "route": "shore",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 4124.25
+        }
+      }
+    },
+    {
+      "catalogVersion": 3,
+      "currencyScale": 10,
+      "pearlScale": 50,
+      "mode": "visits3",
+      "complete": true,
+      "elapsedDays": 660.005,
+      "homeDays": {
+        "2": 2,
+        "3": 22,
+        "4": 101.667,
+        "5": 333.667
+      },
+      "commands": 30848,
+      "saleRevenue": 8669030,
+      "storageRecovery": 81,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 184
+      },
+      "actions": {
+        "start_exploration": 576,
+        "start_production": 6497,
+        "claim_job": 8490,
+        "start_collection": 1826,
+        "sell": 8526,
+        "start_construction": 37,
+        "start_fishing": 1382,
+        "sell_fish": 3514
+      },
+      "stoppedAt": null,
+      "milestones": [
+        {
+          "day": 0.3368,
+          "building": "woodlot:1",
+          "coins": 700
+        },
+        {
+          "day": 1,
+          "building": "workshop:1",
+          "coins": 250
+        },
+        {
+          "day": 2,
+          "building": "home:2",
+          "coins": 5340
+        },
+        {
+          "day": 2.3403,
+          "building": "quarry:1",
+          "coins": 9050
+        },
+        {
+          "day": 3.3333,
+          "building": "kiln:1",
+          "coins": 13110
+        },
+        {
+          "day": 4,
+          "building": "garden:2",
+          "coins": 16130
+        },
+        {
+          "day": 5.6667,
+          "building": "warehouse:2",
+          "coins": 24250
+        },
+        {
+          "day": 7,
+          "building": "woodlot:2",
+          "coins": 32750
+        },
+        {
+          "day": 8.6667,
+          "building": "quarry:2",
+          "coins": 44010
+        },
+        {
+          "day": 10,
+          "building": "kiln:2",
+          "coins": 51170
+        },
+        {
+          "day": 10.3333,
+          "building": "dryer:1",
+          "coins": 52590
+        },
+        {
+          "day": 11.6667,
+          "building": "dryer:2",
+          "coins": 62390
+        },
+        {
+          "day": 15.3333,
+          "building": "workshop:2",
+          "coins": 72040
+        },
+        {
+          "day": 22,
+          "building": "home:3",
+          "coins": 75770
+        },
+        {
+          "day": 23.6667,
+          "building": "garden:3",
+          "coins": 76580
+        },
+        {
+          "day": 33.6678,
+          "building": "warehouse:3",
+          "coins": 128030
+        },
+        {
+          "day": 36.6667,
+          "building": "woodlot:3",
+          "coins": 131670
+        },
+        {
+          "day": 44,
+          "building": "quarry:3",
+          "coins": 168120
+        },
+        {
+          "day": 51,
+          "building": "kiln:3",
+          "coins": 218930
+        },
+        {
+          "day": 60.6667,
+          "building": "workshop:3",
+          "coins": 284480
+        },
+        {
+          "day": 67.6667,
+          "building": "dryer:3",
+          "coins": 349430
+        },
+        {
+          "day": 101.6667,
+          "building": "home:4",
+          "coins": 615110
+        },
+        {
+          "day": 119,
+          "building": "woodlot:4",
+          "coins": 762720
+        },
+        {
+          "day": 143.3333,
+          "building": "quarry:4",
+          "coins": 1009800
+        },
+        {
+          "day": 169.3333,
+          "building": "kiln:4",
+          "coins": 1262190
+        },
+        {
+          "day": 197.6667,
+          "building": "workshop:4",
+          "coins": 1504490
+        },
+        {
+          "day": 221,
+          "building": "warehouse:4",
+          "coins": 1727480
+        },
+        {
+          "day": 231.0016,
+          "building": "garden:4",
+          "coins": 1820670
+        },
+        {
+          "day": 242.3333,
+          "building": "dryer:4",
+          "coins": 1919020
+        },
+        {
+          "day": 333.6667,
+          "building": "home:5",
+          "coins": 2573810
+        },
+        {
+          "day": 361.0036,
+          "building": "garden:5",
+          "coins": 2842720
+        },
+        {
+          "day": 413.3333,
+          "building": "warehouse:5",
+          "coins": 3271800
+        },
+        {
+          "day": 461.6667,
+          "building": "woodlot:5",
+          "coins": 3826200
+        },
+        {
+          "day": 523.3333,
+          "building": "quarry:5",
+          "coins": 4596730
+        },
+        {
+          "day": 561.6667,
+          "building": "kiln:5",
+          "coins": 4944550
+        },
+        {
+          "day": 631.6667,
+          "building": "workshop:5",
+          "coins": 5803370
+        },
+        {
+          "day": 660,
+          "building": "dryer:5",
+          "coins": 6147880
+        }
+      ],
+      "productionRecipes": {
+        "grow_berries_overnight": 52,
+        "gather_wood_overnight": 46,
+        "make_planks": 683,
+        "make_rope": 1666,
+        "woodlot_shift": 121,
+        "make_charcoal": 434,
+        "fire_bricks": 95,
+        "smelt_iron": 104,
+        "workshop_overnight": 27,
+        "garden_season": 601,
+        "hardwood_shift": 213,
+        "weave_cloth": 168,
+        "make_glass": 250,
+        "cut_stone": 448,
+        "make_beams": 888,
+        "make_metal_parts": 336,
+        "woodland_shift": 989,
+        "charcoal_supply": 242,
+        "kiln_shift": 194,
+        "workshop_structures": 181,
+        "make_tools": 216,
+        "garden_supply": 326,
+        "make_reinforced_parts": 230,
+        "garden_abundance": 848,
+        "woodland_supply": 588
+      },
+      "explorationRoutes": {
+        "forest_camp": 9,
+        "shore_camp": 1382,
+        "cave": 1,
+        "quarry_stone_overnight": 23,
+        "quarry_ore": 39,
+        "quarry_clay": 32,
+        "quarry_shift": 54,
+        "quarry_deep_face": 356,
+        "quarry_supply": 62
+      },
+      "itemFlow": {
+        "wood": {
+          "received": 60434,
+          "sold": 52236,
+          "productionInputs": 8096,
+          "expeditionInputs": 0,
+          "constructionInputs": 66,
+          "remaining": 36
+        },
+        "stone": {
+          "received": 15920,
+          "sold": 13337,
+          "productionInputs": 2430,
+          "expeditionInputs": 0,
+          "constructionInputs": 153,
+          "remaining": 0
+        },
+        "fiber": {
+          "received": 25284,
+          "sold": 18906,
+          "productionInputs": 6378,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "berries": {
+          "received": 113024,
+          "sold": 113024,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "planks": {
+          "received": 845,
+          "sold": 0,
+          "productionInputs": 432,
+          "expeditionInputs": 0,
+          "constructionInputs": 413,
+          "remaining": 0
+        },
+        "rope": {
+          "received": 1774,
+          "sold": 0,
+          "productionInputs": 1634,
+          "expeditionInputs": 0,
+          "constructionInputs": 140,
+          "remaining": 0
+        },
+        "fish": {
+          "received": 29693,
+          "sold": 29693,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_silverfin": {
+          "received": 2333,
+          "sold": 2333,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_rudd": {
+          "received": 802,
+          "sold": 802,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_bream": {
+          "received": 44,
+          "sold": 44,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "ore": {
+          "received": 5059,
+          "sold": 943,
+          "productionInputs": 4116,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_reedperch": {
+          "received": 176,
+          "sold": 176,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_mooncarp": {
+          "received": 15,
+          "sold": 15,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "charcoal": {
+          "received": 2854,
+          "sold": 16,
+          "productionInputs": 2838,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "clay": {
+          "received": 5936,
+          "sold": 3008,
+          "productionInputs": 2898,
+          "expeditionInputs": 0,
+          "constructionInputs": 30,
+          "remaining": 0
+        },
+        "bricks": {
+          "received": 1932,
+          "sold": 984,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 948,
+          "remaining": 0
+        },
+        "iron_ingot": {
+          "received": 1372,
+          "sold": 107,
+          "productionInputs": 1158,
+          "expeditionInputs": 0,
+          "constructionInputs": 107,
+          "remaining": 0
+        },
+        "cloth": {
+          "received": 195,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 195,
+          "remaining": 0
+        },
+        "fish_dace": {
+          "received": 66,
+          "sold": 66,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "living_resin": {
+          "received": 40,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 38
+        },
+        "hardwood": {
+          "received": 25810,
+          "sold": 20794,
+          "productionInputs": 5000,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 16
+        },
+        "moon_crystal": {
+          "received": 61,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 59
+        },
+        "sand": {
+          "received": 5680,
+          "sold": 4180,
+          "productionInputs": 1500,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "ancient_core": {
+          "received": 55,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 53
+        },
+        "glass": {
+          "received": 500,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 500,
+          "remaining": 0
+        },
+        "cut_stone": {
+          "received": 810,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 810,
+          "remaining": 0
+        },
+        "beams": {
+          "received": 1250,
+          "sold": 0,
+          "productionInputs": 230,
+          "expeditionInputs": 0,
+          "constructionInputs": 1020,
+          "remaining": 0
+        },
+        "metal_parts": {
+          "received": 698,
+          "sold": 347,
+          "productionInputs": 216,
+          "expeditionInputs": 0,
+          "constructionInputs": 135,
+          "remaining": 0
+        },
+        "fish_pike": {
+          "received": 10,
+          "sold": 10,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "resin": {
+          "received": 13792,
+          "sold": 13092,
+          "productionInputs": 690,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 10
+        },
+        "fish_eel": {
+          "received": 5,
+          "sold": 5,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "tools": {
+          "received": 216,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 216,
+          "remaining": 0
+        },
+        "reinforced_parts": {
+          "received": 230,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 230,
+          "remaining": 0
+        }
+      },
+      "actorWorkHours": {
+        "quarry": 4014.25,
+        "exploration": 11120,
+        "collection": 4.0578
+      },
+      "excludedIncome": [
+        "daily_rewards",
+        "achievement_rewards",
+        "taps",
+        "player_market",
+        "legacy_grants"
+      ],
+      "rareMaterials": {
+        "seed": 123456789,
+        "generator": "xorshift32-rejection-v1",
+        "draws": 314,
+        "eligibleExplorationHours": 14816.25,
+        "received": {
+          "ancient_core": 55,
+          "moon_crystal": 61,
+          "living_resin": 40
+        },
+        "spentOnConstruction": {
+          "ancient_core": 2,
+          "moon_crystal": 2,
+          "living_resin": 2
+        },
+        "inventory": {
+          "ancient_core": 53,
+          "moon_crystal": 59,
+          "living_resin": 38
+        },
+        "firstFindByType": {
+          "ancient_core": {
+            "day": 45.3344,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 248.25
+          },
+          "moon_crystal": {
+            "day": 42.667,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 184.25
+          },
+          "living_resin": {
+            "day": 32.6678,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 125.5
+          }
+        },
+        "firstTenFinds": [
+          {
+            "day": 32.6678,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 125.5
+          },
+          {
+            "day": 42.667,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 184.25
+          },
+          {
+            "day": 45.3344,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 248.25
+          },
+          {
+            "day": 50.3358,
+            "route": "quarry_shift",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 368.25
+          },
+          {
+            "day": 53.6701,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 448.25
+          },
+          {
+            "day": 58.3381,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 560.25
+          },
+          {
+            "day": 61.3389,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 632.25
+          },
+          {
+            "day": 65.6734,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 736.25
+          },
+          {
+            "day": 71.668,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 872.25
+          },
+          {
+            "day": 74.3349,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 936.25
+          }
+        ],
+        "lastFind": {
+          "day": 659.6712,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 14816.25
+        }
+      }
+    },
+    {
+      "catalogVersion": 3,
+      "currencyScale": 10,
+      "pearlScale": 50,
+      "mode": "visits3",
+      "complete": true,
+      "elapsedDays": 669.671,
+      "homeDays": {
+        "2": 2,
+        "3": 22,
+        "4": 111,
+        "5": 343.333
+      },
+      "commands": 31239,
+      "saleRevenue": 8773740,
+      "storageRecovery": 79,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 186
+      },
+      "actions": {
+        "start_exploration": 569,
+        "start_production": 6550,
+        "claim_job": 8572,
+        "start_collection": 1851,
+        "sell": 8635,
+        "start_construction": 37,
+        "start_fishing": 1418,
+        "sell_fish": 3607
+      },
+      "stoppedAt": null,
+      "milestones": [
+        {
+          "day": 0.3368,
+          "building": "woodlot:1",
+          "coins": 700
+        },
+        {
+          "day": 1,
+          "building": "workshop:1",
+          "coins": 250
+        },
+        {
+          "day": 2,
+          "building": "home:2",
+          "coins": 5340
+        },
+        {
+          "day": 2.3403,
+          "building": "quarry:1",
+          "coins": 9050
+        },
+        {
+          "day": 3.3333,
+          "building": "kiln:1",
+          "coins": 13110
+        },
+        {
+          "day": 4,
+          "building": "garden:2",
+          "coins": 16130
+        },
+        {
+          "day": 5.6667,
+          "building": "warehouse:2",
+          "coins": 24250
+        },
+        {
+          "day": 7,
+          "building": "woodlot:2",
+          "coins": 32750
+        },
+        {
+          "day": 8.6667,
+          "building": "quarry:2",
+          "coins": 44010
+        },
+        {
+          "day": 10,
+          "building": "kiln:2",
+          "coins": 51170
+        },
+        {
+          "day": 10.3333,
+          "building": "dryer:1",
+          "coins": 52590
+        },
+        {
+          "day": 11.6667,
+          "building": "dryer:2",
+          "coins": 62390
+        },
+        {
+          "day": 15.3333,
+          "building": "workshop:2",
+          "coins": 72040
+        },
+        {
+          "day": 22,
+          "building": "home:3",
+          "coins": 75770
+        },
+        {
+          "day": 23.6667,
+          "building": "garden:3",
+          "coins": 76580
+        },
+        {
+          "day": 43.0037,
+          "building": "warehouse:3",
+          "coins": 231470
+        },
+        {
+          "day": 46,
+          "building": "woodlot:3",
+          "coins": 235250
+        },
+        {
+          "day": 53.3333,
+          "building": "quarry:3",
+          "coins": 271680
+        },
+        {
+          "day": 60.3333,
+          "building": "kiln:3",
+          "coins": 322730
+        },
+        {
+          "day": 70,
+          "building": "workshop:3",
+          "coins": 389440
+        },
+        {
+          "day": 77,
+          "building": "dryer:3",
+          "coins": 454050
+        },
+        {
+          "day": 111,
+          "building": "home:4",
+          "coins": 718930
+        },
+        {
+          "day": 128.3333,
+          "building": "woodlot:4",
+          "coins": 866320
+        },
+        {
+          "day": 152.6667,
+          "building": "quarry:4",
+          "coins": 1113820
+        },
+        {
+          "day": 178.6667,
+          "building": "kiln:4",
+          "coins": 1367110
+        },
+        {
+          "day": 207,
+          "building": "workshop:4",
+          "coins": 1608130
+        },
+        {
+          "day": 230.3333,
+          "building": "warehouse:4",
+          "coins": 1832560
+        },
+        {
+          "day": 240.3349,
+          "building": "garden:4",
+          "coins": 1925030
+        },
+        {
+          "day": 251.6667,
+          "building": "dryer:4",
+          "coins": 2022680
+        },
+        {
+          "day": 343.3333,
+          "building": "home:5",
+          "coins": 2678330
+        },
+        {
+          "day": 370.6701,
+          "building": "garden:5",
+          "coins": 2947240
+        },
+        {
+          "day": 423,
+          "building": "warehouse:5",
+          "coins": 3377320
+        },
+        {
+          "day": 471.3333,
+          "building": "woodlot:5",
+          "coins": 3931940
+        },
+        {
+          "day": 533,
+          "building": "quarry:5",
+          "coins": 4702510
+        },
+        {
+          "day": 571.3333,
+          "building": "kiln:5",
+          "coins": 5050450
+        },
+        {
+          "day": 641.3333,
+          "building": "workshop:5",
+          "coins": 5908280
+        },
+        {
+          "day": 669.6667,
+          "building": "dryer:5",
+          "coins": 6252590
+        }
+      ],
+      "productionRecipes": {
+        "grow_berries_overnight": 52,
+        "gather_wood_overnight": 46,
+        "make_planks": 683,
+        "make_rope": 1666,
+        "woodlot_shift": 155,
+        "make_charcoal": 434,
+        "fire_bricks": 95,
+        "smelt_iron": 104,
+        "workshop_overnight": 27,
+        "garden_season": 629,
+        "hardwood_shift": 213,
+        "weave_cloth": 168,
+        "make_glass": 250,
+        "cut_stone": 450,
+        "make_beams": 890,
+        "make_metal_parts": 336,
+        "woodland_shift": 984,
+        "charcoal_supply": 241,
+        "kiln_shift": 193,
+        "workshop_structures": 180,
+        "make_tools": 216,
+        "garden_supply": 324,
+        "make_reinforced_parts": 230,
+        "garden_abundance": 847,
+        "woodland_supply": 588
+      },
+      "explorationRoutes": {
+        "forest_camp": 9,
+        "shore_camp": 1418,
+        "cave": 1,
+        "quarry_stone_overnight": 18,
+        "quarry_ore": 39,
+        "quarry_clay": 32,
+        "quarry_shift": 54,
+        "quarry_deep_face": 354,
+        "quarry_supply": 62
+      },
+      "itemFlow": {
+        "wood": {
+          "received": 61100,
+          "sold": 52924,
+          "productionInputs": 8074,
+          "expeditionInputs": 0,
+          "constructionInputs": 66,
+          "remaining": 36
+        },
+        "stone": {
+          "received": 15656,
+          "sold": 13073,
+          "productionInputs": 2430,
+          "expeditionInputs": 0,
+          "constructionInputs": 153,
+          "remaining": 0
+        },
+        "fiber": {
+          "received": 26284,
+          "sold": 19906,
+          "productionInputs": 6378,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "berries": {
+          "received": 113944,
+          "sold": 113944,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "planks": {
+          "received": 845,
+          "sold": 0,
+          "productionInputs": 432,
+          "expeditionInputs": 0,
+          "constructionInputs": 413,
+          "remaining": 0
+        },
+        "rope": {
+          "received": 1774,
+          "sold": 0,
+          "productionInputs": 1634,
+          "expeditionInputs": 0,
+          "constructionInputs": 140,
+          "remaining": 0
+        },
+        "fish": {
+          "received": 30472,
+          "sold": 30472,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_silverfin": {
+          "received": 2390,
+          "sold": 2390,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_rudd": {
+          "received": 823,
+          "sold": 823,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_bream": {
+          "received": 45,
+          "sold": 45,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "ore": {
+          "received": 5039,
+          "sold": 941,
+          "productionInputs": 4098,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_reedperch": {
+          "received": 179,
+          "sold": 179,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "fish_mooncarp": {
+          "received": 15,
+          "sold": 15,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "charcoal": {
+          "received": 2844,
+          "sold": 16,
+          "productionInputs": 2828,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "clay": {
+          "received": 5912,
+          "sold": 2996,
+          "productionInputs": 2886,
+          "expeditionInputs": 0,
+          "constructionInputs": 30,
+          "remaining": 0
+        },
+        "bricks": {
+          "received": 1924,
+          "sold": 976,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 948,
+          "remaining": 0
+        },
+        "iron_ingot": {
+          "received": 1366,
+          "sold": 103,
+          "productionInputs": 1156,
+          "expeditionInputs": 0,
+          "constructionInputs": 107,
+          "remaining": 0
+        },
+        "cloth": {
+          "received": 195,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 195,
+          "remaining": 0
+        },
+        "fish_dace": {
+          "received": 69,
+          "sold": 69,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "moon_crystal": {
+          "received": 43,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 41
+        },
+        "living_resin": {
+          "received": 55,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 53
+        },
+        "hardwood": {
+          "received": 25740,
+          "sold": 20724,
+          "productionInputs": 5000,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 16
+        },
+        "sand": {
+          "received": 5656,
+          "sold": 4156,
+          "productionInputs": 1500,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "ancient_core": {
+          "received": 55,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 2,
+          "remaining": 53
+        },
+        "glass": {
+          "received": 500,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 500,
+          "remaining": 0
+        },
+        "cut_stone": {
+          "received": 810,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 810,
+          "remaining": 0
+        },
+        "beams": {
+          "received": 1250,
+          "sold": 0,
+          "productionInputs": 230,
+          "expeditionInputs": 0,
+          "constructionInputs": 1020,
+          "remaining": 0
+        },
+        "metal_parts": {
+          "received": 696,
+          "sold": 345,
+          "productionInputs": 216,
+          "expeditionInputs": 0,
+          "constructionInputs": 135,
+          "remaining": 0
+        },
+        "fish_pike": {
+          "received": 10,
+          "sold": 10,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "resin": {
+          "received": 13752,
+          "sold": 13052,
+          "productionInputs": 690,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 10
+        },
+        "fish_eel": {
+          "received": 5,
+          "sold": 5,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 0,
+          "remaining": 0
+        },
+        "tools": {
+          "received": 216,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 216,
+          "remaining": 0
+        },
+        "reinforced_parts": {
+          "received": 230,
+          "sold": 0,
+          "productionInputs": 0,
+          "expeditionInputs": 0,
+          "constructionInputs": 230,
+          "remaining": 0
+        }
+      },
+      "actorWorkHours": {
+        "quarry": 3958.25,
+        "exploration": 11408,
+        "collection": 4.1133
+      },
+      "excludedIncome": [
+        "daily_rewards",
+        "achievement_rewards",
+        "taps",
+        "player_market",
+        "legacy_grants"
+      ],
+      "rareMaterials": {
+        "seed": 987654321,
+        "generator": "xorshift32-rejection-v1",
+        "draws": 308,
+        "eligibleExplorationHours": 15048.25,
+        "received": {
+          "ancient_core": 55,
+          "moon_crystal": 43,
+          "living_resin": 55
+        },
+        "spentOnConstruction": {
+          "ancient_core": 2,
+          "moon_crystal": 2,
+          "living_resin": 2
+        },
+        "inventory": {
+          "ancient_core": 53,
+          "moon_crystal": 41,
+          "living_resin": 53
+        },
+        "firstFindByType": {
+          "ancient_core": {
+            "day": 61.0029,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 624.25
+          },
+          "moon_crystal": {
+            "day": 32.6678,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 125.5
+          },
+          "living_resin": {
+            "day": 42.0037,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 349.5
+          }
+        },
+        "firstTenFinds": [
+          {
+            "day": 32.6678,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 125.5
+          },
+          {
+            "day": 36.002,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 205.5
+          },
+          {
+            "day": 39.0029,
+            "route": "shore_camp",
+            "itemId": "moon_crystal",
+            "eligibleExplorationHours": 277.5
+          },
+          {
+            "day": 42.0037,
+            "route": "shore_camp",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 349.5
+          },
+          {
+            "day": 55.3346,
+            "route": "quarry_shift",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 488.25
+          },
+          {
+            "day": 61.0029,
+            "route": "quarry_shift",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 624.25
+          },
+          {
+            "day": 65.3374,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 728.25
+          },
+          {
+            "day": 70.0054,
+            "route": "quarry_shift",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 840.25
+          },
+          {
+            "day": 73.3396,
+            "route": "shore_camp",
+            "itemId": "ancient_core",
+            "eligibleExplorationHours": 920.25
+          },
+          {
+            "day": 77.0002,
+            "route": "quarry_shift",
+            "itemId": "living_resin",
+            "eligibleExplorationHours": 1000.25
+          }
+        ],
+        "lastFind": {
+          "day": 665.3365,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 14952.25
+        }
+      }
+    }
+  ]
+}

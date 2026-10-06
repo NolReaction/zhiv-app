@@ -1,11 +1,12 @@
 import { mossPalette } from "./appearance-palette";
+import { drawMiningPickaxe } from "./mining-pickaxe";
 
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
   | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
 /** Interaction painters own continuous arms outside the cached body sprite. */
-export type PixelRigOptions = { gardening?: boolean; crouch?: number; lean?: number; fishingStance?: boolean };
+export type PixelRigOptions = { gardening?: boolean; crouch?: number; lean?: number; fishingStance?: boolean; mining?: boolean };
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
   moss: "#7c8845", mossLight: "#a5ad58", mossDark: "#58683b", eye: "#30291d",
@@ -23,7 +24,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   frame = Number.isFinite(frame) ? ((Math.trunc(frame) % 4) + 4) % 4 : 0;
   const rigCrouch = Number.isFinite(rig?.crouch) ? Math.max(0, Math.min(6, Math.round(rig!.crouch!))) : undefined;
   const rigLean = Number.isFinite(rig?.lean) ? Math.max(-3, Math.min(3, Math.round(rig!.lean!))) : 0;
-  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}:${rigLean}:${Boolean(rig?.fishingStance)}`;
+  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}:${rigLean}:${Boolean(rig?.fishingStance)}:${Boolean(rig?.mining)}`;
   const existing = cache.get(key);
   if (existing) { cache.delete(key); cache.set(key, existing); return existing; }
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
@@ -50,6 +51,13 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   const c = { ...colors, ...mossPalette(appearance?.palette) };
   const step = walking ? [0, -1, 0, 1][frame % 4] : 0;
   const bob = walking && frame % 2 === 1 ? -1 : pose === "chew" ? [0, 1, 0, 1][frame % 4] : 0;
+  const mining = Boolean(rig?.mining) && (pose === "idle" || pose === "walk");
+  const drawMiningTool = () => {
+    const left = direction === "left";
+    drawMiningPickaxe(ctx, left ? 14 : 34, 34 + bob + (left ? -step : step), 48 * .36, left ? -.5 : .5);
+  };
+  // A tool held in front of the miner belongs behind the back-facing body.
+  if (mining && direction === "back") drawMiningTool();
   let headOffset = bob;
   if (pose === "sleep" || pose === "drowsy") {
     const breath = frame === 1 ? -1 : 0;
@@ -148,6 +156,9 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     const swing = pose === "walk" ? step : 0;
     const armShade = direction === "back" ? c.mossDark : c.shade;
     const armLight = direction === "back" ? c.moss : c.cream;
+    // The pickaxe hangs from the lower paw, below the eyes. Paint the existing
+    // paw over its shaft instead of adding an arm across the torso.
+    if (mining && direction !== "back") drawMiningTool();
     if (!rig?.gardening) { oval(leftHand, armY - swing, 3, 5, armShade); oval(leftHand, armY - 1 - swing, 2, 4, armLight); }
     const wave = pose === "greet" ? -5 + (frame % 2) * 2 : pose === "scratch" ? -17 + (frame % 2) * 3 : 0;
     if (!rig?.gardening) { oval(rightHand, armY + wave + swing, 3, 5, armShade); oval(rightHand, armY - 1 + wave + swing, 2, 4, armLight); }

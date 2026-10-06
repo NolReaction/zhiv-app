@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Mountain, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/map-engine";
 import type { EconomyView } from "./model";
@@ -23,7 +23,6 @@ export type WorldObjectMenuProps = {
   bounds?: WorldMenuBounds;
   onNavigate?: (place: WorldPlace, stationId?: string) => void;
   initialStationId?: string;
-  initialQuarryTab?: "production" | "caves";
   onExplore?: () => void;
   onOpenPantry?: () => void;
 };
@@ -68,7 +67,7 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse }: {
   const backButton = useRef<HTMLButtonElement>(null);
   const maximum = worldBatchLimit(economy.snapshot, recipe);
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
-  const reason = worldProductionReason(economy.snapshot, recipe, quantity, economy.now);
+  const reason = worldProductionReason(economy.snapshot, recipe, quantity);
   const missingRequirements = worldMissingRequirements(economy.snapshot, worldRequirements(recipe, recipe));
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) * quantity;
   const quantityId = useId();
@@ -106,7 +105,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialQuarryTab = "production" }: WorldObjectMenuProps) {
+function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -117,7 +116,6 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   const definition = worldStations[selection.place] ?? { label: selection.objectId, stationIds: [] };
   const initialStation = initialStationId && definition.stationIds.includes(initialStationId) ? initialStationId : definition.stationIds[0] ?? "";
   const [stationId, setStationId] = useState(initialStation);
-  const [quarryTab, setQuarryTab] = useState(initialQuarryTab);
   const [recipeId, setRecipeId] = useState<string | null>(null);
   const [saleItem, setSaleItem] = useState<string | null>(null);
   const [upgradeStation, setUpgradeStation] = useState<string | null>(initialStation === "home" ? "home" : null);
@@ -169,10 +167,6 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   }, [showMenu, definition.future]);
 
   function chooseStation(id: string) { setStationId(id); setRecipeId(null); setSaleItem(null); setUpgradeStation(id === "home" ? "home" : null); }
-  function chooseQuarryTab(tab: "production" | "caves") {
-    setQuarryTab(tab); setRecipeId(null);
-    if (menuBody.current) menuBody.current.scrollTop = 0;
-  }
   function openUpgrade() { upgradeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setUpgradeStation(stationId); }
   function closeUpgrade() { if (stationId === "home") onClose(); else setUpgradeStation(null); }
   function openStation(id: string) {
@@ -197,16 +191,12 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   return <>{showMenu && <section ref={panel} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: position.y, width, height: definition.future ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header className={styles.header}><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : current ? `Уровень ${current}` : "Пока не обустроено"}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : definition.label}</h2></div><button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button></header>
     {definition.stationIds.length > 1 && <nav className={styles.stations} aria-label={`Оборудование: ${definition.label}`}>{definition.stationIds.map(id => { const StationIcon = stationIcons[id] ?? Package; return <button key={id} type="button" aria-pressed={stationId === id} onClick={() => chooseStation(id)}><StationIcon size={15} aria-hidden="true" />{id === "workshop" ? "Верстак" : state ? stationName(state, id) : id === "warehouse" ? "Кладовая" : id === "kiln" ? "Печь" : definition.label}</button>; })}</nav>}
-    {stationId === "quarry" && <nav className={`${styles.stations} ${styles.quarryTabs}`} aria-label="Занятия в шахте">
-      <button type="button" data-quarry-tab="production" aria-pressed={quarryTab === "production"} onClick={() => chooseQuarryTab("production")}><Pickaxe size={15} aria-hidden="true" />Добыча</button>
-      <button type="button" data-quarry-tab="caves" aria-pressed={quarryTab === "caves"} onClick={() => chooseQuarryTab("caves")}><Mountain size={15} aria-hidden="true" />Пещеры</button>
-    </nav>}
     <div ref={menuBody} className={styles.body}>
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {readyEconomy && job && <Work economy={readyEconomy} job={job} openPantry={onOpenPantry ?? (selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => onNavigate("house", "warehouse") : undefined)} />}
-        {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} embeddedCaves activeOnly={quarryTab !== "caves"} onOpenPantry={openPantry} onNavigateStation={id => id === "quarry" ? openUpgrade() : openStation(id)} onCancellationComplete={() => panel.current?.querySelector<HTMLButtonElement>('[data-quarry-tab][aria-pressed="true"]')?.focus({ preventScroll: true })} />}
-        {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" || quarryTab === "production" ? <>
+        {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} embeddedCaves onOpenPantry={openPantry} onNavigateStation={id => id === "quarry" ? openUpgrade() : openStation(id)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
+        {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" ? <>
           <div className={styles.recipeCatalog} hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
           {readyEconomy && selectedRecipe && <WorldRecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={closeRecipe} />}
         </> : null}

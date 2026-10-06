@@ -12,6 +12,7 @@ import { inheritEconomyCollection } from "@/features/economy/collection-progress
 import { economyCommandUsesActor } from "@/features/economy/actor-availability";
 import { createFishingShop, fishingShopExpired } from "@/features/economy/fishing-shop";
 import { fishingState } from "@/features/economy/fishing";
+import { publicEconomyJob } from "@/features/economy/public-jobs";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev-presets";
 import { barterCommandSchema, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/barter-model";
@@ -70,6 +71,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   const state = structuredClone(value.state);
   delete state.fishingCastSeed;
   delete state.rareDropState;
+  state.jobs = state.jobs.map(publicEconomyJob);
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
@@ -133,7 +135,9 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   if (economyCommandUsesActor(command) && hasDevLegacyJourney(token, now)) return fail("ECONOMY_EXPLORER_BUSY", "Мохлик ещё в прежнем путешествии. Сначала подтвердите возвращение");
   const next = structuredClone(value.state);
   const reserved = escrowItems(owner);
-  const message = applyEconomyCommand(next, command, now, () => command.action === "start_fishing" ? crypto.randomUUID() : command.requestId, reserved, randomInt);
+  const fishing = command.action === "start_fishing" || command.action === "start_exploration"
+    && economyCatalog.fishing?.routeIds.includes(command.targetId);
+  const message = applyEconomyCommand(next, command, now, () => fishing ? crypto.randomUUID() : command.requestId, reserved, randomInt);
   assertEconomyStorageTransition(value.state, next, reserved);
   const result = commit(owner, value, next, command, message, now);
   if (command.action === "buy_wardrobe_item") syncDevWorldWardrobe(token, next.wardrobe ?? [], now);
@@ -194,7 +198,9 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
       break;
     }
     case "set_building_level": {
-      if (next.jobs.some(job => job.targetId === command.targetId && (job.kind === "construction" || job.kind === "production")))
+      if (next.jobs.some(job => job.kind === "exploration"
+        ? command.targetId === "quarry" && !!economyCatalog.explorations.find(route => route.id === job.targetId)?.requiredBuildings.quarry
+        : job.targetId === command.targetId))
         return fail("ECONOMY_BUILDING_BUSY", "Сначала ускорьте работу этого здания и заберите результат");
       next.buildings[command.targetId] = command.quantity;
       message = `DEV: ${economyCatalog.buildings.find(item => item.id === command.targetId)!.name} — уровень ${command.quantity}`;

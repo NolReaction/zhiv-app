@@ -585,7 +585,7 @@
     {
       "id": "quarry",
       "name": "Каменоломня",
-      "description": "Открывается со второго уровня дома: камень, глина, песок и железная руда. Каждая новая ступень открывает более производительный участок.",
+      "description": "Участки для вылазок Мохлика: камень, глина, песок и руда. Улучшения открывают новые жилы и долгие смены.",
       "levels": [
         {
           "level": 1,
@@ -1355,151 +1355,6 @@
       "maxBatch": 1
     },
     {
-      "id": "quarry_stone",
-      "name": "Добыть камень",
-      "buildingId": "quarry",
-      "buildingLevel": 1,
-      "requiredHomeLevel": 1,
-      "requiredBuildings": {},
-      "seconds": 1800,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "stone": 8
-      },
-      "maxBatch": 1
-    },
-    {
-      "id": "quarry_stone_overnight",
-      "name": "Камень к утру · 8 ч",
-      "buildingId": "quarry",
-      "buildingLevel": 1,
-      "requiredHomeLevel": 1,
-      "requiredBuildings": {},
-      "seconds": 28800,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "stone": 40
-      },
-      "maxBatch": 1
-    },
-    {
-      "id": "quarry_ore",
-      "name": "Добыть руду",
-      "buildingId": "quarry",
-      "buildingLevel": 2,
-      "requiredHomeLevel": 2,
-      "requiredBuildings": {},
-      "seconds": 2700,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "ore": 5
-      },
-      "maxBatch": 1
-    },
-    {
-      "id": "quarry_clay",
-      "name": "Добыть глину",
-      "buildingId": "quarry",
-      "buildingLevel": 2,
-      "requiredHomeLevel": 2,
-      "requiredBuildings": {},
-      "seconds": 2700,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "clay": 8
-      },
-      "maxBatch": 1
-    },
-    {
-      "id": "quarry_sand",
-      "name": "Просеять песок",
-      "buildingId": "quarry",
-      "buildingLevel": 2,
-      "requiredHomeLevel": 2,
-      "requiredBuildings": {},
-      "seconds": 2700,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "sand": 10
-      },
-      "maxBatch": 1
-    },
-    {
-      "id": "quarry_shift",
-      "name": "Рабочая смена карьера · 8 ч",
-      "buildingId": "quarry",
-      "buildingLevel": 3,
-      "requiredHomeLevel": 3,
-      "requiredBuildings": {},
-      "seconds": 28800,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "stone": 24,
-        "ore": 8,
-        "clay": 10,
-        "sand": 10
-      },
-      "maxBatch": 1
-    },
-    {
-      "id": "quarry_deep_face",
-      "name": "Глубокий забой · 8 ч",
-      "buildingId": "quarry",
-      "buildingLevel": 4,
-      "requiredHomeLevel": 4,
-      "requiredBuildings": {},
-      "seconds": 28800,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "stone": 32,
-        "ore": 10,
-        "clay": 12,
-        "sand": 12
-      },
-      "maxBatch": 1
-    },
-    {
-      "id": "quarry_supply",
-      "name": "Большая смена карьера · 8 ч",
-      "buildingId": "quarry",
-      "buildingLevel": 5,
-      "requiredHomeLevel": 5,
-      "requiredBuildings": {},
-      "seconds": 28800,
-      "cost": {
-        "coins": 0,
-        "items": {}
-      },
-      "rewards": {
-        "stone": 36,
-        "ore": 14,
-        "clay": 14,
-        "sand": 14
-      },
-      "maxBatch": 1
-    },
-    {
       "id": "make_planks",
       "name": "Распилить доски",
       "buildingId": "workshop",
@@ -2048,7 +1903,7 @@
     {
       "id": "shore",
       "name": "Рыбалка на берегу",
-      "description": "Обычный улов без расходников. Мохлик занимает одно место исследователя.",
+      "description": "Короткая рыбалка: 4 рыбы, одна может оказаться особым видом. Частые возвращения приносят больше улова за час.",
       "requiredHomeLevel": 1,
       "seconds": 2700,
       "cost": {
@@ -2074,12 +1929,13 @@
         "stone": 8,
         "ore": 4
       },
-      "requiredBuildings": {}
+      "requiredBuildings": {},
+      "activity": "mining"
     },
     {
       "id": "deep_cave",
       "name": "Глубокий проход",
-      "description": "Для долгой вылазки нужны припасы. Возвращение всегда приносит материалы.",
+      "description": "Четыре часа в богатой жиле: больше камня и руды за один поход. Для работы нужны припасы.",
       "requiredHomeLevel": 3,
       "seconds": 14400,
       "cost": {
@@ -2090,10 +1946,11 @@
         }
       },
       "rewards": {
-        "stone": 20,
-        "ore": 10
+        "stone": 32,
+        "ore": 16
       },
-      "requiredBuildings": {}
+      "requiredBuildings": {},
+      "activity": "mining"
     },
     {
       "id": "forest_camp",
@@ -2115,7 +1972,7 @@
     {
       "id": "shore_camp",
       "name": "Стоянка на берегу · 8 ч",
-      "description": "Спокойная рыбалка с запасом времени. Улов не портится, даже если вернуться в приложение позже.",
+      "description": "Долгая рыбалка: 24 рыбы, шесть отдельных шансов на особые виды. Удобно оставить Мохлика на ночь.",
       "requiredHomeLevel": 1,
       "requiredBuildings": {},
       "seconds": 28800,
@@ -2124,8 +1981,7 @@
         "items": {}
       },
       "rewards": {
-        "fish": 10,
-        "wood": 3
+        "fish": 24
       }
     },
     {
@@ -2224,6 +2080,160 @@
         "ore": 60,
         "sand": 48,
         "clay": 40
+      },
+      "activity": "mining"
+    },
+    {
+      "id": "quarry_stone",
+      "name": "Добыть камень",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 1
+      },
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 8
+      }
+    },
+    {
+      "id": "quarry_stone_overnight",
+      "name": "Камень к утру · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 1
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 40
+      }
+    },
+    {
+      "id": "quarry_ore",
+      "name": "Добыть руду",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "ore": 5
+      }
+    },
+    {
+      "id": "quarry_clay",
+      "name": "Добыть глину",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "clay": 8
+      }
+    },
+    {
+      "id": "quarry_sand",
+      "name": "Просеять песок",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "sand": 10
+      }
+    },
+    {
+      "id": "quarry_shift",
+      "name": "Рабочая смена карьера · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "quarry": 3
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 24,
+        "ore": 8,
+        "clay": 10,
+        "sand": 10
+      }
+    },
+    {
+      "id": "quarry_deep_face",
+      "name": "Глубокий забой · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "quarry": 4
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 32,
+        "ore": 10,
+        "clay": 12,
+        "sand": 12
+      }
+    },
+    {
+      "id": "quarry_supply",
+      "name": "Большая смена карьера · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "quarry": 5
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 36,
+        "ore": 14,
+        "clay": 14,
+        "sand": 14
       }
     }
   ],
@@ -2346,128 +2356,226 @@
       {
         "id": "reed_rod",
         "name": "Камышовая удочка",
-        "description": "Простая надёжная удочка. Есть у каждого начинающего рыбака.",
+        "description": "Для обычной речной рыбы. Реже замечает необычных обитателей и глубоководные виды.",
         "price": 0,
         "rareBonus": 0,
         "rarity": "common",
-        "requiredHomeLevel": 1
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 140,
+          "uncommon": 80,
+          "rare": 65,
+          "epic": 55,
+          "legendary": 50
+        }
       },
       {
         "id": "river_rod",
         "name": "Речная удочка",
-        "description": "Чувствительный кончик повышает шанс необычной рыбы.",
+        "description": "Для необычной рыбы у камышей. Хуже подходит для обычной рыбы и обитателей глубин.",
         "price": 18000,
         "rareBonus": 2,
         "rarity": "uncommon",
-        "requiredHomeLevel": 1
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 90,
+          "uncommon": 180,
+          "rare": 85,
+          "epic": 60,
+          "legendary": 50
+        }
       },
       {
         "id": "willow_rod",
         "name": "Ивовая удочка",
-        "description": "Гибкая снасть Плёски лучше замечает осторожные поклёвки.",
+        "description": "Для редких осторожных рыб. Уступает речной удочке по необычным видам и приливной — по эпическим.",
         "price": 72000,
         "rareBonus": 5,
         "rarity": "rare",
-        "requiredHomeLevel": 2
+        "requiredHomeLevel": 2,
+        "rarityWeights": {
+          "common": 85,
+          "uncommon": 90,
+          "rare": 240,
+          "epic": 110,
+          "legendary": 65
+        }
       },
       {
         "id": "tide_rod",
         "name": "Приливная удочка",
-        "description": "Упругое удилище уверенно подсекает глубоководную рыбу.",
+        "description": "Для эпических глубоководных рыб. Необычные виды попадаются реже; для акулы лучше звёздная.",
         "price": 160000,
         "rareBonus": 8,
         "rarity": "epic",
-        "requiredHomeLevel": 3
+        "requiredHomeLevel": 3,
+        "rarityWeights": {
+          "common": 80,
+          "uncommon": 65,
+          "rare": 100,
+          "epic": 350,
+          "legendary": 120
+        }
       },
       {
         "id": "starfall_rod",
         "name": "Звёздная удочка",
-        "description": "Лёгкая прочная снасть чувствует самые осторожные поклёвки.",
+        "description": "Для охоты за акулой с крючком Левиафана. Уступает другим удочкам по необычным, редким и эпическим видам.",
         "price": 360000,
         "rareBonus": 12,
         "rarity": "legendary",
-        "requiredHomeLevel": 4
+        "requiredHomeLevel": 4,
+        "rarityWeights": {
+          "common": 75,
+          "uncommon": 55,
+          "rare": 70,
+          "epic": 150,
+          "legendary": 400
+        }
       }
     ],
     "baits": [
       {
         "itemId": "crumb_bait",
-        "description": "Одна порция на всю вылазку. Немного повышает шанс необычной рыбы.",
+        "description": "Привлекает обычную рыбу для кухни, отвлекая особые виды. Одна порция на всю рыбалку.",
         "price": 30,
         "rareBonus": 1,
         "rarity": "common",
-        "requiredHomeLevel": 1
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 135,
+          "uncommon": 85,
+          "rare": 65,
+          "epic": 55,
+          "legendary": 50
+        }
       },
       {
         "itemId": "worm_bait",
-        "description": "Одна порция на всю вылазку. Особенно привлекает редкую рыбу.",
+        "description": "Привлекает необычную рыбу; эпические и легендарные виды клюют реже. Одна порция на рыбалку.",
         "price": 70,
         "rareBonus": 3,
         "rarity": "uncommon",
-        "requiredHomeLevel": 1
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 90,
+          "uncommon": 150,
+          "rare": 85,
+          "epic": 65,
+          "legendary": 55
+        }
       },
       {
         "itemId": "glow_bait",
-        "description": "Светящаяся смесь привлекает осторожных глубоководных рыб. Одна порция на вылазку.",
+        "description": "Привлекает редкую рыбу, но не заменяет наживку для эпических и легендарных видов. Одна порция на рыбалку.",
         "price": 140,
         "rareBonus": 5,
         "rarity": "rare",
-        "requiredHomeLevel": 2
+        "requiredHomeLevel": 2,
+        "rarityWeights": {
+          "common": 85,
+          "uncommon": 90,
+          "rare": 170,
+          "epic": 95,
+          "legendary": 65
+        }
       },
       {
         "itemId": "firefly_bait",
-        "description": "Искристая мушка соблазняет самых редких обитателей воды. Одна порция на вылазку.",
+        "description": "Привлекает эпическую рыбу и акулу; обычные, необычные и редкие виды клюют реже. Одна порция на рыбалку.",
         "price": 260,
         "rareBonus": 8,
         "rarity": "epic",
-        "requiredHomeLevel": 3
+        "requiredHomeLevel": 3,
+        "rarityWeights": {
+          "common": 80,
+          "uncommon": 60,
+          "rare": 75,
+          "epic": 150,
+          "legendary": 150
+        }
       }
     ],
     "hooks": [
       {
         "id": "bare_hook",
         "name": "Простой крючок",
-        "description": "Начальная снасть без дополнительных усилений.",
+        "description": "Простая снасть для обычной рыбы. Особые виды цепляются реже.",
         "price": 0,
         "rareBonus": 0,
         "rarity": "common",
-        "requiredHomeLevel": 1
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 130,
+          "uncommon": 85,
+          "rare": 70,
+          "epic": 60,
+          "legendary": 50
+        }
       },
       {
         "id": "barbed_hook",
         "name": "Бородатый крючок",
-        "description": "Надёжная бородка помогает удержать осторожную рыбу в особом улове.",
+        "description": "Для необычных рыб. Менее удобен для обычной рыбы и глубоководных видов.",
         "price": 12000,
         "rareBonus": 2,
         "rarity": "uncommon",
-        "requiredHomeLevel": 1
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 95,
+          "uncommon": 160,
+          "rare": 95,
+          "epic": 65,
+          "legendary": 55
+        }
       },
       {
         "id": "silver_hook",
         "name": "Серебряный крючок",
-        "description": "Тонкая светлая снасть повышает шанс ценных видов в особом улове.",
+        "description": "Тонкое жало для редкой рыбы. Уступает бородатому по необычным видам и приливному — по эпическим.",
         "price": 42000,
         "rareBonus": 4,
         "rarity": "rare",
-        "requiredHomeLevel": 2
+        "requiredHomeLevel": 2,
+        "rarityWeights": {
+          "common": 90,
+          "uncommon": 95,
+          "rare": 200,
+          "epic": 95,
+          "legendary": 70
+        }
       },
       {
         "id": "tide_hook",
         "name": "Приливный крючок",
-        "description": "Изогнутое жало удерживает крупных обитателей глубины.",
+        "description": "Для эпической рыбы. Хуже удерживает небольших необычных рыб; для акулы не подходит.",
         "price": 110000,
         "rareBonus": 7,
         "rarity": "epic",
-        "requiredHomeLevel": 3
+        "requiredHomeLevel": 3,
+        "rarityWeights": {
+          "common": 85,
+          "uncommon": 70,
+          "rare": 110,
+          "epic": 260,
+          "legendary": 100
+        }
       },
       {
         "id": "leviathan_hook",
         "name": "Крючок Левиафана",
-        "description": "Особо прочная снасть для самого сильного улова.",
+        "description": "Единственный крючок, способный удержать акулу. Необычная, редкая и эпическая рыба лучше ловится другими крючками.",
         "price": 260000,
         "rareBonus": 10,
         "rarity": "legendary",
-        "requiredHomeLevel": 4
+        "requiredHomeLevel": 4,
+        "rarityWeights": {
+          "common": 80,
+          "uncommon": 55,
+          "rare": 75,
+          "epic": 120,
+          "legendary": 300
+        }
       }
     ],
     "shop": {
@@ -2475,6 +2583,10 @@
       "refreshPricePearls": 100,
       "slots": 4,
       "baitStock": 5
+    },
+    "collectionDrawsByRoute": {
+      "shore": 1,
+      "shore_camp": 6
     }
   },
   "localBuyer": {

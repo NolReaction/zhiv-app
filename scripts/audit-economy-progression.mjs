@@ -70,11 +70,14 @@ export function auditEconomyProgression(catalog) {
       if (building.id === "warehouse") {
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         if (level.level > 1) assert(level.warehouseCapacity > building.levels[level.level - 2].warehouseCapacity, `${key}: storage must grow`);
+      } else if (building.id === "quarry") {
+        assert(catalog.explorations.some(route => route.activity === "mining" && route.requiredBuildings?.quarry === level.level), `${key}: upgrade has no mining route benefit`);
       } else if (building.id !== "home") {
         assert(catalog.recipes.some(recipe => recipe.buildingId === building.id && recipe.buildingLevel === level.level), `${key}: upgrade has no production benefit`);
       }
     }
   }
+  assert(catalog.recipes.every(recipe => recipe.buildingId !== "quarry"), "Quarry production must not duplicate character mining routes");
   const payoutBps = catalog.localBuyer?.payoutBps ?? 10_000;
   assert(Number.isInteger(payoutBps) && payoutBps > 0 && payoutBps <= 10_000, "Invalid local buyer payout");
   const specialistFish = new Set((catalog.fishing?.fish ?? []).map(fish => fish.itemId));
@@ -128,10 +131,17 @@ export function auditEconomyProgression(catalog) {
       itemUses.add(bait.itemId); // One stack unit is consumed by a special fishing departure.
       merchantItems.push(bait.itemId);
     }
-    for (let index = 1; index < fishing.fish.length; index++) {
-      const previous = fishing.fish[index - 1], fish = fishing.fish[index];
-      assert(fish.affinity * previous.weight >= previous.affinity * fish.weight, "Stronger tackle must not improve cheaper fish over rarer fish");
-      assert(items.get(fish.itemId).baseSellPrice >= items.get(previous.itemId).baseSellPrice, "Fish quantile ranks must follow resale prices");
+    const gear = [...fishing.rods, ...fishing.hooks, ...fishing.baits];
+    for (const entry of gear) assert(entry.rarityWeights && Object.keys(entry.rarityWeights).length === rarity.size
+      && [...rarity].every(id => Number.isSafeInteger(entry.rarityWeights[id]) && entry.rarityWeights[id] >= 1 && entry.rarityWeights[id] <= 1000), "Each fishing item needs finite positive specialization factors");
+    for (const list of [fishing.rods, fishing.hooks]) {
+      assert.equal(new Set(list.map(entry => JSON.stringify([...rarity].map(id => entry.rarityWeights[id])))).size, list.length, "Durable tackle must have distinct specializations");
+      for (const entry of list) assert([...rarity].some(id => entry.rarityWeights[id] > 100)
+        && [...rarity].some(id => entry.rarityWeights[id] < 100), "Every durable specialization needs an advantage and a tradeoff");
+    }
+    for (const [routeId, draws] of Object.entries(fishing.collectionDrawsByRoute ?? {})) {
+      const route = catalog.explorations.find(route => route.id === routeId);
+      assert(fishing.routeIds.includes(routeId) && Number.isSafeInteger(draws) && draws > 0 && draws <= route.rewards.fish, "Invalid route collection draw budget");
     }
   }
   assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration or fishing");

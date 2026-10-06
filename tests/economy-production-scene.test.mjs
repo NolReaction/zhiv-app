@@ -124,3 +124,13 @@ test("reduced motion and ready station props are static, with no retained partic
   assert.notDeepEqual(paint(1, false), paint(2, false));
   assert.equal(paint(1, true).filter(call => call[0] === "stroke").length, 0);
 });
+
+test("retired quarry jobs retain their own production projection until delivered", () => {
+  const saved = { id: "legacy-quarry", kind: "production", targetId: "quarry", recipeId: "retired-quarry-recipe",
+    startedAt: new Date(start).toISOString(), finishesAt: new Date(finish).toISOString() };
+  const state = { ownerPublicId: owner, revision: 4, catalog: economyCatalog, buildings: { quarry: 2 }, jobs: [saved] };
+  assert.equal(economyCatalog.recipes.some(recipe => recipe.buildingId === "quarry"), false);
+  assert.deepEqual(economySceneProduction(state).jobs, [{ id: saved.id, stationId: "quarry", stationLevel: 2,
+    recipeId: saved.recipeId, startedAt: saved.startedAt, finishesAt: saved.finishesAt }]);
+  assert.deepEqual(economySceneProduction({ ...state, jobs: [] }).jobs, []);
+});

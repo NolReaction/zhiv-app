@@ -50,13 +50,13 @@ test("catalog audit rejects compression of the long-term construction floor", ()
 });
 
 
-test("fishing shop cannot introduce buy-sell arbitrage or reverse tackle progression", () => {
+test("fishing shop cannot introduce buy-sell arbitrage or meaningless tackle specializations", () => {
   const catalog = readEconomyCatalog();
   catalog.fishing.fish.find(fish => fish.itemId === "fish_mooncarp").buyPrice = 1;
   assert.throws(() => auditEconomyProgression(catalog), /arbitrage/);
   const invalid = readEconomyCatalog();
-  invalid.fishing.fish[0].affinity = 100;
-  assert.throws(() => auditEconomyProgression(invalid), /Stronger tackle/);
+  invalid.fishing.rods[0].rarityWeights.common = 0;
+  assert.throws(() => auditEconomyProgression(invalid), /specialization factors/);
 });
 
 
@@ -76,7 +76,7 @@ test("bulk limits, overnight yield and ingredient conservation cannot silently r
     ["quarry_stone_overnight", r => r.rewards.stone = 110, /unattended output|quarter of storage/],
     ["workshop_overnight", r => r.cost.items.wood = 1, /bulk order invents wood/],
   ]) {
-    const catalog = readEconomyCatalog(); mutate(catalog.recipes.find(r => r.id === id));
+    const catalog = readEconomyCatalog(); mutate([...catalog.recipes, ...catalog.explorations].find(r => r.id === id));
     assert.throws(() => auditEconomyProgression(catalog), pattern, id);
   }
 });
@@ -93,4 +93,17 @@ test("rare source audit rejects ordinary prices NPC stock deterministic recipes 
     const catalog = readEconomyCatalog(); mutate(catalog);
     assert.throws(() => auditEconomyProgression(catalog), /Special|Early homes|One trip/);
   }
+});
+
+
+test("mining is one actor activity with an upgrade benefit at every mine level", () => {
+  const catalog = readEconomyCatalog();
+  assert.equal(catalog.recipes.filter(recipe => recipe.buildingId === "quarry").length, 0);
+  assert.equal(catalog.explorations.find(route => route.id === "quarry_stone").activity, "mining");
+  const removed = structuredClone(catalog);
+  removed.explorations = removed.explorations.filter(route => route.requiredBuildings?.quarry !== 5);
+  assert.throws(() => auditEconomyProgression(removed), /quarry:5: upgrade has no mining route benefit/);
+  const revived = structuredClone(catalog);
+  revived.recipes.push({ ...revived.explorations.find(route => route.id === "quarry_stone"), buildingId: "quarry", buildingLevel: 1 });
+  assert.throws(() => auditEconomyProgression(revived), /duplicate character mining/);
 });

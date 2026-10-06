@@ -26,18 +26,21 @@ export const economyFishingShopSchema = z.object({
   offers: z.array(z.object({ id, kind: z.enum(["rod", "hook", "bait"]), itemId: id, unitPrice: balance.positive(), remaining: count.max(100) })).max(4),
 });
 export type EconomyFishingShop = z.infer<typeof economyFishingShopSchema>;
+const rarityWeights = z.object({ common: count.positive().max(1000), uncommon: count.positive().max(1000),
+  rare: count.positive().max(1000), epic: count.positive().max(1000), legendary: count.positive().max(1000) });
 export const economyFishingCatalogSchema = z.object({
   shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), slots: z.literal(4), baitStock: count.positive().max(100) })
     .default({ refreshSeconds: 21600, refreshPricePearls: 100, slots: 4, baitStock: 5 }),
   routeIds: z.array(id).min(1).max(100),
+  collectionDrawsByRoute: z.record(id, count.positive().max(100)).default({}),
   fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
     weight: count.positive().max(10000), affinity: count.max(10), buyPrice: balance.positive(), requiredHookId: id.nullish() })).min(1).max(100),
-  rods: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100),
+  rods: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100),
-  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100),
+  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100)
     .default([{ id: "bare_hook", name: "Простой крючок", description: "Начальная снасть без дополнительных усилений.", price: 0, rareBonus: 0, rarity: "common", requiredHomeLevel: 1 }]),
-  baits: z.array(z.object({ itemId: id, description: z.string(), price: balance.positive(), rareBonus: count.max(100),
+  baits: z.array(z.object({ itemId: id, description: z.string(), price: balance.positive(), rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).max(100),
 });
 export const economyRareDropsSchema = z.object({ version: z.literal(1), requiredHomeLevel: count.positive().max(5),
@@ -64,7 +67,7 @@ export const economyCatalogSchema = z.object({
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && (recipe.rewards.berries ?? 0) > 0,
       "Berry collection requires a garden recipe with berries")).max(1000),
-  explorations: z.array(z.object({ id, name: z.string(), description: z.string(), requiredHomeLevel: count.positive(),
+  explorations: z.array(z.object({ id, name: z.string(), description: z.string(), requiredHomeLevel: count.positive(), activity: z.literal("mining").nullish(),
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
 });
 export const economyCatalog = economyCatalogSchema.parse(catalogJson);

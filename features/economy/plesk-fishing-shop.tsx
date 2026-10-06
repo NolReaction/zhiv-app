@@ -7,8 +7,9 @@ import { FishingRodIcon } from "@/features/world/fishing-rod-icon";
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { fishingOdds, fishingState } from "./fishing";
+import { canRefreshFishingShop } from "./fishing-shop";
 import { fishDiscovered, HiddenFishIcon, PlayerItemIcon } from "./fish-discovery";
-import { FishRarityBadge, FishRarityScale } from "./fish-rarity";
+import { FishRarityBadge, FishRarityScale, FISH_RARITY_LEVELS } from "./fish-rarity";
 import { PantrySale } from "./world-pantry-menu";
 import { itemName, number } from "./world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
@@ -34,11 +35,12 @@ function offerLive(state: EconomyView, now: number, offer?: Offer) {
 export function PleskCatchOdds({ state, catalog, override, preview = false }: { state: EconomyView; catalog: FishingCatalog;
   override?: Parameters<typeof fishingOdds>[2]; preview?: boolean }) {
   const odds = fishingOdds(state, catalog, override);
-  const valuable = odds.filter(odd => ["rare", "epic", "legendary"].includes(catalog.fish.find(fish => fish.itemId === odd.itemId)!.rarity))
-    .reduce((sum, odd) => sum + odd.probability, 0);
+  const byRarity = FISH_RARITY_LEVELS.map(rarity => ({ rarity, probability: odds.filter(odd => catalog.fish.find(fish => fish.itemId === odd.itemId)!.rarity === rarity)
+    .reduce((sum, odd) => sum + odd.probability, 0) }));
   return <section className={styles.odds} aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
-    <p><span>{preview ? "С этой снастью · редкая и выше" : "Редкая и выше"}</span><strong>{percent(valuable)}</strong></p>
-    <details><summary>Шансы всех видов</summary><p className={styles.hint}>Шансы одного особого улова за вылазку. Остальные рыбы в партии — обычная рыба.</p>
+    <p><span>{preview ? "С этой снастью" : "Шансы выбранных снастей"}</span><small>на один особый улов</small></p>
+    <dl className={styles.rarityOdds} aria-label="Шансы по разрядам">{byRarity.map(({ rarity, probability }) => <div key={rarity}><dt><FishRarityBadge rarity={rarity} /></dt><dd>{percent(probability)}</dd></div>)}</dl>
+    <details><summary>Шансы всех видов</summary><p className={styles.hint}>Каждый особый улов проверяется отдельно. Их количество зависит от длительности рыбалки; остальная партия — обычная рыба.</p>
       <dl className={styles.oddsList}>{odds.map(odd => {
         const fish = catalog.fish.find(entry => entry.itemId === odd.itemId)!;
         return <div key={odd.itemId} data-fish-odds={odd.itemId}><dt><span>{fishDiscovered(state, odd.itemId) ? itemName(state, odd.itemId) : "Неизвестная рыба"}</span><FishRarityBadge rarity={fish.rarity} />{odd.probability === 0 && <small>Нужен особый крючок</small>}</dt><dd>{percent(odd.probability)}</dd></div>;
@@ -147,10 +149,12 @@ export function PleskMerchantHeader({ economy, state }: ReadyProps) {
   }, [shop, seconds, blocked, economy]);
   if (!shop) return <p className={styles.hint} role="status">Плёска раскладывает товары…</p>;
   const time = `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  const allowed = seconds > 0 && state.wallet.pearls >= shop.refreshPricePearls;
+  const canReplace = canRefreshFishingShop(state);
+  const allowed = seconds > 0 && canReplace && state.wallet.pearls >= shop.refreshPricePearls;
   return <section className={styles.merchantHeader} aria-label="Обновление прилавка">
     <div><strong>Сегодня у Плёски</strong><span><Clock3 size={14} aria-hidden="true" />{seconds > 0 ? <>Новые товары через <time>{time}</time></> : "Открываем новые предложения…"}</span></div>
-    {confirming ? <div ref={confirmation} className={styles.refreshConfirm} role="group" tabIndex={-1} aria-label="Подтверждение обновления прилавка"><p>Привезти новые товары за <Price value={shop.refreshPricePearls} pearls />?</p><div><button type="button" className={styles.secondary} onClick={() => setConfirm(null)}>Оставить</button><button type="button" className={styles.primary} disabled={blocked || !allowed} onClick={() => { send("refresh_fishing_shop", shop.id, 1, shop.refreshPricePearls, allowed); setConfirm(null); }}>Обновить</button></div></div>
+    {!canReplace && seconds > 0 && <p className={styles.restockHint}>Плёска ждёт новую поставку</p>}
+    {confirming ? <div ref={confirmation} className={styles.refreshConfirm} role="group" tabIndex={-1} aria-label="Подтверждение обновления прилавка"><p>Заменить все товары на другие за <Price value={shop.refreshPricePearls} pearls />?</p><div><button type="button" className={styles.secondary} onClick={() => setConfirm(null)}>Оставить</button><button type="button" className={styles.primary} disabled={blocked || !allowed} onClick={() => { send("refresh_fishing_shop", shop.id, 1, shop.refreshPricePearls, allowed); setConfirm(null); }}>Обновить</button></div></div>
       : <button ref={trigger} type="button" className={styles.refreshOffers} disabled={blocked || !allowed} onClick={() => { if (!blocked && allowed) setConfirm(shop.id); }} aria-label={`Обновить предложения за ${shop.refreshPricePearls} жемчужин`}><RefreshCw size={14} aria-hidden="true" />Обновить<Price value={shop.refreshPricePearls} pearls /></button>}
   </section>;
 }

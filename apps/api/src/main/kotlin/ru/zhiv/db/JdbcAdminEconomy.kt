@@ -100,7 +100,7 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
     val state = profile.state
     val time = now.toInstant()
     val view = state?.let {
-        EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs,it.migration,
+        EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs.map(EconomyPublicJobs::project),it.migration,
             EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,
             wardrobe=it.wardrobe)
     }

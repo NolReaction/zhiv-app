@@ -45,8 +45,6 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const selectedId = useRef<string | null>(null);
   const requestedStation = useRef<string | undefined>(undefined);
   const [objectStation, setObjectStation] = useState<string | undefined>();
-  const requestedQuarryTab = useRef<"production" | "caves">("production");
-  const [objectQuarryTab, setObjectQuarryTab] = useState<"production" | "caves">("production");
   const objectReturn = useRef<HTMLElement | null>(null);
   const requestedObjectReturn = useRef<HTMLElement | null>(null);
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
@@ -160,10 +158,9 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (next === null) { selectedId.current = null; setSelection(null); }
     else if (selectedId.current === next.objectId) setSelection(next);
   }, []);
-  const openObject = useCallback((place: WorldPlace, stationId?: string, quarryTab: "production" | "caves" = "production") => {
+  const openObject = useCallback((place: WorldPlace, stationId?: string) => {
     if (stationId === "warehouse") { openQuick("pantry"); return; }
     requestedStation.current = stationId;
-    requestedQuarryTab.current = quarryTab;
     requestedObjectReturn.current = quickMenu ? quickReturn.current : panel ? panelReturn.current : selectedId.current ? objectReturn.current : document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel(null); setQuickMenu(null);
     setOpenObjectRequest(previous => ({ id: (previous?.id ?? 0) + 1, place }));
@@ -202,12 +199,11 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       if (requestedObjectReturn.current) { objectReturn.current = requestedObjectReturn.current; requestedObjectReturn.current = null; }
       else if (!selectedId.current) objectReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       selectedId.current = object.objectId; setObjectStation(requestedStation.current); requestedStation.current = undefined;
-      setObjectQuarryTab(requestedQuarryTab.current); requestedQuarryTab.current = "production";
       setSelection(object); setPanel(null); setQuickMenu(null);
       return;
     }
     if (place === "journeys") { openPanel("journeys"); return; }
-    if (place === "cave") { openObject("quarry", "quarry", "caves"); return; }
+    if (place === "cave") { openObject("quarry", "quarry"); return; }
     if (["fishing", "river", "trail"].includes(place)) { openEconomy("exploration"); return; }
     if (place === "wardrobe") openPanel("wardrobe");
     else {
@@ -264,7 +260,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       <WorldInventoryGains key={ownerPublicId} economy={economy} hud={topHud} />
     </header>
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}
-    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}:${objectQuarryTab}`} initialStationId={objectStation} initialQuarryTab={objectQuarryTab} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
+    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}`} initialStationId={objectStation} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
     <div ref={bottomHud} className={hudStyles.bottomHud}>
       <nav className={hudStyles.dock} aria-label="Действия в игре">
         <button data-world-quick="pantry" aria-haspopup="dialog" aria-expanded={quickMenu === "pantry"} aria-controls={quickMenu === "pantry" ? "world-quick-menu" : undefined}
@@ -287,7 +283,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         {quickMenu === "profile" && <WorldProfileMenu world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={openResident} />}
-        {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenQuarry={() => openObject("quarry", "quarry", "caves")} onOpenFishingShop={openResident} />}
+        {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenQuarry={() => openObject("quarry", "quarry")} onOpenFishingShop={openResident} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Покупки и свой прилавок</small></span></button>

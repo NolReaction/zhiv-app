@@ -85,6 +85,7 @@
 .merchantHeader strong { font-size: .875rem; }
 .merchantHeader > div > span { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: .6875rem; color: var(--forest-muted, #59624d); }
 .merchantHeader time { font-variant-numeric: tabular-nums; color: var(--forest-ink, #394d3e); }
+.restockHint { margin: 0; font-size: .6875rem; color: var(--forest-muted, #59624d); }
 .refreshOffers { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 10px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); font-size: .75rem; cursor: pointer; }
 .refreshConfirm { padding-top: 8px; border-top: 1px solid var(--forest-border, #c8bd98); }
 .refreshConfirm p { margin: 0 0 8px; font-size: .75rem; }
@@ -105,4 +106,9 @@
 .emptyCatch strong { font-size: .875rem; color: var(--forest-ink, #394d3e); }
 .emptyCatch p { margin: 0; max-width: 30ch; font-size: .75rem; line-height: 1.55; }
 .oddsList dt > small { font-size: .625rem; color: var(--forest-muted, #59624d); }
-@container (min-width: 460px) { .merchantHeader { grid-template-columns: 1fr auto; align-items: center; } .refreshConfirm { grid-column: 1 / -1; } .offerGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (min-width: 460px) { .merchantHeader { grid-template-columns: 1fr auto; align-items: center; } .refreshConfirm, .restockHint { grid-column: 1 / -1; } .offerGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.rarityOdds { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0; }
+.rarityOdds > div { display: grid; gap: 2px; }
+.rarityOdds dt { font-size: .625rem; }
+.rarityOdds dd { margin: 0; font-size: .75rem; font-variant-numeric: tabular-nums; }

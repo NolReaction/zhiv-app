@@ -299,3 +299,19 @@ test("reduced motion replaces a finished mine worker with the new static assignm
     }finally{session.release()}
   }
 });
+
+
+test("every focused mining route enters the same visible mine portal and shows work instead of disappearing elsewhere", () => {
+  for (const routeId of ["quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply"]) {
+    const session = create(), state = session.state, journey = job(routeId, 8 * 3600);
+    try {
+      syncForestJourneyTravel(state, world, journey, start + 60_000, false);
+      assert.equal(state.journeyTravel.phase, "working", routeId);
+      assert.equal(forestJourneyMiningFrame(state, world).working, true, routeId);
+      assert.equal(forestJourneyMiningFrame(state, world).opacity, 0, routeId);
+      assert.equal(forestJourneyFishingFrame(state, world), null, routeId);
+      syncForestJourneyTravel(state, world, journey, start + 8 * 3600_000, false);
+      assert.equal(state.journeyTravel.phase, "exiting", routeId);
+    } finally { session.release(); }
+  }
+});

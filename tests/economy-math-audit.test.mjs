@@ -24,9 +24,11 @@ test("elementary materials retain recursive occupied-slot minutes without treati
   assert.equal(dry.directHome, 1); assert.equal(dry.referenceHome, 2);
 });
 
-test("quarry batches reserve the same intrinsic minutes of both Mochlik and the mine", () => {
+test("focused mining routes reserve the same intrinsic minutes of both Mochlik and the mine", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
-  for (const recipe of catalog.recipes.filter(r => r.buildingId === "quarry")) {
+  const routes = catalog.explorations.filter(r => r.id.startsWith("quarry_"));
+  assert.equal(routes.length, 8);
+  for (const recipe of routes) {
     const batch = math.batch(recipe);
     near(batch.slotMinutes.quarry, recipe.seconds / 60);
     near(batch.slotMinutes.mochlik, recipe.seconds / 60);
@@ -53,8 +55,8 @@ test("a joint long order is costed once and exposes its output portfolio rather 
 test("catch expectation changes exactly one fish and keeps bait spending distinct from its fractional species portfolio", () => {
   const math = economicMath(readEconomyCatalog()), initial = math.catchPortfolio();
   near(Object.values(initial.output).reduce((a, b) => a + b, 0), 4);
-  near(initial.output.fish, (3 + 5500 / 9999)); near(initial.expectedFishRevenue, 351.3751375137515);
-  near(math.catchPortfolio("river_rod").expectedFishRevenue, 353.5485144605666);
+  near(initial.output.fish, (3 + 10010 / 16955)); near(initial.expectedFishRevenue, 342.0713653789443);
+  near(math.catchPortfolio("river_rod").expectedFishRevenue, 350.62731247897744);
   const bait = math.catchPortfolio("reed_rod", "crumb_bait");
   assert(bait.expectedFishRevenue - initial.expectedFishRevenue < bait.baitPurchaseCoins);
   assert.equal(math.sourceHome("charcoal"), 2); assert.equal(math.sourceHome("resin"), 3); assert.equal(math.sourceHome("tools"), 4);
@@ -62,17 +64,20 @@ test("catch expectation changes exactly one fish and keeps bait spending distinc
   const chargedRoute = readEconomyCatalog();
   chargedRoute.explorations.find(r => r.id === "shore").cost = { coins: 7, items: { wood: 2 } };
   const charged = economicMath(chargedRoute).profile("fish");
-  near(charged.coins, 7 / (3 + 5500 / 9999)); near(charged.slotMinutes.woodlot, 8 / (3 + 5500 / 9999));
+  near(charged.coins, 7 / (3 + 10010 / 16955)); near(charged.slotMinutes.woodlot, 8 / (3 + 10010 / 16955));
 });
 
-test("hook and bait portfolios apply once per paid trip and never multiply rare draws by quantity", () => {
+test("overnight catch has six species draws within a fixed catch volume and consumes one bait", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   const best = math.catchPortfolio('starfall_rod', 'firefly_bait', 'shore', 'leviathan_hook');
   const camp = math.catchPortfolio('starfall_rod', 'firefly_bait', 'shore_camp', 'leviathan_hook');
-  assert.equal(best.speciesDrawsPerJob, 1); assert.equal(camp.speciesDrawsPerJob, 1);
-  near(best.probabilities.fish_shark, 61 / 12040);
-  near(best.expectedFishRevenue, 386.34883720930236);
-  near(camp.expectedFishRevenue - best.expectedFishRevenue, 6 * catalog.items.find(item => item.id === 'fish').baseSellPrice);
+  assert.equal(best.speciesDrawsPerJob, 1); assert.equal(camp.speciesDrawsPerJob, 6);
+  near(best.probabilities.fish_shark, 18 / 4572);
+  near(best.expectedFishRevenue, 355.99300087489064);
+  near(camp.expectedFishRevenue, 6 * best.expectedFishRevenue);
+  near(Object.values(camp.output).reduce((a, b) => a + b, 0), 24);
+  assert.equal(camp.output.wood, undefined);
+  assert(camp.speciesDrawsPerJob / camp.slotMinutes.mochlik < best.speciesDrawsPerJob / best.slotMinutes.mochlik, 'Repeated short trips remain faster at collection discovery');
   assert.equal(best.baitPurchaseCoins, 260); assert.equal(camp.baitPurchaseCoins, 260);
   const report = auditEconomicMath(catalog);
   assert.equal(report.fishingLoadouts.length, 125);
@@ -101,11 +106,25 @@ test("fish references use earned catches and the legendary hook gate rather than
   const math = economicMath(readEconomyCatalog()), shark = math.profile("fish_shark");
   assert.equal(shark.sourceHome, 4); assert.equal(shark.referenceHome, 4);
   assert.equal(shark.catchReference.hookId, "leviathan_hook");
-  near(shark.catchReference.probability, 21 / 10680);
-  near(shark.slotMinutes.mochlik, 45 * 10680 / 21);
+  near(shark.catchReference.probability, 1 / 10494);
+  near(shark.slotMinutes.mochlik, 45 * 10494);
   assert.equal(shark.coins, 0, "the permanent hook startup price is disclosed separately from every catch");
   assert.equal(shark.catchReference.hookPurchaseCoins, 260000);
   assert.equal(shark.catchReference.finiteGuarantee, false);
   assert.equal(math.profile("glow_bait").sourceHome, 2);
   assert.equal(math.profile("firefly_bait").sourceHome, 3);
+});
+
+
+test("each rod and hook can lead a distinct rarity objective instead of universally dominating cheaper gear", () => {
+  const catalog = readEconomyCatalog(), math = economicMath(catalog);
+  const roles = ["common", "uncommon", "rare", "epic", "legendary"];
+  const share = (portfolio, rarity) => catalog.fishing.fish.filter(fish => fish.rarity === rarity)
+    .reduce((sum, fish) => sum + portfolio.probabilities[fish.itemId], 0);
+  for (const [index, rarity] of roles.entries()) {
+    const rod = catalog.fishing.rods[index], hook = catalog.fishing.hooks[index];
+    const own = math.catchPortfolio(rod.id, null, "shore", hook.id);
+    assert(catalog.fishing.rods.every(other => share(own, rarity) >= share(math.catchPortfolio(other.id, null, "shore", hook.id), rarity)), `${rod.id}: missing intended ${rarity} role`);
+    assert(catalog.fishing.hooks.every(other => share(own, rarity) >= share(math.catchPortfolio(rod.id, null, "shore", other.id), rarity)), `${hook.id}: missing intended ${rarity} role`);
+  }
 });

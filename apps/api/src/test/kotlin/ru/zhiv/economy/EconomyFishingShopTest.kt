@@ -60,7 +60,7 @@ class EconomyFishingShopTest {
     }
 
     @Test fun `refresh debits pearls once per accepted state and rejects stale cheap expired and poor requests`() {
-        val state = ready()
+        val state = ready(5)
         val shop = checkNotNull(state.fishingShop)
         val refresh = command("refresh_fishing_shop", shop.id, price = 100)
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> {
@@ -76,8 +76,55 @@ class EconomyFishingShopTest {
         assertEquals(900L, next.wallet.pearls)
         assertEquals(state.wallet.coins, next.wallet.coins)
         assertNotEquals(shop.id, next.fishingShop?.id)
+        assertEquals(shop.offers.size, checkNotNull(next.fishingShop).offers.size)
+        assertTrue(checkNotNull(next.fishingShop).offers.none { offer -> shop.offers.any { it.itemId == offer.itemId } })
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> {
             EconomyRules.apply(next, refresh, now.plusSeconds(2))
         }.code)
+    }
+
+    @Test fun `paid replacement vectors match TypeScript and keep all original rarity weights`() {
+        val state = ready(5)
+        assertTrue(EconomyFishingShops.canRefresh(state))
+        assertEquals(listOf("willow_rod", "tide_rod", "starfall_rod", "silver_hook"),
+            checkNotNull(EconomyFishingShops.refresh(state, now, { 0 })).offers.map { it.itemId })
+        val totals = mutableListOf<Int>()
+        assertEquals(listOf("firefly_bait", "glow_bait", "leviathan_hook", "tide_hook"),
+            checkNotNull(EconomyFishingShops.refresh(state, now, { totals += it; it - 1 })).offers.map { it.itemId })
+        assertEquals(listOf(113, 103, 78, 74), totals)
+    }
+
+    @Test fun `successive paid counters replace even sold-out items without repetition`() {
+        var state = ready(5)
+        val random = java.util.Random(1729)
+        repeat(200) {
+            val old = checkNotNull(state.fishingShop)
+            state = state.copy(fishingShop = old.copy(offers = old.offers.map { it.copy(remaining = 0) }))
+            val next = checkNotNull(EconomyFishingShops.refresh(state, now, random::nextInt))
+            assertEquals(old.offers.size, next.offers.size)
+            assertEquals(next.offers.size, next.offers.map { it.itemId }.distinct().size)
+            assertTrue(next.offers.none { offer -> old.offers.any { it.itemId == offer.itemId } })
+            state = state.copy(fishingShop = next)
+        }
+    }
+
+    @Test fun `small pool and exhausted category cannot charge or guarantee remaining legendary stock`() {
+        val initial = ready()
+        assertFalse(EconomyFishingShops.canRefresh(initial))
+        assertNull(EconomyFishingShops.refresh(initial, now, { error("must not draw") }))
+        assertEquals("ECONOMY_FISHING_SHOP_NO_REPLACEMENT", assertFailsWith<AuthFailure> {
+            EconomyRules.apply(initial, command("refresh_fishing_shop", checkNotNull(initial.fishingShop).id, price = 100), now)
+        }.code)
+        assertEquals(1000L, initial.wallet.pearls)
+        val state = ready(5).let { it.copy(fishing = it.fishing.copy(
+            ownedRods = it.fishing.ownedRods + listOf("willow_rod", "tide_rod"),
+            ownedHooks = it.fishing.ownedHooks + listOf("silver_hook", "tide_hook"))) }
+        assertFalse(EconomyFishingShops.canRefresh(state))
+        assertNull(EconomyFishingShops.refresh(state, now, { error("must not draw") }))
+        val fiveLeft = state.copy(fishing = state.fishing.copy(ownedHooks = state.fishing.ownedHooks - "tide_hook"))
+        assertFalse(EconomyFishingShops.canRefresh(fiveLeft), "Two legendaries in five alternatives would force at least one into four slots")
+        assertNull(EconomyFishingShops.refresh(fiveLeft, now, { error("must not draw") }))
+        val restocked = EconomyFishingShops.create(initial, now.plusSeconds(21600))
+        assertEquals(4, restocked.offers.size)
     }
 }

@@ -140,7 +140,7 @@ test("forest and quarry artwork supports all economic levels while DEV never unl
     assert.equal(state.buildings.woodlot, level, "missing advanced art must preserve forest progression");
     assert.equal(state.buildings.quarry, level, "missing advanced art must preserve quarry progression");
     for (const id of ["woodlot", "quarry"]) assert.deepEqual(clickDestination(id, state),
-      { tab: level ? "production" : "buildings", focusId: id });
+      { tab: level && id !== "quarry" ? "production" : "buildings", focusId: id });
   }
   const state = freshState();
   assert.deepEqual(accountSceneLevels(scene, 1, { levels: { woodlot: 1, quarry: 1 }, previewBuildings: true }, state.buildings),

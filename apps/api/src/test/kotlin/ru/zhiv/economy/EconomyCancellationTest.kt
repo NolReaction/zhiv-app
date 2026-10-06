@@ -51,7 +51,7 @@ class EconomyCancellationTest {
         val production = growing.jobs.single()
         val started = apply(growing, "start_exploration", "shore")
         val job = started.jobs.single { it.kind == "exploration" }
-        assertEquals(growing, apply(started, "cancel_exploration", job.id))
+        assertEquals(growing.copy(fishingCastSeed = started.fishingCastSeed), apply(started, "cancel_exploration", job.id))
         for (target in listOf("shore", UUID.randomUUID().toString())) assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
             apply(started, "cancel_exploration", target)
         }.code)

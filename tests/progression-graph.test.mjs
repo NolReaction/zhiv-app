@@ -44,8 +44,8 @@ function reachableIds(currentGraph, accepts) {
 
 test("progression contains every catalog building level, recipe and exploration exactly once", () => {
   assert.equal(graph.nodes.filter(value => value.kind === "building").length, 40);
-  assert.equal(graph.nodes.filter(value => value.kind === "recipe").length, 49);
-  assert.equal(graph.nodes.filter(value => value.kind === "exploration").length, 10);
+  assert.equal(graph.nodes.filter(value => value.kind === "recipe").length, catalog.recipes.length);
+  assert.equal(graph.nodes.filter(value => value.kind === "exploration").length, catalog.explorations.length);
   for (const building of catalog.buildings) for (const level of building.levels) {
     const value = node(`b:${building.id}:${level.level}`);
     assert(value, `${building.id} ${level.level}`);
@@ -53,7 +53,10 @@ test("progression contains every catalog building level, recipe and exploration 
     assert.deepEqual(plain(value.cost), level.cost);
     assert.equal(value.seconds, level.seconds);
     if (level.warehouseCapacity) assert.equal(value.warehouseCapacity, level.warehouseCapacity);
-    assert.deepEqual(Array.from(value.children).sort(), catalog.recipes.filter(recipe => recipe.buildingId === building.id && recipe.buildingLevel === level.level).map(recipe => `r:${recipe.id}`).sort());
+    assert.deepEqual(Array.from(value.children).sort(), [
+      ...catalog.recipes.filter(recipe => recipe.buildingId === building.id && recipe.buildingLevel === level.level).map(recipe => `r:${recipe.id}`),
+      ...(building.id === "quarry" ? catalog.explorations.filter(route => route.requiredBuildings.quarry === level.level).map(route => `e:${route.id}`) : []),
+    ].sort());
   }
   for (const recipe of catalog.recipes) {
     const value = node(`r:${recipe.id}`);
@@ -186,7 +189,7 @@ test("market requires both home and completed exploration; any route suffices in
   assert.equal(unlocked({ home: 2, completedExplorations: 0 }), false);
   assert.equal(unlocked({ home: 1, completedExplorations: 1 }), false);
   assert.equal(unlocked({ home: 2, completedExplorations: 1 }), true);
-  for (const exploration of catalog.explorations) assert(hasEdge(`e:${exploration.id}`, "claimed", "any"));
+  for (const exploration of catalog.explorations) assert.equal(hasEdge(`e:${exploration.id}`, "claimed", "any"), !exploration.id.startsWith("quarry_"));
   const prerequisites = getPrerequisiteIds(graph, "market", false);
   assert(prerequisites.has("claimed"));
   assert(prerequisites.has("b:home:2"));
@@ -245,10 +248,9 @@ test("new quarry and kiln construction follow home 2 while grandfathered low-lev
   assert.equal(node("b:kiln:1").requirements.quarry, 1);
   assert(!("quarry" in node("b:home:2").requirements));
   assert(!getPrerequisiteIds(graph, "b:home:2", false).has("b:quarry:1"));
-  for (const id of ["b:quarry:1", "b:kiln:1", "r:quarry_stone", "r:quarry_stone_overnight", "r:make_charcoal"]) assert.equal(node(id).phase, 2, id);
-  for (const id of ["quarry_stone", "make_charcoal"]) {
-    const recipe = catalog.recipes.find(value => value.id === id);
-    assert.equal(node(`r:${id}`).requirements.home, recipe.requiredHomeLevel, "Display phase must not invent a stronger server recipe requirement");
+  for (const id of ["b:quarry:1", "b:kiln:1", "e:quarry_stone", "e:quarry_stone_overnight", "r:make_charcoal"]) assert.equal(node(id).phase, 2, id);
+  for (const [prefix, recipe] of [["e", catalog.explorations.find(value => value.id === "quarry_stone")], ["r", catalog.recipes.find(value => value.id === "make_charcoal")]]) {
+    assert.equal(node(`${prefix}:${recipe.id}`).requirements.home, recipe.requiredHomeLevel, "Display phase must not invent a stronger server requirement");
   }
 });
 
@@ -349,4 +351,21 @@ test("prerequisite traversal terminates on cycles, ignores stale ids and isolate
   };
   assert.deepEqual(Array.from(getPrerequisiteIds(custom, "a")).sort(), ["a", "b"]);
   assert.equal(getPrerequisiteIds(custom, "missing").size, 0);
+});
+
+
+test("mine upgrades visibly unlock actor activities and never revive retired production", () => {
+  for (const level of catalog.buildings.find(building => building.id === "quarry").levels) {
+    const mine = node(`b:quarry:${level.level}`);
+    assert.ok(mine.children.length > 0, `mine level ${level.level} has a purpose`);
+    for (const id of mine.children) {
+      const activity = node(id);
+      assert.equal(activity.kind, "exploration");
+      assert.equal(activity.locationId, "place:quarry");
+      assert.equal(activity.requirements.quarry, level.level);
+      assert(hasEdge(mine.id, id, "unlock"));
+      assert(hasEdge(mine.id, id, "requirement"));
+    }
+  }
+  assert.equal(graph.nodes.some(node => node.kind === "recipe" && node.buildingId === "quarry"), false);
 });
