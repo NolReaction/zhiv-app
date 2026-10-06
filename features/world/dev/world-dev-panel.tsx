@@ -17,6 +17,7 @@ import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
 import { WorldDevFishing } from "./world-dev-fishing";
+import { WorldDevBuilderPoints } from "./world-dev-builder-points";
 import { useForestObservation } from "../use-forest-observation";
 import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
@@ -446,6 +447,8 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
         <button type="button" onClick={() => change({ builderPreview: null, builderDirection: "front" }, "Показ Шишколапа сброшен")}>Сброс Шишколапа</button>
       </div>
       <p className={styles.hint}>Кнопки проигрывают действие один раз. Завершение работы здесь — только жест: стройка и ресурсы не меняются.</p>
+      <WorldDevBuilderPoints source={TILED_WORLD} preview={state} houseLevel={world.snapshot?.state.houseLevel}
+        economy={economy?.snapshot} now={economy?.now ?? world.now} />
     </>}
     {page === "scenes" && <>
       <h3 className={styles.pageTitle}>Лесные сценки</h3>

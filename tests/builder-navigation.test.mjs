@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { builderLocalPlaces, builderWorkStops, builderWorkClearance, builderRoute, BUILDER_NAVIGATION_LIMITS } =
+const { builderLocalPlaces, builderWorkStops, builderWorkMarkerChecks, builderWorkClearance, builderRoute, BUILDER_NAVIGATION_LIMITS } =
   await vite.ssrLoadModule("/features/world/builder-navigation.ts");
 const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { residentClearance, canTraverseResidents } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
@@ -134,6 +134,53 @@ test("each actual Tiled work marker keeps its exact position across its host's e
       assert.deepEqual(route.target.position, marker.position, `${stationId}, exterior ${level} keeps the valid authored foot position`);
     }
   }
+});
+
+test("an authored left-side home marker is not rejected by transparent bush image padding", () => {
+  const source = structuredClone(TILED_WORLD), marker = { x: 589.5761, y: 648 };
+  source.destinations.find(destination => destination.id === "builder-work-home").position = marker;
+  const initial = initialPreviewLevels(source);
+  for (const level of [1, 2, 3, 4, 5]) {
+    const scene = previewWorldScene(source, { ...initial, home: level }), order = job("home", Math.min(5, level + 1));
+    const bounds = scene.terrain.find(terrain => terrain.id === scene.bushes[0].imageId).bounds;
+    assert.ok(marker.x + 20 > bounds.x && marker.x - 20 < bounds.x + bounds.width
+      && marker.y > bounds.y && marker.y - 37.5 < bounds.y + bounds.height, "body overlaps the conservative PNG rectangle");
+    assert.ok(marker.y - 37.5 > Math.max(...scene.bushes[0].points.map(point => point.y)), "body is below the authored leaves");
+    const { route } = checkedRoute(scene, order);
+    assert.deepEqual(route.target.position, marker, `level ${level} uses exactly the authored position`);
+    assert.deepEqual(builderWorkMarkerChecks(scene, order), [{ id: "builder-work-home", position: marker, issues: [] }]);
+    const automatic = structuredClone(scene);
+    automatic.destinations = automatic.destinations.filter(destination => destination.id !== "builder-work-home");
+    for (const stop of builderWorkStops(automatic, order)) assert.ok(stop.position.x + 20 <= bounds.x
+      || stop.position.x - 20 >= bounds.x + bounds.width || stop.position.y <= bounds.y
+      || stop.position.y - 37.5 >= bounds.y + bounds.height, "automatic placement still avoids drawing the worker under a bush");
+  }
+});
+
+test("marker diagnostics expose the same physical refusals as runtime without mutating the scene", () => {
+  const scene = fixture(), marker = { id: "builder-work-home", position: { x: 295, y: 215 }, pauseSeconds: 10 };
+  scene.destinations.push(marker);
+  const saved = structuredClone(scene), order = job("home");
+  assert.deepEqual(builderWorkMarkerChecks(scene, order), [{ id: marker.id, position: marker.position, issues: [] }]);
+  assert.deepEqual(scene, saved, "inspection cannot change authoring data");
+  assert.deepEqual(builderWorkStops(scene, order)[0].position, marker.position);
+  for (const [position, issue] of [[{ x: 430, y: 330 }, "far-from-building"], [scene.sites[0].entry, "doorway"],
+    [scene.actor.spawn, "activity"], [{ x: NaN, y: 215 }, "invalid-position"]]) {
+    const changed = structuredClone(scene); changed.destinations[0].position = position;
+    assert.ok(builderWorkMarkerChecks(changed, order)[0].issues.includes(issue), `${issue} is visible`);
+    assert.ok(builderWorkStops(changed, order).every(stop => distance(stop.position, position) > 1e-6 || !Number.isFinite(position.x)));
+  }
+  const blocked = structuredClone(scene);
+  blocked.navigation.obstacles.push({ id: "marker-wall", points: rect(290, 210, 10, 10) });
+  assert.ok(builderWorkMarkerChecks(blocked, order)[0].issues.includes("blocked-ground"));
+  const future = structuredClone(scene);
+  future.sites[0].states[1].geometry.collision = rect(215, 110, 85, 110);
+  assert.ok(builderWorkMarkerChecks(future, order)[0].issues.includes("blocked-future"));
+  assert.ok(!builderWorkMarkerChecks(future, order)[0].issues.includes("blocked-ground"));
+  const missing = structuredClone(scene); missing.sites = [];
+  assert.deepEqual(builderWorkMarkerChecks(missing, order)[0].issues, ["missing-host"]);
+  const noLand = structuredClone(scene); noLand.navigation.areas = [];
+  assert.deepEqual(builderWorkMarkerChecks(noLand, order)[0].issues, ["missing-navigation"]);
 });
 
 test("a remote authored marker never turns a distant visitor stop into a work site", () => {

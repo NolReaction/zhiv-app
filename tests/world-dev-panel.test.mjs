@@ -483,6 +483,8 @@ test("DEV inventory browser exposes fish, consumable bait and permanent tackle a
 
 test("builder page exposes six poses and independent directions with safe stop/reset controls", () => {
   const view = panel("builder", { worldView: true, shortcut: () => assert.fail("preview keeps controls open") });
+  assert.match(view.markup, /Рабочие точки Tiled/);
+  assert.match(view.markup, /builder-work-home/);
   const actions = view.elements.filter(element => element.props["data-builder-action"]);
   assert.deepEqual(actions.map(element => element.props["data-builder-action"]), [...WORLD_DEV_BUILDER_ACTIONS]);
   for (const button of actions) button.props.onClick();

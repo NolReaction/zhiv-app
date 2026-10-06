@@ -9,11 +9,15 @@ import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type BuilderStop = { id: string; position: WorldPoint; lookAt: WorldPoint };
+export type BuilderWorkMarkerIssue = "invalid-position" | "missing-navigation" | "missing-host" | "far-from-building"
+  | "doorway" | "activity" | "blocked-ground" | "blocked-future";
+export type BuilderWorkMarkerCheck = { id: string; position: WorldPoint; issues: readonly BuilderWorkMarkerIssue[] };
+type BuilderWorkPlan = { stops: readonly BuilderStop[]; markers: readonly BuilderWorkMarkerCheck[] };
 export const BUILDER_NAVIGATION_LIMITS = { radius: BUILDER.size * .1, workReach: BUILDER.size * .8,
   contourEdges: 24, workCandidates: 16, searches: 3, wanderStops: 8 } as const;
 export type BuilderPlaces = { navigation: WorldNavigation; rest: BuilderStop; wander: readonly BuilderStop[] };
 const cache = new WeakMap<FixedWorldScene, BuilderPlaces | null>();
-const workCache = new WeakMap<FixedWorldScene, Map<string, readonly BuilderStop[]>>();
+const workCache = new WeakMap<FixedWorldScene, Map<string, BuilderWorkPlan>>();
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const finite = (p: WorldPoint | undefined): p is WorldPoint => !!p && Number.isFinite(p.x) && Number.isFinite(p.y);
 export const builderDirection = (dx: number, dy: number): PixelDirection => Math.abs(dx) > Math.abs(dy)
@@ -121,18 +125,27 @@ export function builderLocalPlaces(scene: FixedWorldScene): BuilderPlaces | null
 
 /** Interior upgrades share their real host. Clearance checks also include the
  * target art's collision, so accepting a finished house cannot bury its worker. */
-export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJob): readonly BuilderStop[] {
+function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): BuilderWorkPlan {
   let jobs = workCache.get(scene);
   if (!jobs) { jobs = new Map(); workCache.set(scene, jobs); }
   const key = `${job.stationId}:${job.targetLevel}`, cached = jobs.get(key);
   if (cached) return cached;
   const places = builderLocalPlaces(scene), place = constructionMapPlace(job.stationId);
-  const empty: BuilderStop[] = [];
-  if (!places || !place) { jobs.set(key, empty); return empty; }
+  const siteId = place === "house" ? "home" : place;
+  const markers = [job.stationId, siteId].filter((id, index, ids) => !!id && ids.indexOf(id) === index)
+    .flatMap(id => {
+      const marker = scene.destinations?.find(destination => destination.id === `builder-work-${id}`);
+      return marker ? [marker] : [];
+    });
+  const unavailable = (issue: BuilderWorkMarkerIssue): BuilderWorkPlan => {
+    const result = { stops: [], markers: markers.map(marker => ({ id: marker.id, position: { ...marker.position }, issues: [issue] })) };
+    jobs.set(key, result); return result;
+  };
+  if (!places) return unavailable("missing-navigation");
+  if (!place) return unavailable("missing-host");
   let entry: WorldPoint | undefined, anchor: WorldPoint | undefined, future: WorldNavigation | null = places.navigation;
   const access: WorldPoint[][] = [];
   const contours: WorldPoint[][] = [];
-  const siteId = place === "house" ? "home" : place;
   const site = scene.sites.find(candidate => candidate.id === siteId);
   if (site) {
     entry = site.entry; anchor = site.anchor;
@@ -165,7 +178,8 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
     entry = fire?.seat; anchor = fire?.position;
     if (fire) contours.push(campfireFootprint(fire));
   }
-  if (!finite(entry) || !finite(anchor) || !future) { jobs.set(key, empty); return empty; }
+  if (!finite(entry) || !finite(anchor)) return unavailable("missing-host");
+  if (!future) return unavailable("missing-navigation");
   if (!site) access.push([entry, anchor]);
   // A work shift must not reserve another activity's fixed goal for its whole
   // duration (for example the campfire seat beside the house). Roaming interests
@@ -175,23 +189,47 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
     ...(scene.destinations?.filter(destination => !destination.id.startsWith("builder-")).map(destination => destination.position) ?? []),
   ].filter(finite);
   const clearance = builderWorkClearance(scene), gap = clearance + BUILDER_NAVIGATION_LIMITS.radius;
-  const markers = [job.stationId, siteId].filter((id, index, ids) => ids.indexOf(id) === index)
-    .map(id => scene.destinations?.find(destination => destination.id === `builder-work-${id}`)?.position);
   const destination = scene.destinations?.find(destination => destination.id === siteId && destination.siteId === siteId);
   const candidates = [...beside(entry, anchor, gap), ...contours.flatMap(contour => besideContour(contour, entry)),
     ...(destination ? beside(destination.position, anchor, gap) : [])]
     .sort((a, b) => distance(a, entry) - distance(b, entry));
-  const stops = [...markers, ...candidates].filter(finite)
-    // Visitor destinations may sit on a distant path. Work must stay beside the
-    // actual current and finished exterior, even when a custom marker is used.
-    .filter(point => contours.every(contour => distanceToContour(point, contour) <= BUILDER_NAVIGATION_LIMITS.workReach))
-    .filter(point => place === "garden" || outsideBushArtwork(scene, point))
-    .filter(point => access.every(corridor => distanceToAccess(point, corridor) >= clearance - 1e-7))
-    .filter(point => occupied.every(goal => distance(point, goal) >= clearance - 1e-7))
-    .filter(point => isWalkable(places.navigation, point) && isWalkable(future, point))
+  // Lazy checks keep automatic searches bounded: expensive ground tests only
+  // run after the facade, doorway and activity checks accept the candidate.
+  const validations: readonly [BuilderWorkMarkerIssue, (point: WorldPoint) => boolean][] = [
+    ["far-from-building", point => contours.every(contour => distanceToContour(point, contour) <= BUILDER_NAVIGATION_LIMITS.workReach)],
+    ["doorway", point => access.every(corridor => distanceToAccess(point, corridor) >= clearance - 1e-7)],
+    ["activity", point => occupied.every(goal => distance(point, goal) >= clearance - 1e-7)],
+    ["blocked-ground", point => isWalkable(places.navigation, point)],
+    ["blocked-future", point => isWalkable(future, point)],
+  ];
+  const issuesAt = (point: WorldPoint, all = true): BuilderWorkMarkerIssue[] => {
+    if (!finite(point)) return ["invalid-position"];
+    const issues: BuilderWorkMarkerIssue[] = [];
+    // These are physical constraints shared by authored markers and fallbacks.
+    for (const [issue, valid] of validations) if (!valid(point)) {
+      issues.push(issue);
+      if (!all) break;
+    }
+    return issues;
+  };
+  const checks = markers.map(marker => ({ id: marker.id, position: { ...marker.position }, issues: issuesAt(marker.position) }));
+  // PNG bounds include transparent padding. Only automatic placement uses that
+  // conservative visual preference; a manually authored stop owns its framing.
+  const stops = [...checks.filter(check => !check.issues.length).map(check => check.position),
+    ...candidates.filter(point => (place === "garden" || outsideBushArtwork(scene, point)) && !issuesAt(point, false).length)]
     .slice(0, BUILDER_NAVIGATION_LIMITS.workCandidates)
     .map(position => ({ id: job.stationId, position: { ...position }, lookAt: { ...anchor } }));
-  jobs.set(key, stops); return stops;
+  const result = { stops, markers: checks };
+  jobs.set(key, result); return result;
+}
+
+export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJob): readonly BuilderStop[] {
+  return builderWorkPlan(scene, job).stops;
+}
+
+/** DEV reads the same validation as runtime; no work order or resident is advanced. */
+export function builderWorkMarkerChecks(scene: FixedWorldScene, job: SceneConstructionJob): readonly BuilderWorkMarkerCheck[] {
+  return builderWorkPlan(scene, job).markers;
 }
 
 /** Bounded searches happen only on a decision/job/geometry change. */

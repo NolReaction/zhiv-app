@@ -245,6 +245,29 @@ test("hidden/reduced-motion updates and repeated frame reads advance no cosmetic
   assert.deepEqual(mind.position, position); assert.equal(mind.elapsed, 0); assert.equal(mind.ready, true);
 });
 
+test("moving only an authored work marker replans a confirmed worker from current feet before resuming work", () => {
+  const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
+  const construction = snapshot(), saved = structuredClone(construction);
+  const mind = createBuilderMind(scene, { awaitConstruction: true });
+  advanceBuilderMind(mind, scene, 0, { now: start, construction });
+  assert.equal(mind.action, "work");
+  const feet = { ...mind.position }, source = structuredClone(TILED_WORLD);
+  const marker = source.destinations.find(destination => destination.id === "builder-work-home");
+  marker.position = { x: 589.5761, y: 648 };
+  const changed = previewWorldScene(source, initialPreviewLevels(source));
+  assert.deepEqual(changed.sites, scene.sites, "only the marker changes, not artwork or building geometry");
+  assert.deepEqual(builderWorkStops(changed, job())[0].position, marker.position);
+  advanceBuilderMind(mind, changed, 0, { now: start, construction });
+  assert.deepEqual(mind.position, feet, "a live worker cannot teleport to the edited marker");
+  assert.equal(mind.action, "walk"); assert.deepEqual(mind.target.position, marker.position);
+  for (let elapsed = 0; elapsed < 20 && mind.route; elapsed += .1) {
+    assert.notEqual(builderMindFrame(mind, changed, false).action, "work", "the old work pose ends until arrival");
+    advance(mind, changed, construction, .1);
+  }
+  assert.equal(mind.action, "work"); assert.deepEqual(mind.position, marker.position);
+  assert.deepEqual(construction, saved); assert.deepEqual(mind.job, saved.jobs[0]);
+});
+
 test("idle wandering is deterministic, bounded and never invents construction work", () => {
   const scene = fixture(), first = createBuilderMind(scene), second = createBuilderMind(scene);
   const positions = new Set();
