@@ -83,7 +83,7 @@ test("unknown or blocked authored roads fail closed instead of moving residents 
   assert.deepEqual(forestResidentFrames(blocked, 10, false), []);
 });
 
-test("the single named resident shares safe deterministic frames across the circle and map", () => {
+test("the legacy Pleska preview remains deterministic while active residents use session frames", () => {
   const scene = world(), nav = createWorldNavigation(scene), actions = new Set();
   for (let elapsed = 0; elapsed < 300; elapsed += .5) {
     const frames = forestResidentFrames(scene, elapsed, false);
@@ -96,6 +96,21 @@ test("the single named resident shares safe deterministic frames across the circ
   assert.ok(forestResidentFrames(scene, 10, true).every(frame => frame.action === "fish" && frame.frame === 0));
 });
 
+test("mixed resident hits resolve the frontmost body independently of registry order and masks", () => {
+  const scene = world(), plesk = forestResidentFrames(scene, 10, true)[0];
+  const builder = { id: "builder", x: plesk.x, y: plesk.y + 3, size: 40, action: "idle", direction: "front", frame: 0, phase: 0 };
+  const point = { x: plesk.x, y: plesk.y - 18 }, original = structuredClone([plesk, builder]);
+  for (const frames of [[plesk, builder], [builder, plesk]]) {
+    assert.equal(forestResidentAt(scene, 10, true, point, frames), "builder");
+    assert.equal(forestResidentAt(scene, 10, true, point, frames.map(frame => frame.id === "builder" ? { ...frame, y: plesk.y - 3 } : frame)), "plesk");
+  }
+  const mask = { ...rectangle("counter", point.x - 20, point.y - 20, 40, 40), frontY: plesk.y + 1 };
+  assert.equal(forestResidentAt({ ...scene, occluders: [mask] }, 10, true, point, [plesk, builder]), "builder", "a resident in front of a mask remains interactive");
+  assert.equal(forestResidentAt({ ...scene, occluders: [{ ...mask, frontY: builder.y + 1 }] }, 10, true, point, [plesk, builder]), null);
+  assert.equal(forestResidentAt(scene, 10, true, { x: point.x + 100, y: point.y }, [builder]), null, "the builder's tool and surroundings are not a broad invisible target");
+  assert.deepEqual([plesk, builder], original, "hit sorting does not reorder or mutate shared resident frames");
+});
+
 test("offscreen residents are culled before sprite creation and need no additional canvas or image readback", () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
   Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement() { assert.fail("offscreen sprite must not allocate"); } } });
@@ -104,6 +119,8 @@ test("offscreen residents are culled before sprite creation and need no addition
       drawImage() { assert.fail("offscreen resident must not draw its sprite"); } };
     drawForestResidents(ctx, world(), 0, false, 700, "behind");
     drawForestResidents(ctx, world(), 0, false, 700, "front");
+    drawForestResidents(ctx, world(), 0, false, 700, "front", [{ id: "builder", x: 1000, y: 1000,
+      size: 40, action: "work", direction: "front", frame: 1, phase: .3 }]);
   } finally { if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document; }
 });
 

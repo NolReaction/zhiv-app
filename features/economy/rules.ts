@@ -210,7 +210,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (!target) return fail("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены");
       requireHome(state, target.requiredHomeLevel);
       requireBuildings(state, target.requiredBuildings);
-      if (state.jobs.some(job => job.kind === "construction")) fail("ECONOMY_CONSTRUCTION_BUSY", "Сначала завершите текущую стройку");
+      if (state.jobs.some(job => job.kind === "construction")) fail("ECONOMY_CONSTRUCTION_BUSY", "Строитель занят. Сначала завершите текущую стройку");
       if (building.id === "quarry" && state.jobs.some(job => job.kind === "exploration" && economyCatalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry)))
         return fail("ECONOMY_BUILDING_BUSY", "Перед улучшением дождитесь Мохлика и заберите добычу");
       if (state.jobs.some(job => job.kind === "production" && job.targetId === building.id)) fail("ECONOMY_BUILDING_BUSY", "Перед улучшением заберите результат производства");

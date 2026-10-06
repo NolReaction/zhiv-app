@@ -349,6 +349,30 @@ class EconomyRulesTest {
         assertEquals(2, exploring.jobs.size)
     }
 
+    @Test fun `one builder stays reserved across buildings until completion without taking the hero or production`() {
+        val before = stocked().copy(buildings = stocked().buildings + mapOf("home" to 2, "garden" to 1, "woodlot" to 1, "workshop" to 1))
+        val started = apply(before, "start_construction", "garden")
+        val job = started.jobs.single()
+        val readyAt = Instant.parse(job.finishesAt)
+        for (at in listOf(now, readyAt, readyAt.plusSeconds(3600))) {
+            val failure = assertFailsWith<AuthFailure> { apply(started, "start_construction", "woodlot", at = at) }
+            assertEquals("ECONOMY_CONSTRUCTION_BUSY", failure.code)
+            assertEquals("Строитель занят. Сначала завершите текущую стройку", failure.message)
+            assertEquals(listOf(job), started.jobs)
+        }
+        val producing = apply(started, "start_production", "make_planks")
+        val exploring = apply(producing, "start_exploration", "forest")
+        assertEquals(setOf("construction", "production", "exploration"), exploring.jobs.map { it.kind }.toSet())
+        val finished = apply(exploring, "claim_job", job.id, at = readyAt)
+        val next = apply(finished, "start_construction", "woodlot", at = readyAt)
+        assertEquals("woodlot", next.jobs.single { it.kind == "construction" }.targetId)
+        assertEquals(2, next.buildings["garden"])
+        val price = EconomyRules.constructionSpeedupPrice(job, now)
+        val accelerated = EconomyRules.apply(started.copy(wallet = started.wallet.copy(pearls = price)),
+            command("speedup_construction", job.id).copy(totalPrice = price), now).first
+        assertEquals("woodlot", apply(accelerated, "start_construction", "woodlot").jobs.single().targetId)
+    }
+
     private fun construction(remainingMillis: Long = 900_000) = EconomyJob(UUID.randomUUID().toString(), "construction", "home",
         targetLevel = 2, startedAt = now.minusSeconds(900).toString(), finishesAt = now.plusMillis(remainingMillis).toString(),
         cost = EconomyCost(1500, mapOf("wood" to 20L)), catalogVersion = 2)

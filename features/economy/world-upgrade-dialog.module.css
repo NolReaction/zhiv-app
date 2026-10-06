@@ -29,6 +29,13 @@
 .header .levels, .header .heading .muted, .dialog.dialog .header .close { color: #d8dfc5; }
 .dialog.dialog .header .close:focus-visible { outline-color: #f1d89b; }
 .activeWork { display: flex; flex: 0 0 auto; flex-direction: column; gap: 7px; }
+.builderBusy { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px; border: 1px solid #baa371; border-radius: 12px; background: #efdfbd; color: var(--forest-accent, #765322); }
+.builderBusy > svg { flex-shrink: 0; }
+.builderBusy > div { flex: 1 1 130px; min-width: 0; }
+.builderBusy strong, .builderBusy span { display: block; line-height: 1.4; }
+.builderBusy strong { color: var(--forest-ink, #394d3e); font-size: 12px; }
+.builderBusy span, .builderBusy p { margin-top: 3px; font-size: 11px; overflow-wrap: anywhere; }
+.dialog.dialog .builderBusy button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; padding: 7px; border: 1px solid #baa371; border-radius: 8px; color: var(--forest-ink, #394d3e); background: #f6ecd2; font-size: 11px; }
 .body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 16px; min-height: 0; padding: 15px 16px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #638051 transparent; }
 .section { display: flex; flex: 0 0 auto; flex-direction: column; gap: 10px; }
 .section h3 { display: flex; align-items: center; gap: 6px; color: var(--forest-ink, #394d3e); font-size: 13px; line-height: 1.35; font-weight: 600; }

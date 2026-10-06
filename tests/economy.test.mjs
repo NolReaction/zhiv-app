@@ -222,6 +222,32 @@ test("failed spending is atomic and new house unlocks only follow completed cons
   assert.throws(() => issue(player(), "start_production", "make_planks"), { code: "ECONOMY_BUILDING_REQUIRED" });
 });
 
+test("one builder serialises different buildings, ready timers and replayed starts without blocking other activities", () => {
+  const p = player();
+  fixture(p, { home: 2, coins: 100_000, items: Object.fromEntries(model.economyCatalog.items.map(item => [item.id, 100])),
+    buildings: { garden: 1, woodlot: 1, workshop: 1, warehouse: 5 } });
+  const start = command(p, "start_construction", "garden"), competing = command(p, "start_construction", "woodlot");
+  const started = economy.commandDevEconomy(p.token, start, now).state, job = started.jobs[0];
+  assert.throws(() => economy.commandDevEconomy(p.token, competing, now), { code: "ECONOMY_REVISION_CONFLICT" });
+  assert.equal(economy.commandDevEconomy(p.token, start, now).replayed, true);
+  assert.deepEqual(read(p).wallet, started.wallet);
+  assert.deepEqual(read(p).inventory, started.inventory);
+  assert.equal(read(p).jobs.filter(job => job.kind === "construction").length, 1);
+  assert.throws(() => issue(p, "start_construction", "woodlot"), { code: "ECONOMY_CONSTRUCTION_BUSY", message: "Строитель занят. Сначала завершите текущую стройку" });
+  issue(p, "start_production", "make_planks");
+  issue(p, "start_exploration", "forest");
+  const readyAt = Date.parse(job.finishesAt), before = read(p, readyAt);
+  assert.throws(() => issue(p, "start_construction", "woodlot", 1, readyAt), { code: "ECONOMY_CONSTRUCTION_BUSY" });
+  assert.deepEqual(read(p, readyAt), before, "elapsed timer cannot free a second builder or charge new materials");
+  issue(p, "claim_job", job.id, 1, readyAt);
+  const next = issue(p, "start_construction", "woodlot", 1, readyAt).state;
+  assert.equal(next.jobs.filter(job => job.kind === "construction").length, 1);
+  assert.equal(next.jobs.find(job => job.kind === "construction").targetId, "woodlot");
+  const replay = economy.commandDevEconomy(p.token, start, readyAt);
+  assert.equal(replay.replayed, true);
+  assert.deepEqual(replay.state.jobs, next.jobs, "a late replay must not recreate the completed building job");
+});
+
 test("one explorer, receipts, stale revisions and foreign owners cannot duplicate rewards", () => {
   const p = player(), other = player(), cmd = command(p, "start_exploration", "forest");
   const result = economy.commandDevEconomy(p.token, cmd, now);

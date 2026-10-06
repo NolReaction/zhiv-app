@@ -4,7 +4,8 @@ import { ArrowRight, PawPrint, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PleskPortrait } from "./plesk-portrait";
-import { WORLD_CHARACTERS, worldCharacterResident, type WorldCharacter } from "./world-characters-model";
+import { BuilderPortrait } from "./builder-portrait";
+import { WORLD_CHARACTERS, worldCharacterResident, type WorldCharacter, type WorldResidentId } from "./world-characters-model";
 import styles from "./world-characters.module.css";
 
 const silhouettes = {
@@ -22,17 +23,19 @@ function CharacterSilhouette({ character }: { character: Extract<WorldCharacter,
 }
 
 /** A full gallery, separate from the compact More menu. The modal owns keyboard
- * focus; only the implemented resident can open a conversation. */
-export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus }: {
-  open: boolean; onClose: () => void; onResident: (id: "plesk") => void;
-  onCloseAutoFocus: (event: Event) => void;
+ * focus; only implemented residents can open a conversation. */
+export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, focusedResident }: {
+  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void;
+  onCloseAutoFocus: (event: Event) => void; focusedResident?: WorldResidentId;
 }) {
   return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <DialogPortal>
       <DialogOverlay className={styles.scrim} />
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog}
         onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={event => {
-          const card = (event.target as HTMLElement).querySelector<HTMLButtonElement>('[data-world-character="plesk"]');
+          const gallery = event.target as HTMLElement;
+          const card = (focusedResident && gallery.querySelector<HTMLButtonElement>(`button[data-world-character="${focusedResident}"]`))
+            || gallery.querySelector<HTMLButtonElement>("button[data-world-character]");
           if (card) { event.preventDefault(); card.focus({ preventScroll: true }); }
         }}>
         <header className={styles.header}>
@@ -45,7 +48,7 @@ export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus }:
             {character.available ? <button type="button" className={`${styles.card} ${styles.available}`} data-world-character={character.id}
               aria-label={`${character.name} — ${character.role}. Открыть разговор`} aria-haspopup="dialog"
               onClick={() => { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); }}>
-              <span className={styles.stage}><PleskPortrait animated className={styles.portrait} /></span>
+              <span className={styles.stage}>{character.id === "builder" ? <BuilderPortrait animated className={styles.portrait} /> : <PleskPortrait animated className={styles.portrait} />}</span>
               <strong>{character.name}</strong><small>{character.role}</small>
               <span className={styles.visit}>Заглянуть <ArrowRight size={15} aria-hidden="true" /></span>
             </button> : <div className={`${styles.card} ${styles.locked}`} aria-label="Неизвестный персонаж, пока недоступен">

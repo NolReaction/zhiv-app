@@ -2,6 +2,7 @@ import type { EconomyView } from "./model";
 import type { WorldState } from "@/features/world/model";
 import type { EconomySceneActivity, EconomySceneJourney } from "@/features/world/economy-scene-state";
 import type { EconomySceneProduction } from "@/features/world/economy-production-state";
+import type { EconomySceneConstruction } from "@/features/world/economy-construction-state";
 
 /** A scene click selects existing economy UI; it never upgrades a local site. */
 export function economyBuildingDestination(buildingId: string, economy: EconomyView | null | undefined): { tab: "buildings" | "production"; focusId: string } {
@@ -41,6 +42,15 @@ export function economySceneProduction(economy: EconomyView | null | undefined):
     return recipe ? [{ id: job.id, stationId: recipe.buildingId, stationLevel: economy.buildings[recipe.buildingId] ?? 0,
       recipeId: recipe.id, startedAt: job.startedAt, finishesAt: job.finishesAt }] : [];
   }) };
+}
+
+/** Only confirmed construction reaches the builder; a completed timer still reserves him until claim. */
+export function economySceneConstruction(economy: EconomyView | null | undefined): EconomySceneConstruction | null {
+  if (!economy) return null;
+  return { ownerPublicId: economy.ownerPublicId, revision: economy.revision, jobs: economy.jobs.flatMap(job =>
+    job.kind === "construction" && Number.isInteger(job.targetLevel) && job.targetLevel! > 0
+      ? [{ id: job.id, stationId: job.targetId, targetLevel: job.targetLevel!, startedAt: job.startedAt, finishesAt: job.finishesAt }]
+      : []) };
 }
 
 /** Keep a returned exploration visible until claimed; otherwise show the first work to finish. */

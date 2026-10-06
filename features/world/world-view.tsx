@@ -17,7 +17,7 @@ import styles from "./world.module.css";
 import { WorldJourneys } from "./world-journeys";
 import { WorldFeedback } from "./world-feedback";
 import { EconomyPanel, type EconomyTab } from "@/features/economy/economy-panel";
-import { economyBuildingDestination, economySceneJourney, economySceneProduction, economyWorldState } from "@/features/economy/world-adapter";
+import { economyBuildingDestination, economySceneJourney, economySceneProduction, economySceneConstruction, economyWorldState } from "@/features/economy/world-adapter";
 import { WORLD_PRESENTATION } from "./presentation";
 import { WorldHelp } from "./world-help";
 import { WorldProfileMenu } from "./world-profile-menu";
@@ -30,6 +30,8 @@ import { WorldInventoryGains } from "./world-inventory-gains";
 import hudStyles from "./world-map-hud.module.css";
 import { WorldObjectMenu } from "@/features/economy/world-object-menu";
 import { WorldResidentDialog } from "./world-resident-dialog";
+import { WorldBuilderDialog } from "./world-builder-dialog";
+import type { WorldResidentId } from "./world-characters-model";
 import { WorldCharacters } from "./world-characters";
 import { DailyRewardsButton, DailyRewardsDialog } from "@/features/game/daily-rewards";
 import { CurrencyShopPanel } from "@/features/economy/currency-shop-panel";
@@ -56,6 +58,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const leavingCharacters = useRef(false);
   const [expeditionSector, setExpeditionSector] = useState<SectorId>("forest");
   const [residentOpen, setResidentOpen] = useState(false);
+  const [residentId, setResidentId] = useState<WorldResidentId>("plesk");
   const [residentFromCharacters, setResidentFromCharacters] = useState(false);
   const residentReturn = useRef<HTMLElement | null>(null);
   const leavingResident = useRef(false);
@@ -71,6 +74,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const worldElement = useRef<HTMLElement>(null);
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
+  const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot), [economy.snapshot]);
   const renderedState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
   const hasWorld = Boolean(world.snapshot);
@@ -102,20 +106,19 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (next === "expeditions") setExpeditionSector(sector);
     clearObject(); setPanel(null); setCharactersOpen(false); setQuickMenu(next);
   }, [clearObject]);
-  const openResident = useCallback(() => {
+  const openResident = useCallback((id: WorldResidentId = "plesk") => {
     residentReturn.current = quickMenu ? quickReturn.current : document.activeElement instanceof HTMLElement ? document.activeElement : null;
     leavingResident.current = false;
     setResidentFromCharacters(false);
-    clearObject(); setPanel(null); setQuickMenu(null); setResidentOpen(true);
+    clearObject(); setPanel(null); setQuickMenu(null); setResidentId(id); setResidentOpen(true);
   }, [clearObject, quickMenu]);
   const closeResident = useCallback(() => {
     setResidentOpen(false);
     if (residentFromCharacters) setCharactersOpen(true);
   }, [residentFromCharacters]);
-  const openCharacterResident = (id: "plesk") => {
-    if (id !== "plesk") return;
+  const openCharacterResident = (id: WorldResidentId) => {
     leavingCharacters.current = true; setCharactersOpen(false);
-    openResident(); setResidentFromCharacters(true);
+    openResident(id); setResidentFromCharacters(true);
   };
   const openCharacters = () => {
     leavingCharacters.current = false; clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(true);
@@ -236,7 +239,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "economy" ? Store : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -284,8 +287,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
         {quickMenu === "profile" && <WorldProfileMenu world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
-        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={openResident} />}
-        {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenQuarry={() => openObject("quarry", "quarry")} onOpenFishingShop={openResident} />}
+        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={() => openResident("plesk")} />}
+        {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenQuarry={() => openObject("quarry", "quarry")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Покупки и свой прилавок</small></span></button>
@@ -301,13 +304,13 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         if (dailyTrigger.current?.isConnected) dailyTrigger.current.focus({ preventScroll: true });
         else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true });
       }} />
-    <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident}
+    <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident} focusedResident={residentId}
       onCloseAutoFocus={event => {
         event.preventDefault();
         if (leavingCharacters.current) { leavingCharacters.current = false; return; }
         worldElement.current?.querySelector<HTMLElement>('[data-world-characters-trigger]')?.focus({ preventScroll: true });
       }} />
-    <WorldResidentDialog open={residentOpen} economy={economy} onClose={closeResident} onBack={residentFromCharacters ? closeResident : undefined}
+    <WorldResidentDialog open={residentOpen && residentId === "plesk"} economy={economy} onClose={closeResident} onBack={residentFromCharacters ? closeResident : undefined}
       onFishing={() => leaveResident(() => openQuick("expeditions", "shore"))}
       onOpenPantry={() => leaveResident(() => openQuick("pantry"))}
       onCloseAutoFocus={event => {
@@ -318,6 +321,16 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           // The gallery lives in a portal; its own open autofocus restores the card.
           return;
         }
+        if (residentReturn.current?.isConnected) residentReturn.current.focus({ preventScroll: true });
+        else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="more"]')?.focus({ preventScroll: true });
+      }} />
+    <WorldBuilderDialog open={residentOpen && residentId === "builder"} economy={economy} onClose={closeResident}
+      onBack={residentFromCharacters ? closeResident : undefined}
+      onOpenConstruction={stationId => leaveResident(() => openUpgrade(stationId))}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (leavingResident.current) { leavingResident.current = false; return; }
+        if (residentFromCharacters) { setResidentFromCharacters(false); return; }
         if (residentReturn.current?.isConnected) residentReturn.current.focus({ preventScroll: true });
         else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="more"]')?.focus({ preventScroll: true });
       }} />

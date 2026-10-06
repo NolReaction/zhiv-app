@@ -7,6 +7,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import { economyCatalog, type EconomyCost, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { ConstructionSpeedup } from "./construction-speedup";
+import { economyBuilderStatus } from "./builder-status";
 import { Requirements, Work, ProductIcon, itemName, stationIcons, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
 import { worldConstructionReason, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "./world-stations";
 import menuStyles from "./world-object-menu.module.css";
@@ -95,14 +96,21 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
   const target = building?.levels.find(level => level.level === current + 1);
   const production = state?.jobs.filter(entry => entry.targetId === stationId && entry.kind === "production") ?? [];
   const construction = state?.jobs.find(entry => entry.targetId === stationId && entry.kind === "construction");
+  const builder = state ? economyBuilderStatus(state, economy.now) : null;
+  const builderElsewhere = !construction && target && builder;
   const readyEconomy: ReadyEconomy | null = state ? { ...economy, snapshot: state } : null;
   const reason = state && target ? worldConstructionReason(state, stationId, target) : null;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const pendingReason = economy.uncertain ? "Сначала подтвердите последнее действие." : economy.busy ? "Подтверждаем действие…" : cooldown > 0 ? `Повторная проверка через ${cooldown} с.` : null;
   const required = target ? worldRequirements(target) : {};
   const missing = state ? worldMissingRequirements(state, required) : [];
-  const visibleReason = pendingReason ?? (missing.length || reason === "Не хватает материалов или монет" ? null : reason);
+  const visibleReason = pendingReason ?? (builderElsewhere || missing.length || reason === "Не хватает материалов или монет" ? null : reason);
   const Icon = stationIcons[stationId] ?? House;
+  const startConstruction = () => {
+    const currentState = economy.snapshot;
+    if (!currentState || !target || locked(economy) || worldConstructionReason(currentState, stationId, target)) return;
+    void economy.act("start_construction", stationId);
+  };
 
   return <>
     <header className={styles.header}>
@@ -118,6 +126,11 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
       {readyEconomy && construction && <section className={styles.activeWork} aria-label="Ход улучшения"><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><ConstructionSpeedup key={construction.id} economy={readyEconomy} job={construction} /><p className={styles.muted}>Материалы оплачены. Работа продолжится после выхода.</p></section>}
       {!state ? <div className={styles.loading} role="status"><RefreshCw size={24} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={menuStyles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые улучшения доступны после подтверждения." : economy.error}</p><button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
+        {builderElsewhere && <section className={styles.builderBusy} data-builder-status={builderElsewhere.ready ? "ready" : "working"} aria-label="Строитель занят">
+          <Hammer size={23} aria-hidden="true" />
+          <div><strong>Строитель занят</strong><span>{builderElsewhere.stationName} · ур. {builderElsewhere.job.targetLevel}</span><p>{builderElsewhere.ready ? "Работа готова — завершите улучшение" : builderElsewhere.seconds ? `Осталось ${builderElsewhere.seconds < 60 ? `${builderElsewhere.seconds} с` : worldDuration(builderElsewhere.seconds)}` : "Идёт работа"}</p></div>
+          {navigation?.canOpen(builderElsewhere.stationId) && <button type="button" onClick={() => navigation.open(builderElsewhere.stationId)} aria-label={`К текущей стройке: ${builderElsewhere.stationName}`}>К постройке<ArrowRight size={13} aria-hidden="true" /></button>}
+        </section>}
         {readyEconomy && production.length > 0 && <section className={styles.section} aria-label="Текущие заказы"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите {production.length === 1 ? "заказ" : "заказы"}</h3>{production.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={onOpenPantry} />)}</section>}
         {target ? <>
           <UpgradeUnlocks state={state} stationId={stationId} target={target} navigation={navigation} />
@@ -132,7 +145,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>Время улучшения<strong>{worldDuration(target.seconds)}</strong></span></span><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={() => void economy.act("start_construction", stationId)}><Hammer size={17} aria-hidden="true" />{current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>Время улучшения<strong>{worldDuration(target.seconds)}</strong></span></span><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

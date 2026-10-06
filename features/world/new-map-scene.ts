@@ -43,6 +43,8 @@ import { interactiveMapObjects } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
 
 import { advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade } from "./plesk-mind";
+import { advanceBuilderMind, builderMindFrame, noticeBuilderMind } from "./builder-mind";
+import { syncForestConstruction } from "./economy-construction-state";
 import { previewForestResidents } from "./dev/forest-resident-preview";
 import { drawForestFishingHero } from "./forest-fishing-painter";
 import type { ForestFishingFrame } from "./forest-fishing";
@@ -312,6 +314,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
     syncForestProduction(state, options.economyProduction, owner);
   }
+  function syncConstruction() {
+    const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
+    syncForestConstruction(state, options.economyConstruction, owner);
+    if (session.isObservationOwner()) advanceBuilderMind(state.builderMind, world, 0,
+      { now: explorationNow(), construction: state.economyConstruction });
+  }
   // DEV rehearsals use the same travel/animation controller with a local clock.
   // A confirmed account job always owns the hero and its economic deadline.
   function displayedJourney(): { journey: EconomySceneJourney | null | undefined; now: number } {
@@ -343,8 +351,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (natural && encounter && !["interrupt", "release"].includes(encounter.phase)) {
       natural = { ...natural, action: natural.carryingFish ? "rest" : "greet", phase: .5, frame: 0, direction: encounter.direction, wildlife: true };
     }
-    return previewForestResidents(world, state.elapsed, reducedMotion(options, dev), rehearsal ?? null,
+    const plesk = previewForestResidents(world, state.elapsed, reducedMotion(options, dev), rehearsal ?? null,
       rehearsal && rehearsal.id === state.residentPreview?.id ? state.residentPreview.startedAt : state.elapsed, natural ? [natural] : []);
+    const builder = builderMindFrame(state.builderMind, world, reducedMotion(options, dev));
+    return [...plesk, ...(builder ? [builder] : [])];
   }
   function stopFishingPreview() {
     if (!state.fishingPreview) return false;
@@ -455,6 +465,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function preview(): NewMapPaintPreview {
     syncProduction();
+    syncConstruction();
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
     const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
@@ -516,7 +527,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       }
       if (dev?.scenarioEvent?.kind === "fishing" && !dev.lifeEvent) startFishingPreview(dev.scenarioEvent.id);
     }
-    syncExploration(); syncGarden(); syncCooking(); syncProduction(); updateObservation(true);
+    syncExploration(); syncGarden(); syncCooking(); syncProduction(); syncConstruction(); updateObservation(true);
   }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
@@ -535,6 +546,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       state.reaction = Math.max(0, state.reaction - step);
       const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
+      syncConstruction();
+      advanceBuilderMind(state.builderMind, world, step, { now: explorationNow(), construction: state.economyConstruction });
       if (state.pleskMind) {
         const resident = pleskMindFrame(state.pleskMind, world, false);
         advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk,
@@ -620,12 +633,19 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           const persistence = !forestPersistenceOverridden(dev, levels);
           stop();
           if (persistence) session.saveMemory(); else session.suspendPersistence();
-          const production = state.economyProduction;
+          const production = state.economyProduction, construction = state.economyConstruction, builder = state.builderMind;
           session.release();
           session = connect(timestamp, persistence); state = session.state;
+          const freshBuilder = !state.economyConstruction && (!state.builderMind
+            || state.builderMind.elapsed === 0 && !state.builderMind.jobKey);
           // Loaded geometry changes the forest fingerprint, not the economic
           // revision fence. Preserve removals across artwork/camera handoffs.
           syncForestProduction(state, production);
+          syncForestConstruction(state, construction);
+          // Seed only a new session. Never replace a live camera's builder or
+          // share mutable feet/clocks with a background view of old geometry.
+          // Targets and route geometry are immutable; progress lives on mind.
+          if (builder && freshBuilder) state.builderMind = { ...builder, position: { ...builder.position } };
         }
       }
       art = new Map(images); visuals = next; syncOwner();
@@ -770,16 +790,19 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     hitResident(x, y) {
       if (disposed || !art) return null;
       const point = { x, y }, still = reducedMotion(options, dev);
-      const residents = residentFrames(), resident = residents[0];
+      const residents = residentFrames(), id = forestResidentAt(world, state.elapsed, still, point, residents);
+      const resident = residents.find(resident => resident.id === id);
       if (!resident) return null;
       const actor = clearingActivityFrame(state.clearing);
       if (actor.y > resident.y && hitVisiblePet((x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width,
         (y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) return null;
-      return forestResidentAt(world, state.elapsed, still, point, residents);
+      return id;
     },
     noticeResident(id) {
-      if (disposed || id !== "plesk" || !state.pleskMind || !session.isOwner()) return;
-      noticePleskMind(state.pleskMind); updateObservation(true); session.publish();
+      if (disposed || !session.isOwner()) return;
+      if (id === "builder") noticeBuilderMind(state.builderMind);
+      else noticePleskMind(state.pleskMind);
+      updateObservation(true); session.publish();
     },
     visitTradingPlace(id) {
       if (disposed || id !== "plesk" || !art || dev?.showBuildings === false || !session.isOwner()
@@ -790,7 +813,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     inspectPoint(target) {
       if (disposed || !art) return null;
-      const resident = target === "plesk" ? residentFrames()[0] : null;
+      const resident = residentFrames().find(resident => resident.id === target);
       if (resident) return { x: resident.x, y: resident.y - resident.size / 2 };
       const shore = target === "fishing" ? forestTrailDestination(world, "fishing") : null;
       return shore ? { x: shore.x, y: shore.y - PET_SIZE / 2 } : null;

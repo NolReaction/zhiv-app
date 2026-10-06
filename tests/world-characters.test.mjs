@@ -51,19 +51,19 @@ function elements(tree) {
   visit(tree); return found;
 }
 
-test("the library has one implemented resident and four nameless immutable unknown slots", () => {
+test("the library has two implemented residents and three nameless immutable unknown slots", () => {
   assert.equal(WORLD_CHARACTERS.length, 5);
-  assert.deepEqual(WORLD_CHARACTERS.filter(item => item.available).map(item => item.id), ["plesk"]);
+  assert.deepEqual(WORLD_CHARACTERS.filter(item => item.available).map(item => item.id), ["builder", "plesk"]);
   assert.equal(Object.isFrozen(WORLD_CHARACTERS), true);
   for (const item of WORLD_CHARACTERS) {
     assert.equal(Object.isFrozen(item), true);
-    assert.equal(worldCharacterResident(item.id), item.available ? "plesk" : null);
+    assert.equal(worldCharacterResident(item.id), item.available ? item.id : null);
     if (!item.available) for (const field of ["name", "role", "unlock", "cost"]) assert.equal(field in item, false);
   }
-  for (const id of ["unknown", "home", "mochlik", "", "__proto__"]) assert.equal(worldCharacterResident(id), null);
+  for (const id of ["unknown", "unknown-1", "home", "mochlik", "", "__proto__"]) assert.equal(worldCharacterResident(id), null);
 });
 
-test("a separate modal gallery has one large animated resident and four nameless noninteractive silhouettes", () => {
+test("a separate modal gallery has each resident's animated portrait and three nameless noninteractive silhouettes", () => {
   const residents = []; let closed = 0;
   const gallery = WorldCharacters({ open: true, onClose() { closed++; }, onCloseAutoFocus() {}, onResident: id => residents.push(id) });
   assert.equal(gallery.props.open, true);
@@ -72,19 +72,32 @@ test("a separate modal gallery has one large animated resident and four nameless
   const html = renderToStaticMarkup(list);
   const available = nodes.find(element => element.props["data-world-character"] === "plesk");
   assert.equal(available.props["aria-haspopup"], "dialog"); available.props.onClick(); assert.deepEqual(residents, ["plesk"]);
-  assert.equal(nodes.filter(element => element.props["aria-label"] === "Неизвестный персонаж, пока недоступен").length, 4);
+  const builder = nodes.find(element => element.props["data-world-character"] === "builder");
+  assert.equal(builder.props["aria-haspopup"], "dialog"); builder.props.onClick(); assert.deepEqual(residents, ["plesk", "builder"]);
+  assert.equal(nodes.filter(element => element.props["aria-label"] === "Неизвестный персонаж, пока недоступен").length, 3);
   for (const node of nodes.filter(element => element.props["aria-label"] === "Неизвестный персонаж, пока недоступен")) {
     assert.equal(node.type, "div"); assert.equal(node.props.onClick, undefined); assert.equal(node.props.tabIndex, undefined);
   }
   assert.equal(elements(available).find(element => element.type.name === "PleskPortrait").props.animated, true);
-  assert.equal(list.props.children[0].key, "plesk", "the only available resident is first");
-  assert.equal((html.match(/<canvas/g) ?? []).length, 1);
-  assert.equal((html.match(/class="[^\"]*question[^\"]*"/g) ?? []).length, 4);
-  assert.doesNotMatch(html, /Шишколап|Лопоух|Камнешмыг|Листохвост|Разблокировать|Купить|<img/);
+  assert.equal(elements(builder).find(element => element.type.name === "BuilderPortrait").props.animated, true);
+  assert.deepEqual(list.props.children.slice(0, 2).map(item => item.key), ["builder", "plesk"], "available residents precede locked slots");
+  assert.equal((html.match(/<canvas/g) ?? []).length, 2);
+  assert.equal((html.match(/class="[^\"]*question[^\"]*"/g) ?? []).length, 3);
+  assert.match(html, /Шишколап/);
+  assert.doesNotMatch(html, /Лопоух|Камнешмыг|Листохвост|Разблокировать|Купить|<img/);
   const content = nodes.find(element => element.props["data-slot"] === "dialog-content");
   let prevented = false, focused = false;
-  content.props.onOpenAutoFocus({ target: { querySelector(selector) { assert.equal(selector, '[data-world-character="plesk"]'); return { focus() { focused = true; } }; } }, preventDefault() { prevented = true; } });
+  content.props.onOpenAutoFocus({ target: { querySelector(selector) { assert.equal(selector, 'button[data-world-character]'); return { focus() { focused = true; } }; } }, preventDefault() { prevented = true; } });
   assert.equal(prevented, true); assert.equal(focused, true, "portal autofocus targets its own card, not the world DOM");
+  for (const id of ["builder", "plesk"]) {
+    const returning = WorldCharacters({ open: true, onClose() {}, onCloseAutoFocus() {}, onResident() {}, focusedResident: id });
+    const returningContent = elements(returning).find(element => element.props["data-slot"] === "dialog-content");
+    let returned = false;
+    returningContent.props.onOpenAutoFocus({ target: { querySelector(selector) {
+      assert.equal(selector, `button[data-world-character="${id}"]`); return { focus() { returned = true; } };
+    } }, preventDefault() {} });
+    assert.equal(returned, true, `returning from ${id} restores that resident's card`);
+  }
 });
 
 function navigation() {
@@ -118,20 +131,23 @@ function navigation() {
 }
 
 test("More opens a separate gallery; conversation Back/close return there and gallery close restores its menu trigger", () => {
-  for (const exit of ["onBack", "onClose"]) {
+  for (const resident of ["plesk", "builder"]) for (const exit of ["onBack", "onClose"]) {
     const nav = navigation();
+    const dialogName = resident === "builder" ? "WorldBuilderDialog" : "WorldResidentDialog";
     try {
       nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
       assert.equal(nav.component("WorldCharacters").props.open, false);
       nav.find(element => element.props["data-world-characters-trigger"] !== undefined).props.onClick();
       let library = nav.component("WorldCharacters"); assert.equal(library.props.open, true);
       assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined, "More is gone behind the gallery");
-      library.props.onResident("plesk"); library = nav.component("WorldCharacters"); assert.equal(library.props.open, false);
+      library.props.onResident(resident); library = nav.component("WorldCharacters"); assert.equal(library.props.open, false);
       let prevented = false; library.props.onCloseAutoFocus({ preventDefault() { prevented = true; } });
       assert.equal(prevented, true); assert.deepEqual(nav.focused, [], "switching modals must not focus the hidden More menu");
-      let dialog = nav.component("WorldResidentDialog"); assert.equal(dialog.props.open, true); assert.equal(typeof dialog.props.onBack, "function");
-      dialog.props[exit](); dialog = nav.component("WorldResidentDialog"); assert.equal(dialog.props.open, false);
+      let dialog = nav.component(dialogName); assert.equal(dialog.props.open, true); assert.equal(typeof dialog.props.onBack, "function");
+      assert.equal(nav.component(resident === "builder" ? "WorldResidentDialog" : "WorldBuilderDialog").props.open, false, "only the requested resident opens");
+      dialog.props[exit](); dialog = nav.component(dialogName); assert.equal(dialog.props.open, false);
       assert.equal(nav.component("WorldCharacters").props.open, true);
+      assert.equal(nav.component("WorldCharacters").props.focusedResident, resident, "gallery autofocus returns to the same character");
       dialog.props.onCloseAutoFocus({ preventDefault() {} });
       assert.deepEqual(nav.focused, [], "gallery open autofocus owns focus inside its portal");
       library = nav.component("WorldCharacters"); library.props.onClose();
@@ -144,6 +160,26 @@ test("More opens a separate gallery; conversation Back/close return there and ga
   }
 });
 
+test("the builder opens from the map and leaving his conversation selects the exact paid upgrade", () => {
+  const nav = navigation();
+  try {
+    nav.component("WorldScene").props.onResident("builder");
+    let dialog = nav.component("WorldBuilderDialog"); assert.equal(dialog.props.open, true); assert.equal(dialog.props.onBack, undefined);
+    assert.equal(nav.component("WorldResidentDialog").props.open, false);
+    dialog.props.onClose(); dialog = nav.component("WorldBuilderDialog"); dialog.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, ["map"]); assert.equal(nav.component("WorldCharacters").props.open, false);
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    nav.find(element => element.props["data-world-characters-trigger"] !== undefined).props.onClick();
+    nav.component("WorldCharacters").props.onResident("builder");
+    nav.component("WorldBuilderDialog").props.onOpenConstruction("warehouse");
+    dialog = nav.component("WorldBuilderDialog"); assert.equal(dialog.props.open, false);
+    assert.equal(nav.component("WorldCharacters").props.open, false);
+    assert.equal(nav.component("WorldUpgradeDialog").props.stationId, "warehouse");
+    dialog.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, ["map"], "opening the upgrade must not refocus the hidden gallery");
+  } finally { nav.restore(); }
+});
+
 test("map and pantry conversation entries keep their return paths, while fishing leaves the gallery", () => {
   const nav = navigation();
   try {
@@ -152,7 +188,7 @@ test("map and pantry conversation entries keep their return paths, while fishing
     dialog.props.onClose(); dialog = nav.component("WorldResidentDialog"); dialog.props.onCloseAutoFocus({ preventDefault() {} });
     assert.deepEqual(nav.focused, ["map"]); assert.equal(nav.component("WorldCharacters").props.open, false);
     nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
-    nav.component("WorldPantryMenu").props.onOpenFishingShop();
+    nav.component("WorldPantryMenu").props.onOpenFishingShop({ type: "click" });
     dialog = nav.component("WorldResidentDialog"); assert.equal(dialog.props.onBack, undefined);
     dialog.props.onClose(); dialog = nav.component("WorldResidentDialog"); dialog.props.onCloseAutoFocus({ preventDefault() {} });
     assert.deepEqual(nav.focused, ["map", "more"]);
@@ -163,6 +199,9 @@ test("map and pantry conversation entries keep their return paths, while fishing
     assert.equal(nav.component("WorldResidentDialog").props.open, false);
     assert.equal(nav.component("WorldCharacters").props.open, false);
     assert.equal(nav.component("WorldExpeditionsMenu").props.initialSector, "shore");
+    nav.component("WorldExpeditionsMenu").props.onOpenFishingShop({ type: "click" });
+    assert.equal(nav.component("WorldResidentDialog").props.open, true, "an actual button event cannot become the resident ID");
+    assert.equal(nav.component("WorldBuilderDialog").props.open, false);
   } finally { nav.restore(); }
 });
 

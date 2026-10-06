@@ -1,4 +1,5 @@
 import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
+import type { WorldResidentId } from "@/features/world/world-characters-model";
 import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point, type VerticalCameraInsets } from "./camera";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { WORLD_ART } from "./art";
@@ -16,7 +17,7 @@ export class MapLoadError extends Error {
 export type WorldPlace = MapObjectPlace | "journeys" | "wardrobe" | "river" | "trail" | "cave" | "fishing";
 export type MapObjectSelection = { place: WorldPlace; objectId: string; x: number; y: number; viewportWidth: number; viewportHeight: number };
 export type MapInteractionCallbacks = {
-  onResident?: (id: "plesk") => void;
+  onResident?: (id: WorldResidentId) => void;
   objectAnchorsEnabled?: boolean;
   onSelectionChange?: (selection: MapObjectSelection | null) => void;
   onObjectAnchorsChange?: (anchors: readonly MapObjectScreenAnchor[]) => void;

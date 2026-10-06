@@ -80,7 +80,7 @@ import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useWorld } from "@/features/world/use-world";
 import { useEconomy } from "@/features/economy/use-economy";
 import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/garden-collection-context";
-import { economySceneActivity, economySceneJourney, economySceneProduction, economyWorldState } from "@/features/economy/world-adapter";
+import { economySceneActivity, economySceneJourney, economySceneProduction, economySceneConstruction, economyWorldState } from "@/features/economy/world-adapter";
 import { worldActivity } from "@/features/world/world-activity";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
@@ -600,6 +600,7 @@ export function CheckInApp() {
   const renderedWorldState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
+  const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot), [economy.snapshot]);
   const economicActivity = useMemo(() => economySceneActivity(economy.snapshot), [economy.snapshot]);
   const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
   const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
@@ -1482,7 +1483,7 @@ export function CheckInApp() {
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
               <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} activity={currentActivity} />
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} activity={currentActivity} />
             </div>}
             <button
               type="button"

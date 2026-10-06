@@ -27,6 +27,7 @@ const options = { paused: false, reducedMotion: true, lampOn: false, dusk: false
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const sourceAndDestination = args => args.length === 5
   ? [args[0], 0, 0, args[0].naturalWidth, args[0].naturalHeight, ...args.slice(1)] : args;
+const builderRigForHero = new WeakMap();
 
 async function modules(override) {
   const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -34,7 +35,7 @@ async function modules(override) {
   try {
     const { default: scene } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
     Object.assign(scene, structuredClone(fixture), override);
-    return {
+    const loaded = {
       ...await vite.ssrLoadModule("/features/mochlik/scene.ts"),
       ...await vite.ssrLoadModule("/features/world/map-engine.ts"),
       ...await vite.ssrLoadModule("/features/world/art.ts"),
@@ -52,7 +53,11 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/forest-journey-travel.ts"),
       ...await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts"),
+      ...await vite.ssrLoadModule("/features/world/builder-sprite.ts"),
+      ...await vite.ssrLoadModule("/features/world/builder-mind.ts"),
     };
+    builderRigForHero.set(loaded.pixelSprite, loaded.builderSpriteRig);
+    return loaded;
   } finally { await vite.close(); }
 }
 
@@ -1384,7 +1389,7 @@ function sampleHero(scene, env, pixelSprite, withInteractionRig = false) {
   const target = env.surface();
   scene.paintWorld(target.context);
   const body = target.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
-    && call.args[0]?.width === 48 && call.args[0]?.height === 48);
+    && call.args[0]?.width === 48 && call.args[0]?.height === 48 && !builderRigForHero.get(pixelSprite)?.(call.args[0]));
   return {
     body, calls: target.calls,
     hasPose(...poses) {
@@ -3492,4 +3497,185 @@ test("ordinary quarry production walks from base, shares the miner across camera
     assert.equal(probe.state.journeyTravel.jobId,expedition.id);
     assert.deepEqual(production,original,"a visual worker cannot alter production dates, output or claim state");
   }finally{views.forEach(view=>view.dispose());probe?.release();worldDevStore.reset();env.restore();}
+});
+
+const builderFixture = () => ({
+  ...residentFixture(),
+  sites: [{ id: "workshop", label: "Мастерская", initialLevel: 1,
+    bounds: { x: 600, y: 620, width: 40, height: 35 }, anchor: { x: 620, y: 648 }, entry: { x: 620, y: 670 },
+    hitArea: [{ x: 600, y: 620 }, { x: 640, y: 620 }, { x: 640, y: 655 }, { x: 600, y: 655 }],
+    collision: [{ x: 602, y: 633 }, { x: 638, y: 633 }, { x: 638, y: 650 }, { x: 602, y: 650 }],
+    states: [{ level: 1, label: "Мастерская", image: "/test-builder-workshop.webp" }] }],
+});
+const confirmedConstruction = (ownerPublicId, revision = 1, jobs) => ({ ownerPublicId, revision,
+  jobs: jobs ?? [{ id: "confirmed-workshop", stationId: "workshop", targetLevel: 2,
+    startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() }],
+});
+
+test("builder work shares one route and clock across cameras; painting and hit tests cannot progress it", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, builderSpriteRig } = await modules(builderFixture());
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const construction = confirmedConstruction("builder-shared"), original = structuredClone(construction);
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000,
+      presenceKey: "zhiv:mochlik:presence:builder-shared", economyConstruction: construction };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const mind = probe.state.builderMind, clock = sceneClock(env);
+    assert.ok(mind); assert.equal(mind.job.id, "confirmed-workshop");
+    assert.equal(mind.action, "walk");
+    const first = { ...mind.position }; clock.advance(.5); assert.notDeepEqual(mind.position, first);
+    const beforeMount = structuredClone(mind);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+    assert.strictEqual(probe.state.builderMind, mind); assert.deepEqual(mind, beforeMount);
+    assert.equal(env.frames.size, 1, "two cameras elect one active clock");
+    for (let pass = 0; pass < 4; pass++) for (const view of [circle, world]) {
+      const painted = env.surface(); view.paintWorld(painted.context);
+      assert.ok(painted.calls.some(call => call.method === "drawImage" && builderSpriteRig(call.args[0])), "the real builder sprite is painted");
+      const point = view.inspectPoint("builder"); assert.ok(point); view.hitResident(point.x, point.y);
+    }
+    assert.deepEqual(mind, beforeMount, "sampling cannot advance builder route, action, or decisions");
+    const elapsed = mind.elapsed, sharedElapsed = probe.state.elapsed;
+    clock.advance(.4);
+    approximately(mind.elapsed - elapsed, probe.state.elapsed - sharedElapsed, "one shared builder simulation step per world step");
+    clock.until(() => mind.action === "work", "the builder reaches the confirmed workshop and starts working", 600);
+    assert.equal(mind.target.id, "workshop");
+    assert.equal(probe.state.explorationId, null, "construction does not assign an expedition to Mochlik");
+    assert.deepEqual(construction, original, "the animation cannot edit a confirmed job or its timestamps");
+    const handoff = structuredClone(mind); world.dispose(); circle.configure(initial);
+    assert.deepEqual(mind, handoff, "returning to the circle preserves the builder at his work spot");
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("construction removals fence stale cameras and changing accounts cannot inherit another owner's builder job", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(builderFixture());
+  const env = browser(), views = [], probes = [];
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const old = confirmedConstruction("builder-fence", 5), initial = { ...options, reducedMotion: false, serverNow: 100_000,
+      presenceKey: "zhiv:mochlik:presence:builder-fence", economyConstruction: old };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
+    const probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {}); probes.push(probe);
+    assert.equal(probe.state.builderMind.job.id, old.jobs[0].id);
+    const removed = confirmedConstruction("builder-fence", 6, []);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world", economyConstruction: removed }, callbacks); views.push(world); await flush();
+    assert.equal(probe.state.economyConstruction.revision, 6); assert.equal(probe.state.builderMind.job, null);
+    circle.configure(initial);
+    assert.equal(probe.state.economyConstruction.revision, 6); assert.equal(probe.state.builderMind.job, null, "the background camera cannot resurrect collected construction");
+    const beforeOwnerChange = structuredClone(probe.state.builderMind);
+    const other = { ...initial, presenceKey: "zhiv:mochlik:presence:builder-other", view: "world" };
+    world.configure(other);
+    const next = connectForestSession(other.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {}); probes.push(next);
+    assert.notStrictEqual(next.state.builderMind, probe.state.builderMind);
+    assert.equal(next.state.economyConstruction, undefined, "a mismatched cached account snapshot is rejected");
+    assert.equal(next.state.builderMind.job, null);
+    assert.deepEqual(probe.state.builderMind, beforeOwnerChange, "switching accounts cannot mutate the preceding resident");
+    const accepted = confirmedConstruction("builder-other", 1);
+    world.configure({ ...other, economyConstruction: accepted });
+    assert.equal(next.state.builderMind.job.id, accepted.jobs[0].id);
+    accepted.jobs[0].stationId = "quarry";
+    assert.equal(next.state.economyConstruction.jobs[0].stationId, "workshop", "accepted account data is copied at the boundary");
+  } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); worldDevStore.reset(); env.restore(); }
+});
+
+test("reduced motion and hidden views freeze builder feet while confirmed completion can still refresh", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(builderFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000,
+      presenceKey: "zhiv:mochlik:presence:builder-frozen", economyConstruction: confirmedConstruction("builder-frozen") };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const mind = probe.state.builderMind, clock = sceneClock(env); clock.advance(.5);
+    scene.configure({ ...initial, reducedMotion: true, serverNow: 800_000 });
+    const feet = { ...mind.position }, elapsed = mind.elapsed;
+    assert.equal(mind.ready, true, "the server deadline is independent of the paused cosmetic clock");
+    clock.advance(2); assert.deepEqual(mind.position, feet); assert.equal(mind.elapsed, elapsed);
+    assert.deepEqual(scene.inspectPoint("builder"), { x: feet.x, y: feet.y - 20 });
+    scene.configure({ ...initial, serverNow: 800_000, backgrounded: true });
+    const backgrounded = structuredClone(mind); clock.advance(2); assert.deepEqual(mind, backgrounded);
+    scene.configure({ ...initial, serverNow: 800_000 }); env.visibility(true);
+    const hidden = structuredClone(mind); clock.advance(2); assert.deepEqual(mind, hidden);
+    env.visibility(false); clock.advance(.5); assert.ok(mind.elapsed > hidden.elapsed, "visibility resumes the same resident");
+    assert.equal(mind.job.id, "confirmed-workshop", "an expired but unclaimed build remains assigned");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("builder taps open his conversation without touching Pleska or Mochlik; camera gestures stay inert", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "builder-taps" };
+    const canvas = env.surface(400), residents = [];
+    const loading = createMapEngine(canvas, initial, assert.fail, [], undefined, {}, { onResident: id => residents.push(id) });
+    env.finish(); await flush(); engine = await loading; engine.control("overview");
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const builder = probe.state.builderMind, seller = structuredClone(probe.state.pleskMind);
+    const touch = () => { const projection = mapProjection(canvas); return { pointerId: 1, pointerType: "touch", button: 0,
+      clientX: projection.left + builder.position.x * projection.zoom, clientY: projection.top + (builder.position.y - 20) * projection.zoom }; };
+    const send = (name, point) => canvas.events.get(name)({ ...point, type: name });
+    const before = structuredClone(builder); let point = touch();
+    send("pointerdown", point); send("pointermove", { ...point, clientX: point.clientX + 30 }); send("pointerup", { ...point, clientX: point.clientX + 30 }); engine.control("overview");
+    point = touch(); send("pointerdown", point); send("pointercancel", point);
+    const second = { ...point, pointerId: 2, clientX: point.clientX + 35 };
+    send("pointerdown", point); send("pointerdown", second); send("pointermove", { ...second, clientX: second.clientX + 10 });
+    send("pointerup", point); send("pointerup", { ...second, clientX: second.clientX + 10 }); engine.control("overview");
+    assert.deepEqual(residents, []); assert.deepEqual(builder, before);
+    point = touch(); send("pointerdown", point); send("pointerup", point);
+    assert.deepEqual(residents, ["builder"]); assert.equal(builder.noticePending, true);
+    assert.deepEqual(probe.state.pleskMind, seller); assert.equal(probe.state.reaction, 0);
+    const clock = sceneClock(env); clock.advance(.1); assert.equal(builder.action, "greet");
+    assert.deepEqual(probe.state.pleskMind.position, seller.position, "a builder greeting cannot move the merchant");
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a loaded geometry handoff clones builder progress and a late camera joins without rewinding it", async () => {
+  const authored = builderFixture(), site = authored.sites[0], shift = -10;
+  site.states.push({ level: 2, label: "Большая мастерская", image: "/test-builder-workshop-2.webp", geometry: {
+    bounds: { ...site.bounds, x: site.bounds.x + shift }, anchor: { ...site.anchor, x: site.anchor.x + shift },
+    entry: { ...site.entry, x: site.entry.x + shift },
+    hitArea: site.hitArea.map(point => ({ ...point, x: point.x + shift })),
+    collision: site.collision.map(point => ({ ...point, x: point.x + shift })),
+  } });
+  const { mountHabitat, connectForestSession, previewWorldScene, TILED_WORLD, worldDevStore } = await modules(authored);
+  const env = browser(), views = [], probes = [];
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, economyBuildings: { workshop: 1 },
+      presenceKey: "zhiv:mochlik:presence:builder-geometry", economyConstruction: confirmedConstruction("builder-geometry", 5) };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
+    const oldProbe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { workshop: 1 }), "circle", 100_000, 0, () => {}); probes.push(oldProbe);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+    const clock = sceneClock(env); clock.advance(.5);
+    const oldMind = oldProbe.state.builderMind, beforeLoad = structuredClone(oldMind);
+    const completed = { ...initial, view: "world", economyBuildings: { workshop: 2 },
+      economyConstruction: confirmedConstruction("builder-geometry", 6, []) };
+    world.configure(completed); assert.deepEqual(oldMind.position, beforeLoad.position, "pending art does not teleport the worker");
+    env.finishPath("/test-builder-workshop-2.webp"); await flush();
+    const newProbe = connectForestSession(initial.presenceKey, previewWorldScene(TILED_WORLD, { workshop: 2 }), "circle", 100_000, 0, () => {}); probes.push(newProbe);
+    const newMind = newProbe.state.builderMind;
+    assert.notStrictEqual(newMind, oldMind, "different geometry sessions cannot mutate one builder object");
+    assert.deepEqual(newMind.position, beforeLoad.position, "the committed footprint retains the worker's current feet");
+    assert.equal(newMind.job, null); assert.equal(newProbe.state.economyConstruction.revision, 6);
+    world.configure({ ...completed, paused: true });
+    circle.configure(initial);
+    const frozen = structuredClone(newMind); clock.advance(.5);
+    assert.deepEqual(newMind, frozen, "a stale active circle cannot move the paused builder on the new map");
+    world.configure(completed); clock.advance(.5);
+    const beforeJoin = structuredClone(newMind);
+    circle.configure({ ...completed, view: "circle" }); await flush();
+    assert.strictEqual(newProbe.state.builderMind, newMind, "late camera does not replace the existing map builder");
+    assert.deepEqual(newMind, beforeJoin, "joining preserves the newer job fence, clock and feet");
+    assert.equal(newMind.job, null); assert.equal(env.frames.size, 1);
+  } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); worldDevStore.reset(); env.restore(); }
 });

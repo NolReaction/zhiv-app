@@ -10,6 +10,8 @@ import { createForestMemory, forestSceneFingerprint, type ForestMemoryEnvironmen
 import { forgetForestObservation } from "./forest-observer";
 import { createForestMemorySync, type ForestMemorySyncEnvironment, type ForestMemoryTransport } from "./forest-memory-sync";
 import { createPleskMind, type PleskMind } from "./plesk-mind";
+import { createBuilderMind, type BuilderMind } from "./builder-mind";
+import type { EconomySceneConstruction } from "./economy-construction-state";
 import type { ForestJourneyTravel } from "./forest-journey-travel";
 import type { EconomySceneProduction } from "./economy-production-state";
 
@@ -24,6 +26,8 @@ export type ForestSessionState = {
   director: ReturnType<typeof createForestDirector>;
   /** Resident autonomy shares the visible session clock, never economic inventory. */
   pleskMind: PleskMind | null;
+  builderMind: BuilderMind | null;
+  economyConstruction?: EconomySceneConstruction;
   birdReactions: ReturnType<typeof createBirdReactions>;
   lastBirdStimulus: number;
   pendingLife: ForestDirective | null;
@@ -62,7 +66,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   let shared = identity === undefined ? undefined : sessions.get(identity);
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
-      fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
+      fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: createBuilderMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
       pendingLife: null, pendingAttention: false,
       reaction: 0, animation: null, birdStarted: null, birdSeed: -1,
       memory: { mode: "ephemeral", restored: false, reconciled: false, lastSavedAt: null, enabled: false } };
@@ -81,7 +85,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
         apply(payload) {
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
           Object.assign(state, { elapsed: 0, wetness: 0, clearing: createClearingActivity(scene), life: createForestLife(scene),
-            fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
+            fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: createBuilderMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(),
             lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
