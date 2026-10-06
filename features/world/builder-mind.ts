@@ -15,6 +15,9 @@ export type BuilderMind = {
   route: SteeringPath | null; distance: number; speed: number; walked: number;
   wait: number; wanderIndex: number; decisions: number; blocked: boolean;
   noticePending: boolean; greetAfter: number;
+  /** One cold entry only: wait for authoritative economics before choosing feet.
+   * Kept across local hydration/camera handoffs, never written to server memory. */
+  constructionPending: boolean;
 };
 export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8.8, finish: 1.4,
   greeting: 2, acceleration: BUILDER.size * 1.6 } as const;
@@ -22,12 +25,12 @@ const length = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y
 
 /** A single session owns the feet and cosmetic clock. No setInterval, job
  * commands, currency, reward generation or offline catch-up lives here. */
-export function createBuilderMind(scene: FixedWorldScene): BuilderMind | null {
+export function createBuilderMind(scene: FixedWorldScene, options: { awaitConstruction?: boolean } = {}): BuilderMind | null {
   const places = builderLocalPlaces(scene); if (!places) return null;
   return { scene, available: true, position: { ...places.rest.position }, direction: "front", elapsed: 0, age: 0,
     action: "idle", ready: false, job: null, jobKey: "", target: places.rest,
     route: null, distance: 0, speed: 0, walked: 0, wait: 8, wanderIndex: 0, decisions: 0, blocked: false,
-    noticePending: false, greetAfter: 0 };
+    noticePending: false, greetAfter: 0, constructionPending: options.awaitConstruction === true };
 }
 
 function action(mind: BuilderMind, value: BuilderAction) {
@@ -81,8 +84,18 @@ function walk(mind: BuilderMind, places: BuilderPlaces, dt: number) {
 }
 
 function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvironment): BuilderPlaces | null {
+  // Loading is not an empty confirmed snapshot. In particular a slow economy
+  // response must not first show an idle builder in the clearing, then move him.
+  const restoreConstruction = mind.constructionPending;
+  if (restoreConstruction && !env.construction) return null;
   const changedScene = mind.scene !== scene, places = builderLocalPlaces(scene);
   mind.scene = scene;
+  if (restoreConstruction) {
+    // No feet have been shown yet. If account artwork changed while loading,
+    // validate from this geometry's rest rather than an obsolete spawn point.
+    if (!places) { mind.available = false; return null; }
+    mind.position = { ...places.rest.position }; mind.constructionPending = false;
+  }
   const job = forestConstructionJob(env.construction, env.now);
   const key = job ? `${env.construction?.ownerPublicId}:${job.id}:${job.stationId}:${job.targetLevel}` : "";
   const changedJob = key !== mind.jobKey;
@@ -100,6 +113,13 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
     // Each new job or immutable geometry snapshot gets one bounded attempt.
     // Repeated camera paints and ready timers never retry a blocked route.
     beginRoute(mind, places, job ? builderWorkStops(scene, job) : [places.rest]);
+    if (restoreConstruction && job && mind.target && !mind.blocked) {
+      // A construction present on cold entry has already been assigned. Its
+      // validated exterior stop is enough to resume the cosmetic worker; no
+      // saved coordinates, elapsed travel estimate or job timer change is needed.
+      // beginRoute verifies reachability and both current/future art clearance.
+      mind.position = { ...mind.target.position }; settle(mind);
+    }
     if (finishedAtSite || finishingAge !== null) {
       // Claim/speed-up changes the building, never the feet. Inspect the result
       // once, then follow the already checked return path. A new job wins above.
@@ -150,7 +170,7 @@ export function noticeBuilderMind(mind: BuilderMind | null): void {
 
 /** Circle, map and hit testing all read this frame; none advances the resident. */
 export function builderMindFrame(mind: BuilderMind | null, scene: FixedWorldScene, still: boolean): BuilderResidentFrame | null {
-  if (!mind?.available || mind.scene !== scene) return null;
+  if (!mind?.available || mind.constructionPending || mind.scene !== scene) return null;
   let displayAction = mind.action;
   let phase = mind.action === "finish" ? Math.min(1, mind.age / BUILDER_MIND_LIMITS.finish)
     : mind.action === "greet" ? Math.min(1, mind.age / BUILDER_MIND_LIMITS.greeting) : mind.age % 6 / 6;

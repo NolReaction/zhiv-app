@@ -46,6 +46,64 @@ function advance(mind, scene, construction, seconds, now = start, dt = .1) {
   }
 }
 
+test("cold entry restores any existing construction at its checked work stop, including a recent or ready order", () => {
+  const scene = fixture();
+  for (const now of [start, start + 2000, finish + 1000]) {
+    const mind = createBuilderMind(scene, { awaitConstruction: true }), construction = snapshot();
+    const saved = structuredClone(construction), initial = { ...mind.position };
+    assert.equal(builderMindFrame(mind, scene, false), null, "no clearing spawn is visible before authority arrives");
+    advanceBuilderMind(mind, scene, 0, { now, construction });
+    assert.equal(mind.constructionPending, false); assert.equal(mind.job.id, "home");
+    assert.notDeepEqual(mind.position, initial); assert.deepEqual(mind.position, mind.target.position);
+    assert.ok(builderWorkStops(scene, job()).some(stop => stop.position.x === mind.position.x && stop.position.y === mind.position.y));
+    assert.equal(mind.action, now >= finish ? "idle" : "work"); assert.equal(mind.ready, now >= finish);
+    assert.equal(mind.route, null); assert.equal(mind.elapsed, 0); assert.equal(mind.walked, 0);
+    assert.equal(builderMindFrame(mind, scene, true).targetId, "home");
+    const position = { ...mind.position };
+    advance(mind, scene, construction, 1, now);
+    assert.deepEqual(mind.position, position); assert.deepEqual(construction, saved);
+  }
+});
+
+test("a slow first construction response stays hidden, while a confirmed empty baseline makes later work walk normally", () => {
+  const scene = fixture(), mind = createBuilderMind(scene, { awaitConstruction: true }), initial = { ...mind.position };
+  for (const construction of [undefined, null, undefined]) {
+    advanceBuilderMind(mind, scene, 1, { now: start + 5000, construction });
+    assert.equal(mind.constructionPending, true); assert.equal(builderMindFrame(mind, scene, false), null);
+    assert.deepEqual(mind.position, initial); assert.equal(mind.elapsed, 0);
+  }
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: snapshot([], 1) });
+  assert.equal(mind.constructionPending, false); assert.ok(builderMindFrame(mind, scene, false));
+  assert.deepEqual(mind.position, initial);
+  advanceBuilderMind(mind, scene, 0, { now: start + 5000, construction: snapshot([job()], 2) });
+  assert.equal(mind.action, "walk"); assert.deepEqual(mind.position, initial, "even an old timestamp is a newly assigned observed order");
+  advance(mind, scene, snapshot([job()], 2), 30, start + 5000);
+  assert.equal(mind.action, "work");
+});
+
+test("cold entry cannot materialize through an unreachable host or invent work for invalid jobs", () => {
+  const scene = fixture(); scene.navigation.obstacles[0].points = rect(146, 0, 14, 240);
+  const mind = createBuilderMind(scene, { awaitConstruction: true }), position = { ...mind.position };
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: snapshot() });
+  assert.equal(mind.blocked, true); assert.equal(mind.action, "idle"); assert.deepEqual(mind.position, position);
+  const decisions = mind.decisions;
+  advance(mind, scene, snapshot(), 5);
+  assert.equal(mind.decisions, decisions, "a blocked initial route is not recalculated every frame");
+  const invalid = createBuilderMind(fixture(), { awaitConstruction: true });
+  advanceBuilderMind(invalid, invalid.scene, 0, { now: start, construction: snapshot([{ ...job(), targetLevel: 0 }]) });
+  assert.equal(invalid.job, null); assert.equal(invalid.action, "idle"); assert.equal(invalid.constructionPending, false);
+});
+
+test("account geometry arriving before first display validates restoration without obsolete hidden feet", () => {
+  const original = fixture(), mind = createBuilderMind(original, { awaitConstruction: true }), loaded = structuredClone(original);
+  loaded.navigation.obstacles.push({ id: "loaded-level-art", points: rect(mind.position.x - 10, mind.position.y - 10, 20, 20) });
+  assert.equal(isWalkable(builderLocalPlaces(loaded).navigation, mind.position), false);
+  advanceBuilderMind(mind, loaded, 0, { now: start, construction: snapshot() });
+  assert.equal(mind.available, true); assert.equal(mind.action, "work"); assert.equal(mind.constructionPending, false);
+  assert.ok(isWalkable(builderLocalPlaces(loaded).navigation, mind.position));
+  assert.deepEqual(mind.position, mind.target.position);
+});
+
 test("builder reaches a confirmed job around obstacles and animation never completes it", () => {
   const scene = fixture(), mind = createBuilderMind(scene), construction = snapshot(), saved = structuredClone(construction);
   assert.ok(mind); assert.notDeepEqual(mind.position, scene.actor.spawn);

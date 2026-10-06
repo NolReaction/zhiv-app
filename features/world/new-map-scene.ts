@@ -317,8 +317,17 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function syncConstruction() {
     const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
     syncForestConstruction(state, options.economyConstruction, owner);
-    if (session.isObservationOwner()) advanceBuilderMind(state.builderMind, world, 0,
-      { now: explorationNow(), construction: state.economyConstruction });
+    if (session.isObservationOwner()) advanceBuilder(0);
+  }
+  function advanceBuilder(dt: number) {
+    if (state.builderMind?.constructionPending) {
+      // The first economy response can also replace default building art. Wait
+      // for that geometry to commit before selecting the cold-entry work stop;
+      // otherwise a worker can briefly appear beside the wrong building level.
+      const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
+      if (TILED_WORLD.sites.some(site => previewSiteVisual(site, selected)?.level !== visuals[site.id]?.level)) return;
+    }
+    advanceBuilderMind(state.builderMind, world, dt, { now: explorationNow(), construction: state.economyConstruction });
   }
   // DEV rehearsals use the same travel/animation controller with a local clock.
   // A confirmed account job always owns the hero and its economic deadline.
@@ -431,7 +440,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         if (ownerChanged) stop();
         if (visible()) draw();
         if (ownerChanged) resume();
-      }, { persistence: allowPersistence && !forestPersistenceOverridden(dev, levels) });
+      }, { persistence: allowPersistence && !forestPersistenceOverridden(dev, levels),
+        awaitBuilderConstruction: options.economyConstruction !== undefined });
     if (!allowPersistence || forestPersistenceOverridden(dev, levels)) connected.suspendPersistence();
     return connected;
   }
@@ -547,7 +557,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
       syncConstruction();
-      advanceBuilderMind(state.builderMind, world, step, { now: explorationNow(), construction: state.economyConstruction });
+      advanceBuilder(step);
       if (state.pleskMind) {
         const resident = pleskMindFrame(state.pleskMind, world, false);
         advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk,

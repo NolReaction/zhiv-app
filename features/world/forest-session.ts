@@ -52,7 +52,7 @@ type Session = { state: ForestSessionState; memory: ReturnType<typeof createFore
 const sessions = new Map<string, Session>();
 
 function rehydrateBuilder(scene: FixedWorldScene, previous: BuilderMind | null): BuilderMind | null {
-  const next = createBuilderMind(scene), places = builderLocalPlaces(scene);
+  const next = createBuilderMind(scene, { awaitConstruction: previous?.constructionPending }), places = builderLocalPlaces(scene);
   if (!next || !previous || !places || !isWalkable(places.navigation, previous.position)) return next;
   // Server memory contains no NPC coordinates. Keep only this account's safe
   // visible feet; old routes, targets and jobs cannot survive authoritative
@@ -79,6 +79,8 @@ export function forgetForestSession(key: string | undefined) {
 }
 
 export type ForestSessionOptions = { persistence?: boolean; environment?: ForestMemoryEnvironment | null;
+  /** Real account scenes wait for their first confirmed economic snapshot. */
+  awaitBuilderConstruction?: boolean;
   sync?: false | { transport?: ForestMemoryTransport; environment?: ForestMemorySyncEnvironment } };
 
 /** UI takeover always targets the existing account session, never a new writer. */
@@ -100,7 +102,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   let shared = identity === undefined ? undefined : sessions.get(identity);
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
-      fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: createBuilderMind(scene), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
+      fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: createBuilderMind(scene, { awaitConstruction: options.awaitBuilderConstruction }), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
       pendingLife: null, pendingAttention: false,
       reaction: 0, animation: null, birdStarted: null, birdSeed: -1,
       memory: { mode: "ephemeral", restored: false, reconciled: false, lastSavedAt: null, enabled: false } };

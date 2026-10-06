@@ -3522,9 +3522,10 @@ test("builder work shares one route and clock across cameras; painting and hit t
     const initial = { ...options, reducedMotion: false, serverNow: 100_000,
       presenceKey: "zhiv:mochlik:presence:builder-shared", economyConstruction: construction };
     const callbacks = { activity() {}, ready() {}, failure: assert.fail };
-    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    const circle = mountHabitat(env.surface(), { ...initial, economyConstruction: confirmedConstruction("builder-shared", 0, []) }, callbacks); views.push(circle);
     env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
     probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    circle.configure(initial);
     const mind = probe.state.builderMind, clock = sceneClock(env);
     assert.ok(mind); assert.equal(mind.job.id, "confirmed-workshop");
     assert.equal(mind.action, "walk");
@@ -3689,9 +3690,10 @@ test("unmounting the final tab canvas retains Mochlik, Pleska and builder withou
   try {
     worldDevStore.reset();
     const callbacks = { activity() {}, ready() {}, failure: assert.fail };
-    let scene = mountHabitat(env.surface(), initial, callbacks); views.push(scene);
+    let scene = mountHabitat(env.surface(), { ...initial, economyConstruction: confirmedConstruction("tab-retention", 0, []) }, callbacks); views.push(scene);
     env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
     probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    scene.configure(initial);
     const state = probe.state, clock = sceneClock(env);
     clock.advance(1.5);
     const clearing = state.clearing, plesk = state.pleskMind, builder = state.builderMind;
@@ -3776,11 +3778,14 @@ test("confirmed construction geometry keeps builder feet through server hydratio
       const initial = { ...options, reducedMotion: false, serverNow: now, presenceKey: key,
         economyBuildings: { workshop: 1 }, economyConstruction: construction };
       const callbacks = { activity() {}, ready() {}, failure: assert.fail };
-      const circle = mountHabitat(env.surface(), { ...initial, backgrounded: true }, callbacks); views.push(circle);
-      const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world);
+      const empty = { ...initial, economyConstruction: confirmedConstruction(owner, 4, []) };
+      const circle = mountHabitat(env.surface(), { ...empty, backgrounded: true }, callbacks); views.push(circle);
+      const world = mountHabitat(env.surface(), { ...empty, view: "world" }, callbacks); views.push(world);
       if (mode === "claim") { env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); }
       await flush(); await pump();
       assert.equal(source.state.memory.sync.mode, "synced");
+      world.configure({ ...initial, view: "world" });
+      circle.configure({ ...initial, backgrounded: true });
       const clock = sceneClock(env);
       if (mode === "speedup-on-route") clock.advance(.5);
       else clock.until(() => source.state.builderMind.action === "work", "worker reaches the job before confirmed completion", 600);
@@ -3819,4 +3824,176 @@ test("confirmed construction geometry keeps builder feet through server hydratio
       world.dispose(); circle.dispose(); source.release(); target.release(); forgetForestSession(key); await pump();
     }
   } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); env.restore(); }
+});
+
+function builderMemoryServer(owner, ApiError) {
+  let now = 100_000, serial = 0, revision = 0, holder = null, token = null, snapshot = null, holdReads = false;
+  const timers = new Map(), receipts = new Map(), reads = [];
+  const uuid = () => `00000000-0000-4000-8000-${(++serial).toString(16).padStart(12, "0")}`;
+  const view = client => ({ ownerPublicId: owner, revision, snapshot: structuredClone(snapshot),
+    serverTime: new Date(now).toISOString(), updatedAt: null,
+    lease: { owned: holder === client, token: holder === client ? token : null,
+      expiresAt: holder ? new Date(now + 90_000).toISOString() : null } });
+  const reject = code => { throw new ApiError(code, 409, { code, message: code }); };
+  const environment = { now: () => now, randomUUID: uuid,
+    setTimeout(callback, delay) { const id = ++serial; timers.set(id, { at: now + delay, callback }); return id; },
+    clearTimeout(id) { timers.delete(id); } };
+  const transport = {
+    async read(_owner, client) {
+      if (holdReads) await new Promise(resolve => reads.push(resolve));
+      return view(client);
+    },
+    async command(command) {
+      if (receipts.has(command.requestId)) return { ...structuredClone(receipts.get(command.requestId)), replayed: true };
+      if (command.expectedRevision !== revision) reject("FOREST_MEMORY_REVISION_CONFLICT");
+      if (command.action === "acquire") {
+        if (holder && holder !== command.clientId) reject("FOREST_MEMORY_ACTIVE_ELSEWHERE");
+        holder = command.clientId; token = uuid();
+      } else {
+        if (holder !== command.clientId || token !== command.leaseToken) reject("FOREST_MEMORY_LEASE_LOST");
+        if (command.action === "save") snapshot = structuredClone(command.snapshot);
+        else { holder = null; token = null; }
+      }
+      revision++;
+      const result = { state: view(command.clientId), acceptedRevision: revision, replayed: false };
+      receipts.set(command.requestId, structuredClone(result)); return result;
+    },
+  };
+  return {
+    environment, transport, now: () => now, snapshot: () => structuredClone(snapshot),
+    holdReads() { holdReads = true; },
+    releaseReads() { holdReads = false; reads.splice(0).forEach(resolve => resolve()); },
+    async pump(ms = 0) {
+      const until = now + ms;
+      for (let limit = 0; ; limit++) {
+        assert.ok(limit < 100, "the real memory lease converges without a request loop"); await flush();
+        const next = [...timers].filter(([, timer]) => timer.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
+        if (!next) break;
+        now = next[1].at; timers.delete(next[0]); next[1].callback();
+      }
+      now = until; await flush();
+    },
+  };
+}
+
+test("cold reentry restores confirmed builder work at its site before delayed forest memory, including ready and reduced motion", async () => {
+  const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, ApiError } = await modules(builderFixture());
+  const env = browser(), views = [], probes = [], keys = [];
+  try {
+    for (const [index, mode] of ["active", "delayed-active", "ready-static"].entries()) {
+      const owner = ["2234-ABCD-EFGH", "2234-ABCD-EFGJ", "2234-ABCD-EFGK"][index];
+      const key = `zhiv:mochlik:presence:${owner}`, server = builderMemoryServer(owner, ApiError); keys.push(key);
+      const sync = { environment: server.environment, transport: server.transport };
+      const source = connectForestSession(key, TILED_WORLD, "circle", server.now(), 0, () => {}, { sync, awaitBuilderConstruction: true }); probes.push(source);
+      const construction = confirmedConstruction(owner, 5), original = structuredClone(construction);
+      const initial = { ...options, reducedMotion: false, serverNow: server.now(), presenceKey: key, economyConstruction: construction };
+      const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+      const before = mountHabitat(env.surface(), initial, callbacks); views.push(before);
+      if (index === 0) { env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); }
+      await flush(); await server.pump();
+      assert.equal(source.state.memory.sync.mode, "synced");
+      const clock = sceneClock(env);
+      clock.until(() => source.state.builderMind.action === "work", "the source builder reached his actual work spot", 300);
+      clock.advance(.5);
+      const workingFeet = { ...source.state.builderMind.position };
+      await server.pump(5_000);
+      before.configure({ ...initial, serverNow: server.now() });
+      source.saveMemory(); await server.pump(); assert.ok(server.snapshot());
+      const previousState = source.state;
+      before.dispose(); source.release(); forgetForestSession(key); await server.pump();
+      assert.equal(env.frames.size, 0, "a cold reload has no retained scene clock");
+      await server.pump(mode === "ready-static" ? 695_000 : 1_000);
+      server.holdReads();
+      const returned = connectForestSession(key, TILED_WORLD, "circle", server.now(), 0, () => {}, { sync, awaitBuilderConstruction: true }); probes.push(returned);
+      assert.notStrictEqual(returned.state, previousState, "this is a new cold session, not the in-page tab cache");
+      const reentry = { ...initial, serverNow: server.now(), reducedMotion: mode === "ready-static",
+        economyConstruction: mode === "active" ? construction : null };
+      const after = mountHabitat(env.surface(), reentry, callbacks); views.push(after); await flush();
+      if (mode !== "active") {
+        after.configure({ ...reentry, economyConstruction: confirmedConstruction("WRNG-ABCD-EFGH", 999) });
+        assert.equal(returned.state.economyConstruction, undefined, "another account cannot consume initialization");
+        assert.equal(returned.state.builderMind.job, null);
+        after.configure({ ...reentry, economyConstruction: construction });
+      }
+      assert.deepEqual(returned.state.builderMind.position, workingFeet, "confirmed existing work does not replay a trip from map center");
+      assert.equal(returned.state.builderMind.route, null);
+      assert.equal(returned.state.builderMind.action, mode === "ready-static" ? "idle" : "work");
+      assert.equal(returned.state.builderMind.ready, mode === "ready-static");
+      server.releaseReads(); await server.pump();
+      assert.equal(returned.state.memory.sync.mode, "synced");
+      assert.deepEqual(returned.state.builderMind.position, workingFeet, "late authoritative forest hydration keeps restored work feet");
+      assert.equal(returned.state.builderMind.route, null);
+      const confirmed = { ...reentry, economyConstruction: construction };
+      const samePage = returned.state, feet = { ...samePage.builderMind.position };
+      returned.release(); after.dispose(); await server.pump();
+      const tab = mountHabitat(env.surface(), { ...confirmed, view: "world" }, callbacks); views.push(tab); await flush();
+      const tabProbe = connectForestSession(key, TILED_WORLD, "circle", server.now(), 0, () => {}, { sync, awaitBuilderConstruction: true }); probes.push(tabProbe);
+      assert.strictEqual(tabProbe.state, samePage, "ordinary tab remount still keeps the existing session");
+      assert.deepEqual(tabProbe.state.builderMind.position, feet);
+      assert.deepEqual(construction, original, "restoring the visual work cannot mutate confirmed dates or rewards");
+      tab.dispose(); tabProbe.release(); forgetForestSession(key); await server.pump();
+    }
+  } finally {
+    views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); keys.forEach(forgetForestSession); env.restore();
+  }
+});
+
+test("a construction first confirmed in an already open scene walks from the visible feet even after a delayed response", async () => {
+  const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, worldDevStore } = await modules(builderFixture());
+  const env = browser(); let scene, probe;
+  const owner = "live-builder-delay", key = `zhiv:mochlik:presence:${owner}`;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: key,
+      economyConstruction: confirmedConstruction(owner, 5, []) };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); await flush();
+    probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const clock = sceneClock(env); clock.advance(.5);
+    const mind = probe.state.builderMind, feet = { ...mind.position };
+    const construction = confirmedConstruction(owner, 6);
+    construction.jobs[0].startedAt = new Date(110_000).toISOString();
+    scene.configure({ ...initial, serverNow: 150_000, economyConstruction: construction });
+    assert.deepEqual(mind.position, feet, "a delayed new receipt is not a cold reentry restoration");
+    assert.equal(mind.action, "walk"); assert.ok(mind.route);
+    clock.advance(.5); assert.notDeepEqual(mind.position, feet);
+    const onRoute = { ...mind.position };
+    scene.configure({ ...initial, serverNow: 150_000, economyConstruction: confirmedConstruction(owner, 7, []) });
+    scene.configure({ ...initial, serverNow: 150_000, economyConstruction: construction });
+    assert.deepEqual(mind.position, onRoute, "stale snapshots cannot replay initialization or rewind feet");
+    assert.equal(mind.job, null); assert.equal(probe.state.economyConstruction.revision, 7);
+  } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
+});
+
+test("delayed first economy and upgraded artwork restore builder to the actual displayed construction site", async () => {
+  const authored = builderFixture(), site = authored.sites[0], shift = 70;
+  site.states.push({ level: 2, label: "Большая мастерская", image: "/test-builder-workshop-2.webp", geometry: {
+    bounds: { ...site.bounds, x: site.bounds.x + shift }, anchor: { ...site.anchor, x: site.anchor.x + shift },
+    entry: { ...site.entry, x: site.entry.x + shift },
+    hitArea: site.hitArea.map(point => ({ ...point, x: point.x + shift })),
+    collision: site.collision.map(point => ({ ...point, x: point.x + shift })),
+  } });
+  const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, previewWorldScene, builderSpriteRig } = await modules(authored);
+  const env = browser(); let scene, probe;
+  const owner = "cold-high-level", key = `zhiv:mochlik:presence:${owner}`;
+  try {
+    const initial = { ...options, serverNow: 400_000, presenceKey: key, economyConstruction: null };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); await flush();
+    const unloaded = env.surface(); scene.paintWorld(unloaded.context);
+    assert.equal(unloaded.calls.some(call => call.method === "drawImage" && builderSpriteRig(call.args[0])), false,
+      "loading the economy does not flash a builder in the map center");
+    const construction = confirmedConstruction(owner, 12); construction.jobs[0].targetLevel = 3;
+    scene.configure({ ...initial, economyBuildings: { workshop: 2 }, economyConstruction: construction });
+    assert.ok(env.pending.some(request => request.path === "/test-builder-workshop-2.webp"));
+    env.finishPath("/test-builder-workshop-2.webp"); await flush();
+    const actual = previewWorldScene(TILED_WORLD, { workshop: 2 });
+    probe = connectForestSession(key, actual, "circle", 400_000, 0, () => {});
+    const mind = probe.state.builderMind;
+    assert.strictEqual(mind.scene, actual);
+    assert.equal(mind.action, "work"); assert.equal(mind.route, null);
+    assert.deepEqual(mind.target.lookAt, actual.sites[0].anchor, "work faces the newly loaded building, not its old default art");
+    assert.ok(distanceBetween(mind.position, actual.sites[0].entry) <= 25, "restored work belongs to the authoritative higher-level footprint");
+    assert.deepEqual(scene.inspectPoint("builder"), { x: mind.position.x, y: mind.position.y - 20 });
+  } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); env.restore(); }
 });
