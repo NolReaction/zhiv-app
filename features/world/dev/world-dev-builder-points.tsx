@@ -19,11 +19,24 @@ const issues: Record<BuilderWorkMarkerIssue, string> = {
   "missing-host": "Не найдено здание или его точки подхода.",
   "far-from-building": `Дальше ${BUILDER_NAVIGATION_LIMITS.workReach} ед. от текущего или будущего контура здания.`,
   doorway: "Перекрывает вход или проход к нему.",
+  "bush-access": "Перекрывает прыжок или проход в куст.",
   activity: "Слишком близко к месту другого занятия.",
   "blocked-ground": "Нет свободной земли с запасом для лап: коллизия, вода или край WalkAreas.",
   "blocked-future": "Точка занята геометрией после улучшения.",
 };
 const coordinates = (point: WorldPoint) => `X ${point.x} · Y ${point.y}`;
+const measure = (value: number, digits = 2) => value.toLocaleString("ru-RU", { maximumFractionDigits: digits });
+function conflictMeasures(distance: number, limit: number) {
+  let actual = measure(distance), required = measure(limit);
+  // A rejected point must not appear equal to its threshold because of rounding.
+  for (let digits = 3; distance !== limit && actual === required && digits <= 20; digits++) {
+    actual = measure(distance, digits); required = measure(limit, digits);
+  }
+  if (distance !== limit && actual === required) {
+    actual = String(distance).replace(".", ","); required = String(limit).replace(".", ",");
+  }
+  return { actual, required };
+}
 type Preview = Pick<WorldDevState, "levels" | "previewBuildings">;
 
 /** Read-only account/DEV geometry selection; these hypothetical jobs never enter the simulation. */
@@ -50,14 +63,31 @@ export function BuilderWorkPointReport({ scene, station }: {
   scene: FixedWorldScene; station: ReturnType<typeof builderWorkDiagnosticContext>["stations"][number];
 }) {
   const checks = builderWorkMarkerChecks(scene, station.job), first = builderWorkStops(scene, station.job)[0];
+  const host = constructionMapPlace(station.id), contour = host === "campfire" ? "костра" : host === "garden" ? "куста" : "здания";
+  const sharedHost = host === "house" ? "дом" : host === "workshop" ? "мастерская" : host === "campfire" ? "костёр" : station.name;
+  const farReason = host === "campfire" || host === "garden"
+    ? `Дальше ${BUILDER_NAVIGATION_LIMITS.workReach} ед. от контура ${contour}.` : issues["far-from-building"];
   return <>
     <p className={styles.hint}>Уровень {station.currentLevel} → {station.job.targetLevel} · {station.confirmed ? "подтверждённая стройка"
       : station.currentLevel === station.job.targetLevel ? "проверка текущего уровня" : "проверка следующего улучшения"}</p>
     {checks.length ? checks.map(marker => <section key={marker.id} className={styles.aiIntention} aria-label={marker.id}>
       <strong>{marker.id}</strong><p>{coordinates(marker.position)}</p>
-      {marker.issues.length ? marker.issues.map(issue => <p key={issue} data-marker-issue={issue}>{issues[issue]}</p>)
+      {marker.id !== `builder-work-${station.id}` && <p className={styles.hint}>Общая рабочая точка: {sharedHost}.</p>}
+      {marker.issues.length ? marker.issues.map(issue => {
+        const conflict = marker.conflicts?.find(conflict => conflict.issue === issue);
+        const measured = conflict ? conflictMeasures(conflict.distance, conflict.limit) : null;
+        const subject = issue === "far-from-building" ? `контура ${contour}` : issue === "activity" ? "места занятия"
+          : issue === "bush-access" ? "прохода в куст" : "прохода";
+        return <div key={issue}>
+          <p data-marker-issue={issue}>{issue === "far-from-building" ? farReason : issues[issue]}</p>
+          {conflict && measured && <>
+            <p className={styles.hint}>До {subject} {measured.actual} ед.; {issue === "far-from-building" ? "не дальше" : "нужно ≥"} {measured.required}.</p>
+            <details><summary>Источник проверки</summary><p>{conflict.targetId}</p><p>{coordinates(conflict.position)}</p></details>
+          </>}
+        </div>;
+      })
         : <p>Физические проверки пройдены.</p>}
-    </section>) : <p className={styles.hint}>В экспорте нет рабочей точки для этого здания. Место подбирается автоматически.</p>}
+    </section>) : <p className={styles.hint}>В экспорте нет рабочей точки для этого здания.{first ? " Место подбирается автоматически." : " Проверьте маркеры и геометрию."}</p>}
     <p className={styles.hint}>{first ? `Первый безопасный кандидат: ${coordinates(first.position)}. Путь может выбрать следующий.`
       : "Безопасных кандидатов нет. Проверьте точки и коллизии в Tiled."}</p>
   </>;

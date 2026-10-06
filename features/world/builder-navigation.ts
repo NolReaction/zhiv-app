@@ -10,8 +10,12 @@ import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type BuilderStop = { id: string; position: WorldPoint; lookAt: WorldPoint };
 export type BuilderWorkMarkerIssue = "invalid-position" | "missing-navigation" | "missing-host" | "far-from-building"
-  | "doorway" | "activity" | "blocked-ground" | "blocked-future";
-export type BuilderWorkMarkerCheck = { id: string; position: WorldPoint; issues: readonly BuilderWorkMarkerIssue[] };
+  | "doorway" | "bush-access" | "activity" | "blocked-ground" | "blocked-future";
+export type BuilderWorkMarkerConflict = { issue: "far-from-building" | "doorway" | "bush-access" | "activity";
+  targetId: string; position: WorldPoint; distance: number; limit: number };
+export type BuilderWorkMarkerCheck = { id: string; position: WorldPoint; issues: readonly BuilderWorkMarkerIssue[];
+  conflicts?: readonly BuilderWorkMarkerConflict[] };
+type WorkGeometry = { id: string; points: WorldPoint[] };
 type BuilderWorkPlan = { stops: readonly BuilderStop[]; markers: readonly BuilderWorkMarkerCheck[] };
 export const BUILDER_NAVIGATION_LIMITS = { radius: BUILDER.size * .1, workReach: BUILDER.size * .8,
   contourEdges: 24, workCandidates: 16, searches: 3, wanderStops: 8 } as const;
@@ -49,14 +53,19 @@ function beside(entry: WorldPoint, anchor: WorldPoint, gap: number): WorldPoint[
   }))));
 }
 
-function distanceToAccess(point: WorldPoint, access: readonly WorldPoint[]): number {
-  let closest = distance(point, access[0]);
+function closestToAccess(point: WorldPoint, access: readonly WorldPoint[]): { position: WorldPoint; distance: number } {
+  let position = { ...access[0] }, closest = distance(point, position);
   for (let index = 1; index < access.length; index++) {
     const a = access[index - 1], b = access[index], dx = b.x - a.x, dy = b.y - a.y;
     const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
-    closest = Math.min(closest, distance(point, { x: a.x + dx * t, y: a.y + dy * t }));
+    const next = { x: a.x + dx * t, y: a.y + dy * t }, nextDistance = distance(point, next);
+    if (nextDistance < closest) { position = next; closest = nextDistance; }
   }
-  return closest;
+  return { position, distance: closest };
+}
+
+function distanceToAccess(point: WorldPoint, access: readonly WorldPoint[]): number {
+  return closestToAccess(point, access).distance;
 }
 
 function distanceToContour(point: WorldPoint, contour: readonly WorldPoint[]): number {
@@ -144,27 +153,29 @@ function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): Bui
   if (!places) return unavailable("missing-navigation");
   if (!place) return unavailable("missing-host");
   let entry: WorldPoint | undefined, anchor: WorldPoint | undefined, future: WorldNavigation | null = places.navigation;
-  const access: WorldPoint[][] = [];
-  const contours: WorldPoint[][] = [];
+  const access: WorkGeometry[] = [];
+  const contours: WorkGeometry[] = [];
   const site = scene.sites.find(candidate => candidate.id === siteId);
   if (site) {
     entry = site.entry; anchor = site.anchor;
-    contours.push(exterior(site.collision, site.hitArea, site.entry, site.anchor));
-    access.push([site.entry, site.doorway ?? site.entry]);
+    contours.push({ id: `${site.id}:current`, points: exterior(site.collision, site.hitArea, site.entry, site.anchor) });
+    access.push({ id: `${site.id}:entry`, points: [site.entry, site.doorway ?? site.entry] });
     const destination = scene.destinations?.find(destination => destination.id === siteId && destination.siteId === siteId);
-    if (destination) access.push([destination.position, site.entry]);
+    if (destination) access.push({ id: `${site.id}:visitor`, points: [destination.position, site.entry] });
     if (siteId === "home") {
-      if (finite(scene.actor?.spawn)) access.push([scene.actor.spawn, site.entry]);
+      if (finite(scene.actor?.spawn)) access.push({ id: `${site.id}:spawn`, points: [scene.actor.spawn, site.entry] });
       for (const path of scene.paths.filter(path => path.siteId === siteId && path.behavior === "home"))
-        if (path.points.length) access.push([...path.points, site.entry]);
+        if (path.points.length) access.push({ id: path.id, points: [...path.points, site.entry] });
     }
     // Warehouse and kiln levels do not select a different exterior house/art.
     const next = job.stationId === site.id && site.states.find(state => state.level === job.targetLevel)?.geometry;
     if (next) {
-      contours.push(exterior(next.collision, next.hitArea, next.entry, next.anchor));
-      access.push([next.entry, next.doorway ?? next.entry], [site.entry, next.entry]);
-      if (destination) access.push([destination.position, next.entry]);
-      if (siteId === "home" && finite(scene.actor?.spawn)) access.push([scene.actor.spawn, next.entry]);
+      const nextId = `${site.id}:future:${job.targetLevel}`;
+      contours.push({ id: nextId, points: exterior(next.collision, next.hitArea, next.entry, next.anchor) });
+      access.push({ id: `${nextId}:entry`, points: [next.entry, next.doorway ?? next.entry] },
+        { id: `${nextId}:approach`, points: [site.entry, next.entry] });
+      if (destination) access.push({ id: `${nextId}:visitor`, points: [destination.position, next.entry] });
+      if (siteId === "home" && finite(scene.actor?.spawn)) access.push({ id: `${nextId}:spawn`, points: [scene.actor.spawn, next.entry] });
       future = createWorldNavigation({ ...scene,
         sites: scene.sites.map(candidate => candidate.id === site.id ? { ...candidate, ...next } : candidate),
       }, BUILDER_NAVIGATION_LIMITS.radius);
@@ -172,33 +183,41 @@ function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): Bui
   } else if (place === "garden") {
     const bush = scene.bushes?.find(bush => bush.id === "clearing-bush") ?? scene.bushes?.[0];
     entry = bush?.entry; anchor = bush?.hide;
-    if (bush) contours.push(bush.points);
+    if (bush) {
+      contours.push({ id: bush.id, points: bush.points });
+      // This is an actual jump path, unlike looking from a seat at a fire.
+      access.push({ id: `${bush.id}:jump`, points: [bush.entry, bush.hide] });
+    }
   } else if (place === "campfire") {
     const fire = scene.campfires?.find(fire => fire.id === "clearing-campfire") ?? scene.campfires?.[0];
     entry = fire?.seat; anchor = fire?.position;
-    if (fire) contours.push(campfireFootprint(fire));
+    if (fire) contours.push({ id: fire.id, points: campfireFootprint(fire) });
   }
   if (!finite(entry) || !finite(anchor)) return unavailable("missing-host");
   if (!future) return unavailable("missing-navigation");
-  if (!site) access.push([entry, anchor]);
+  // A campfire visit stops at its seat. The resident never walks from there
+  // into the flame, so that imaginary corridor must not exclude work stops.
   // A work shift must not reserve another activity's fixed goal for its whole
   // duration (for example the campfire seat beside the house). Roaming interests
   // remain available; only destinations where another resident must stand count.
-  const occupied = [scene.actor?.spawn, ...scene.sites.map(site => site.entry),
-    ...(scene.campfires?.map(fire => fire.seat) ?? []), ...(scene.bushes?.flatMap(bush => [bush.entry, bush.hide]) ?? []),
-    ...(scene.destinations?.filter(destination => !destination.id.startsWith("builder-")).map(destination => destination.position) ?? []),
-  ].filter(finite);
+  const occupied = [
+    ...(finite(scene.actor?.spawn) ? [{ id: "mochlik-spawn", position: scene.actor.spawn }] : []),
+    ...scene.sites.map(site => ({ id: `${site.id}:entry`, position: site.entry })),
+    ...(scene.campfires?.map(fire => ({ id: `${fire.id}:seat`, position: fire.seat })) ?? []),
+    ...(scene.bushes?.flatMap(bush => [{ id: `${bush.id}:entry`, position: bush.entry }, { id: `${bush.id}:hide`, position: bush.hide }]) ?? []),
+    ...(scene.destinations?.filter(destination => !destination.id.startsWith("builder-")).map(destination => ({ id: destination.id, position: destination.position })) ?? []),
+  ].filter(goal => finite(goal.position));
   const clearance = builderWorkClearance(scene), gap = clearance + BUILDER_NAVIGATION_LIMITS.radius;
   const destination = scene.destinations?.find(destination => destination.id === siteId && destination.siteId === siteId);
-  const candidates = [...beside(entry, anchor, gap), ...contours.flatMap(contour => besideContour(contour, entry)),
+  const candidates = [...beside(entry, anchor, gap), ...contours.flatMap(contour => besideContour(contour.points, entry)),
     ...(destination ? beside(destination.position, anchor, gap) : [])]
     .sort((a, b) => distance(a, entry) - distance(b, entry));
   // Lazy checks keep automatic searches bounded: expensive ground tests only
   // run after the facade, doorway and activity checks accept the candidate.
   const validations: readonly [BuilderWorkMarkerIssue, (point: WorldPoint) => boolean][] = [
-    ["far-from-building", point => contours.every(contour => distanceToContour(point, contour) <= BUILDER_NAVIGATION_LIMITS.workReach)],
-    ["doorway", point => access.every(corridor => distanceToAccess(point, corridor) >= clearance - 1e-7)],
-    ["activity", point => occupied.every(goal => distance(point, goal) >= clearance - 1e-7)],
+    ["far-from-building", point => contours.every(contour => distanceToContour(point, contour.points) <= BUILDER_NAVIGATION_LIMITS.workReach)],
+    [place === "garden" && !site ? "bush-access" : "doorway", point => access.every(corridor => distanceToAccess(point, corridor.points) >= clearance - 1e-7)],
+    ["activity", point => occupied.every(goal => distance(point, goal.position) >= clearance - 1e-7)],
     ["blocked-ground", point => isWalkable(places.navigation, point)],
     ["blocked-future", point => isWalkable(future, point)],
   ];
@@ -212,7 +231,28 @@ function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): Bui
     }
     return issues;
   };
-  const checks = markers.map(marker => ({ id: marker.id, position: { ...marker.position }, issues: issuesAt(marker.position) }));
+  const conflictAt = (point: WorldPoint, issue: BuilderWorkMarkerIssue): BuilderWorkMarkerConflict | undefined => {
+    if (!finite(point)) return;
+    if (issue === "activity") {
+      const nearest = occupied.map(goal => ({ ...goal, distance: distance(point, goal.position) }))
+        .sort((a, b) => a.distance - b.distance)[0];
+      return nearest && { issue, targetId: nearest.id, position: { ...nearest.position }, distance: nearest.distance, limit: clearance };
+    }
+    if (issue === "doorway" || issue === "bush-access" || issue === "far-from-building") {
+      const candidates = (issue === "far-from-building" ? contours : access).map(geometry => ({ id: geometry.id,
+        ...closestToAccess(point, issue === "far-from-building" ? [...geometry.points, geometry.points[0]] : geometry.points) }));
+      candidates.sort((a, b) => issue === "far-from-building" ? b.distance - a.distance : a.distance - b.distance);
+      const conflict = candidates[0];
+      return conflict && { issue, targetId: conflict.id, position: conflict.position, distance: conflict.distance,
+        limit: issue === "far-from-building" ? BUILDER_NAVIGATION_LIMITS.workReach : clearance };
+    }
+  };
+  const checks = markers.map(marker => {
+    const issues = issuesAt(marker.position), conflicts = issues.flatMap(issue => {
+      const conflict = conflictAt(marker.position, issue); return conflict ? [conflict] : [];
+    });
+    return { id: marker.id, position: { ...marker.position }, issues, ...(conflicts.length ? { conflicts } : {}) };
+  });
   // PNG bounds include transparent padding. Only automatic placement uses that
   // conservative visual preference; a manually authored stop owns its framing.
   const stops = [...checks.filter(check => !check.issues.length).map(check => check.position),

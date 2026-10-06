@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { builderLocalPlaces, builderWorkStops, builderWorkMarkerChecks, builderWorkClearance, builderRoute, BUILDER_NAVIGATION_LIMITS } =
   await vite.ssrLoadModule("/features/world/builder-navigation.ts");
-const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
+const { isWalkable, canTraverse, createWorldNavigation, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { residentClearance, canTraverseResidents } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
@@ -155,6 +155,61 @@ test("an authored left-side home marker is not rejected by transparent bush imag
       || stop.position.x - 20 >= bounds.x + bounds.width || stop.position.y <= bounds.y
       || stop.position.y - 37.5 >= bounds.y + bounds.height, "automatic placement still avoids drawing the worker under a bush");
   }
+});
+
+test("the reported dryer marker keeps its exact feet without reserving an imaginary walk into the fire", () => {
+  const source = structuredClone(TILED_WORLD), marker = { x: 722.510346320346, y: 657.937316017316 };
+  source.destinations.find(destination => destination.id === "builder-work-dryer").position = marker;
+  const initial = initialPreviewLevels(source);
+  for (const level of [1, 2, 3, 4, 5]) {
+    const scene = previewWorldScene(source, { ...initial, home: level }), order = job("dryer"), fire = scene.campfires[0];
+    assert.ok(distance(marker, fire.position) < builderWorkClearance(scene), "the old seat-to-flame capsule would reject the point");
+    assert.ok(distance(marker, fire.position) > fire.radius + BUILDER_NAVIGATION_LIMITS.radius, "the builder's feet are outside the real fire");
+    assertClear(marker, [fire.seat], builderWorkClearance(scene), "Mochlik's seat");
+    assert.deepEqual(checkedRoute(scene, order).route.target.position, marker, `home level ${level} uses the edited dryer point`);
+    assert.deepEqual(builderWorkMarkerChecks(scene, order)[0].issues, []);
+    const heroNavigation = createWorldNavigation(scene, scene.actor.size * .1);
+    const approach = findWorldPath(heroNavigation, scene.actor.spawn, fire.seat);
+    assert.ok(approach, "Mochlik still has a real approach to his seat");
+    for (let index = 1; index < approach.length; index++) {
+      assert.ok(canTraverse(heroNavigation, approach[index - 1], approach[index]));
+      assert.ok(canTraverseResidents(approach[index - 1], approach[index], scene.actor.size,
+        [{ id: "builder", position: marker, size: 40 }], "mochlik"), "the working builder leaves the real approach clear");
+    }
+  }
+});
+
+test("campfire work cannot occupy Mochlik's seat or the flame and remains close to the hearth", () => {
+  const base = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), fire = base.campfires[0], order = job("dryer");
+  for (const [position, issue] of [[fire.seat, "activity"], [fire.position, "blocked-ground"],
+    [{ x: fire.position.x + 200, y: fire.position.y }, "far-from-building"]]) {
+    const scene = structuredClone(base);
+    scene.destinations.find(destination => destination.id === "builder-work-dryer").position = { ...position };
+    const check = builderWorkMarkerChecks(scene, order)[0];
+    assert.ok(check.issues.includes(issue)); assert.ok(!check.issues.includes("doorway"), "a hearth has no doorway into its flame");
+    assert.notDeepEqual(checkedRoute(scene, order).route.target.position, position);
+    if (issue === "activity") assert.deepEqual(check.conflicts.find(conflict => conflict.issue === issue), {
+      issue, targetId: `${fire.id}:seat`, position: fire.seat, distance: 0, limit: builderWorkClearance(scene),
+    });
+    if (issue === "far-from-building") {
+      const conflict = check.conflicts.find(conflict => conflict.issue === issue);
+      assert.equal(conflict.targetId, fire.id); assert.equal(conflict.limit, 32);
+      assert.ok(conflict.distance > conflict.limit); assert.ok(distance(conflict.position, fire.position) <= fire.radius + 1e-7);
+    }
+  }
+});
+
+test("a real bush jump corridor remains reserved and exposes its nearest conflict point", () => {
+  const scene = fixture(), marker = { x: 320, y: 300 };
+  scene.bushes = [{ id: "test-bush", entry: { x: 300, y: 320 }, hide: { x: 340, y: 320 }, points: rect(320, 280, 60, 60) }];
+  scene.destinations.push({ id: "builder-work-garden", position: marker, pauseSeconds: 10 });
+  const check = builderWorkMarkerChecks(scene, job("garden"))[0];
+  assert.ok(distance(marker, scene.bushes[0].entry) > builderWorkClearance(scene));
+  assert.ok(distance(marker, scene.bushes[0].hide) > builderWorkClearance(scene));
+  assert.deepEqual(check.issues, ["bush-access"]);
+  assert.deepEqual(check.conflicts, [{ issue: "bush-access", targetId: "test-bush:jump", position: { x: 320, y: 320 },
+    distance: 20, limit: builderWorkClearance(scene) }]);
+  assert.ok(builderWorkStops(scene, job("garden")).every(stop => distance(stop.position, marker) > 1e-6));
 });
 
 test("marker diagnostics expose the same physical refusals as runtime without mutating the scene", () => {
