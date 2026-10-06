@@ -30,11 +30,15 @@ function render(economy = controller(), props = {}) {
 function renderSector(sectorId, economy = controller(), props = {}) {
   return renderToStaticMarkup(createElement(WorldExpeditionSector, { sectorId, economy, state: economy.snapshot, selectedRoute: null, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration"), onSelectRoute() {}, onOpenPantry() {}, ...props }));
 }
+function renderPreparation(id, economy = controller(), props = {}) {
+  return renderSector(expeditionSector(id), economy, { selectedRoute: id, ...props });
+}
 function route(html, id) {
-  const start = html.search(new RegExp(`<details\\b[^>]*data-route="${id}"[^>]*>`));
-  assert.ok(start >= 0, `Missing route: ${id}`);
+  const found = new RegExp(`<(button|section)\\b[^>]*data-route="${id}"[^>]*>`).exec(html);
+  assert.ok(found, `Missing route: ${id}`);
+  const start = found.index, tag = found[1];
   let depth = 0;
-  for (const match of html.slice(start).matchAll(/<\/?details\b[^>]*>/g)) {
+  for (const match of html.slice(start).matchAll(new RegExp(`<\\/?${tag}\\b[^>]*>`, "g"))) {
     depth += match[0].startsWith("</") ? -1 : 1;
     if (depth === 0) return html.slice(start, start + match.index + match[0].length);
   }
@@ -54,12 +58,13 @@ test("expeditions open one sector with accessible controls instead of all ten ro
   for (const id of ["shore", "caves"]) assert.match(html, new RegExp(`data-sector-select="${id}" aria-pressed="false"`));
   assert.match(html, /data-sector="forest"/);
   assert.doesNotMatch(html, /data-route="(?:shore|cave|deep_cave)"/);
-  assert.equal([...html.matchAll(/<details\b/g)].length, 4);
+  assert.equal([...html.matchAll(/<button\b[^>]*data-route=/g)].length, 4);
+  assert.doesNotMatch(html, /<select\b|<details\b|aria-label="Отправиться:/);
   assert.ok(html.indexOf('data-route="forest"') < html.indexOf('data-route="old_woodland"'));
-  assert.match(html, /Можно отправиться/);
+  assert.match(html, /Доступные маршруты/);
   assert.match(html, /Нужно подготовиться/);
   assert.doesNotMatch(html, /role="dialog"|role="tablist"|Кошелёк|<h[123][^>]*>Обзор|Продать|Производство/);
-  assert.equal(disabled(button(route(html, "forest"), "Отправиться")), false);
+  assert.equal(disabled(button(route(html, "forest"), "Подготовиться: Лесная разведка")), false);
 });
 
 test("every catalog route belongs to exactly one sector and keeps its actual findings", () => {
@@ -74,8 +79,9 @@ test("every catalog route belongs to exactly one sector and keeps its actual fin
       const entry = economyCatalog.explorations.find(route => route.id === id);
       assert.equal(expeditionSector(id), sector.id);
       const content = route(html, id);
-      assert.match(content, /<summary>/);
-      assert.doesNotMatch(content, /<details[^>]*\bopen=/);
+      assert.match(content, /<button\b/);
+      assert.match(content, /aria-label="Подготовиться:/);
+      assert.doesNotMatch(content, /<details\b|<select\b/);
       for (const [itemId, count] of Object.entries(entry.rewards)) {
         const name = itemId === "fish" && economyCatalog.fishing.routeIds.includes(id)
           ? "Рыбный улов" : economyCatalog.items.find(item => item.id === itemId).name;
@@ -95,47 +101,49 @@ test("the fisherman's shortcut opens the shore sector without changing route con
   assert.doesNotMatch(html, /data-sector="forest"/);
   const shore = route(html, "shore");
   assert.match(shore, /Рыбалка на берегу/);
-  assert.equal(disabled(button(shore, "Отправиться")), false);
+  assert.equal(disabled(button(shore, "Подготовиться: Рыбалка на берегу")), false);
 });
 
-test("selected route alone expands and resource labels remain available to assistive technology", () => {
-  const html = renderSector("shore", controller(), { selectedRoute: "shore" });
-  assert.match(route(html, "shore"), /<details[^>]*\bopen=/);
-  assert.doesNotMatch(route(html, "shore_camp"), /<details[^>]*\bopen=/);
-  assert.equal([...html.matchAll(/<details[^>]*\bopen=/g)].length, 1);
-  assert.match(route(html, "shore"), /role="list" aria-label="Находки"/);
-  assert.match(route(html, "shore_camp"), /data-compact="true"/);
+test("selected route replaces the list with one preparation screen and a return action", () => {
+  const html = renderPreparation("shore");
+  assert.match(route(html, "shore"), /data-route-preparation="true"/);
+  assert.doesNotMatch(html, /data-route="shore_camp"|data-route="coastal_deposits"|Подготовиться:/);
+  assert.equal([...html.matchAll(/<select\b/g)].length, 3);
+  assert.equal([...html.matchAll(/aria-label="Отправиться:/g)].length, 1);
+  assert.equal(disabled(button(html, "Все маршруты")), false);
+  assert.match(html, /Улов за одну вылазку/);
+  assert.match(route(renderSector("shore"), "shore_camp"), /data-compact="true"/);
 });
 
 test("locked routes explain all missing buildings and offer navigation only when supplied", () => {
-  const html = route(render(controller(), { onNavigateStation() {} }), "old_woodland");
+  const html = route(renderPreparation("old_woodland", controller(), { onNavigateStation() {} }), "old_woodland");
   assert.match(html, /Условия открытия/);
   assert.match(html, /нужен ур\. 3/);
   assert.match(html, /нужен ур\. 2/);
   assert.equal(disabled(button(html, "Отправиться")), true);
   assert.equal(disabled(button(html, "нужен ур. 3")), false);
-  const withoutNavigation = route(render(), "old_woodland");
+  const withoutNavigation = route(renderPreparation("old_woodland"), "old_woodland");
   assert.match(withoutNavigation, /<span>[^<]+ · нужен ур\. 3<\/span>/);
 });
 
 test("deep routes use actual consumable amounts, and missing provisions block departure", () => {
   const state = snapshot({ buildings: { home: 3, warehouse: 1 }, inventory: { dried_berries: 1 } });
-  let html = route(renderSector("caves", controller({ snapshot: state })), "deep_cave");
+  let html = route(renderPreparation("deep_cave", controller({ snapshot: state })), "deep_cave");
   assert.match(html, /Припасы для вылазки/);
   assert.match(html, /Не хватает припасов/);
   assert.equal(disabled(button(html, "Отправиться")), true);
-  html = route(renderSector("caves", controller({ snapshot: snapshot({ ...state, inventory: { dried_berries: 1, smoked_fish: 1 } }) })), "deep_cave");
+  html = route(renderPreparation("deep_cave", controller({ snapshot: snapshot({ ...state, inventory: { dried_berries: 1, smoked_fish: 1 } }) })), "deep_cave");
   assert.equal(disabled(button(html, "Отправиться")), false);
 });
 
 test("departure compares reward size with total capacity; a full pantry can be cleared before return", () => {
   let state = snapshot({ storage: { capacity: 10, available: 10, used: 0, reserved: 0, overflow: 0 } });
-  let html = route(render(controller({ snapshot: state })), "forest");
+  let html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
   assert.equal(disabled(button(html, "Отправиться")), true);
   assert.match(html, /Находки займут 12 мест, вместимость — 10/);
   assert.equal(disabled(button(html, "Расширить кладовую")), false);
   state = snapshot({ storage: { capacity: 200, available: 0, used: 170, reserved: 30, overflow: 0 } });
-  html = route(render(controller({ snapshot: state })), "forest");
+  html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
   assert.equal(disabled(button(html, "Отправиться")), false);
   assert.match(html, /свободно 0/);
 });
@@ -170,7 +178,7 @@ test("ready finds honor available space including market reservations and retain
 });
 
 test("construction and production do not hide exploration or occupy the explorer", () => {
-  const html = render(controller({ snapshot: snapshot({ jobs: [job({ kind: "construction", targetId: "home", rewards: {}, targetLevel: 2 }), job({ kind: "production", targetId: "garden", recipeId: "grow_berries", rewards: { berries: 6 } })] }) }));
+  const html = renderPreparation("forest", controller({ snapshot: snapshot({ jobs: [job({ kind: "construction", targetId: "home", rewards: {}, targetLevel: 2 }), job({ kind: "production", targetId: "garden", recipeId: "grow_berries", rewards: { berries: 6 } })] }) }));
   assert.doesNotMatch(html, /Текущая вылазка|Мохлик занят|Мохлик в пути/);
   assert.equal(disabled(button(route(html, "forest"), "Отправиться")), false);
 });
@@ -183,7 +191,7 @@ test("quarry work blocks all departures and gives a way to claim its result", ()
     assert.match(html, finished ? /Сначала заберите добычу из каменоломни/ : /Мохлик работает в каменоломне/);
     assert.equal(disabled(button(html, "Открыть каменоломню")), false);
     for (const [sector, id] of [["forest", "forest"], ["shore", "shore"], ["caves", "cave"]]) {
-      const content = route(renderSector(sector, economy), id);
+      const content = route(renderSector(sector, economy, { selectedRoute: id }), id);
       assert.equal(disabled(button(content, "Отправиться")), true);
     }
     assert.doesNotMatch(html, /Можно отправиться/);
@@ -210,7 +218,7 @@ test("the caves control opens the shared mine when map navigation is supplied", 
 
 test("busy, uncertain and cooldown states prevent both spending and reward claims", () => {
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5_000 }]) {
-    assert.equal(disabled(button(route(render(controller(flags)), "forest"), "Отправиться")), true);
+    assert.equal(disabled(button(route(renderPreparation("forest", controller(flags)), "forest"), "Отправиться")), true);
     const html = render(controller({ ...flags, snapshot: snapshot({ jobs: [job({ finishesAt: new Date(now).toISOString() })] }) }));
     assert.equal(disabled(button(html, "Забрать находки: Лесная разведка")), true);
   }
@@ -328,11 +336,16 @@ test("cancellation approval is scoped to the exact job and owner, while timer ti
 });
 
 function sectorView(sectorId, state, overrides = {}, props = {}) {
-  const calls = [], visits = [], elements = [];
+  const calls = [], visits = [], selections = [], elements = [];
   const economy = controller({ snapshot: state, act: (...args) => calls.push(args), ...overrides });
-  const tree = WorldExpeditionSector({ sectorId, selectedRoute: null, onSelectRoute() {}, economy, state,
-    exploring: state.jobs.some(entry => entry.kind === "exploration"), onOpenPantry() {},
-    onOpenFishingShop: () => visits.push("plesk"), ...props });
+  let tree;
+  function Probe() {
+    tree = WorldExpeditionSector({ sectorId, selectedRoute: null, onSelectRoute: id => selections.push(id), economy, state,
+      exploring: state.jobs.some(entry => entry.kind === "exploration"), onOpenPantry() {},
+      onOpenFishingShop: () => visits.push("plesk"), ...props });
+    return tree;
+  }
+  const html = renderToStaticMarkup(createElement(Probe));
   function walk(element) {
     if (!isValidElement(element)) return;
     elements.push(element);
@@ -347,25 +360,118 @@ function sectorView(sectorId, state, overrides = {}, props = {}) {
   walk(tree);
   const depart = routeId => elements.find(element => element.type === "button"
     && element.props["aria-label"] === `Отправиться: ${state.catalog.explorations.find(entry => entry.id === routeId).name}`);
-  return { html: renderToStaticMarkup(tree), elements, calls, visits, depart };
+  return { html, elements, calls, visits, selections, depart };
 }
 const fishingGear = (overrides = {}) => ({ ownedRods: ["reed_rod", "river_rod", "willow_rod"], equippedRodId: "willow_rod",
   equippedBaitId: "worm_bait", catches: {}, ...overrides });
 
+test("route selection and return only navigate, with no hidden departure forms in the list", () => {
+  const state = snapshot();
+  const list = sectorView("shore", state);
+  const card = list.elements.find(element => element.type === "button" && element.props["data-route"] === "shore");
+  assert.ok(card);
+  assert.notEqual(card.props.disabled, true);
+  assert.equal(list.elements.filter(element => element.type === ExpeditionRouteDetails).length, 0);
+  assert.doesNotMatch(list.html, /<select\b|aria-label="Отправиться:/);
+  card.props.onClick();
+  assert.deepEqual(list.selections, ["shore"]);
+  assert.deepEqual(list.calls, []);
+  const preparation = sectorView("shore", state, {}, { selectedRoute: list.selections[0] });
+  assert.equal(preparation.elements.filter(element => element.type === ExpeditionRouteDetails).length, 1);
+  const back = preparation.elements.find(element => element.type === "button"
+    && Children.toArray(element.props.children).some(child => child === "Все маршруты"));
+  assert.ok(back); back.props.onClick();
+  assert.deepEqual(preparation.selections, [null]);
+  assert.deepEqual(preparation.calls, []);
+  const returned = sectorView("shore", state, {}, { selectedRoute: preparation.selections[0] });
+  assert.doesNotMatch(returned.html, /<select\b|aria-label="Отправиться:/);
+  assert.match(returned.html, /data-route="shore_camp"/);
+});
+
+test("route cards describe their duration, rewards and preparation reason beyond their accessible name", () => {
+  const view = sectorView("forest", snapshot());
+  const card = view.elements.find(element => element.type === "button" && element.props["data-route"] === "old_woodland");
+  const descriptionIds = card.props["aria-describedby"]?.trim().split(/\s+/);
+  assert.ok(descriptionIds?.length, "the route name alone omits information needed to compare trips");
+  const description = descriptionIds.map(id => {
+    const target = view.elements.find(element => element.props.id === id);
+    assert.ok(target, `Missing description target: ${id}`);
+    return renderToStaticMarkup(target).replace(/<[^>]*>/g, " ");
+  }).join(" ");
+  assert.match(description, /8 ч/);
+  assert.match(description, /ур\. 1 \+2/);
+  const catalogRoute = economyCatalog.explorations.find(entry => entry.id === "old_woodland");
+  for (const [id, count] of Object.entries(catalogRoute.rewards)) {
+    assert.ok(description.includes(economyCatalog.items.find(item => item.id === id).name));
+    assert.match(description, new RegExp(`×\\s*${count}`));
+  }
+});
+
+test("closed fishing details leave catch guarantees, missing supplies and departure visible", () => {
+  const view = sectorView("shore", snapshot({ fishing: fishingGear(), inventory: {} }), {}, { selectedRoute: "shore" });
+  const collapsed = view.elements.filter(element => element.type === "details");
+  for (const label of ["Снасти для вылазки", "Шансы улова"]) {
+    const details = collapsed.find(element => element.props["aria-label"] === label);
+    assert.ok(details, label);
+    assert.notEqual(details.props.open, true);
+  }
+  let depth = 0, visible = "", previous = 0;
+  for (const match of view.html.matchAll(/<\/?details\b[^>]*>/g)) {
+    if (depth === 0) visible += view.html.slice(previous, match.index);
+    depth += match[0].startsWith("</") ? -1 : 1;
+    previous = match.index + match[0].length;
+  }
+  assert.equal(depth, 0);
+  visible += view.html.slice(previous);
+  assert.match(visible, /Улов за одну вылазку/);
+  assert.match(visible, /Всего рыб/); assert.match(visible, /Речных гарантировано/);
+  assert.match(visible, /Попыток особого улова/); assert.match(visible, /Наживки за поход/);
+  assert.match(visible, /Не хватает припасов/);
+  assert.equal(disabled(button(visible, "Отправиться")), true);
+  assert.doesNotMatch(visible, /<select\b/);
+});
+
+test("stale selections cannot prepare another sector or a route superseded by mine upgrades", () => {
+  for (const selectedRoute of ["shore", "missing_route"]) {
+    const view = sectorView("forest", snapshot(), {}, { selectedRoute });
+    assert.doesNotMatch(view.html, /data-route-preparation="true"|<select\b|aria-label="Отправиться:/);
+    assert.match(view.html, /data-route="forest"/);
+    assert.deepEqual(view.calls, []);
+  }
+  const state = snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } });
+  for (const selectedRoute of ["quarry_shift", "quarry_deep_face"]) {
+    const view = sectorView("caves", state, {}, { selectedRoute });
+    assert.doesNotMatch(view.html, /data-route-preparation="true"|aria-label="Отправиться:/);
+    assert.match(view.html, /data-route="quarry_supply"/);
+  }
+});
+
+test("a selected route cannot start while an exploration or a mine upgrade is still active", () => {
+  const exploring = sectorView("shore", snapshot({ jobs: [job()] }), {}, { selectedRoute: "shore" });
+  assert.match(exploring.html, /Сначала заберите находки или отмените текущую вылазку/);
+  assert.equal(exploring.depart("shore"), undefined);
+  assert.deepEqual(exploring.calls, []);
+  const mining = sectorView("caves", snapshot({ buildings: { home: 3, warehouse: 3, quarry: 2 }, jobs: [job({ kind: "construction", targetId: "quarry", rewards: {}, targetLevel: 3 })] }), {}, { selectedRoute: "quarry_stone" });
+  assert.match(mining.html, /Дождитесь улучшения шахты/);
+  assert.equal(mining.depart("quarry_stone").props.disabled, true);
+  mining.depart("quarry_stone").props.onClick();
+  assert.deepEqual(mining.calls, []);
+});
+
 test("fishing departure shows equipped gear, charges one bait per trip and guards a missing-bait handler", () => {
   const state = snapshot({ fishing: fishingGear(), inventory: {} });
   const before = structuredClone(state);
-  const missing = sectorView("shore", state);
+  const missing = sectorView("shore", state, {}, { selectedRoute: "shore" });
   const shore = route(missing.html, "shore");
-  assert.match(shore, /Ивовая удочка/); assert.match(shore, /1 наживка на вылазку/);
+  assert.match(shore, /Ивовая удочка/); assert.match(shore, /Наживки за поход/);
   assert.match(shore, /Не хватает припасов/); assert.match(shore, /<strong>0 \/ 1<\/strong>/);
   assert.equal(missing.depart("shore").props.disabled, true);
   missing.depart("shore").props.onClick(); assert.deepEqual(missing.calls, []);
-  const ready = sectorView("shore", snapshot({ ...state, inventory: { worm_bait: 1 } }));
+  const ready = sectorView("shore", snapshot({ ...state, inventory: { worm_bait: 1 } }), {}, { selectedRoute: "shore" });
   assert.equal(ready.depart("shore").props.disabled, false);
   ready.depart("shore").props.onClick(); assert.deepEqual(ready.calls, [["start_fishing", "shore", 1, 0]]);
   assert.deepEqual(state, before, "rendering and choosing a trip cannot deduct supplies optimistically");
-  const bare = sectorView("shore", snapshot({ fishing: fishingGear({ equippedBaitId: null }), inventory: {} }));
+  const bare = sectorView("shore", snapshot({ fishing: fishingGear({ equippedBaitId: null }), inventory: {} }), {}, { selectedRoute: "shore" });
   assert.match(route(bare.html, "shore"), /Без наживки/);
   assert.equal(bare.depart("shore").props.disabled, false);
 });
@@ -373,42 +479,40 @@ test("fishing departure shows equipped gear, charges one bait per trip and guard
 test("fishing consumes the dedicated action only for declared routes and preserves legacy-backend departures", () => {
   const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])),
     inventory: { worm_bait: 1, smoked_fish: 3, dried_berries: 3 }, fishing: fishingGear() });
-  const coastal = sectorView("shore", state);
-  for (const routeId of ["shore", "shore_camp", "coastal_deposits"]) {
-    assert.equal(coastal.depart(routeId).props.disabled, false);
-    coastal.depart(routeId).props.onClick();
+  for (const routeId of ["shore", "shore_camp", "coastal_deposits", "forest"]) {
+    const view = sectorView(expeditionSector(routeId), state, {}, { selectedRoute: routeId });
+    assert.equal(view.depart(routeId).props.disabled, false);
+    view.depart(routeId).props.onClick();
+    assert.deepEqual(view.calls, [[economyCatalog.fishing.routeIds.includes(routeId) ? "start_fishing" : "start_exploration", routeId, 1, 0]]);
   }
-  assert.deepEqual(coastal.calls, [["start_fishing", "shore", 1, 0], ["start_fishing", "shore_camp", 1, 0], ["start_exploration", "coastal_deposits", 1, 0]]);
-  const forest = sectorView("forest", state); forest.depart("forest").props.onClick();
-  assert.deepEqual(forest.calls, [["start_exploration", "forest", 1, 0]]);
   const legacy = structuredClone(state); delete legacy.catalog.fishing; delete legacy.fishing;
-  const fallback = sectorView("shore", legacy); fallback.depart("shore").props.onClick();
+  const fallback = sectorView("shore", legacy, {}, { selectedRoute: "shore" }); fallback.depart("shore").props.onClick();
   assert.deepEqual(fallback.calls, [["start_exploration", "shore", 1, 0]]);
   assert.doesNotMatch(route(fallback.html, "shore"), /Рыбный улов|Купить снасти/);
   assert.match(route(fallback.html, "shore"), new RegExp(economyCatalog.items.find(item => item.id === "fish").name));
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 1000 }]) {
-    const locked = sectorView("shore", state, flags);
+    const locked = sectorView("shore", state, flags, { selectedRoute: "shore" });
     assert.equal(locked.depart("shore").props.disabled, true);
     locked.depart("shore").props.onClick(); assert.deepEqual(locked.calls, []);
   }
 });
 
 test("shore gear shortcuts open Pleska without spending and fishing keeps each route's advertised capacity", () => {
-  const view = sectorView("shore", snapshot());
+  const view = sectorView("shore", snapshot(), {}, { selectedRoute: "shore" });
   const shops = view.elements.filter(element => element.type === "button"
     && Children.toArray(element.props.children).some(child => child === "Купить снасти у Плёски"));
-  assert.equal(shops.length, economyCatalog.fishing.routeIds.length);
+  assert.equal(shops.length, 1);
   shops[0].props.onClick(); assert.deepEqual(view.visits, ["plesk"]); assert.deepEqual(view.calls, []);
-  const without = sectorView("shore", snapshot(), {}, { onOpenFishingShop: undefined });
+  const without = sectorView("shore", snapshot(), {}, { selectedRoute: "shore", onOpenFishingShop: undefined });
   assert.doesNotMatch(without.html, /Купить снасти у Плёски/);
   for (const routeId of economyCatalog.fishing.routeIds) {
     const entry = economyCatalog.explorations.find(route => route.id === routeId);
     const quantity = Object.values(entry.rewards).reduce((sum, count) => sum + count, 0);
-    const full = sectorView("shore", snapshot({ storage: { capacity: quantity - 1, available: quantity - 1, used: 0, reserved: 0, overflow: 0 } }));
+    const full = sectorView("shore", snapshot({ storage: { capacity: quantity - 1, available: quantity - 1, used: 0, reserved: 0, overflow: 0 } }), {}, { selectedRoute: routeId });
     assert.equal(full.depart(routeId).props.disabled, true);
     assert.match(route(full.html, routeId), new RegExp(`Находки займут ${quantity} мест`));
-    assert.match(route(view.html, routeId), /Рыбный улов/);
-    assert.match(route(view.html, routeId), new RegExp(`×${entry.rewards.fish}`));
+    assert.match(route(full.html, routeId), /Всего рыб/);
+    assert.match(route(full.html, routeId), new RegExp(`<dd>${entry.rewards.fish}</dd>`));
   }
 });
 

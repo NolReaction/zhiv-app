@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/fishing-rod-icon";
 import type { EconomyJob, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { ProductIcon, itemName, locked, number, stationName } from "./world-economy-parts";
 import { worldCostShortfalls, worldDuration, worldJobProgress, worldMissingRequirements, worldRequirements } from "./world-stations";
-import { fishingState, fishingTripCost, fishingCollectionDraws } from "./fishing";
+import { fishingState, fishingTripCost } from "./fishing";
+import { ExpeditionFishingSummary } from "./expedition-fishing-summary";
 import { PleskCatchOdds } from "./plesk-fishing-shop";
 import { useFishingCommand } from "./use-fishing-command";
 import { economyActorConflict, isQuarryProduction } from "./actor-availability";
@@ -45,6 +46,9 @@ const routeIcon = (id: string): LucideIcon => expeditionSectors.find(sector => s
 const isFishingRoute = (state: EconomyView, route: Route) => state.catalog.fishing?.routeIds.includes(route.id) ?? false;
 const expeditionCost = (state: EconomyView, route: Route) => isFishingRoute(state, route) ? fishingTripCost(route.cost, state) : route.cost;
 const canPrepare = (state: EconomyView, route: Route) => worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, expeditionCost(state, route)).length === 0;
+const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.explorations.filter(route => expeditionSector(route.id) === sectorId
+  && !(route.id === "quarry_shift" && (state.buildings.quarry ?? 0) >= 4)
+  && !(route.id === "quarry_deep_face" && (state.buildings.quarry ?? 0) >= 5));
 
 function Findings({ state, rewards, compact = false, mixedFish = false }: { state: EconomyView; rewards: Record<string, number>; compact?: boolean; mixedFish?: boolean }) {
   return <span className={styles.findings} data-compact={compact || undefined} role="list" aria-label="Находки">{Object.entries(rewards).map(([id, quantity]) => {
@@ -131,8 +135,14 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
   const mineUpgrading = Boolean(route.requiredBuildings.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"));
   const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || exploring || Boolean(actorConflict) || invalidGear || mineUpgrading;
   return <div className={styles.detail}>
-    {fishing && <div className={styles.fishingGear}>
-      <strong>С собой на рыбалку</strong>
+    {fishing ? <ExpeditionFishingSummary state={state} route={route} /> : <div className={styles.routeRewards}><span className={styles.caption}>Привезёт с собой</span><Findings state={state} rewards={route.rewards} /></div>}
+    {fishing && <details className={styles.fishingGear} aria-label="Снасти для вылазки">
+      <summary><span className={styles.gearHeading}>Снасти<small>Изменить</small></span><ChevronDown size={14} className={styles.chevron} aria-hidden="true" /><span className={styles.gearPreview}>
+        <span title={catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.name}><FishingRodIcon rodId={gear.equippedRodId} size={23} /><span>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.name ?? "Удочка"}</span></span>
+        <span title={catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.name}><ItemIcon itemId={gear.equippedHookId} size={20} /><span>{catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.name ?? "Крючок"}</span></span>
+        <span title={gear.equippedBaitId ? itemName(state, gear.equippedBaitId) : "Без наживки"}>{gear.equippedBaitId ? <ItemIcon itemId={gear.equippedBaitId} size={20} /> : <Fish size={18} aria-hidden="true" />}<span>{gear.equippedBaitId ? itemName(state, gear.equippedBaitId) : "Без наживки"}</span></span>
+      </span></summary>
+      <div className={styles.gearControls}>
       <div className={styles.loadoutRow}><FishingRodIcon rodId={gear.equippedRodId} size={43} /><label htmlFor={`${id}-rod`}>Удочка<select id={`${id}-rod`} value={gear.equippedRodId} disabled={command.blocked || !rods.length} onChange={event => {
         const rodId = event.target.value;
         command.send("equip_fishing_rod", rodId, 1, 0, rodId !== gear.equippedRodId && rods.some(rod => rod.id === rodId));
@@ -146,33 +156,43 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
         const owned = baitId === "none" || Boolean(catalog?.baits.some(bait => bait.itemId === baitId) && (state.inventory[baitId] ?? 0) > 0);
         command.send("equip_fishing_bait", baitId, 1, 0, baitId !== (gear.equippedBaitId ?? "none") && owned);
       }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0}>{itemName(state, bait.itemId)} · {(state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
-      <p>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.description}</p>
-      <p>{catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.description}</p>
-      {gear.equippedBaitId && <p>{catalog?.baits.find(bait => bait.itemId === gear.equippedBaitId)?.description}</p>}
-      <p>{gear.equippedBaitId ? "1 наживка на вылазку. " : ""}Удочка и крючок не расходуются. Рыб в улове: {route.rewards.fish}; отдельных шансов на особый вид: {fishingCollectionDraws(route.id, catalog)}. Виды узнаем, когда заберём улов.</p>
-      {catalog && <PleskCatchOdds state={state} catalog={catalog} />}
-      {invalidGear && <p className={styles.warning}>Выберите доступную удочку и крючок перед отправлением.</p>}
+      <p>Удочка и крючок не расходуются.</p>
+      <details className={styles.gearDescription}><summary>О выбранных снастях</summary>
+        <p>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.description}</p>
+        <p>{catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.description}</p>
+        {gear.equippedBaitId && <p>{catalog?.baits.find(bait => bait.itemId === gear.equippedBaitId)?.description}</p>}
+      </details>
       {onOpenFishingShop && <button type="button" className={styles.link} onClick={onOpenFishingShop}>Купить снасти у Плёски<ArrowRight size={12} aria-hidden="true" /></button>}
-    </div>}
-    {missing.length > 0 && <ul className={styles.requirements} aria-label="Условия открытия">{missing.map(({ id, level }) => <li key={id}><LockKeyhole size={12} aria-hidden="true" />{onNavigateStation ? <button type="button" className={styles.link} onClick={() => onNavigateStation(id)}>{stationName(state, id)} · нужен ур. {level}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{stationName(state, id)} · нужен ур. {level}</span>}</li>)}</ul>}
+      </div>
+    </details>}
+    <ul className={styles.requirements} aria-label={missing.length ? "Условия открытия" : "Условия маршрута"}>{Object.entries(worldRequirements(route)).map(([id, level]) => {
+      const unmet = (state.buildings[id] ?? 0) < level;
+      return <li key={id} data-missing={unmet || undefined}>{unmet ? <LockKeyhole size={12} aria-hidden="true" /> : <Check size={12} aria-hidden="true" />}{unmet && onNavigateStation ? <button type="button" className={styles.link} onClick={() => onNavigateStation(id)}>{stationName(state, id)} · нужен ур. {level}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{stationName(state, id)} · {unmet ? "нужен ур." : "ур."} {level}</span>}</li>;
+    })}</ul>
     {cost.coins > 0 || Object.keys(cost.items).length > 0 ? <div className={styles.provisions}><span className={styles.caption}>С собой</span><ul aria-label="Припасы для вылазки">{cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins || undefined}><ItemIcon itemId="coins" size={16} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(cost.coins)}</strong></li>}{Object.entries(cost.items).map(([id, quantity]) => <li key={id} data-missing={(state.inventory[id] ?? 0) < quantity || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(quantity)}</strong></li>)}</ul></div> : <p className={styles.free}><Check size={12} aria-hidden="true" />Без затрат</p>}
     {tooLarge ? <div className={styles.warning}><p>Находки займут {number(findings)} мест, вместимость — {number(state.storage.capacity)}.</p><button type="button" className={styles.link} onClick={onNavigateStation ? () => onNavigateStation("warehouse") : onOpenPantry}>Расширить кладовую<ArrowRight size={12} aria-hidden="true" /></button></div> : state.storage.available < findings && <button type="button" className={styles.storageHint} onClick={onOpenPantry}><Package size={13} aria-hidden="true" /><span>К возвращению нужно {number(findings)} мест · свободно {number(state.storage.available)}</span><ArrowRight size={12} aria-hidden="true" /></button>}
     {mineUpgrading && <p className={styles.caption}>Дождитесь улучшения шахты и заберите результат.</p>}
     {actorConflict && !exploring && <p className={styles.caption}>{actorConflict.message}</p>}
+    {invalidGear && <p className={styles.warning}>Выберите доступную удочку и крючок перед отправлением.</p>}
     {exploring ? <p className={styles.caption}>Сначала заберите находки или отмените текущую вылазку.</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || command.blocked} onClick={() => command.send(fishing ? "start_fishing" : "start_exploration", route.id, 1, 0, !blocked)} aria-label={`Отправиться: ${route.name}`}>Отправиться · {worldDuration(route.seconds)}<ArrowRight size={13} aria-hidden="true" /></button></div>}
+    {fishing && catalog && <details className={styles.catchDetails} aria-label="Шансы улова"><summary><Fish size={16} aria-hidden="true" /><span>Шансы и условия улова</span><ChevronDown size={14} className={styles.chevron} aria-hidden="true" /></summary><PleskCatchOdds state={state} catalog={catalog} /></details>}
   </div>;
 }
 
-export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, economy, state, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop }: WorldExpeditionsMenuProps & { sectorId: SectorId; selectedRoute: string | null; onSelectRoute: (id: string) => void; state: EconomyView; exploring: boolean }) {
-  const mineLevel = state.buildings.quarry ?? 0;
-  const routes = state.catalog.explorations.filter(route => expeditionSector(route.id) === sectorId
-    && !(route.id === "quarry_shift" && mineLevel >= 4) && !(route.id === "quarry_deep_face" && mineLevel >= 5));
+export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, economy, state, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop }: WorldExpeditionsMenuProps & { sectorId: SectorId; selectedRoute: string | null; onSelectRoute: (id: string | null) => void; state: EconomyView; exploring: boolean }) {
+  const descriptionPrefix = useId();
+  const routes = sectorRoutes(state, sectorId);
   const readyRoutes = routes.filter(route => canPrepare(state, route));
   const laterRoutes = routes.filter(route => !canPrepare(state, route));
   const sector = expeditionSectors.find(entry => entry.id === sectorId)!;
-  const actorBusy = Boolean(economyActorConflict(state.jobs, "departure", economy.now));
+  const selected = routes.find(route => route.id === selectedRoute);
+  if (selected) return <section className={styles.preparation} aria-label={`Подготовка: ${routeName(selected.name)}`} data-sector={sectorId} data-route={selected.id} data-route-preparation="true">
+    <button type="button" className={styles.back} onClick={() => onSelectRoute(null)}><ArrowLeft size={15} aria-hidden="true" />Все маршруты<span>{sector.name}</span></button>
+    <header className={styles.preparationHeading}><h3 tabIndex={-1} data-route-heading>{routeName(selected.name)}</h3><span className={styles.routeDuration}><Clock3 size={13} aria-hidden="true" />{worldDuration(selected.seconds)}</span></header>
+    <ExpeditionRouteDetails key={selected.id} route={selected} state={state} economy={economy} exploring={exploring} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} />
+  </section>;
   return <section className={styles.routes} aria-label={`Маршруты: ${sector.name}`} data-sector={sectorId}>
-    {[{ key: "ready", label: exploring || actorBusy ? "Маршруты сектора" : "Можно отправиться", routes: readyRoutes }, { key: "later", label: "Нужно подготовиться", routes: laterRoutes }].filter(group => group.routes.length > 0).map(group => <div className={styles.routeGroup} key={group.key}>
+    {[{ key: "ready", label: "Доступные маршруты", routes: readyRoutes }, { key: "later", label: "Нужно подготовиться", routes: laterRoutes }].filter(group => group.routes.length > 0).map(group => <div className={styles.routeGroup} key={group.key}>
       <p className={styles.groupTitle}>{group.label}<span>{group.routes.length}</span></p>
       {group.routes.map(route => {
         const missing = worldMissingRequirements(state, worldRequirements(route));
@@ -181,10 +201,10 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
         const Icon = routeIcon(route.id);
         const unavailable = missing.length > 0 || tooLarge || needsProvisions;
         const reason = missing.length ? `${stationName(state, missing[0].id)} · ур. ${missing[0].level}${missing.length > 1 ? ` +${missing.length - 1}` : ""}` : tooLarge ? "Расширьте кладовую" : needsProvisions ? "Нужны припасы" : null;
-        return <details key={route.id} className={styles.route} open={selectedRoute === route.id} data-route={route.id} data-locked={unavailable || undefined}>
-          <summary onClick={event => { event.preventDefault(); onSelectRoute(route.id); }}><span className={styles.routeIcon}><Icon size={19} aria-hidden="true" /></span><span className={styles.routeText}><strong>{routeName(route.name)}</strong>{reason && <small><LockKeyhole size={10} aria-hidden="true" />{reason}</small>}</span><span className={styles.routeDuration}><Clock3 size={10} aria-hidden="true" />{worldDuration(route.seconds)}</span><ChevronDown className={styles.chevron} size={13} aria-hidden="true" /><span className={styles.routeFindings}><Findings state={state} rewards={route.rewards} compact={selectedRoute !== route.id} mixedFish={isFishingRoute(state, route)} /></span></summary>
-          <ExpeditionRouteDetails route={route} state={state} economy={economy} exploring={exploring} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} />
-        </details>;
+        const descriptionId = `${descriptionPrefix}-${route.id}`;
+        return <button type="button" key={route.id} className={styles.route} data-route={route.id} data-locked={unavailable || undefined} aria-label={`Подготовиться: ${route.name}`} aria-describedby={`${descriptionId}-duration ${descriptionId}-rewards${reason ? ` ${descriptionId}-reason` : ""}`} onClick={() => onSelectRoute(route.id)}>
+          <span className={styles.routeIcon}><Icon size={19} aria-hidden="true" /></span><span className={styles.routeText}><strong>{routeName(route.name)}</strong>{reason && <small id={`${descriptionId}-reason`}><LockKeyhole size={10} aria-hidden="true" />{reason}</small>}</span><span id={`${descriptionId}-duration`} className={styles.routeDuration}><Clock3 size={11} aria-hidden="true" />{worldDuration(route.seconds)}</span><ArrowRight className={styles.chevron} size={14} aria-hidden="true" /><span id={`${descriptionId}-rewards`} className={styles.routeFindings}><Findings state={state} rewards={route.rewards} compact mixedFish={isFishingRoute(state, route)} /></span>
+        </button>;
       })}
     </div>)}
     {!routes.length && <p className={styles.intro}>Маршруты пока недоступны.</p>}
@@ -195,8 +215,22 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
   const [selectedSector, setSelectedSector] = useState<SectorId>(initialSector);
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [confirmationKey, setConfirmationKey] = useState<string | null>(null);
+  const previousRoute = useRef<string | null>(null);
   const cancellationSent = useRef<string | null>(null), selectedSectorButton = useRef<HTMLButtonElement>(null), content = useRef<HTMLDivElement>(null);
   const state = economy.snapshot;
+  const currentSector = embeddedCaves ? "caves" : selectedSector;
+  const visibleRoute = state ? sectorRoutes(state, currentSector).find(route => route.id === selectedRoute)?.id ?? null : null;
+  useEffect(() => {
+    if (visibleRoute === previousRoute.current) return;
+    if (visibleRoute) content.current?.querySelector<HTMLElement>("[data-route-heading]")?.focus();
+    else if (previousRoute.current) {
+      // Find by dataset rather than interpolating catalog IDs into CSS selectors.
+      const cards = content.current?.querySelectorAll<HTMLButtonElement>("button[data-route]");
+      const origin = Array.from(cards ?? []).find(card => card.dataset.route === previousRoute.current);
+      (origin ?? selectedSectorButton.current ?? content.current)?.focus();
+    }
+    previousRoute.current = visibleRoute;
+  }, [visibleRoute]);
   useEffect(() => {
     if (!state || !cancellationSent.current || state.jobs.some(job => job.id === cancellationSent.current)) return;
     cancellationSent.current = null;
@@ -218,8 +252,8 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
       {!embeddedCaves && quarryConflict && <div className={styles.warning}><p>{quarryConflict.message}</p>{onNavigateStation && <button type="button" className={styles.link} onClick={() => onNavigateStation("quarry")}><Mountain size={14} aria-hidden="true" />Открыть каменоломню<ArrowRight size={12} aria-hidden="true" /></button>}</div>}
       {jobs.map(job => <ActiveExpedition key={job.id} economy={economy} state={state} job={job} onOpenPantry={onOpenPantry}
         confirmationKey={confirmationKey} onConfirmation={setConfirmationKey} onCancellationSent={jobId => { cancellationSent.current = jobId; }} />)}
-      {!embeddedCaves && <div className={styles.sectors} role="group" aria-label="Секторы вылазок">{expeditionSectors.map(({ id, name, icon: Icon }) => <button ref={selectedSector === id ? selectedSectorButton : undefined} type="button" key={id} data-sector-select={id} aria-pressed={selectedSector === id} onClick={() => { if (id === "caves" && onOpenQuarry) { onOpenQuarry(); return; } setSelectedSector(id); setSelectedRoute(null); setConfirmationKey(null); }}><Icon size={21} aria-hidden="true" /><span>{name}</span></button>)}</div>}
-      {!activeOnly && <WorldExpeditionSector sectorId={embeddedCaves ? "caves" : selectedSector} selectedRoute={selectedRoute} onSelectRoute={id => setSelectedRoute(value => value === id ? null : id)} state={state} economy={economy} exploring={jobs.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} />}
+      {!embeddedCaves && !visibleRoute && <div className={styles.sectors} role="group" aria-label="Секторы вылазок">{expeditionSectors.map(({ id, name, icon: Icon }) => <button ref={selectedSector === id ? selectedSectorButton : undefined} type="button" key={id} data-sector-select={id} aria-pressed={selectedSector === id} onClick={() => { if (id === "caves" && onOpenQuarry) { onOpenQuarry(); return; } setSelectedSector(id); setSelectedRoute(null); setConfirmationKey(null); }}><Icon size={21} aria-hidden="true" /><span>{name}</span></button>)}</div>}
+      {!activeOnly && <WorldExpeditionSector sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={jobs.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} />}
     </>}
   </div>;
 }

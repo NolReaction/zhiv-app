@@ -51,10 +51,10 @@ test("help directs each map action to its focused menu", () => {
   assert.match(text("level"), /уровень слева сверху.*профиль.*самочувствие/);
   assert.match(text("resources"), /Кладовая.*отдельное меню запасов/);
   assert.match(text("journeys"), /В путь.*выбор занятий Мохлика/);
-  assert.match(text("journeys"), /Пещеры открывают то же меню каменоломни/);
+  assert.match(text("journeys"), /Шахта открывает то же меню каменоломни/);
   assert.match(text("construction"), /Таймер находится над улучшаемым объектом/);
   assert.match(text("construction"), /кладовая — над домом, печь — над мастерской, заготовки — над костром/);
-  assert.match(text("journeys"), /сектор «Лес», «Побережье» или «Пещеры»/);
+  assert.match(text("journeys"), /сектор «Лес», «Побережье» или «Шахта»/);
   assert.match(text("production"), /будущие рецепты свёрнуты в «Позже»/);
   assert.match(text("resources"), /Эффект начинается после подтверждения действия/);
   assert.doesNotMatch(text("resources") + text("journeys"), /Переход из окна дома|В окне дома доступны улучшение и переход|сверху карты виден таймер/);

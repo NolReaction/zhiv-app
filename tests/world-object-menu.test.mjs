@@ -10,6 +10,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const helpers = await vite.ssrLoadModule("/features/economy/world-stations.ts");
 const { WorldObjectMenu, WorldObjectSale } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
+const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
 const { ProductionActivity } = await vite.ssrLoadModule("/features/economy/production-activity.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
@@ -286,13 +287,30 @@ test("map menu is compact and nonmodal with place-specific production rather tha
 });
 
 test("the mine has one actor route picker without production tabs and keeps upgrade gates", () => {
-  const initial = render("quarry");
+  const prepareCave = state => renderToStaticMarkup(createElement(WorldExpeditionSector, {
+    sectorId: "caves", selectedRoute: "cave", onSelectRoute() {}, economy: controller({ snapshot: state }), state,
+    exploring: false, embeddedCaves: true, onOpenPantry() {},
+  }));
+  const initialState = snapshot();
+  const initial = render("quarry", controller({ snapshot: initialState }));
   assert.match(initial, /data-sector="caves"/);
   assert.doesNotMatch(initial, /data-quarry-tab|data-recipe=|Секторы вылазок/);
-  assert.equal(disabled(button(initial, "Отправиться")), true);
+  const lockedCave = button(initial, "Вход в пещеру");
+  assert.match(lockedCave.attributes, /aria-label="Подготовиться: Вход в пещеру"/);
+  assert.match(lockedCave.attributes, /data-route="cave"/);
+  assert.match(lockedCave.attributes, /data-locked="true"/);
+  assert.equal(disabled(lockedCave), false, "locked routes remain inspectable before meeting their conditions");
+  assert.doesNotMatch(initial, /aria-label="Отправиться:|data-route-preparation=/);
+  const lockedPreparation = prepareCave(initialState);
+  assert.match(lockedPreparation, /data-route="cave"[^>]*data-route-preparation="true"/);
+  assert.equal(disabled(button(lockedPreparation, "Отправиться")), true);
   assert.equal(disabled(button(initial, "Обустроить")), false);
-  const unbuilt = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } }) }));
-  assert.equal(disabled(button(unbuilt, "Отправиться")), false, "entry cave keeps the free home-two resource path");
+  const unbuiltState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } });
+  const unbuilt = render("quarry", controller({ snapshot: unbuiltState }));
+  const openCave = button(unbuilt, "Вход в пещеру");
+  assert.equal(disabled(openCave), false);
+  assert.doesNotMatch(openCave.attributes, /data-locked="true"/);
+  assert.equal(disabled(button(prepareCave(unbuiltState), "Отправиться")), false, "entry cave keeps the free home-two resource path");
   assert.match(unbuilt, /data-route="quarry_clay"[^>]*data-locked="true"/);
   assert.match(unbuilt, /data-route="abandoned_quarry"[^>]*data-locked="true"/);
   const fullMine = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }) }));
