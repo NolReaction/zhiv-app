@@ -24,6 +24,34 @@ function nearby(entry: WorldPoint, anchor: WorldPoint): WorldPoint[] {
     .map(([forward, side]) => ({ x: entry.x + dx * forward - dy * side, y: entry.y + dy * forward + dx * side }));
 }
 
+/** Ground support is intentionally small; shared activity points need enough
+ * room for the visible bodies of both residents, not just their feet. */
+export function builderWorkClearance(scene: FixedWorldScene): number {
+  const size = scene.actor?.size;
+  return (BUILDER.size + (Number.isFinite(size) && size! > 0 ? size! : BUILDER.size)) * .5;
+}
+
+function beside(entry: WorldPoint, anchor: WorldPoint, gap: number): WorldPoint[] {
+  const length = distance(entry, anchor), dx = length > .1 ? (entry.x - anchor.x) / length : 0;
+  const dy = length > .1 ? (entry.y - anchor.y) / length : 1;
+  // Keep the nearest side positions first; widen only when the building or its
+  // approach corridor occupies them. No fallback stands on the entrance axis.
+  return [1, 1.35, 1.7].flatMap(width => [0, .3, .6, 1].flatMap(forward => [-1, 1].map(side => ({
+    x: entry.x + dx * gap * forward - dy * gap * width * side,
+    y: entry.y + dy * gap * forward + dx * gap * width * side,
+  }))));
+}
+
+function distanceToAccess(point: WorldPoint, access: readonly WorldPoint[]): number {
+  let closest = distance(point, access[0]);
+  for (let index = 1; index < access.length; index++) {
+    const a = access[index - 1], b = access[index], dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    closest = Math.min(closest, distance(point, { x: a.x + dx * t, y: a.y + dy * t }));
+  }
+  return closest;
+}
+
 /** Optional personal rest marker can be authored later. The fallback is a safe
  * clearing position, never an invented house or the hero's occupied spawn. */
 export function builderLocalPlaces(scene: FixedWorldScene): BuilderPlaces | null {
@@ -66,15 +94,29 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
   const empty: BuilderStop[] = [];
   if (!places || !place) { jobs.set(key, empty); return empty; }
   let entry: WorldPoint | undefined, anchor: WorldPoint | undefined, future: WorldNavigation | null = places.navigation;
+  const access: WorldPoint[][] = [];
   const siteId = place === "house" ? "home" : place;
   const site = scene.sites.find(candidate => candidate.id === siteId);
   if (site) {
     entry = site.entry; anchor = site.anchor;
+    access.push([site.entry, site.doorway ?? site.entry]);
+    const destination = scene.destinations?.find(destination => destination.id === siteId && destination.siteId === siteId);
+    if (destination) access.push([destination.position, site.entry]);
+    if (siteId === "home") {
+      if (finite(scene.actor?.spawn)) access.push([scene.actor.spawn, site.entry]);
+      for (const path of scene.paths.filter(path => path.siteId === siteId && path.behavior === "home"))
+        if (path.points.length) access.push([...path.points, site.entry]);
+    }
     // Warehouse and kiln levels do not select a different exterior house/art.
     const next = job.stationId === site.id && site.states.find(state => state.level === job.targetLevel)?.geometry;
-    if (next) future = createWorldNavigation({ ...scene,
-      sites: scene.sites.map(candidate => candidate.id === site.id ? { ...candidate, ...next } : candidate),
-    }, BUILDER_NAVIGATION_LIMITS.radius);
+    if (next) {
+      access.push([next.entry, next.doorway ?? next.entry], [site.entry, next.entry]);
+      if (destination) access.push([destination.position, next.entry]);
+      if (siteId === "home" && finite(scene.actor?.spawn)) access.push([scene.actor.spawn, next.entry]);
+      future = createWorldNavigation({ ...scene,
+        sites: scene.sites.map(candidate => candidate.id === site.id ? { ...candidate, ...next } : candidate),
+      }, BUILDER_NAVIGATION_LIMITS.radius);
+    }
   } else if (place === "garden") {
     const bush = scene.bushes?.find(bush => bush.id === "clearing-bush") ?? scene.bushes?.[0];
     entry = bush?.entry; anchor = bush?.hide;
@@ -83,9 +125,22 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
     entry = fire?.seat; anchor = fire?.position;
   }
   if (!finite(entry) || !finite(anchor) || !future) { jobs.set(key, empty); return empty; }
+  if (!site) access.push([entry, anchor]);
+  // A work shift must not reserve another activity's fixed goal for its whole
+  // duration (for example the campfire seat beside the house). Roaming interests
+  // remain available; only destinations where another resident must stand count.
+  const occupied = [scene.actor?.spawn, ...scene.sites.map(site => site.entry),
+    ...(scene.campfires?.map(fire => fire.seat) ?? []), ...(scene.bushes?.flatMap(bush => [bush.entry, bush.hide]) ?? []),
+    ...(scene.destinations?.filter(destination => !destination.id.startsWith("builder-")).map(destination => destination.position) ?? []),
+  ].filter(finite);
+  const clearance = builderWorkClearance(scene), gap = clearance + BUILDER_NAVIGATION_LIMITS.radius;
   const marker = scene.destinations?.find(destination => destination.id === `builder-work-${job.stationId}`);
   const destination = scene.destinations?.find(destination => destination.id === siteId && destination.siteId === siteId);
-  const stops = [marker?.position, ...nearby(entry, anchor), ...(destination ? nearby(destination.position, anchor) : [])].filter(finite)
+  const candidates = [...beside(entry, anchor, gap), ...(destination ? beside(destination.position, anchor, gap) : [])]
+    .sort((a, b) => distance(a, entry) - distance(b, entry));
+  const stops = [marker?.position, ...candidates].filter(finite)
+    .filter(point => access.every(corridor => distanceToAccess(point, corridor) >= clearance - 1e-7))
+    .filter(point => occupied.every(goal => distance(point, goal) >= clearance - 1e-7))
     .filter(point => isWalkable(places.navigation, point) && isWalkable(future, point))
     .slice(0, BUILDER_NAVIGATION_LIMITS.workCandidates)
     .map(position => ({ id: job.stationId, position: { ...position }, lookAt: { ...anchor } }));

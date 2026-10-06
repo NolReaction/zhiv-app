@@ -57,6 +57,7 @@ import { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, notice
 import { forestTrailDestination } from "./forest-trails";
 import { forestJourneyMiningFrame, type ForestMiningFrame } from "./forest-mining";
 import { drawForestMiningHero, drawForestMiningWork } from "./forest-mining-painter";
+import { forestResidentOccupants } from "./forest-resident-occupancy";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
@@ -327,7 +328,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
       if (TILED_WORLD.sites.some(site => previewSiteVisual(site, selected)?.level !== visuals[site.id]?.level)) return;
     }
-    advanceBuilderMind(state.builderMind, world, dt, { now: explorationNow(), construction: state.economyConstruction });
+    advanceBuilderMind(state.builderMind, world, dt, { now: explorationNow(), construction: state.economyConstruction,
+      occupants: residentOccupants() });
   }
   // DEV rehearsals use the same travel/animation controller with a local clock.
   // A confirmed account job always owns the hero and its economic deadline.
@@ -364,6 +366,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       rehearsal && rehearsal.id === state.residentPreview?.id ? state.residentPreview.startedAt : state.elapsed, natural ? [natural] : []);
     const builder = builderMindFrame(state.builderMind, world, reducedMotion(options, dev));
     return [...plesk, ...(builder ? [builder] : [])];
+  }
+  function residentOccupants() {
+    return forestResidentOccupants(state, world, { heroVisible: dev?.showHero !== false && !actorAway(), heroScale: dev?.heroScale,
+      heroManual: Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto"),
+      fishing: forestJourneyFishingFrame(state, world), mining: forestJourneyMiningFrame(state, world),
+      cooking: cookingPreviewFrame(state, dev?.cookingPreview) });
   }
   function stopFishingPreview() {
     if (!state.fishingPreview) return false;
@@ -471,7 +479,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       || Boolean(cooking && cooking.startedAt !== null), actorAway: actorAway(),
       explicitTravel: !blocked && (forestJourneyWalking(state) || Boolean(cooking && cooking.startedAt === null)), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
-      reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds(), visitors };
+      reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale, birds: visibleBirds(), visitors,
+      occupants: residentOccupants() };
   }
   function preview(): NewMapPaintPreview {
     syncProduction();
@@ -560,7 +569,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       advanceBuilder(step);
       if (state.pleskMind) {
         const resident = pleskMindFrame(state.pleskMind, world, false);
-        advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk,
+        advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk, occupants: residentOccupants(),
           wildlife: !dev?.residentPreview && Boolean(residentFaunaEncounter(state.fauna, "plesk")
             && !["interrupt", "release"].includes(residentFaunaEncounter(state.fauna, "plesk")!.phase)),
           playerNear: Boolean(resident && !actorAway() && dev?.showHero !== false

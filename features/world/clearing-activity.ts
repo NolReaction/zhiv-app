@@ -9,6 +9,7 @@ import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./
 import { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS, type WorldInteraction } from "./interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
 import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
+import { canTraverseResidents, residentTrafficDetour, type ResidentOccupant } from "./resident-traffic";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
 type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint; concealStart: number };
@@ -51,6 +52,9 @@ export type ClearingActivityOptions = {
   idleEligible?: boolean;
   /** DEV comparison changes controller only after the current safe return to spawn. */
   navigationMode?: "auto" | "routes";
+  /** Visible residents occupy temporary ground space, never the saved navigation map. */
+  occupants?: readonly ResidentOccupant[];
+  residentSize?: number;
 };
 export type ClearingActivityFrame = WorldPoint & {
   direction: PixelDirection; pose: PixelPose; frame: number;
@@ -673,6 +677,31 @@ export function noticeClearingActivity(state: ClearingActivityState, options: { 
   beginAttention(state, sleepy, resume);
   return true;
 }
+/** Replan only ordinary ground. The final home threshold and the departure
+ * corridor keep their authored geometry; held goals and action clocks survive. */
+function detourResidents(state: ClearingActivityState, route: ClearingRoute, options: ClearingActivityOptions) {
+  if (!state.navigation || !state.navigationEnabled || options.navigationMode === "routes") return false;
+  const free = state.stage === "free-walk" && state.freePurpose !== "interaction-exit";
+  const approach = Boolean(state.activeInteraction && ["homebound", "outbound"].includes(state.stage));
+  const groundEnd = route.navigationLength;
+  if ((!free && !approach) || groundEnd === undefined || state.distance >= groundEnd - .001) return false;
+  const target = sampleWalk(route, groundEnd).position;
+  const points = residentTrafficDetour({ owner: state, navigation: state.navigation, from: state.position,
+    target, size: options.residentSize ?? state.size, occupants: options.occupants, selfId: "mochlik", time: state.elapsed });
+  if (!points) return false;
+  // Steering against the static map could round a safe detour through a
+  // resident. Keep these short chords exact and check them on every step.
+  const tail = route.points.filter((_, index) => route.distances[index] > groundEnd + .001);
+  const replacement = navigatedRoute(state, [...points, ...tail], route.id, route.activity, false, false);
+  replacement.navigationLength = replacement.length - tail.reduce((sum, point, index) =>
+    sum + distance(index ? tail[index - 1] : target, point), 0);
+  replacement.bush = route.bush; replacement.pauseSeconds = route.pauseSeconds;
+  if (free) state.freeRoute = replacement;
+  else state.activeInteraction!.route = replacement;
+  state.distance = 0; state.speed = 0; state.behavior.reason = "walk-around-resident";
+  return true;
+}
+
 function advanceWalk(state: ClearingActivityState, dt: number, options: ClearingActivityOptions) {
   const free = state.stage === "free-walk";
   const route = free ? state.freeRoute : state.activeInteraction?.route ?? (state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex]);
@@ -720,6 +749,11 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
     if (!canTraverse(state.navigation, state.position, sample.position)) {
       state.speed = 0; state.behavior.reason = "steering-blocked"; return;
     }
+  }
+  if (!canTraverseResidents(state.position, sample.position, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+    state.speed = 0;
+    if (!detourResidents(state, route, options)) state.behavior.reason = "waiting-for-resident";
+    return;
   }
   const step = Math.abs(nextDistance - state.distance);
   state.distance = nextDistance; state.walked += step; state.position = sample.position;

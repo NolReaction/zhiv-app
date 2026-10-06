@@ -4,6 +4,7 @@ import type { ForestSessionState } from "./forest-session";
 import type { GardenHarvestRequest } from "./economy-garden-state";
 import type { WorldPoint } from "./tiled/types";
 import type { ForestLifeAction } from "./forest-life";
+import type { ResidentOccupant } from "./resident-traffic";
 import { advanceForestCampfires, campfireReady, type CampfireVisit } from "./forest-campfire";
 import type { ForestBird } from "./forest-wildlife";
 import { advanceForestBirdwatch, chooseForestBirdwatchTarget, createForestBirdwatch, type ForestBirdwatch } from "./forest-birdwatching";
@@ -32,6 +33,7 @@ export type ForestDirectorOptions = {
   /** Actual birds from the shared scene clock, never fabricated by the actor. */
   birds?: readonly ForestBird[];
   visitors?: readonly FaunaVisitor[];
+  occupants?: readonly ResidentOccupant[];
 };
 export type ForestDirectorState = {
   elapsed: number; nextDecisionAt: number; seed: number; reason: string;
@@ -606,6 +608,8 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     idleEligible: !options.blocked && !director.tradeVisit && !director.birdwatch && !director.campfireVisit && !state.pendingLife && !state.pendingAttention && !state.life.garden.routine && !state.life.garden.basket?.held,
     homeAvailable: options.homeAvailable && !state.life.garden.basket?.held, dusk: options.dusk, rain: options.rain,
     navigationMode: state.life.garden.basket?.held ? "auto" : options.navigationMode,
+    occupants: options.occupants,
+    residentSize: state.clearing.size * (options.heroScale ?? 1),
   });
   const intention = state.clearing.behavior.mind.intention;
   // A new successful walk owns the current explanation. Earlier failed requests

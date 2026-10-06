@@ -4,13 +4,14 @@ import { FISHING_PACK_RELEASE, type FishingMotion } from "./fishing-props";
 import type { ForestTrail } from "./forest-trails";
 import type { FishSpeciesId } from "./fish-species";
 import { canTraverse, isWalkable } from "./navigation";
+import { canTraverseResidents, residentTrafficDetour, type ResidentOccupant } from "./resident-traffic";
 import { PLESK, measurePleskTrail, pleskLocalPlaces, pleskTravelTime, reversePleskTrail, samplePleskTrail,
   type PleskAction, type PleskPlaces, type PleskResidentFrame, type PleskStop } from "./plesk-resident";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type PleskIntent = "fish" | "trade" | "rest" | "look" | "greet" | "tackle";
 export type PleskNeeds = { energy: number; patience: number; social: number };
-export type PleskEnvironment = { rain: number; dusk: number; playerNear?: boolean; wildlife?: boolean };
+export type PleskEnvironment = { rain: number; dusk: number; playerNear?: boolean; wildlife?: boolean; occupants?: readonly ResidentOccupant[] };
 export type PleskObservation = {
   action: PleskAction; intent: PleskIntent; reason: string; needs: PleskNeeds;
   catchCount: number; destinationId: string; decisions: number;
@@ -22,6 +23,7 @@ export type PleskMind = {
   intent: PleskIntent; reason: string; decisions: number; recent: PleskIntent[]; seed: number;
   stage: MindStage; age: number; queue: MindStage[]; noticePending: boolean; greetAfter: number;
   tradePending: boolean; tradeAfter: number;
+  trafficWaiting: boolean;
   basketSpecies?: FishSpeciesId; castTarget?: WorldPoint;
   scene: FixedWorldScene; available: boolean; observation: PleskObservation;
 };
@@ -41,7 +43,7 @@ export function createPleskMind(scene: FixedWorldScene, seed = 0x706c6573): Ples
     needs: { energy: .88, patience: .9, social: .25 }, catchCount: 0, intent: "look", reason: "Осматривает свой пирс перед рыбалкой.",
     decisions: 0, recent: [], seed: Number.isFinite(seed) ? seed >>> 0 : 0x706c6573,
     stage: { action: "idle", duration: 1, target: places.base }, age: 0, queue: [], noticePending: false, greetAfter: 0,
-    tradePending: false, tradeAfter: PLESK_MIND_LIMITS.tradeInterval,
+    tradePending: false, tradeAfter: PLESK_MIND_LIMITS.tradeInterval, trafficWaiting: false,
     scene, available: true, observation: {} as PleskObservation };
   observe(mind); return mind;
 }
@@ -127,7 +129,7 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
   mind.queue = stages; startNext(mind);
 }
 
-function startNext(mind: PleskMind) { mind.stage = mind.queue.shift()!; mind.age = 0; }
+function startNext(mind: PleskMind) { mind.stage = mind.queue.shift()!; mind.age = 0; mind.trafficWaiting = false; }
 function finishStage(mind: PleskMind) {
   const stage = mind.stage;
   if (stage.trail) { mind.position = { ...stage.target.position }; mind.stopId = stage.target.id; }
@@ -197,6 +199,28 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
   let remaining = Math.min(PLESK_MIND_LIMITS.maxDelta, dt);
   for (let transitions = 0; remaining > 1e-8 && transitions < PLESK_MIND_LIMITS.transitions; transitions++) {
     const slice = Math.min(remaining, Math.max(0, mind.stage.duration - mind.age)), action = mind.stage.action;
+    if (mind.stage.trail) {
+      const next = samplePleskTrail(mind.stage.trail, mind.age + slice);
+      if (!canTraverse(places.nav, mind.position, next)
+        || !canTraverseResidents(mind.position, next, PLESK.size, environment.occupants, PLESK.id)) {
+        const detour = residentTrafficDetour({ owner: mind, navigation: places.nav, from: mind.position,
+          target: mind.stage.target.position, size: PLESK.size, occupants: environment.occupants,
+          selfId: PLESK.id, time: mind.elapsed });
+        mind.trafficWaiting = true;
+        if (detour && detour.length > 1) {
+          const trail = measurePleskTrail(detour);
+          mind.stage = { ...mind.stage, trail, duration: pleskTravelTime(trail) }; mind.age = 0;
+        }
+        // A queued walk's deadline is cosmetic. Waiting never advances it to
+        // finishStage's endpoint, but the resident's ordinary needs still tick.
+        mind.elapsed += remaining;
+        mind.needs.energy = clamp(mind.needs.energy - remaining * .0014);
+        mind.needs.patience = clamp(mind.needs.patience + remaining * .013);
+        mind.needs.social = clamp(mind.needs.social + remaining * .002);
+        remaining = 0; break;
+      }
+      mind.trafficWaiting = false;
+    }
     mind.age += slice; mind.elapsed += slice; remaining -= slice;
     mind.needs.energy = clamp(mind.needs.energy + slice * (action === "rest" ? .018 : action === "walk" ? -.0035 : -.0014));
     mind.needs.patience = clamp(mind.needs.patience + slice * (action === "fish" ? -.008 : ["idle", "rest", "pack"].includes(action) ? .013 : -.001));
@@ -218,7 +242,7 @@ export function pleskMindFrame(mind: PleskMind | null, scene: FixedWorldScene, s
   const stage = mind.stage, phase = clamp(mind.age / stage.duration);
   const walk = stage.trail ? samplePleskTrail(stage.trail, mind.age) : undefined;
   const direction = walk?.direction ?? stage.direction ?? (stage.target.id === places.base.id ? places.direction : "front");
-  return { id: "plesk", ...mind.position, size: PLESK.size, direction, action: stage.action, phase,
+  return { id: "plesk", ...mind.position, size: PLESK.size, direction, action: mind.trafficWaiting && stage.action === "walk" ? "idle" : stage.action, phase,
     frame: still ? 0 : walk?.frame ?? Math.floor(mind.age * 8) % 32,
     destinationId: stage.target.id,
     // During pack only the current held catch matters. Stored fish must not

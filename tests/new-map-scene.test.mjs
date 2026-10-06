@@ -64,14 +64,16 @@ async function modules(override) {
 
 function browser() {
   const saved = new Map(), pending = [], requests = [], timers = new Map(), frames = new Map(), observers = [];
+  const displayedCalls = [];
   const documentEvents = new Map();
   let id = 0, frameTime = 0;
   const install = (key, value) => {
     saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
   };
-  function surface(width = 320, height = width) {
+  function surface(width = 320, height = width, offscreen = false) {
     const calls = [], events = new Map(), captured = new Set();
+    if (!offscreen) displayedCalls.push(calls);
     const context = new Proxy({
       createRadialGradient: () => ({ addColorStop() {} }),
       createLinearGradient: () => ({ addColorStop() {} }),
@@ -101,7 +103,7 @@ function browser() {
       flushFrame() { const current = [...frames.values()]; frames.clear(); frameTime += 34; current.forEach(callback => callback(frameTime)); },
     };
   }
-  install("document", { hidden: false, createElement: () => surface(),
+  install("document", { hidden: false, createElement: () => surface(320, 320, true),
     addEventListener(name, callback) {
       if (!documentEvents.has(name)) documentEvents.set(name, new Set());
       documentEvents.get(name).add(callback);
@@ -152,6 +154,12 @@ function browser() {
     },
     fireTimer(key) { const timer = timers.get(key); assert.ok(timer); timers.delete(key); timer.callback(); },
     restore() {
+      // Disposed Vite graphs can retain a fake canvas through sprite/session
+      // closures. Large frame histories have no meaning after this browser
+      // ends; keep only reusable offscreen sprite recordings intact.
+      displayedCalls.forEach(calls => { calls.length = 0; });
+      pending.length = 0; requests.length = 0; timers.clear(); frames.clear(); documentEvents.clear();
+      observers.forEach(observer => observer.nodes.clear()); observers.length = 0;
       for (const [key, descriptor] of saved) {
         if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
       }
@@ -3502,6 +3510,10 @@ test("ordinary quarry production walks from base, shares the miner across camera
 
 const builderFixture = () => ({
   ...residentFixture(),
+  // Keep the workshop's exterior work bay distinct from the merchant's fixed
+  // stop; the old tiny fixture placed those two activities only 37px apart.
+  destinations: residentFixture().destinations.map(destination => ({ ...destination,
+    position: { ...destination.position, y: 720 } })),
   sites: [{ id: "workshop", label: "Мастерская", initialLevel: 1,
     bounds: { x: 600, y: 620, width: 40, height: 35 }, anchor: { x: 620, y: 648 }, entry: { x: 620, y: 670 },
     hitArea: [{ x: 600, y: 620 }, { x: 640, y: 620 }, { x: 640, y: 655 }, { x: 600, y: 655 }],
@@ -3550,6 +3562,97 @@ test("builder work shares one route and clock across cameras; painting and hit t
     const handoff = structuredClone(mind); world.dispose(); circle.configure(initial);
     assert.deepEqual(mind, handoff, "returning to the circle preserves the builder at his work spot");
   } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("live builder detours around visible Mochlik, ignores a hidden body and shares the same yielding route across cameras", async () => {
+  const authored = builderFixture();
+  authored.actor = { ...fixture.actor, spawn: { x: 630, y: 690 } };
+  authored.destinations.push({ id: "builder-rest", position: { x: 590, y: 710 }, pauseSeconds: 5 },
+    { id: "builder-work-workshop", position: { x: 680, y: 660 }, pauseSeconds: 5 });
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, forgetForestSession } = await modules(authored);
+  const env = browser(), views = [], probes = [], keys = [];
+  try {
+    for (const visible of [true, false]) {
+      worldDevStore.patch({ ...quietClearing, autoLife: false, showHero: visible });
+      const owner = `resident-traffic-${visible}`, key = `zhiv:mochlik:presence:${owner}`; keys.push(key);
+      const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: key,
+        economyConstruction: confirmedConstruction(owner, 0, []) };
+      const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+      const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+      if (visible) { env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); }
+      await flush();
+      const probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {}); probes.push(probe);
+      const construction = confirmedConstruction(owner, 1), original = structuredClone(construction);
+      circle.configure({ ...initial, economyConstruction: construction });
+      const mind = probe.state.builderMind, hero = { ...probe.state.clearing.position }, clock = sceneClock(env);
+      assert.equal(mind.action, "walk");
+      const start = { ...mind.position }, target = { ...mind.target.position };
+      let minGap = distanceBetween(start, hero), detoured = false, world;
+      for (let frame = 0; frame < 600 && mind.action !== "work"; frame++) {
+        const previous = { ...mind.position }; clock.step();
+        minGap = Math.min(minGap, distanceBetween(mind.position, hero));
+        assert.ok(distanceBetween(previous, mind.position) <= 34 * .05 + 1e-7, "yielding never pushes or teleports the builder");
+        assert.deepEqual(probe.state.clearing.position, hero, "a stationary neighbour is never shoved out of the way");
+        const cross = Math.abs((target.x - start.x) * (mind.position.y - start.y) - (target.y - start.y) * (mind.position.x - start.x));
+        detoured ||= cross / distanceBetween(start, target) > 12;
+        if (visible && detoured && !world) {
+          const before = structuredClone(mind);
+          world = mountHabitat(env.surface(), { ...initial, economyConstruction: construction, view: "world" }, callbacks);
+          views.push(world); await flush();
+          assert.strictEqual(probe.state.builderMind, mind);
+          for (const view of [circle, world]) {
+            view.paintWorld(env.surface().context); const point = view.inspectPoint("builder"); view.hitResident(point.x, point.y);
+          }
+          assert.deepEqual(mind, before, "camera ownership, paint and hit tests do not replay or advance a detour");
+          assert.equal(env.frames.size, 1, "both views use one movement owner");
+        }
+      }
+      assert.equal(mind.action, "work", "a reachable job remains reachable past the other resident");
+      if (visible) {
+        assert.ok(minGap >= 24 - 1e-7, `visible bodies keep a useful gap throughout the trip: ${minGap}`);
+        assert.equal(detoured, true, "the builder goes around a stationary neighbour instead of waiting forever");
+        assert.ok(world, "the camera handoff occurs during the detour");
+      } else assert.ok(minGap < 15, "a deliberately hidden hero does not leave an invisible obstacle");
+      assert.deepEqual(construction, original, "traffic cannot change the economic construction order");
+      world?.dispose(); circle.dispose(); probe.release(); forgetForestSession(key);
+    }
+  } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); keys.forEach(forgetForestSession); worldDevStore.reset(); env.restore(); }
+});
+
+test("cold home construction leaves room for Mochlik to enter, sleep and return without crossing the builder", async () => {
+  const authored = { ...residentFixture(), sites: [clearingHome], paths: [clearingHomePath] };
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, clearingActivityFrame } = await modules(authored);
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const owner = "builder-home-access", construction = confirmedConstruction(owner);
+    construction.jobs[0].stationId = "home";
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000,
+      presenceKey: `zhiv:mochlik:presence:${owner}`, economyConstruction: construction };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finishPath("/test-ground.webp"); env.finishPath("/test-residence.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const state = probe.state, builder = state.builderMind, workingFeet = { ...builder.position }, spawn = { ...state.clearing.position };
+    assert.equal(builder.action, "work", "an existing house improvement restores the worker directly at the site");
+    assert.ok(distanceBetween(builder.position, spawn) >= 38, "restoring a job cannot put the builder on the house owner's spawn");
+    const clock = sceneClock(env);
+    const step = () => {
+      clock.step();
+      const hero = clearingActivityFrame(state.clearing);
+      if (hero.opacity > .05) assert.ok(distanceBetween(builder.position, hero) >= 24 - 1e-7, "the house approach remains clear of the visible worker");
+      assert.deepEqual(builder.position, workingFeet, "entering the home does not displace the working builder");
+    };
+    worldDevStore.triggerLife("home-sleep");
+    for (let frame = 0; frame < 600 && state.clearing.stage !== "home-sleep"; frame++) step();
+    assert.equal(state.clearing.stage, "home-sleep", "building does not block the resident's doorway");
+    scene.notice();
+    const returned = () => state.clearing.routeKind === "clearing" && !state.clearing.activeInteraction
+      && clearingActivityFrame(state.clearing).opacity === 1 && distanceBetween(state.clearing.position, clearingHome.entry) >= 12;
+    for (let frame = 0; frame < 600 && !returned(); frame++) step();
+    assert.notEqual(state.clearing.stage, "home-sleep");
+    assert.ok(returned(), "the resident also returns to the clearing while construction continues");
+    assert.equal(builder.action, "work");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
 test("construction removals fence stale cameras and changing accounts cannot inherit another owner's builder job", async () => {
@@ -3993,7 +4096,9 @@ test("delayed first economy and upgraded artwork restore builder to the actual d
     assert.strictEqual(mind.scene, actual);
     assert.equal(mind.action, "work"); assert.equal(mind.route, null);
     assert.deepEqual(mind.target.lookAt, actual.sites[0].anchor, "work faces the newly loaded building, not its old default art");
-    assert.ok(distanceBetween(mind.position, actual.sites[0].entry) <= 25, "restored work belongs to the authoritative higher-level footprint");
+    assert.ok(distanceBetween(mind.position, actual.sites[0].entry) >= 38
+      && distanceBetween(mind.position, actual.sites[0].entry) <= 80,
+    "restored work stays beside the authoritative higher-level footprint with room at its entrance");
     assert.deepEqual(scene.inspectPoint("builder"), { x: mind.position.x, y: mind.position.y - 20 });
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); env.restore(); }
 });
