@@ -21296,6 +21296,152 @@
         }, 
         {
           "draworder": "index",
+          "id": 124,
+          "name": "BuilderWorkStops",
+          "objects": [
+            {
+              "height": 0,
+              "id": 434,
+              "name": "builder-work-home",
+              "point": true,
+              "properties": [
+                {
+                  "name": "role",
+                  "type": "string",
+                  "value": "destination"
+                },
+                {
+                  "name": "siteId",
+                  "type": "string",
+                  "value": "home"
+                }
+              ],
+              "rotation": 0,
+              "type": "",
+              "visible": true,
+              "width": 0,
+              "x": 648.54,
+              "y": 674.55
+            },
+            {
+              "height": 0,
+              "id": 435,
+              "name": "builder-work-workshop",
+              "point": true,
+              "properties": [
+                {
+                  "name": "role",
+                  "type": "string",
+                  "value": "destination"
+                },
+                {
+                  "name": "siteId",
+                  "type": "string",
+                  "value": "workshop"
+                }
+              ],
+              "rotation": 0,
+              "type": "",
+              "visible": true,
+              "width": 0,
+              "x": 160.27,
+              "y": 543.88
+            },
+            {
+              "height": 0,
+              "id": 436,
+              "name": "builder-work-quarry",
+              "point": true,
+              "properties": [
+                {
+                  "name": "role",
+                  "type": "string",
+                  "value": "destination"
+                },
+                {
+                  "name": "siteId",
+                  "type": "string",
+                  "value": "quarry"
+                }
+              ],
+              "rotation": 0,
+              "type": "",
+              "visible": true,
+              "width": 0,
+              "x": 680.19,
+              "y": 249.7
+            },
+            {
+              "height": 0,
+              "id": 437,
+              "name": "builder-work-woodlot",
+              "point": true,
+              "properties": [
+                {
+                  "name": "role",
+                  "type": "string",
+                  "value": "destination"
+                },
+                {
+                  "name": "siteId",
+                  "type": "string",
+                  "value": "woodlot"
+                }
+              ],
+              "rotation": 0,
+              "type": "",
+              "visible": true,
+              "width": 0,
+              "x": 981.89,
+              "y": 225.05
+            },
+            {
+              "height": 0,
+              "id": 438,
+              "name": "builder-work-garden",
+              "point": true,
+              "properties": [
+                {
+                  "name": "role",
+                  "type": "string",
+                  "value": "destination"
+                }
+              ],
+              "rotation": 0,
+              "type": "",
+              "visible": true,
+              "width": 0,
+              "x": 519.91,
+              "y": 595.56
+            },
+            {
+              "height": 0,
+              "id": 439,
+              "name": "builder-work-dryer",
+              "point": true,
+              "properties": [
+                {
+                  "name": "role",
+                  "type": "string",
+                  "value": "destination"
+                }
+              ],
+              "rotation": 0,
+              "type": "",
+              "visible": true,
+              "width": 0,
+              "x": 696.19,
+              "y": 701.92
+            }
+          ],
+          "opacity": 1,
+          "type": "objectgroup",
+          "visible": true,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "draworder": "index",
           "id": 117,
           "name": "Destinations",
           "objects": [
@@ -25197,8 +25343,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":124,
- "nextobjectid":434,
+ "nextlayerid":125,
+ "nextobjectid":440,
  "orientation":"orthogonal",
  "properties":[
         {

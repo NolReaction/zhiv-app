@@ -31,6 +31,10 @@ test("resident clearance protects a swept crossing and allows only outward movem
   const other = occupant("mochlik", 100, 100, 50);
   assert.equal(canTraverseResidents(point(50, 100), point(150, 100), 40, [other], "builder"), false);
   assert.equal(canTraverseResidents(point(50, 60), point(150, 60), 40, [other], "builder"), true);
+  assert.equal(canTraverseResidents(point(50, 73.5), point(150, 73.5), 40, [other], "builder"), true,
+    "a 26.5px passing gap fits the smaller personal space, where the former 28.8px gap blocked it");
+  assert.equal(canTraverseResidents(point(50, 75), point(150, 75), 40, [other], "builder"), false,
+    "a 25px passing gap still cannot cut into the resident's body");
   assert.equal(canTraverseResidents(point(90, 100), point(80, 100), 40, [other], "builder"), true);
   assert.equal(canTraverseResidents(point(90, 100), point(120, 100), 40, [other], "builder"), false);
   assert.equal(canTraverseResidents(point(90, 100), point(95, 120), 40, [other], "builder"), false);

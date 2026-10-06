@@ -5,13 +5,15 @@ import type { WorldPoint } from "./tiled/types";
 export type ResidentOccupant = {
   readonly id: string; readonly position: WorldPoint; readonly size: number; readonly moving?: boolean;
 };
-export const RESIDENT_TRAFFIC_LIMITS = { occupants: 8, retry: .8, priorityWait: .35, searches: 4, polygonSides: 12 } as const;
+export const RESIDENT_TRAFFIC_LIMITS = { clearanceRatio: .28, occupants: 8, retry: .8, priorityWait: .35, searches: 4, polygonSides: 12 } as const;
 const finite = (point: WorldPoint) => Number.isFinite(point?.x) && Number.isFinite(point?.y);
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const EPS = 1e-7;
 
 /** Larger than navigation's ground support: neighbours need room for their bodies. */
-export function residentClearance(size: number, otherSize: number): number { return (size + otherSize) * .32; }
+export function residentClearance(size: number, otherSize: number): number {
+  return (size + otherSize) * RESIDENT_TRAFFIC_LIMITS.clearanceRatio;
+}
 function neighbours(occupants: readonly ResidentOccupant[] | undefined, selfId: string) {
   return (occupants ?? []).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants)
     .filter(other => other.id !== selfId && finite(other.position) && Number.isFinite(other.size) && other.size > 0);

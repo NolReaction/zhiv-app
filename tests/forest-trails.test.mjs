@@ -16,12 +16,14 @@ const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/fe
 const world = (level = 1) => previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD),
   home: Math.max(1, level), workshop: level, quarry: level });
 
-test("all authored destinations connect through WalkAreas at every building level", () => {
+test("all authored travel destinations connect through WalkAreas at every building level", () => {
   for (let level = 0; level <= 5; level++) {
     const scene = world(level), nav = createWorldNavigation(scene), destinations = forestDestinations(scene);
     assert.ok(destinations.size >= 4); assert.strictEqual(forestDestinations(scene), destinations, "immutable scene compiles once");
     assert.ok(nav.stats.cells < 65_536, "expanded island still fits the bounded grid");
-    for (const target of scene.destinations.map(point => point.id)) {
+    // Private builder feet use his smaller navigation profile; reachability
+    // across their host levels is covered by builder-navigation.test.mjs.
+    for (const target of scene.destinations.filter(point => !point.id.startsWith("builder-")).map(point => point.id)) {
       const endpoint = forestTrailDestination(scene, target);
       assert.deepEqual(endpoint, scene.destinations.find(point => point.id === target).position);
       assert.ok(isWalkable(nav, endpoint));

@@ -4,10 +4,13 @@ import { constructionMapPlace } from "./construction-map-anchor";
 import type { SceneConstructionJob } from "./economy-construction-state";
 import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath, type SteeringPath } from "./steering";
+import { residentClearance } from "./resident-traffic";
+import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type BuilderStop = { id: string; position: WorldPoint; lookAt: WorldPoint };
-export const BUILDER_NAVIGATION_LIMITS = { radius: BUILDER.size * .1, workCandidates: 16, searches: 3, wanderStops: 8 } as const;
+export const BUILDER_NAVIGATION_LIMITS = { radius: BUILDER.size * .1, workReach: BUILDER.size * .8,
+  contourEdges: 24, workCandidates: 16, searches: 3, wanderStops: 8 } as const;
 export type BuilderPlaces = { navigation: WorldNavigation; rest: BuilderStop; wander: readonly BuilderStop[] };
 const cache = new WeakMap<FixedWorldScene, BuilderPlaces | null>();
 const workCache = new WeakMap<FixedWorldScene, Map<string, readonly BuilderStop[]>>();
@@ -24,11 +27,11 @@ function nearby(entry: WorldPoint, anchor: WorldPoint): WorldPoint[] {
     .map(([forward, side]) => ({ x: entry.x + dx * forward - dy * side, y: entry.y + dy * forward + dx * side }));
 }
 
-/** Ground support is intentionally small; shared activity points need enough
- * room for the visible bodies of both residents, not just their feet. */
+/** A permanent work stop leaves the same body clearance as a passing resident;
+ * reserving half of both sprite widths pushes the worker away from the facade. */
 export function builderWorkClearance(scene: FixedWorldScene): number {
   const size = scene.actor?.size;
-  return (BUILDER.size + (Number.isFinite(size) && size! > 0 ? size! : BUILDER.size)) * .5;
+  return residentClearance(BUILDER.size, Number.isFinite(size) && size! > 0 ? size! : BUILDER.size);
 }
 
 function beside(entry: WorldPoint, anchor: WorldPoint, gap: number): WorldPoint[] {
@@ -50,6 +53,39 @@ function distanceToAccess(point: WorldPoint, access: readonly WorldPoint[]): num
     closest = Math.min(closest, distance(point, { x: a.x + dx * t, y: a.y + dy * t }));
   }
   return closest;
+}
+
+function distanceToContour(point: WorldPoint, contour: readonly WorldPoint[]): number {
+  return contour.length ? distanceToAccess(point, [...contour, contour[0]]) : Infinity;
+}
+
+function exterior(collision: WorldPoint[], hitArea: WorldPoint[], entry: WorldPoint, anchor: WorldPoint): WorldPoint[] {
+  return collision.length >= 3 ? collision : hitArea.length >= 3 ? hitArea : [entry, anchor];
+}
+
+function outsideBushArtwork(scene: FixedWorldScene, point: WorldPoint): boolean {
+  return (scene.bushes ?? []).every(bush => {
+    const bounds = scene.terrain.find(terrain => terrain.id === bush.imageId)?.bounds;
+    return !bounds || point.x + BUILDER.size / 2 <= bounds.x || point.x - BUILDER.size / 2 >= bounds.x + bounds.width
+      || point.y <= bounds.y || point.y - BUILDER.size * 45 / 48 >= bounds.y + bounds.height;
+  });
+}
+
+/** Try actual exterior edges as well as entrance offsets. A narrow doorway's
+ * visitor point is not a suitable substitute for a reachable wall-side stop. */
+function besideContour(contour: readonly WorldPoint[], entry: WorldPoint): WorldPoint[] {
+  const edges = contour.map((a, index) => ({ a, b: contour[(index + 1) % contour.length] }))
+    .filter(({ a, b }) => finite(a) && finite(b) && distance(a, b) > .1)
+    .sort((a, b) => distanceToAccess(entry, [a.a, a.b]) - distanceToAccess(entry, [b.a, b.b]))
+    .slice(0, BUILDER_NAVIGATION_LIMITS.contourEdges);
+  return edges.flatMap(({ a, b }) => {
+    const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy);
+    const t = Math.max(0, Math.min(1, ((entry.x - a.x) * dx + (entry.y - a.y) * dy) / (length * length)));
+    return [t, 0, .25, .5, .75, 1].flatMap(at => [8, 16, 24].flatMap(offset => [-1, 1].map(side => ({
+      x: a.x + dx * at - dy / length * offset * side,
+      y: a.y + dy * at + dx / length * offset * side,
+    }))));
+  });
 }
 
 /** Optional personal rest marker can be authored later. The fallback is a safe
@@ -95,10 +131,12 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
   if (!places || !place) { jobs.set(key, empty); return empty; }
   let entry: WorldPoint | undefined, anchor: WorldPoint | undefined, future: WorldNavigation | null = places.navigation;
   const access: WorldPoint[][] = [];
+  const contours: WorldPoint[][] = [];
   const siteId = place === "house" ? "home" : place;
   const site = scene.sites.find(candidate => candidate.id === siteId);
   if (site) {
     entry = site.entry; anchor = site.anchor;
+    contours.push(exterior(site.collision, site.hitArea, site.entry, site.anchor));
     access.push([site.entry, site.doorway ?? site.entry]);
     const destination = scene.destinations?.find(destination => destination.id === siteId && destination.siteId === siteId);
     if (destination) access.push([destination.position, site.entry]);
@@ -110,6 +148,7 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
     // Warehouse and kiln levels do not select a different exterior house/art.
     const next = job.stationId === site.id && site.states.find(state => state.level === job.targetLevel)?.geometry;
     if (next) {
+      contours.push(exterior(next.collision, next.hitArea, next.entry, next.anchor));
       access.push([next.entry, next.doorway ?? next.entry], [site.entry, next.entry]);
       if (destination) access.push([destination.position, next.entry]);
       if (siteId === "home" && finite(scene.actor?.spawn)) access.push([scene.actor.spawn, next.entry]);
@@ -120,9 +159,11 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
   } else if (place === "garden") {
     const bush = scene.bushes?.find(bush => bush.id === "clearing-bush") ?? scene.bushes?.[0];
     entry = bush?.entry; anchor = bush?.hide;
+    if (bush) contours.push(bush.points);
   } else if (place === "campfire") {
     const fire = scene.campfires?.find(fire => fire.id === "clearing-campfire") ?? scene.campfires?.[0];
     entry = fire?.seat; anchor = fire?.position;
+    if (fire) contours.push(campfireFootprint(fire));
   }
   if (!finite(entry) || !finite(anchor) || !future) { jobs.set(key, empty); return empty; }
   if (!site) access.push([entry, anchor]);
@@ -134,11 +175,17 @@ export function builderWorkStops(scene: FixedWorldScene, job: SceneConstructionJ
     ...(scene.destinations?.filter(destination => !destination.id.startsWith("builder-")).map(destination => destination.position) ?? []),
   ].filter(finite);
   const clearance = builderWorkClearance(scene), gap = clearance + BUILDER_NAVIGATION_LIMITS.radius;
-  const marker = scene.destinations?.find(destination => destination.id === `builder-work-${job.stationId}`);
+  const markers = [job.stationId, siteId].filter((id, index, ids) => ids.indexOf(id) === index)
+    .map(id => scene.destinations?.find(destination => destination.id === `builder-work-${id}`)?.position);
   const destination = scene.destinations?.find(destination => destination.id === siteId && destination.siteId === siteId);
-  const candidates = [...beside(entry, anchor, gap), ...(destination ? beside(destination.position, anchor, gap) : [])]
+  const candidates = [...beside(entry, anchor, gap), ...contours.flatMap(contour => besideContour(contour, entry)),
+    ...(destination ? beside(destination.position, anchor, gap) : [])]
     .sort((a, b) => distance(a, entry) - distance(b, entry));
-  const stops = [marker?.position, ...candidates].filter(finite)
+  const stops = [...markers, ...candidates].filter(finite)
+    // Visitor destinations may sit on a distant path. Work must stay beside the
+    // actual current and finished exterior, even when a custom marker is used.
+    .filter(point => contours.every(contour => distanceToContour(point, contour) <= BUILDER_NAVIGATION_LIMITS.workReach))
+    .filter(point => place === "garden" || outsideBushArtwork(scene, point))
     .filter(point => access.every(corridor => distanceToAccess(point, corridor) >= clearance - 1e-7))
     .filter(point => occupied.every(goal => distance(point, goal) >= clearance - 1e-7))
     .filter(point => isWalkable(places.navigation, point) && isWalkable(future, point))

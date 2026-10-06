@@ -17436,6 +17436,58 @@
       "siteId": "plesk-shop"
     },
     {
+      "id": "builder-work-home",
+      "position": {
+        "x": 648.54,
+        "y": 674.55
+      },
+      "pauseSeconds": 8,
+      "siteId": "home"
+    },
+    {
+      "id": "builder-work-workshop",
+      "position": {
+        "x": 160.27,
+        "y": 543.88
+      },
+      "pauseSeconds": 8,
+      "siteId": "workshop"
+    },
+    {
+      "id": "builder-work-quarry",
+      "position": {
+        "x": 680.19,
+        "y": 249.7
+      },
+      "pauseSeconds": 8,
+      "siteId": "quarry"
+    },
+    {
+      "id": "builder-work-woodlot",
+      "position": {
+        "x": 981.89,
+        "y": 225.05
+      },
+      "pauseSeconds": 8,
+      "siteId": "woodlot"
+    },
+    {
+      "id": "builder-work-garden",
+      "position": {
+        "x": 519.91,
+        "y": 595.56
+      },
+      "pauseSeconds": 8
+    },
+    {
+      "id": "builder-work-dryer",
+      "position": {
+        "x": 696.19,
+        "y": 701.92
+      },
+      "pauseSeconds": 8
+    },
+    {
       "id": "home",
       "position": {
         "x": 598.491243496739,

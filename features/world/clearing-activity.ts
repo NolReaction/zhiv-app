@@ -373,6 +373,16 @@ function settleClearing(state: ClearingActivityState) {
   state.freeRoute = null; state.freePurpose = null; state.routeIndex = -1; state.steps = [];
   state.waitSeconds = 2.8 + random(state) * 3;
 }
+/** Optional grass exploration owns no reserved workplace. Release only that
+ * intention and choose again after the ordinary pause, from the current feet. */
+function releaseOccupiedRoamingGoal(state: ClearingActivityState, id: string) {
+  const intention = state.behavior.mind.intention;
+  if (intention?.source === "clearing" && intention.key === id)
+    finishForestIntention(state.behavior.mind, "interrupted", "Место занято соседом — выберет другое занятие");
+  state.behavior.target = null;
+  settleClearing(state);
+  state.behavior.reason = "roaming-place-occupied";
+}
 /** Holds the destination until releaseClearingPoint so a queued routine cannot lose its turn. */
 export function requestClearingPoint(state: ClearingActivityState, point: WorldPoint): boolean {
   if (!finitePoint(point) || !state.navigation || !state.navigationEnabled || state.activeInteraction || state.retiring || state.bushRequested
@@ -707,6 +717,12 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   const route = free ? state.freeRoute : state.activeInteraction?.route ?? (state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex]);
   if (free && !route) { settleClearing(state); return; }
   if (!route) { arriveHome(state, options.dusk); return; }
+  if (free && state.freePurpose === "roam" && route.activity !== "bush" && !state.requestedPoint && !state.activeInteraction) {
+    const target = route.points.at(-1)!;
+    if (!canTraverseResidents(target, target, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+      releaseOccupiedRoamingGoal(state, route.id); return;
+    }
+  }
   const waiting = parkedPropWait.get(state);
   if (waiting?.navigation === state.navigation && waiting.route === route && waiting.stage === state.stage) {
     state.speed = 0; return;
@@ -876,7 +892,9 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
         position: state.position, size: state.size, elapsed: state.elapsed, awakeUntil: state.awakeUntil,
         dusk: options.dusk, rain: options.rain, random: () => random(state),
       });
-      if (goal) beginFreeWalk(state, goal.path, "roam", goal.activity, goal.id);
+      if (goal && !canTraverseResidents(goal.position, goal.position, options.residentSize ?? state.size, options.occupants, "mochlik"))
+        releaseOccupiedRoamingGoal(state, goal.id);
+      else if (goal) beginFreeWalk(state, goal.path, "roam", goal.activity, goal.id);
       else startActivity(state, options);
       return;
     }

@@ -110,3 +110,51 @@ test("a resident exposed at old overlapping feet allows a bounded escape instead
   assert.equal(requestClearingPoint(state, target), true);
   walk(state, target, options);
 });
+
+function roamingScene() {
+  const source = scene();
+  source.navigation.interests = [{ id: "worker-place", position: point(240, 220), activity: "look" }];
+  return source;
+}
+function beginNaturalRoam(source, seed = 1) {
+  const state = createClearingActivity(source, seed);
+  for (let time = 0; time < 5 && state.stage !== "free-walk"; time += .025) step(state);
+  assert.equal(state.freePurpose, "roam");
+  return state;
+}
+
+test("random free-roam selection cannot reserve a persistent builder's occupied work spot", () => {
+  const source = roamingScene(), baseline = beginNaturalRoam(source);
+  const worker = { ...builder, position: { ...baseline.freeRoute.points.at(-1) } }, original = structuredClone(worker);
+  const state = createClearingActivity(source, 1), options = { ...conditions, occupants: [worker] };
+  let released = false, moved = false;
+  for (let time = 0; time < 25; time += .025) {
+    const before = step(state, options);
+    assert.ok(canTraverse(state.navigation, before, state.position));
+    assert.ok(canTraverseResidents(before, state.position, state.size, options.occupants, "mochlik"));
+    if (state.stage === "free-walk" && state.freePurpose === "roam") {
+      const target = state.freeRoute.points.at(-1);
+      assert.ok(canTraverseResidents(target, target, state.size, options.occupants, "mochlik"), "cosmetic grass choices cannot reserve the worker's feet");
+    }
+    released ||= state.behavior.reason === "roaming-place-occupied";
+    moved ||= Math.hypot(state.position.x - state.home.x, state.position.y - state.home.y) > 10;
+  }
+  assert.ok(released, "the known seeded grass choice is occupied");
+  assert.ok(moved, "normal bounded decisions find another place instead of freezing the actor");
+  assert.deepEqual(worker, original, "a roaming decision cannot displace a working neighbour");
+});
+
+test("a free-roam goal occupied after departure is released from current feet without completing its activity", () => {
+  const source = roamingScene(), state = beginNaturalRoam(source);
+  for (let time = 0; time < .3; time += .025) step(state);
+  const feet = { ...state.position }, target = { ...state.freeRoute.points.at(-1) }, intention = { ...state.behavior.mind.intention };
+  const worker = { ...builder, position: target }, original = structuredClone(worker);
+  step(state, { ...conditions, occupants: [worker] });
+  assert.deepEqual(state.position, feet, "releasing an optional destination never restores previous coordinates");
+  assert.equal(state.stage, "clearing"); assert.equal(state.freeRoute, null); assert.equal(state.freePurpose, null);
+  assert.equal(state.behavior.target, null); assert.equal(state.behavior.mind.intention, null);
+  assert.ok(state.waitSeconds >= 2.8, "the next choice respects the ordinary pause, without a per-frame search loop");
+  assert.equal(state.behavior.mind.recent.at(-1)?.key, intention.key);
+  assert.equal(state.behavior.mind.recent.at(-1)?.outcome, "interrupted", "unreached activity earns no completion");
+  assert.deepEqual(worker, original);
+});

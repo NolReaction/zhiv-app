@@ -10,6 +10,7 @@ after(() => vite.close());
 const { builderLocalPlaces, builderWorkStops, builderWorkClearance, builderRoute, BUILDER_NAVIGATION_LIMITS } =
   await vite.ssrLoadModule("/features/world/builder-navigation.ts");
 const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
+const { residentClearance, canTraverseResidents } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
@@ -20,6 +21,9 @@ function distanceToSegment(point, a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
   return distance(point, { x: a.x + dx * t, y: a.y + dy * t });
+}
+function distanceToContour(point, points) {
+  return Math.min(...points.map((a, index) => distanceToSegment(point, a, points[(index + 1) % points.length])));
 }
 function assertClear(point, points, clearance, label) {
   assert.ok(distance(point, points[0]) >= clearance - 1e-6, `${label}: occupied point stays free`);
@@ -53,7 +57,7 @@ test("all five actual houses and their interior upgrades leave Mochlik's doorway
   const initial = initialPreviewLevels(TILED_WORLD);
   for (const level of [1, 2, 3, 4, 5]) {
     const levels = { ...initial, home: level }, scene = previewWorldScene(TILED_WORLD, levels);
-    const home = scene.sites.find(site => site.id === "home"), clearance = (40 + scene.actor.size) / 2;
+    const home = scene.sites.find(site => site.id === "home"), clearance = residentClearance(40, scene.actor.size);
     assert.equal(builderWorkClearance(scene), clearance);
     for (const stationId of ["home", "warehouse"]) {
       const targetLevel = Math.min(5, level + 1), { stops, route } = checkedRoute(scene, job(stationId, targetLevel));
@@ -71,8 +75,19 @@ test("all five actual houses and their interior upgrades leave Mochlik's doorway
         }
       }
       assert.ok(isWalkable(builderLocalPlaces(next).navigation, route.target.position), "finished art preserves the selected working feet");
+      assert.ok(distanceToContour(route.target.position, home.collision) <= 32, "working feet remain within one short step of the current facade");
+      assert.ok(distanceToContour(route.target.position, nextHome.collision) <= 32, "working feet remain beside the completed facade");
+      const builder = [{ id: "builder", position: route.target.position, size: 40 }];
+      const approaches = [[scene.actor.spawn, home.entry, home.doorway],
+        ...scene.paths.filter(path => path.siteId === "home" && path.behavior === "home").map(path => [...path.points, home.entry])];
+      for (const points of approaches) for (let index = 1; index < points.length; index++)
+        assert.ok(canTraverseResidents(points[index - 1], points[index], scene.actor.size, builder, "mochlik"),
+          "Mochlik can traverse the full doorway approach past the working builder");
       const selectedDistance = distance(route.target.position, home.entry);
-      assert.ok(stops.every(stop => selectedDistance <= distance(stop.position, home.entry) + 1e-6), "the nearest safe side is preferred");
+      const selectedMarker = scene.destinations.some(marker => [`builder-work-${stationId}`, "builder-work-home"].includes(marker.id)
+        && distance(marker.position, route.target.position) < 1e-6);
+      if (!selectedMarker) assert.ok(stops.every(stop => selectedDistance <= distance(stop.position, home.entry) + 1e-6),
+        "without an authored work marker the nearest safe side is preferred");
       for (const bush of scene.bushes) {
         const bounds = scene.terrain.find(terrain => terrain.id === bush.imageId)?.bounds;
         if (bounds) assert.ok(route.target.position.x + 20 <= bounds.x || route.target.position.x - 20 >= bounds.x + bounds.width
@@ -88,9 +103,11 @@ test("actual selected stops leave each of the eight hosts' interaction points fr
   const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop", woodlot: "woodlot", quarry: "quarry" };
   for (const stationId of [...Object.keys(hosts), "garden", "dryer"]) {
     const { route } = checkedRoute(scene, job(stationId)), point = route.target.position;
-    for (const destination of scene.destinations) assertClear(point, [destination.position], clearance, `${stationId} leaves fixed destination free`);
+    for (const destination of scene.destinations.filter(destination => !destination.id.startsWith("builder-")))
+      assertClear(point, [destination.position], clearance, `${stationId} leaves fixed destination free`);
     if (hosts[stationId]) {
       const site = scene.sites.find(site => site.id === hosts[stationId]);
+      assert.ok(distanceToContour(point, site.collision) <= 32, `${stationId} cannot work from a distant visitor path`);
       assertClear(point, [site.entry, site.doorway ?? site.entry], clearance, stationId);
       const destination = scene.destinations.find(destination => destination.id === site.id && destination.siteId === site.id);
       if (destination) assertClear(point, [destination.position, site.entry], clearance, `${stationId} visitor`);
@@ -102,12 +119,78 @@ test("actual selected stops leave each of the eight hosts' interaction points fr
   }
 });
 
+test("each actual Tiled work marker keeps its exact position across its host's exterior levels", () => {
+  const initial = initialPreviewLevels(TILED_WORLD);
+  const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop",
+    quarry: "quarry", woodlot: "woodlot", garden: "garden", dryer: "dryer" };
+  for (const [stationId, host] of Object.entries(hosts)) {
+    const site = TILED_WORLD.sites.find(site => site.id === host), levels = site?.states.map(state => state.level) ?? [1];
+    for (const level of levels) {
+      const scene = previewWorldScene(TILED_WORLD, { ...initial, [host]: level });
+      const marker = scene.destinations.find(destination => destination.id === `builder-work-${host}`);
+      assert.ok(marker, `${host} has an authored working foot position`);
+      const targetLevel = Math.min(host === "home" ? 5 : host === "workshop" ? 2 : 1, level + 1);
+      const { route } = checkedRoute(scene, job(stationId, targetLevel));
+      assert.deepEqual(route.target.position, marker.position, `${stationId}, exterior ${level} keeps the valid authored foot position`);
+    }
+  }
+});
+
+test("a remote authored marker never turns a distant visitor stop into a work site", () => {
+  const scene = fixture(), marker = { x: 430, y: 330 };
+  scene.destinations.push({ id: "builder-work-home", position: marker, pauseSeconds: 10 });
+  const { stops, route } = checkedRoute(scene, job("home"));
+  assert.notDeepEqual(route.target.position, marker);
+  assert.ok(stops.every(stop => distanceToContour(stop.position, scene.sites[0].collision) <= 32),
+    "all accepted alternatives stay beside the wall");
+});
+
+test("a reachable distant visitor area cannot act as a fallback work site", () => {
+  const scene = fixture();
+  scene.navigation.areas = [{ id: "southern-path", points: rect(200, 300, 280, 130) }];
+  scene.destinations.push({ id: "home", siteId: "home", position: { x: 420, y: 330 }, pauseSeconds: 10 });
+  const places = builderLocalPlaces(scene);
+  assert.ok(places, "the builder still has a valid resting area");
+  assert.ok(isWalkable(places.navigation, scene.destinations[0].position), "the distant visitor destination itself is usable");
+  assert.equal(builderWorkStops(scene, job("home")).length, 0,
+    "an unreachable facade produces no work stop instead of hammering on the southern path");
+});
+
+test("interior orders share their host marker and a station marker can override it", () => {
+  const scene = fixture(), host = { x: 295, y: 215 }, personal = { x: 295, y: 200 };
+  scene.destinations.push({ id: "builder-work-home", position: host, pauseSeconds: 10 });
+  assert.deepEqual(checkedRoute(scene, job("warehouse")).route.target.position, host);
+  const own = structuredClone(scene);
+  own.destinations.push({ id: "builder-work-warehouse", position: personal, pauseSeconds: 10 });
+  assert.deepEqual(checkedRoute(own, job("warehouse")).route.target.position, personal);
+  const invalid = structuredClone(scene);
+  invalid.destinations.push({ id: "builder-work-warehouse", position: { x: 450, y: 330 }, pauseSeconds: 10 });
+  assert.deepEqual(checkedRoute(invalid, job("warehouse")).route.target.position, host,
+    "an invalid personal marker falls back to the real host marker");
+});
+
+test("legacy sites without a collision polygon keep close validated work stops", () => {
+  for (const useHitArea of [true, false]) {
+    const scene = fixture();
+    scene.sites[0].collision = [];
+    scene.sites[0].states[1].geometry.collision = [];
+    if (!useHitArea) {
+      scene.sites[0].hitArea = [];
+      scene.sites[0].states[1].geometry.hitArea = [];
+    }
+    const { route } = checkedRoute(scene, job("home"));
+    const contour = useHitArea ? scene.sites[0].hitArea : [scene.sites[0].entry, scene.sites[0].anchor];
+    assert.ok(distanceToContour(route.target.position, contour) <= 32,
+      "a missing legacy contour cannot force an unrelated map location");
+  }
+});
+
 test("work clearance follows visible hero sizes while ground navigation keeps its normal foot radius", () => {
   for (const size of [30, 50, 90]) {
     const scene = fixture(size), { route } = checkedRoute(scene, job("home"));
-    assert.equal(builderWorkClearance(scene), (40 + size) / 2);
+    assert.equal(builderWorkClearance(scene), residentClearance(40, size));
     assert.equal(builderLocalPlaces(scene).navigation.radius, 4);
-    assertClear(route.target.position, [scene.actor.spawn, scene.sites[0].entry], (40 + size) / 2, `size ${size}`);
+    assertClear(route.target.position, [scene.actor.spawn, scene.sites[0].entry], residentClearance(40, size), `size ${size}`);
     assert.ok(distance(route.target.position, scene.sites[0].entry) < (40 + size), "available near-side work is preferred over distant places");
   }
 });
@@ -117,7 +200,7 @@ test("authored work markers cannot reclaim the doorway, but a safe reachable sid
   unsafe.destinations.push({ id: "builder-work-home", position: { ...unsafe.sites[0].entry }, pauseSeconds: 10 });
   const { route } = checkedRoute(unsafe, job("home"));
   assert.notDeepEqual(route.target.position, unsafe.sites[0].entry);
-  const safe = fixture(), marker = { x: 305, y: 230 };
+  const safe = fixture(), marker = { x: 295, y: 215 };
   safe.destinations.push({ id: "builder-work-home", position: marker, pauseSeconds: 10 });
   assert.deepEqual(checkedRoute(safe, job("home")).route.target.position, marker);
 });
