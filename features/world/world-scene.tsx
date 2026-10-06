@@ -129,7 +129,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
   const objects = interactiveMapObjects(TILED_WORLD);
   return <div ref={root} className={styles.scene} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
-    <ForestSpeechAnnouncements key={owner} owner={owner} />
+    <ForestSpeechAnnouncements key={`speech:${owner}`} owner={owner} />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
     {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Объекты на карте">
       {objects.map(({ id, place, label }) => <button key={id} data-map-anchor data-object-id={id} data-kind={place}
@@ -140,7 +140,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
       <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />
       <button data-map-anchor data-kind="fishing" data-x={MAP_PLACES.fishing.marker.x} data-y={MAP_PLACES.fishing.marker.y} onClick={() => onPlace("fishing")} aria-label="Открыть рыбалку" title="Рыбалка" />
     </div>}
-    <MapFeedback key={owner} anchorStore={anchorStore} economy={constructionEconomy} onOpen={onOpenConstruction} onOpenProduction={onOpenProduction} ready={ready} hidden={hideConstructionStatus} />
+    <MapFeedback key={`feedback:${owner}`} anchorStore={anchorStore} economy={constructionEconomy} onOpen={onOpenConstruction} onOpenProduction={onOpenProduction} ready={ready} hidden={hideConstructionStatus} />
     {!hideJourneyStatus && economyJourney && <button className={styles.away} onClick={() => onPlace("cave")} aria-label="Открыть исследование Мохлика">
       <span>{economyJourney.label ?? "Исследование"} · {now >= Date.parse(economyJourney.finishesAt) ? "Мохлик вернулся — забрать находки" : `${Math.max(1, Math.ceil((Date.parse(economyJourney.finishesAt) - now) / 60000))} мин до возвращения`}</span>
     </button>}

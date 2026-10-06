@@ -4190,6 +4190,55 @@ test("reduced-motion resident speech expires with one finite timer and tap spam 
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
+test("a delayed speech font repaints static glyph metrics once without advancing dialogue or reviving a disposed canvas", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const requests = []; let resolveFont, fontReady = false, glyphsUsingReadyFont = 0;
+    const pendingFont = new Promise(resolve => { resolveFont = resolve; });
+    document.fonts = { load(font, text) { requests.push({ font, text }); return pendingFont; } };
+    const canvas = env.surface(), disposedCanvas = env.surface();
+    canvas.context.measureText = text => {
+      if (fontReady) glyphsUsingReadyFont++;
+      return { width: String(text).length * (fontReady ? 11 : 3) };
+    };
+    const initial = { ...options, serverNow: 100_000, presenceKey: "social-static-font" };
+    let rendered = 0, disposedRendered = 0;
+    const scene = mountHabitat(canvas, initial, { activity() {}, ready() {}, failure: assert.fail, rendered() { rendered++; } }); views.push(scene);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    scene.noticeResident("builder");
+    assert.equal(probe.state.social.current?.speaker, "builder");
+    assert.ok(canvas.calls.some(call => call.method === "fillText"), "the fallback face can show a reply before the font arrives");
+    const second = mountHabitat(disposedCanvas, initial, {
+      activity() {}, ready() {}, failure: assert.fail, rendered() { disposedRendered++; },
+    }); views.push(second); await flush(); second.dispose();
+    assert.equal(requests.length, 1, "both canvas mounts share one local font request");
+    assert.match(requests[0].font, /Zhiv Residents/); assert.match(requests[0].text, /Мохлик/);
+    const snapshot = structuredClone({ social: probe.state.social, elapsed: probe.state.elapsed,
+      hero: probe.state.clearing.position, builder: probe.state.builderMind.position });
+    const timers = [...env.timers.keys()], before = rendered, deadBefore = disposedRendered;
+    const callsBefore = canvas.calls.length, deadCallsBefore = disposedCanvas.calls.length;
+    const oldTextWidth = canvas.calls.findLast(call => call.method === "fillText").args[3];
+    fontReady = true; resolveFont([{}]); await flush();
+    assert.equal(rendered, before + 1, "font readiness invalidates the still canvas exactly once");
+    assert.ok(glyphsUsingReadyFont > 0, "the repaint measures real loaded glyphs rather than retaining fallback line widths");
+    const repainted = canvas.calls.slice(callsBefore);
+    assert.equal(repainted.filter(call => call.method === "clearRect").length, 1);
+    assert.notEqual(repainted.findLast(call => call.method === "fillText").args[3], oldTextWidth,
+      "the speech layout adapts to the changed font metrics");
+    assert.deepEqual({ social: probe.state.social, elapsed: probe.state.elapsed,
+      hero: probe.state.clearing.position, builder: probe.state.builderMind.position }, snapshot,
+    "loading a font cannot replay a line, age a conversation, or move either character");
+    assert.deepEqual([...env.timers.keys()], timers, "font readiness does not extend the existing speech expiry");
+    assert.equal(env.frames.size, 0, "a still canvas does not acquire an animation loop to load its font");
+    assert.equal(disposedRendered, deadBefore); assert.equal(disposedCanvas.calls.length, deadCallsBefore,
+      "the same delayed completion cannot repaint a disposed surface");
+    await flush(); assert.equal(rendered, before + 1, "there is no repeated font-readiness redraw");
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
 test("an optional builder visit walks from real feet and yields immediately to construction or explicit controls", async () => {
   const authored = builderFixture();
   authored.destinations.push({ id: "builder-rest", position: { x: 700, y: 640 }, pauseSeconds: 10 });

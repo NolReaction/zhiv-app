@@ -225,7 +225,7 @@ test("authored lines remain compact and each topic has meaningful bounded variat
   }
   for (const id of ["mochlik", "plesk", "builder"]) for (const context of ["idle", "walk", "build", "ready", "fish", "cook", "trade", "busy", "animal"])
     lines.push(...forestClickLines(id, context));
-  assert.ok(lines.every(line => line.length <= 96));
+  assert.ok(lines.every(line => line.length <= 42), "spoken lines stay short enough for a small character bubble");
   assert.equal(FOREST_SOCIAL_LIMITS.historyTopics, 8); assert.equal(FOREST_SOCIAL_LIMITS.historyLines, 24);
   const value = fixture(); startMeeting(value); const before = { ...value.mind.position };
   cancelBuilderVisit(value.mind); assert.deepEqual(value.mind.position, before);

@@ -1,17 +1,17 @@
 .bubble {
   position: relative;
   width: fit-content;
-  max-width: min(100%, 310px);
-  margin: 12px 4px 2px 24px;
-  padding: 10px 14px;
+  max-width: min(100%, 218px);
+  margin: 10px 4px 2px 24px;
+  padding: 8px 11px;
   border: 1px solid #bfab79;
-  border-radius: 5px 15px 15px 15px;
+  border-radius: 5px 13px 13px 13px;
   color: #46543e;
   background: linear-gradient(130deg, #fff8e6, #f5eacb);
   box-shadow: 0 3px 9px #5f542113, inset 0 1px #fffdf2;
-  font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
-  font-size: .875rem;
-  line-height: 1.45;
+  font-family: "Zhiv Residents", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  font-size: .9375rem;
+  line-height: 1.25;
   overflow-wrap: anywhere;
   transform-origin: 18px 0;
   animation: arrive .24s ease-out both;

@@ -60,6 +60,7 @@ import { drawForestMiningHero, drawForestMiningWork } from "./forest-mining-pain
 import { advanceForestSocial, cancelForestSocial, noticeForestSocial, forestSocialFrames, forestSocialHolding,
   type ForestSocialEnvironment, type ForestSocialActor, type ForestSpeaker } from "./forest-social";
 import { drawForestSpeech, type ForestSpeechCanvasFrame } from "./forest-speech-painter";
+import { loadForestSpeechFont } from "./forest-speech-font";
 import { builderDirection } from "./builder-navigation";
 import { forestResidentOccupants } from "./forest-resident-occupancy";
 
@@ -587,12 +588,16 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       ctx.setTransform(canvas.width / NEW_MAP_FOCUS.width, 0, 0, canvas.height / NEW_MAP_FOCUS.height, 0, 0);
       ctx.translate(-NEW_MAP_FOCUS.x, -NEW_MAP_FOCUS.y);
       paintWorld(ctx);
-      const size = canvas.clientWidth || 256;
+      const size = canvas.clientWidth || 256, verticalInset = size * .15;
+      // An inscribed rectangle leaves more room beside the head than equal
+      // insets while keeping every corner inside the circular canvas clip.
+      const radius = size / 2, verticalEdge = Math.max(0, radius - verticalInset - 8);
+      const horizontalInset = Math.max(0, radius - Math.sqrt(Math.max(0, radius * radius - verticalEdge * verticalEdge)) - 8);
       ctx.setTransform(canvas.width / size, 0, 0, canvas.height / size, 0, 0);
       drawForestSpeech(ctx, speechFrames().map(frame => ({ ...frame, anchor: {
         x: (frame.anchor.x - NEW_MAP_FOCUS.x) / NEW_MAP_FOCUS.width * size,
         y: (frame.anchor.y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height * size } })),
-      { width: size, height: size, insets: { left: size * .15, right: size * .15, top: size * .15, bottom: size * .15 },
+      { width: size, height: size, insets: { left: horizontalInset, right: horizontalInset, top: verticalInset, bottom: verticalInset },
         reducedMotion: reducedMotion(options, dev), night: options.dusk });
     }
     const activity = !exploring() && (state.reaction > 0 || state.pendingAttention || clearingActivityFrame(state.clearing).attention) ? "greet" : "idle";
@@ -848,6 +853,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     resume();
   });
   prepareArtwork();
+  void loadForestSpeechFont().then(loaded => {
+    // A still scene has no RAF: repaint once when its actual glyph metrics arrive.
+    if (loaded && visible()) draw();
+  });
   function notice() {
     if (disposed || !session.isSimulationAllowed()) return;
     noticeSpeech("mochlik");

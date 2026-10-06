@@ -22,16 +22,16 @@ export type ForestSpeechLayout = {
   tail: { side: "top" | "bottom"; x: number; tipX: number; tipY: number };
 };
 
-export const FOREST_SPEECH_FONT = '13px "Iowan Old Style", "Palatino Linotype", Georgia, serif';
-const LABEL_FONT = '600 9px ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
+export const FOREST_SPEECH_FONT = '14px "Zhiv Residents", ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
+const LABEL_FONT = '600 8.5px ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
 const LABELS = { mochlik: "Мохлик", plesk: "Плёска", builder: "Шишколап" } as const;
 const INK = { mochlik: "#667847", plesk: "#417d86", builder: "#987044" } as const;
-const PADDING = 12, LINE_HEIGHT = 17, LABEL_HEIGHT = 17, MAX_LINES = 3;
+const PADDING = 10, VERTICAL_PADDING = 8, LINE_HEIGHT = 17, LABEL_HEIGHT = 13, MAX_LINES = 2;
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
-function wrap(text: string, width: number, measure: (text: string) => number): string[] {
+function wrap(text: string, width: number, measure: (text: string) => number): { lines: string[]; truncated: boolean } {
   const words = text.replace(/\s+/gu, " ").trim().slice(0, 280).split(" ");
-  if (words.length === 1 && !words[0]) return [];
+  if (words.length === 1 && !words[0]) return { lines: [], truncated: false };
   const lines: string[] = [];
   let line = "";
   for (const word of words) {
@@ -44,13 +44,14 @@ function wrap(text: string, width: number, measure: (text: string) => number): s
     }
   }
   if (line) lines.push(line);
-  if (lines.length > MAX_LINES) {
+  const truncated = lines.length > MAX_LINES;
+  if (truncated) {
     lines.length = MAX_LINES;
     let last = Array.from(lines[MAX_LINES - 1]);
     while (last.length && measure(`${last.join("").trimEnd()}…`) > width) last = last.slice(0, -1);
     lines[MAX_LINES - 1] = `${last.join("").trimEnd()}…`;
   }
-  return lines;
+  return { lines, truncated };
 }
 
 /** Pure layout; never moves a resident, advances speech or mutates its frame. */
@@ -67,24 +68,36 @@ export function layoutForestSpeech(frame: ForestSpeechCanvasFrame, viewport: For
   const left = inset("left"), right = width - inset("right"), top = inset("top"), bottom = height - inset("bottom");
   const available = right - left;
   if (available < 92 || bottom - top < 60) return null;
-  const contentWidth = Math.min(174, available - PADDING * 2);
-  const lines = wrap(frame.text, contentWidth, measure);
+  const contentWidth = Math.min(154, available - PADDING * 2);
+  let { lines } = wrap(frame.text, contentWidth, measure);
   if (!lines.length) return null;
-  const boxWidth = Math.min(available, Math.max(104,
+  const rightX = anchor.x + 9;
+  const rightWidth = Math.min(174, right - rightX);
+  // A narrow, complete two-line reply keeps the bubble beside the head even
+  // inside the circular view. Never trade away words just to force this side.
+  if (rightWidth >= 92 && lines.some(line => measure(line) + PADDING * 2 > rightWidth)) {
+    const compact = wrap(frame.text, rightWidth - PADDING * 2, measure);
+    if (!compact.truncated) lines = compact.lines;
+  }
+  const boxWidth = Math.min(available, Math.max(88,
     ...lines.map(line => measure(line) + PADDING * 2)));
-  const boxHeight = PADDING * 2 + LABEL_HEIGHT + lines.length * LINE_HEIGHT - 3;
+  const boxHeight = VERTICAL_PADDING * 2 + LABEL_HEIGHT + lines.length * LINE_HEIGHT - 3;
   if (boxHeight > bottom - top) return null;
   const entrance = clamp(elapsed / .24, 0, 1);
   const eased = 1 - (1 - entrance) ** 3;
   const opacity = viewport.reducedMotion ? 1 : Math.min(eased, clamp((duration - elapsed) / .32, 0, 1));
   const rise = viewport.reducedMotion ? 0 : (1 - eased) * 4;
   const side = anchor.y - 14 - boxHeight >= top || anchor.y - top >= bottom - anchor.y ? "bottom" : "top";
-  const x = clamp(anchor.x - boxWidth / 2, left, right - boxWidth);
+  // Keep the body beside the face. A full left placement is preferable to covering
+  // the speaker when there is no room on the right; narrow circles use the clamp.
+  const leftX = anchor.x - 9 - boxWidth;
+  const preferredX = rightX + boxWidth > right && leftX >= left ? leftX : rightX;
+  const x = clamp(preferredX, left, right - boxWidth);
   const y = clamp(side === "bottom" ? anchor.y - 14 - boxHeight + rise : anchor.y + 14 - rise, top, bottom - boxHeight);
-  const tailX = clamp(anchor.x, x + 20, x + boxWidth - 20);
+  const tailX = clamp(anchor.x, x + 17, x + boxWidth - 17);
   return { id: frame.id, speaker: frame.speaker, label: LABELS[frame.speaker], lines,
     x, y, width: boxWidth, height: boxHeight, opacity,
-    tail: { side, x: tailX, tipX: clamp(anchor.x, tailX - 12, tailX + 12),
+    tail: { side, x: tailX, tipX: clamp(anchor.x, tailX - 28, tailX + 28),
       tipY: side === "bottom" ? y + boxHeight + 7 : y - 7 } };
 }
 
@@ -120,9 +133,9 @@ export function drawForestSpeech(ctx: CanvasRenderingContext2D, frames: readonly
       if (box) break;
     }
     if (!box || box.opacity <= 0) return box;
-    ctx.globalAlpha *= box.opacity;
+    ctx.globalAlpha = box.opacity;
     ctx.shadowColor = viewport.night ? "rgba(12, 19, 25, .28)" : "rgba(58, 45, 29, .16)";
-    ctx.shadowBlur = 10; ctx.shadowOffsetY = 3; ctx.shadowOffsetX = 0;
+    ctx.shadowBlur = 8; ctx.shadowOffsetY = 2; ctx.shadowOffsetX = 0;
     ctx.fillStyle = viewport.night ? "#efe8d8" : "#fff8e9";
     outline(ctx, box); ctx.fill();
     ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
@@ -130,10 +143,10 @@ export function drawForestSpeech(ctx: CanvasRenderingContext2D, frames: readonly
     ctx.stroke();
     ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.font = LABEL_FONT; ctx.fillStyle = INK[box.speaker];
-    ctx.fillText(box.label, box.x + PADDING, box.y + PADDING - 1, box.width - PADDING * 2);
+    ctx.fillText(box.label, box.x + PADDING, box.y + VERTICAL_PADDING - 1, box.width - PADDING * 2);
     ctx.font = FOREST_SPEECH_FONT; ctx.fillStyle = "#453d30";
     box.lines.forEach((line, index) => ctx.fillText(line, box.x + PADDING,
-      box.y + PADDING + LABEL_HEIGHT + index * LINE_HEIGHT, box.width - PADDING * 2));
+      box.y + VERTICAL_PADDING + LABEL_HEIGHT + index * LINE_HEIGHT, box.width - PADDING * 2));
     return box;
   } finally { ctx.restore(); }
 }
