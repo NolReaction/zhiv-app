@@ -1,7 +1,7 @@
 {
   "metadata": {
     "reviewDate": "2026-10-07",
-    "baseCommit": "3048916b765d1b21b6ea51f76127ca86c1956d9d",
+    "baseCommit": "8d42ad20be876af00d13381a749def31577f1fb8",
     "mode": "active16h",
     "maxDays": 1600,
     "policy": {
@@ -28,7 +28,7 @@
       23
     ],
     "sourceHashes": {
-      "apps/api/src/main/resources/world/economy-catalog.json": "fe1fc0a48dd5ddeed3ceded45f16bdeb3e5d1ce603c03e7061f76c6b0f0c57cc",
+      "apps/api/src/main/resources/world/economy-catalog.json": "9479fb5af94a22731f771a222c5b7d29c8e6eb95dd94ed9d04e22d949dac7a49",
       "apps/api/src/main/resources/world/progression-rewards-catalog.json": "757a6307f68d15c4baed481821587f4edaaa236c68f6e4baac9906a82acb0d99",
       "features/economy/rules.ts": "57d9d7a5f4c7ae3daec40447697dcfc213b6b0441d2566aac4e5ca79c396324b",
       "features/economy/model.ts": "ffaaa27406629c87189f197c85470ed9656c436099244c2dba45b679d5e3a08a",
@@ -46,7 +46,8 @@
       "No player market, barter, achievements, merchant, tap income or admin grants. No purchased production slots.",
       "Construction speedups require a nonzero starting pearlBudget; here zero means gifted pearls are not spent.",
       "Only TypeScript domain commands were simulated; this is not a PostgreSQL, browser or Ktor runtime playthrough."
-    ]
+    ],
+    "catalogRevision": "Warehouse 2 and 3 also require no developed house or other buildings."
   },
   "scenarios": [
     {

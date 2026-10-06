@@ -73,6 +73,47 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
   }
 });
 
+test("HTTP upgrades warehouse one through three with home one and no workshop while preserving paid costs and one builder", async () => {
+  const p = player();
+  economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.buildings = { ...row.state.buildings, home: 1, warehouse: 1, workshop: 0 };
+  const buildings = structuredClone(row.state.buildings);
+  const targets = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.slice(1, 3);
+  for (const target of targets) {
+    row.state.inventory = { ...target.cost.items, wood: 2 };
+    row.state.wallet = { coins: target.cost.coins, pearls: 0 };
+    const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
+    const response = await POST(post(order));
+    assert.equal(response.status, 200);
+    const started = await response.json(), job = started.state.jobs[0];
+    assert.equal(model.economyResultSchema.safeParse(started).success, true);
+    assert.equal(job.targetLevel, target.level); assert.deepEqual(job.cost, target.cost);
+    assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), target.seconds * 1000);
+    assert.deepEqual(started.state.buildings, { ...buildings, warehouse: target.level - 1 });
+    assert.deepEqual(started.state.inventory, { wood: 2 }); assert.deepEqual(started.state.wallet, { coins: 0, pearls: 0 });
+    assert.equal((await (await POST(post(order))).json()).replayed, true);
+    const busy = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+    assert.equal(busy.status, 409); assert.equal((await busy.json()).code, "ECONOMY_CONSTRUCTION_BUSY");
+    const tooSoon = await POST(post({ ...command(p), action: "claim_job", targetId: job.id }));
+    assert.equal(tooSoon.status, 409); assert.equal((await tooSoon.json()).code, "ECONOMY_JOB_NOT_READY");
+    // Move only the valid saved interval; no client command supplies time, levels or capacity.
+    const finishedAt = Date.now() - 1000;
+    row.state.jobs[0].startedAt = new Date(finishedAt - target.seconds * 1000).toISOString();
+    row.state.jobs[0].finishesAt = new Date(finishedAt).toISOString();
+    const claim = { ...command(p), action: "claim_job", targetId: job.id };
+    const claimedResponse = await POST(post(claim));
+    assert.equal(claimedResponse.status, 200);
+    const claimed = await claimedResponse.json();
+    assert.equal(model.economyResultSchema.safeParse(claimed).success, true);
+    assert.deepEqual(claimed.state.buildings, { ...buildings, warehouse: target.level });
+    assert.equal(claimed.state.storage.capacity, target.warehouseCapacity);
+    assert.deepEqual(claimed.state.inventory, { wood: 2 }); assert.deepEqual(claimed.state.jobs, []);
+    const repeated = await (await POST(post(claim))).json();
+    assert.equal(repeated.replayed, true); assert.equal(repeated.state.revision, claimed.state.revision);
+  }
+});
+
 test("HTTP builds and claims warehouse ten from earned low-home progress using only relics", async () => {
   const p = player();
   economy.getDevEconomy(p.token);

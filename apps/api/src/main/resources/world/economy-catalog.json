@@ -988,10 +988,8 @@
               "rope": 8
             }
           },
-          "requiredHomeLevel": 2,
-          "requiredBuildings": {
-            "workshop": 1
-          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
           "warehouseCapacity": 500
         },
         {
@@ -1006,10 +1004,8 @@
               "cloth": 10
             }
           },
-          "requiredHomeLevel": 3,
-          "requiredBuildings": {
-            "workshop": 2
-          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
           "warehouseCapacity": 1000
         },
         {

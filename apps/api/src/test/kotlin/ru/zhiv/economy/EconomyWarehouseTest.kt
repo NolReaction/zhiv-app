@@ -25,13 +25,50 @@ class EconomyWarehouseTest {
         assertEquals(capacities, warehouse.levels.map { it.warehouseCapacity })
         val third = warehouse.levels[2]
         assertEquals(EconomyCost(16000, mapOf("planks" to 50L, "bricks" to 45L, "iron_ingot" to 12L, "cloth" to 10L)), third.cost)
-        assertEquals(3, third.requiredHomeLevel); assertEquals(mapOf("workshop" to 2), third.requiredBuildings)
+        warehouse.levels.forEach { target ->
+            assertEquals(1, target.requiredHomeLevel); assertTrue(target.requiredBuildings.isEmpty())
+        }
         warehouse.levels.take(3).forEach { target -> assertTrue(relicIds.none { it in target.cost.items }) }
         warehouse.levels.drop(3).forEachIndexed { index, target ->
             assertEquals(EconomyCost(items = relicIds.zip(relicCosts[index]).toMap()), target.cost)
             assertEquals(1, target.requiredHomeLevel); assertTrue(target.requiredBuildings.isEmpty())
             assertEquals((index + 2) * 86400L, target.seconds)
         }
+    }
+
+    @Test fun `ordinary warehouse upgrades from one to three require no improved house or built workshop`() {
+        val targets = warehouse.levels.filter { it.level in 2..3 }
+        val supplies = buildMap<String, Long> {
+            targets.forEach { target -> target.cost.items.forEach { (id, amount) -> put(id, (get(id) ?: 0L) + amount) } }
+            put("wood", 2L)
+        }
+        var state = initial(1).copy(wallet = EconomyWallet(targets.sumOf { it.cost.coins }, 77), inventory = supplies)
+        val originalBuildings = state.buildings
+        assertEquals(1, state.buildings["home"]); assertEquals(0, state.buildings["workshop"])
+        assertEquals(0L, EconomyRules.storage(state).overflow)
+        var at = now
+        for (target in targets) {
+            val before = state
+            state = apply(state, "start_construction", "warehouse", at)
+            val job = state.jobs.single()
+            assertEquals(target.level, job.targetLevel); assertEquals(target.cost, job.cost)
+            assertEquals(before.wallet.coins - target.cost.coins, state.wallet.coins)
+            assertEquals(77L, state.wallet.pearls)
+            for ((id, amount) in target.cost.items) assertEquals(before.inventory.getValue(id) - amount, state.inventory[id] ?: 0L)
+            assertEquals(originalBuildings + ("warehouse" to (target.level - 1)), state.buildings)
+            assertEquals(capacities[target.level - 2], EconomyRules.storage(state).capacity)
+            val paid = state
+            val end = Instant.parse(job.finishesAt)
+            assertEquals("ECONOMY_JOB_NOT_READY", assertFailsWith<AuthFailure> { apply(state, "claim_job", job.id, end.minusMillis(1)) }.code)
+            at = end
+            state = apply(state, "claim_job", job.id, at)
+            assertEquals(originalBuildings + ("warehouse" to target.level), state.buildings)
+            assertEquals(capacities[target.level - 1], EconomyRules.storage(state).capacity)
+            assertEquals(paid.inventory, state.inventory); assertEquals(paid.wallet, state.wallet)
+            assertTrue(state.jobs.isEmpty())
+        }
+        assertEquals(EconomyWallet(0, 77), state.wallet)
+        assertEquals(mapOf("wood" to 2L), state.inventory)
     }
 
     @Test fun `small settlement expands from warehouse three to ten with no other building or currency changes`() {

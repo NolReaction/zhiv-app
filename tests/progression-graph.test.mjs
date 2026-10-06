@@ -279,25 +279,26 @@ test("ten storage levels stay visible in economic sections with their true seque
     const id = `b:warehouse:${level.level}`, storage = node(id), position = layout.positions.get(id);
     assert.equal(storage.status, "active");
     assert.equal(storage.locationId, "place:home");
-    assert.equal(storage.phase, Math.min(level.level, 3), "later storage shares the phase of its actual home-3 prerequisite");
+    assert.equal(storage.phase, 1, "independent storage stays in the initial economic section");
     assert.deepEqual(plain(storage.cost), level.cost);
     assert.equal(storage.warehouseCapacity, level.warehouseCapacity);
     assert(position, `storage ${level.level} must not disappear beyond the five home tiers`);
     const group = layout.groups.find(value => value.phase === storage.phase && value.locationId === "place:home");
     assert(position.x >= group.x && position.x + NODE_WIDTH <= group.x + group.width);
     assert(position.y >= group.y && position.y + NODE_HEIGHT <= group.y + group.height);
+    assert.deepEqual(plain(storage.requirements), level.level === 1 ? { home: 1 } : { home: 1, warehouse: level.level - 1 });
+    const gates = getPrerequisiteIds(graph, id, false);
+    assert(!gates.has("b:home:2"));
+    assert(!gates.has("b:home:3"));
+    assert(!gates.has("b:home:4"));
+    assert(!gates.has("b:home:5"));
+    assert(!Array.from(gates).some(id => /^b:workshop:/.test(id)), "ordinary storage cannot acquire a hidden workbench requirement");
     if (level.level >= 4) {
-      assert.deepEqual(plain(storage.requirements), { home: 1, warehouse: level.level - 1 });
       for (const relic of Object.keys(level.cost.items)) {
         assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
       }
       assert(hasEdge("rare_materials", id, "cost"));
-      const gates = getPrerequisiteIds(graph, id, false);
-      assert(gates.has("b:home:3"), "the ordinary level-3 storage prerequisite remains required");
-      assert(!gates.has("b:home:4"));
-      assert(!gates.has("b:home:5"));
-      assert(!gates.has("b:workshop:3"));
-      assert(!gates.has("b:workshop:4"));
+      assert(getPrerequisiteIds(graph, id).has("b:home:3"), "home 3 opens the relic source, not the storage command");
     }
   }
 });

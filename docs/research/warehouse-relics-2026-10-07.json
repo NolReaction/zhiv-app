@@ -76,10 +76,8 @@
           "rope": 8
         }
       },
-      "requiredHomeLevel": 2,
-      "requiredBuildings": {
-        "workshop": 1
-      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
       "relicCost": {
         "ancient_core": 0,
         "moon_crystal": 0,
@@ -114,10 +112,8 @@
           "cloth": 10
         }
       },
-      "requiredHomeLevel": 3,
-      "requiredBuildings": {
-        "workshop": 2
-      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
       "relicCost": {
         "ancient_core": 0,
         "moon_crystal": 0,
@@ -386,7 +382,7 @@
     }
   ],
   "sourceHashes": {
-    "../apps/api/src/main/resources/world/economy-catalog.json": "fe1fc0a48dd5ddeed3ceded45f16bdeb3e5d1ce603c03e7061f76c6b0f0c57cc",
+    "../apps/api/src/main/resources/world/economy-catalog.json": "9479fb5af94a22731f771a222c5b7d29c8e6eb95dd94ed9d04e22d949dac7a49",
     "./review-warehouse-relics.mjs": "0acbe8c0cbc07f6907f6fd666b3cb4f71982051aaca72214d19bb33d7dc2fbc1"
   }
 }

@@ -72,12 +72,13 @@ export function auditEconomyProgression(catalog) {
       assert(Number.isSafeInteger(level.seconds) && level.seconds >= 0, `${key}: invalid duration`);
       assert(Number.isSafeInteger(level.cost.coins) && level.cost.coins >= 0, `${key}: invalid price`);
       if (building.id === "warehouse") {
+        assert(level.requiredHomeLevel === 1 && !Object.keys(level.requiredBuildings ?? {}).length,
+          `${key}: storage must not require developed homes or buildings`);
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         if (level.level > 1) assert(level.warehouseCapacity > building.levels[level.level - 2].warehouseCapacity, `${key}: storage must grow`);
         if (level.level <= 3) assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: early storage must use ordinary materials`);
         else {
-          assert(rare && level.cost.coins === 0 && level.requiredHomeLevel === 1 && !Object.keys(level.requiredBuildings ?? {}).length,
-            `${key}: relic storage must not require coins or developed buildings`);
+          assert(rare && level.cost.coins === 0, `${key}: relic storage must not require coins`);
           assert.deepEqual(Object.keys(level.cost.items).sort(), [...rare.itemIds].sort(), `${key}: relic storage must use all three relic types only`);
           if (level.level > 4) assert(rare.itemIds.every(id => level.cost.items[id] >= building.levels[level.level - 2].cost.items[id]),
             `${key}: later storage must not reduce relic quantities`);

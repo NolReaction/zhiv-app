@@ -35,6 +35,19 @@ function render(stationId = "home", overrides = {}) {
 const text = html => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 const buttons = html => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: text(match[2]) }));
 
+test("every warehouse expansion is available at home one without other buildings when its cost is owned", () => {
+  const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
+  for (const target of warehouse.levels.filter(level => level.level > 1)) {
+    const snapshot = state({ buildings: { home: 1, warehouse: target.level - 1, workshop: 0 },
+      inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 } });
+    const html = render("warehouse", { snapshot });
+    assert.doesNotMatch(html, /aria-label="Недостающие условия"|Нужны улучшения/);
+    const start = buttons(html).find(button => button.text.includes(`Улучшить до ур. ${target.level}`));
+    assert.ok(start, `warehouse ${target.level} keeps its normal upgrade action`);
+    assert.doesNotMatch(start.attributes, /disabled/, `warehouse ${target.level} has no house or workshop gate`);
+  }
+});
+
 test("upgrade leads with its result and keeps exact costs and missing-level navigation", () => {
   const html = render("home", { notice: "DEV: Дом Мохлика → 2" });
   assert.match(text(html), /Дом Мохлика.*Уровень 1.*Уровень 2/);

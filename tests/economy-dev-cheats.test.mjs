@@ -186,19 +186,19 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   assert.equal(read(p).storage.reserved, 2); assert.deepEqual(read(p).jobs, [production]);
 });
 
-test("DEV storage controls grant every relic upgrade through level 10 without changing home or other buildings", () => {
+test("DEV storage controls fund every independent upgrade through level 10 without changing home or other buildings", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
   assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 10);
   const ordinaryBuildings = structuredClone(read(p).buildings);
-  for (const target of warehouse.levels.filter(level => level.level >= 4)) {
+  for (const target of warehouse.levels.filter(level => level.level >= 2)) {
     const previous = cheat(p, "set_building_level", "warehouse", target.level - 1).state;
     const row = fixture(p); row.state.inventory = {};
     const granted = cheat(p, "grant_upgrade_cost", "warehouse").state;
-    assert.deepEqual(granted.inventory, target.cost.items, `missing relic set for storage ${target.level}`);
-    assert.deepEqual(granted.wallet, previous.wallet, "relic-only expansion adds no coins or pearls");
+    assert.deepEqual(granted.inventory, target.cost.items, `missing materials for storage ${target.level}`);
+    assert.deepEqual(granted.wallet, { ...previous.wallet, coins: Math.max(previous.wallet.coins, target.cost.coins) });
     assert.deepEqual(granted.buildings, { ...ordinaryBuildings, warehouse: target.level - 1 });
     const repeated = cheat(p, "grant_upgrade_cost", "warehouse").state;
-    assert.deepEqual(repeated.inventory, granted.inventory, "cost grants are missing-only even for relic sets");
+    assert.deepEqual(repeated.inventory, granted.inventory, "cost grants are missing-only for ordinary materials and relic sets");
     const construction = normal(p, "start_construction", "warehouse").state.jobs.find(job => job.kind === "construction");
     assert.equal(construction.targetLevel, target.level);
     cheat(p, "finish_jobs", "construction");

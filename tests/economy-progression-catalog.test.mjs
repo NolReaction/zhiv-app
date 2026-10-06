@@ -64,7 +64,21 @@ test("warehouse has ten increasing tiers, ordinary early costs and independent r
     c => c.buildings.find(building => building.id === "warehouse").levels[9].warehouseCapacity = 8200,
   ]) {
     const invalid = structuredClone(catalog); mutate(invalid);
-    assert.throws(() => auditEconomyProgression(invalid), /early storage|relic storage|storage must grow/);
+    assert.throws(() => auditEconomyProgression(invalid), /early storage|relic storage|storage must grow|storage must not require/);
+  }
+});
+
+test("no storage tier can reintroduce a home or other-building unlock requirement", () => {
+  const catalog = readEconomyCatalog();
+  for (const level of catalog.buildings.find(building => building.id === "warehouse").levels) {
+    assert.equal(level.requiredHomeLevel, 1);
+    assert.deepEqual(level.requiredBuildings, {});
+    for (const requirement of ["home", "workshop"]) {
+      const invalid = structuredClone(catalog), target = invalid.buildings.find(building => building.id === "warehouse").levels.find(candidate => candidate.level === level.level);
+      if (requirement === "home") target.requiredHomeLevel = 2;
+      else target.requiredBuildings.workshop = 1;
+      assert.throws(() => auditEconomyProgression(invalid), /storage must not require developed homes or buildings/, `storage ${level.level}: ${requirement}`);
+    }
   }
 });
 

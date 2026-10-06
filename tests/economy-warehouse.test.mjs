@@ -43,13 +43,50 @@ test("ten warehouse tiers preserve earned capacity and switch to escalating reli
   assert.deepEqual(warehouse.levels.map(level => level.warehouseCapacity), capacity);
   const third = warehouse.levels[2];
   assert.deepEqual(third.cost, { coins: 16000, items: { planks: 50, bricks: 45, iron_ingot: 12, cloth: 10 } });
-  assert.equal(third.requiredHomeLevel, 3); assert.deepEqual(third.requiredBuildings, { workshop: 2 });
+  for (const target of warehouse.levels) {
+    assert.equal(target.requiredHomeLevel, 1); assert.deepEqual(target.requiredBuildings, {});
+  }
   for (const target of warehouse.levels.slice(0, 3))
     assert.ok(relicIds.every(id => !target.cost.items[id]));
   for (const [index, target] of warehouse.levels.slice(3).entries()) {
     assert.deepEqual(target.cost, { coins: 0, items: Object.fromEntries(relicIds.map((id, i) => [id, relicCosts[index][i]])) });
     assert.equal(target.requiredHomeLevel, 1); assert.deepEqual(target.requiredBuildings, {});
     assert.equal(target.seconds, (index + 2) * 86400);
+  }
+});
+
+test("ordinary warehouse expansions keep prices and materials but have no house or workshop gate", () => {
+  const state = initial(1), buildings = structuredClone(state.buildings);
+  const costs = [
+    { coins: 2500, items: { planks: 18, stone: 20, rope: 8 } },
+    { coins: 16000, items: { planks: 50, bricks: 45, iron_ingot: 12, cloth: 10 } },
+  ];
+  const seconds = [28800, 86400];
+  let at = now;
+  for (const [index, target] of warehouse.levels.slice(1, 3).entries()) {
+    assert.deepEqual(target.cost, costs[index]); assert.equal(target.seconds, seconds[index]);
+    state.wallet.coins = target.cost.coins;
+    state.inventory = { ...target.cost.items, wood: 2 };
+    const before = structuredClone(state);
+    const missingCoins = structuredClone(state); missingCoins.wallet.coins--;
+    assert.throws(() => direct(missingCoins, "start_construction", "warehouse", at), { code: "ECONOMY_RESOURCES" });
+    assert.deepEqual(missingCoins.jobs, before.jobs);
+    const missingMaterial = structuredClone(state); missingMaterial.inventory.planks--;
+    assert.throws(() => direct(missingMaterial, "start_construction", "warehouse", at), { code: "ECONOMY_RESOURCES" });
+    assert.deepEqual(missingMaterial.wallet, before.wallet); assert.deepEqual(missingMaterial.jobs, before.jobs);
+    direct(state, "start_construction", "warehouse", at);
+    const job = state.jobs[0];
+    assert.equal(job.targetLevel, target.level); assert.deepEqual(job.cost, target.cost);
+    assert.equal(Date.parse(job.finishesAt) - at, seconds[index] * 1000);
+    assert.deepEqual(state.inventory, { wood: 2 }); assert.equal(state.wallet.coins, 0);
+    assert.equal(state.buildings.warehouse, target.level - 1);
+    assert.throws(() => direct(structuredClone(state), "start_construction", "warehouse", at), { code: "ECONOMY_CONSTRUCTION_BUSY" });
+    const unrelated = structuredClone(state); unrelated.buildings.woodlot = 0;
+    assert.throws(() => direct(unrelated, "start_construction", "woodlot", at), { code: "ECONOMY_CONSTRUCTION_BUSY" });
+    assert.throws(() => direct(structuredClone(state), "claim_job", job.id, Date.parse(job.finishesAt) - 1), { code: "ECONOMY_JOB_NOT_READY" });
+    at = Date.parse(job.finishesAt); direct(state, "claim_job", job.id, at);
+    assert.deepEqual(state.buildings, { ...buildings, warehouse: target.level });
+    assert.equal(rules.economyStorage(state).capacity, capacity[target.level - 1]);
   }
 });
 
