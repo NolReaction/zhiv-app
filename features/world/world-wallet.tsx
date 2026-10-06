@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef } from "react";
 import { ItemIcon } from "@/features/items/item-icon";
-import { walletDeltaLabel, walletTween } from "./wallet-animation";
+import { walletAmountLabel, walletDeltaLabel, walletTween } from "./wallet-animation";
 import styles from "./world-wallet.module.css";
 
 function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }) {
@@ -28,7 +28,7 @@ function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }
       finished = true;
       cancelAnimationFrame(frame);
       displayed.current = amount;
-      count.textContent = amount.toLocaleString("ru-RU");
+      count.textContent = walletAmountLabel(amount, kind);
       feedback.hidden = true;
       feedback.getAnimations().forEach(animation => animation.cancel());
     };
@@ -38,8 +38,8 @@ function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }
       settle();
       return;
     }
-    count.textContent = from.toLocaleString("ru-RU");
-    deltaNode.textContent = walletDeltaLabel(delta);
+    count.textContent = walletAmountLabel(from, kind);
+    deltaNode.textContent = walletDeltaLabel(delta, kind);
     feedback.dataset.direction = delta > 0 ? "gain" : "spend";
     feedback.hidden = false;
     const animation = feedback.animate([
@@ -54,7 +54,7 @@ function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }
       if (finished) return;
       const progress = Math.min(1, (time - start) / 650);
       displayed.current = walletTween(from, amount, progress);
-      count.textContent = displayed.current.toLocaleString("ru-RU");
+      count.textContent = walletAmountLabel(displayed.current, kind);
       if (progress < 1) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
@@ -68,13 +68,13 @@ function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }
       motion.removeEventListener("change", onMotion);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [amount]);
+  }, [amount, kind]);
 
   return <div className={styles.currency} data-currency={kind} data-balance={amount}>
     <dt><ItemIcon itemId={kind} size={18} /><span className={styles.sr}>{label}</span></dt>
     <dd>
-      <span ref={number} aria-hidden="true">{amount.toLocaleString("ru-RU")}</span>
-      <span className={styles.sr} aria-live="polite" aria-atomic="true">{label}: {amount.toLocaleString("ru-RU")}</span>
+      <span ref={number} aria-hidden="true">{walletAmountLabel(amount, kind)}</span>
+      <span className={styles.sr} aria-live="polite" aria-atomic="true">{label}: {walletAmountLabel(amount, kind)}</span>
       <span ref={effect} className={styles.change} hidden aria-hidden="true" data-wallet-change>
         <ItemIcon itemId={kind} size={18} /><span ref={deltaText} />
       </span>

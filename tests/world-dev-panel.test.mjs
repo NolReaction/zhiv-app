@@ -326,6 +326,20 @@ test("cheats use the economy account, real catalog levels and server commands wi
   assert.equal(worldDevStore.getSnapshot(), before);
 });
 
+test("DEV wallet and grant labels halve pearls while currency commands keep their original stored amounts", () => {
+  const view = cheats({}, { wallet: { coins: 17, pearls: 7 } });
+  assert.match(view.markup, /Монеты<\/dt><dd>17<\/dd>/);
+  assert.match(view.markup, /Жемчуг<\/dt><dd>3,5<\/dd>/);
+  for (const [raw, visible] of [[5000, "+2 500 жемчуга"], [50000, "+25 000 жемчуга"]]) {
+    const button = cheatButton(view, `grant-pearls-${raw}`);
+    assert.equal(labelText(button).replace(/\u00a0|\u202f/g, " "), visible);
+    button.props.onClick();
+    assert.deepEqual(view.commands.at(-1), ["grant_currency", "pearls", raw]);
+  }
+  assert.equal(labelText(cheatButton(view, "grant-coins-10000")).replace(/\u00a0|\u202f/g, " "), "+10 000 монет");
+  assert.deepEqual(view.props.economy.snapshot.wallet, { coins: 17, pearls: 7 });
+});
+
 test("unpermitted servers, unloaded accounts, pending receipts and cooldowns prevent cheat dispatch", () => {
   for (const [patch, props] of [[{}, { world: { snapshot: { devTools: false } } }], [{ snapshot: null }, {}],
     [{ uncertain: true }, {}], [{ busy: true }, {}], [{ retryAt: cheatNow + 5000 }, {}], [{ devAvailable: false }, {}]]) {

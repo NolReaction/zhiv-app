@@ -149,3 +149,28 @@ test("a V40 gift receipt keeps its original units while current pearls project b
   assert.deepEqual(second.economy.wallet, first.economy.wallet);
   assert.equal(rewardRow.receipts.get(command.requestId).claim.reward.pearls, 20);
 });
+
+
+test("halved pearl presentation preserves odd balances, signed deltas and purchasing power", () => {
+  assert.equal(money.ECONOMY_PEARL_SCALE, 50, "stored amounts and receipts keep their denomination");
+  assert.equal(money.pearlDisplayAmount(1), 0.5);
+  assert.equal(money.formatPearls(1), "0,5");
+  assert.equal(money.formatPearls(-3), "-1,5");
+  const costs = [1, 50, model.economyCatalog.fishing.shop.refreshPricePearls,
+    ...model.economyCatalog.productionSlots.upgrades.map(tier => tier.pricePearls)];
+  for (const balance of [0, 1, 99, 100, 1499, 1500, 6501, money.ECONOMY_MAX_PEARLS]) {
+    for (const cost of costs) {
+      const shown = money.pearlDisplayAmount(balance), shownCost = money.pearlDisplayAmount(cost);
+      assert.equal(shown >= shownCost, balance >= cost);
+      assert.equal(Math.floor(shown / shownCost), Math.floor(balance / cost));
+      assert.equal(money.pearlDisplayAmount(balance - cost), shown - shownCost);
+    }
+  }
+  const original = legacyState(), frozen = structuredClone(original);
+  const normalized = money.redenominateEconomyState(original);
+  const saved = structuredClone(normalized);
+  assert.equal(money.formatPearls(normalized.wallet.pearls), "100");
+  money.formatPearls(normalized.wallet.pearls);
+  assert.deepEqual(normalized, saved, "rendering neither mutates saved money nor converts it twice");
+  assert.deepEqual(original, frozen);
+});

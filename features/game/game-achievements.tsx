@@ -9,6 +9,7 @@ import { getGameAchievements, type GameAchievement, type GameAchievements, type 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import boardStyles from "./game-leaderboard.module.css";
 import styles from "./game-achievements.module.css";
+import { formatPearls } from "@/features/economy/money";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { AchievementReward, GameRewards, GameRewardClaim } from "./game-rewards-api";
 import { useGameRewards } from "./use-game-rewards";
@@ -71,14 +72,14 @@ export function AchievementCard({ quest, state, rewardRows = [], claimBlocked = 
           aria-label={`Ступень ${roman[tier.level - 1]}: ${quest.id === "home_builder" ? "дом уровня " : "цель "}${tier.target}${tier.unlockedAt ? ", получена" : ", ещё не получена"}`}>
           {tier.unlockedAt && <Check size={10} aria-hidden="true" />}
           <span>{quest.id === "home_builder" ? `Дом ${tier.target}` : tier.target.toLocaleString("ru-RU")}</span>
-          {rewardRows.find(row => row.level === tier.level)?.pearls ? <span className={styles.tierPearls}><ItemIcon itemId="pearls" size={13} />{rewardRows.find(row => row.level === tier.level)!.pearls}</span> : null}
+          {rewardRows.find(row => row.level === tier.level)?.pearls ? <span className={styles.tierPearls}><ItemIcon itemId="pearls" size={13} />{formatPearls(rewardRows.find(row => row.level === tier.level)!.pearls)}</span> : null}
         </li>)}
       </ol>}
     </div>
     {rewardRows.length > 0 && <div className={styles.rewardBlock}>
-      {multi ? <span>Жемчуг за каждую ступень</span> : <span><ItemIcon itemId="pearls" size={19} /><strong>{rewardRows[0].pearls}</strong> за медаль</span>}
-      {nextReward && onClaim ? <button type="button" disabled={claimBlocked} aria-label={`Получить ${nextReward.pearls} жемчужин за достижение «${quest.title}», ступень ${roman[nextReward.level - 1]}`}
-        onClick={() => onClaim(nextReward.level)}>{claiming ? "Получаем…" : multi ? `Забрать ${roman[nextReward.level - 1]}` : "Забрать"}<ItemIcon itemId="pearls" size={17} /><strong>{nextReward.pearls}</strong></button>
+      {multi ? <span>Жемчуг за каждую ступень</span> : <span><ItemIcon itemId="pearls" size={19} /><strong>{formatPearls(rewardRows[0].pearls)}</strong> за медаль</span>}
+      {nextReward && onClaim ? <button type="button" disabled={claimBlocked} aria-label={`Получить ${formatPearls(nextReward.pearls)} жемчужин за достижение «${quest.title}», ступень ${roman[nextReward.level - 1]}`}
+        onClick={() => onClaim(nextReward.level)}>{claiming ? "Получаем…" : multi ? `Забрать ${roman[nextReward.level - 1]}` : "Забрать"}<ItemIcon itemId="pearls" size={17} /><strong>{formatPearls(nextReward.pearls)}</strong></button>
         : rewardRows.every(row => row.claimedAt || row.pearls === 0) ? <small><Check size={12} aria-hidden="true" />Жемчуг получен</small>
           : rewardRows.some(row => row.blockedReason === "admin_grant") ? <small>Жемчуг станет доступен после выполнения цели.</small> : null}
     </div>}
@@ -175,7 +176,7 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost,
           <div className={styles.summaryText}>
             <strong>{visible ? `Получено ${summary.earned} из ${summary.total}` : `${summary.total} достижений для Мохлика`}</strong>
             <span>{visible ? `Ступени: ${summary.tiers} из ${summary.totalTiers}` : "Исследования, хозяйство и личные победы"}</span>
-            {claimablePearls > 0 && <span className={styles.claimable}><ItemIcon itemId="pearls" size={17} />Можно забрать: {claimablePearls}</span>}
+            {claimablePearls > 0 && <span className={styles.claimable}><ItemIcon itemId="pearls" size={17} />Можно забрать: {formatPearls(claimablePearls)}</span>}
           </div>
           <button type="button" disabled={loading || !isOnline} aria-label="Обновить достижения" onClick={refresh}><RefreshCw size={17} aria-hidden="true" /></button>
         </div>

@@ -7,6 +7,7 @@ import { PlayerItemIcon } from "./fish-discovery";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
+import { formatPearls } from "./money";
 import { canAffordEconomy } from "./rules";
 import { economyActorConflict } from "./actor-availability";
 import { fishingTripCost } from "./fishing";
@@ -94,7 +95,7 @@ function integer(value: string, maximum: number) {
 export function EconomyBalances({ wallet }: { wallet: EconomyView["wallet"] }) {
   return <div className={styles.wallet} aria-label="Кошелёк">
     <span><ItemIcon itemId="coins" size={18} /><strong>{number(wallet.coins)}</strong><span className={styles.walletLabel}>монет</span><span className={styles.sr}>Монеты: {number(wallet.coins)}</span></span>
-    <span title="Жемчуг открывает места производства, ускоряет стройку и обновляет лавку Плёски."><ItemIcon itemId="pearls" size={18} /><strong>{number(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {number(wallet.pearls)}. Можно открыть места производства и ускорить строительство. Покупка жемчуга пока недоступна.</span></span>
+    <span title="Жемчуг открывает места производства, ускоряет стройку и обновляет лавку Плёски."><ItemIcon itemId="pearls" size={18} /><strong>{formatPearls(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {formatPearls(wallet.pearls)}. Можно открыть места производства и ускорить строительство. Покупка жемчуга пока недоступна.</span></span>
   </div>;
 }
 

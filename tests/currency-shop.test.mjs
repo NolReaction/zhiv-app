@@ -144,3 +144,16 @@ test("a missing economy snapshot never invents a gold quote", () => {
   assert.match(view.html, /Загружаем полянку/);
   assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, 0);
 });
+
+
+test("pearl packages and gold exchange prices display half while gold outputs and raw quotes stay unchanged", () => {
+  const h = harness(state({ home: 1 })); let view = h.render();
+  const amounts = () => [...view.html.matchAll(/<strong[^>]*>[\s\S]*?<\/strong>/g)].map(match => match[0].replace(/<[^>]*>/g, "").replace(/\s/g, ""));
+  assert.deepEqual(amounts(), ["250", "750", "2000", "5000"]);
+  tabs(view)[1].props.onClick(); view = h.render();
+  assert.match(view.html, /<span>50<\/span>/);
+  assert.match(view.html, /<span>150<\/span>/);
+  assert.match(view.html, /<span>375<\/span>/);
+  assert.deepEqual(shop.currencyShopGoldOffers(state({ home: 1 })).map(pack => [pack.pearls, pack.coins]), [[100, 10000], [300, 30000], [750, 75000]]);
+  assert.deepEqual(amounts().slice(1), ["10000", "30000", "75000"]);
+});

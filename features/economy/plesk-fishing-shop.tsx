@@ -8,6 +8,7 @@ import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { fishingIneligibility, fishingOdds, fishingState } from "./fishing";
 import { canRefreshFishingShop } from "./fishing-shop";
+import { formatPearls } from "./money";
 import { fishDiscovered, PlayerItemIcon } from "./fish-discovery";
 import { FishRarityBadge, FISH_RARITY_LEVELS } from "./fish-rarity";
 import { PantrySale } from "./world-pantry-menu";
@@ -24,7 +25,7 @@ type ShopTab = "tackle" | "fish" | "collection";
 const tabs = [{ id: "tackle", name: "Лавка", icon: Store }, { id: "fish", name: "Улов", icon: Fish }, { id: "collection", name: "Книга", icon: BookOpen }] as const;
 
 function Price({ value, pearls = false }: { value: number; pearls?: boolean }) {
-  return <span className={styles.price}>{number(value)}<ItemIcon itemId={pearls ? "pearls" : "coins"} size={16} /></span>;
+  return <span className={styles.price}>{pearls ? formatPearls(value) : number(value)}<ItemIcon itemId={pearls ? "pearls" : "coins"} size={16} /></span>;
 }
 const probabilityFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 });
 const percent = (probability: number) => `${probabilityFormat.format(probability * 100)}%`;
@@ -153,7 +154,7 @@ export function PleskFishOffer({ economy, state, fish }: ReadyProps & { fish: Fi
 }
 
 export function PleskMerchantHeader({ economy, state }: ReadyProps) {
-  const shop = state.fishingShop, { blocked, send } = useFishingCommand({ economy, state });
+  const shop = state.fishingShop, { blocked, send } = useFishingCommand({ economy, state }), reasonId = useId();
   const [confirm, setConfirm] = useState<string | null>(null), refreshed = useRef<string | null>(null);
   const confirmation = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), wasConfirming = useRef(false);
   const confirming = !!shop && confirm === shop.id;
@@ -171,12 +172,19 @@ export function PleskMerchantHeader({ economy, state }: ReadyProps) {
   if (!shop) return <p className={styles.hint} role="status">Плёска раскладывает товары…</p>;
   const time = `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const canReplace = canRefreshFishingShop(state);
-  const allowed = seconds > 0 && canReplace && state.wallet.pearls >= shop.refreshPricePearls;
+  const shortfall = Math.max(0, shop.refreshPricePearls - state.wallet.pearls);
+  const allowed = seconds > 0 && canReplace && shortfall === 0;
+  const reason = economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения."
+    : economy.busy ? "Дождитесь завершения текущего действия."
+      : blocked ? "Обновляем данные лавки. Попробуйте после проверки."
+        : seconds <= 0 ? "Открываем новую поставку. Обновление за жемчуг пока не требуется."
+          : !canReplace ? "Пока не все товары можно заменить на другие. Дождитесь новой поставки."
+            : shortfall > 0 ? `Не хватает ${formatPearls(shortfall)} жемчужин для обновления.` : null;
   return <section className={styles.merchantHeader} aria-label="Обновление прилавка">
     <div><strong>Сегодня у Плёски</strong><span><Clock3 size={14} aria-hidden="true" />{seconds > 0 ? <>Новые товары через <time>{time}</time></> : "Открываем новые предложения…"}</span></div>
-    {!canReplace && seconds > 0 && <p className={styles.restockHint}>Плёска ждёт новую поставку</p>}
-    {confirming ? <div ref={confirmation} className={styles.refreshConfirm} role="group" tabIndex={-1} aria-label="Подтверждение обновления прилавка"><p>Заменить все товары на другие за <Price value={shop.refreshPricePearls} pearls />?</p><div><button type="button" className={styles.secondary} onClick={() => setConfirm(null)}>Оставить</button><button type="button" className={styles.primary} disabled={blocked || !allowed} onClick={() => { send("refresh_fishing_shop", shop.id, 1, shop.refreshPricePearls, allowed); setConfirm(null); }}>Обновить</button></div></div>
-      : <button ref={trigger} type="button" className={styles.refreshOffers} disabled={blocked || !allowed} onClick={() => { if (!blocked && allowed) setConfirm(shop.id); }} aria-label={`Обновить предложения за ${shop.refreshPricePearls} жемчужин`}><RefreshCw size={14} aria-hidden="true" />Обновить<Price value={shop.refreshPricePearls} pearls /></button>}
+    {reason && <p id={reasonId} className={styles.restockHint} role="status">{reason}</p>}
+    {confirming ? <div ref={confirmation} className={styles.refreshConfirm} role="group" tabIndex={-1} aria-label="Подтверждение обновления прилавка"><p>Заменить все товары на другие за <Price value={shop.refreshPricePearls} pearls />?</p><div><button type="button" className={styles.secondary} onClick={() => setConfirm(null)}>Оставить</button><button type="button" className={styles.primary} disabled={blocked || !allowed} aria-describedby={reason ? reasonId : undefined} onClick={() => { send("refresh_fishing_shop", shop.id, 1, shop.refreshPricePearls, allowed); setConfirm(null); }}>Обновить</button></div></div>
+      : <button ref={trigger} type="button" className={styles.refreshOffers} disabled={blocked || !allowed} onClick={() => { if (!blocked && allowed) setConfirm(shop.id); }} aria-describedby={reason ? reasonId : undefined} aria-label={`Обновить предложения за ${formatPearls(shop.refreshPricePearls)} жемчужин`}><RefreshCw size={14} aria-hidden="true" />Обновить<Price value={shop.refreshPricePearls} pearls /></button>}
   </section>;
 }
 
@@ -222,7 +230,7 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry }: PleskFish
   const state = economy.snapshot, catalog = state?.catalog.fishing, cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const recovery = (economy.error || economy.uncertain) && <div className={styles.recovery} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения, прежде чем торговать снова." : economy.error}</p><button type="button" disabled={economy.busy || cooldown > 0} onClick={() => { if (!economy.busy && !cooldown) void economy.retry(); }}><RefreshCw size={14} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button></div>;
   return <div className={styles.shop} aria-busy={economy.busy || undefined}>
-    {state && <div className={styles.wallet}><span>Лавка у пирса</span><span aria-label={`Монеты: ${number(state.wallet.coins)}. Жемчуг: ${number(state.wallet.pearls)}`}><Price value={state.wallet.coins} /><Price value={state.wallet.pearls} pearls /></span></div>}
+    {state && <div className={styles.wallet}><span>Лавка у пирса</span><span aria-label={`Монеты: ${number(state.wallet.coins)}. Жемчуг: ${formatPearls(state.wallet.pearls)}`}><Price value={state.wallet.coins} /><Price value={state.wallet.pearls} pearls /></span></div>}
     {recovery}
     {!state ? <p className={styles.hint} role="status">Проверяем ваши запасы…</p> : !catalog ? <><p className={styles.intro}>«Принесёшь речную рыбу — куплю!»</p>{(state.inventory.fish ?? 0) > 0 ? <PantrySale economy={{ ...economy, snapshot: state }} itemId="fish" /> : <p className={styles.hint}>В вашей кладовой пока нет речной рыбы.</p>}</> : <>
       <div className={styles.tabs} role="tablist" aria-label="Лавка Плёски">{tabs.map((entry, index) => <button key={entry.id} ref={node => { tabButtons.current[index] = node; }} type="button" role="tab" id={`${id}-${entry.id}`} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {

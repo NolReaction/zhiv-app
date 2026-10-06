@@ -5,6 +5,7 @@ import { Check, RotateCcw, Search, Shirt, ShoppingBag } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { pixelSprite } from "@/features/mochlik/pixel-sprite";
 import type { EconomyController } from "@/features/economy/use-economy";
+import { formatPearls } from "@/features/economy/money";
 import { number } from "@/features/economy/world-economy-parts";
 import type { WorldState } from "./model";
 import { wardrobeItems as items, wardrobeOwned, wardrobePurchaseTarget, type WardrobeItem } from "./wardrobe";
@@ -18,9 +19,11 @@ const slots = [{ id: "all", name: "Всё" }, { id: "head", name: "Шапки" }
 const slotName: Record<Slot, string> = { head: "Головной убор", neck: "Шарф", palette: "Оттенок мха" };
 const tabs = [{ id: "owned", name: "Мои вещи", icon: Shirt }, { id: "shop", name: "Магазин", icon: ShoppingBag }] as const;
 
+const priceAmount = (price: Price, amount = price.amount) => price.currency === "pearls" ? formatPearls(amount) : number(amount);
+
 function PriceLabel({ price }: { price: Price }) {
-  return <span className={styles.price} aria-label={`${number(price.amount)} ${price.currency === "coins" ? "монет" : "жемчужин"}`}>
-    <ItemIcon itemId={price.currency} size={18} />{number(price.amount)}
+  return <span className={styles.price} aria-label={`${priceAmount(price)} ${price.currency === "coins" ? "монет" : "жемчужин"}`}>
+    <ItemIcon itemId={price.currency} size={18} />{priceAmount(price)}
   </span>;
 }
 
@@ -105,7 +108,7 @@ export function WorldWardrobe({ world, economy }: { world: WorldController; econ
         <div className={styles.mirror}>{preview && <WardrobePreview appearance={preview} />}<span>{selected && !equipped ? "Примерка" : "Ваш образ"}</span></div>
         <div className={styles.selection}><span className={styles.eyebrow}>{selected ? slotName[selected.slot] : "Примерочная"}</span><h3>{selected?.name ?? "Мохлик"}</h3>
           {selected ? owned.has(selected.id) ? <><p>{equipped ? "Сейчас на Мохлике" : "Есть в гардеробе"}</p><button type="button" className={styles.primary} disabled={blocked || equipped && selected.slot === "palette"} onClick={equip}>{syncing ? "Получаем вещь…" : world.busy ? "Меняем образ…" : equipped ? selected.slot === "palette" ? <><Check size={15} aria-hidden="true" />Выбран</> : "Снять" : selected.slot === "palette" ? "Выбрать оттенок" : "Надеть"}</button></>
-            : price ? <><p>Останется в гардеробе</p><button type="button" ref={purchaseButton} className={styles.primary} disabled={blocked || !affordable || confirming} onClick={() => { if (!blocked && affordable) setConfirmation(quote); }} aria-label={`Купить ${selected.name} за ${price.amount} ${price.currency === "coins" ? "монет" : "жемчужин"}`}><span>Купить</span><PriceLabel price={price} /></button>{!affordable && account && <small className={styles.missing}>Не хватает {number(price.amount - account.wallet[price.currency])} {price.currency === "coins" ? "монет" : "жемчужин"}</small>}</> : <p>Награда путешествий</p>
+            : price ? <><p>Останется в гардеробе</p><button type="button" ref={purchaseButton} className={styles.primary} disabled={blocked || !affordable || confirming} onClick={() => { if (!blocked && affordable) setConfirmation(quote); }} aria-label={`Купить ${selected.name} за ${priceAmount(price)} ${price.currency === "coins" ? "монет" : "жемчужин"}`}><span>Купить</span><PriceLabel price={price} /></button>{!affordable && account && <small className={styles.missing}>Не хватает {priceAmount(price, price.amount - account.wallet[price.currency])} {price.currency === "coins" ? "монет" : "жемчужин"}</small>}</> : <p>Награда путешествий</p>
             : <p>Выберите вещь ниже</p>}
         </div>
         {confirming && selected && price && <div ref={confirmBox} className={styles.confirmation} role="group" aria-label="Подтверждение покупки" tabIndex={-1}><p>Добавить «{selected.name}» за <PriceLabel price={price} />?</p><div><button type="button" onClick={() => setConfirmation(null)}>Отмена</button><button type="button" className={styles.primary} disabled={blocked || !affordable} onClick={buy}>Подтвердить покупку</button></div></div>}

@@ -69,7 +69,7 @@ test("a ready construction has one enabled completion action and reuses normal r
 test("active construction shows its real pearl quote without spending on first press", () => {
   const snapshot = state({ wallet: { coins: 1000, pearls: 400 }, jobs: [construction()] });
   const html = render("home", { snapshot });
-  const accelerate = buttons(html).find(button => /aria-label="Ускорить за 100 жемчужин"/.test(button.attributes));
+  const accelerate = buttons(html).find(button => /aria-label="Ускорить за 50 жемчужин"/.test(button.attributes));
   assert.ok(accelerate);
   assert.doesNotMatch(accelerate.attributes, /disabled/);
   assert.match(accelerate.attributes, /aria-expanded="false"/);
@@ -85,9 +85,9 @@ test("insufficient pearls explain the shortfall and the server catalog supplies 
   const snapshot = state({ jobs: [construction()] });
   snapshot.catalog.constructionSpeedup.secondsPerPearl = 100;
   const html = render("home", { snapshot });
-  const button = buttons(html).find(button => /aria-label="Ускорить за 250 жемчужин"/.test(button.attributes));
+  const button = buttons(html).find(button => /aria-label="Ускорить за 125 жемчужин"/.test(button.attributes));
   assert.match(button.attributes, /disabled/);
-  assert.match(text(html), /Не хватает жемчужин: 250/);
+  assert.match(text(html), /Не хватает жемчужин: 125/);
 });
 
 test("a paid production order remains claimable before upgrading its station", () => {

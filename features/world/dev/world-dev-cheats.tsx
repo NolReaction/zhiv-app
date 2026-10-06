@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { economyCatalog, type EconomyJob } from "@/features/economy/model";
+import { formatPearls } from "@/features/economy/money";
 import { economyDevSettlement } from "@/features/economy/dev-presets";
 import type { EconomyController } from "@/features/economy/use-economy";
 import type { WorldController } from "../use-world";
@@ -111,11 +112,11 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       <div className={styles.cheatTools}>
       <dl className={styles.cheatBalance}>
         <div><dt>Монеты</dt><dd>{snapshot ? format(snapshot.wallet.coins) : "—"}</dd></div>
-        <div><dt>Жемчуг</dt><dd>{snapshot ? format(snapshot.wallet.pearls) : "—"}</dd></div>
+        <div><dt>Жемчуг</dt><dd>{snapshot ? formatPearls(snapshot.wallet.pearls) : "—"}</dd></div>
       </dl>
       <div className={styles.columns}>
-        {([["coins", 10000, "+10 000 монет"], ["coins", 100000, "+100 000 монет"], ["pearls", 5000, "+5 000 жемчуга"], ["pearls", 50000, "+50 000 жемчуга"]] as const).map(([currency, value, label]) =>
-          <button type="button" key={`${currency}-${value}`} disabled={locked} data-dev-action={`grant-${currency}-${value}`} onClick={() => act("grant_currency", currency, value)}>{label}</button>)}
+        {([["coins", 10000], ["coins", 100000], ["pearls", 5000], ["pearls", 50000]] as const).map(([currency, value]) =>
+          <button type="button" key={`${currency}-${value}`} disabled={locked} data-dev-action={`grant-${currency}-${value}`} onClick={() => act("grant_currency", currency, value)}>{currency === "pearls" ? `+${formatPearls(value)} жемчуга` : `+${format(value)} монет`}</button>)}
       </div>
       </div>
     </details>

@@ -1,11 +1,19 @@
 import type { EconomyState } from "./model";
 
-/** Relative to the retired unit: coins ×10 and pearls ×50. */
+/** Stored units relative to the retired unit: coins ×10 and pearls ×50. Display pearls separately. */
 export const ECONOMY_CURRENCY_SCALE = 10;
 export const ECONOMY_PEARL_SCALE = 50;
 export const ECONOMY_MAX_ITEMS = 1_000_000_000;
 export const ECONOMY_MAX_BALANCE = ECONOMY_MAX_ITEMS * ECONOMY_CURRENCY_SCALE;
 export const ECONOMY_MAX_PEARLS = ECONOMY_MAX_ITEMS * ECONOMY_PEARL_SCALE;
+/** Storage and signed receipts stay integral; one visible pearl is two stored units. */
+export const PEARL_DISPLAY_DIVISOR = 2;
+export function pearlDisplayAmount(storedAmount: number): number {
+  return storedAmount / PEARL_DISPLAY_DIVISOR;
+}
+export function formatPearls(storedAmount: number, options: Intl.NumberFormatOptions = {}): string {
+  return pearlDisplayAmount(storedAmount).toLocaleString("ru-RU", { maximumFractionDigits: 1, ...options });
+}
 export function nominalEconomyMoney(amount: number, storedScale = 1): number {
   return nominal(amount, storedScale, ECONOMY_CURRENCY_SCALE);
 }

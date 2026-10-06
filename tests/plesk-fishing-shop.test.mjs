@@ -320,15 +320,15 @@ test("refresh shows server price and timer, requires pearls, and opens confirmat
   state.fishingShop.offers[0] = { ...state.fishingShop.offers[0], itemId: "tide_rod", id: "shop-one:tide_rod" };
   const view = inspect(PleskMerchantHeader, { state, economy: controller(state, { act(...args) { calls.push(args); } }) });
   assert.match(view.html, /6:00:00/);
-  const button = view.control("Обновить предложения за 100 жемчужин"); assert.equal(button.props.disabled, false);
+  const button = view.control("Обновить предложения за 50 жемчужин"); assert.equal(button.props.disabled, false);
   button.props.onClick(); assert.deepEqual(calls, [], "first click never spends pearls");
   state.wallet.pearls = 99;
   const poor = inspect(PleskMerchantHeader, { state, economy: controller(state) });
-  assert.equal(poor.control("Обновить предложения за 100 жемчужин").props.disabled, true);
+  assert.equal(poor.control("Обновить предложения за 50 жемчужин").props.disabled, true);
   state.fishingShop.refreshAt = new Date(now).toISOString();
   const expired = inspect(PleskMerchantHeader, { state, economy: controller(state) });
   assert.match(expired.html, /Открываем новые предложения/);
-  assert.equal(expired.control("Обновить предложения за 100 жемчужин").props.disabled, true);
+  assert.equal(expired.control("Обновить предложения за 50 жемчужин").props.disabled, true);
 });
 
 test("fish art is mounted only after a personal catch, never after a purchase", () => {
@@ -360,9 +360,9 @@ test("merchant disables paid replacement when there are not enough different eli
   state.fishing.ownedRods.push("brook_rod");
   state.fishing.ownedHooks.push("round_hook");
   const view = inspect(PleskMerchantHeader, { state, economy: controller(state, { act(...args) { calls.push(args); } }) });
-  assert.match(view.html, /Плёска ждёт новую поставку/);
+  assert.match(view.html, /Пока не все товары можно заменить на другие/);
   assert.match(view.html, /6:00:00/);
-  const button = view.control("Обновить предложения за 100 жемчужин");
+  const button = view.control("Обновить предложения за 50 жемчужин");
   assert.equal(button.props.disabled, true);
   button.props.onClick();
   assert.deepEqual(calls, []);

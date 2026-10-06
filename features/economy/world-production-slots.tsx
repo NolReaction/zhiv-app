@@ -4,7 +4,8 @@ import { useId } from "react";
 import { Check, Clock3, LockKeyhole, Plus } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
-import { locked, number, type ReadyEconomy } from "./world-economy-parts";
+import { locked, type ReadyEconomy } from "./world-economy-parts";
+import { formatPearls } from "./money";
 import styles from "./world-production-slots.module.css";
 
 /** Slots are permanent station capacity; a finished, unclaimed order still uses one. */
@@ -18,7 +19,7 @@ export function WorldProductionSlots({ economy, stationId }: { economy: ReadyEco
   const reason = !(state.buildings[stationId] > 0) ? "Сначала обустройте это место"
     : construction ? "Дождитесь завершения улучшения"
       : offer && (state.buildings.home ?? 1) < offer.requiredHomeLevel ? `Нужен дом ${offer.requiredHomeLevel} уровня`
-        : offer && state.wallet.pearls < offer.pricePearls ? `Не хватает жемчужин: ${number(offer.pricePearls - state.wallet.pearls)}` : null;
+        : offer && state.wallet.pearls < offer.pricePearls ? `Не хватает жемчужин: ${formatPearls(offer.pricePearls - state.wallet.pearls)}` : null;
   return <section className={styles.slots} aria-label="Места производства" data-production-slots={stationId}>
     <div className={styles.heading}><strong>Одновременно</strong><span aria-live="polite">{jobs.length} / {capacity}</span></div>
     <div className={styles.track}>
@@ -33,9 +34,9 @@ export function WorldProductionSlots({ economy, stationId }: { economy: ReadyEco
     </div>
     {offer && <>
       <button type="button" className={styles.buy} disabled={Boolean(reason) || locked(economy)} aria-describedby={reason ? hintId : undefined}
-        aria-label={`Открыть место ${offer.slots} за ${number(offer.pricePearls)} жемчужин`}
+        aria-label={`Открыть место ${offer.slots} за ${formatPearls(offer.pricePearls)} жемчужин`}
         onClick={() => { if (!reason && !locked(economy)) void economy.act("buy_production_slot", stationId); }}>
-        <span><Plus size={14} aria-hidden="true" />Место {offer.slots}</span><strong>{number(offer.pricePearls)}<ItemIcon itemId="pearls" size={17} /></strong>
+        <span><Plus size={14} aria-hidden="true" />Место {offer.slots}</span><strong>{formatPearls(offer.pricePearls)}<ItemIcon itemId="pearls" size={17} /></strong>
       </button>
       {reason && <p id={hintId} className={styles.hint}>{reason}</p>}
     </>}

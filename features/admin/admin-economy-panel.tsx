@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, CircleAlert, RefreshCw, Search } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/check-in-api";
+import { formatPearls } from "@/features/economy/money";
 import { getAdminAccess, getAdminEconomy, type AdminEconomy, type AdminEconomyPlayer, type AdminEconomySort } from "./admin-api";
 import styles from "./admin-economy.module.css";
 
@@ -13,6 +14,7 @@ const dateFormatter = new Intl.DateTimeFormat("ru-RU", {
   timeZone: "UTC", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
 });
 export const economyCount = (value: number | null | undefined) => value == null ? "—" : formatter.format(value);
+export const economyPearls = (value: number | null | undefined) => value == null ? "—" : formatPearls(value);
 export const economyTime = (value: string | null) => value ? `${dateFormatter.format(new Date(value))} UTC` : "—";
 export type AdminEconomyTarget = Pick<AdminEconomyPlayer, "publicId" | "displayName">;
 
@@ -25,8 +27,8 @@ export async function loadAdminEconomy(actorPublicId: string,
   return getAdminEconomy(options, signal);
 }
 
-function Metric({ label, value, note }: { label: string; value: number; note?: string }) {
-  return <div className={styles.metric}><span>{label}</span><strong>{economyCount(value)}</strong>{note && <small>{note}</small>}</div>;
+function Metric({ label, value, note, pearls = false }: { label: string; value: number; note?: string; pearls?: boolean }) {
+  return <div className={styles.metric}><span>{label}</span><strong>{pearls ? economyPearls(value) : economyCount(value)}</strong>{note && <small>{note}</small>}</div>;
 }
 
 export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, onSort, onPage, onOpen }: {
@@ -41,7 +43,7 @@ export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, 
       <div className={styles.metrics}>
         <Metric label="Игроки" value={summary.players} note={`Хозяйство заведено: ${economyCount(summary.initializedPlayers)} · ещё не заведено: ${economyCount(summary.uninitializedPlayers)}`} />
         <Metric label="Монеты в хозяйствах" value={summary.coins} />
-        <Metric label="Жемчуг в хозяйствах" value={summary.pearls} />
+        <Metric label="Жемчуг в хозяйствах" value={summary.pearls} pearls />
         <Metric label="Задания в работе" value={summary.runningJobs} note="Производство, вылазки, стройка и начатый сбор" />
         <Metric label="Готово к получению" value={summary.readyJobs} note="Включая награды, для которых пока нет места" />
         <Metric label="Изменили хозяйство за 24 часа" value={summary.updatedLast24Hours} note="По времени сохранённого изменения состояния" />
@@ -68,7 +70,7 @@ export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, 
           <TableBody>{data.players.map(player => <TableRow key={player.publicId}>
             <TableCell><strong>{player.displayName}</strong><code className={styles.block}>{player.publicId}</code></TableCell>
             {!player.initialized ? <TableCell colSpan={5}><span className={styles.hint}>Хозяйство ещё не заведено</span></TableCell> : <>
-              <TableCell>{economyCount(player.coins)} монет<span className={styles.block}>{economyCount(player.pearls)} жемчуга</span></TableCell>
+              <TableCell>{economyCount(player.coins)} монет<span className={styles.block}>{economyPearls(player.pearls)} жемчуга</span></TableCell>
               <TableCell>Дом · ур. {economyCount(player.homeLevel)}<span className={styles.block}>Вылазок: {economyCount(player.completedExplorations)}</span></TableCell>
               <TableCell>{economyCount(player.storage?.used)} / {economyCount(player.storage?.capacity)}<span className={styles.block}>Свободно: {economyCount(player.storage?.available)}</span>
                 <span className={styles.block}>На рынке: {economyCount(player.storage?.reserved)}</span>

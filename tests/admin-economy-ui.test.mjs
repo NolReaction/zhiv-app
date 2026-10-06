@@ -101,10 +101,31 @@ test("detail renders catalog names, all collection phases and signed recent delt
   assert.ok(markup.includes(wood));
   assert.match(markup, /До завершения: <strong>10 мин\./);
   assert.equal(economyRemaining("2026-10-05T12:10:00Z", serverTime), "10 мин.");
-  assert.match(markup, /-70/); assert.match(markup, /-20/); assert.match(markup, /\+4/);
+  assert.match(markup, /-70/); assert.match(markup, /-10/); assert.match(markup, /\+4/);
   assert.match(markup, /Последние операции · до 30 записей/);
   assert.match(markup, /не полная история аккаунта/);
   assert.doesNotMatch(markup, /lastonline|Последний вход|Последняя активность/);
+});
+
+test("admin balances, aggregates and ledger display half pearls exactly without changing raw snapshots", () => {
+  const data = page([{ ...player, pearls: 7 }]);
+  data.summary = { ...summary, pearls: 4501 };
+  const before = structuredClone(data);
+  const listMarkup = list({ data }).markup.replace(/\u00a0|\u202f/g, " ");
+  assert.match(listMarkup, /Жемчуг в хозяйствах<\/span><strong>2 250,5<\/strong>/);
+  assert.match(listMarkup, />3,5 жемчуга<\/span>/);
+  assert.match(listMarkup, />700 монет/);
+  assert.deepEqual(data, before);
+
+  const value = detail();
+  value.economy.wallet.pearls = 7;
+  value.ledger = [1, -1, 0, 3, -125].map(pearls => ({ ...value.ledger[0], pearls }));
+  const rawDetail = structuredClone(value);
+  const markup = renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
+  assert.match(markup, /Жемчуг<\/span><strong>3,5<\/strong>/);
+  for (const amount of ["+0,5", "-0,5", "0", "+1,5", "-62,5"]) assert.ok(markup.includes(`>${amount}</td>`), amount);
+  assert.match(markup, />-70<\/td>/);
+  assert.deepEqual(value, rawDetail);
 });
 
 test("uninitialized detail renders neither a zero wallet nor invented buildings or job state", () => {

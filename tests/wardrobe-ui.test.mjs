@@ -89,3 +89,20 @@ test("failed projection refresh offers recovery while paid ownership stays visib
   tabs[0].props.onKeyDown({ key: "End", preventDefault() {} }); view = h.render();
   assert.equal(view.nodes.filter(node => node.props.role === "tab")[1].props["aria-selected"], true);
 });
+
+test("pearl wardrobe quotes and shortages use visible units while purchase keeps the exact raw price", () => {
+  const h = harness(); let view = shop(h);
+  view.nodes.find(node => node.type === "select").props.onChange({ target: { value: "pearls" } });
+  button(view, "Шапки").props.onClick(); view = h.render();
+  const buy = button(view, "Купить");
+  assert.equal(buy.props["aria-label"], "Купить Лунный венок за 300 жемчужин");
+  assert.match(view.html, /aria-label="1 000 жемчужин"/);
+  buy.props.onClick(); button(h.render(), "Подтвердить покупку").props.onClick();
+  assert.deepEqual(h.calls, [["buy_wardrobe_item", "pearls:moon_crown", 1, 600]]);
+  const poor = harness(); view = shop(poor);
+  view.nodes.find(node => node.type === "select").props.onChange({ target: { value: "pearls" } });
+  button(view, "Шапки").props.onClick(); poor.economy.snapshot.wallet.pearls = 599; view = poor.render();
+  assert.match(view.html, /Не хватает 0,5 жемчужин/);
+  assert.equal(button(view, "Купить").props.disabled, true);
+  button(view, "Купить").props.onClick(); assert.deepEqual(poor.calls, []);
+});

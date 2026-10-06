@@ -77,13 +77,15 @@ test("production slots show house and pearl gates, bought capacity, and keep all
   state.buildings.home = 2;
   html = render("garden", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Место 2")), false);
+  assert.match(html, /Открыть место 2 за 750 жемчужин/);
   state.wallet.pearls = 1499;
   html = render("garden", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Место 2")), true);
-  assert.match(html, /Не хватает жемчужин: 1/);
+  assert.match(html, /Не хватает жемчужин: 0,5/);
   state.wallet.pearls = 10000; state.productionSlots = { garden: 2 };
   html = render("garden", controller({ snapshot: state }));
   assert.match(html, /Нужен дом 4 уровня/);
+  assert.match(html, /Открыть место 3 за 2[^\d]?500 жемчужин/);
   assert.equal(disabled(button(html, "Место 3")), true);
   state.buildings.home = 4;
   assert.equal(disabled(button(render("garden", controller({ snapshot: state })), "Место 3")), false);

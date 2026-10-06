@@ -54,6 +54,21 @@ test("DEV currency and item grants return the real snapshot, preserve normal com
   assert.ok(sold.wallet.coins > granted.wallet.coins);
 });
 
+test("DEV pearl grant notices use the visible denomination while balances and replay stay in stored units", () => {
+  const p = player(), cmd = command(p, "grant_currency", "pearls", 100);
+  assert.equal(cmd.quantity, 5000);
+  const result = economy.commandDevEconomyCheat(p.token, cmd, now);
+  assert.equal(result.message.replace(/\u00a0|\u202f/g, " "), "DEV: выдано 2 500 жемчужин");
+  assert.equal(result.state.wallet.pearls, 5000);
+  const replay = economy.commandDevEconomyCheat(p.token, cmd, now);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.message, result.message);
+  assert.equal(replay.state.wallet.pearls, 5000);
+  assert.throws(() => economy.commandDevEconomyCheat(p.token, { ...command(p, "grant_currency", "pearls"), quantity: 51 }, now),
+    { code: "INVALID_ECONOMY_COMMAND", message: "Количество валюты должно быть кратно 25" });
+  assert.equal(read(p).wallet.pearls, 5000);
+});
+
 test("DEV API requires development, account, trusted origin, JSON and a bounded body", async () => {
   assert.equal((await POST(post({}))).status, 401);
   const p = player(), cmd = command(p), before = read(p);

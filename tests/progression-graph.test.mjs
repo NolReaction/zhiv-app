@@ -7,7 +7,11 @@ import ts from "typescript";
 const catalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 const source = readFileSync(new URL("../features/progression/graph.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+const moneyContext = { exports: {}, structuredClone };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/money.ts", import.meta.url), "utf8"),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, moneyContext);
 const context = { exports: {}, require: specifier => {
+  if (specifier === "@/features/economy/money") return moneyContext.exports;
   if (specifier === "@/apps/api/src/main/resources/world/progression-rewards-catalog.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8")) };
   assert.equal(specifier, "@/features/economy/model");
   return { economyCatalog: catalog };
@@ -97,9 +101,9 @@ test("node and edge ids are unique and actual world remains connected without pr
 
 test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
   assert.equal(node("daily_rewards").status, "active");
-  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /450 жемчужин/);
+  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /225 жемчужин/);
   assert.match(node("daily_rewards").description, /20 часов/); assert.match(node("daily_rewards").description, /Пропуск не сбрасывает/);
-  assert.match(node("pearls").description, /до 2150/); assert.match(node("achievements").description, /до 2150/);
+  assert.match(node("pearls").description, /до 1\s075/); assert.match(node("achievements").description, /до 1\s075/);
   assert(hasEdge("daily_rewards", "pearls", "flow")); assert(hasEdge("achievements", "pearls", "flow"));
   assert.equal(node("pearl_trader").status, "plan");
   assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind === "plan"));
@@ -368,4 +372,13 @@ test("mine upgrades visibly unlock actor activities and never revive retired pro
     }
   }
   assert.equal(graph.nodes.some(node => node.kind === "recipe" && node.buildingId === "quarry"), false);
+});
+
+
+test("player graph prices and rewards use visible pearls while costs keep internal units", () => {
+  assert.match(node("pleska").description, /обновление стоит 50 жемчужин/);
+  assert.match(node("pearls").description, /25 жемчужин за каждые начатые 5 минут/);
+  assert.match(node("daily_rewards").description, /225 жемчужин/);
+  assert.equal(catalog.pearlScale, 50);
+  assert.equal(catalog.fishing.shop.refreshPricePearls, 100);
 });

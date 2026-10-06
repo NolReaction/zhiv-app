@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/check-in-api";
 import { economyCatalog, type EconomyCatalog, type EconomyJob } from "@/features/economy/model";
+import { formatPearls } from "@/features/economy/money";
 import { getAdminAccess, getAdminEconomyPlayer, type AdminEconomyDetail } from "./admin-api";
 import { economyCount, economyTime, type AdminEconomyTarget } from "./admin-economy-panel";
 import styles from "./admin-economy.module.css";
@@ -61,7 +62,7 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
     {!state ? <div className={styles.empty}>Хозяйство ещё не заведено. Балансы, склад и прогресс пока отсутствуют.</div> : <>
       <div className={styles.metrics}>
         <div className={styles.metric}><span>Монеты</span><strong>{economyCount(state.wallet.coins)}</strong></div>
-        <div className={styles.metric}><span>Жемчуг</span><strong>{economyCount(state.wallet.pearls)}</strong></div>
+        <div className={styles.metric}><span>Жемчуг</span><strong>{formatPearls(state.wallet.pearls)}</strong></div>
         <div className={styles.metric}><span>Завершённые вылазки</span><strong>{economyCount(state.completedExplorations)}</strong></div>
       </div>
       <section className={styles.panel}><div className={styles.heading}><h3>Склад</h3><p>Припасы в хозяйстве и места, занятые товарами на рынке.</p></div>
@@ -105,7 +106,7 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
         <TableHeader><TableRow><TableHead>Время, UTC</TableHead><TableHead>Операция</TableHead><TableHead>Монеты</TableHead><TableHead>Жемчуг</TableHead><TableHead>Припасы</TableHead></TableRow></TableHeader>
         <TableBody>{detail.ledger.map((entry, index) => <TableRow key={`${entry.createdAt}:${index}`}>
           <TableCell><time dateTime={entry.createdAt}>{economyTime(entry.createdAt)}</time></TableCell><TableCell>{ledgerLabels[entry.kind] ?? entry.kind}</TableCell>
-          <TableCell>{signed(entry.coins)}</TableCell><TableCell>{signed(entry.pearls)}</TableCell><TableCell><Quantities items={entry.items} catalog={catalog} delta /></TableCell>
+          <TableCell>{signed(entry.coins)}</TableCell><TableCell>{formatPearls(entry.pearls, { signDisplay: "exceptZero" })}</TableCell><TableCell><Quantities items={entry.items} catalog={catalog} delta /></TableCell>
         </TableRow>)}</TableBody>
       </Table></div>}
     </section>

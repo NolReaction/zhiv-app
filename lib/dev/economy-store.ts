@@ -1,7 +1,7 @@
 import { wardrobeItems, wardrobeOwned } from "@/features/world/wardrobe";
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash, randomInt } from "node:crypto";
-import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/money";
+import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, formatPearls, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/money";
 import { marketItemUnlocked, marketListingEligible, marketMinimumPrice } from "@/features/economy/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
@@ -163,10 +163,10 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     case "grant_currency": {
       const currency = command.targetId as "coins" | "pearls";
       const quantum = currency === "pearls" ? ECONOMY_PEARL_SCALE : ECONOMY_CURRENCY_SCALE;
-      if (command.quantity % quantum !== 0) return fail("INVALID_ECONOMY_COMMAND", `Количество валюты должно быть кратно ${quantum}`, 400);
+      if (command.quantity % quantum !== 0) return fail("INVALID_ECONOMY_COMMAND", `Количество валюты должно быть кратно ${currency === "pearls" ? formatPearls(quantum) : quantum}`, 400);
       if (next.wallet[currency] + command.quantity > (currency === "pearls" ? ECONOMY_MAX_PEARLS : ECONOMY_MAX_BALANCE)) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
       next.wallet[currency] += command.quantity;
-      message = `DEV: выдано ${command.quantity} ${currency === "coins" ? "монет" : "жемчужин"}`;
+      message = `DEV: выдано ${currency === "pearls" ? formatPearls(command.quantity) : command.quantity} ${currency === "coins" ? "монет" : "жемчужин"}`;
       break;
     }
     case "grant_item":

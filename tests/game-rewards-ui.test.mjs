@@ -11,7 +11,7 @@ after(() => vite.close());
 const { createDailyRewardEntryPrompt } = await vite.ssrLoadModule("/features/game/daily-reward-entry.ts");
 const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
-const { DailyRewardsPanel, dailyRewardWait } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
+const { DailyRewardsPanel, dailyRewardWait, RewardContents } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
 const { AchievementCard } = await vite.ssrLoadModule("/features/game/game-achievements.tsx");
 const { GAME_ACHIEVEMENTS } = await vite.ssrLoadModule("/features/game/game-rewards.ts");
 const { GAME_ACHIEVEMENT_TARGETS } = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
@@ -212,4 +212,19 @@ test("entry prompt waits online for its owner and respects a manually opened gif
   assert.equal(recovery.shouldOpen({ ...state, data: view(2, false), pending, uncertain: true }, true), true, "a committed but unconfirmed daily gift opens recovery");
   const achievement = createDailyRewardEntryPrompt(owner, 1);
   assert.equal(achievement.shouldOpen({ ...state, pending: { ...pending, kind: "achievement" }, uncertain: true }, true), false, "daily prompt does not hijack an achievement receipt");
+});
+
+test("daily gifts and achievement claims display half pearl units without rounding odd balances", () => {
+  const reward = { coins: 175, pearls: 51, items: { wood: 6 } };
+  const html = render(RewardContents, { reward, names: { wood: "Древесина" } });
+  assert.match(html, /<strong>175<\/strong><small>Монеты/);
+  assert.match(html, /<strong>25,5<\/strong><small>Жемчуг/);
+  assert.match(html, /<strong>6<\/strong><small>Древесина/);
+  assert.equal(reward.pearls, 51);
+  const quest = GAME_ACHIEVEMENTS.find(row => row.id === "explorer");
+  const rewardRows = view().achievementRewards.filter(row => row.achievementId === quest.id).map(row => ({ ...row, pearls: 51 }));
+  const card = render(AchievementCard, { quest, rewardRows, onClaim() {} });
+  assert.match(card, /aria-label="Получить 25,5 жемчужин/);
+  assert.match(card, /<strong>25,5<\/strong>/);
+  assert.ok(rewardRows.every(row => row.pearls === 51));
 });

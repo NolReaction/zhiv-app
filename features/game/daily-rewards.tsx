@@ -3,6 +3,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { CalendarDays, Check, Clock3, Gift, RefreshCw, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { formatPearls } from "@/features/economy/money";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyController } from "@/features/economy/use-economy";
 import type { GameReward } from "./game-rewards-api";
@@ -20,7 +21,7 @@ export function RewardContents({ reward, names = {}, large = false }: { reward: 
   const rows = [{ id: "coins", count: reward.coins, name: "Монеты" }, { id: "pearls", count: reward.pearls, name: "Жемчуг" },
     ...Object.entries(reward.items).map(([id, count]) => ({ id, count, name: names[id] ?? "Припасы" }))].filter(row => row.count > 0);
   return <ul className={styles.contents} aria-label="Состав подарка">{rows.map(row => <li key={row.id}>
-    <ItemIcon itemId={row.id} size={large ? 34 : 26} /><span><strong>{row.count.toLocaleString("ru-RU")}</strong><small>{row.name}</small></span>
+    <ItemIcon itemId={row.id} size={large ? 34 : 26} /><span><strong>{row.id === "pearls" ? formatPearls(row.count) : row.count.toLocaleString("ru-RU")}</strong><small>{row.name}</small></span>
   </li>)}</ul>;
 }
 export function RewardRecovery({ controller, isOnline }: { controller: GameRewardsController; isOnline: boolean }) {

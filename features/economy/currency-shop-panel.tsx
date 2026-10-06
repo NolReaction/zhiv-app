@@ -5,6 +5,7 @@ import { ArrowRight, Coins, Gem, House, Sprout } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyView } from "./model";
 import { currencyShopDevelopment, currencyShopGoldOffers, PEARL_SHOP_PACKAGES } from "./currency-shop";
+import { formatPearls } from "./money";
 import styles from "./currency-shop-panel.module.css";
 
 const pages = [{ id: "pearls", label: "Жемчуг", icon: Gem }, { id: "gold", label: "Золото", icon: Coins }] as const;
@@ -45,7 +46,7 @@ export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
         <div className={styles.heading}><h3>Жемчуг</h3><p>Для ускорений, новых слотов и особенных вещей</p></div>
         <div className={styles.packages}>{PEARL_SHOP_PACKAGES.map((pack, index) => <article className={styles.package} key={pack.id} data-shop-offer={`pearls-${pack.id}`}>
           <CurrencyPile kind="pearls" tier={index} /><h4>{pack.name}</h4>
-          <strong className={styles.amount}><ItemIcon itemId="pearls" size={21} />{number(pack.pearls)}</strong>
+          <strong className={styles.amount}><ItemIcon itemId="pearls" size={21} />{formatPearls(pack.pearls)}</strong>
           <button type="button" disabled aria-describedby={`${id}-preview`}>Скоро</button>
         </article>)}</div>
       </> : <>
@@ -61,7 +62,7 @@ export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
             <CurrencyPile kind="coins" tier={index + 1} /><h4>{pack.name}</h4>
             <strong className={styles.amount}><ItemIcon itemId="coins" size={22} />{number(pack.coins)}</strong>
             <small className={styles.bonus}>{number(pack.baseCoins)} + {number(pack.bonusCoins)} бонус</small>
-            <div className={styles.exchange}><ItemIcon itemId="pearls" size={18} /><span>{number(pack.pearls)}</span><ArrowRight size={14} aria-hidden="true" /><span>золото</span></div>
+            <div className={styles.exchange}><ItemIcon itemId="pearls" size={18} /><span>{formatPearls(pack.pearls)}</span><ArrowRight size={14} aria-hidden="true" /><span>золото</span></div>
             <button type="button" disabled aria-describedby={`${id}-preview`}>Обмен скоро</button>
           </article>)}</div>
         </> : <p className={styles.loading} role="status">Загружаем полянку, чтобы рассчитать ваш бонус…</p>}
