@@ -12,6 +12,12 @@ object EconomyFishingShops {
     private data class Candidate(val kind: String, val itemId: String, val price: Long, val remaining: Long,
         val rarity: String, val weight: Int)
     fun expired(shop: EconomyFishingShop?, now: Instant) = shop == null || !now.isBefore(Instant.parse(shop.refreshAt))
+    /** The persisted field is the full-period ceiling, never a trusted current charge. */
+    fun refreshPrice(shop: EconomyFishingShop, now: Instant,
+        config: EconomyFishingShopConfig = checkNotNull(EconomyRules.catalog.fishing).shop): Long {
+        val fullPrice = minOf(shop.refreshPricePearls, config.refreshPricePearls)
+        return minOf(fullPrice, remainingTimePearlPrice(shop.refreshAt, now, config.refreshSeconds, fullPrice, config.refreshPriceStepPearls))
+    }
     private fun candidates(state: EconomyState): List<Candidate> {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         val home = state.buildings["home"] ?: 1

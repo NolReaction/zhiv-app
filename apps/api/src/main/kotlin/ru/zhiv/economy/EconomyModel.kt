@@ -49,12 +49,13 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     mapOf("common" to 0, "uncommon" to 7000, "rare" to 2250, "epic" to 700, "legendary" to 50),
 )
 @Serializable data class EconomyFishingShopConfig(
-    val refreshSeconds: Long = 21600, val refreshPricePearls: Long = 100, val slots: Int = 4,
+    val refreshSeconds: Long = 21600, val refreshPricePearls: Long = 100, val refreshPriceStepPearls: Long = 2, val slots: Int = 4,
     val baitStock: Long = 5, val fishStock: Long = 3, val fishPriceBps: Int = 8000,
     val gearRarityBpsByHome: List<Map<String, Int>> = fishingShopDefaultGearRarityBps(),
 ) {
     init {
         require(refreshSeconds in 1L..86400L && refreshPricePearls in 1L..ECONOMY_MAX_BALANCE && slots == 4)
+        require(refreshPriceStepPearls in 1L..refreshPricePearls)
         require(baitStock in 1L..100L && fishStock in 1L..100L && fishPriceBps in 1..9999)
         require(gearRarityBpsByHome.size == 5 && gearRarityBpsByHome.all { row ->
             row.keys == fishingShopRarities.toSet() && row.values.all { it in 0..10000 } && row.values.sum() == 10000
@@ -129,7 +130,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     }
 }
 @Serializable data class EconomyLocalBuyer(val payoutBps: Int = 10_000)
-@Serializable data class EconomyConstructionSpeedup(val secondsPerPearl: Long)
+@Serializable data class EconomyConstructionSpeedup(val secondsPerPearl: Long, val priceStepPearls: Long = 2)
 @Serializable data class EconomyProductionSlotUpgrade(val slots: Int, val requiredHomeLevel: Int, val pricePearls: Long) {
     init { require(slots in 2..3 && requiredHomeLevel in 1..5 && pricePearls in 1L..ECONOMY_MAX_PEARLS) }
 }

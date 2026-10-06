@@ -69,7 +69,7 @@ test("a ready construction has one enabled completion action and reuses normal r
 test("active construction shows its real pearl quote without spending on first press", () => {
   const snapshot = state({ wallet: { coins: 1000, pearls: 400 }, jobs: [construction()] });
   const html = render("home", { snapshot });
-  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 50 жемчужин"/.test(button.attributes));
+  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 42 жемчужины"/.test(button.attributes));
   assert.ok(accelerate);
   assert.doesNotMatch(accelerate.attributes, /disabled/);
   assert.match(accelerate.attributes, /aria-expanded="false"/);

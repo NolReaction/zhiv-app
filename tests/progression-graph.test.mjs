@@ -376,8 +376,8 @@ test("mine upgrades visibly unlock actor activities and never revive retired pro
 
 
 test("player graph prices and rewards use visible pearls while costs keep internal units", () => {
-  assert.match(node("pleska").description, /обновление стоит 50 жемчужин/);
-  assert.match(node("pearls").description, /25 жемчужин за каждые начатые 5 минут/);
+  assert.match(node("pleska").description, /обновление стоит до 50 жемчужин/);
+  assert.match(node("pearls").description, /25 жемчужин за полные 5 минут/);
   assert.match(node("daily_rewards").description, /225 жемчужин/);
   assert.equal(catalog.pearlScale, 50);
   assert.equal(catalog.fishing.shop.refreshPricePearls, 100);

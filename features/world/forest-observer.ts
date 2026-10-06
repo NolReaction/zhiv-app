@@ -3,6 +3,9 @@ import { forestMindActionLabel, forestMindMood, forestMindMotives, type ForestMi
 import type { ForestSessionState } from "./forest-session";
 import type { ForestMemorySyncStatus } from "./forest-memory-sync";
 import { FOREST_GARDEN_LIMITS, gardenEligibleBushes } from "./forest-garden";
+import { forestSocialFrames, type ForestSpeaker } from "./forest-social";
+
+export type ForestSpeechObservation = Readonly<{ id: string; speaker: ForestSpeaker; text: string }>;
 
 export type ForestGardenObservation = Readonly<{
   managed?: boolean;
@@ -21,6 +24,7 @@ export type ForestResidentObservation = Readonly<{
 export type ForestObservation = Readonly<{
   activity: string; detail: string; mood: string;
   resident?: ForestResidentObservation;
+  speech?: ForestSpeechObservation;
   needs: Readonly<{ energy: number; curiosity: number; comfort: number; attention: number }>;
   sleeping: boolean; paused: boolean;
   memory: Readonly<{ status: "session" | "saved" | "restored" | "unavailable"; savedAt: number | null;
@@ -164,9 +168,11 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
   const garden = gardenObservation(state);
   const memory = state.memory;
   const resident = state.pleskMind?.observation;
+  const speech = state.social ? forestSocialFrames(state.social)[0] : undefined;
   const status = memory?.mode === "unavailable" ? "unavailable" : !memory?.enabled || memory.mode === "ephemeral" ? "session"
     : memory.restored ? "restored" : memory.lastSavedAt !== null ? "saved" : "session";
   return Object.freeze({
+    ...(speech ? { speech: Object.freeze({ id: speech.id, speaker: speech.speaker, text: speech.text }) } : {}),
     ...(resident ? { resident: Object.freeze({ action: resident.action, reason: resident.reason,
       destinationId: resident.destinationId, catchCount: resident.catchCount, decisions: resident.decisions,
       needs: Object.freeze({ energy: percent(resident.needs.energy), patience: percent(resident.needs.patience), social: percent(resident.needs.social) }) }) } : {}),
@@ -194,7 +200,8 @@ export function forestObservationFrame(state: ForestSessionState, options: Optio
 export function publishForestObservation(key: string | undefined, state: ForestSessionState, options: Options = {}) {
   if (!key) return;
   const now = options.now ?? Date.now(), previous = entries.get(key);
-  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${Boolean(state.director.campfireVisit)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}:${options.exploration ?? ""}:${state.pleskMind?.observation.action}:${state.pleskMind?.observation.intent}`;
+  const speechId = state.social ? forestSocialFrames(state.social)[0]?.id ?? "" : "";
+  const phase = `${state.clearing.stage}:${state.life.routine?.kind}:${state.life.garden?.routine?.kind}:${state.life.garden?.routine?.phase}:${state.fauna.encounter?.phase}:${Boolean(state.director.birdwatch)}:${Boolean(state.director.campfireVisit)}:${state.pendingAttention}:${state.reaction > 0}:${Boolean(options.paused)}:${Boolean(options.manual)}:${state.memory.sync?.mode}:${options.exploration ?? ""}:${state.pleskMind?.observation.action}:${state.pleskMind?.observation.intent}:${speechId}`;
   if (!options.force && previous?.phase === phase && now < previous.nextAt) return;
   const snapshot = forestObservationFrame(state, options), signature = JSON.stringify(snapshot);
   if (previous?.signature === signature) { previous.nextAt = now + 500; previous.phase = phase; return; }

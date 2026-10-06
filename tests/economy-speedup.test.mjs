@@ -29,13 +29,13 @@ const command = (f, price = 3, extra = {}) => ({ requestId: crypto.randomUUID(),
   expectedRevision: f.read().revision, action: "speedup_construction", targetId: f.job.id, quantity: 1, totalPrice: price * 50, ...extra });
 const issue = (f, c, at = now) => economy.commandDevEconomy(f.player.token, c, at);
 
-test("construction quote rounds started five-minute intervals using the shared policy", () => {
+test("construction quote decreases in single displayed pearls while preserving the full tariff", () => {
   assert.equal(model.economyCatalog.constructionSpeedup.secondsPerPearl, 300);
   const f = fixture();
-  for (const [remaining, price] of [[-1, 0], [0, 0], [1, 1], [299999, 1], [300000, 1], [300001, 2], [900000, 3]]) {
-    assert.equal(rules.constructionSpeedupPrice({ ...f.job, finishesAt: new Date(now + remaining).toISOString() }, now), price * 50);
+  for (const [remaining, price] of [[-1, 0], [0, 0], [1, 1], [12000, 1], [12001, 2], [120000, 10], [299999, 25], [300000, 25], [300001, 26], [900000, 75]]) {
+    assert.equal(rules.constructionSpeedupPrice({ ...f.job, finishesAt: new Date(now + remaining).toISOString() }, now), price * 2);
   }
-  assert.equal(rules.constructionSpeedupPrice(f.job, now, { secondsPerPearl: 600 }), 100, "the UI may quote the server-supplied policy");
+  assert.equal(rules.constructionSpeedupPrice(f.job, now, { secondsPerPearl: 600, priceStepPearls: 2 }), 76, "the UI may quote the server-supplied policy");
   for (const kind of ["production", "exploration"]) assert.equal(rules.constructionSpeedupPrice({ ...f.job, kind }, now), 0);
 });
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import catalogJson from "@/apps/api/src/main/resources/world/economy-catalog.json";
 
-import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS } from "./money";
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_PEARL_SCALE } from "./money";
 export { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE } from "./money";
 const count = z.number().int().nonnegative().safe();
 const balance = count.max(ECONOMY_MAX_BALANCE);
@@ -38,10 +38,11 @@ const defaultGearShopOdds = [
 const shopRarityOdds = z.object({ common: count.max(10000), uncommon: count.max(10000), rare: count.max(10000),
   epic: count.max(10000), legendary: count.max(10000) }).refine(value => Object.values(value).reduce((a, b) => a + b, 0) === 10000);
 export const economyFishingCatalogSchema = z.object({
-  shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), slots: z.literal(4), baitStock: count.positive().max(100),
+  shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), refreshPriceStepPearls: balance.positive().default(2), slots: z.literal(4), baitStock: count.positive().max(100),
     fishStock: count.positive().max(100).default(3), fishPriceBps: count.positive().max(9999).default(8000),
     gearRarityBpsByHome: z.array(shopRarityOdds).length(5).default(defaultGearShopOdds) })
-    .default({ refreshSeconds: 21600, refreshPricePearls: 100, slots: 4, baitStock: 5, fishStock: 3, fishPriceBps: 8000, gearRarityBpsByHome: defaultGearShopOdds }),
+    .refine(value => value.refreshPriceStepPearls <= value.refreshPricePearls)
+    .default({ refreshSeconds: 21600, refreshPricePearls: 100, refreshPriceStepPearls: 2, slots: 4, baitStock: 5, fishStock: 3, fishPriceBps: 8000, gearRarityBpsByHome: defaultGearShopOdds }),
   routeIds: z.array(id).min(1).max(100),
   collectionDrawsByRoute: z.record(id, count.positive().max(100)).default({}),
   fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
@@ -67,7 +68,7 @@ export const economyCatalogSchema = z.object({
   fishing: economyFishingCatalogSchema.optional(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
   version: z.literal(3), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
-  constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400) }),
+  constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2) }),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).default([0, 2400, 4800, 9600, 14400]),
     showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
   items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance, tradable: z.boolean() })

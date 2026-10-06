@@ -78,6 +78,7 @@ function browser() {
       createRadialGradient: () => ({ addColorStop() {} }),
       createLinearGradient: () => ({ addColorStop() {} }),
       getTransform: () => undefined,
+      measureText: text => ({ width: String(text).length * 6 }),
       drawImage: (...args) => calls.push({ method: "drawImage", args }),
       setTransform: (...args) => calls.push({ method: "setTransform", args }),
       translate: (...args) => calls.push({ method: "translate", args }),
@@ -215,9 +216,12 @@ test("new scene pauses, resumes, reacts without reduced-motion RAF, and releases
     scene.configure(animated); assert.equal(env.frames.size, 1);
     scene.configure(options); assert.equal(env.frames.size, 0);
     scene.notice(); assert.equal(activity, "greet"); assert.equal(env.frames.size, 0);
-    assert.equal(env.timers.size, 1, "a finite reaction expiry replaces the animation loop");
-    env.fireTimer([...env.timers.keys()][0]);
-    assert.equal(activity, "idle"); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0);
+    assert.ok(env.timers.size >= 1 && env.timers.size <= 2, "reaction and speech each use at most one finite expiry without an animation loop");
+    const reactionExpiry = [...env.timers].find(([, timer]) => timer.ms <= 1000)?.[0];
+    assert.notEqual(reactionExpiry, undefined); env.fireTimer(reactionExpiry);
+    assert.equal(activity, "idle"); assert.equal(env.frames.size, 0);
+    for (const id of [...env.timers.keys()]) env.fireTimer(id);
+    assert.equal(env.timers.size, 0, "speech also finishes without leaving a polling timer");
     scene.notice(); assert.equal(env.timers.size, 1);
     scene.dispose(); scene.configure(animated); scene.notice();
     assert.equal(env.observed(), 0); assert.equal(env.frames.size, 0); assert.equal(env.timers.size, 0);
@@ -374,7 +378,7 @@ test("new map ignores old place hit areas while camera controls and pet taps rem
     for (const point of [[667, 612], [162, 197], [1016, 1015]]) tap(...point);
     assert.deepEqual(places, []);
     tap(NEW_MAP_SPAWN.x, NEW_MAP_SPAWN.y - NEW_MAP_PET_SIZE / 2);
-    assert.equal(env.timers.size, 1, "tapping the stationary pet starts its finite greeting");
+    assert.equal(env.timers.size, 2, "tapping the stationary pet starts finite gesture and speech expiries");
     const before = canvas.calls.length; let prevented = 0;
     canvas.events.get("wheel")({ clientX: 200, clientY: 200, deltaY: -150, preventDefault() { prevented++; } });
     canvas.events.get("keydown")({ key: "ArrowRight", preventDefault() { prevented++; } });
@@ -426,7 +430,13 @@ test("authored buildings and planned ruins open their place without selecting du
 });
 
 function mapProjection(canvas, width = fixture.width, height = fixture.height) {
-  const frame = canvas.calls.slice(canvas.calls.findLastIndex(call => call.method === "setTransform"));
+  // Screen-space speech resets its transform after the world. Read the entire
+  // most recent draw, so overlays cannot replace the camera's projection.
+  const frameStart = canvas.calls.findLastIndex(call => call.method === "fillRect"
+    && call.args[0] === 0 && call.args[1] === 0
+    && call.args[2] === canvas.clientWidth && call.args[3] === canvas.clientHeight);
+  assert.ok(frameStart >= 0, "the map painted its viewport background");
+  const frame = canvas.calls.slice(frameStart);
   const translates = frame.filter(call => call.method === "translate");
   const zoom = frame.find(call => call.method === "scale").args[0];
   const [centerX, centerY] = translates[0].args, [offsetX, offsetY] = translates[1].args;
@@ -605,7 +615,7 @@ test("visible hero taps take priority over overlapping garden and house menu geo
       canvas.events.get("pointerup")({ ...event, type: "pointerup" });
     };
     tap(fixture.actor.spawn.x, fixture.actor.spawn.y - fixture.actor.size / 2);
-    assert.equal(env.timers.size, 1, "touching the visible body starts its finite attention response");
+    assert.equal(env.timers.size, 2, "touching the visible body starts finite attention and speech responses");
     assert.deepEqual(places, [], "the overlapped object's footprint does not intercept a visible hero tap");
     assert.deepEqual(selections, []);
     tap(620, 680);
@@ -644,7 +654,7 @@ test("foreground contours let hidden hero taps reach buildings while visible por
       assert.equal(selections.at(-1).objectId, "home");
       if (partial) {
         tap(635, 642);
-        assert.equal(env.timers.size, 1, "the still-visible part of the body remains tappable");
+        assert.equal(env.timers.size, 2, "the still-visible part of the body remains tappable with finite speech and gesture");
         assert.deepEqual(places, ["house"]);
         assert.equal(selections.at(-1), null, "the hero's visible response takes priority over the building");
       }
@@ -727,7 +737,9 @@ test("pointer bursts share the next animation frame and read layout once per ges
       { onObjectAnchorsChange: anchors => samples.push(anchors) });
     env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
     engine.control("home"); canvas.flushFrame();
-    const initial = mapProjection(canvas), paints = () => canvas.calls.filter(call => call.method === "setTransform").length;
+    const initial = mapProjection(canvas), paints = () => canvas.calls.filter(call => call.method === "fillRect"
+      && call.args[0] === 0 && call.args[1] === 0
+      && call.args[2] === canvas.clientWidth && call.args[3] === canvas.clientHeight).length;
     const before = paints(), beforeSamples = samples.length, beforeWrites = markerWrites;
     const event = { pointerId: 1, pointerType: "touch", button: 0, clientX: 200, clientY: 200 };
     canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
@@ -836,7 +848,7 @@ test("overlapping phone marker targets resolve the nearest available anchor rath
     pointerTap(fireMarker, bodyPoint); pointerTap(houseMarker, bodyPoint);
     assert.equal(places.length, beforeMarkerBodyTap, "marker DOM delivery at the visible body still notices the hero before choosing an anchor");
     assert.equal(selections.at(-1), null, "body attention closes the previous object menu");
-    assert.equal(env.timers.size, 1, "marker-origin body taps use one finite attention response");
+    assert.equal(env.timers.size, 2, "marker-origin body taps use one finite gesture and one speech expiry");
 
     worldDevStore.patch({ showBuildings: false });
     assert.equal(houseMarker.style.visibility, "hidden");
@@ -846,7 +858,7 @@ test("overlapping phone marker targets resolve the nearest available anchor rath
     const beforeBodyTap = places.length;
     pointerTap(null, project({ x: fixture.actor.spawn.x, y: fixture.actor.spawn.y - fixture.actor.size / 2 }));
     assert.equal(places.length, beforeBodyTap, "ordinary canvas body taps keep their visible-hero priority");
-    assert.equal(env.timers.size, 1);
+    assert.equal(env.timers.size, 2, "another body tap does not accumulate response timers");
     pointerTap(null, project({ x: 675, y: 600 }));
     assert.equal(places.length, beforeBodyTap, "the hidden house's polygon does not gain a ghost map target");
     pointerTap(null, firePoint);
@@ -2890,7 +2902,9 @@ test("Plesk taps use world coordinates, respect foreground masks and never trigg
       canvas.events.get("pointerup")({ ...event, type: "pointerup" });
       assert.deepEqual(residents, hidden ? [] : ["plesk"]);
       assert.deepEqual(places, []);
-      assert.equal(env.timers.size, 0, "resident taps cannot start the main hero's response");
+      assert.equal(env.timers.size, hidden ? 0 : 1, "only a visible resident's own speech gets a finite expiry");
+      assert.equal([...env.timers.values()].some(timer => timer.ms <= 1000), false,
+        "resident taps cannot start the main hero's short gesture response");
       assert.ok(canvas.calls.some(call => call.method === "drawImage" && call.args[0]?.width === 48), "the pixel rig reaches the renderer");
     } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
   }
@@ -3964,6 +3978,7 @@ function builderMemoryServer(owner, ApiError) {
   };
   return {
     environment, transport, now: () => now, snapshot: () => structuredClone(snapshot),
+    refence() { holder = null; token = null; revision++; },
     holdReads() { holdReads = true; },
     releaseReads() { holdReads = false; reads.splice(0).forEach(resolve => resolve()); },
     async pump(ms = 0) {
@@ -4101,4 +4116,174 @@ test("delayed first economy and upgraded artwork restore builder to the actual d
     "restored work stays beside the authoritative higher-level footprint with room at its entrance");
     assert.deepEqual(scene.inspectPoint("builder"), { x: mind.position.x, y: mind.position.y - 20 });
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); env.restore(); }
+});
+
+test("resident speech is shared across cameras, bounded under taps and read-only during paint and hit sampling", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "social-shared-cameras" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail }, canvas = env.surface();
+    const circle = mountHabitat(canvas, initial, callbacks); views.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    circle.noticeResident("builder");
+    const social = probe.state.social;
+    assert.equal(social.current?.speaker, "builder");
+    const clock = sceneClock(env); clock.advance(.3);
+    assert.ok(canvas.calls.some(call => call.method === "fillText" && call.args[0] === "Шишколап"),
+      "the visible circle actually paints the character's speech label");
+    const beforeHandoff = structuredClone(social);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world); await flush();
+    assert.strictEqual(probe.state.social, social);
+    assert.deepEqual(social, beforeHandoff, "opening another camera does not replay a line or consume its duration");
+    assert.equal(env.frames.size, 1, "only the elected camera advances the shared conversation");
+    const feet = { ...probe.state.builderMind.position }, snapshot = structuredClone(social);
+    for (let pass = 0; pass < 12; pass++) {
+      for (const view of [circle, world]) {
+        const frames = view.speechFrames(); assert.equal(frames.length, 1);
+        assert.equal(frames[0].text, snapshot.current.text);
+        frames[0].text = "renderer-local edit"; frames[0].anchor.x = -1;
+        view.paintWorld(env.surface().context);
+        const point = view.inspectPoint("builder"); view.hitResident(point.x, point.y);
+      }
+      circle.noticeResident("plesk"); world.noticeResident("builder");
+    }
+    assert.deepEqual(social, snapshot, "sampling and repeated taps cannot enqueue, replace or prolong a bubble");
+    assert.deepEqual(probe.state.builderMind.position, feet);
+    assert.deepEqual(circle.speechFrames(), world.speechFrames());
+    const elapsed = social.elapsed, speechAge = social.current.elapsed, worldElapsed = probe.state.elapsed;
+    clock.advance(.5);
+    approximately(social.elapsed - elapsed, probe.state.elapsed - worldElapsed, "speech has one simulation clock");
+    approximately(social.current.elapsed - speechAge, probe.state.elapsed - worldElapsed, "both renderers consume one shared line age");
+    world.dispose(); circle.configure(initial); await flush();
+    assert.equal(probe.state.social.sequence, snapshot.sequence, "returning to the circle preserves the current line");
+    clock.advance(5);
+    assert.equal(social.current, null); assert.equal(social.queue.length, 0);
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("reduced-motion resident speech expires with one finite timer and tap spam cannot extend it", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, serverNow: 100_000, presenceKey: "social-static-expiry" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const feet = { ...probe.state.builderMind.position };
+    scene.noticeResident("builder");
+    const original = structuredClone(probe.state.social.current), timers = [...env.timers.keys()];
+    assert.equal(original?.speaker, "builder"); assert.equal(timers.length, 1);
+    assert.equal(env.frames.size, 0, "speech does not enable a reduced-motion animation loop");
+    for (let pass = 0; pass < 30; pass++) { scene.noticeResident("builder"); scene.noticeResident("plesk"); }
+    assert.deepEqual({ ...probe.state.social.current, elapsed: original.elapsed }, original);
+    assert.ok(probe.state.social.current.elapsed >= original.elapsed, "only elapsed wall time can age a static line");
+    assert.deepEqual([...env.timers.keys()], timers);
+    env.fireTimer(timers[0]);
+    assert.equal(probe.state.social.current, null); assert.deepEqual(scene.speechFrames(), []);
+    assert.deepEqual(probe.state.builderMind.position, feet);
+    assert.equal(env.timers.size, 0); assert.equal(env.frames.size, 0);
+    scene.dispose(); assert.equal(env.timers.size, 0);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("an optional builder visit walks from real feet and yields immediately to construction or explicit controls", async () => {
+  const authored = builderFixture();
+  authored.destinations.push({ id: "builder-rest", position: { x: 700, y: 640 }, pauseSeconds: 10 });
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, forgetForestSession } = await modules(authored);
+  const env = browser(), views = [], probes = [];
+  try {
+    for (const mode of ["construction", "manual", "hidden"]) {
+      worldDevStore.patch({ ...quietClearing, autoLife: true, pose: "auto", showHero: true });
+      const owner = `social-interrupt-${mode}`, key = `zhiv:mochlik:presence:${owner}`;
+      const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: key,
+        economyConstruction: confirmedConstruction(owner, 0, []) };
+      const scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail }); views.push(scene);
+      if (mode === "construction") { env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); }
+      await flush();
+      const probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {}); probes.push(probe);
+      const mind = probe.state.builderMind, social = probe.state.social, feet = { ...mind.position }, hero = { ...probe.state.clearing.position };
+      social.nextEncounterAt = social.elapsed;
+      const clock = sceneClock(env);
+      clock.until(() => social.meeting?.phase === "approach", "a free builder can decide to visit a free neighbour", 40);
+      assert.ok(mind.socialVisit); assert.ok(mind.route);
+      assert.ok(distanceBetween(mind.position, feet) < 2, "planning a conversation never relocates feet");
+      clock.advance(.2);
+      assert.ok(distanceBetween(mind.position, feet) > 0 && distanceBetween(mind.position, feet) <= 34 * .3,
+        "the normal navigation owner performs the approach at walking speed");
+      assert.deepEqual(probe.state.clearing.position, hero, "the visitor does not push its future partner");
+      const beforeInterrupt = { ...mind.position };
+      if (mode === "construction") {
+        const construction = confirmedConstruction(owner, 1), original = structuredClone(construction);
+        scene.configure({ ...initial, economyConstruction: construction });
+        assert.equal(mind.job?.id, "confirmed-workshop"); assert.equal(mind.target?.id, "workshop");
+        assert.deepEqual(construction, original, "conversation preemption cannot alter economic dates or rewards");
+      } else worldDevStore.patch(mode === "manual" ? { pose: "greet" } : { showHero: false });
+      assert.equal(social.meeting, null); assert.equal(social.current, null); assert.equal(social.queue.length, 0);
+      assert.equal(mind.socialVisit, null); assert.deepEqual(mind.position, beforeInterrupt, "cancellation never teleports the visitor home");
+      scene.dispose(); probe.release(); forgetForestSession(key);
+    }
+  } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); worldDevStore.reset(); env.restore(); }
+});
+
+test("authoritative forest-memory rehydration drops speech and visits without saving or replaying dialogue", async () => {
+  const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, ApiError } = await modules(residentFixture());
+  const env = browser(), key = "zhiv:mochlik:presence:3234-ABCD-EFGH"; let scene, probe;
+  try {
+    const server = builderMemoryServer("3234-ABCD-EFGH", ApiError);
+    probe = connectForestSession(key, TILED_WORLD, "circle", server.now(), 0, () => {},
+      { sync: { environment: server.environment, transport: server.transport } });
+    scene = mountHabitat(env.surface(), { ...options, serverNow: server.now(), presenceKey: key },
+      { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); await server.pump();
+    assert.equal(probe.state.memory.sync.mode, "synced");
+    scene.noticeResident("builder");
+    const before = probe.state.social;
+    assert.equal(before.current?.speaker, "builder");
+    probe.saveMemory(); await server.pump();
+    const saved = server.snapshot(); assert.ok(saved);
+    assert.equal(JSON.stringify(saved).includes(before.current.text), false, "speech never enters the persistent memory payload");
+    assert.equal(Object.hasOwn(saved, "social"), false);
+    server.refence(); probe.saveMemory(); await server.pump(500);
+    assert.equal(probe.state.memory.sync.mode, "synced");
+    assert.notStrictEqual(probe.state.social, before, "a real CAS conflict forced an authoritative memory application");
+    assert.equal(probe.state.social.current, null); assert.equal(probe.state.social.meeting, null);
+    assert.equal(probe.state.builderMind.socialVisit, null); assert.deepEqual(scene.speechFrames(), []);
+    assert.equal(env.timers.size, 0, "hydration cancels the old reduced-motion speech expiry");
+  } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); env.restore(); }
+});
+
+test("a voluntary map conversation alternates three lines and releases both neighbours after its finite exchange", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: true });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "social-complete-exchange" };
+    const canvas = env.surface(400), loading = createMapEngine(canvas, initial, assert.fail, []);
+    env.finish(); engine = await loading;
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    // Isolate the neighbour encounter from unrelated random walks. The social
+    // director still uses real navigation, occupancy, shared clocks and paint.
+    probe.state.clearing.waitSeconds = 60; probe.state.director.nextDecisionAt = 60;
+    probe.state.social.nextEncounterAt = probe.state.social.elapsed;
+    const social = probe.state.social, hero = { ...probe.state.clearing.position }, clock = sceneClock(env);
+    clock.until(() => social.meeting?.phase === "talk", "a visitor arrives before anyone speaks", 160);
+    const lines = [], ids = new Set();
+    for (let pass = 0; pass < 400 && social.meeting; pass++) {
+      if (social.current && !ids.has(social.current.id)) { ids.add(social.current.id); lines.push({ ...social.current }); }
+      assert.deepEqual(probe.state.clearing.position, hero, "the brief exchange holds the listener without moving its feet");
+      assert.ok(distanceBetween(probe.state.builderMind.position, hero) >= 24, "the conversation preserves a visible body gap");
+      clock.step();
+    }
+    assert.deepEqual(lines.map(line => line.speaker), ["builder", "mochlik", "builder"]);
+    assert.equal(new Set(lines.map(line => line.text)).size, 3);
+    assert.equal(social.meeting, null); assert.equal(social.current, null); assert.equal(social.queue.length, 0);
+    assert.equal(probe.state.builderMind.socialVisit, null, "the visit cannot reserve the builder after the last reply");
+    const labels = new Set(canvas.calls.filter(call => call.method === "fillText").map(call => call.args[0]));
+    assert.ok(labels.has("Шишколап") && labels.has("Мохлик"), "the full map paints both turns above their visible speakers");
+    assert.ok(social.nextEncounterAt > social.elapsed + 100, "a conversation is followed by a substantial quiet interval");
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

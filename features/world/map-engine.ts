@@ -1,3 +1,4 @@
+import { drawForestSpeech } from "./forest-speech-painter";
 import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
 import type { WorldResidentId } from "@/features/world/world-characters-model";
 import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point, type VerticalCameraInsets } from "./camera";
@@ -171,6 +172,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       habitat.paintVisitors(ctx, "air");
       habitat.paintWeather(ctx);
     }
+    ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
+    drawForestSpeech(ctx, (habitat.speechFrames?.() ?? []).map(frame => ({ ...frame,
+      anchor: worldToScreen(frame.anchor, camera, view) })), { ...view, insets: cameraInsets,
+      reducedMotion: motionReduced(), night: options.dusk });
     const objects = habitat.mapObjects?.() ?? [];
     for (const node of anchors) {
       // Keyboard/touch shortcuts follow the geometry committed with the visible artwork.

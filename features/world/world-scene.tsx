@@ -27,6 +27,7 @@ import { constructionMapPlace } from "./construction-map-anchor";
 import { INVENTORY_GAIN_MS, INVENTORY_GAIN_QUEUE_LIMIT } from "./inventory-gain-playback";
 import { createMapAnchorStore } from "./map-anchor-store";
 import { useGardenCollection } from "@/features/economy/garden-collection-context";
+import { ForestSpeechAnnouncements } from "./forest-speech";
 import styles from "./world.module.css";
 
 type Props = { hideJourneyStatus?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
@@ -128,6 +129,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
   const objects = interactiveMapObjects(TILED_WORLD);
   return <div ref={root} className={styles.scene} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
+    <ForestSpeechAnnouncements key={owner} owner={owner} />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
     {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Объекты на карте">
       {objects.map(({ id, place, label }) => <button key={id} data-map-anchor data-object-id={id} data-kind={place}

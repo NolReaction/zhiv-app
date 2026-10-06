@@ -191,4 +191,38 @@ class EconomyFishingShopTest {
         assertFalse(EconomyFishingShops.canRefresh(depleted))
         assertNull(EconomyFishingShops.refresh(depleted, now, { error("must not draw") }))
     }
+
+    @Test fun `refresh price decreases by remaining time with exact subsecond steps and saved cap`() {
+        val shop = checkNotNull(ready(5, 8000).fishingShop)
+        val end = Instant.parse(shop.refreshAt)
+        for ((remaining, price) in listOf(21_600_001L to 100L, 21_600_000L to 100L, 10_800_001L to 52L,
+            10_800_000L to 50L, 3_600_000L to 18L, 432_001L to 4L, 432_000L to 2L, 1L to 2L, 0L to 0L, -1L to 0L))
+            assertEquals(price, EconomyFishingShops.refreshPrice(shop, end.minusMillis(remaining)))
+        assertEquals(52L, EconomyFishingShops.refreshPrice(shop, end.minusSeconds(10800).minusNanos(1)))
+        assertEquals(2L, EconomyFishingShops.refreshPrice(shop, end.minusNanos(1)))
+        assertEquals(40L, EconomyFishingShops.refreshPrice(shop.copy(refreshPricePearls = 80), end.minusSeconds(10800)))
+        var previous = 100L
+        for (elapsed in 0L..21600L) {
+            val price = EconomyFishingShops.refreshPrice(shop, now.plusSeconds(elapsed))
+            assertTrue(price in 0L..previous && price % 2L == 0L)
+            previous = price
+        }
+    }
+
+    @Test fun `delayed refresh debits only the cheaper server time price and never trusts a cheap client quote`() {
+        val state = ready(5, 8000)
+        val shop = checkNotNull(state.fishingShop)
+        val at = now.plusSeconds(10800)
+        val request = command("refresh_fishing_shop", shop.id, price = 100)
+        assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> {
+            EconomyRules.apply(state, request.copy(totalPrice = 48), at)
+        }.code)
+        assertEquals(1000L, state.wallet.pearls)
+        val next = EconomyRules.apply(state, request, at).first
+        assertEquals(950L, next.wallet.pearls)
+        assertEquals(at.plusSeconds(21600), Instant.parse(checkNotNull(next.fishingShop).refreshAt))
+        assertEquals(0L, EconomyRules.apply(state.copy(wallet = state.wallet.copy(pearls = 2)),
+            request.copy(totalPrice = 2), Instant.parse(shop.refreshAt).minusNanos(1)).first.wallet.pearls)
+    }
+
 }

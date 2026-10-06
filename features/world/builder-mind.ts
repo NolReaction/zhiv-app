@@ -20,6 +20,8 @@ export type BuilderMind = {
    * Kept across local hydration/camera handoffs, never written to server memory. */
   constructionPending: boolean;
   trafficWaiting: boolean;
+  /** A short local visit, never an economic assignment or persisted route. */
+  socialVisit: { targetId: string; anchor: WorldPoint } | null;
 };
 export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8.8, finish: 1.4,
   greeting: 2, acceleration: BUILDER.size * 1.6 } as const;
@@ -33,7 +35,7 @@ export function createBuilderMind(scene: FixedWorldScene, options: { awaitConstr
   return { scene, available: true, position: { ...places.rest.position }, direction: "front", elapsed: 0, age: 0,
     action: "idle", ready: false, job: null, jobKey: "", target: places.rest,
     route: null, distance: 0, speed: 0, walked: 0, wait: 8, wanderIndex: 0, decisions: 0, blocked: false,
-    noticePending: false, greetAfter: 0, constructionPending: options.awaitConstruction === true, trafficWaiting: false };
+    noticePending: false, greetAfter: 0, constructionPending: options.awaitConstruction === true, trafficWaiting: false, socialVisit: null };
 }
 
 function action(mind: BuilderMind, value: BuilderAction) {
@@ -83,6 +85,7 @@ function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupant
       y: mind.position.y + Math.sin(away + offset) * step };
     if (!canTraverse(places.navigation, mind.position, position)
       || !canTraverseResidents(mind.position, position, BUILDER.size, occupants, BUILDER.id)) continue;
+    mind.socialVisit = null;
     beginRoute(mind, places, [{ id: "builder-yield", position, lookAt: { ...nearest.position } }]);
     return !mind.blocked;
   }
@@ -148,11 +151,12 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
   const workDirection = mind.direction;
   mind.job = job; mind.jobKey = key; mind.ready = !!job && env.now >= Date.parse(job.finishesAt);
   if (!places || (changedScene || !mind.available) && !isWalkable(places.navigation, mind.position)) {
-    mind.available = false; mind.route = null; mind.speed = 0; mind.blocked = true; action(mind, "idle"); return null;
+    mind.available = false; mind.route = null; mind.speed = 0; mind.blocked = true; mind.socialVisit = null; action(mind, "idle"); return null;
   }
   const recovered = !mind.available;
   mind.available = true;
   if (changedJob || changedScene || recovered) {
+    mind.socialVisit = null;
     mind.noticePending = false;
     // Each new job or immutable geometry snapshot gets one bounded attempt.
     // Repeated camera paints and ready timers never retry a blocked route.
@@ -194,6 +198,7 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   }
   if (mind.route) { walk(mind, places, step, environment.occupants); return; }
   if (mind.job) return; // Including a finished order awaiting confirmed collection.
+  if (mind.socialVisit) return; // The social director releases this finite visit.
   if (mind.action === "greet") {
     if (mind.age >= BUILDER_MIND_LIMITS.greeting) { action(mind, "idle"); mind.wait = 6; }
     return;
@@ -213,6 +218,42 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
 
 export function noticeBuilderMind(mind: BuilderMind | null): void {
   if (mind?.available && !mind.job) mind.noticePending = true;
+}
+
+/** Reserve a nearby exterior conversation spot through the usual bounded path
+ * finder. Feet still advance only in advanceBuilderMind and use resident traffic. */
+export function requestBuilderVisit(mind: BuilderMind | null, scene: FixedWorldScene,
+  target: { id: string; position: WorldPoint; size: number }, occupants?: readonly ResidentOccupant[]): boolean {
+  if (!mind?.available || mind.scene !== scene || mind.constructionPending || mind.job || mind.socialVisit
+    || mind.action === "finish" || !Number.isFinite(target.position.x) || !Number.isFinite(target.position.y)
+    || !Number.isFinite(target.size) || target.size <= 0) return false;
+  const places = builderLocalPlaces(scene); if (!places) return false;
+  const gap = (BUILDER.size + target.size) * .56;
+  const heading = Math.atan2(mind.position.y - target.position.y, mind.position.x - target.position.x);
+  const candidates = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI, Math.PI * .75, -Math.PI * .75]
+    .map(offset => ({ id: `builder-social-${target.id}`,
+      position: { x: target.position.x + Math.cos(heading + offset) * gap,
+        y: target.position.y + Math.sin(heading + offset) * gap }, lookAt: { ...target.position } }))
+    .filter(stop => isWalkable(places.navigation, stop.position)
+      && canTraverseResidents(stop.position, stop.position, BUILDER.size, occupants, BUILDER.id));
+  const selected = builderRoute(places, mind.position, candidates);
+  if (!selected || selected.path.length > BUILDER.speed * 15) return false;
+  // A failed request above leaves the previous ordinary walk entirely intact.
+  mind.socialVisit = { targetId: target.id, anchor: { ...target.position } };
+  mind.noticePending = false; mind.decisions++; mind.blocked = false; mind.trafficWaiting = false;
+  mind.route = selected.path; mind.target = selected.target; mind.distance = 0; mind.speed = 0;
+  if (selected.path.length < .001) settle(mind); else action(mind, "walk");
+  return true;
+}
+
+/** Release only the visit we own. A construction that replaced it retains its
+ * own target, route and animation. Cancelling never restores old coordinates. */
+export function cancelBuilderVisit(mind: BuilderMind | null): void {
+  if (!mind?.socialVisit) return;
+  mind.socialVisit = null;
+  if (mind.job) return;
+  mind.route = null; mind.target = null; mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false;
+  mind.blocked = false; mind.wait = 3; action(mind, "idle");
 }
 
 /** Circle, map and hit testing all read this frame; none advances the resident. */

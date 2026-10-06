@@ -6,6 +6,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { PleskFishingShop } from "@/features/economy/plesk-fishing-shop";
+import { ResidentSpeech } from "./forest-speech";
 import styles from "./world-resident-dialog.module.css";
 
 type ResidentActions = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void };
@@ -28,6 +29,7 @@ export function WorldResidentDialog({ open, onClose, onBack, onCloseAutoFocus, .
           <div><DialogTitle className={styles.name}>Плёска</DialogTitle><DialogDescription className={styles.role}>Рыбачка · рыба, наживка и снасти</DialogDescription></div>
           <button type="button" onClick={onClose} aria-label="Попрощаться с Плёской"><X size={20} aria-hidden="true" /></button>
         </header>
+        <ResidentSpeech owner={actions.economy.snapshot?.ownerPublicId} speaker="plesk" />
         <PleskConversation {...actions} />
       </DialogPrimitive.Content>
     </DialogPortal>

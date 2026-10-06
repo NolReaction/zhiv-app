@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Anchor, ArrowRight, BookOpen, Bug, Check, Clock3, Fish, FishingRod, Package, RefreshCw, Store } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/fishing-rod-icon";
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { fishingIneligibility, fishingOdds, fishingState } from "./fishing";
-import { canRefreshFishingShop } from "./fishing-shop";
+import { canRefreshFishingShop, fishingShopRefreshPrice } from "./fishing-shop";
 import { formatPearls } from "./money";
 import { fishDiscovered, PlayerItemIcon } from "./fish-discovery";
 import { FishRarityBadge, FISH_RARITY_LEVELS } from "./fish-rarity";
 import { PantrySale } from "./world-pantry-menu";
-import { itemName, number } from "./world-economy-parts";
+import { itemName, locked, number } from "./world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
 import { PleskFishingCollection } from "./plesk-fishing-book";
 import styles from "./plesk-fishing-shop.module.css";
@@ -155,9 +155,14 @@ export function PleskFishOffer({ economy, state, fish }: ReadyProps & { fish: Fi
 
 export function PleskMerchantHeader({ economy, state }: ReadyProps) {
   const shop = state.fishingShop, { blocked, send } = useFishingCommand({ economy, state }), reasonId = useId();
-  const [confirm, setConfirm] = useState<string | null>(null), refreshed = useRef<string | null>(null);
+  const [confirm, setConfirm] = useState<{ shopId: string; owner: string; revision: number; price: number } | null>(null);
+  const refreshed = useRef<string | null>(null), latest = useRef({ economy, state, confirm, send });
+  useLayoutEffect(() => { latest.current = { economy, state, confirm, send }; }, [economy, state, confirm, send]);
   const confirmation = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), wasConfirming = useRef(false);
-  const confirming = !!shop && confirm === shop.id;
+  const price = shop ? fishingShopRefreshPrice(shop, economy.now, state.catalog.fishing?.shop) : 0;
+  const confirming = !!shop && confirm?.shopId === shop.id && price > 0;
+  const quoteChanged = confirming && (confirm.owner !== state.ownerPublicId || confirm.revision !== state.revision);
+  const priceChanged = confirming && price > confirm.price;
   useEffect(() => {
     if (confirming) confirmation.current?.focus({ preventScroll: true });
     else if (wasConfirming.current) trigger.current?.focus({ preventScroll: true });
@@ -169,22 +174,36 @@ export function PleskMerchantHeader({ economy, state }: ReadyProps) {
     refreshed.current = shop.id;
     void economy.refresh();
   }, [shop, seconds, blocked, economy]);
+  function confirmRefresh() {
+    const current = latest.current, snapshot = current.economy.snapshot;
+    if (!confirm || current.confirm !== confirm || locked(current.economy) || !snapshot) return;
+    if (snapshot.ownerPublicId !== confirm.owner || snapshot.revision !== confirm.revision
+      || current.state.ownerPublicId !== confirm.owner || current.state.revision !== confirm.revision) return;
+    const active = snapshot.fishingShop;
+    if (!active || active.id !== confirm.shopId || !canRefreshFishingShop(snapshot)) return;
+    const amount = fishingShopRefreshPrice(active, current.economy.now, snapshot.catalog.fishing?.shop);
+    if (amount <= 0 || amount > confirm.price || amount > snapshot.wallet.pearls) return;
+    current.send("refresh_fishing_shop", active.id, 1, amount);
+    setConfirm(null);
+  }
   if (!shop) return <p className={styles.hint} role="status">Плёска раскладывает товары…</p>;
   const time = `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const canReplace = canRefreshFishingShop(state);
-  const shortfall = Math.max(0, shop.refreshPricePearls - state.wallet.pearls);
-  const allowed = seconds > 0 && canReplace && shortfall === 0;
+  const shortfall = Math.max(0, price - state.wallet.pearls);
+  const allowed = price > 0 && canReplace && shortfall === 0 && !quoteChanged && !priceChanged;
   const reason = economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения."
     : economy.busy ? "Дождитесь завершения текущего действия."
       : blocked ? "Обновляем данные лавки. Попробуйте после проверки."
-        : seconds <= 0 ? "Открываем новую поставку. Обновление за жемчуг пока не требуется."
-          : !canReplace ? "Пока не все товары можно заменить на другие. Дождитесь новой поставки."
-            : shortfall > 0 ? `Не хватает ${formatPearls(shortfall)} жемчужин для обновления.` : null;
+        : quoteChanged ? "Данные обновились. Проверьте стоимость ещё раз."
+          : priceChanged ? "Цена изменилась. Проверьте её ещё раз."
+            : seconds <= 0 ? "Открываем новую поставку. Обновление за жемчуг пока не требуется."
+              : !canReplace ? "Пока не все товары можно заменить на другие. Дождитесь новой поставки."
+                : shortfall > 0 ? `Не хватает ${formatPearls(shortfall)} жемчужин для обновления.` : null;
   return <section className={styles.merchantHeader} aria-label="Обновление прилавка">
     <div><strong>Сегодня у Плёски</strong><span><Clock3 size={14} aria-hidden="true" />{seconds > 0 ? <>Новые товары через <time>{time}</time></> : "Открываем новые предложения…"}</span></div>
     {reason && <p id={reasonId} className={styles.restockHint} role="status">{reason}</p>}
-    {confirming ? <div ref={confirmation} className={styles.refreshConfirm} role="group" tabIndex={-1} aria-label="Подтверждение обновления прилавка"><p>Заменить все товары на другие за <Price value={shop.refreshPricePearls} pearls />?</p><div><button type="button" className={styles.secondary} onClick={() => setConfirm(null)}>Оставить</button><button type="button" className={styles.primary} disabled={blocked || !allowed} aria-describedby={reason ? reasonId : undefined} onClick={() => { send("refresh_fishing_shop", shop.id, 1, shop.refreshPricePearls, allowed); setConfirm(null); }}>Обновить</button></div></div>
-      : <button ref={trigger} type="button" className={styles.refreshOffers} disabled={blocked || !allowed} onClick={() => { if (!blocked && allowed) setConfirm(shop.id); }} aria-describedby={reason ? reasonId : undefined} aria-label={`Обновить предложения за ${formatPearls(shop.refreshPricePearls)} жемчужин`}><RefreshCw size={14} aria-hidden="true" />Обновить<Price value={shop.refreshPricePearls} pearls /></button>}
+    {confirming ? <div ref={confirmation} className={styles.refreshConfirm} role="group" tabIndex={-1} aria-label="Подтверждение обновления прилавка"><p>Заменить все товары на другие за <Price value={price} pearls />?</p><div><button type="button" className={styles.secondary} onClick={() => setConfirm(null)}>Оставить</button><button type="button" className={styles.primary} disabled={blocked || !allowed} aria-describedby={reason ? reasonId : undefined} onClick={confirmRefresh}>Обновить</button></div></div>
+      : <button ref={trigger} type="button" className={styles.refreshOffers} disabled={blocked || !allowed} onClick={() => { if (!blocked && allowed) setConfirm({ shopId: shop.id, owner: state.ownerPublicId, revision: state.revision, price }); }} aria-describedby={reason ? reasonId : undefined} aria-label={`Обновить предложения за ${formatPearls(price)} жемчужин`}><RefreshCw size={14} aria-hidden="true" />Обновить<Price value={price} pearls /></button>}
   </section>;
 }
 

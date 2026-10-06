@@ -7,7 +7,6 @@ import ru.zhiv.world.WorldRules
 import ru.zhiv.http.parseCanonicalUuidV4
 import ru.zhiv.http.parsePublicId
 import java.time.Instant
-import java.time.Duration
 import java.util.UUID
 import kotlin.math.floor
 import kotlin.math.sqrt
@@ -44,6 +43,7 @@ object EconomyRules {
         require(catalog.version == 3 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
+        require(catalog.constructionSpeedup.priceStepPearls in 1L..ECONOMY_PEARL_SCALE)
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
             catalog.market.maxPriceMultiplier in 1L..2L && catalog.market.feeBps == 500)
         require(catalog.market.dailyTradeValueByHome.size == 5 && catalog.market.dailyTradeValueByHome.first() == 0L &&
@@ -152,13 +152,11 @@ object EconomyRules {
         }
     }
 
-    /** Started billing intervals, including a fractional final second, cost one pearl each. */
+    /** Same full-duration tariff, rounded by the catalog's small price quantum. */
     fun constructionSpeedupPrice(job: EconomyJob, now: Instant): Long {
         if (job.kind != "construction") return 0
-        val remaining = Duration.between(now, Instant.parse(job.finishesAt))
-        if (remaining.isNegative || remaining.isZero) return 0
-        val interval = catalog.constructionSpeedup.secondsPerPearl
-        return ECONOMY_PEARL_SCALE * (remaining.seconds / interval + if (remaining.seconds % interval != 0L || remaining.nano > 0) 1 else 0)
+        return remainingTimePearlPrice(job.finishesAt, now, catalog.constructionSpeedup.secondsPerPearl,
+            ECONOMY_PEARL_SCALE, catalog.constructionSpeedup.priceStepPearls)
     }
 
     /** Integer rarity weights match the browser; costly gear targets a niche rather than all fish. */
@@ -391,7 +389,7 @@ object EconomyRules {
                 val spec = catalog.fishing?.shop
                 if (shop == null || spec == null || shop.id != command.targetId || EconomyFishingShops.expired(shop, now))
                     economyFailure("ECONOMY_FISHING_SHOP_CHANGED", "Предложения обновились. Загляните в лавку ещё раз")
-                val price = spec.refreshPricePearls
+                val price = EconomyFishingShops.refreshPrice(shop, now, spec)
                 if (price > command.totalPrice) economyFailure("ECONOMY_FISHING_PRICE_CHANGED", "Цена обновления изменилась. Проверьте предложение Плёски")
                 if (state.wallet.pearls < price) economyFailure("ECONOMY_PEARLS", "Не хватает жемчужин для обновления лавки")
                 val nextShop = EconomyFishingShops.refresh(state, now)

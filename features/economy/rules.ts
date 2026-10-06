@@ -2,12 +2,13 @@ import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
 
-import { refreshFishingShop, fishingShopExpired } from "./fishing-shop";
+import { refreshFishingShop, fishingShopExpired, fishingShopRefreshPrice } from "./fishing-shop";
 import { fishingState, fishingTripCost, fishingCollectionDraws, selectFishingCatch } from "./fishing";
 import { advanceEconomyProgression, newEconomyProgression } from "./collection-progress";
 import { prepareRareDrop, settleRareDrop, secureRareInteger, type RareRandomInteger } from "./rare-drops";
 import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict } from "./actor-availability";
+import { remainingTimePearlPrice } from "./time-price";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -17,7 +18,7 @@ export class EconomyRuleError extends Error {
 export function constructionSpeedupPrice(job: Pick<EconomyJob, "kind" | "finishesAt">, now: number,
   config = economyCatalog.constructionSpeedup): number {
   if (job.kind !== "construction") return 0;
-  return Math.ceil(Math.max(0, Date.parse(job.finishesAt) - now) / (config.secondsPerPearl * 1000)) * ECONOMY_PEARL_SCALE;
+  return remainingTimePearlPrice(job.finishesAt, now, config.secondsPerPearl, ECONOMY_PEARL_SCALE, config.priceStepPearls);
 }
 const fail = (code: string, message: string): never => { throw new EconomyRuleError(code, message); };
 export function canAffordEconomy(state: Pick<EconomyState, "wallet" | "inventory">, cost: EconomyCost, quantity = 1) {
@@ -265,7 +266,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       const shop = state.fishingShop, spec = economyCatalog.fishing?.shop;
       if (!shop || !spec || shop.id !== command.targetId || fishingShopExpired(shop, now))
         return fail("ECONOMY_FISHING_SHOP_CHANGED", "Предложения обновились. Загляните в лавку ещё раз");
-      const price = spec.refreshPricePearls;
+      const price = fishingShopRefreshPrice(shop, now, spec);
       if (price > command.totalPrice) return fail("ECONOMY_FISHING_PRICE_CHANGED", "Цена обновления изменилась. Проверьте предложение Плёски");
       if (state.wallet.pearls < price) return fail("ECONOMY_PEARLS", "Не хватает жемчужин для обновления лавки");
       const next = refreshFishingShop(state, now, rareRandom);

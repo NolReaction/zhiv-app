@@ -55,13 +55,13 @@ class EconomyMoneyTest {
         assertEquals(1_000_000_000L, ECONOMY_MAX_ITEMS)
     }
 
-    @Test fun `construction charges fifty nominal pearls per the same started five minute interval`() {
+    @Test fun `construction preserves the full duration tariff with whole visible pearl steps`() {
         val now = Instant.parse("2026-10-05T00:00:00Z")
         val job = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 2,
             startedAt = now.toString(), finishesAt = now.toString())
-        for ((milliseconds, retiredPearls) in listOf(-1L to 0L, 0L to 0L, 1L to 1L,
-            299_999L to 1L, 300_000L to 1L, 300_001L to 2L, 900_000L to 3L))
-            assertEquals(retiredPearls * 50, EconomyRules.constructionSpeedupPrice(
+        for ((milliseconds, visiblePearls) in listOf(-1L to 0L, 0L to 0L, 1L to 1L,
+            299_999L to 25L, 300_000L to 25L, 300_001L to 26L, 900_000L to 75L))
+            assertEquals(visiblePearls * 2, EconomyRules.constructionSpeedupPrice(
                 job.copy(finishesAt = now.plusMillis(milliseconds).toString()), now))
     }
 }

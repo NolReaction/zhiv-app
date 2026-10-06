@@ -377,12 +377,12 @@ class EconomyRulesTest {
         targetLevel = 2, startedAt = now.minusSeconds(900).toString(), finishesAt = now.plusMillis(remainingMillis).toString(),
         cost = EconomyCost(1500, mapOf("wood" to 20L)), catalogVersion = 2)
 
-    @Test fun `construction pearl quote bills started intervals with exact subsecond readiness`() {
+    @Test fun `construction quote uses one visible pearl steps with exact subsecond readiness`() {
         assertEquals(300L, EconomyRules.catalog.constructionSpeedup.secondsPerPearl)
-        for ((milliseconds, price) in listOf(-1L to 0L, 0L to 0L, 1L to 1L, 299_999L to 1L, 300_000L to 1L, 300_001L to 2L, 900_000L to 3L))
-            assertEquals(price * 50, EconomyRules.constructionSpeedupPrice(construction(milliseconds), now))
-        assertEquals(100L, EconomyRules.constructionSpeedupPrice(construction(300_000), now.minusNanos(1)))
-        assertEquals(50L, EconomyRules.constructionSpeedupPrice(construction(0), now.minusNanos(1)))
+        for ((milliseconds, price) in listOf(-1L to 0L, 0L to 0L, 1L to 1L, 12_000L to 1L, 12_001L to 2L, 120_000L to 10L, 299_999L to 25L, 300_000L to 25L, 300_001L to 26L, 900_000L to 75L))
+            assertEquals(price * 2, EconomyRules.constructionSpeedupPrice(construction(milliseconds), now))
+        assertEquals(52L, EconomyRules.constructionSpeedupPrice(construction(300_000), now.minusNanos(1)))
+        assertEquals(2L, EconomyRules.constructionSpeedupPrice(construction(0), now.minusNanos(1)))
         for (kind in listOf("production", "exploration"))
             assertEquals(0L, EconomyRules.constructionSpeedupPrice(construction().copy(kind = kind), now))
     }

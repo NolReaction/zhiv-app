@@ -1,4 +1,5 @@
 import { economyCatalog, type EconomyFishingShop, type EconomyState } from "./model";
+import { remainingTimePearlPrice } from "./time-price";
 import { fishingState } from "./fishing";
 import { secureRareInteger, type RareRandomInteger } from "./rare-drops";
 
@@ -97,4 +98,10 @@ export function refreshFishingShop(state: ShopState, now: number,
 }
 export function fishingShopExpired(shop: EconomyFishingShop | null | undefined, now: number): boolean {
   return !shop || now >= Date.parse(shop.refreshAt);
+}
+
+/** refreshPricePearls remains the saved full-period ceiling for old snapshots and clients. */
+export function fishingShopRefreshPrice(shop: EconomyFishingShop, now: number, config = economyCatalog.fishing!.shop): number {
+  const fullPrice = Math.min(shop.refreshPricePearls, config.refreshPricePearls);
+  return Math.min(fullPrice, remainingTimePearlPrice(shop.refreshAt, now, config.refreshSeconds, fullPrice, config.refreshPriceStepPearls));
 }

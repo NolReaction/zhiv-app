@@ -347,7 +347,7 @@ test("refresh shows server price and timer, requires pearls, and opens confirmat
   state.fishingShop.refreshAt = new Date(now).toISOString();
   const expired = inspect(PleskMerchantHeader, { state, economy: controller(state) });
   assert.match(expired.html, /Открываем новые предложения/);
-  assert.equal(expired.control("Обновить предложения за 50 жемчужин").props.disabled, true);
+  assert.equal(expired.control("Обновить предложения за 0 жемчужин").props.disabled, true);
 });
 
 test("the fish book opens art only after a personal catch, never after a purchase", () => {

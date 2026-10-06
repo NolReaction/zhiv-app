@@ -8,7 +8,7 @@ after(() => vite.close());
 const identities = await vite.ssrLoadModule('/lib/dev/api-store.ts');
 const economy = await vite.ssrLoadModule('/lib/dev/economy-store.ts');
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule('/features/economy/model.ts');
-const { createFishingShop, refreshFishingShop, canRefreshFishingShop } = await vite.ssrLoadModule('/features/economy/fishing-shop.ts');
+const { createFishingShop, refreshFishingShop, canRefreshFishingShop, fishingShopRefreshPrice } = await vite.ssrLoadModule('/features/economy/fishing-shop.ts');
 const now = Date.parse('2026-10-05T20:00:00Z');
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 const player = () => identities.createDevIdentity('Shopper', crypto.randomUUID());
@@ -272,5 +272,51 @@ test('ordinary paid offers really alternate within each category without a force
     assert.ok(next.offers.every(item => !old.offers.some(previous => previous.itemId === item.itemId)));
     assert.ok(['river_rod', 'brook_rod'].includes(next.offers[0].itemId));
     state.fishingShop = next;
+  }
+});
+
+
+test('refresh price falls by remaining time with exact steps cap and zero at expiry', () => {
+  const p = player(); fund(p);
+  const shop = read(p).fishingShop, end = Date.parse(shop.refreshAt);
+  for (const [remaining, stored] of [[21600001, 100], [21600000, 100], [10800001, 52], [10800000, 50],
+    [3600000, 18], [432001, 4], [432000, 2], [1, 2], [0, 0], [-1, 0]]) {
+    assert.equal(fishingShopRefreshPrice(shop, end - remaining), stored);
+  }
+  assert.equal(fishingShopRefreshPrice({ ...shop, refreshPricePearls: 80 }, end - 10800000), 40, 'persisted full-period ceiling cannot be raised by a catalog change');
+  let previous = 100;
+  for (let elapsed = 0; elapsed <= 21600000; elapsed += 1000) {
+    const price = fishingShopRefreshPrice(shop, now + elapsed);
+    assert.ok(price <= previous && price >= 0 && price % 2 === 0); previous = price;
+  }
+});
+
+test('delayed refresh charges the lower server quote once and a forged cheap quote cannot buy more time', () => {
+  const p = player(); fund(p); persisted(p).buildings.home = 5;
+  persisted(p).fishingShop = createFishingShop(persisted(p), now, max => max - 1);
+  const before = read(p), shop = before.fishingShop, at = now + 3 * 3600000;
+  const request = command(p, before, 'refresh_fishing_shop', shop.id, 1, 100);
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...request, totalPrice: 48 }, at), { code: 'ECONOMY_FISHING_PRICE_CHANGED' });
+  assert.equal(persisted(p).wallet.pearls, 1000);
+  const result = economy.commandDevEconomy(p.token, request, at);
+  assert.equal(result.state.wallet.pearls, 950);
+  assert.equal(Date.parse(result.state.fishingShop.refreshAt), at + 6 * 3600000);
+  const replay = economy.commandDevEconomy(p.token, request, at + 3600000);
+  assert.equal(replay.replayed, true); assert.equal(replay.state.wallet.pearls, 950);
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...request, requestId: crypto.randomUUID() }, at), { code: 'ECONOMY_REVISION_CONFLICT' });
+});
+
+test('the last paid shop step costs one visible pearl but natural restock cannot charge it', () => {
+  for (const expired of [false, true]) {
+    const p = player(); fund(p); persisted(p).buildings.home = 5;
+    persisted(p).fishingShop = createFishingShop(persisted(p), now, max => max - 1);
+    persisted(p).wallet.pearls = 2;
+    const before = read(p), shop = before.fishingShop;
+    const request = command(p, before, 'refresh_fishing_shop', shop.id, 1, 2);
+    const end = Date.parse(shop.refreshAt);
+    if (expired) {
+      assert.throws(() => economy.commandDevEconomy(p.token, request, end), { code: 'ECONOMY_FISHING_SHOP_CHANGED' });
+      assert.equal(read(p, end).wallet.pearls, 2);
+    } else assert.equal(economy.commandDevEconomy(p.token, request, end - 1).state.wallet.pearls, 0);
   }
 });

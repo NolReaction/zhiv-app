@@ -8,7 +8,8 @@
     ]
   },
   "constructionSpeedup": {
-    "secondsPerPearl": 300
+    "secondsPerPearl": 300,
+    "priceStepPearls": 2
   },
   "items": [
     {
@@ -2620,6 +2621,7 @@
     "shop": {
       "refreshSeconds": 21600,
       "refreshPricePearls": 100,
+      "refreshPriceStepPearls": 2,
       "slots": 4,
       "baitStock": 5,
       "fishStock": 3,

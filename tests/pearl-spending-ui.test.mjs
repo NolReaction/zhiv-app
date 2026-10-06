@@ -42,7 +42,7 @@ function harness(Component = PleskMerchantHeader) {
   hooks.reset();
   const state = { ownerPublicId: "ME", revision: 1, catalog: economyCatalog, wallet: { coins: 0, pearls: 100 },
     buildings: { home: 5 }, fishing: economyFishingSchema.parse(undefined), fishingShop: {
-      id: "shop-one", refreshAt: new Date(now + 3600000).toISOString(), refreshPricePearls: 100,
+      id: "shop-one", openedAt: new Date(now).toISOString(), refreshAt: new Date(now + 6 * 3600000).toISOString(), refreshPricePearls: 100,
       offers: [{ id: "shop-one:river_rod", kind: "rod", itemId: "river_rod", remaining: 1, unitPrice: 10000 }],
     } };
   const calls = [], economy = { snapshot: state, busy: false, uncertain: false, error: null, now, retryAt: 0,
@@ -83,12 +83,12 @@ test("funded refresh confirms fifty displayed pearls while sending and retaining
 });
 
 test("an open confirmation cannot spend after expiry, a revision change, or a pending request", () => {
-  for (const change of [h => { h.economy.now += 3600000; }, h => { h.economy.snapshot = { ...h.state, revision: 2 }; },
+  for (const change of [h => { h.economy.now += 6 * 3600000; }, h => { h.economy.snapshot = { ...h.state, revision: 2 }; },
     h => { h.economy.busy = true; }, h => { h.economy.uncertain = true; }, h => { h.economy.retryAt = now + 1000; }]) {
     const h = harness(); h.render().button("Обновить предложения за 50 жемчужин").props.onClick(); change(h);
-    const view = h.render(); assert.equal(view.button("Обновить").props.disabled, true);
+    const view = h.render(); assert.equal(view.button(h.economy.now >= now + 6 * 3600000 ? "Обновить предложения за 0 жемчужин" : "Обновить").props.disabled, true);
     assert.doesNotMatch(view.html, /Не хватает/);
-    view.button("Обновить").props.onClick(); assert.deepEqual(h.calls, []);
+    view.button(h.economy.now >= now + 6 * 3600000 ? "Обновить предложения за 0 жемчужин" : "Обновить").props.onClick(); assert.deepEqual(h.calls, []);
   }
 });
 
@@ -181,4 +181,56 @@ test("both the builder and building expose the same confirmation bound to the ac
     assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 50]]);
     assert.equal(h.state.wallet.pearls, 100, "only the server may debit the wallet");
   }
+});
+
+
+test("shop price and an open confirmation count down without snapshot replacement", () => {
+  const h = harness();
+  h.render().button("Обновить предложения за 50 жемчужин").props.onClick();
+  h.economy.now += 3 * 3600000;
+  let view = h.render(); assert.match(view.html, />25</);
+  h.economy.now += 2 * 3600000;
+  view = h.render(); assert.match(view.html, />9</);
+  view.button("Обновить").props.onClick();
+  assert.deepEqual(h.calls, [["refresh_fishing_shop", "shop-one", 1, 18]]);
+});
+
+test("shop confirmation rechecks clock balance owner revision stock and expiry even before rerender", () => {
+  for (const change of [
+    h => { h.economy.snapshot = { ...h.state, ownerPublicId: "OTHER" }; },
+    h => { h.economy.snapshot = { ...h.state, revision: 2 }; },
+    h => { h.economy.snapshot = { ...h.state, fishingShop: null }; },
+    h => { h.state.wallet.pearls = 0; },
+    h => { h.economy.now += 6 * 3600000; },
+    h => { h.economy.busy = true; },
+    h => { h.economy.uncertain = true; },
+    h => { h.economy.retryAt = now + 1000; },
+  ]) {
+    const h = harness(); h.render().button("Обновить предложения за 50 жемчужин").props.onClick();
+    const confirmation = h.render().button("Обновить");
+    change(h); confirmation.props.onClick(); assert.deepEqual(h.calls, []);
+  }
+});
+
+test("resynchronized higher shop quote needs new consent and expired confirmation closes", () => {
+  const h = harness(); h.economy.now += 3 * 3600000;
+  h.render().button("Обновить предложения за 25 жемчужин").props.onClick();
+  const old = h.render().button("Обновить");
+  h.economy.now -= 3600000;
+  let view = h.render(); assert.match(view.html, /Цена изменилась/);
+  assert.equal(view.button("Обновить").props.disabled, true);
+  old.props.onClick(); assert.deepEqual(h.calls, []);
+  h.economy.now = now + 6 * 3600000;
+  view = h.render(); assert.doesNotMatch(view.html, /Подтверждение обновления прилавка/);
+  assert.match(view.html, /Открываем новые предложения/);
+  old.props.onClick(); assert.deepEqual(h.calls, []);
+});
+
+test("construction quote counts down inside the open confirmation and uses the cheaper charge", () => {
+  const h = harness(ConstructionSpeedup);
+  h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
+  h.economy.now += 180000;
+  const view = h.render(); assert.match(view.html, /Подтвердить завершение за 10 жемчужин/);
+  view.button("Подтвердить завершение за 10 жемчужин").props.onClick();
+  assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 20]]);
 });

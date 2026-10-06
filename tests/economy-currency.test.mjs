@@ -51,11 +51,11 @@ test("whole-stack NPC rounding and minimum quantities are exactly old proceeds t
   assert.equal(sale.economyLocalSaleLimit(30, 99, money.ECONOMY_MAX_BALANCE - 20, { payoutBps: 6000 }), 1);
 });
 
-test("construction uses the same started five-minute intervals with a fifty-pearl quantum", () => {
+test("construction keeps the full-duration denomination while charging smaller time steps", () => {
   const now = Date.parse("2026-10-05T12:00:00Z"), interval = model.economyCatalog.constructionSpeedup.secondsPerPearl * 1000;
   assert.equal(interval, 300000);
   for (const remaining of [0, 1, interval - 1, interval, interval + 1, 8 * 3600000, 72 * 3600000]) {
-    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), Math.ceil(remaining / interval) * 50);
+    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), Math.ceil(remaining * 50 / interval / 2) * 2);
   }
 });
 

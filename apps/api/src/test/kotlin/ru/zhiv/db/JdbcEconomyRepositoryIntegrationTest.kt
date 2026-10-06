@@ -1001,13 +1001,13 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(before.revision, repeated.revision)
         assertEquals(before.progression, repeated.progression)
     }
-    @Test fun `merchant paid refresh retries across repository instances charge once and stale offers cannot spend`() = runBlocking<Unit> {
+    @Test fun `merchant delayed paid refresh retries charge the cheaper server time price once across repository instances`() = runBlocking<Unit> {
         val p = player()
         val initial = economy.snapshot(p.hash)
         val stored = source.connection.use { readEconomyProfile(it, p.id).state }
         val funded = stored.copy(wallet = EconomyWallet(100_000, 1000), buildings = stored.buildings + ("home" to 5))
         // Use a saved rare pair with ordinary alternatives for deterministic paid-refresh eligibility.
-        val replaceable = funded.copy(fishingShop = EconomyFishingShops.create(funded, Instant.now(), { if (it == 10000) 8000 else 0 }))
+        val replaceable = funded.copy(fishingShop = EconomyFishingShops.create(funded, Instant.now().minusSeconds(10800), { if (it == 10000) 8000 else 0 }))
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(replaceable), p.id)
         val before = economy.snapshot(p.hash)
         val shop = checkNotNull(before.fishingShop)
@@ -1016,12 +1016,12 @@ class JdbcEconomyRepositoryIntegrationTest {
         val attempts = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, refresh) } }.awaitAll() }
         assertEquals(1, attempts.count { it.replayed })
         val next = JdbcEconomyRepository(source).snapshot(p.hash)
-        assertEquals(900L, next.wallet.pearls)
+        assertEquals(950L, next.wallet.pearls)
         assertNotEquals(shop.id, next.fishingShop?.id)
         assertTrue(checkNotNull(next.fishingShop).offers.none { offer -> shop.offers.any { it.itemId == offer.itemId } })
         assertEquals(next.fishingShop, economy.command(p.hash, refresh).state.fishingShop)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='refresh_fishing_shop'", p.id))
-        assertEquals("-100", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='refresh_fishing_shop'", p.id))
+        assertEquals("-50", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='refresh_fishing_shop'", p.id))
         val oldOffer = shop.offers.first()
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> {
             economy.command(p.hash, command(p, next, "buy_fishing_item", oldOffer.id).copy(totalPrice = oldOffer.unitPrice))

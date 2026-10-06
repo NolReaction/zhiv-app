@@ -9,6 +9,7 @@ import type { EconomyController } from "@/features/economy/use-economy";
 import { worldDuration } from "@/features/economy/world-stations";
 import { BUILDER } from "./builder-types";
 import { BuilderPortrait } from "./builder-portrait";
+import { ResidentSpeech } from "./forest-speech";
 import styles from "./world-builder-dialog.module.css";
 
 type BuilderActions = { economy: EconomyController; onOpenConstruction: (stationId: string) => void };
@@ -56,6 +57,7 @@ export function WorldBuilderDialog({ open, onClose, onBack, onCloseAutoFocus, ..
           <div><DialogTitle className={styles.name}>{BUILDER.name}</DialogTitle><DialogDescription className={styles.role}>Ёжик-строитель</DialogDescription></div>
           <button type="button" className={styles.close} onClick={onClose} aria-label="Попрощаться с Шишколапом"><X size={20} aria-hidden="true" /></button>
         </header>
+        <ResidentSpeech owner={actions.economy.snapshot?.ownerPublicId} speaker="builder" />
         <BuilderConversation {...actions} />
       </DialogPrimitive.Content>
     </DialogPortal>
