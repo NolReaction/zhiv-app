@@ -6,12 +6,38 @@ import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { feedbackCategories, feedbackStatuses, getAdminFeedback, updateAdminFeedbackStatus,
   type AdminFeedbackPage, type FeedbackCategory, type FeedbackStatus } from "@/features/feedback/feedback-api";
+import { getAdminAccess } from "./admin-api";
 import styles from "./admin-feedback-panel.module.css";
 
 const PAGE_SIZE = 25;
 const dateFormatter = new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function AdminFeedbackPanel({ onAccessError, refreshVersion = 0 }: { onAccessError: (error: ApiError) => void; refreshVersion?: number }) {
+async function verifyActor(actorPublicId: string, signal: AbortSignal) {
+  const actor = await getAdminAccess(signal);
+  if (signal.aborted) throw new DOMException("Запрос отменён", "AbortError");
+  if (actor.publicId !== actorPublicId) throw new ApiError("Аккаунт администратора сменился. Откройте панель заново.", 403);
+}
+
+/** Preflight prevents using a still-open panel after an account switch; server authorization remains mandatory. */
+export async function loadAdminFeedback(actorPublicId: string, options: Parameters<typeof getAdminFeedback>[0], signal: AbortSignal) {
+  await verifyActor(actorPublicId, signal);
+  return getAdminFeedback(options, signal);
+}
+
+export async function changeAdminFeedbackStatus(actorPublicId: string, id: string, status: FeedbackStatus, requestId: string, signal: AbortSignal) {
+  await verifyActor(actorPublicId, signal);
+  const receipt = await updateAdminFeedbackStatus(id, status, requestId, signal);
+  if (signal.aborted) throw new DOMException("Запрос отменён", "AbortError");
+  // A replay can return a newer status set by another moderator; never overwrite it.
+  if (receipt.id !== id) throw new ApiError("Ответ относится к другому обращению. Обновите список.", 502);
+  return receipt;
+}
+
+export function AdminFeedbackMessage({ message }: { message: string }) {
+  return <p className={styles.message} dir="auto">{message}</p>;
+}
+
+export function AdminFeedbackPanel({ actorPublicId, onAccessError, refreshVersion = 0 }: { actorPublicId: string; onAccessError: (error: ApiError) => void; refreshVersion?: number }) {
   const [status, setStatus] = useState<FeedbackStatus | "all">("new");
   const [category, setCategory] = useState<FeedbackCategory | "all">("all");
   const [offset, setOffset] = useState(0);
@@ -23,7 +49,7 @@ export function AdminFeedbackPanel({ onAccessError, refreshVersion = 0 }: { onAc
   const [changingId, setChangingId] = useState<string | null>(null);
   const actionRef = useRef<AbortController | null>(null);
   const pendingRef = useRef<{ id: string; status: FeedbackStatus; requestId: string } | null>(null);
-  const key = JSON.stringify([status, category, offset]);
+  const key = JSON.stringify([actorPublicId, status, category, offset]);
 
   useEffect(() => () => { actionRef.current?.abort(); }, []);
   useEffect(() => {
@@ -36,7 +62,7 @@ export function AdminFeedbackPanel({ onAccessError, refreshVersion = 0 }: { onAc
       if (controller.signal.aborted) return;
       setLoading(true);
       try {
-        const value = await getAdminFeedback({ status, category, offset, limit: PAGE_SIZE }, controller.signal);
+        const value = await loadAdminFeedback(actorPublicId, { status, category, offset, limit: PAGE_SIZE }, controller.signal);
         if (controller.signal.aborted) return;
         if (offset > 0 && !value.items.length && value.total <= offset) {
           setOffset(Math.max(0, Math.floor((value.total - 1) / PAGE_SIZE) * PAGE_SIZE));
@@ -45,7 +71,7 @@ export function AdminFeedbackPanel({ onAccessError, refreshVersion = 0 }: { onAc
         setSnapshot({ key, value }); setError(null);
       } catch (cause) {
         if (controller.signal.aborted) return;
-        if (cause instanceof ApiError && [401, 403].includes(cause.status)) { onAccessError(cause); return; }
+        if (cause instanceof ApiError && [401, 403].includes(cause.status)) { setSnapshot(null); onAccessError(cause); return; }
         setError(cause instanceof ApiError ? cause.message : "Не удалось получить обращения. Повторите запрос.");
       } finally { busy = false; if (!controller.signal.aborted) setLoading(false); }
     }
@@ -54,7 +80,7 @@ export function AdminFeedbackPanel({ onAccessError, refreshVersion = 0 }: { onAc
     const refresh = () => { if (!document.hidden) void load(); };
     window.addEventListener("focus", refresh);
     return () => { controller.abort(); globalThis.clearInterval(timer); window.removeEventListener("focus", refresh); };
-  }, [status, category, offset, version, key, refreshVersion, onAccessError]);
+  }, [actorPublicId, status, category, offset, version, key, refreshVersion, onAccessError]);
 
   async function changeStatus(id: string, nextStatus: FeedbackStatus) {
     if (actionRef.current) return;
@@ -65,13 +91,13 @@ export function AdminFeedbackPanel({ onAccessError, refreshVersion = 0 }: { onAc
     pendingRef.current = pending;
     setChangingId(id); setActionError(null);
     try {
-      await updateAdminFeedbackStatus(id, nextStatus, pending.requestId, controller.signal);
+      await changeAdminFeedbackStatus(actorPublicId, id, nextStatus, pending.requestId, controller.signal);
       if (controller.signal.aborted) return;
       pendingRef.current = null;
       setVersion(value => value + 1);
     } catch (cause) {
       if (controller.signal.aborted) return;
-      if (cause instanceof ApiError && [401, 403].includes(cause.status)) { onAccessError(cause); return; }
+      if (cause instanceof ApiError && [401, 403].includes(cause.status)) { setSnapshot(null); pendingRef.current = null; onAccessError(cause); return; }
       setActionError(cause instanceof ApiError ? cause.message : "Статус не подтверждён. Нажмите ещё раз, чтобы повторить запрос.");
     } finally {
       if (!controller.signal.aborted) { setChangingId(null); actionRef.current = null; }
@@ -92,7 +118,7 @@ export function AdminFeedbackPanel({ onAccessError, refreshVersion = 0 }: { onAc
       {data?.items.map(item => <article className={styles.item} key={item.id}>
         <div className={styles.meta}><span className={styles.category}>{feedbackCategories[item.category]}</span><span className={styles.badge} data-status={item.status}>{feedbackStatuses[item.status]}</span><time dateTime={item.createdAt}>{dateFormatter.format(new Date(item.createdAt))} UTC</time></div>
         <div className={styles.author}><strong>{item.authorDisplayName}</strong><code>{item.authorPublicId}</code></div>
-        <p className={styles.message}>{item.message}</p>
+        <AdminFeedbackMessage message={item.message} />
         <div className={styles.actions} aria-label={`Статус обращения от ${item.authorDisplayName}`}>
           {(Object.entries(feedbackStatuses) as [FeedbackStatus, string][]).map(([value, label]) => <button type="button" key={value} disabled={changingId !== null || item.status === value} aria-pressed={item.status === value} onClick={() => { void changeStatus(item.id, value); }}>{value === "new" ? "Вернуть в новые" : value === "reviewed" ? "Отметить просмотренным" : label}</button>)}
           {changingId === item.id && <span role="status">Сохраняем…</span>}

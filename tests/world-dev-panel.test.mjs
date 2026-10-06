@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldDevTabs, WorldDevPanelContent, gardenDevActionUnavailable } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
-const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
+const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
 const { WorldDevCheats } = await vite.ssrLoadModule("/features/world/dev/world-dev-cheats.tsx");
@@ -88,6 +88,7 @@ test("each DEV page renders only its controls, with no simulation or account mut
   const snapshot = worldDevStore.getSnapshot();
   const expected = {
     plesk: "Плёска · рыбачка и торговка",
+    builder: "Шишколап · строитель",
     scenarios: "Готовые сценарии", scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
     world: "Погода и живность", buildings: "Постройки", cheats: "Читы хозяйства", ai: "Мышление и память",
     overlays: "Разметка сцены", routes: "Навигация и входы", fishing: "Расчёт улова", app: "Приложение и тесты",
@@ -477,4 +478,34 @@ test("DEV inventory browser exposes fish, consumable bait and permanent tackle a
   assert.equal(new Set(ids).size, ids.length);
   assert.match(view.markup, /data-item-icon="wood"/);
   assert.deepEqual(view.commands, []);
+});
+
+
+test("builder page exposes six poses and independent directions with safe stop/reset controls", () => {
+  const view = panel("builder", { worldView: true, shortcut: () => assert.fail("preview keeps controls open") });
+  const actions = view.elements.filter(element => element.props["data-builder-action"]);
+  assert.deepEqual(actions.map(element => element.props["data-builder-action"]), [...WORLD_DEV_BUILDER_ACTIONS]);
+  for (const button of actions) button.props.onClick();
+  assert.deepEqual(view.calls.actions, WORLD_DEV_BUILDER_ACTIONS.map(action => ({ kind: "builder", action })));
+  view.elements.find(element => element.type === "button" && labelText(element) === "Спиной").props.onClick();
+  assert.deepEqual(view.calls.patches, [{ builderDirection: "back" }]);
+  const loop = view.elements.find(element => element.props.label === "Повторять действие Шишколапа");
+  loop.props.onChange("work");
+  assert.deepEqual(view.calls.actions.at(-1), { kind: "builder", action: "work", repeat: true });
+  loop.props.onChange("auto");
+  assert.deepEqual(view.calls.patches.at(-1), { builderPreview: null });
+  assert.match(view.markup, /стройка и ресурсы не меняются/);
+  assert.doesNotMatch(view.markup, /Повторять действие Плёски/);
+  const blocked = panel("builder", { unavailable: action => action.kind === "builder" ? "Сцена на паузе" : null });
+  for (const button of blocked.elements.filter(element => element.props["data-builder-action"])) {
+    assert.equal(button.props.disabled, true);
+    assert.equal(button.props["aria-describedby"], "dev-test-builder-reason");
+    button.props.onClick();
+  }
+  assert.deepEqual(blocked.calls.actions, []);
+  for (const label of ["Отменить проверку", "Сброс Шишколапа"]) {
+    const button = blocked.elements.find(element => element.type === "button" && labelText(element) === label);
+    assert.notEqual(button.props.disabled, true); button.props.onClick();
+  }
+  assert.deepEqual(blocked.calls.patches, [{ builderPreview: null }, { builderPreview: null, builderDirection: "front" }]);
 });

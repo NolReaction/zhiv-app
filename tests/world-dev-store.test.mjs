@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createWorldDevStore, WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_ENABLED, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
+const { createWorldDevStore, WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_ENABLED, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 
@@ -39,7 +39,7 @@ test("disabled store ignores every mutation and does not register subscribers", 
   for (const kind of ["water-bush", "harvest-berries", "grow-berries"]) store.triggerLife(kind);
   store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
   store.triggerResident("cast", true); store.triggerScenario("plesk"); store.triggerScenario("fishing");
-  store.triggerCooking("sequence", true);
+  store.triggerCooking("sequence", true); store.triggerBuilder("work", true);
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
   unsubscribe(); unsubscribe();
@@ -304,7 +304,7 @@ test("selecting a held pose cancels a manual gesture without reusing its event I
 test("camera events validate actions and keep increasing IDs across reset", () => {
   const store = createWorldDevStore(true);
   let previousId = 0;
-  for (const action of ["in", "out", "overview", "pet", "plesk", "fishing", "pet"]) {
+  for (const action of ["in", "out", "overview", "pet", "plesk", "builder", "fishing", "pet"]) {
     store.triggerCamera(action);
     const event = store.getSnapshot().cameraEvent;
     assert.equal(event.action, action);
@@ -420,4 +420,36 @@ test("water fish and breeze controls are independent validated visual preference
   for (const waterBreeze of ["off", null, 1]) store.patch({ waterBreeze });
   assert.equal(store.getSnapshot(), valid);
   store.reset(); assert.equal(store.getSnapshot().waterFish, "auto"); assert.equal(store.getSnapshot().waterBreeze, true);
+});
+
+
+test("builder previews validate inputs, retain the playback clock on turns, and reset without touching other heroes", () => {
+  const store = createWorldDevStore(true);
+  store.triggerResident("fish", true); store.triggerPose("greet");
+  const other = store.getSnapshot();
+  let previous = 0;
+  for (const action of WORLD_DEV_BUILDER_ACTIONS) {
+    store.triggerBuilder(action, true);
+    const state = store.getSnapshot();
+    assert.equal(state.builderPreview.action, action);
+    assert.equal(state.cameraEvent.action, "builder");
+    assert.equal(state.residentPreview, other.residentPreview);
+    assert.equal(state.animation, other.animation);
+    assert.ok(state.builderPreview.id > previous); previous = state.builderPreview.id;
+    assert.ok(Object.isFrozen(state.builderPreview));
+  }
+  store.patch({ builderDirection: "back" });
+  assert.equal(store.getSnapshot().builderPreview.id, previous);
+  assert.equal(store.getSnapshot().builderPreview.direction, "back");
+  const valid = store.getSnapshot();
+  store.triggerBuilder("teleport"); store.triggerBuilder("work", "yes");
+  store.patch({ builderDirection: "up", builderPreview: { id: 999, action: "work", repeat: true } });
+  assert.equal(store.getSnapshot(), valid, "only validated triggers can create previews");
+  store.patch({ builderPreview: null });
+  assert.equal(store.getSnapshot().builderPreview, null);
+  assert.equal(store.getSnapshot().residentPreview, other.residentPreview);
+  store.reset(); assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
+  store.triggerBuilder("finish");
+  assert.ok(store.getSnapshot().builderPreview.id > previous);
+  assert.equal(store.getSnapshot().builderPreview.repeat, false);
 });

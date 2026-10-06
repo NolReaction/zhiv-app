@@ -128,8 +128,13 @@ const forestSnapshot = {
     recent: [{ key: "grass-1-1", action: "look", outcome: "completed", at: 15, duration: 2 }], attentionUntil: 30 },
   hero: { position: { x: 100, y: 120 }, sleepingHome: false, awakeFor: 10, restFor: 0,
     recent: [{ id: "grass-1-1", activity: "look", age: 5 }] },
-  mushrooms: [{ id: "ci-mushroom", position: { x: 130, y: 140 }, growth: 0.6, regrowIn: 8 }],
+  // Exercise a supported snapshot beyond the ordinary 16 KB edge budget. This
+  // passes through real Caddy, so a missing/overlapping memory exception fails CI.
+  mushrooms: Array.from({ length: 128 }, (_, index) => ({ id: `ci-mushroom:${index}`,
+    position: { x: 130.1234567890123 + index, y: 140.1234567890123 + index },
+    growth: .123456789012345, regrowIn: 8.123456789012345 })),
 };
+assert.ok(Buffer.byteLength(JSON.stringify(forestSnapshot)) <= 32_768, "Forest snapshot must fit its own API cap");
 await api("GET", forestReadPath(forestClientA), { expected: 401 });
 const forestBefore = await api("GET", forestReadPath(forestClientA), { cookie: owner.cookie });
 assert.equal(forestBefore.headers["cache-control"], "no-store");
@@ -151,6 +156,8 @@ assert.ok(forestLeaseA.state.lease.token);
 const forestSaveA = forestCommand(forestClientA, 1, "save", {
   leaseToken: forestLeaseA.state.lease.token, snapshot: forestSnapshot,
 });
+assert.ok(Buffer.byteLength(JSON.stringify(forestSaveA)) > 16_384, "Save must exceed the former generic edge budget");
+assert.ok(Buffer.byteLength(JSON.stringify(forestSaveA)) <= 65_536, "Save must fit the memory command budget");
 const forestSavedA = await forestWrite(forestSaveA);
 assert.equal(forestSavedA.headers["cache-control"], "no-store");
 assert.equal(forestSavedA.data.acceptedRevision, 2);

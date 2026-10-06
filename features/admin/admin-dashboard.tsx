@@ -7,6 +7,7 @@ import { AdminEconomyPanel, type AdminEconomyTarget } from "./admin-economy-pane
 import { AdminEconomyDialog } from "./admin-economy-dialog";
 import { worldCatalog } from "@/features/world/model";
 import { AdminFeedbackPanel } from "./admin-feedback-panel";
+import { validAdminReason } from "./admin-input";
 import { AdminIncidentsPanel } from "./admin-incidents-panel";
 import Link from "next/link";
 import { AdminRewardsDialog } from "./admin-rewards-dialog";
@@ -423,7 +424,7 @@ export function AdminDashboard() {
   };
   const submitRevocation = async () => {
     if (!revocation || !access || actionBusyRef.current || revocation.confirmation.trim() !== revocation.target.publicId
-      || revocation.reason.trim().length < 8 || revocation.reason.trim().length > 240) return;
+      || !validAdminReason(revocation.reason)) return;
     const requestId = revocation.requestId ?? createUuidV4();
     const body = { requestId, confirmationPublicId: revocation.confirmation.trim(), reason: revocation.reason.trim() };
     setRevocation({ ...revocation, requestId });
@@ -456,7 +457,7 @@ export function AdminDashboard() {
   const auditData = audit?.key === String(auditOffset) ? audit.value : null;
   const currentData = tab === "overview" ? overviewData : tab === "users" ? usersData : tab === "monitoring" ? (monitoring?.key === String(rangeMinutes) ? monitoring.value : null) : tab === "audit" ? auditData : null;
   const currentTime = currentData?.serverTime;
-  const validConfirmation = Boolean(revocation && revocation.confirmation.trim() === revocation.target.publicId && revocation.reason.trim().length >= 8 && revocation.reason.trim().length <= 240);
+  const validConfirmation = Boolean(revocation && revocation.confirmation.trim() === revocation.target.publicId && validAdminReason(revocation.reason));
 
   if (accessStatus !== "allowed" || !access) return (
     <main className={styles.shell}><div className={styles.accessGate}>
@@ -505,7 +506,7 @@ export function AdminDashboard() {
           <TabsContent value="clicks" className={styles.tabContent}>{tab === "clicks" && <AdminTapActivityPanel key={access.publicId} initialTarget={clickTarget} refreshVersion={refreshVersion} onManage={setPlayerTarget} onAccessError={closeAccess} />}</TabsContent>
           <TabsContent value="monitoring" className={styles.tabContent}>{monitoring?.key === String(rangeMinutes) ? <Monitoring data={monitoring.value} /> : <Empty>{loading ? "Получаем метрики сервера…" : "Метрики пока не загружены."}</Empty>}</TabsContent>
           <TabsContent value="incidents" className={styles.tabContent}>{tab === "incidents" && <AdminIncidentsPanel onAccessError={closeAccess} />}</TabsContent>
-          <TabsContent value="feedback" className={styles.tabContent}>{tab === "feedback" && <AdminFeedbackPanel key={access.publicId} onAccessError={closeAccess} refreshVersion={refreshVersion} />}</TabsContent>
+          <TabsContent value="feedback" className={styles.tabContent}>{tab === "feedback" && <AdminFeedbackPanel key={access.publicId} actorPublicId={access.publicId} onAccessError={closeAccess} refreshVersion={refreshVersion} />}</TabsContent>
           <TabsContent value="audit" className={styles.tabContent}>{auditData ? <Audit data={auditData} busy={loading} onPage={setAuditOffset} /> : <Empty>{loading ? "Загружаем журнал…" : "Журнал пока не загружен."}</Empty>}</TabsContent>
           <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление: клики — 10 с, остальные разделы — 30 с, пока вкладка видна</span><span>Время и периоды — UTC</span></footer>
         </Tabs>

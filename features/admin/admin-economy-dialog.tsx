@@ -7,6 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ApiError } from "@/lib/check-in-api";
 import { economyCatalog, type EconomyCatalog, type EconomyJob } from "@/features/economy/model";
 import { formatPearls } from "@/features/economy/money";
+import { economyBuilderStatus } from "@/features/economy/builder-status";
+import { constructionSpeedupPrice } from "@/features/economy/rules";
 import { getAdminAccess, getAdminEconomyPlayer, type AdminEconomyDetail } from "./admin-api";
 import { economyCount, economyTime, type AdminEconomyTarget } from "./admin-economy-panel";
 import styles from "./admin-economy.module.css";
@@ -16,7 +18,8 @@ const ledgerLabels: Record<string, string> = {
   buy_production_slot: "Открытие места производства", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
   start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата",
   sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
-  equip_fishing_bait: "Выбор наживки", start_fishing: "Начало рыбалки", market_create: "Выставление на рынок",
+  equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка", refresh_fishing_shop: "Обновление лавки Плёски",
+  start_fishing: "Начало рыбалки", market_create: "Выставление на рынок",
   market_buy: "Покупка на рынке", market_sell: "Продажа на рынке", market_cancel: "Возврат с рынка",
   daily_reward: "Подарок за вход", achievement_reward: "Жемчуг за достижение",
   barter_create: "Предложение обмена", barter_accept: "Получение по обмену",
@@ -57,6 +60,10 @@ function Quantities({ items, catalog, delta = false }: { items: Record<string, n
 
 export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDetail }) {
   const state = detail.economy, catalog = state?.catalog ?? economyCatalog;
+  const snapshotTime = Date.parse(detail.serverTime);
+  const builder = state ? economyBuilderStatus(state, snapshotTime) : null;
+  const expedition = state?.jobs.find(job => job.kind === "exploration");
+  const expeditionStatus = expedition && detail.jobStatuses.find(status => status.jobId === expedition.id);
   return <div className={styles.stack}>
     <p className={styles.hint}>Снимок: {economyTime(detail.serverTime)}. Последнее изменение хозяйства: {economyTime(detail.updatedAt)}.{state && ` Версия состояния: ${economyCount(state.revision)}.`}</p>
     {!state ? <div className={styles.empty}>Хозяйство ещё не заведено. Балансы, склад и прогресс пока отсутствуют.</div> : <>
@@ -65,6 +72,17 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
         <div className={styles.metric}><span>Жемчуг</span><strong>{formatPearls(state.wallet.pearls)}</strong></div>
         <div className={styles.metric}><span>Завершённые вылазки</span><strong>{economyCount(state.completedExplorations)}</strong></div>
       </div>
+      <section className={styles.panel} aria-label="Поручения жителей на момент снимка">
+        <div className={styles.heading}><h3>Поручения жителей</h3><p>На момент серверного снимка. Положение и анимация персонажей здесь не отслеживаются.</p></div>
+        <div className={styles.residents}>
+          <article className={styles.job}><div className={styles.jobHeading}><strong>Шишколап · строитель</strong><span className={styles.badge} data-ready={builder?.ready}>{builder ? builder.ready ? "Ждёт получения" : "Занят" : "Свободен"}</span></div>
+            {builder ? <><p>{economyJobTitle(builder.job, catalog)}</p>{builder.ready ? <p className={styles.hint}>Игроку нужно получить постройку, чтобы освободить строителя.</p> : <><p>Осталось: <strong>{economyRemaining(builder.job.finishesAt, detail.serverTime)}</strong></p><p className={styles.hint}>Ускорение на момент снимка: {formatPearls(constructionSpeedupPrice(builder.job, snapshotTime, catalog.constructionSpeedup))} жемчуга.</p></>}</> : <p className={styles.hint}>Заказов на постройку и улучшение нет.</p>}
+          </article>
+          <article className={styles.job}><div className={styles.jobHeading}><strong>Мохлик · вылазки</strong><span className={styles.badge} data-ready={expeditionStatus?.status === "ready"}>{expeditionStatus ? expeditionStatus.status === "ready" ? "Ждёт получения" : "В пути" : "Нет вылазки"}</span></div>
+            {expedition ? <><p>{economyJobTitle(expedition, catalog)}</p>{expeditionStatus?.status === "ready" ? <p className={styles.hint}>{expeditionStatus.storageBlocked ? "Награда готова, но для неё не хватает места на складе." : "Награда готова. Следующая вылазка доступна после получения."}</p> : <p>Осталось: <strong>{economyRemaining(expedition.finishesAt, detail.serverTime)}</strong></p>}</> : <p className={styles.hint}>Подтверждённых вылазок сейчас нет.</p>}
+          </article>
+        </div>
+      </section>
       <section className={styles.panel}><div className={styles.heading}><h3>Склад</h3><p>Припасы в хозяйстве и места, занятые товарами на рынке.</p></div>
         <dl className={styles.facts}>
           <div><dt>Вместимость</dt><dd>{economyCount(state.storage.capacity)}</dd></div><div><dt>В хозяйстве</dt><dd>{economyCount(state.storage.used)}</dd></div>
@@ -97,6 +115,8 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
       {catalog.fishing && <section className={styles.panel}><div className={styles.heading}><h3>Рыбалка</h3></div>
         <p>Удочка: <strong>{catalog.fishing.rods.find(rod => rod.id === state.fishing.equippedRodId)?.name ?? state.fishing.equippedRodId}</strong></p>
         <p className={styles.hint}>Доступные удочки: {state.fishing.ownedRods.map(id => catalog.fishing!.rods.find(rod => rod.id === id)?.name ?? id).join(", ")}</p>
+        <p>Крючок: <strong>{catalog.fishing.hooks.find(hook => hook.id === (state.fishing.equippedHookId ?? "bare_hook"))?.name ?? state.fishing.equippedHookId}</strong></p>
+        <p className={styles.hint}>Доступные крючки: {(state.fishing.ownedHooks ?? ["bare_hook"]).map(id => catalog.fishing!.hooks.find(hook => hook.id === id)?.name ?? id).join(", ")}</p>
         <p>Наживка: <strong>{state.fishing.equippedBaitId ? itemName(state.fishing.equippedBaitId, catalog) : "Не выбрана"}</strong></p>
         <p className={styles.hint}>Открытая коллекция улова</p><Quantities items={state.fishing.catches} catalog={catalog} />
       </section>}

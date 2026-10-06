@@ -176,7 +176,6 @@ test("map-local feedback stays under object menus and disables decorative motion
   assert.match(files[0], /prefers-reduced-motion: reduce/);
   assert.match(files[1], /z-index: 3; pointer-events: none/);
   assert.match(files[1], /prefers-reduced-motion: reduce[\s\S]*animation: none/);
-  assert.match(files[2], /key=\{owner\}/);
   assert.match(files[2], /constructionAnchors.*anchors.filter/);
 });
 

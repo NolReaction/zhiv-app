@@ -175,7 +175,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                 JOIN app_users u ON u.id=l.seller_id JOIN economy_profiles ep ON ep.user_id=l.seller_id WHERE l.id IN (${selection.ids.joinToString(",") { "?" }})
                 AND l.status='active' AND u.deleted_at IS NULL AND u.banned_at IS NULL
                 AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?""",
-                *(selection.ids + listOf(band.first, band.last)).toTypedArray()) { listing(it, user.id).listing }
+                *(selection.ids + listOf(band.first, band.last)).toTypedArray<Any>()) { listing(it, user.id).listing }
                 .filter { EconomyMarketRules.eligible(it.itemId, it.quantity, it.totalPrice, state.buildings["home"] ?: 1) }
                 .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
             val mine = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l

@@ -46,6 +46,7 @@ import { advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade } 
 import { advanceBuilderMind, builderMindFrame, noticeBuilderMind } from "./builder-mind";
 import { syncForestConstruction } from "./economy-construction-state";
 import { previewForestResidents } from "./dev/forest-resident-preview";
+import { builderPreviewActive, previewForestBuilder } from "./dev/forest-builder-preview";
 import { drawForestFishingHero } from "./forest-fishing-painter";
 import type { ForestFishingFrame } from "./forest-fishing";
 import { fishingPropsBounds } from "./fishing-props";
@@ -370,7 +371,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     }
     const plesk = previewForestResidents(world, state.elapsed, reducedMotion(options, dev), rehearsal ?? null,
       rehearsal && rehearsal.id === state.residentPreview?.id ? state.residentPreview.startedAt : state.elapsed, natural ? [natural] : []);
-    const builder = builderMindFrame(state.builderMind, world, reducedMotion(options, dev));
+    const builderRehearsal = dev?.builderPreview;
+    const builder = previewForestBuilder(builderMindFrame(state.builderMind, world, reducedMotion(options, dev)),
+      state.elapsed, reducedMotion(options, dev), builderRehearsal ?? null,
+      builderRehearsal && builderRehearsal.id === state.builderPreview?.id ? state.builderPreview.startedAt : state.elapsed);
     return [...plesk, ...(builder ? [builder] : [])];
   }
   function residentOccupants() {
@@ -384,7 +388,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function socialEnvironment(): ForestSocialEnvironment {
     const occupants = residentOccupants(), body = clearingActivityFrame(state.clearing);
     const fishing = forestJourneyFishingFrame(state, world), cooking = cookingPreviewFrame(state, dev?.cookingPreview);
-    const manual = Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false || dev?.residentPreview);
+    const builderRehearsal = builderPreviewActive(dev?.builderPreview, state.elapsed,
+      dev?.builderPreview?.id === state.builderPreview?.id ? state.builderPreview?.startedAt : state.elapsed);
+    const manual = Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false || dev?.residentPreview || builderRehearsal);
     const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
     const actors: ForestSocialActor[] = occupants.map(occupant => {
       if (occupant.id === "mochlik") {
@@ -398,7 +404,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           context: fishing ? "fish" : cooking ? "cook" : body.pose === "sleep" ? "sleep"
             : state.fauna.encounter || state.director.birdwatch ? "animal" : occupant.moving ? "walk" : available ? "idle" : "busy" };
       }
-      if (occupant.id === "builder") return { ...occupant, id: "builder", visible: true,
+      if (occupant.id === "builder") return { ...occupant, id: "builder", visible: true, canSpeak: !builderRehearsal,
         available: !state.builderMind?.job && !state.builderMind?.constructionPending && !state.builderMind?.blocked
           && !state.builderMind?.noticePending && state.builderMind?.action !== "finish",
         context: occupant.moving ? "walk" : state.builderMind?.job ? state.builderMind.ready ? "ready" : state.builderMind.blocked ? "busy" : "build" : "idle" };
@@ -627,6 +633,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (resident && state.residentPreview?.id !== resident.id) {
         state.residentPreview = { id: resident.id, startedAt: state.elapsed };
       }
+      const builder = dev?.builderPreview;
+      if (builder && state.builderPreview?.id !== builder.id) {
+        state.builderPreview = { id: builder.id, startedAt: state.elapsed };
+      }
       if (dev?.scenarioEvent?.kind === "fishing" && !dev.lifeEvent) startFishingPreview(dev.scenarioEvent.id);
     }
     syncExploration(); syncGarden(); syncCooking(); syncProduction(); syncConstruction();
@@ -820,6 +830,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         if (!dev.residentPreview) state.residentPreview = undefined;
         else if (session.consumeEvent("resident", dev.residentPreview.id)) {
           state.residentPreview = { id: dev.residentPreview.id, startedAt: state.elapsed };
+        }
+      }
+      if (dev.builderPreview?.id !== before.builderPreview?.id) {
+        if (!dev.builderPreview) state.builderPreview = undefined;
+        else if (session.consumeEvent("builder-preview", dev.builderPreview.id)) {
+          state.builderPreview = { id: dev.builderPreview.id, startedAt: state.elapsed };
         }
       }
       if (dev.lifeEvent?.id !== before.lifeEvent?.id) {

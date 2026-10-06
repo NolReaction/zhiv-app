@@ -1,4 +1,5 @@
 import type { PersonCheckInState } from "./check-in-contract";
+import { hasUserTextControls } from "./user-text";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -21,7 +22,7 @@ export function normalizeDisplayName(value: string): string {
 
 export function isValidDisplayName(value: string): boolean {
   const length = Array.from(normalizeDisplayName(value)).length;
-  return length >= 1 && length <= DISPLAY_NAME_MAX_CODE_POINTS && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
+  return length >= 1 && length <= DISPLAY_NAME_MAX_CODE_POINTS && !hasUserTextControls(value);
 }
 
 export function limitDisplayNameInput(value: string): string {

@@ -2,6 +2,7 @@ package ru.zhiv.feedback
 
 import kotlinx.serialization.Serializable
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.identity.hasUserTextControls
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -28,9 +29,9 @@ data class AdminFeedbackPage(val serverTime: String, val total: Long, val offset
 data class FeedbackStatusRequest(val requestId: String, val status: String)
 
 fun validatedFeedbackMessage(category: String, message: String): String {
-    val normalized = message.replace("\r\n", "\n").trim()
+    val normalized = message.replace("\r\n", "\n").replace('\r', '\n').trim()
     if (category !in FEEDBACK_CATEGORIES || normalized.codePointCount(0, normalized.length) !in 10..3000 ||
-        normalized.any { it.isISOControl() && it != '\n' && it != '\t' }) {
+        hasUserTextControls(normalized, multiline = true)) {
         throw AuthFailure("INVALID_FEEDBACK", "Выберите тему и напишите от 10 до 3000 символов", 400)
     }
     return normalized

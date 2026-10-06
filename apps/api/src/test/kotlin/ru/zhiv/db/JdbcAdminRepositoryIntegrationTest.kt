@@ -276,7 +276,8 @@ class JdbcAdminRepositoryIntegrationTest {
     @Test fun `invalid confirmation never mutates sessions and audit rows cannot be rewritten`() = runBlocking<Unit> {
         val admin = user(); val target = user(); val repo = repository(admin)
         val id = UUID.randomUUID()
-        for ((confirmation, reason) in listOf("wrong" to "Нормальная причина", target.publicId to "коротко", target.publicId to "Причина\nсо строкой")) {
+        for ((confirmation, reason) in listOf("wrong" to "Нормальная причина", target.publicId to "коротко", target.publicId to "Причина\nсо строкой",
+            target.publicId to "Причина\u202eс подменой", target.publicId to "Причина\u2066с подменой")) {
             assertEquals(400, assertFailsWith<AuthFailure> { repo.revokeSessions(admin.hash, target.publicId, id, confirmation, reason) }.status)
         }
         assertNotNull(identities.findBySession(target.hash))
@@ -424,6 +425,7 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(403,assertFailsWith<AuthFailure> { repo.grantReward(other.hash,target.publicId,key,request) }.status)
         assertEquals(400,assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,target.publicId,key,request.copy(rewardId="unknown")) }.status)
         assertEquals(400,assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,target.publicId,key,request.copy(confirmationPublicId=other.publicId)) }.status)
+        assertEquals(400,assertFailsWith<AuthFailure> { repo.grantReward(admin.hash,target.publicId,key,request.copy(reason="Проверка\u202eнаграды")) }.status)
         assertEquals(0L,repo.audit(admin.hash,0,25).total)
         val replies=coroutineScope { List(2) { async(Dispatchers.IO) { repo.grantReward(admin.hash,target.publicId,key,request) } }.awaitAll() }
         assertEquals(replies[0],replies[1]); assertTrue(replies[0].granted)

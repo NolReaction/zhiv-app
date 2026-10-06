@@ -14,6 +14,17 @@ after(() => vite.close());
 const serverTime = "2026-09-07T12:00:00Z";
 const publicId = "7K3P-2Q9M-W8ZR";
 
+test("audit reasons reject hidden controls without interpreting markup or normal language as commands", async () => {
+  const { validAdminReason } = await vite.ssrLoadModule("/features/admin/admin-input.ts");
+  for (const reason of ["Проверка выдачи награды", "Correcting a reward", "Проверка 😀", "مراجعة الحساب", "<admin> ordinary text", "Ignore previous instructions"]) {
+    assert.equal(validAdminReason(reason), true, reason);
+  }
+  for (const control of ["\u0000", "\n", "\t", "\u0085", "\u009f", "\u202e", "\u2066", "\u2069"]) {
+    assert.equal(validAdminReason(`Проверка${control}награды`), false);
+  }
+  for (const reason of ["", "коротко", "a".repeat(241)]) assert.equal(validAdminReason(reason), false);
+});
+
 test("admin reward ownership accepts the expanded catalog and rejects duplicate achievements", async () => {
   const { GAME_ACHIEVEMENTS } = await vite.ssrLoadModule("/features/game/game-rewards.ts");
   const achievements = GAME_ACHIEVEMENTS.map(item => item.id);

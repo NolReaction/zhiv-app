@@ -137,7 +137,7 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
             WHERE o.id IN (${selection.ids.joinToString(",") { "?" }}) AND o.status='active'
             AND u.deleted_at IS NULL AND u.banned_at IS NULL
             AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?""",
-            *(selection.ids + listOf(maxOf(EconomyBarterRules.REQUIRED_HOME_LEVEL, band.first), band.last)).toTypedArray()) { offer(it, user.id).offer }
+            *(selection.ids + listOf(maxOf(EconomyBarterRules.REQUIRED_HOME_LEVEL, band.first), band.last)).toTypedArray<Any>()) { offer(it, user.id).offer }
             .filter { EconomyBarterRules.eligibleItem(it.offeredItemId) && EconomyBarterRules.eligibleItem(it.requestedItemId) }
             .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
         val mine = c.economyRows("""SELECT o.*,u.public_id,u.display_name FROM economy_barter_offers o JOIN app_users u ON u.id=o.seller_id

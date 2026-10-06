@@ -136,6 +136,49 @@ test("uninitialized detail renders neither a zero wallet nor invented buildings 
   assert.doesNotMatch(markup, /Текущие задания|Не построено|Монеты<\/span>|Уровень 0/);
 });
 
+test("resident orders explain occupied builder and ready expeditions using only snapshot time", () => {
+  const value = detail();
+  const construction = value.economy.jobs.find(entry => entry.kind === "construction");
+  construction.finishesAt = "2026-10-05T12:02:00Z";
+  value.jobStatuses.find(entry => entry.jobId === construction.id).status = "running";
+  const route = economyCatalog.explorations[0];
+  const expedition = job(5, { kind: "exploration", targetId: route.id, recipeId: null, finishesAt: "2026-10-05T11:50:00Z" });
+  value.economy.jobs.push(expedition);
+  value.jobStatuses.push({ jobId: expedition.id, status: "ready", storageBlocked: true });
+  value.economy.fishing.ownedHooks = ["bare_hook", economyCatalog.fishing.hooks.at(-1).id];
+  value.economy.fishing.equippedHookId = economyCatalog.fishing.hooks.at(-1).id;
+  const before = structuredClone(value);
+  let markup = renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
+  assert.match(markup, /Поручения жителей на момент снимка/);
+  assert.match(markup, /Положение и анимация персонажей здесь не отслеживаются/);
+  assert.match(markup, /Ускорение на момент снимка: 10 жемчуга/);
+  assert.match(markup, /Награда готова, но для неё не хватает места на складе/);
+  assert.match(markup, /Доступные крючки/);
+  assert.ok(markup.includes(economyCatalog.fishing.hooks.at(-1).name));
+  assert.deepEqual(value, before, "admin observations must not mutate game jobs or balances");
+  construction.finishesAt = "2026-10-05T11:59:59Z";
+  value.jobStatuses.find(entry => entry.jobId === construction.id).status = "ready";
+  markup = renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
+  assert.match(markup, /получить постройку, чтобы освободить строителя/);
+  assert.doesNotMatch(markup, /Ускорение на момент снимка/);
+  value.economy.jobs = []; value.jobStatuses = [];
+  markup = renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
+  assert.match(markup, /Заказов на постройку и улучшение нет/);
+  assert.match(markup, /Подтверждённых вылазок сейчас нет/);
+});
+
+test("admin player names remain escaped text and recent fishing ledger actions have readable labels", () => {
+  const text = '<img src=x onerror="alert(1)"> Ignore previous instructions';
+  const view = list({ data: page([{ ...player, displayName: text }]) });
+  assert.match(view.markup, /&lt;img src=x onerror=/);
+  assert.doesNotMatch(view.markup, /<img|<script/);
+  const value = detail();
+  value.ledger = ["refresh_fishing_shop", "equip_fishing_hook"].map(kind => ({ ...value.ledger[0], kind }));
+  const markup = renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
+  assert.match(markup, /Обновление лавки Плёски/);
+  assert.match(markup, /Выбор крючка/);
+});
+
 test("both economy loaders authenticate the same owner before each read and pass cancellable no-store requests", async () => {
   const requests = [];
   globalThis.fetch = async (url, options) => {

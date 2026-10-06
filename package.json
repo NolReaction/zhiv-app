@@ -24,7 +24,9 @@
     "world:export": "node scripts/tiled-world.mjs",
     "world:watch": "node scripts/tiled-world.mjs --watch",
     "world:check": "node scripts/tiled-world.mjs --check",
-    "economy:check": "node scripts/audit-economy-progression.mjs"
+    "economy:check": "node scripts/audit-economy-progression.mjs",
+    "security:check": "node scripts/check-secrets.mjs",
+    "security:history": "node scripts/check-secrets.mjs --history"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
@@ -56,7 +58,7 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.8",
     "react-server-dom-webpack": "19.2.8",
-    "sharp": "0.34.5",
+    "sharp": "0.35.5",
     "tailwindcss": "4.2.1",
     "tw-animate-css": "^1.4.0",
     "typescript": "5.9.3",

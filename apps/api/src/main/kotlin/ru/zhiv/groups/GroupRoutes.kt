@@ -16,6 +16,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import ru.zhiv.config.AppConfig
+import ru.zhiv.identity.hasUserTextControls
 import ru.zhiv.http.ApiErrorResponse
 import ru.zhiv.http.CreateGroupInviteRequest
 import ru.zhiv.http.CreateGroupRequest
@@ -255,11 +256,11 @@ private fun Route.groupInviteActionRoute(
     }
 }
 
-private fun validTitle(title: String): Boolean =
-    title.codePointCount(0, title.length) in 1..64 && title.none(Char::isISOControl)
+internal fun validTitle(title: String): Boolean =
+    title.codePointCount(0, title.length) in 1..64 && !hasUserTextControls(title)
 
-private fun validEmoji(emoji: String?): Boolean = emoji == null || (
-    emoji.codePointCount(0, emoji.length) <= 16 && emoji.none(Char::isISOControl)
+internal fun validEmoji(emoji: String?): Boolean = emoji == null || (
+    emoji.codePointCount(0, emoji.length) <= 16 && !hasUserTextControls(emoji)
 )
 
 private fun ApplicationCall.noStore() {

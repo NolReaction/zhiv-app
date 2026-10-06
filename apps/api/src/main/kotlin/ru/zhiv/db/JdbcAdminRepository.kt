@@ -185,7 +185,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
 
     override suspend fun revokeSessions(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, confirmationPublicId: String, reason: String): AdminRevokeReceipt = tx { c ->
         val initial = actor(c, sessionHash)
-        if (confirmationPublicId != targetPublicId || reason.length !in 8..240 || reason != reason.trim() || reason.any(Char::isISOControl) || requestId.version() != 4 || requestId.variant() != 2) invalid()
+        if (confirmationPublicId != targetPublicId || !validAdminReason(reason) || requestId.version() != 4 || requestId.variant() != 2) invalid()
         if (targetPublicId in config.allowedPublicIds) fail("ADMIN_PROTECTED_ACCOUNT", "Сеансы администраторов нельзя завершать из панели", 409)
         // A request ID is global and immutable. Serialize unknown receipts before
         // locking users, so duplicate delivery can never revoke a later login.
@@ -239,7 +239,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         val (confirmation,kind,rewardId,reason) = listOf(request.confirmationPublicId,request.kind,request.rewardId,request.reason)
         val catalog = when (kind) { "item" -> ru.zhiv.game.GameRewards.items; "achievement" -> ru.zhiv.game.GameRewards.achievements; else -> invalid() }
         if (confirmation != targetPublicId || request.requestId != requestId.toString()
-            || reason.length !in 8..240 || reason != reason.trim() || reason.any(Char::isISOControl)
+            || !validAdminReason(reason)
             || requestId.version() != 4 || requestId.variant() != 2) invalid()
         val action = "grant_$kind"
         c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }

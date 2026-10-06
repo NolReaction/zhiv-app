@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlayerName } from "@/components/player-name";
 import { TAG_COLORS, playerTagSchema, type PlayerTag } from "@/lib/player-tag";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { validAdminReason } from "./admin-input";
 import { ApiError } from "@/lib/check-in-api";
 import { worldCatalog } from "@/features/world/model";
 import { getAdminAccess, getAdminPlayer, manageAdminPlayer, type AdminPlayer, type AdminPlayerCommand, type AdminUser } from "./admin-api";
@@ -42,7 +43,7 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
     });
     return () => { alive.current = false; controller.abort(); writeController.current?.abort(); };
   }, [target.publicId, onAccessLost]);
-  const authorized = confirmation === target.publicId && reason.trim().length >= 8 && reason.trim().length <= 240;
+  const authorized = confirmation === target.publicId && validAdminReason(reason);
   const locked = busy || Boolean(pending);
   async function run(action: AdminPlayerCommand["action"], extra: Partial<AdminPlayerCommand> = {}) {
     if (sending.current || !authorized || !player) return;

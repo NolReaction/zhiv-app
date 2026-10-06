@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNod
 import { ChevronDown, FlaskConical, RotateCcw, X } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { PleskAction } from "../plesk-resident";
+import type { BuilderAction } from "../builder-types";
 import type { EconomyController } from "@/features/economy/use-economy";
 import { worldCatalog } from "../model";
 import { TILED_WORLD } from "../presentation";
@@ -18,7 +19,7 @@ import { WorldDevCheats } from "./world-dev-cheats";
 import { WorldDevFishing } from "./world-dev-fishing";
 import { useForestObservation } from "../use-forest-observation";
 import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
-import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
+import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
 
 export type WorldDevPanelProps = {
@@ -36,6 +37,7 @@ export type WorldDevPanelProps = {
   onOpenObject?: (place: MapObjectPlace) => void;
 };
 type ManualAction = { kind: "scenario"; scenario: WorldDevScenario } | { kind: "pose"; pose: PixelPose }
+  | { kind: "builder"; action: BuilderAction; repeat?: boolean }
   | { kind: "cooking"; action: WorldDevCookingPreview["action"]; repeat?: boolean }
   | { kind: "resident"; action: "routine" | PleskAction; repeat?: boolean } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
 
@@ -53,6 +55,10 @@ const RESIDENT_LABELS: Record<PleskAction | "routine", string> = {
 };
 const COOKING_LABELS: Record<WorldDevCookingPreview["action"], string> = {
   sequence: "Приготовить обед", prepare: "Подготовить продукты", stir: "Помешать в котелке", taste: "Попробовать суп", serve: "Подать обед",
+};
+const BUILDER_LABELS: Record<BuilderAction, string> = {
+  idle: "Осмотреться", walk: "Бежать", work: "Работать молотком", inspect: "Проверить инструменты",
+  finish: "Закончить работу", greet: "Поздороваться",
 };
 const WEATHER = [["auto", "По расписанию"], ["clear", "Ясно"], ["drizzle", "Морось"], ["rain", "Дождь"], ["downpour", "Ливень"]] as const;
 const TIME = [["auto", "По времени профиля"], ["day", "День"], ["night", "Ночь"]] as const;
@@ -133,7 +139,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
 }
 
 const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
-const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"]] as const;
+const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"], ["builder", "Шишколап"]] as const;
 const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
 const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
@@ -215,7 +221,7 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
   const birdsUnavailable = motionUnavailable ?? (state.birds === "off" ? "Птицы выключены. Выберите «Авто» или «Включить»." : null);
   function unavailable(action: ManualAction) {
     if (action.kind === "scenario") return null;
-    if (action.kind === "resident") return motionUnavailable;
+    if (action.kind === "resident" || action.kind === "builder") return motionUnavailable;
     if (action.kind === "birds") return birdsUnavailable;
     if (action.kind === "cooking") return heroUnavailable ?? (economy?.snapshot?.jobs.some(job =>
       job.kind === "exploration" && economy.now < Date.parse(job.finishesAt) || job.collection?.startedAt)
@@ -238,6 +244,7 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
   const repeatLabel = lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
     : lastAction?.kind === "cooking" ? COOKING_LABELS[lastAction.action]
     : lastAction?.kind === "resident" ? `Плёска: ${RESIDENT_LABELS[lastAction.action]}`
+    : lastAction?.kind === "builder" ? `Шишколап: ${BUILDER_LABELS[lastAction.action]}`
     : lastAction?.kind === "life" ? lifeActionLabel(lastAction.action) : "Сценарий с птицами";
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   function change(patch: Partial<WorldDevState>, message = "Предпросмотр обновлён") {
@@ -256,6 +263,9 @@ function DevelopmentPanel({ world, economy, active = true, worldView = false, pr
     } else if (action.kind === "resident") {
       worldDevStore.triggerResident(action.action, action.repeat ?? false);
       setFeedback(`Плёска: ${RESIDENT_LABELS[action.action].toLowerCase()}${action.repeat ? " · повтор" : ""}. Камера направлена к пирсу; панель остаётся открытой.`);
+    } else if (action.kind === "builder") {
+      worldDevStore.triggerBuilder(action.action, action.repeat ?? false);
+      setFeedback(`Шишколап: ${BUILDER_LABELS[action.action].toLowerCase()}${action.repeat ? " · повтор" : ""}. Поза для проверки; поручение продолжается.`);
     } else if (action.kind === "cooking") {
       worldDevStore.triggerCooking(action.action, action.repeat ?? false);
       setFeedback(`${COOKING_LABELS[action.action]}${action.repeat ? " · повтор" : ""}. Проверка начнётся на свободном месте; продукты аккаунта не расходуются.`);
@@ -408,6 +418,34 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
         <button type="button" onClick={() => change({ residentPreview: null, residentDirection: "front" }, "Показ Плёски сброшен")}>Сброс Плёски</button>
       </div>
       <p className={styles.hint}>Кнопка проигрывает действие один раз; «Повторить» сверху запускает его заново. Поворот относится к отдельным действиям — в распорядке Плёска сама смотрит по ходу движения и на воду. Улов здесь не пополняет кладовую и не изменяет задания.</p>
+    </>}
+    {page === "builder" && <>
+      <h3 className={styles.pageTitle}>Шишколап · строитель</h3>
+      <p className={styles.hint}>Проверка поз и молотка. Путь и поручение продолжаются; «Пауза» остановит движение для осмотра.</p>
+      <div className={styles.shortcuts}>
+        <button type="button" onClick={() => { change({ builderPreview: null }, "Шишколап показывает своё текущее занятие"); worldDevStore.triggerCamera("builder"); }}>Свободное поведение</button>
+        <button type="button" onClick={() => { worldDevStore.triggerCamera("builder"); onFeedback("Камера направлена к Шишколапу"); }}>Найти Шишколапа</button>
+      </div>
+      {!worldView && <p className={styles.hint}>На большой карте виден весь путь строителя.</p>}
+      <fieldset className={styles.fieldset}><legend>Поворот Шишколапа</legend><div className={styles.directions}>
+        {DIRECTIONS.map(([direction, label]) => <button key={direction} type="button" aria-pressed={state.builderDirection === direction}
+          onClick={() => change({ builderDirection: direction })}>{label}</button>)}
+      </div></fieldset>
+      <Select label="Повторять действие Шишколапа" value={state.builderPreview?.repeat ? state.builderPreview.action : "auto"}
+        values={[["auto", "Свободное поведение"], ...WORLD_DEV_BUILDER_ACTIONS.map(action => [action, BUILDER_LABELS[action]] as const)]}
+        onChange={action => { if (action === "auto") change({ builderPreview: null }, "Шишколап показывает своё текущее занятие");
+          else if (!unavailable({ kind: "builder", action })) play({ kind: "builder", action, repeat: true }); }} />
+      {unavailable({ kind: "builder", action: "idle" }) && <p id={`${id}-builder-reason`} className={styles.hint}>{unavailable({ kind: "builder", action: "idle" })}</p>}
+      <div className={styles.lifeActions}>{WORLD_DEV_BUILDER_ACTIONS.map(action => {
+        const reason = unavailable({ kind: "builder", action });
+        return <button key={action} type="button" data-builder-action={action} disabled={Boolean(reason)} aria-describedby={reason ? `${id}-builder-reason` : undefined}
+          onClick={() => { if (!reason) play({ kind: "builder", action }); }}>{BUILDER_LABELS[action]}</button>;
+      })}</div>
+      <div className={styles.shortcuts}>
+        <button type="button" onClick={() => change({ builderPreview: null }, "Проверка Шишколапа отменена")}>Отменить проверку</button>
+        <button type="button" onClick={() => change({ builderPreview: null, builderDirection: "front" }, "Показ Шишколапа сброшен")}>Сброс Шишколапа</button>
+      </div>
+      <p className={styles.hint}>Кнопки проигрывают действие один раз. Завершение работы здесь — только жест: стройка и ресурсы не меняются.</p>
     </>}
     {page === "scenes" && <>
       <h3 className={styles.pageTitle}>Лесные сценки</h3>

@@ -23,7 +23,7 @@ export type MapInteractionCallbacks = {
   onSelectionChange?: (selection: MapObjectSelection | null) => void;
   onObjectAnchorsChange?: (anchors: readonly MapObjectScreenAnchor[]) => void;
 };
-export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "fishing";
+export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "builder" | "fishing";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}) {
   let ground: HTMLImageElement;
@@ -324,7 +324,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
   function control(action: MapAction) {
     framing = action === "home" || action === "overview" ? action : "manual";
-    if (action === "plesk" || action === "fishing") {
+    if (action === "plesk" || action === "builder" || action === "fishing") {
       const target = habitat.inspectPoint?.(action);
       if (target) camera = clampCamera({ ...target, zoom: Math.max(camera.zoom, focusCamera(view, true).zoom) }, view, bounds, cameraInsets);
       draw(); return;
@@ -358,7 +358,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   if (WORLD_DEV_ENABLED) dev = worldDevStore.getSnapshot();
   document.addEventListener("visibilitychange", visibility); visibility();
   // An absolute DEV target chosen in the circle survives opening the full map.
-  if (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "fishing") control(dev.cameraEvent.action);
+  if (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "builder" || dev?.cameraEvent?.action === "fishing") control(dev.cameraEvent.action);
   const unsubscribeDev = WORLD_DEV_ENABLED ? worldDevStore.subscribe(() => {
     if (disposed) return;
     const previousCamera = dev?.cameraEvent?.id;

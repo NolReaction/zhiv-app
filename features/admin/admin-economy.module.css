@@ -50,6 +50,7 @@
 .buildings li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #354032; font-size: 14px; }
 .buildings strong { color: #bedc9f; font-size: 13px; }
 .jobs { display: grid; gap: 12px; }
+.residents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .job { min-width: 0; padding: 16px; border: 1px solid #354032; border-radius: 12px; background: #222a21; }
 .job p { margin: 8px 0; font-size: 14px; }
 .jobHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
@@ -66,6 +67,7 @@
   .selectLabel { justify-content: space-between; flex-wrap: wrap; }
   .dialog { padding: 20px 16px; max-height: calc(100dvh - 24px); width: calc(100vw - 24px); max-width: calc(100vw - 24px) !important; }
   .buildings { grid-template-columns: 1fr; }
+  .residents { grid-template-columns: 1fr; }
   .pagination { align-items: flex-start; }
 }
 @media (max-width: 410px) { .metrics { grid-template-columns: 1fr; } .selectLabel select { width: 100%; } }

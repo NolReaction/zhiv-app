@@ -1,11 +1,12 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { PleskAction } from "../plesk-resident";
+import type { BuilderAction } from "../builder-types";
 import type { CookingAction } from "../forest-cooking";
 import { TILED_WORLD } from "../presentation";
 import { initialPreviewLevels } from "../tiled/preview-state";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
-export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" | "fishing";
+export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" | "builder" | "fishing";
 export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "water-bush" | "harvest-berries" | "grow-berries" | "watch-birds" | "campfire" | "idle";
 
 export const WORLD_DEV_SCENARIOS = [
@@ -24,6 +25,12 @@ export const WORLD_DEV_RESIDENT_ACTIONS = Object.freeze([
 ] as const satisfies readonly PleskAction[]);
 export type WorldDevResidentPreview = Readonly<{
   id: number; action: "routine" | PleskAction; direction: PixelDirection; repeat: boolean;
+}>;
+export const WORLD_DEV_BUILDER_ACTIONS = Object.freeze([
+  "idle", "walk", "work", "inspect", "finish", "greet",
+] as const satisfies readonly BuilderAction[]);
+export type WorldDevBuilderPreview = Readonly<{
+  id: number; action: BuilderAction; direction: PixelDirection; repeat: boolean;
 }>;
 export const WORLD_DEV_COOKING_ACTIONS = ["sequence", "prepare", "stir", "taste", "serve"] as const;
 export type WorldDevCookingPreview = Readonly<{ id: number; action: "sequence" | CookingAction; repeat: boolean }>;
@@ -53,6 +60,8 @@ export type WorldDevState = Readonly<{
   direction: PixelDirection;
   residentDirection: PixelDirection;
   residentPreview: WorldDevResidentPreview | null;
+  builderDirection: PixelDirection;
+  builderPreview: WorldDevBuilderPreview | null;
   cookingPreview: WorldDevCookingPreview | null;
   heroScale: number;
   showHero: boolean;
@@ -80,6 +89,7 @@ export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   autoLife: true, navigationMode: "auto", puddles: true,
   paused: false, reducedMotion: "auto", pose: "auto", direction: "front", heroScale: 1,
   residentDirection: "front", residentPreview: null, cookingPreview: null,
+  builderDirection: "front", builderPreview: null,
   showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true,
   previewBuildings: false,
   debug: false, debugWater: false, debugNavigation: false, debugFauna: false,
@@ -97,6 +107,7 @@ const enumValues = {
   navigationMode: ["auto", "routes"],
   direction: ["front", "back", "left", "right"],
   residentDirection: ["front", "back", "left", "right"],
+  builderDirection: ["front", "back", "left", "right"],
 } as const;
 const booleanKeys = ["paused", "autoLife", "puddles", "waterBreeze", "waterSurface", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -108,7 +119,7 @@ const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfl
 /** Ephemeral visual overrides only; this store never touches player progress or storage. */
 export function createWorldDevStore(enabled: boolean) {
   let state = WORLD_DEV_DEFAULTS;
-  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0, residentEventId = 0, cookingEventId = 0;
+  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0, residentEventId = 0, cookingEventId = 0, builderEventId = 0;
   const listeners = new Set<() => void>();
   const publish = (next: WorldDevState) => {
     if (!enabled || next === state) return;
@@ -138,9 +149,13 @@ export function createWorldDevStore(enabled: boolean) {
       // Events may be cancelled here, but only the trigger methods can create them.
       if (patch.animation === null) next.animation = null;
       if (patch.residentPreview === null) next.residentPreview = null;
+      if (patch.builderPreview === null) next.builderPreview = null;
       if (patch.cookingPreview === null || isPose(patch.pose)) next.cookingPreview = null;
       if (next.residentPreview && next.residentDirection !== state.residentDirection) {
         next.residentPreview = Object.freeze({ ...next.residentPreview, direction: next.residentDirection });
+      }
+      if (next.builderPreview && next.builderDirection !== state.builderDirection) {
+        next.builderPreview = Object.freeze({ ...next.builderPreview, direction: next.builderDirection });
       }
       if (patch.lifeEvent === null || isPose(patch.pose)) next.lifeEvent = null;
       if (isRecord(patch.levels)) {
@@ -202,11 +217,17 @@ export function createWorldDevStore(enabled: boolean) {
         cookingPreview: Object.freeze({ id: ++cookingEventId, action, repeat }),
         cameraEvent: Object.freeze({ id: ++cameraEventId, action: "pet" }) });
     },
+    triggerBuilder(action: BuilderAction, repeat = false) {
+      if (!enabled || !WORLD_DEV_BUILDER_ACTIONS.some(value => value === action) || typeof repeat !== "boolean") return;
+      publish({ ...state,
+        builderPreview: Object.freeze({ id: ++builderEventId, action, direction: state.builderDirection, repeat }),
+        cameraEvent: Object.freeze({ id: ++cameraEventId, action: "builder" }) });
+    },
     triggerBirds() {
       if (enabled) publish({ ...state, birdEvent: ++birdEventId });
     },
     triggerCamera(action: WorldDevCameraAction) {
-      if (enabled && ["in", "out", "overview", "pet", "plesk", "fishing"].some(option => option === action)) {
+      if (enabled && ["in", "out", "overview", "pet", "plesk", "builder", "fishing"].some(option => option === action)) {
         publish({ ...state, cameraEvent: Object.freeze({ id: ++cameraEventId, action }) });
       }
     },

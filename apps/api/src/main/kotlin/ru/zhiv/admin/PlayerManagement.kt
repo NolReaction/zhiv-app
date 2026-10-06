@@ -1,8 +1,12 @@
 package ru.zhiv.admin
 
 import ru.zhiv.identity.PlayerTag
+import ru.zhiv.identity.hasUserTextControls
 import kotlinx.serialization.Serializable
 import ru.zhiv.world.WorldState
+
+internal fun validAdminReason(reason: String): Boolean =
+    reason.length in 8..240 && reason == reason.trim() && !hasUserTextControls(reason)
 
 @Serializable data class AdminPlayer(
     val publicId: String, val displayName: String, val tag: PlayerTag?, val bannedAt: String?,
@@ -22,7 +26,7 @@ object PlayerManagement {
     val actions = setOf("grant_resource", "grant_world_item", "grant_find", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal")
     fun valid(command: AdminPlayerCommand): Boolean {
         if (command.action !in actions) return false
-        if (command.reason.length !in 8..240 || command.reason != command.reason.trim() || command.reason.any(Char::isISOControl)) return false
+        if (!validAdminReason(command.reason)) return false
         if (command.tag != null && (command.action != "set_tag" || command.tag.color !in colors ||
                 !Regex("^[A-Za-zА-Яа-яЁё0-9_-]{1,16}$").matches(command.tag.text))) return false
         return when (command.action) {

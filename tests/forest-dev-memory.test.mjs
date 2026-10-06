@@ -29,3 +29,11 @@ test("water decoration and inspection preferences do not replace the actor's rea
   assert.equal(forestPersistenceOverridden({ ...dev, weather: "downpour" }, WORLD_DEV_DEFAULTS.levels), true,
     "forced conditions that change the actor's decisions still suspend memory");
 });
+
+
+test("builder animation cannot save synthetic memories; camera and direction alone are inspection", () => {
+  const inspection = { ...WORLD_DEV_DEFAULTS, builderDirection: "back", cameraEvent: { id: 1, action: "builder" } };
+  assert.equal(forestPersistenceOverridden(inspection, WORLD_DEV_DEFAULTS.levels), false);
+  assert.equal(forestPersistenceOverridden({ ...inspection,
+    builderPreview: { id: 1, action: "finish", direction: "back", repeat: true } }, WORLD_DEV_DEFAULTS.levels), true);
+});

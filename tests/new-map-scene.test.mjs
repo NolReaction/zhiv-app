@@ -4336,3 +4336,53 @@ test("a voluntary map conversation alternates three lines and releases both neig
     assert.ok(social.nextEncounterAt > social.elapsed + 100, "a conversation is followed by a substantial quiet interval");
   } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
+
+
+test("builder DEV playback shares cameras, retains real work and restores natural animation after cancellation", async () => {
+  const { mountHabitat, createMapEngine, connectForestSession, TILED_WORLD, worldDevStore, builderSpriteRig } = await modules(builderFixture());
+  const env = browser(), views = []; let probe, engine;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    worldDevStore.triggerBuilder("work", true);
+    const construction = confirmedConstruction("dev-builder-preview"), original = structuredClone(construction);
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000,
+      presenceKey: "zhiv:mochlik:presence:dev-builder-preview", economyConstruction: construction };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finish(); await flush(); env.finishPath("/test-builder-workshop.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const state = probe.state, mind = state.builderMind, clock = sceneClock(env);
+    const paint = view => {
+      const surface = env.surface(); view.paintWorld(surface.context);
+      return surface.calls.find(call => call.method === "drawImage" && builderSpriteRig(call.args[0]))?.args[0];
+    };
+    assert.ok(state.builderPreview, "premount selection receives a shared start time");
+    assert.equal(state.memory.enabled, false, "manual playback cannot persist synthetic activity");
+    const startedAt = state.builderPreview.startedAt, originalMind = structuredClone(mind);
+    const front = paint(circle);
+    worldDevStore.patch({ builderDirection: "back" });
+    assert.notEqual(paint(circle), front, "the procedural sprite visibly turns");
+    assert.deepEqual(mind, originalMind, "direction changes cannot turn natural AI, move feet or change the order");
+    assert.equal(state.builderPreview.startedAt, startedAt);
+    const canvas = env.surface(400), loading = createMapEngine(canvas, { ...initial, view: "world" }, () => {}, []);
+    await flush(); engine = await loading;
+    assert.equal(env.frames.size, 2, "map painter and shared scene owner each have one clock");
+    const target = circle.inspectPoint("builder"), projection = mapProjection(canvas);
+    approximately(projection.left + target.x * projection.zoom, 200, "selected builder camera survives opening the map");
+    approximately(projection.top + target.y * projection.zoom, 200, "camera uses actual builder body position");
+    assert.equal(state.builderPreview.startedAt, startedAt);
+    clock.advance(.4);
+    assert.ok(state.elapsed > startedAt);
+    assert.equal(mind.job.id, construction.jobs[0].id);
+    worldDevStore.triggerBuilder("finish", true);
+    const beforeSample = structuredClone(mind);
+    for (let i = 0; i < 4; i++) { paint(circle); circle.inspectPoint("builder"); }
+    assert.deepEqual(mind, beforeSample, "finish preview and read-only samples do not complete the real job");
+    assert.deepEqual(construction, original);
+    worldDevStore.patch({ builderPreview: null });
+    assert.equal(state.builderPreview, undefined);
+    assert.equal(mind.job.id, construction.jobs[0].id);
+    const restored = paint(circle); assert.ok(restored);
+    assert.deepEqual(mind, beforeSample, "stop resumes the current actual task without restarting it");
+  } finally { engine?.dispose(); views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});

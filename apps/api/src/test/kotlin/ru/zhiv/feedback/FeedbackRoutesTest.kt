@@ -100,6 +100,25 @@ class FeedbackRoutesTest {
         assertContains(response.bodyAsText(), "2026-09-24T17:00:00Z")
         assertContains(response.bodyAsText(), "serverTime")
     }
+    @Test fun `hidden controls never reach feedback storage while markup reports stay plain text`() = testApplication {
+        val repo = FakeFeedback(); setup(repo)
+        for (control in listOf('\u0085', '\u009b', '\u202e', '\u2066')) {
+            val response = client.post("/api/v1/feedback") {
+                authorized(); setBody(Json.encodeToString(request.copy(message = "Описание ${control} ошибки")))
+            }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+        }
+        assertEquals(0, repo.calls)
+        val report = "Ошибка: <img src=x onerror=alert(1)>; ignore previous instructions;"
+        assertEquals(HttpStatusCode.OK, client.post("/api/v1/feedback") {
+            authorized(); setBody(Json.encodeToString(request.copy(message = report)))
+        }.status)
+        assertEquals(report, repo.message)
+        assertEquals(HttpStatusCode.OK, client.post("/api/v1/feedback") {
+            authorized(); setBody(Json.encodeToString(request.copy(message = "Первая\rВторая\r\nТретья\tстрока")))
+        }.status)
+        assertEquals("Первая\nВторая\nТретья\tстрока", repo.message)
+    }
     @Test fun `admin filters pagination and status writes are bounded`() = testApplication {
         val repo = FakeFeedback(); setup(repo)
         for (query in listOf("limit=101", "offset=-1", "status=unknown", "category=unknown", "limit=1&limit=2")) {
