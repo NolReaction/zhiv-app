@@ -167,6 +167,7 @@ object EconomyRules {
         val specialized = spec.rods.any { it.rarityWeights != null } || spec.hooks.any { it.rarityWeights != null } || spec.baits.any { it.rarityWeights != null }
         val legacyBonus = (rod?.rareBonus ?: 0) + (hook?.rareBonus ?: 0) + (bait?.rareBonus ?: 0)
         return spec.fish.map { fish -> fish to when {
+            fish.rarity == "legendary" && (rod?.rarity != "legendary" || hook?.rarity != "legendary") -> 0
             fish.requiredHookId != null && fish.requiredHookId != hookId -> 0
             specialized -> maxOf(1L, fish.weight.toLong() * (rod?.rarityWeights?.get(fish.rarity) ?: 100) *
                 (hook?.rarityWeights?.get(fish.rarity) ?: 100) * (bait?.rarityWeights?.get(fish.rarity) ?: 100) / 1_000_000L).toInt()
@@ -212,6 +213,14 @@ object EconomyRules {
         if (collection) economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите текущий сбор припасов")
     }
 
+    fun productionStationSupported(stationId: String): Boolean = stationId != "quarry" && catalog.recipes.any { it.buildingId == stationId }
+
+    fun productionSlotCount(state: EconomyState, stationId: String): Int =
+        if (productionStationSupported(stationId)) (state.productionSlots[stationId] ?: 1).coerceIn(1, 3) else 1
+
+    fun productionSlotOffer(state: EconomyState, stationId: String): EconomyProductionSlotUpgrade? =
+        if (productionStationSupported(stationId)) catalog.productionSlots.upgrades.find { it.slots == productionSlotCount(state, stationId) + 1 } else null
+
     fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell") && command.totalPrice != 0L) invalidEconomy()
@@ -226,8 +235,10 @@ object EconomyRules {
                     economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание")
                 requireHome(state, recipe.requiredHomeLevel)
                 requireBuildings(state, recipe.requiredBuildings)
-                if (state.jobs.any { it.targetId == recipe.buildingId && it.kind in setOf("production", "construction") })
-                    economyFailure("ECONOMY_BUILDING_BUSY", "Здание занято. Получите готовый результат или дождитесь окончания работ.")
+                if (state.jobs.any { it.targetId == recipe.buildingId && it.kind == "construction" })
+                    economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат")
+                if (state.jobs.count { it.targetId == recipe.buildingId && it.kind == "production" } >= productionSlotCount(state, recipe.buildingId))
+                    economyFailure("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат")
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(recipe.seconds * command.quantity).toString(),
@@ -235,6 +246,18 @@ object EconomyRules {
                     collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) })
                 requireRewardCapacity(state, job.rewards)
                 spend(state, cost).copy(jobs = state.jobs + job) to "Производство началось. Результат дождётся вас."
+            }
+            "buy_production_slot" -> {
+                if (!productionStationSupported(command.targetId)) economyFailure("ECONOMY_PRODUCTION_STATION", "В этой постройке нет мест производства")
+                if ((state.buildings[command.targetId] ?: 0) <= 0) economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте нужное здание")
+                val offer = productionSlotOffer(state, command.targetId)
+                    ?: economyFailure("ECONOMY_PRODUCTION_SLOTS_MAX", "Все три места производства уже открыты")
+                requireHome(state, offer.requiredHomeLevel)
+                if (state.jobs.any { it.kind == "construction" && it.targetId == command.targetId })
+                    economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат")
+                if (state.wallet.pearls < offer.pricePearls) economyFailure("ECONOMY_PEARLS", "Не хватает жемчужин для нового места")
+                state.copy(wallet = state.wallet.copy(pearls = state.wallet.pearls - offer.pricePearls),
+                    productionSlots = state.productionSlots + (command.targetId to offer.slots)) to "Открыто новое место производства"
             }
             "start_collection" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")

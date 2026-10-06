@@ -14,6 +14,20 @@ const job = (id = "crop") => ({ id, kind: "production", targetId: "garden", reci
 const collecting = (id = "crop") => ({ ...job(id), collection: { kind: "berry_harvest", seconds: 8,
   startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() } });
 const snapshot = (jobs = [job()]) => ({ ownerPublicId: owner, revision: 1, jobs, inventory: {}, storage: { available: 200 } });
+
+test("parallel garden beds show the earliest crop but preserve one actor's requested harvest", () => {
+  const late = { ...job("late"), finishesAt: new Date(now + 600000).toISOString() }, ripe = job("ripe");
+  const saved = snapshot([late, ripe]);
+  assert.equal(economyGardenCrop(saved).jobId, "ripe");
+  assert.equal(economyGardenCrop(saved, "late").jobId, "late");
+  saved.jobs.push(collecting("gathering"));
+  assert.equal(economyGardenCrop(saved).jobId, "gathering");
+  assert.deepEqual(saved.jobs.map(entry => entry.id), ["late", "ripe", "gathering"], "projection must not reorder authoritative state");
+  const h = harness({ snapshot: saved });
+  assert.equal(h.controller.start("ripe"), false);
+  assert.equal(berryCollectionStatus(ripe, saved, now, h.controller.getSnapshot()).disabled, true);
+  assert.deepEqual(h.sent, []);
+});
 function harness(initial = {}, boundOwner = owner) {
   const controller = createGardenCollectionController(boundOwner), sent = [];
   let input = { snapshot: snapshot(), now, busy: false, uncertain: false, retryAt: 0, error: null, sceneAvailable: true, ...initial };

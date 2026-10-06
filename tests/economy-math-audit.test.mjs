@@ -102,14 +102,16 @@ test("rare materials have one shared earned-time clock and no invented NPC price
   assert.equal(report.profiles.filter(profile => profile.acquisition).length, 3);
 });
 
-test("fish references use earned catches and the legendary hook gate rather than an unavailable NPC purchase", () => {
+test("fish references disclose both legendary tackle startup costs and use the eligible catch portfolio", () => {
   const math = economicMath(readEconomyCatalog()), shark = math.profile("fish_shark");
   assert.equal(shark.sourceHome, 4); assert.equal(shark.referenceHome, 4);
   assert.equal(shark.catchReference.hookId, "leviathan_hook");
-  near(shark.catchReference.probability, 1 / 10494);
-  near(shark.slotMinutes.mochlik, 45 * 10494);
+  assert.equal(shark.catchReference.rodId, "starfall_rod");
+  near(shark.catchReference.probability, 8 / 3838);
+  near(shark.slotMinutes.mochlik, 45 * 3838 / 8);
   assert.equal(shark.coins, 0, "the permanent hook startup price is disclosed separately from every catch");
   assert.equal(shark.catchReference.hookPurchaseCoins, 260000);
+  assert.equal(shark.catchReference.rodPurchaseCoins, 360000);
   assert.equal(shark.catchReference.finiteGuarantee, false);
   assert.equal(math.profile("glow_bait").sourceHome, 2);
   assert.equal(math.profile("firefly_bait").sourceHome, 3);

@@ -47,7 +47,7 @@ export function Work({ economy, job, openPantry }: { economy: ReadyEconomy; job:
   const title = job.kind === "construction" ? `Обустройство · ур. ${job.targetLevel}` : economy.snapshot.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Производство";
   const itemId = Object.keys(job.rewards)[0];
   const working = productionIsActive(job, economy.now);
-  return <div className={styles.work} data-ready={status.ready || undefined}>
+  return <div className={styles.work} data-job-id={job.id} data-ready={status.ready || undefined}>
     <div className={styles.workTop}><span className={styles.workIcon} data-working={working || undefined}>{working ? <ProductionActivity job={job} now={economy.now} /> : job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon state={economy.snapshot} itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span></div><button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled} onClick={() => {
       if (locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled) return;
       if (berry && collection) collection.start(job.id);

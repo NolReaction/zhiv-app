@@ -1,6 +1,12 @@
 {
   "version": 3,
   "maxBatch": 10,
+  "productionSlots": {
+    "upgrades": [
+      { "slots": 2, "requiredHomeLevel": 2, "pricePearls": 1500 },
+      { "slots": 3, "requiredHomeLevel": 4, "pricePearls": 5000 }
+    ]
+  },
   "constructionSpeedup": {
     "secondsPerPearl": 300
   },

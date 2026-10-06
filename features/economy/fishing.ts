@@ -13,6 +13,13 @@ export function fishingTripCost(cost: EconomyCost, state: { fishing?: EconomyFis
 export function fishingCollectionDraws(routeId: string, catalog = economyCatalog.fishing!): number {
   return catalog.collectionDrawsByRoute?.[routeId] ?? 1;
 }
+/** Eligibility is applied before weighting, so no bait or multiplier bypasses it. */
+export function fishingIneligibility(fish: EconomyFishingCatalog["fish"][number], rodId: string, hookId: string,
+  catalog = economyCatalog.fishing!): "legendary_tackle" | "hook" | null {
+  if (fish.rarity === "legendary" && (catalog.rods.find(rod => rod.id === rodId)?.rarity !== "legendary"
+    || catalog.hooks.find(hook => hook.id === hookId)?.rarity !== "legendary")) return "legendary_tackle";
+  return fish.requiredHookId && fish.requiredHookId !== hookId ? "hook" : null;
+}
 /** Display odds and both servers use the same bounded integer weights. */
 export function fishingWeights(rodId: string, baitId: string | null, catalog = economyCatalog.fishing!, hookId = "bare_hook"): { itemId: string; weight: number }[] {
   const rod = catalog.rods.find(rod => rod.id === rodId), hook = catalog.hooks?.find(hook => hook.id === hookId),
@@ -21,7 +28,7 @@ export function fishingWeights(rodId: string, baitId: string | null, catalog = e
     || catalog.baits.some(gear => gear.rarityWeights);
   const legacyBonus = (rod?.rareBonus ?? 0) + (hook?.rareBonus ?? 0) + (bait?.rareBonus ?? 0);
   return catalog.fish.map(fish => ({ itemId: fish.itemId,
-    weight: fish.requiredHookId && fish.requiredHookId !== hookId ? 0 : specialized
+    weight: fishingIneligibility(fish, rodId, hookId, catalog) ? 0 : specialized
       ? Math.max(1, Math.floor(fish.weight * (rod?.rarityWeights?.[fish.rarity] ?? 100)
         * (hook?.rarityWeights?.[fish.rarity] ?? 100) * (bait?.rarityWeights?.[fish.rarity] ?? 100) / 1_000_000))
       : fish.weight + fish.affinity * legacyBonus }));

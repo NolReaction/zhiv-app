@@ -68,6 +68,51 @@ function button(html, text) {
 }
 const disabled = entry => /\bdisabled=/.test(entry.attributes);
 
+test("production slots show house and pearl gates, bought capacity, and keep all orders claimable", () => {
+  let state = snapshot({ buildings: { home: 1, garden: 1 }, wallet: { coins: 0, pearls: 10000 } });
+  let html = render("garden", controller({ snapshot: state }));
+  assert.match(html, /data-production-slots="garden"/);
+  assert.match(html, /Нужен дом 2 уровня/);
+  assert.equal(disabled(button(html, "Место 2")), true);
+  state.buildings.home = 2;
+  html = render("garden", controller({ snapshot: state }));
+  assert.equal(disabled(button(html, "Место 2")), false);
+  state.wallet.pearls = 1499;
+  html = render("garden", controller({ snapshot: state }));
+  assert.equal(disabled(button(html, "Место 2")), true);
+  assert.match(html, /Не хватает жемчужин: 1/);
+  state.wallet.pearls = 10000; state.productionSlots = { garden: 2 };
+  html = render("garden", controller({ snapshot: state }));
+  assert.match(html, /Нужен дом 4 уровня/);
+  assert.equal(disabled(button(html, "Место 3")), true);
+  state.buildings.home = 4;
+  assert.equal(disabled(button(render("garden", controller({ snapshot: state })), "Место 3")), false);
+  assert.equal(disabled(button(render("garden", controller({ snapshot: state, uncertain: true })), "Место 3")), true);
+  assert.equal(disabled(button(render("garden", controller({ snapshot: state, busy: true })), "Место 3")), true);
+  state.productionSlots.garden = 3;
+  state.jobs = [job({ id: "crop-a", finishesAt: new Date(now).toISOString() }), job({ id: "crop-b" }), job({ id: "crop-c" })];
+  html = render("garden", controller({ snapshot: state }));
+  assert.match(html, /3 \/ 3/);
+  assert.doesNotMatch(html, /Открыть место/);
+  for (const id of ["crop-a", "crop-b", "crop-c"]) assert.match(html, new RegExp(`data-job-id="${id}"`));
+  assert.match(html, /data-state="ready"/);
+  const upgraded = renderUpgrade("garden", controller({ snapshot: state }));
+  for (const id of ["crop-a", "crop-b", "crop-c"]) assert.match(upgraded, new RegExp(`data-job-id="${id}"`));
+  assert.doesNotMatch(render("quarry", controller({ snapshot: state })), /data-production-slots=/);
+});
+
+test("a second recipe uses the remaining station slot while ready results and construction still block", () => {
+  const recipe = economyCatalog.recipes.find(entry => entry.buildingId === "workshop");
+  const current = job({ targetId: "workshop", recipeId: recipe.id, rewards: recipe.rewards, finishesAt: new Date(now - 1).toISOString() });
+  const state = snapshot({ buildings: { home: 5, workshop: 5, warehouse: 5 }, inventory: { wood: 1000 }, wallet: { coins: 100000, pearls: 10000 }, productionSlots: { workshop: 2 }, jobs: [current] });
+  assert.equal(helpers.worldProductionReason(state, recipe), null);
+  state.jobs.push({ ...current, id: "second-order" });
+  assert.match(helpers.worldProductionReason(state, recipe), /Все места заняты/);
+  state.jobs.pop(); state.jobs[0].kind = "construction";
+  assert.match(helpers.worldProductionReason(state, recipe), /завершите улучшение/);
+  assert.equal(disabled(button(render("workshop", controller({ snapshot: state })), "Место 3")), true);
+});
+
 test("map objects group equipment by place, with campfire food and pantry at the house", () => {
   assert.deepEqual(helpers.worldStations.house.stationIds, ["home", "warehouse"]);
   assert.deepEqual(helpers.worldStations.workshop.stationIds, ["workshop", "kiln"]);

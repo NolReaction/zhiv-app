@@ -16,6 +16,8 @@ import { ConstructionSpeedup } from "./construction-speedup";
 import { useGardenCollection } from "./garden-collection-context";
 import { berryCollectionStatus } from "./garden-collection";
 import { ProductionActivity, productionIsActive } from "./production-activity";
+import { WorldProductionSlots } from "./world-production-slots";
+import { productionSlotCount } from "./production-slots";
 import { marketItemUnlocked, marketMinimumPrice, marketRequiredHomeLevel } from "./market-rules";
 import { BarterMarket } from "./barter-market";
 import styles from "./economy-panel.module.css";
@@ -92,7 +94,7 @@ function integer(value: string, maximum: number) {
 export function EconomyBalances({ wallet }: { wallet: EconomyView["wallet"] }) {
   return <div className={styles.wallet} aria-label="Кошелёк">
     <span><ItemIcon itemId="coins" size={18} /><strong>{number(wallet.coins)}</strong><span className={styles.walletLabel}>монет</span><span className={styles.sr}>Монеты: {number(wallet.coins)}</span></span>
-    <span title="Жемчуг ускоряет строительство. Покупка пока недоступна; особые товары появятся позже."><ItemIcon itemId="pearls" size={18} /><strong>{number(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {number(wallet.pearls)}. Можно ускорить строительство. Покупка пока недоступна.</span></span>
+    <span title="Жемчуг открывает места производства, ускоряет стройку и обновляет лавку Плёски."><ItemIcon itemId="pearls" size={18} /><strong>{number(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {number(wallet.pearls)}. Можно открыть места производства и ускорить строительство. Покупка жемчуга пока недоступна.</span></span>
   </div>;
 }
 
@@ -170,7 +172,7 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: Navi
       : <div className={styles.empty}><Sprout size={32} aria-hidden /><h3>Начните с маленького урожая</h3><p className={styles.muted}>Вырастите ягоды в саду и отправьте Мохлика за материалами. Монеты можно получить за товары на складе.</p><button className={styles.primary} onClick={() => navigate("production")}>Открыть производство<ArrowRight size={16} aria-hidden /></button></div>}
     <p className={styles.hint}><Clock3 size={15} aria-hidden />Дела продолжаются после выхода. Готовые результаты ждут вас и не портятся.</p>
     {(migration.coinsGranted > 0 || migration.woodGranted > 0 || migration.stoneGranted > 0) && <details className={styles.details}><summary>Прежние запасы перенесены</summary><p>Однократно получено: {number(migration.coinsGranted)} монет, {number(migration.woodGranted)} древесины и {number(migration.stoneGranted)} камня. Уже полученные улучшения сохранены.</p></details>}
-    <details className={styles.details}><summary>Для чего нужен жемчуг?</summary><p>Готовим особое оформление за жемчуг. Его покупка пока недоступна. Для нынешних построек нужны монеты и материалы.</p></details>
+    <details className={styles.details}><summary>Для чего нужен жемчуг?</summary><p>За жемчуг можно открыть второе и третье место производства, ускорить стройку, обновить лавку Плёски и купить некоторые вещи гардероба. Витрина жемчуга и золота находится в «Ещё» → «Магазин»; покупки там пока недоступны.</p></details>
   </div>;
 }
 
@@ -249,8 +251,9 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
   const maximum = Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, rewardCount)));
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
   const required = requirements(recipe, recipe);
-  const occupied = state.jobs.some(job => (job.kind === "production" || job.kind === "construction") && job.targetId === recipe.buildingId);
-  const reason = unmetRequirement(state, required) ?? (maximum < 1 ? "Для этого заказа нужно расширить склад" : occupied ? "Здание занято текущим заказом" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null);
+  const occupied = state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)
+    || state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId).length >= productionSlotCount(state, recipe.buildingId);
+  const reason = unmetRequirement(state, required) ?? (maximum < 1 ? "Для этого заказа нужно расширить склад" : occupied ? "Все места заняты или идёт улучшение" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null);
   const choices = Array.from({ length: maximum }, (_, index) => index + 1);
   return <article className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
     <Rewards state={state} value={recipe.rewards} quantity={quantity} />
@@ -270,14 +273,15 @@ function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; nav
   const stations = state.catalog.buildings.filter(building => state.catalog.recipes.some(recipe => recipe.buildingId === building.id));
   const station = stations.find(building => building.id === focusId)?.id ?? stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "";
   const selectId = useId();
-  const job = state.jobs.find(entry => entry.kind === "production" && entry.targetId === station);
+  const jobs = state.jobs.filter(entry => entry.kind === "production" && entry.targetId === station);
   const recipes = state.catalog.recipes.filter(recipe => recipe.buildingId === station);
   const open = recipes.filter(recipe => !unmetRequirement(state, requirements(recipe, recipe)));
   const locked = recipes.filter(recipe => unmetRequirement(state, requirements(recipe, recipe)));
-  return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>У каждого здания свой заказ. Все партии забираются вместе после его завершения.</p></div></div>
+  return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>До трёх заказов на каждом производстве. Каждый занимает своё место до получения результата.</p></div></div>
     <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
     {state.buildings[station] > 0 && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
-    {job && <JobCard economy={economy} job={job} navigate={navigate} />}
+    {state.buildings[station] > 0 && <WorldProductionSlots economy={economy} stationId={station} />}
+    {jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
     {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings", station)}>К постройке<ArrowRight size={15} aria-hidden /></button></div></div>}
     {open.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}
     {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.stack}>{locked.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}</div></details>}

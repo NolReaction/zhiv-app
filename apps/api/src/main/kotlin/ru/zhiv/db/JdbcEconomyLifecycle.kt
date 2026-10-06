@@ -86,6 +86,8 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
                 minOf(ECONOMY_MAX_ITEMS,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
         fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,
         fishingShop=a.fishingShop ?: b.fishingShop,
+        productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
+            maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
         rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.

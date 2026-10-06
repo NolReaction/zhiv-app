@@ -8,7 +8,10 @@ export function isBerryProduction(job: EconomyJob) {
 
 export function economyGardenCrop(snapshot: EconomyView | null, preferredJobId?: string | null): EconomySceneGarden | null | undefined {
   if (!snapshot) return undefined;
-  const jobs = snapshot.jobs.filter(isBerryProduction);
+  // Several beds may grow together. The one being gathered owns the actor;
+  // otherwise show the earliest crop so a later order cannot hide ripe berries.
+  const jobs = snapshot.jobs.filter(isBerryProduction)
+    .sort((left, right) => Date.parse(left.finishesAt) - Date.parse(right.finishesAt) || left.id.localeCompare(right.id));
   const job = jobs.find(item => item.id === preferredJobId) ?? jobs.find(item => item.collection?.startedAt) ?? jobs[0];
   return job ? { jobId: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt,
     collection: job.collection ?? undefined } : null;

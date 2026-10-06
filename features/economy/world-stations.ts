@@ -1,5 +1,6 @@
 import type { MapObjectSelection, WorldPlace } from "@/features/world/map-engine";
 import type { EconomyCatalog, EconomyCost, EconomyJob, EconomyView } from "./model";
+import { productionSlotCount } from "./production-slots";
 
 export type WorldStationDefinition = { label: string; stationIds: readonly string[]; future?: string };
 export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> = {
@@ -80,7 +81,8 @@ export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, q
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
   if (recipe.buildingId === "quarry") return "Добыча доступна в вылазках Мохлика";
-  if (state.jobs.some(job => ["production", "construction"].includes(job.kind) && job.targetId === recipe.buildingId)) return "Место занято: сначала заберите результат";
+  if (state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)) return "Сначала завершите улучшение";
+  if (state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId).length >= productionSlotCount(state, recipe.buildingId)) return "Все места заняты: сначала заберите результат";
   if (quantity > worldBatchLimit(state, recipe)) return "Уменьшите партию или расширьте кладовую";
   if (worldCostShortfalls(state, recipe.cost, quantity).length) return "Не хватает материалов или монет";
   return null;

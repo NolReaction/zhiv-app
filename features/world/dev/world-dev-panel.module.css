@@ -42,6 +42,7 @@
 .tabs, .subtabs { display: grid; flex-shrink: 0; gap: 3px; padding: 5px 8px; border-bottom: 1px solid var(--dev-line); }
 .tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .subtabs { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding-top: 4px; padding-bottom: 4px; background: #122118; }
+.subtabs[data-tabs-count='5'] { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .root .drawer :is(.tabs, .subtabs) button { min-width: 0; padding: 6px 2px; border-color: transparent; border-radius: 7px; background: transparent; font-size: 12px; line-height: 1.2; }
 .root .drawer .tabs button[aria-selected='true'] { color: #f7ffe7; background: #425a35; border-color: #b5cd86; font-weight: 700; }
 .root .drawer .subtabs button[aria-selected='true'] { background: #2c4230; color: #e3edbf; box-shadow: inset 0 -2px #b5cd86; }

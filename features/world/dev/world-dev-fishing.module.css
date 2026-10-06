@@ -1,0 +1,32 @@
+.root { display: grid; gap: 12px; min-width: 0; }
+.note, .formula p { margin: 0; color: var(--dev-muted, #bbc9b5); font-size: 12px; line-height: 1.5; }
+.selectors { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.selectors label { display: grid; gap: 5px; min-width: 0; font-size: 11px; color: var(--dev-muted, #bbc9b5); }
+.selectors select { width: 100%; min-width: 0; min-height: 40px; padding: 6px; color: #eef2de; border: 1px solid var(--dev-line, #465741); border-radius: 8px; background: #12231a; font-size: 12px; }
+.summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.summary > div { min-width: 0; padding: 8px; border-radius: 8px; background: #24392b; }
+.summary dt, .result dt { color: var(--dev-muted, #bbc9b5); font-size: 10px; }
+.summary dd { margin: 3px 0 0; font-size: 13px; }
+.groups { display: grid; gap: 8px; }
+.group { min-width: 0; border: 1px solid var(--dev-line, #465741); border-radius: 10px; overflow: hidden; }
+.group summary { display: flex; gap: 8px; align-items: center; padding: 10px 8px; min-height: 44px; cursor: pointer; font-size: 10px; list-style: none; }
+.group summary::-webkit-details-marker { display: none; }
+.group summary::after { content: "+"; color: #c9daaf; }
+.group[open] summary::after { content: "−"; }
+.group summary strong { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+.factors { margin: 0; padding: 0 8px 9px; color: #d7e4b5; font-size: 10px; }
+.fish { display: grid; gap: 6px; padding: 10px 8px; border-top: 1px solid var(--dev-line, #465741); }
+.fish header { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.fish header strong { min-width: 0; overflow-wrap: anywhere; }
+.fish header b { flex-shrink: 0; color: #e0eabc; font-variant-numeric: tabular-nums; }
+.weight, .lock { margin: 0; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.weight { color: var(--dev-muted, #bbc9b5); }
+.lock { color: #eed4a1; }
+.result { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.result dd { margin: 3px 0 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+.formula { display: grid; gap: 8px; }
+.formula summary { cursor: pointer; min-height: 36px; font-size: 12px; padding-block: 8px; }
+.formula p { margin-bottom: 8px; }
+.root :is(select, summary):focus-visible { outline: 2px solid #cde8a4; outline-offset: 2px; }
+@media (max-width: 600px) { .selectors select { font-size: 16px; } }
+@media (max-width: 360px) { .selectors { grid-template-columns: minmax(0, 1fr); } }

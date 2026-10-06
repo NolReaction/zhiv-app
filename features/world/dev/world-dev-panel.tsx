@@ -15,6 +15,7 @@ import type { WorldController } from "../use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
+import { WorldDevFishing } from "./world-dev-fishing";
 import { useForestObservation } from "../use-forest-observation";
 import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
@@ -134,7 +135,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
 const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"]] as const;
 const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
-const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["app", "Приложение"]] as const;
+const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
 type SceneTab = typeof SCENE_TABS[number][0];
@@ -157,7 +158,7 @@ export function WorldDevTabs<T extends string>({ id, label, tabs, selected, onSe
     const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
     buttons?.[next]?.focus({ preventScroll: true });
   }
-  return <div className={secondary ? styles.subtabs : styles.tabs} role="tablist" aria-label={label}>
+  return <div className={secondary ? styles.subtabs : styles.tabs} role="tablist" aria-label={label} data-tabs-count={tabs.length}>
     {tabs.map(([tab, title], index) => <button key={tab} type="button" role="tab" id={`${id}-tab-${tab}`}
       aria-selected={selected === tab} aria-controls={`${id}-panel-${tab}`} tabIndex={selected === tab ? 0 : -1}
       onClick={() => onSelect(tab)} onKeyDown={event => navigate(event, index)}>{title}</button>)}
@@ -349,6 +350,10 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   const cookingReason = page === "animation" ? unavailable({ kind: "cooking", action: "sequence" }) : null;
   return <div className={styles.pageContent}>
+    {page === "fishing" && <>
+      <h3 className={styles.pageTitle}>Расчёт улова</h3>
+      <WorldDevFishing state={economy?.snapshot} />
+    </>}
     {page === "cheats" && <>
       <h3 className={styles.pageTitle}>Читы хозяйства</h3>
       <WorldDevCheats world={world} economy={economy} previewBuildings={state.previewBuildings}

@@ -63,6 +63,47 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `production slot purchases persist and lock one debit across replay and revision races`() = runBlocking<Unit> {
+        val p = player(); val stranger = player(); economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(original.copy(
+            wallet = EconomyWallet(0, 20_000), buildings = original.buildings + mapOf("home" to 4, "workshop" to 1))), p.id)
+        val buy = command(p, economy.snapshot(p.hash), "buy_production_slot", "workshop")
+        val replies = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, buy) } }.awaitAll() }
+        assertEquals(1, replies.count { it.replayed })
+        assertEquals(mapOf("workshop" to 2), economy.snapshot(p.hash).productionSlots)
+        assertEquals(18_500L, economy.snapshot(p.hash).wallet.pearls)
+        assertEquals("-1500", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='buy_production_slot'", p.id))
+        assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, buy) }.code)
+        assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> { economy.command(p.hash, buy.copy(targetId = "garden")) }.code)
+        val next = command(p, economy.snapshot(p.hash), "buy_production_slot", "workshop")
+        val raced = coroutineScope { List(2) { async(Dispatchers.IO) {
+            runCatching { economy.command(p.hash, next.copy(requestId = UUID.randomUUID().toString())) }
+        } }.awaitAll() }
+        assertEquals(1, raced.count { it.isSuccess })
+        assertEquals(3, economy.snapshot(p.hash).productionSlots["workshop"])
+        assertEquals(13_500L, economy.snapshot(p.hash).wallet.pearls)
+        assertEquals(3, source.connection.use { readEconomyProfile(it, p.id).state.productionSlots["workshop"] })
+    }
+
+    @Test fun `merging accounts preserves maximum purchased station slots without refunding duplicates`() = runBlocking<Unit> {
+        val a = player(); val b = player()
+        for ((p, slots) in listOf(a to mapOf("workshop" to 2, "garden" to 3), b to mapOf("workshop" to 3, "kiln" to 2))) {
+            economy.snapshot(p.hash)
+            val state = source.connection.use { readEconomyProfile(it, p.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(state.copy(
+                wallet = EconomyWallet(0, 100), productionSlots = slots)), p.id)
+        }
+        source.connection.use { c ->
+            c.autoCommit = false
+            listOf(a.id, b.id).sorted().forEach { id -> c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", id) { true } }
+            mergeEconomyProfiles(c, a.id, b.id); c.commit()
+        }
+        val merged = economy.snapshot(a.hash)
+        assertEquals(mapOf("workshop" to 3, "garden" to 3, "kiln" to 2), merged.productionSlots)
+        assertEquals(200L, merged.wallet.pearls)
+    }
+
     @Test fun `clothing purchase receipts lock both balances and legacy equipment ownership across racing requests`() = runBlocking<Unit> {
         val p = player(); val stranger = player(); val world = JdbcWorldRepository(source)
         economy.snapshot(p.hash)

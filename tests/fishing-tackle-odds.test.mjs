@@ -7,13 +7,13 @@ import { economicMath } from "../scripts/lib/economy-math.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { economyCatalog, economyFishingCatalogSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { fishingOdds, selectFishingCatch } = await vite.ssrLoadModule("/features/economy/fishing.ts");
+const { fishingOdds, fishingWeights, selectFishingCatch } = await vite.ssrLoadModule("/features/economy/fishing.ts");
 after(() => vite.close());
 const catalog = economyCatalog.fishing;
 const baits = [null, ...catalog.baits.map(bait => bait.itemId)];
 const odds = (rodId, hookId, baitId) => fishingOdds({}, catalog, { rodId, hookId, baitId });
 
-test("all 180 tackle combinations normalize and agree with the economic audit; only the best hook can catch a shark", () => {
+test("all 180 tackle combinations normalize and agree with the audit; legendary fish need both legendary gear pieces", () => {
   const math = economicMath(economyCatalog);
   const shark = catalog.fish.find(fish => fish.itemId === "fish_shark");
   const bestHook = catalog.hooks.reduce((best, hook) => hook.rareBonus > best.rareBonus ? hook : best);
@@ -23,7 +23,7 @@ test("all 180 tackle combinations normalize and agree with the economic audit; o
     const chances = odds(rod.id, hook.id, baitId), mathChances = math.catchPortfolio(rod.id, baitId, "shore", hook.id).probabilities;
     assert.ok(Math.abs(chances.reduce((sum, fish) => sum + fish.probability, 0) - 1) < 1e-12);
     for (const fish of chances) assert.equal(fish.probability, mathChances[fish.itemId]);
-    assert.equal(chances.find(fish => fish.itemId === shark.itemId).probability > 0, hook.id === bestHook.id);
+    assert.equal(chances.find(fish => fish.itemId === shark.itemId).probability > 0, hook.rarity === "legendary" && rod.rarity === "legendary");
     combinations++;
   }
   assert.equal(combinations, 180);
@@ -42,10 +42,26 @@ test("each specialist rod and hook wins a distinct collection target instead of 
       assert.ok(target > classChance(odds(other.id, hook.id, baitId), roles[rod.id]), `${rod.id} must keep its ${roles[rod.id]} niche`);
   }
   for (const rod of catalog.rods) for (const baitId of baits) for (const hook of catalog.hooks.filter(hook => roles[hook.id])) {
+    if (roles[hook.id] === "legendary" && rod.rarity !== "legendary") continue;
     const target = classChance(odds(rod.id, hook.id, baitId), roles[hook.id]);
     for (const other of catalog.hooks.filter(other => other.id !== hook.id))
       assert.ok(target > classChance(odds(rod.id, other.id, baitId), roles[hook.id]), `${hook.id} must keep its ${roles[hook.id]} niche`);
   }
+});
+
+test("the rarity gate applies before normalization to every legendary species, with or without a named hook", () => {
+  const spec = structuredClone(catalog);
+  spec.fish = spec.fish.map(fish => fish.itemId === "fish_shark" ? { ...fish, requiredHookId: null } : fish);
+  for (const [rodId, hookId] of [["reed_rod", "leviathan_hook"], ["starfall_rod", "bare_hook"], ["missing_rod", "leviathan_hook"]]) {
+    const withLegendary = fishingWeights(rodId, "firefly_bait", spec, hookId);
+    assert.equal(withLegendary.find(fish => fish.itemId === "fish_shark").weight, 0);
+    const withoutLegendary = { ...spec, fish: spec.fish.filter(fish => fish.rarity !== "legendary") };
+    assert.deepEqual(fishingOdds({}, spec, { rodId, hookId, baitId: "firefly_bait" }).filter(fish => fish.itemId !== "fish_shark"),
+      fishingOdds({}, withoutLegendary, { rodId, hookId, baitId: "firefly_bait" }));
+  }
+  assert.ok(fishingWeights("starfall_rod", "firefly_bait", spec, "leviathan_hook").find(fish => fish.itemId === "fish_shark").weight > 0);
+  const wrongRequiredHook = { ...spec, fish: spec.fish.map(fish => fish.itemId === "fish_shark" ? { ...fish, requiredHookId: "tide_hook" } : fish) };
+  assert.equal(fishingWeights("starfall_rod", "firefly_bait", wrongRequiredHook, "leviathan_hook").find(fish => fish.itemId === "fish_shark").weight, 0);
 });
 
 test("bait focuses on a class, with a downside and no expected sale-profit from adding bait on either route", () => {

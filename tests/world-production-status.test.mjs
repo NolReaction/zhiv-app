@@ -79,6 +79,20 @@ test("workshop and kiln share one host and report all jobs including a simultane
   assert.equal(saved.jobs.length, 2, "the badge only opens a station and never starts or claims work");
 });
 
+test("three slots per station remain visible behind one workshop host badge", () => {
+  const jobs = ["workshop", "kiln"].flatMap(station => Array.from({ length: 3 }, (_, index) => job(station, {
+    id: `${station}-${index}`, finishesAt: iso(index ? finish + index * 1000 : start + 1000),
+  })));
+  const saved = state(jobs), now = start + 2000, groups = mapProductionGroups(saved, now);
+  assert.equal(groups.length, 1); assert.equal(groups[0].entries.length, 6);
+  assert.equal(groups[0].primary.phase, "ready");
+  assert.deepEqual(new Set(groups[0].entries.map(entry => entry.jobId)), new Set(jobs.map(entry => entry.id)));
+  const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors: [anchor("workshop")], onOpen() {} }));
+  assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
+  assert.match(html, /\+5/);
+  assert.match(html, /Выжечь древесный уголь/); assert.match(html, /Распилить доски/);
+});
+
 test("a finished kiln upgrade takes the shared host shortcut and keeps the workshop order visible", () => {
   const construction = { ...job("kiln"), id: "upgrade", kind: "construction", targetLevel: 2, finishesAt: iso(start + 20_000) };
   const saved = state([job("workshop"), construction, job("dryer")]), now = start + 30_000;

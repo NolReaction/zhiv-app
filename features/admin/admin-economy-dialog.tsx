@@ -12,7 +12,7 @@ import styles from "./admin-economy.module.css";
 
 const ledgerLabels: Record<string, string> = {
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
-  start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
+  buy_production_slot: "Открытие места производства", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
   start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата",
   sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
   equip_fishing_bait: "Выбор наживки", start_fishing: "Начало рыбалки", market_create: "Выставление на рынок",
@@ -73,7 +73,7 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
         <Quantities items={state.inventory} catalog={catalog} />
       </section>
       <section className={styles.panel}><div className={styles.heading}><h3>Здания</h3></div><ul className={styles.buildings}>
-        {catalog.buildings.map(building => <li key={building.id}><span>{building.name}</span><strong>{(state.buildings[building.id] ?? 0) > 0 ? `Уровень ${economyCount(state.buildings[building.id])}` : "Не построено"}</strong></li>)}
+        {catalog.buildings.map(building => <li key={building.id}><span>{building.name}</span><strong>{(state.buildings[building.id] ?? 0) > 0 ? `Уровень ${economyCount(state.buildings[building.id])}${catalog.recipes.some(recipe => recipe.buildingId === building.id) ? ` · мест: ${state.productionSlots?.[building.id] ?? 1}` : ""}` : "Не построено"}</strong></li>)}
         {Object.entries(state.buildings).filter(([id]) => !catalog.buildings.some(building => building.id === id)).map(([id, level]) => <li key={id}><span>{buildingName(id, catalog)}</span><strong>Уровень {economyCount(level)}</strong></li>)}
       </ul></section>
       <section className={styles.panel}><div className={styles.heading}><h3>Текущие задания · {economyCount(state.jobs.length)}</h3><p>Статусы и оставшееся время рассчитаны на время серверного снимка.</p></div>

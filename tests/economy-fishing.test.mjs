@@ -158,7 +158,7 @@ test("legacy shore claims count actual fish, whereas a forged metadata payload o
   assert.deepEqual(read(p).fishing.catches, { fish: 4 });
 });
 
-test("twelve species cover five rarities, with the shark exclusive to the strongest hook", () => {
+test("twelve species cover five rarities, with the shark available to the legendary rod and hook pair", () => {
   const config = model.economyCatalog.fishing;
   assert.equal(config.fish.length, 12);
   assert.deepEqual([...new Set(config.fish.map(fish => fish.rarity))], ['common', 'uncommon', 'rare', 'epic', 'legendary']);

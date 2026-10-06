@@ -31,7 +31,10 @@ export function forestProductionFrames(snapshot: EconomySceneProduction | null |
   if (!snapshot || !showBuildings || !Number.isFinite(now)) return [];
   const time = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
   const result: ForestProductionFrame[] = [], used = new Set<string>();
-  const jobs = [...snapshot.jobs].sort((a, b) => Date.parse(a.finishesAt) - Date.parse(b.finishesAt) || a.id.localeCompare(b.id));
+  // A building keeps animating while any slot works. Ready orders remain in the
+  // map badge and menu, but must not extinguish another slot's cooking/fire.
+  const jobs = [...snapshot.jobs].sort((a, b) => Number(Date.parse(a.finishesAt) <= now) - Number(Date.parse(b.finishesAt) <= now)
+    || Date.parse(a.finishesAt) - Date.parse(b.finishesAt) || a.id.localeCompare(b.id));
   for (const job of jobs) {
     const start = Date.parse(job.startedAt), finish = Date.parse(job.finishesAt);
     if (used.has(job.stationId) || !Number.isInteger(job.stationLevel) || job.stationLevel <= 0

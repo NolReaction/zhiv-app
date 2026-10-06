@@ -93,8 +93,8 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
   const name = state ? stationName(state, stationId) : building?.name ?? "Улучшение";
   const current = state?.buildings[stationId] ?? 0;
   const target = building?.levels.find(level => level.level === current + 1);
-  const job = state?.jobs.find(entry => entry.targetId === stationId && (entry.kind === "construction" || entry.kind === "production"));
-  const construction = job?.kind === "construction" ? job : null;
+  const production = state?.jobs.filter(entry => entry.targetId === stationId && entry.kind === "production") ?? [];
+  const construction = state?.jobs.find(entry => entry.targetId === stationId && entry.kind === "construction");
   const readyEconomy: ReadyEconomy | null = state ? { ...economy, snapshot: state } : null;
   const reason = state && target ? worldConstructionReason(state, stationId, target) : null;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
@@ -118,7 +118,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
       {readyEconomy && construction && <section className={styles.activeWork} aria-label="Ход улучшения"><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><ConstructionSpeedup key={construction.id} economy={readyEconomy} job={construction} /><p className={styles.muted}>Материалы оплачены. Работа продолжится после выхода.</p></section>}
       {!state ? <div className={styles.loading} role="status"><RefreshCw size={24} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={menuStyles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые улучшения доступны после подтверждения." : economy.error}</p><button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
-        {readyEconomy && job?.kind === "production" && <section className={styles.section} aria-label="Текущий заказ"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите заказ</h3><Work economy={readyEconomy} job={job} openPantry={onOpenPantry} /></section>}
+        {readyEconomy && production.length > 0 && <section className={styles.section} aria-label="Текущие заказы"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите {production.length === 1 ? "заказ" : "заказы"}</h3>{production.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={onOpenPantry} />)}</section>}
         {target ? <>
           <UpgradeUnlocks state={state} stationId={stationId} target={target} navigation={navigation} />
           {!construction && <section className={`${styles.section} ${styles.costCard}`} aria-label="Подготовка к улучшению">

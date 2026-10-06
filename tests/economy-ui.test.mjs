@@ -78,7 +78,7 @@ test("berry production owns its station and collection opens only after the serv
   let html = render("production", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Начать · 15 мин")), true);
   assert.equal(disabled(button(html, "Растут: Вырастить ягоды")), true);
-  assert.match(html, /Здание занято текущим заказом/);
+  assert.match(html, /Все места заняты или идёт улучшение/);
   state.jobs[0].finishesAt = new Date(now).toISOString();
   html = render("production", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), false);
@@ -174,7 +174,7 @@ test("conversion is disclosed once as history and premium balance never exposes 
   const html = render("overview", controller({ snapshot: snapshot({ migration: { version: 1, coinsGranted: 1260, woodGranted: 10, stoneGranted: 4 } }) }));
   assert.match(html, /Прежние запасы перенесены/);
   assert.match(html, /1(?:\s|&nbsp;|\u202f)260 монет, 10 древесины и 4 камня/);
-  assert.match(html, /покупка пока недоступна/i);
+  assert.match(html, /покупка жемчуга пока недоступна/i);
   assert.ok(buttons(html).every(entry => !/Купить жемчуг|Пополнить/.test(entry.text)));
   const wallet = renderToStaticMarkup(createElement(EconomyBalances, { wallet: { coins: 250, pearls: 0 } }));
   assert.match(wallet, /Монеты: 250/);
@@ -359,4 +359,19 @@ test("generic economy will not offer a mine upgrade during an unclaimed actor sh
   const html = render("buildings", controller({ snapshot: state }), "quarry");
   assert.match(html, /Дождитесь Мохлика и заберите добычу/);
   assert.equal(disabled(button(html, "Улучшить до ур. 2: Каменоломня")), true);
+});
+
+
+test("economy production hub exposes every slot job and allows the remaining capacity", () => {
+  const jobs = [job({ id: "11111111-1111-4111-8111-111111111111", finishesAt: new Date(now - 1).toISOString() }),
+    job({ id: "22222222-2222-4222-8222-222222222222" })];
+  const state = snapshot({ buildings: { home: 4, garden: 1, warehouse: 1 }, productionSlots: { garden: 3 }, jobs });
+  let html = render("production", controller({ snapshot: state }), "garden");
+  assert.equal(disabled(button(html, "Начать · 15 мин")), false);
+  assert.equal(buttons(html).filter(entry => /(?:Собрать|Растут): Вырастить ягоды/.test(entry.text)).length, 2);
+  assert.match(html, /data-production-slots="garden"/);
+  state.jobs.push(job({ id: "33333333-3333-4333-8333-333333333333" }));
+  html = render("production", controller({ snapshot: state }), "garden");
+  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
+  assert.equal(buttons(html).filter(entry => /(?:Собрать|Растут): Вырастить ягоды/.test(entry.text)).length, 3);
 });

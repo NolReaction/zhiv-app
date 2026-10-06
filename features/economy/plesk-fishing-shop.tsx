@@ -6,7 +6,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/fishing-rod-icon";
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
-import { fishingOdds, fishingState } from "./fishing";
+import { fishingIneligibility, fishingOdds, fishingState } from "./fishing";
 import { canRefreshFishingShop } from "./fishing-shop";
 import { fishDiscovered, PlayerItemIcon } from "./fish-discovery";
 import { FishRarityBadge, FISH_RARITY_LEVELS } from "./fish-rarity";
@@ -37,6 +37,7 @@ function offerLive(state: EconomyView, now: number, offer?: Offer) {
 export function PleskCatchOdds({ state, catalog, override, preview = false }: { state: EconomyView; catalog: FishingCatalog;
   override?: Parameters<typeof fishingOdds>[2]; preview?: boolean }) {
   const odds = fishingOdds(state, catalog, override);
+  const gear = fishingState(state);
   const byRarity = FISH_RARITY_LEVELS.map(rarity => ({ rarity, probability: odds.filter(odd => catalog.fish.find(fish => fish.itemId === odd.itemId)!.rarity === rarity)
     .reduce((sum, odd) => sum + odd.probability, 0) }));
   return <section className={styles.odds} aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
@@ -45,7 +46,8 @@ export function PleskCatchOdds({ state, catalog, override, preview = false }: { 
     <details><summary>Шансы всех видов</summary><p className={styles.hint}>Каждый особый улов проверяется отдельно. Их количество зависит от длительности рыбалки; остальная партия — обычная рыба.</p>
       <dl className={styles.oddsList}>{odds.map(odd => {
         const fish = catalog.fish.find(entry => entry.itemId === odd.itemId)!;
-        return <div key={odd.itemId} data-fish-odds={odd.itemId}><dt><span>{fishDiscovered(state, odd.itemId) ? itemName(state, odd.itemId) : "Неизвестная рыба"}</span><FishRarityBadge rarity={fish.rarity} />{odd.probability === 0 && <small>Нужен особый крючок</small>}</dt><dd>{percent(odd.probability)}</dd></div>;
+        const reason = fishingIneligibility(fish, override?.rodId ?? gear.equippedRodId, override?.hookId ?? gear.equippedHookId, catalog);
+        return <div key={odd.itemId} data-fish-odds={odd.itemId}><dt><span>{fishDiscovered(state, odd.itemId) ? itemName(state, odd.itemId) : "Неизвестная рыба"}</span><FishRarityBadge rarity={fish.rarity} />{reason && <small>{reason === "legendary_tackle" ? "Нужны легендарные удочка и крючок" : "Нужен особый крючок"}</small>}</dt><dd>{percent(odd.probability)}</dd></div>;
       })}</dl>
     </details>
     {preview && <small>Эти шансы будут после выбора снасти перед отправлением.</small>}

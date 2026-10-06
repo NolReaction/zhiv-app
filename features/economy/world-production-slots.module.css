@@ -1,0 +1,19 @@
+.slots { display: grid; gap: 7px; min-width: 0; padding: 9px; border: 1px solid #c2b893; border-radius: 10px; background: #eee3c5; color: #394d3e; }
+.heading { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; }
+.heading strong { font-weight: 600; }
+.heading > span { font-size: 10px; font-variant-numeric: tabular-nums; }
+.track { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.slot { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 34px; min-width: 0; padding: 4px 2px; border: 1px solid #bec397; border-radius: 7px; background: #e2e5c5; font-size: 11px; }
+.slot svg { flex: 0 0 auto; }
+.slot[data-state="locked"] { color: #76765f; border-style: dashed; border-color: #c2b893; background: #e1d6b8; }
+.slot[data-state="working"] { color: #f8ebcd; border-color: #617e54; background: #577049; }
+.slot[data-state="ready"] { color: #365237; border-color: #a2ae73; background: #d4dfa8; }
+.slots.slots .buy { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 36px; padding: 7px 8px; border: 1px solid #989dbb; border-radius: 7px; background: #e1dfef; color: #525273; font: inherit; font-size: 11px; cursor: pointer; touch-action: manipulation; box-shadow: 0 2px 0 #aaa4bb; transition: transform 100ms, box-shadow 100ms; }
+.buy > span, .buy > strong { display: flex; align-items: center; gap: 4px; }
+.buy > strong { font-variant-numeric: tabular-nums; font-size: 11px; }
+.slots .buy:hover:not(:disabled) { background: #eeebfa; }
+.slots .buy:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.slots .buy:focus-visible { outline: 2px solid #62658d; outline-offset: 2px; }
+.slots .buy:disabled { cursor: default; opacity: .58; box-shadow: none; }
+.hint { margin: 0; color: #776044; font-size: 10px; }
+@media (prefers-reduced-motion: reduce) { .slots .buy { transition: none; } }

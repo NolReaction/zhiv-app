@@ -1,5 +1,6 @@
 import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/wardrobe";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
+import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
 
 import { refreshFishingShop, fishingShopExpired } from "./fishing-shop";
 import { fishingState, fishingTripCost, fishingCollectionDraws, selectFishingCatch } from "./fishing";
@@ -112,12 +113,28 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if ((state.buildings[recipe.buildingId] ?? 0) < recipe.buildingLevel) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
       requireHome(state, recipe.requiredHomeLevel);
       requireBuildings(state, recipe.requiredBuildings);
-      if (state.jobs.some(job => job.targetId === recipe.buildingId && ["production", "construction"].includes(job.kind))) fail("ECONOMY_BUILDING_BUSY", "Здание уже занято. Заберите готовый результат");
+      if (state.jobs.some(job => job.targetId === recipe.buildingId && job.kind === "construction"))
+        fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат");
+      if (state.jobs.filter(job => job.targetId === recipe.buildingId && job.kind === "production").length >= productionSlotCount(state, recipe.buildingId))
+        fail("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат");
       createJob({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
         ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}),
         rewards: Object.fromEntries(Object.entries(recipe.rewards).map(([item, amount]) => [item, amount * command.quantity])) },
       recipe.seconds * command.quantity, scaledEconomyCost(recipe.cost, command.quantity));
       return "Производство запущено";
+    }
+    case "buy_production_slot": {
+      if (!productionStationSupported(command.targetId)) return fail("ECONOMY_PRODUCTION_STATION", "В этой постройке нет мест производства");
+      if (!(state.buildings[command.targetId] > 0)) return fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте нужное здание");
+      const offer = productionSlotOffer(state, command.targetId);
+      if (!offer) return fail("ECONOMY_PRODUCTION_SLOTS_MAX", "Все три места производства уже открыты");
+      requireHome(state, offer.requiredHomeLevel);
+      if (state.jobs.some(job => job.kind === "construction" && job.targetId === command.targetId))
+        return fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат");
+      if (state.wallet.pearls < offer.pricePearls) return fail("ECONOMY_PEARLS", "Не хватает жемчужин для нового места");
+      state.wallet.pearls -= offer.pricePearls;
+      state.productionSlots = { ...state.productionSlots, [command.targetId]: offer.slots };
+      return "Открыто новое место производства";
     }
     case "start_collection": {
       const job = state.jobs.find(item => item.id === command.targetId);

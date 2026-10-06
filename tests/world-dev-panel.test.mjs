@@ -90,7 +90,7 @@ test("each DEV page renders only its controls, with no simulation or account mut
     plesk: "Плёска · рыбачка и торговка",
     scenarios: "Готовые сценарии", scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
     world: "Погода и живность", buildings: "Постройки", cheats: "Читы хозяйства", ai: "Мышление и память",
-    overlays: "Разметка сцены", routes: "Навигация и входы", app: "Приложение и тесты",
+    overlays: "Разметка сцены", routes: "Навигация и входы", fishing: "Расчёт улова", app: "Приложение и тесты",
   };
   for (const [page, title] of Object.entries(expected)) {
     const { markup, elements, calls } = panel(page);

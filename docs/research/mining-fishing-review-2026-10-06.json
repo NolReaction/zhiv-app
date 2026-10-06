@@ -3,12 +3,12 @@
   "reviewDate": "2026-10-06",
   "catalogVersion": 3,
   "sourceHashes": {
-    "../apps/api/src/main/resources/world/economy-catalog.json": "b2bf9d1fbaa0a46602bac80fd7b521849de1bea0cb618d41e17e1c187bbd2926",
-    "../features/economy/rules.ts": "b1f8c233aeeebd2a7968afd08d3378e81cf86a25d8834a540818881e8222e71c",
-    "../features/economy/fishing.ts": "c93033314571dc4e67e9a34d468579a9811289153f7918f468a750c069ee160e",
-    "./simulate-player-journey.mjs": "c972305b9fcb9f58edc3e62bdc4a1bb6b63a51f731f4dfce8fe99bd0ef9fd2c0",
+    "../apps/api/src/main/resources/world/economy-catalog.json": "048178854b43d1c34ee3fe971ea7eecd8f825ad361fc58c9c0c331ab2152bf5a",
+    "../features/economy/rules.ts": "dc86389f0317b7286160d8be4292fc6fb3779dc8f22202b241be78633f5b674f",
+    "../features/economy/fishing.ts": "8ef6b025f8b1e48f599390c38e9fb72aef701ff28f233009a3d9b5ad198f6ead",
+    "./simulate-player-journey.mjs": "3d853e2238f6665862aada2c19972da0df054c8c26edc1448ad029a97a783b91",
     "./simulate-player-joint.mjs": "f50dc7b587728f3ca5f4997fccdda0095b006b0d939126c685a6d052bd33f990",
-    "./lib/economy-math.mjs": "14013045d6c6eab83ea00ce0695462ef213a88853fc6a31f97aa5435b00eb00b"
+    "./lib/economy-math.mjs": "0fa53d161466fa3c0b9d8bc91accfae24ba503b06c7a0137d1db71fe9e84db5e"
   },
   "method": {
     "rules": "Real TypeScript commands, costs, claims, storage capacity and actor/building locks via Vite SSR; no gameplay grants",
