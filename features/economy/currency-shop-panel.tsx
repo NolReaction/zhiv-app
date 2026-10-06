@@ -40,7 +40,7 @@ export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
         else return;
         event.preventDefault(); setPage(pages[next].id); tabs.current[next]?.focus();
       }}><entry.icon size={18} aria-hidden="true" />{entry.label}</button>)}</div>
-    <p className={styles.preview} id={`${id}-preview`}>Витрина готовится к открытию. Покупки и обмен пока недоступны.</p>
+    <p className={styles.preview} id={`${id}-preview`}>Витрина готовится к открытию. Покупки и обмен пока недоступны. Пакеты и бонусы ещё уточняются.</p>
     <div className={styles.page} role="tabpanel" id={`${id}-page`} aria-labelledby={`${id}-${page}`} tabIndex={0}>
       {page === "pearls" ? <>
         <div className={styles.heading}><h3>Жемчуг</h3><p>Для ускорений, новых слотов и особенных вещей</p></div>

@@ -61,7 +61,8 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
             val blocked=when { pearls==0L -> "no_reward"; ownership==null -> "not_earned"; !ownership.eligible -> "admin_grant"; else -> null }
             AchievementRewardView(id,level,target,pearls,ownership?.at,claimedAt,ownership!=null && ownership.eligible && pearls>0 && claimedAt==null,blocked)
         } }
-        return ProgressionRewardsView(actor.publicId,now.toString(),daily=ProgressionRewardRules.dailyView(daily(c,actor.id),now),achievementRewards=rows)
+        val homeLevel=readEconomyProfile(c,actor.id).state.buildings["home"] ?: 1
+        return ProgressionRewardsView(actor.publicId,now.toString(),daily=ProgressionRewardRules.dailyView(daily(c,actor.id),now,homeLevel),achievementRewards=rows)
     }
     override suspend fun snapshot(sessionHash: ByteArray): ProgressionRewardsView = transaction(sessionHash) { c,a,now -> view(c,a,now) }
     override suspend fun claim(sessionHash: ByteArray,command: ProgressionRewardClaim): ProgressionRewardResult {

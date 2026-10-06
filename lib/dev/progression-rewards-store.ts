@@ -23,10 +23,11 @@ function profile(token: string | undefined, expectedOwner?: string) {
 }
 function view(token: string | undefined, owner: string, value: Profile, now: number): GameRewards {
   // Reconcile verified progress before reading dates; dates are never inferred from ownership in the browser.
+  const economy = getDevEconomy(token, now, owner);
   const result = getDevGameAchievements(token, now, 5);
   if (result.kind !== "ok") fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401);
   return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: 1,
-    daily: dailyRewardView(value.daily, now),
+    daily: dailyRewardView(value.daily, now, economy.buildings.home ?? 1),
     achievementRewards: achievementRewardRows((id, level) => ({
       at: result.value.achievements.find(row => row.id === id)?.tiers?.find(tier => tier.level === level)?.unlockedAt ?? null,
       eligible: getDevAchievementRewardEligibility(owner, id, level),
@@ -34,7 +35,6 @@ function view(token: string | undefined, owner: string, value: Profile, now: num
 }
 export function getDevProgressionRewards(token: string | undefined, now = Date.now()): GameRewards {
   const { owner, value } = profile(token);
-  getDevEconomy(token, now, owner);
   return view(token, owner, value, now);
 }
 export function claimDevProgressionReward(token: string | undefined, input: unknown, now = Date.now()): GameRewardResult {

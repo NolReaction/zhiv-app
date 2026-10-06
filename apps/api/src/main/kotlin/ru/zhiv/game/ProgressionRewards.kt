@@ -13,11 +13,11 @@ import java.util.UUID
 internal val progressionRewardsJson = Json { encodeDefaults = true; ignoreUnknownKeys = false }
 @Serializable data class ProgressionReward(val coins: Long = 0, val pearls: Long = 0, val items: Map<String,Long> = emptyMap())
 @Serializable private data class ProgressionRewardsCatalog(val version: Int, val currencyScale: Int, val pearlScale: Int, val dailyMinimumHours: Long,
-    val daily: List<ProgressionReward>, val achievementPearls: Map<String,List<Long>>)
+    val daily: List<ProgressionReward>, val dailyByHomeLevel: Map<String,List<ProgressionReward>>, val achievementPearls: Map<String,List<Long>>)
 @Serializable data class DailyRewardCycle(val step: Int, val reward: ProgressionReward)
 data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null)
 @Serializable data class DailyRewardsView(val step: Int, val claimable: Boolean, val nextClaimAt: String,
-    val lastClaimAt: String?, val lastClaimDate: String?, val reward: ProgressionReward, val cycle: List<DailyRewardCycle>)
+    val lastClaimAt: String?, val lastClaimDate: String?, val reward: ProgressionReward, val cycle: List<DailyRewardCycle>, val homeLevel: Int = 1)
 @Serializable data class AchievementRewardView(val achievementId: String, val level: Int, val target: Long, val pearls: Long,
     val earnedAt: String?, val claimedAt: String?, val eligible: Boolean, val blockedReason: String?)
 @Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 1,
@@ -71,18 +71,30 @@ object ProgressionRewardRules {
     val achievementPearls = catalog.achievementPearls
     init {
         require(catalog.version==1 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
+        require(catalog.dailyByHomeLevel.keys==setOf("2","3","4","5"))
         require(achievementPearls.keys==GameRewards.tiers.keys && achievementPearls.all { (id,values) ->
             values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_PEARLS } })
-        require(daily.all { reward -> reward.coins in 0L..ECONOMY_MAX_BALANCE && reward.pearls in 0L..ECONOMY_MAX_PEARLS
-            && reward.items.all { (id,quantity) -> id in setOf("wood","stone","fiber","ancient_core") && quantity in 1L..ECONOMY_MAX_ITEMS } })
+        val itemIds=setOf("wood","stone","fiber","berries","fish","hardwood","resin","planks","rope","bricks","iron_ingot",
+            "cloth","metal_parts","glass","beams","cut_stone","tools","reinforced_parts","ancient_core")
+        for(cycle in listOf(daily)+catalog.dailyByHomeLevel.values) {
+            require(cycle.size==7 && cycle.sumOf { it.pearls }==450L && cycle.sumOf { it.items["ancient_core"] ?: 0L }==1L)
+            require(cycle.withIndex().all { (index,reward) -> reward.coins in 0L..ECONOMY_MAX_BALANCE
+                && reward.pearls==daily[index].pearls && reward.pearls in 0L..ECONOMY_MAX_PEARLS
+                && reward.items.all { (id,quantity) -> id in itemIds && quantity in 1L..ECONOMY_MAX_ITEMS } })
+        }
     }
-    fun dailyView(state: DailyRewardsState, now: Instant): DailyRewardsView {
+    /** Only the saved completed home level selects a fixed bundle, never paid slots or active construction. */
+    fun dailyCycle(homeLevel: Int = 1): List<ProgressionReward> =
+        if(homeLevel.coerceIn(1,5)==1) daily else catalog.dailyByHomeLevel.getValue(homeLevel.coerceIn(1,5).toString())
+    fun dailyView(state: DailyRewardsState, now: Instant, homeLevel: Int = 1): DailyRewardsView {
         require(state.step in 1..7)
+        val level=homeLevel.coerceIn(1,5)
+        val cycle=dailyCycle(level)
         val last = state.lastClaimAt
         val next = if(last==null) now else maxOf(last.atOffset(ZoneOffset.UTC).toLocalDate().plusDays(1)
             .atStartOfDay().toInstant(ZoneOffset.UTC), last.plusSeconds(catalog.dailyMinimumHours*3600))
         return DailyRewardsView(state.step,!now.isBefore(next),next.toString(),last?.toString(),
-            last?.atOffset(ZoneOffset.UTC)?.toLocalDate()?.toString(),daily[state.step-1],daily.mapIndexed { i,r -> DailyRewardCycle(i+1,r) })
+            last?.atOffset(ZoneOffset.UTC)?.toLocalDate()?.toString(),cycle[state.step-1],cycle.mapIndexed { i,r -> DailyRewardCycle(i+1,r) },level)
     }
     fun afterClaim(state: DailyRewardsState, now: Instant) = DailyRewardsState(state.step%7+1,now)
     fun mergeDaily(left: DailyRewardsState, right: DailyRewardsState): DailyRewardsState =

@@ -88,18 +88,21 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
             (it.getArray(2).array as Array<*>).map { id -> UUID.fromString(id.toString()) })
     }.firstOrNull()
 
-    private fun showcase(c: Connection, user: UUID, at: Instant): Showcase {
+    private fun showcase(c: Connection, user: UUID, home: Int, at: Instant): Showcase {
         readShowcase(c, user)?.takeIf { at.isBefore(it.refreshAt) }?.let { return it }
+        val band = EconomyMarketRules.homeBand(home)
         val itemIds = EconomyRules.catalog.items.filter { EconomyBarterRules.eligibleItem(it.id) }.map { it.id }
         val ids = if (itemIds.isEmpty()) emptyList() else {
             val placeholders = itemIds.joinToString(",") { "?" }
             val parameters = mutableListOf<Any?>(user.toString() + at.toString(), user)
+            parameters.add(maxOf(EconomyBarterRules.REQUIRED_HOME_LEVEL, band.first)); parameters.add(band.last)
             parameters.addAll(itemIds); parameters.addAll(itemIds)
             parameters.add(EconomyBarterRules.SHOWCASE_PER_SELLER); parameters.add(EconomyBarterRules.SHOWCASE_SLOTS)
             c.economyRows("""WITH candidates AS (
                 SELECT o.id,o.seller_id,md5(o.id::text || ?) AS rank FROM economy_barter_offers o
-                JOIN app_users u ON u.id=o.seller_id
+                JOIN app_users u ON u.id=o.seller_id JOIN economy_profiles ep ON ep.user_id=o.seller_id
                 WHERE o.status='active' AND o.seller_id<>? AND u.deleted_at IS NULL AND u.banned_at IS NULL
+                AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?
                 AND o.offered_item_id IN ($placeholders) AND o.requested_item_id IN ($placeholders)
             ), diverse AS (
                 SELECT id,rank,row_number() OVER (PARTITION BY seller_id ORDER BY rank,id) AS seller_slot FROM candidates
@@ -125,17 +128,22 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
         ensureEconomyProfile(c, user.id)
         val state = readEconomyProfile(c, user.id).state
         val at = now(c)
-        val selection = if ((state.buildings["home"] ?: 1) >= EconomyBarterRules.REQUIRED_HOME_LEVEL) showcase(c, user.id, at)
+        val home = state.buildings["home"] ?: 1
+        val band = EconomyMarketRules.homeBand(home)
+        val selection = if (home >= EconomyBarterRules.REQUIRED_HOME_LEVEL) showcase(c, user.id, home, at)
             else Showcase(at.plusSeconds(EconomyBarterRules.SHOWCASE_SECONDS), emptyList())
         val offers = if (selection.ids.isEmpty()) emptyList() else c.economyRows("""SELECT o.*,u.public_id,u.display_name
-            FROM economy_barter_offers o JOIN app_users u ON u.id=o.seller_id
+            FROM economy_barter_offers o JOIN app_users u ON u.id=o.seller_id JOIN economy_profiles ep ON ep.user_id=o.seller_id
             WHERE o.id IN (${selection.ids.joinToString(",") { "?" }}) AND o.status='active'
-            AND u.deleted_at IS NULL AND u.banned_at IS NULL""", *selection.ids.toTypedArray()) { offer(it, user.id).offer }
+            AND u.deleted_at IS NULL AND u.banned_at IS NULL
+            AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?""",
+            *(selection.ids + listOf(maxOf(EconomyBarterRules.REQUIRED_HOME_LEVEL, band.first), band.last)).toTypedArray()) { offer(it, user.id).offer }
             .filter { EconomyBarterRules.eligibleItem(it.offeredItemId) && EconomyBarterRules.eligibleItem(it.requestedItemId) }
             .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
         val mine = c.economyRows("""SELECT o.*,u.public_id,u.display_name FROM economy_barter_offers o JOIN app_users u ON u.id=o.seller_id
             WHERE o.seller_id=? AND o.status='active' ORDER BY o.created_at DESC,o.id DESC LIMIT ?""", user.id, EconomyBarterRules.MAX_OFFERS) { offer(it, user.id).offer }
-        EconomyBarterView(user.publicId, offers, mine, at.toString(), EconomyBarterShowcase(selection.refreshAt.toString()))
+        EconomyBarterView(user.publicId, offers, mine, at.toString(), EconomyBarterShowcase(selection.refreshAt.toString()),
+            EconomyBarterDailyLimit(readEconomyTradeUsage(c, user.id, at).barter, EconomyBarterRules.DAILY_LIMIT, economyTradeResetsAt(at)))
     }
 
     override suspend fun command(sessionHash: ByteArray, command: EconomyBarterCommand): EconomyBarterResult {
@@ -213,14 +221,19 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
     private fun accept(c: Connection, user: UUID, state: EconomyState, row: OfferRow): Pair<String, EconomyBarterOffer> {
         if (row.seller == user) throw AuthFailure("ECONOMY_BARTER_SELF_TRADE", "Нельзя принять собственное предложение", 409)
         val offer = row.offer; val id = UUID.fromString(offer.id)
+        val at = now(c)
         val selection = readShowcase(c, user)
-        if (selection == null || !now(c).isBefore(selection.refreshAt) || id !in selection.ids)
+        if (selection == null || !at.isBefore(selection.refreshAt) || id !in selection.ids)
             throw AuthFailure("ECONOMY_BARTER_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите обмен.", 409)
         EconomyBarterRules.validatePair(offer.offeredItemId, offer.requestedItemId)
         val payment = state.inventory[offer.requestedItemId] ?: 0L
         if (payment < 1L) throw AuthFailure("ECONOMY_RESOURCES", "Нет материала, который просит другой игрок", 409)
         ensureEconomyProfile(c, row.seller)
         val sellerState = readEconomyProfile(c, row.seller).state
+        if (!EconomyBarterRules.sameHomeBand(state.buildings["home"] ?: 1, sellerState.buildings["home"] ?: 1))
+            throw AuthFailure("ECONOMY_BARTER_HOME_BAND", "Предложение доступно в другой группе уровней дома. Обновите обмен.", 409)
+        EconomyBarterRules.assertDailyLimit(readEconomyTradeUsage(c, user, at).barter)
+        EconomyBarterRules.assertDailyLimit(readEconomyTradeUsage(c, row.seller, at).barter, seller=true)
         val gained = state.inventory[offer.offeredItemId] ?: 0L
         val sellerGained = sellerState.inventory[offer.requestedItemId] ?: 0L
         if (gained >= ECONOMY_MAX_ITEMS || sellerGained >= ECONOMY_MAX_ITEMS)
@@ -232,6 +245,8 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
         assertEconomyMarketCapacity(c, user, state, nextBuyer, reservedBuyer)
         assertEconomyMarketCapacity(c, row.seller, sellerState, nextSeller, reservedSeller)
         saveEconomyProfile(c, user, nextBuyer); saveEconomyProfile(c, row.seller, nextSeller)
+        addEconomyTradeUsage(c, user, at, barter=1)
+        addEconomyTradeUsage(c, row.seller, at, barter=1)
         ledger(c, user, "barter:accept:$id", "barter_accept", mapOf(offer.requestedItemId to -1L, offer.offeredItemId to 1L))
         ledger(c, row.seller, "barter:exchange:$id", "barter_exchange", mapOf(offer.requestedItemId to 1L))
         return "Особые материалы обменены" to currentOffer(c, id, user)

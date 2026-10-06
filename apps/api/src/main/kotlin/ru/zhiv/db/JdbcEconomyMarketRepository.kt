@@ -104,7 +104,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             totalPrice = EconomyMoney.nominal(result.getLong("total_price"),result.getInt("currency_scale")), status = result.getString("status"),
             createdAt = result.getObject("created_at", OffsetDateTime::class.java).toInstant().toString(),
             closedAt = result.getObject("closed_at", OffsetDateTime::class.java)?.toInstant()?.toString(),
-            owned = seller == owner,
+            owned = seller == owner, feeBps = result.getInt("seller_fee_bps"),
         ))
     }
 
@@ -121,19 +121,24 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         readShowcase(c, user)?.takeIf { at.isBefore(it.refreshAt) }?.let { return it }
         val config = EconomyRules.catalog.market
         val home = state.buildings["home"] ?: 1
+        val band = EconomyMarketRules.homeBand(home)
         val items = EconomyRules.catalog.items.filter { it.tradable && home >= EconomyMarketRules.requiredHomeLevel(it.id) }
         val ids = if (items.isEmpty()) emptyList() else {
             val values = items.joinToString(",") { "(?::text,?::bigint)" }
             val parameters = items.flatMap { listOf<Any?>(it.id, it.baseSellPrice) }.toMutableList()
             parameters.add(user.toString() + at.toString())
             parameters.add(user)
+            parameters.add(band.first); parameters.add(band.last)
+            parameters.add(config.maxPriceMultiplier)
             parameters.add(config.showcasePerSeller)
             parameters.add(config.showcaseSlots)
             c.economyRows("""WITH prices(item_id,minimum) AS (VALUES $values), candidates AS (
                 SELECT l.id,l.seller_id,md5(l.id::text || ?) AS rank
                 FROM economy_market_listings l JOIN app_users u ON u.id=l.seller_id JOIN prices p ON p.item_id=l.item_id
+                JOIN economy_profiles ep ON ep.user_id=l.seller_id
                 WHERE l.status='active' AND l.seller_id<>? AND u.deleted_at IS NULL AND u.banned_at IS NULL
-                  AND l.total_price / l.quantity >= p.minimum
+                  AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?
+                  AND l.total_price / l.quantity >= p.minimum AND l.total_price <= p.minimum * l.quantity * ?
             ), diverse AS (
                 SELECT id,rank,row_number() OVER (PARTITION BY seller_id ORDER BY rank,id) AS seller_slot FROM candidates
             ) SELECT id FROM diverse WHERE seller_slot<=? ORDER BY rank,id LIMIT ?""", *parameters.toTypedArray()) {
@@ -164,17 +169,24 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             val config = EconomyRules.catalog.market
             val at = now(c)
             val unlocked = (state.buildings["home"] ?: 1) >= config.requiredHomeLevel && state.completedExplorations >= config.requiredExplorations
+            val band = EconomyMarketRules.homeBand(state.buildings["home"] ?: 1)
             val selection = if (unlocked) showcase(c, user.id, state, at) else Showcase(at.plusSeconds(config.showcaseRefreshSeconds), emptyList())
             val selected = if (selection.ids.isEmpty()) emptyList() else c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
-                JOIN app_users u ON u.id=l.seller_id WHERE l.id IN (${selection.ids.joinToString(",") { "?" }})
-                AND l.status='active' AND u.deleted_at IS NULL AND u.banned_at IS NULL""", *selection.ids.toTypedArray()) { listing(it, user.id).listing }
+                JOIN app_users u ON u.id=l.seller_id JOIN economy_profiles ep ON ep.user_id=l.seller_id WHERE l.id IN (${selection.ids.joinToString(",") { "?" }})
+                AND l.status='active' AND u.deleted_at IS NULL AND u.banned_at IS NULL
+                AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?""",
+                *(selection.ids + listOf(band.first, band.last)).toTypedArray()) { listing(it, user.id).listing }
                 .filter { EconomyMarketRules.eligible(it.itemId, it.quantity, it.totalPrice, state.buildings["home"] ?: 1) }
                 .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
             val mine = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
                 JOIN app_users u ON u.id=l.seller_id WHERE l.status='active' AND l.seller_id=?
                 ORDER BY l.created_at DESC,l.id DESC LIMIT ?""", user.id, config.maxListings) { listing(it, user.id).listing }
+            val usage = readEconomyTradeUsage(c, user.id, at)
             EconomyMarketView(selected.take(limit), mine, serverTime=at.toString(), showcase=EconomyMarketShowcase(
-                selection.refreshAt.toString(), config.showcaseSlots, config.showcasePerSeller, config.showcaseRefreshSeconds))
+                selection.refreshAt.toString(), config.showcaseSlots, config.showcasePerSeller, config.showcaseRefreshSeconds),
+                tradeBudget=EconomyMarketTradeBudget(usage.buys, usage.sales,
+                    EconomyMarketRules.dailyTradeLimit(state.buildings["home"] ?: 1), economyTradeResetsAt(at),
+                    config.feeBps, band.first, band.last))
         }
     }
 
@@ -242,6 +254,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома", 409)
         val marketConfig = EconomyRules.catalog.market
         EconomyMarketRules.validatePrice(command.quantity, command.totalPrice, item.baseSellPrice, marketConfig.maxPriceMultiplier)
+        if (item.baseSellPrice * command.quantity > EconomyMarketRules.dailyTradeLimit(state.buildings["home"] ?: 1))
+            throw AuthFailure("ECONOMY_MARKET_DAILY_LOT_LIMIT", "Уменьшите партию: её базовая стоимость превышает дневной объём торговли", 409)
         val active = c.economyRows("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'", user) { it.getInt(1) }.single()
         if (active >= marketConfig.maxListings) throw AuthFailure("ECONOMY_MARKET_LIMIT", "Достигнут лимит активных объявлений", 409)
         val available = state.inventory[item.id] ?: 0L
@@ -249,8 +263,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val inventory = state.inventory + (item.id to available - command.quantity)
         val id = UUID.randomUUID()
         val reservedBefore = reservedEconomyMarketItems(c, user)
-        c.economyUpdate("""INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price)
-            VALUES (?,?,?,?,?)""", id, user, item.id, command.quantity, command.totalPrice)
+        c.economyUpdate("""INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price,seller_fee_bps)
+            VALUES (?,?,?,?,?,?)""", id, user, item.id, command.quantity, command.totalPrice, marketConfig.feeBps)
         val next = state.copy(inventory = inventory)
         assertEconomyMarketCapacity(c, user, state, next, reservedBefore)
         saveEconomyProfile(c, user, next)
@@ -265,15 +279,25 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             throw AuthFailure("ECONOMY_MARKET_QUOTE_CHANGED", "Проверьте состав и цену партии", 409)
         if (EconomyRules.catalog.items.none { it.id == lot.itemId && it.tradable })
             throw AuthFailure("ECONOMY_MARKET_ITEM", "Торговля этим предметом приостановлена", 409)
+        val at = now(c)
         val selection = readShowcase(c, user)
-        if (selection == null || !now(c).isBefore(selection.refreshAt) || UUID.fromString(lot.id) !in selection.ids)
+        if (selection == null || !at.isBefore(selection.refreshAt) || UUID.fromString(lot.id) !in selection.ids)
             throw AuthFailure("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку.", 409)
         if (!EconomyMarketRules.eligible(lot.itemId, lot.quantity, lot.totalPrice, state.buildings["home"] ?: 1))
             throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома или цена устарела", 409)
         if (state.wallet.coins < lot.totalPrice) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно монет", 409)
         ensureEconomyProfile(c, row.seller)
         val seller = readEconomyProfile(c, row.seller).state
-        if (seller.wallet.coins > ECONOMY_MAX_BALANCE - lot.totalPrice)
+        if (!EconomyMarketRules.sameHomeBand(state.buildings["home"] ?: 1, seller.buildings["home"] ?: 1))
+            throw AuthFailure("ECONOMY_MARKET_HOME_BAND", "Предложение доступно в другой группе уровней дома. Обновите лавку.", 409)
+        val item = EconomyRules.catalog.items.single { it.id == lot.itemId }
+        val tradeValue = item.baseSellPrice * lot.quantity
+        EconomyMarketRules.assertTradeBudget(readEconomyTradeUsage(c, user, at).buys, tradeValue,
+            EconomyMarketRules.dailyTradeLimit(state.buildings["home"] ?: 1))
+        EconomyMarketRules.assertTradeBudget(readEconomyTradeUsage(c, row.seller, at).sales, tradeValue,
+            EconomyMarketRules.dailyTradeLimit(seller.buildings["home"] ?: 1), seller=true)
+        val sellerProceeds = lot.totalPrice - EconomyMarketRules.sellerFee(lot.totalPrice, lot.feeBps)
+        if (seller.wallet.coins > ECONOMY_MAX_BALANCE - sellerProceeds)
             throw AuthFailure("ECONOMY_CAPACITY", "Продавец пока не может принять монеты", 409)
         val amount = state.inventory[lot.itemId] ?: 0L
         if (amount > ECONOMY_MAX_ITEMS - lot.quantity)
@@ -283,9 +307,11 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         assertEconomyMarketCapacity(c, user, state, next)
         c.economyUpdate("UPDATE economy_market_listings SET status='sold',buyer_id=?,closed_at=clock_timestamp() WHERE id=?", user, UUID.fromString(lot.id))
         saveEconomyProfile(c, user, next)
-        saveEconomyProfile(c, row.seller, seller.copy(wallet = seller.wallet.copy(coins = seller.wallet.coins + lot.totalPrice)))
+        saveEconomyProfile(c, row.seller, seller.copy(wallet = seller.wallet.copy(coins = seller.wallet.coins + sellerProceeds)))
+        addEconomyTradeUsage(c, user, at, buys=tradeValue)
+        addEconomyTradeUsage(c, row.seller, at, sales=tradeValue)
         ledger(c, user, "market:buy:${lot.id}", "market_buy", -lot.totalPrice, lot.itemId, lot.quantity)
-        ledger(c, row.seller, "market:sell:${lot.id}", "market_sell", lot.totalPrice, lot.itemId, 0L)
+        ledger(c, row.seller, "market:sell:${lot.id}", "market_sell", sellerProceeds, lot.itemId, 0L)
         return "Партия куплена"
     }
 

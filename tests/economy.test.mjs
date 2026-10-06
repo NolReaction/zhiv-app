@@ -257,9 +257,9 @@ test("market escrow conserves goods, quoted full-lot buy transfers coins once to
   assert.throws(() => trade(buyer, "buy_listing", lot.id, 6, 29), { code: "ECONOMY_MARKET_QUOTE_CHANGED" });
   const buy = command(buyer, "buy_listing", lot.id, 6, 30), result = economy.commandDevEconomyMarket(buyer.token, buy, now);
   assert.equal(result.state.wallet.coins, 700); assert.equal(result.state.inventory.berries, 6);
-  assert.equal(read(seller).wallet.coins, 5300); assert.equal(read(seller).revision, 2);
+  assert.equal(read(seller).wallet.coins, 5285); assert.equal(read(seller).revision, 2);
   assert.equal(economy.commandDevEconomyMarket(buyer.token, buy, now).replayed, true);
-  assert.equal(read(seller).wallet.coins, 5300); assert.equal(economy.getDevEconomyMarket(buyer.token, {}, now).listings.length, 0);
+  assert.equal(read(seller).wallet.coins, 5285); assert.equal(economy.getDevEconomyMarket(buyer.token, {}, now).listings.length, 0);
 });
 
 test("two buyers cannot acquire the same lot and failed purchase charges neither party", () => {
@@ -269,7 +269,7 @@ test("two buyers cannot acquire the same lot and failed purchase charges neither
   const first = command(buyer, "buy_listing", lot.id, 5, 40), second = command(rival, "buy_listing", lot.id, 5, 40);
   economy.commandDevEconomyMarket(buyer.token, first, now);
   assert.throws(() => economy.commandDevEconomyMarket(rival.token, second, now), { code: "ECONOMY_MARKET_NOT_ACTIVE" });
-  assert.equal(read(seller).wallet.coins, 5400); assert.equal(read(rival).wallet.coins, 5000); assert.equal(read(rival).inventory.wood, 30);
+  assert.equal(read(seller).wallet.coins, 5380); assert.equal(read(rival).wallet.coins, 5000); assert.equal(read(rival).inventory.wood, 30);
 });
 
 test("market cancel returns exactly escrow, self buying and foreign cancellation fail", () => {
@@ -292,8 +292,8 @@ test("market gates, limits and price range come from the shared catalog", () => 
   assert.throws(() => trade(p, "create_listing", "wood", 100, 100), { code: "ECONOMY_MARKET_QUANTITY" });
   assert.throws(() => trade(p, "create_listing", "wood", 1, 21), { code: "ECONOMY_MARKET_PRICE" });
   assert.throws(() => trade(p, "create_listing", "pearls", 1, 1), { code: "ECONOMY_MARKET_ITEM" });
-  for (let i = 0; i < 10; i++) trade(p, "create_listing", "wood", 1, 20);
-  assert.throws(() => trade(p, "create_listing", "wood", 1, 20), { code: "ECONOMY_MARKET_LIMIT" });
+  for (let i = 0; i < 10; i++) trade(p, "create_listing", "wood", 1, 8);
+  assert.throws(() => trade(p, "create_listing", "wood", 1, 8), { code: "ECONOMY_MARKET_LIMIT" });
   assert.equal(read(p).inventory.wood, 20);
 });
 

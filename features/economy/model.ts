@@ -68,7 +68,7 @@ export const economyCatalogSchema = z.object({
   localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
   version: z.literal(3), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400) }),
-  market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000),
+  market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).default([0, 2400, 4800, 9600, 14400]),
     showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
   items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance, tradable: z.boolean() })
     .refine(item => item.category === "special" ? item.baseSellPrice === 0 && !item.tradable : item.baseSellPrice > 0)).max(1000),
@@ -127,11 +127,13 @@ export const marketCommandSchema = z.object({ ...commandBase,
 export const economyMarketListingSchema = z.object({
   id: uuid, sellerPublicId: z.string().min(1), sellerName: z.string(), itemId: id,
   quantity: z.number().int().min(1).max(99), totalPrice: balance.positive(), status: z.enum(["active", "sold", "cancelled"]),
-  createdAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), owned: z.boolean(),
+  createdAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), owned: z.boolean(), feeBps: count.max(10000).default(0),
 });
 export const marketViewSchema = z.object({
   listings: z.array(economyMarketListingSchema).max(12), mine: z.array(economyMarketListingSchema).max(10),
   nextCursor: z.null(), serverTime: z.string().datetime(),
+  tradeBudget: z.object({ buysUsed: count, salesUsed: count, limit: count, resetsAt: z.string().datetime(), feeBps: count.max(10000),
+    homeBandMin: count, homeBandMax: count }).nullish(),
   showcase: z.object({ refreshAt: z.string().datetime(), slots: count.positive().max(12), maxPerSeller: count.positive().max(10), refreshSeconds: count.positive().max(86400) }).optional(),
 });
 export const economyResultSchema = z.object({

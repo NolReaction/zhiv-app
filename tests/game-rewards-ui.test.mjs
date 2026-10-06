@@ -52,6 +52,19 @@ test("opening, reading, and restoring a pending reward never issue money automat
   const stop = session.activate(); await session.refresh(); await session.refresh();
   assert.equal(writes, 0); assert.equal(session.getSnapshot().data.daily.claimable, true); stop();
 });
+test("daily gift appears before its calendar and reports space without inventing historical tier rewards", () => {
+  const data = view(3);
+  data.daily.homeLevel = 5;
+  data.daily.reward = { coins: 6000, pearls: 50, items: { wood: 12, stone: 8 } };
+  data.daily.cycle[0].reward = { coins: 77777, pearls: 0, items: { reinforced_parts: 99 } };
+  const html = render(DailyRewardsPanel, { controller: controller(data), isOnline: true, storageAvailable: 7 });
+  assert.match(html, /Дом 5 уровня/);
+  assert.match(html, /Освободите 13 мест в кладовой/);
+  assert.ok(html.indexOf("Забрать подарок") < html.indexOf("Семь подарков за вход"));
+  assert.doesNotMatch(html, /data-item-icon="reinforced_parts"/, "completed steps must not claim newer-tier preview items were already paid");
+  assert.match(html, />25<\/strong>/, "visible pearl denomination remains half of the server amount");
+  assert.doesNotMatch(html, /class="[^"]*claim[^\"]*" disabled/, "stale client storage does not prevent a server recheck");
+});
 test("lost response remains the same exact receipt after remount and read; other claims stay blocked", async () => {
   const storage = cache(), sent = []; let data = view();
   const wire = transport({ get: async () => data, send: async command => {

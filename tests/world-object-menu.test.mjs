@@ -115,6 +115,50 @@ test("a second recipe uses the remaining station slot while ready results and co
   assert.equal(disabled(button(render("workshop", controller({ snapshot: state })), "Место 3")), true);
 });
 
+test("idle production opens with a compact slot summary and recipes, leaving slot purchases inside a closed disclosure", () => {
+  const buildings = { home: 5, workshop: 5, kiln: 5, garden: 5, woodlot: 5, dryer: 5, warehouse: 5 };
+  for (const [place, stationId] of [["workshop", "workshop"], ["workshop", "kiln"], ["garden", "garden"], ["woodlot", "woodlot"], ["campfire", "dryer"]]) {
+    const html = render(place, controller({ snapshot: snapshot({ buildings, wallet: { coins: 0, pearls: 10000 } }) }), { initialStationId: stationId });
+    const disclosure = html.match(new RegExp(`<details\\b([^>]*data-production-slots="${stationId}"[^>]*)>([\\s\\S]*?)</details>`));
+    assert.ok(disclosure, `Missing slots disclosure for ${stationId}`);
+    assert.doesNotMatch(disclosure[1], /\bopen(?:=|\s|$)/);
+    const summary = disclosure[2].match(/<summary\b[^>]*>[\s\S]*?<\/summary>/)?.[0];
+    assert.match(summary, /Места производства: занято 0 из 1\. Расширить/);
+    assert.doesNotMatch(summary, /<button|750|Не хватает/);
+    assert.match(disclosure[2].slice(summary.length), /Открыть место 2 за 750 жемчужин/);
+    const rest = html.replace(disclosure[0], "");
+    assert.match(rest, /data-recipe=/);
+    assert.doesNotMatch(rest, /data-running-orders=|Все уровни оборудования открыты/);
+  }
+});
+
+test("running orders collapse into one timer and become directly claimable when the server clock reaches completion", () => {
+  const recipe = economyCatalog.recipes.find(entry => entry.buildingId === "workshop");
+  const jobs = [3, 1, 2].map(index => job({ id: `order-${index}`, targetId: "workshop", recipeId: recipe.id, rewards: recipe.rewards,
+    finishesAt: new Date(now + index * 60000).toISOString() }));
+  const state = snapshot({ buildings: { home: 5, workshop: 5, warehouse: 5 }, productionSlots: { workshop: 3 }, jobs });
+  const economy = controller({ snapshot: state });
+  let html = render("workshop", economy);
+  let disclosure = html.match(/<details\b([^>]*data-running-orders="workshop"[^>]*)>([\s\S]*?)<\/details>/);
+  assert.ok(disclosure);
+  assert.doesNotMatch(disclosure[1], /\bopen(?:=|\s|$)/);
+  assert.match(disclosure[2], /В работе · 3/);
+  assert.match(disclosure[2], /Ещё 1 мин/);
+  for (const entry of jobs) assert.match(disclosure[2], new RegExp(`data-job-id="${entry.id}"`));
+  assert.doesNotMatch(html.replace(disclosure[0], ""), /data-job-id=/);
+  assert.match(html.replace(disclosure[0], ""), /data-recipe=/);
+
+  economy.now += 60000;
+  html = render("workshop", economy);
+  disclosure = html.match(/<details\b[^>]*data-running-orders="workshop"[^>]*>[\s\S]*?<\/details>/);
+  assert.match(disclosure[0], /В работе · 2/);
+  assert.doesNotMatch(disclosure[0], /data-job-id="order-1"/);
+  const exposed = html.replace(disclosure[0], "");
+  assert.match(exposed, /data-job-id="order-1" data-ready="true"/);
+  assert.equal(disabled(button(exposed, "Забрать")), false);
+  assert.equal(state.jobs.length, 3, "view compaction must not claim or remove an order");
+});
+
 test("map objects group equipment by place, with campfire food and pantry at the house", () => {
   assert.deepEqual(helpers.worldStations.house.stationIds, ["home", "warehouse"]);
   assert.deepEqual(helpers.worldStations.workshop.stationIds, ["workshop", "kiln"]);

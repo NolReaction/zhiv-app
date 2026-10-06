@@ -93,14 +93,15 @@ test("the fixed upper overlay clears modal stacks, never catches input and remov
 });
 
 
-test("purchase feedback shows the basic fish material but keeps trophy art hidden until caught", () => {
+test("purchase feedback shows owned fish art without requiring a personal catch", () => {
   const event = { ...gain("bought"), source: "purchase" };
-  const props = { event, names: { fish: "Речная рыба", fish_shark: "Теневая акула" }, state: { fishing: { catches: {} } } };
+  const props = { event, names: { fish: "Речная рыба", fish_shark: "Теневая акула" }, state: { fishing: { catches: {} }, inventory: { fish: 1, fish_shark: 1 } } };
   const material = renderToStaticMarkup(createElement(InventoryGainContents, props));
   assert.match(material, /data-item-icon="fish"/); assert.doesNotMatch(material, /data-hidden-fish/);
   event.items = [{ itemId: "fish_shark", quantity: 1 }];
-  const hidden = renderToStaticMarkup(createElement(InventoryGainContents, props));
-  assert.match(hidden, /data-hidden-fish="true"/); assert.doesNotMatch(hidden, /data-item-icon="fish_shark"/);
+  const purchased = renderToStaticMarkup(createElement(InventoryGainContents, props));
+  assert.match(purchased, /data-item-icon="fish_shark"/); assert.doesNotMatch(purchased, /data-hidden-fish/);
+  assert.deepEqual(props.state.fishing.catches, {});
   props.state.fishing.catches.fish_shark = 1;
   const caught = renderToStaticMarkup(createElement(InventoryGainContents, props));
   assert.match(caught, /data-item-icon="fish_shark"/); assert.doesNotMatch(caught, /data-hidden-fish/);

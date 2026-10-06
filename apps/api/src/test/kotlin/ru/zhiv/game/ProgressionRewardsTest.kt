@@ -12,10 +12,10 @@ class ProgressionRewardsTest {
     @Test fun `catalog pays finite achievement pearls and seven valuable bundles`() {
         assertEquals(2150L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
         assertEquals(21,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
-        assertEquals(2400L,ProgressionRewardRules.daily.sumOf { it.coins })
+        assertEquals(5500L,ProgressionRewardRules.daily.sumOf { it.coins })
         assertEquals(450L,ProgressionRewardRules.daily.sumOf { it.pearls })
-        assertEquals(23L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
-        assertEquals(setOf("wood","stone","fiber","ancient_core"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
+        assertEquals(106L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
+        assertEquals(setOf("wood","stone","fiber","berries","fish","planks","rope","ancient_core"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
         assertEquals(listOf(0L),ProgressionRewardRules.achievementPearls.getValue("full_collection"))
     }
     @Test fun `next UTC date and twenty hours are independent fences`() {
@@ -27,6 +27,21 @@ class ProgressionRewardsTest {
         assertFalse(ProgressionRewardRules.dailyView(early,at("2026-10-05T23:59:59Z")).claimable)
         assertTrue(ProgressionRewardRules.dailyView(early,at("2026-10-06T00:00:00Z")).claimable)
         assertFalse(ProgressionRewardRules.dailyView(late,at("2026-10-05T20:00:00Z")).claimable)
+    }
+    @Test fun `home tiers scale useful supplies but never free pearls or relic counts`() {
+        val coins=listOf(5500L,11000L,22000L,44000L,66000L)
+        for(home in 1..5) {
+            val cycle=ProgressionRewardRules.dailyCycle(home)
+            assertEquals(coins[home-1],cycle.sumOf { it.coins })
+            assertEquals(450L,cycle.sumOf { it.pearls })
+            assertEquals(1L,cycle.sumOf { it.items["ancient_core"] ?: 0L })
+            assertTrue(cycle.all { it.items.size>=2 })
+            val view=ProgressionRewardRules.dailyView(DailyRewardsState(3),at("2026-10-05T12:00:00Z"),home)
+            assertEquals(home,view.homeLevel); assertEquals(cycle[2],view.reward)
+            assertEquals(cycle,view.cycle.map { it.reward })
+        }
+        assertEquals(ProgressionRewardRules.dailyCycle(1),ProgressionRewardRules.dailyCycle(-1))
+        assertEquals(ProgressionRewardRules.dailyCycle(5),ProgressionRewardRules.dailyCycle(99))
     }
     @Test fun `skips preserve next step and seven wraps to one`() {
         val state=DailyRewardsState(7,at("2026-09-01T12:00:00Z"))

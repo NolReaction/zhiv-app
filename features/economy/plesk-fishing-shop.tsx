@@ -141,9 +141,9 @@ export function PleskFishOffer({ economy, state, fish }: ReadyProps & { fish: Fi
   const offer = offerFor(state, fish.itemId), live = offerLive(state, economy.now, offer), price = offer?.unitPrice ?? fish.buyPrice;
   const maximum = live ? Math.max(0, Math.min(offer!.remaining, state.catalog.maxBatch, state.storage.available, Math.floor(state.wallet.coins / price))) : 0;
   const quantity = Number(quantityText), valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
-  const known = fish.itemId === "fish" || fishDiscovered(state, fish.itemId), name = known ? itemName(state, fish.itemId) : "Незнакомая рыба";
+  const name = itemName(state, fish.itemId);
   return <article className={styles.gearCard} data-gear-rarity={fish.rarity}>
-    <div className={styles.gearHeading}><PlayerItemIcon state={state} itemId={fish.itemId} size={48} /><div><h3>{name}</h3><FishRarityBadge rarity={fish.rarity} /><p>В запасе {number(state.inventory[fish.itemId] ?? 0)}</p></div></div>
+    <div className={styles.gearHeading}><ItemIcon itemId={fish.itemId} size={48} /><div><h3>{name}</h3><FishRarityBadge rarity={fish.rarity} /><p>В запасе {number(state.inventory[fish.itemId] ?? 0)}</p></div></div>
     <p className={styles.description}>{fish.itemId === "fish" ? "Для кухни и запаса." : "Из сегодняшнего привоза."} В книгу попадёт только ваш собственный улов.</p>
     <div className={styles.discountPrice}>{price < fish.buyPrice && <del aria-label={`Обычная цена: ${number(fish.buyPrice)} монет`}><Price value={fish.buyPrice} /></del>}<Price value={price} /><span>за штуку</span></div>
     {live ? <><div className={styles.quantity}><label htmlFor={id}>Купить штук</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><small>На прилавке {offer!.remaining}</small></div>
@@ -206,17 +206,17 @@ export function PleskTackleCounter({ economy, state, catalog }: ReadyProps & { c
       if (!offer) return <div key={slot.kind} className={styles.emptyOffer}><slot.icon size={26} aria-hidden="true" /><strong>{slot.name}</strong><span>Ждём поставку</span></div>;
       const entry = offer.kind === "rod" ? catalog.rods.find(rod => rod.id === offer.itemId) : offer.kind === "hook" ? catalog.hooks.find(hook => hook.id === offer.itemId) : offer.kind === "fish" ? catalog.fish.find(fish => fish.itemId === offer.itemId) : catalog.baits.find(bait => bait.itemId === offer.itemId);
       if (!entry) return null;
-      const name = offer.kind === "fish" && offer.itemId !== "fish" && !fishDiscovered(state, offer.itemId) ? "Незнакомая рыба" : "name" in entry ? entry.name : itemName(state, offer.itemId);
+      const name = "name" in entry ? entry.name : itemName(state, offer.itemId);
       const discount = "buyPrice" in entry ? Math.max(0, Math.round((1 - offer.unitPrice / entry.buyPrice) * 100)) : 0;
       return <button type="button" key={offer.id} className={styles.offerTile} data-gear-rarity={entry.rarity} aria-pressed={selected?.id === offer.id} onClick={() => setSelectedId(offer.id)}>
         <small className={styles.offerKind}>{slot.name}{discount > 0 && <span>−{discount}%</span>}</small>
-        <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={54} /> : offer.kind === "fish" ? <PlayerItemIcon state={state} itemId={offer.itemId} size={44} /> : <ItemIcon itemId={offer.itemId} size={44} />}</span>
+        <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={54} /> : <ItemIcon itemId={offer.itemId} size={44} />}</span>
         <strong>{name}</strong><FishRarityBadge rarity={entry.rarity} />
         <span className={styles.offerBottom}>{offer.remaining > 0 ? <><Price value={offer.unitPrice} /><small>×{offer.remaining}</small></> : <small><Check size={12} aria-hidden="true" />Раскуплено</small>}</span>
       </button>;
     })}</div>
     {previousStock.length > 0 && <details className={styles.previousStock}><summary>Остатки прежней поставки · {previousStock.length}</summary><div>{previousStock.map(offer => <button key={offer.id} type="button" aria-pressed={selected?.id === offer.id} onClick={() => setSelectedId(offer.id)}>
-      <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? (offer.kind === "fish" && offer.itemId !== "fish" && !fishDiscovered(state, offer.itemId) ? "Незнакомая рыба" : itemName(state, offer.itemId))}</span>
+      <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? itemName(state, offer.itemId)}</span>
       {offer.remaining > 0 ? <Price value={offer.unitPrice} /> : <span>Раскуплено</span>}
     </button>)}</div></details>}
     {selected && <GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} />}

@@ -80,12 +80,13 @@ test("trading respects in-flight, uncertain and cooldown locks with receipt reco
   assert.equal(disabled(button(html, "Повторить через 5 с")), true);
 });
 
-test("stock acquired without a personal catch stays visually sealed in the sell tab", () => {
+test("purchased stock is visible in the sell tab without becoming a personal catch", () => {
   const state = snapshot({ inventory: { fish_shark: 1 } }), economy = controller({ snapshot: state });
   const purchased = renderCatch(economy);
-  assert.match(purchased, /data-hidden-fish="true"/);
-  assert.doesNotMatch(purchased, /data-item-icon="fish_shark"/);
+  assert.match(purchased, /data-item-icon="fish_shark"/);
+  assert.doesNotMatch(purchased, /data-hidden-fish/);
   assert.equal(disabled(button(purchased, "Продать")), false);
+  assert.deepEqual(state.fishing.catches, {});
   state.fishing.catches.fish_shark = 1;
   const caught = renderCatch(economy);
   assert.match(caught, /data-item-icon="fish_shark"/);

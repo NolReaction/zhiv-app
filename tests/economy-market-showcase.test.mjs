@@ -75,7 +75,7 @@ test("whole-lot floor prevents immediate NPC arbitrage for every item and preser
     const npc = catalog.fishing.fish.some(fish => fish.itemId === item.id) ? item.baseSellPrice * 2 : Math.floor(item.baseSellPrice * 2 * catalog.localBuyer.payoutBps / 10000);
     assert.ok(floor >= npc, item.id);
     assert.equal(offer(seller, item.id, 1, item.baseSellPrice).totalPrice, item.baseSellPrice);
-    assert.equal(offer(seller, item.id, 1, item.baseSellPrice * 5).totalPrice, item.baseSellPrice * 5);
+    assert.equal(offer(seller, item.id, 1, item.baseSellPrice * catalog.market.maxPriceMultiplier).totalPrice, item.baseSellPrice * catalog.market.maxPriceMultiplier);
   }
 });
 

@@ -22,7 +22,8 @@ function candidates(state: ShopState): Candidate[] {
     ...catalog.baits.filter(item => item.requiredHomeLevel <= home)
       .map(item => ({ kind: "bait" as const, itemId: item.itemId, unitPrice: item.price, remaining: catalog.shop.baitStock,
         rarity: item.rarity, weight: rarityWeight[item.rarity] })),
-    // Ordinary fish supplies the kitchen, never reveals or sells the rare collection.
+    // Only common species are sold here. Recipes consume the river fish ID;
+    // purchases of any species never unlock personal catches in the book.
     ...catalog.fish.filter(item => item.rarity === "common")
       .map(item => ({ kind: "fish" as const, itemId: item.itemId,
         unitPrice: Math.ceil(item.buyPrice * catalog.shop.fishPriceBps / 10000), remaining: catalog.shop.fishStock,

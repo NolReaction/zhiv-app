@@ -16,8 +16,8 @@ export function HiddenFishIcon({ size = 40 }: { size?: number }) {
   </svg>;
 }
 
-/** The staple river fish remains recognisable as a recipe material. Other species open only on a personal catch. */
-export function PlayerItemIcon({ state, itemId, size = 24 }: { state?: Pick<EconomyView, "fishing"> | null; itemId: string; size?: number }) {
-  return itemId !== "fish" && FISH_SPECIES_IDS.some(id => id === itemId) && !fishDiscovered(state, itemId)
+/** Owned fish are visible goods. Only personal catches unlock the separate collection book. */
+export function PlayerItemIcon({ state, itemId, size = 24 }: { state?: Pick<EconomyView, "fishing"> & Partial<Pick<EconomyView, "inventory">> | null; itemId: string; size?: number }) {
+  return itemId !== "fish" && FISH_SPECIES_IDS.some(id => id === itemId) && !fishDiscovered(state, itemId) && (state?.inventory?.[itemId] ?? 0) <= 0
     ? <HiddenFishIcon size={size} /> : <ItemIcon itemId={itemId} size={size} />;
 }

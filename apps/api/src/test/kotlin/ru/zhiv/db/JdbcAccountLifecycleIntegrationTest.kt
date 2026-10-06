@@ -726,9 +726,12 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals(5L,economy.snapshot(b.session).inventory["berries"])
         val targetShowcase=market.market(a.session).showcase
         assertEquals("1",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",b.id))
+        execute("INSERT INTO economy_market_daily_turnover(user_id,trade_day,buys_value,sales_value,barter_used) VALUES (?,(clock_timestamp() AT TIME ZONE 'UTC')::date,2000,1000,1),(?,(clock_timestamp() AT TIME ZONE 'UTC')::date,1000,2000,1)",a.id,b.id)
         val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
         val merged=economy.snapshot(a.session)
         assertEquals(13L,merged.inventory["berries"])
+        assertEquals("3000:3000:2",scalar("SELECT buys_value || ':' || sales_value || ':' || barter_used FROM economy_market_daily_turnover WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_daily_turnover WHERE user_id=?",b.id))
         assertEquals("0",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",b.id))
         assertEquals(targetShowcase,market.market(a.session).showcase,"merging does not refill the surviving player's window")
         assertEquals("cancelled",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
@@ -742,6 +745,7 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("0",scalar("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'",a.id))
         assertEquals("0",scalar("SELECT count(*) FROM economy_profiles WHERE user_id=?",a.id))
         assertEquals("0",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_daily_turnover WHERE user_id=?",a.id))
     }
 
     @Test fun `merge capacity review includes stock held in active listings`() = runBlocking<Unit> {

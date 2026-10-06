@@ -19,7 +19,7 @@ import { berryCollectionStatus } from "./garden-collection";
 import { ProductionActivity, productionIsActive } from "./production-activity";
 import { WorldProductionSlots } from "./world-production-slots";
 import { productionSlotCount } from "./production-slots";
-import { marketItemUnlocked, marketMinimumPrice, marketRequiredHomeLevel } from "./market-rules";
+import { marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketRequiredHomeLevel, marketSaleFee } from "./market-rules";
 import { BarterMarket } from "./barter-market";
 import styles from "./economy-panel.module.css";
 
@@ -396,16 +396,21 @@ function OfferCard({ economy, offer, owned, navigate }: { economy: ReadyEconomy;
   const enough = state.wallet.coins >= offer.totalPrice, unlocked = canTrade(state), room = offer.quantity <= state.storage.available;
   const requiredHome = marketRequiredHomeLevel(offer.itemId, state.catalog);
   const itemUnlocked = marketItemUnlocked(state, offer.itemId, state.catalog);
-  const oldPrice = offer.totalPrice < marketMinimumPrice(offer.itemId, offer.quantity, state.catalog);
+  const minimum = marketMinimumPrice(offer.itemId, offer.quantity, state.catalog);
+  const oldPrice = offer.totalPrice < minimum || offer.totalPrice > minimum * state.catalog.market.maxPriceMultiplier;
+  const budget = economy.market?.tradeBudget;
+  const dailyBlocked = !!budget && (economy.now >= Date.parse(budget.resetsAt) || budget.buysUsed + minimum > budget.limit);
   const expired = Boolean(economy.market?.showcase && economy.now >= Date.parse(economy.market.showcase.refreshAt));
-  const disabled = busy || uncertain || (!owned && (!enough || !unlocked || !room || !itemUnlocked || oldPrice || expired));
+  const disabled = busy || uncertain || (!owned && (!enough || !unlocked || !room || !itemUnlocked || oldPrice || expired || dailyBlocked));
   const label = `${itemName(state, offer.itemId)} × ${number(offer.quantity)}`;
-  const actionLabel = owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : expired ? "Обновите витрину" : !itemUnlocked ? (Number.isFinite(requiredHome) ? `Нужен дом ${requiredHome} ур.` : "Товар пока недоступен") : oldPrice ? "Предложение недоступно" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет";
+  const actionLabel = owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : expired ? "Обновите витрину" : dailyBlocked ? "Дневной объём покупок" : !itemUnlocked ? (Number.isFinite(requiredHome) ? `Нужен дом ${requiredHome} ур.` : "Товар пока недоступен") : oldPrice ? "Предложение недоступно" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет";
   return <article className={`${styles.card} ${styles.offerCard}`} role="listitem" aria-label={label} data-market-offer={offer.id}>
-    <div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={offer.itemId} size={22} /></span><div><h3>{label}</h3><p className={styles.offerSeller}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
+    <div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={offer.itemId} size={22} /></span><div><h3>{label}</h3><p className={styles.offerSeller}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
     <div className={styles.offerMeta}><span className={styles.offerPrice}><ItemIcon itemId="coins" size={16} />{number(offer.totalPrice)}<span className={styles.sr}> монет</span></span><span className={styles.offerPriceLabel}>за весь лот</span></div>
     <p className={styles.offerUnit}>{(offer.totalPrice / offer.quantity).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} за шт. · {Number.isFinite(requiredHome) ? `Дом ${requiredHome}+` : "Пока недоступен"}</p>
-    {owned && oldPrice && <p className={styles.hint}>Цена ниже нового минимума. Этот лот скрыт от покупателей: верните товар на склад и выставьте заново.</p>}
+    {owned && <p className={styles.offerUnit}>После продажи: {number(offer.totalPrice - marketSaleFee(offer.totalPrice, offer.feeBps ?? 0))} монет{offer.feeBps ? ` · сбор ${offer.feeBps / 100}%` : " · без сбора"}</p>}
+    {owned && minimum > marketDailyLimit(state.buildings.home ?? 1, state.catalog) && <p className={styles.hint}>Партия превышает дневной объём. Верните товар на склад и разделите на меньшие лоты.</p>}
+    {owned && oldPrice && <p className={styles.hint}>Цена вне новых границ. Этот лот скрыт от покупателей: верните товар на склад и выставьте заново.</p>}
     {confirm ? <div ref={confirmation} className={styles.confirmation} role="group" tabIndex={-1} aria-label={`${owned ? "Возврат на склад" : "Подтверждение покупки"}: ${label}`}><p>{owned ? "Снять предложение и вернуть все предметы на склад?" : `Получите ${number(offer.quantity)} шт. за ${number(offer.totalPrice)} монет. Покупается весь лот.`}</p><div className={styles.actions}><button disabled={busy || uncertain} onClick={() => setConfirm(false)}>Назад</button><button className={styles.primary} disabled={disabled} aria-label={`${owned ? "Снять с продажи" : "Подтвердить покупку"}: ${label}${owned ? "" : ` за ${number(offer.totalPrice)} монет`}`} onClick={() => { if (disabled) return; if (owned) void economy.actMarket("cancel_listing", offer.id); else void economy.actMarket("buy_listing", offer.id, offer.quantity, offer.totalPrice); }}>{owned ? "Снять с продажи" : "Подтвердить покупку"}</button></div></div>
       : <button ref={trigger} disabled={disabled} aria-label={`${actionLabel}: ${label}${owned ? "" : ` за ${number(offer.totalPrice)} монет`}`} onClick={() => { if (!disabled) setConfirm(true); }}>{actionLabel}</button>}
     {!owned && !room && <div className={styles.hint}><Package size={15} aria-hidden /><div>Лот занимает {number(offer.quantity)} мест, свободно {number(state.storage.available)}.<br /><button className={styles.textButton} onClick={() => navigate("inventory")}>Освободить место<ArrowRight size={15} aria-hidden /></button></div></div>}
@@ -429,7 +434,8 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
   const [amount, setAmount] = useState("1"), [price, setPrice] = useState(String(item.baseSellPrice * 2));
   const quantityId = useId(), priceId = useId();
   const limits = state.catalog.market;
-  const quantity = integer(amount, Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0));
+  const quantityMax = Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0, Math.floor(marketDailyLimit(state.buildings.home ?? 1, state.catalog) / item.baseSellPrice));
+  const quantity = integer(amount, quantityMax);
   const maximum = quantity ? item.baseSellPrice * limits.maxPriceMultiplier * quantity : 0;
   const totalPrice = integer(price, maximum);
   const minimum = quantity ? marketMinimumPrice(item.id, quantity, state.catalog) : item.baseSellPrice;
@@ -438,10 +444,11 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
   const disabled = !valid || full || busy || uncertain || !canTrade(state) || !marketItemUnlocked(state, item.id, state.catalog);
   return <div className={styles.card}>
     <div className={styles.fields}>
-      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0)} step={1} value={amount} disabled={busy || uncertain} onChange={event => setAmount(event.target.value)} /></label>
+      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain} onChange={event => setAmount(event.target.value)} /></label>
       <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={state.catalog.currencyScale} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
     </div>
-    <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${limits.maxLotQuantity} предметов в одном предложении.`}</p>
+    <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
+    {valid && <p className={styles.muted}>Получите {number(totalPrice! - marketSaleFee(totalPrice!, limits.feeBps))} монет после сбора {limits.feeBps / 100}%.</p>}
     <p className={styles.hint}><Package size={15} aria-hidden />Выставленные предметы сохраняют место на складе до продажи. Отмена вернёт их; выставление лота само по себе не освобождает склад.</p>
     <button className={styles.primary} disabled={disabled} onClick={() => { if (!disabled && quantity && totalPrice) void economy.actMarket("create_listing", item.id, quantity, totalPrice); }}><Store size={17} aria-hidden />{full ? `Все ${limits.maxListings} мест заняты` : `Выставить за ${valid ? number(totalPrice!) : "—"} монет`}</button>
   </div>;
@@ -451,7 +458,7 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
   const [section, setSection] = useState<"browse" | "sell" | "mine">("browse");
   const { snapshot: state, market, marketError, busy, uncertain } = economy;
   const unlocked = canTrade(state), limits = state.catalog.market;
-  const showcase = market?.showcase;
+  const showcase = market?.showcase, budget = market?.tradeBudget;
   const refreshIn = showcase ? Math.max(0, Math.ceil((Date.parse(showcase.refreshAt) - economy.now) / 1000)) : null;
   const refreshLabel = refreshIn === 0 ? "Обновить витрину" : "Проверить наличие";
   const refreshMarket = economy.refreshMarket;
@@ -462,6 +469,11 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
     <nav className={styles.subnav} aria-label="Раздел рынка"><button aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
     {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Торговля с игроками откроется после обустройства дома и первой разведки.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур. · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</p><button onClick={() => navigate((state.buildings.home ?? 1) < limits.requiredHomeLevel ? "buildings" : "exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Местный торговец уже покупает товары в разделе «Склад».</p></div></div>}
     {marketError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
+    {market && unlocked && <details className={styles.marketRules}><summary>Правила торговли и дневной объём</summary>
+      <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж — {limits.feeBps / 100}%.</p>
+      {budget && <><p>Покупки: {number(budget.buysUsed)} / {number(budget.limit)}. Продажи: {number(budget.salesUsed)} / {number(budget.limit)}.</p>
+        <p>Объём считается по базовой стоимости предметов, независимо от цены лота. Обновление через {economyDuration(Math.max(0, Math.ceil((Date.parse(budget.resetsAt) - economy.now) / 1000)))}.</p></>}
+    </details>}
     {!market && !marketError && <p className={styles.muted} role="status">Открываем прилавки…</p>}
     {market && section === "browse" && <>
       <div className={styles.showcaseInfo}><div><strong>Ваша витрина · {market.listings.length} / {showcase?.slots ?? limits.showcaseSlots}</strong>

@@ -42,5 +42,28 @@ export function marketItemUnlocked(state: Pick<EconomyState, "buildings">, itemI
 }
 
 export function marketListingEligible(listing: Pick<EconomyMarketListing, "itemId" | "quantity" | "totalPrice">, homeLevel: number, catalog: EconomyCatalog = economyCatalog): boolean {
-  return homeLevel >= marketRequiredHomeLevel(listing.itemId, catalog) && listing.totalPrice >= marketMinimumPrice(listing.itemId, listing.quantity, catalog);
+  const minimum = marketMinimumPrice(listing.itemId, listing.quantity, catalog);
+  return homeLevel >= marketRequiredHomeLevel(listing.itemId, catalog) && listing.totalPrice >= minimum
+    && listing.totalPrice <= minimum * catalog.market.maxPriceMultiplier;
+}
+
+/** Match current progression, never the level captured when a lot was posted. */
+export function marketHomeBand(home: number): { min: number; max: number } {
+  return home === 4 || home === 5 ? { min: 4, max: 5 } : home === 2 || home === 3 ? { min: 2, max: 3 } : { min: 1, max: 1 };
+}
+export function marketSameHomeBand(buyerHome: number, sellerHome: number): boolean {
+  const band = marketHomeBand(buyerHome);
+  return Number.isInteger(buyerHome) && Number.isInteger(sellerHome) && buyerHome >= 2 && buyerHome <= 5
+    && sellerHome >= band.min && sellerHome <= band.max;
+}
+export function marketDailyLimit(home: number, catalog: EconomyCatalog = economyCatalog): number {
+  return catalog.market.dailyTradeValueByHome[home - 1] ?? 0;
+}
+/** Round the fee up once per lot; splitting cannot eliminate the fee. */
+export function marketSaleFee(totalPrice: number, feeBps: number): number {
+  return Math.ceil(totalPrice * feeBps / 10000);
+}
+export function marketDay(now: number): string { return new Date(now).toISOString().slice(0, 10); }
+export function marketBudgetReset(now: number): string {
+  return new Date(Date.parse(`${marketDay(now)}T00:00:00Z`) + 86400000).toISOString();
 }

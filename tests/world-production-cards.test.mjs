@@ -31,6 +31,12 @@ function section(html, label) {
   assert.ok(match, `Missing section: ${label}`);
   return match[1];
 }
+function laterRecipes(html) {
+  const sections = [...html.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/g)];
+  const match = sections.find(([, , content]) => /<summary[^>]*>[\s\S]*?<span>Позже<\/span>/.test(content));
+  assert.ok(match, "Missing later recipe disclosure");
+  return { attributes: match[1], content: match[2] };
+}
 function startDisabled(html) {
   const match = html.match(/<button\b([^>]*)>Начать ·/);
   assert.ok(match, "Missing production action");
@@ -41,22 +47,21 @@ test("workshop separates ordinary recipes, long batches and unmet unlocks", () =
   const html = renderMenu("workshop");
   const ordinary = section(html, "Обычные заказы");
   const long = section(html, "На несколько часов");
-  const later = html.match(/<details\b([^>]*)>([\s\S]*?)<\/details>/);
-  assert.ok(later);
-  assert.doesNotMatch(later[1], /\bopen/);
+  const later = laterRecipes(html);
+  assert.doesNotMatch(later.attributes, /\bopen/);
   for (const id of ["make_planks", "make_rope", "weave_cloth"]) assert.ok(ordinary.includes(`data-recipe="${id}"`));
   assert.match(long, /data-recipe="workshop_overnight"/);
   assert.doesNotMatch(ordinary + long, /data-recipe="make_metal_parts"|data-recipe="make_tools"/);
-  assert.match(later[2], /data-recipe="make_metal_parts"/);
-  assert.match(later[2], /data-recipe="make_tools"/);
+  assert.match(later.content, /data-recipe="make_metal_parts"/);
+  assert.match(later.content, /data-recipe="make_tools"/);
   assert.doesNotMatch(html, /aria-label="Стоимость"|Недостающие условия|Начать ·/);
 });
 
 test("unlocking an external station moves its recipe into ordinary orders", () => {
   const html = renderMenu("workshop", controller({ buildings: { home: 2, workshop: 2, kiln: 2, warehouse: 1 } }));
   assert.match(section(html, "Обычные заказы"), /data-recipe="make_metal_parts"/);
-  const later = html.match(/<details\b[^>]*>([\s\S]*?)<\/details>/)[1];
-  assert.doesNotMatch(later, /data-recipe="make_metal_parts"/);
+  const later = laterRecipes(html);
+  assert.doesNotMatch(later.content, /data-recipe="make_metal_parts"/);
 });
 
 test("harvest cards distinguish quantity and time while keeping the result name short", () => {

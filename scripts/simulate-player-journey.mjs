@@ -5,8 +5,9 @@ import { createServer } from "vite";
 // Read-only player policy: every state change uses the shipped TS domain rules.
 // No market, achievement reward claims, legacy grant, admin command,
 // backdating or tap income. The default has no pearls; an explicit research
-// scenario may start with a declared budget or project only the pearl component
-// of daily gifts using their real claim calendar. Relics use actual exploration jobs.
+// scenario may start with a declared budget, project only the pearl component,
+// or claim full daily bundles using the real calendar, home tier and inventory
+// transition rules. The full reward projection is not an HTTP/receipt integration test.
 const root = fileURLToPath(new URL("..", import.meta.url));
 const epoch = Date.parse("2026-10-05T00:00:00Z"), day = 86400, hour = 3600;
 const firstVisit = 7 * hour;
@@ -42,23 +43,28 @@ export async function loadJourneyRules() {
   const model = await vite.ssrLoadModule("/features/economy/model.ts");
   const actorAvailability = await vite.ssrLoadModule("/features/economy/actor-availability.ts");
   const progressionRewards = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
-  return { rules, actorAvailability, progressionRewards, catalog: model.economyCatalog, close: () => vite.close() };
+  return { rules, actorAvailability, progressionRewards, catalog: model.economyCatalog,
+    walletLimits: { coins: model.ECONOMY_MAX_BALANCE, pearls: model.ECONOMY_MAX_PEARLS }, close: () => vite.close() };
 }
 
-export function simulateJourney({ rules, actorAvailability, progressionRewards, catalog }, mode, maxDays = 1600, policy = {}) {
+export function simulateJourney({ rules, actorAvailability, progressionRewards, catalog, walletLimits }, mode, maxDays = 1600, policy = {}) {
   const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false,
     pearlBudget = 0, constructionSpeedups = true, buyProductionSlots = false,
-    parallelProductionPlanning = buyProductionSlots, dailyPearlsOnly = false, rareSeed = DEFAULT_JOURNEY_RARE_SEED } = policy;
+    parallelProductionPlanning = buyProductionSlots, dailyPearlsOnly = false, dailyRewards = false, rareSeed = DEFAULT_JOURNEY_RARE_SEED } = policy;
   assert(Number.isSafeInteger(pearlBudget) && pearlBudget >= 0 && pearlBudget <= 1_000_000_000 * (catalog.pearlScale ?? catalog.currencyScale ?? 1), "Invalid research pearl budget");
   assert(["active16h", "visits2", "visits3"].includes(mode), "Invalid visit policy");
+  assert(!(dailyRewards && dailyPearlsOnly), "Choose complete gifts or pearl-only projection, not both");
   const rareRandom = createJourneyRareRandom(rareSeed);
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
+  const initialCoins = state.wallet.coins, coinSpending = {};
   let clock = firstVisit, sequence = 0, castSequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null, pearlsSpent = 0;
   const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, explorationRoutes = {}, itemFlow = {}, items = new Map(catalog.items.map(item => [item.id, item]));
   const productionStations = [...new Set(catalog.recipes.map(recipe => recipe.buildingId))].filter(id => id !== "quarry");
   const slotPurchases = [], maximumProductionJobs = {};
-  let dailyState = dailyPearlsOnly ? progressionRewards.initialDailyRewardState() : null, dailyClaims = 0, dailyPearls = 0;
+  let dailyState = dailyPearlsOnly || dailyRewards ? progressionRewards.initialDailyRewardState() : null, dailyClaims = 0, dailyPearls = 0;
+  let dailyCoins = 0, dailyDeferredForStorage = 0;
+  const dailyItems = {}, dailyClaimRows = [];
   const slotCapacity = id => state.productionSlots?.[id] ?? 1;
   const productionAvailable = id => !state.jobs.some(job => job.kind === "construction" && job.targetId === id)
     && state.jobs.filter(job => job.kind === "production" && job.targetId === id).length < slotCapacity(id);
@@ -88,6 +94,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         action, targetId, quantity, totalPrice }, epoch + clock * 1000, jobId, {}, rareRandom.integer);
       if (action === "start_fishing" && generated >= 2) castSequence++;
       if (action === "sell" || action === "sell_fish") revenue += next.wallet.coins - state.wallet.coins;
+      if (next.wallet.coins < state.wallet.coins) coinSpending[action] = (coinSpending[action] ?? 0) + state.wallet.coins - next.wallet.coins;
       if (action === "speedup_construction") {
         const job = state.jobs.find(j => j.id === targetId);
         pearlsSpent += state.wallet.pearls - next.wallet.pearls;
@@ -247,14 +254,40 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   };
   function act() {
     let target = goal(); if (!target) return;
-    if (dailyPearlsOnly) {
-      const gift = progressionRewards.dailyRewardView(dailyState, epoch + clock * 1000);
+    if (dailyPearlsOnly || dailyRewards) {
+      const gift = progressionRewards.dailyRewardView(dailyState, epoch + clock * 1000, state.buildings.home ?? 1);
       if (gift.claimable) {
-        // Isolate slot affordability: intentionally omit the gift's coins,
-        // ordinary items and relic. This is a projection, not a reward API test.
-        state.wallet.pearls += gift.reward.pearls;
-        dailyPearls += gift.reward.pearls; dailyClaims++;
-        dailyState = progressionRewards.afterDailyClaim(dailyState, epoch + clock * 1000);
+        const next = structuredClone(state);
+        let accepted = true;
+        if (dailyRewards) {
+          // Match creditDevProgressionReward's atomic wallet/item/storage checks.
+          // No escrow exists in this no-market policy. Failed capacity keeps the
+          // entire gift and calendar untouched for a later attempt.
+          for (const currency of ["coins", "pearls"]) {
+            assert(next.wallet[currency] + gift.reward[currency] <= walletLimits[currency], "Research wallet reached capacity");
+            next.wallet[currency] += gift.reward[currency];
+          }
+          rules.creditEconomyItems(next, gift.reward.items);
+          try { rules.assertEconomyStorageTransition(state, next); }
+          catch (error) {
+            if (error.code !== "ECONOMY_STORAGE_FULL" && error.code !== "ECONOMY_CAPACITY") throw error;
+            accepted = false; dailyDeferredForStorage++;
+          }
+        } else next.wallet.pearls += gift.reward.pearls;
+        if (accepted) {
+          Object.assign(state, next);
+          dailyPearls += gift.reward.pearls; dailyClaims++;
+          if (dailyRewards) {
+            dailyCoins += gift.reward.coins;
+            for (const [id, quantity] of Object.entries(gift.reward.items)) {
+              dailyItems[id] = (dailyItems[id] ?? 0) + quantity;
+              (itemFlow[id] ??= { received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0 }).received += quantity;
+            }
+            dailyClaimRows.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), at: new Date(epoch + clock * 1000).toISOString(),
+              homeLevel: state.buildings.home ?? 1, step: gift.step, reward: structuredClone(gift.reward) });
+          }
+          dailyState = progressionRewards.afterDailyClaim(dailyState, epoch + clock * 1000);
+        }
       }
     }
     let plan = demand(target);
@@ -374,24 +407,28 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   }
   const report = { catalogVersion: catalog.version, currencyScale: catalog.currencyScale ?? 1, pearlScale: catalog.pearlScale ?? catalog.currencyScale ?? 1, mode, complete: !goal(), elapsedDays: Number(((clock - firstVisit) / day).toFixed(3)),
     homeDays: Object.fromEntries([2, 3, 4, 5].map(l => [l, milestones[`home:${l}`] == null ? null : Number(milestones[`home:${l}`].toFixed(3))])),
-    commands, saleRevenue: revenue, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
-    ...(pearlBudget > 0 || dailyPearlsOnly ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
+    commands, saleRevenue: revenue, coinFlow: { initial: initialCoins, sales: revenue, gifts: dailyCoins,
+      spendingByAction: coinSpending, remaining: state.wallet.coins }, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
+    ...(pearlBudget > 0 || dailyPearlsOnly || dailyRewards ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
     ...(dailyPearlsOnly ? { dailyPearlProjection: { claims: dailyClaims, pearlsReceived: dailyPearls,
       omitted: ["daily_reward_coins", "daily_reward_items", "daily_reward_relics", "achievement_rewards"] } } : {}),
+    ...(dailyRewards ? { dailyRewards: { claims: dailyClaims, coinsReceived: dailyCoins, pearlsReceived: dailyPearls,
+      itemsReceived: dailyItems, storageDeferrals: dailyDeferredForStorage, claimRows: dailyClaimRows } } : {}),
     ...(parallelProductionPlanning ? { productionSlots: { constructionSpeedups, purchases: slotPurchases,
       maximumProductionJobs, finalCapacity: Object.fromEntries(productionStations.map(id => [id, slotCapacity(id)])) } } : {}),
     ...(jointBatchPlanning ? { productionRecipes } : {}),
     explorationRoutes, itemFlow: Object.fromEntries(Object.entries(itemFlow).map(([id, flow]) => [id, { ...flow, remaining: state.inventory[id] ?? 0 }])),
     actorWorkHours: Object.fromEntries(Object.entries(actorWorkSeconds).map(([kind, seconds]) => [kind, Number((seconds / hour).toFixed(4))])),
-    excludedIncome: [dailyPearlsOnly ? "daily_reward_coins_and_items" : "daily_rewards", "achievement_rewards", "taps", "player_market", "legacy_grants"],
+    excludedIncome: [...(dailyRewards ? [] : [dailyPearlsOnly ? "daily_reward_coins_and_items" : "daily_rewards"]), "achievement_rewards", "taps", "player_market", "legacy_grants"],
     rareMaterials: { seed: rareSeed, generator: "xorshift32-rejection-v1", draws: rareRandom.draws,
       eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)), received: relicReceived,
       spentOnConstruction: relicSpent, inventory: Object.fromEntries(relicIds.map(id => [id, state.inventory[id] ?? 0])), finds: relicFinds } };
   assert.equal(state.wallet.pearls, pearlBudget + dailyPearls - pearlsSpent); assert(state.wallet.coins >= 0);
+  assert.equal(state.wallet.coins, initialCoins + revenue + dailyCoins - Object.values(coinSpending).reduce((sum, value) => sum + value, 0), "Coins must reconcile across gifts, sales and actual paid commands");
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
   for (const [id, flow] of Object.entries(itemFlow))
     assert.equal(flow.received - flow.sold - flow.productionInputs - flow.expeditionInputs - flow.constructionInputs, state.inventory[id] ?? 0, `${id}: inventory flow must conserve every earned item`);
-  for (const id of relicIds) assert.equal(relicReceived[id] - relicSpent[id], state.inventory[id] ?? 0, "Relics must be conserved from actual claims through construction");
+  for (const id of relicIds) assert.equal(relicReceived[id] + (dailyItems[id] ?? 0) - relicSpent[id], state.inventory[id] ?? 0, "Exploration and gifted relics must be conserved through construction");
   return report;
 }
 

@@ -513,7 +513,7 @@ class EconomyRulesTest {
             if (EconomyRules.catalog.items.any { it.tradable && it.id in available }) available = available + merchantItems
         }
         assertEquals(itemIds, available)
-        assertEquals(0, EconomyRules.catalog.market.feeBps)
+        assertEquals(500, EconomyRules.catalog.market.feeBps)
     }
     @Test fun `warehouse counts all goods and market escrow without destroying imported overflow`() {
         val state = EconomyRules.initial().copy(inventory = mapOf("wood" to 150L, "stone" to 30L))

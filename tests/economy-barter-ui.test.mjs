@@ -97,3 +97,14 @@ test("home unlock and six-slot thirty-minute shelf explain exchange without coin
   assert.equal(reads, 1); assert.match(view.html, /1 \/ 6/); assert.match(view.html, /30 минут/); assert.match(view.html, /Без монет и жемчуга/);
   assert.doesNotMatch(view.html, /Купить весь лот|Продать|type="number"/);
 });
+
+test("daily exchange quota disables spending but never traps the owner's escrow", () => {
+  const e = economy(), calls = []; e.actBarter = command => calls.push(command);
+  e.barter.dailyLimit = { used: 0, limit: 1, resetsAt: new Date(now + 86400000).toISOString() };
+  const h = harness(BarterOfferCard, { economy: e, offer: offer() });
+  button(h.render(), "Обменять").props.onClick(); e.barter.dailyLimit.used = 1;
+  const accept = button(h.render(), "Подтвердить обмен"); assert.equal(accept.props.disabled, true); accept.props.onClick(); assert.deepEqual(calls, []);
+  const owned = economy(true); owned.barter.dailyLimit = { ...e.barter.dailyLimit };
+  const own = harness(BarterOfferCard, { economy: owned, offer: offer(true), owned: true });
+  assert.equal(button(own.render(), "Вернуть материал").props.disabled, false);
+});

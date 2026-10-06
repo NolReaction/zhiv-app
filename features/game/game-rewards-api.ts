@@ -16,7 +16,7 @@ const achievementRewardSchema = z.object({ achievementId, level: count.positive(
   .refine(value => GAME_ACHIEVEMENT_TARGETS[value.achievementId][value.level - 1] === value.target
     && (!value.eligible || Boolean(value.earnedAt && !value.claimedAt && !value.blockedReason && value.pearls > 0)));
 export const gameRewardsSchema = z.object({ ownerPublicId: owner, serverTime: z.string().datetime(), catalogVersion: z.literal(1),
-  daily: z.object({ step, claimable: z.boolean(), nextClaimAt: z.string().datetime(), lastClaimAt: z.string().datetime().nullable(),
+  daily: z.object({ step, homeLevel: z.number().int().min(1).max(5).optional(), claimable: z.boolean(), nextClaimAt: z.string().datetime(), lastClaimAt: z.string().datetime().nullable(),
     lastClaimDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), reward: gameRewardSchema,
     cycle: z.array(z.object({ step, reward: gameRewardSchema })).length(7).refine(rows => rows.every((row, index) => row.step === index + 1)) }),
   achievementRewards: z.array(achievementRewardSchema).length(21).refine(rows => new Set(rows.map(row => `${row.achievementId}:${row.level}`)).size === 21),

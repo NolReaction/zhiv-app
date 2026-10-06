@@ -29,12 +29,16 @@ data class EconomyBarterShowcase(
 )
 
 @Serializable
+data class EconomyBarterDailyLimit(val used: Long, val limit: Int, val resetsAt: String)
+
+@Serializable
 data class EconomyBarterView(
     val ownerPublicId: String,
     val offers: List<EconomyBarterOffer>,
     val mine: List<EconomyBarterOffer>,
     val serverTime: String,
     val showcase: EconomyBarterShowcase,
+    val dailyLimit: EconomyBarterDailyLimit? = null,
 )
 
 /** HTTP decoding enforces an exact action-specific union, without price or quantity. */
@@ -70,6 +74,16 @@ object EconomyBarterRules {
     const val SHOWCASE_SLOTS = 6
     const val SHOWCASE_PER_SELLER = 1
     const val SHOWCASE_SECONDS = 1800L
+    const val DAILY_LIMIT = 1
+
+    fun sameHomeBand(buyerHome: Int, sellerHome: Int): Boolean =
+        buyerHome >= REQUIRED_HOME_LEVEL && sellerHome >= REQUIRED_HOME_LEVEL && EconomyMarketRules.sameHomeBand(buyerHome, sellerHome)
+
+    fun assertDailyLimit(used: Long, seller: Boolean = false) {
+        if (used !in 0L until DAILY_LIMIT.toLong()) throw AuthFailure("ECONOMY_BARTER_DAILY_LIMIT",
+            if (seller) "Этот игрок уже обменялся сегодня. Выберите другое предложение."
+            else "Сегодня вы уже обменялись. Новый обмен доступен после 00:00 UTC.", 409)
+    }
 
     fun eligibleItem(id: String): Boolean = EconomyRules.catalog.items.any {
         it.id == id && it.category == "special" && !it.tradable

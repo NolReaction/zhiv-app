@@ -159,7 +159,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         assertEquals(0L,states.sumOf{it.storage.reserved})
     }
 
-    @Test fun `reciprocal swaps lock accounts in one order and the stale loser may retry`() = runBlocking<Unit> {
+    @Test fun `reciprocal swaps serialize and switching roles cannot bypass the daily limit`() = runBlocking<Unit> {
         val a=player(mapOf("ancient_core" to 2L,"moon_crystal" to 1L));val b=player(mapOf("moon_crystal" to 2L,"ancient_core" to 1L))
         val oa=offer(a);val ob=offer(b,"moon_crystal","ancient_core")
         barter.barter(a.hash);barter.barter(b.hash)
@@ -167,9 +167,12 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         val results=coroutineScope{commands.map{(p,command)->async(Dispatchers.IO){runCatching{barter.command(p.hash,command)}}}.awaitAll()}
         assertEquals(1,results.count{it.isSuccess});assertEquals("ECONOMY_REVISION_CONFLICT",(results.single{it.isFailure}.exceptionOrNull() as AuthFailure).code)
         val (loser,command)=commands[results.indexOfFirst{it.isFailure}]
-        barter.command(loser.hash,command.copy(expectedRevision=economy.snapshot(loser.hash).revision))
-        assertEquals(0L,economy.snapshot(a.hash).inventory["ancient_core"]);assertEquals(3L,economy.snapshot(a.hash).inventory["moon_crystal"])
-        assertEquals(0L,economy.snapshot(b.hash).inventory["moon_crystal"]);assertEquals(3L,economy.snapshot(b.hash).inventory["ancient_core"])
+        assertEquals("ECONOMY_BARTER_DAILY_LIMIT", assertFailsWith<AuthFailure> {
+            barter.command(loser.hash,command.copy(expectedRevision=economy.snapshot(loser.hash).revision))
+        }.code)
+        assertEquals(1L,barter.barter(a.hash).dailyLimit!!.used)
+        assertEquals(1L,barter.barter(b.hash).dailyLimit!!.used)
+        assertEquals(1L,scalar("SELECT count(*) FROM economy_barter_offers WHERE seller_id IN (?,?) AND status='active'",a.id,b.id))
     }
 
     @Test fun `six offers one per seller are fixed across concurrent reads hidden ids and sold slots`() = runBlocking<Unit> {
@@ -183,11 +186,53 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         assertEquals(1L,scalar("SELECT count(*) FROM economy_barter_showcases WHERE user_id=?",buyer.id))
         val hidden=all.first{candidate->first.offers.none{it.id==candidate.id}}
         assertEquals("ECONOMY_BARTER_SHOWCASE_CHANGED",assertFailsWith<AuthFailure>{barter.command(buyer.hash,action(buyer,"accept_offer",hidden.id))}.code)
-        for(selected in first.offers) barter.command(buyer.hash,action(buyer,"accept_offer",selected.id))
-        assertTrue(barter.barter(buyer.hash).offers.isEmpty());assertEquals(first.showcase,barter.barter(buyer.hash).showcase)
-        assertEquals(6L,economy.snapshot(buyer.hash).inventory["ancient_core"])
+        barter.command(buyer.hash,action(buyer,"accept_offer",first.offers.first().id))
+        assertEquals("ECONOMY_BARTER_DAILY_LIMIT",assertFailsWith<AuthFailure>{
+            barter.command(buyer.hash,action(buyer,"accept_offer",first.offers[1].id))
+        }.code)
+        assertEquals(5,barter.barter(buyer.hash).offers.size);assertEquals(first.showcase,barter.barter(buyer.hash).showcase)
+        assertEquals(1L,economy.snapshot(buyer.hash).inventory["ancient_core"])
         expire(buyer)
         assertTrue(barter.barter(buyer.hash).offers.isNotEmpty())
+    }
+
+    @Test fun `current home groups hide and reject a stale relic exchange without consuming allowance`() = runBlocking<Unit> {
+        val seller=player();val buyer=player(mapOf("moon_crystal" to 1L));val high=player(home=4)
+        val lot=offer(seller);barter.barter(buyer.hash)
+        val request=action(buyer,"accept_offer",lot.id);val before=economy.snapshot(buyer.hash)
+        assertTrue(barter.barter(high.hash).offers.isEmpty())
+        edit(seller){it.copy(buildings=it.buildings+("home" to 4))}
+        assertTrue(barter.barter(buyer.hash).offers.isEmpty())
+        assertEquals("ECONOMY_BARTER_HOME_BAND",assertFailsWith<AuthFailure>{barter.command(buyer.hash,request)}.code)
+        assertEquals(before.inventory,economy.snapshot(buyer.hash).inventory)
+        assertEquals(before.wallet,economy.snapshot(buyer.hash).wallet)
+        assertEquals(0L,barter.barter(buyer.hash).dailyLimit!!.used)
+        barter.command(seller.hash,action(seller,"cancel_offer",lot.id))
+        assertEquals(3L,economy.snapshot(seller.hash).inventory["ancient_core"])
+    }
+
+    @Test fun `distinct simultaneous exchanges share the seller allowance and UTC rollover keeps receipts`() = runBlocking<Unit> {
+        val seller=player();val a=player(mapOf("moon_crystal" to 2L));val b=player(mapOf("moon_crystal" to 2L))
+        val first=offer(seller);val second=offer(seller)
+        barter.barter(a.hash);barter.barter(b.hash)
+        execute("UPDATE economy_barter_showcases SET offer_ids=ARRAY[?::uuid] WHERE user_id=?",UUID.fromString(first.id),a.id)
+        execute("UPDATE economy_barter_showcases SET offer_ids=ARRAY[?::uuid] WHERE user_id=?",UUID.fromString(second.id),b.id)
+        val requests=listOf(a to action(a,"accept_offer",first.id),b to action(b,"accept_offer",second.id))
+        val results=coroutineScope{requests.map{(p,command)->async(Dispatchers.IO){runCatching{barter.command(p.hash,command)}}}.awaitAll()}
+        assertEquals(1,results.count{it.isSuccess})
+        assertEquals("ECONOMY_BARTER_DAILY_LIMIT",(results.single{it.isFailure}.exceptionOrNull() as AuthFailure).code)
+        assertEquals(1L,barter.barter(seller.hash).dailyLimit!!.used)
+        assertEquals(1L,listOf(a,b).sumOf{barter.barter(it.hash).dailyLimit!!.used})
+        val winner=requests[results.indexOfFirst{it.isSuccess}]
+        assertTrue(barter.command(winner.first.hash,winner.second).replayed)
+        assertEquals(1L,barter.barter(seller.hash).dailyLimit!!.used)
+        val (loser,request)=requests[results.indexOfFirst{it.isFailure}]
+        execute("UPDATE economy_market_daily_turnover SET trade_day=trade_day-1 WHERE user_id=?",seller.id)
+        assertEquals(0L,barter.barter(seller.hash).dailyLimit!!.used)
+        barter.command(loser.hash,request)
+        assertEquals(1L,barter.barter(seller.hash).dailyLimit!!.used)
+        assertTrue(barter.command(winner.first.hash,winner.second).replayed)
+        assertEquals(1L,barter.barter(seller.hash).dailyLimit!!.used)
     }
 
     @Test fun `empty window does not refill and expiry requires a fresh server selection`() = runBlocking<Unit> {

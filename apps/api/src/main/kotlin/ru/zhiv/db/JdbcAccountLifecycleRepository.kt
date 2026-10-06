@@ -272,6 +272,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM economy_commands t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
             "SELECT to_jsonb(t)::text FROM economy_ledger t WHERE user_id IN (?,?) ORDER BY user_id,source_key",
             "SELECT to_jsonb(t)::text FROM economy_market_listings t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
+            "SELECT to_jsonb(t)::text FROM economy_market_daily_turnover t WHERE user_id IN (?,?) ORDER BY user_id,trade_day",
             "SELECT to_jsonb(t)::text FROM economy_market_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
             "SELECT to_jsonb(t)::text FROM economy_barter_offers t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM economy_barter_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
@@ -342,6 +343,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_daily_rewards WHERE user_id=?",id)
         c.update("DELETE FROM game_achievement_reward_claims WHERE user_id=?",id)
         removeEconomyProfile(c, id)
+        c.update("DELETE FROM economy_market_daily_turnover WHERE user_id=?", id)
         c.update("DELETE FROM economy_market_receipts WHERE user_id=?", id)
         c.update("DELETE FROM economy_barter_receipts WHERE user_id=?", id)
         c.update("DELETE FROM forest_memory_receipts WHERE user_id=?",id)
@@ -438,6 +440,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         cancelEconomyBarterOffers(c, id)
         cancelEconomyBarterOffers(c, s.other)
         mergeEconomyProfiles(c, id, s.other)
+        mergeEconomyTradeUsage(c, id, s.other)
         mergeEconomyMarketReceipts(c, id, s.other)
         mergeEconomyBarterReceipts(c, id, s.other)
         mergeWorldProfiles(c,id,s.other)

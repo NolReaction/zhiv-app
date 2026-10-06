@@ -35,11 +35,12 @@ export function BarterOfferCard({ economy, offer, owned = false }: { economy: Re
     && current.sellerPublicId === offer.sellerPublicId && current.owned === offer.owned;
   const own = offer.owned && offer.sellerPublicId === state.ownerPublicId;
   const expired = !shelf || economy.now >= Date.parse(shelf.showcase.refreshAt);
+  const dailyBlocked = !!shelf?.dailyLimit && (shelf.dailyLimit.used >= shelf.dailyLimit.limit || economy.now >= Date.parse(shelf.dailyLimit.resetsAt));
   const enough = (state.inventory[offer.requestedItemId] ?? 0) >= 1;
   const validItems = offer.offeredItemId !== offer.requestedItemId && eligible(state, offer.offeredItemId) && eligible(state, offer.requestedItemId);
   const unavailable = locked(economy) || !same || shelf?.ownerPublicId !== state.ownerPublicId
-    || (owned ? !own : own || offer.owned || expired || !enough || !validItems || (state.buildings.home ?? 1) < BARTER_HOME_LEVEL);
-  const label = owned ? "Вернуть материал" : expired ? "Обновите витрину" : !enough ? "Нет нужного материала" : "Обменять";
+    || (owned ? !own : own || offer.owned || expired || dailyBlocked || !enough || !validItems || (state.buildings.home ?? 1) < BARTER_HOME_LEVEL);
+  const label = owned ? "Вернуть материал" : expired ? "Обновите витрину" : dailyBlocked ? "Обмен на сегодня завершён" : !enough ? "Нет нужного материала" : "Обменять";
   return <article className={styles.offer} role="listitem" aria-label={`${itemName(state, offer.offeredItemId)} на ${itemName(state, offer.requestedItemId)}`}>
     <p className={styles.seller}>{owned ? "Ваше предложение" : `Сосед: ${offer.sellerName}`}</p>
     <Pair state={state} give={owned ? offer.offeredItemId : offer.requestedItemId} receive={owned ? offer.requestedItemId : offer.offeredItemId} />
@@ -109,7 +110,9 @@ export function BarterMarket({ economy, onMarket, onHome }: { economy: ReadyEcon
       {!validShelf && !barterError && <p role="status" className={styles.note}>Открываем соседские прилавки…</p>}
       {validShelf && section === "browse" && <>
         <div className={styles.shelf}><div><strong>Ваша витрина · {validShelf.offers.length} / 6</strong><p>{refreshIn ? `Смена через ${Math.ceil(refreshIn / 60)} мин` : "Доступна новая витрина"}</p></div><button type="button" disabled={locked(economy)} onClick={() => void refreshBarter()}><RefreshCw size={15} aria-hidden />{refreshIn ? "Проверить наличие" : "Обновить витрину"}</button></div>
-        <p className={styles.note}>Не больше одного предложения от соседа. Подборка меняется раз в 30 минут; ушедшие вещи до смены не заменяются.</p>
+        <details className={styles.note}><summary>Правила обмена</summary><p>Один завершённый обмен в день для каждого участника. Поселения с домом 3 обмениваются между собой, с домами 4–5 — в своём кругу.</p>
+          {validShelf.dailyLimit && <p>Сегодня: {validShelf.dailyLimit.used} / {validShelf.dailyLimit.limit}. Новый обмен — через {Math.max(0, Math.ceil((Date.parse(validShelf.dailyLimit.resetsAt) - economy.now) / 60000))} мин.</p>}
+          <p>Не больше одного предложения от соседа. Подборка меняется раз в 30 минут; ушедшие вещи до смены не заменяются.</p></details>
         {validShelf.offers.length ? <div className={styles.offers} role="list" aria-label="Предложения обмена">{validShelf.offers.map(offer => <BarterOfferCard key={offer.id} economy={economy} offer={offer} />)}</div> : <div className={styles.empty}><ArrowLeftRight size={26} aria-hidden /><h3>Прилавки пока свободны</h3><p>Соседи ещё не предложили находки или предыдущие обмены уже закончились.</p><button type="button" onClick={() => setSection("create")}>Предложить свою находку</button></div>}
       </>}
       {validShelf && section === "create" && <BarterCreateForm economy={economy} />}

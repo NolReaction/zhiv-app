@@ -14,6 +14,8 @@
 .header button { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 8px; border: 1px solid #e5eaca30; border-radius: 12px; background: #e5eaca0b; color: #f0e6ca; cursor: pointer; }
 .header button:hover { background: #e5eaca20; }
 .panel { display: grid; gap: 14px; padding: 16px; min-width: 0; }
+.homeTier { justify-self: start; padding: 5px 9px; border-radius: 999px; background: #f3ead0; color: #536746; font-size: .6875rem; font-weight: 600; }
+.spaceHint { flex-basis: 100%; margin: 0; color: #874c30; font-size: .75rem; line-height: 1.5; }
 .intro, .status { margin: 0; color: #59624d; font-size: .8125rem; line-height: 1.55; }
 .cycle { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .cycle > li { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 10px; border: 1px solid #c8bd98; border-radius: 14px; background: #f0e6ca; }
@@ -30,7 +32,7 @@
 .cycle .contents { flex: 1; align-items: center; align-content: center; }
 .stepStatus { color: #59624d; font-size: .625rem; line-height: 1.35; }
 .cycle > li[data-current] .stepStatus { color: #394d3e; font-weight: 650; }
-.claimArea { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px; border: 1px solid #a4b18b; border-radius: 15px; background: #e1e5c8; }
+.claimArea { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 13px; border: 1px solid #a4b18b; border-radius: 15px; background: #e1e5c8; }
 .claimArea > div { display: grid; gap: 6px; }
 .eyebrow { color: #59624d; font-size: .625rem; letter-spacing: .08em; }
 .claim, .recovery button, .empty button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 13px; border: 1px solid #466347; border-radius: 12px; background: #466347; color: #f6eed7; font: inherit; font-size: .8125rem; font-weight: 600; cursor: pointer; }

@@ -45,7 +45,10 @@ object EconomyRules {
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
-            catalog.market.maxPriceMultiplier in 1L..5L && catalog.market.feeBps == 0)
+            catalog.market.maxPriceMultiplier in 1L..2L && catalog.market.feeBps == 500)
+        require(catalog.market.dailyTradeValueByHome.size == 5 && catalog.market.dailyTradeValueByHome.first() == 0L &&
+            catalog.market.dailyTradeValueByHome.drop(1).all { it in 1L..ECONOMY_MAX_BALANCE } &&
+            catalog.market.dailyTradeValueByHome.zipWithNext().all { (a,b) -> a <= b })
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
         require(catalog.items.all { if (it.category == "special") it.baseSellPrice == 0L && !it.tradable else it.baseSellPrice > 0L })
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)

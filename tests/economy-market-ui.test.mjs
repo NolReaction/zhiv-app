@@ -26,6 +26,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { OfferCard, Market, ListingPriceForm } = await vite.ssrLoadModule("/features/economy/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { fishDiscovered } = await vite.ssrLoadModule("/features/economy/fish-discovery.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-05T14:00:00Z");
 function economy() {
@@ -67,6 +68,23 @@ test("compact offer preserves visible quantity, seller and distinct total and un
   assert.match(view.html, /420<span[^>]+> монет<\/span>/); assert.match(view.html, /за весь лот/); assert.match(view.html, /70 за шт\./);
   const button = view.nodes.find(node => node.type === "button");
   assert.equal(button.props["aria-label"], "Купить весь лот: Древесина × 6 за 420 монет");
+});
+
+test("market fish previews show exact goods even before discovery or while all stock is in escrow", () => {
+  for (const owned of [false, true]) {
+    const e = economy(); e.snapshot.inventory = {}; e.snapshot.fishing = { catches: {} };
+    e.snapshot.storage = { capacity: 3000, used: 0, reserved: owned ? 1 : 0, available: owned ? 2999 : 3000, overflow: 0 };
+    const item = e.snapshot.catalog.items.find(entry => entry.id === "fish_shark");
+    const lot = { ...offer("shark"), itemId: item.id, quantity: 1, totalPrice: item.baseSellPrice, owned };
+    const before = structuredClone(e.snapshot);
+    const view = harness(OfferCard, { economy: e, offer: lot, owned, navigate() {} }).render();
+    assert.match(view.html, /Теневая акула × 1/);
+    assert.match(view.html, /data-item-icon="fish_shark"/);
+    assert.doesNotMatch(view.html, /data-hidden-fish/);
+    assert.equal(view.nodes.find(node => node.type === "button").props.disabled, false);
+    assert.equal(fishDiscovered(e.snapshot, item.id), false);
+    assert.deepEqual(e.snapshot, before, "viewing a market lot never invents inventory or personal catches");
+  }
 });
 
 test("buy and return still require confirmation, preserve exact commands and restore keyboard focus on Back", () => {
@@ -129,4 +147,36 @@ test("an open seller form cannot list high-tier bait after a home-level change",
   e.snapshot.buildings.home = 2;
   const submit = h.render().nodes.find(node => node.type === "button");
   assert.equal(submit.props.disabled, true); submit.props.onClick(); assert.deepEqual(calls, []);
+});
+
+test("daily buyer budget invalidates an open confirmation without blocking owned cancellation", () => {
+  const e = economy(), calls = []; e.actMarket = (...args) => calls.push(args);
+  e.market.tradeBudget = { buysUsed: 0, salesUsed: 0, limit: 2400, resetsAt: new Date(now + 86400000).toISOString(), feeBps: 500, homeBandMin: 2, homeBandMax: 3 };
+  const h = harness(OfferCard, { economy: e, offer: offer("a"), navigate() {} });
+  h.render().nodes.find(node => node.type === "button").props.onClick();
+  e.market.tradeBudget.buysUsed = 2380;
+  const accept = h.render().nodes.find(node => node.type === "button" && node.props["aria-label"]?.startsWith("Подтвердить покупку"));
+  assert.equal(accept.props.disabled, true); accept.props.onClick(); assert.deepEqual(calls, []);
+  const cancel = harness(OfferCard, { economy: e, offer: offer("a"), owned: true, navigate() {} });
+  assert.equal(cancel.render().nodes.find(node => node.type === "button").props.disabled, false);
+});
+
+test("seller sees the net fee and a quantity which fits the full daily limit", () => {
+  const e = economy(); e.snapshot.buildings.home = 2; e.snapshot.inventory.wood = 100;
+  const item = e.snapshot.catalog.items.find(entry => entry.id === "wood");
+  const view = harness(ListingPriceForm, { economy: e, item }).render();
+  assert.equal(view.nodes.find(node => node.type === "input").props.max, 60);
+  assert.match(view.html, /Получите 76 монет после сбора 5%/);
+  const old = harness(OfferCard, { economy: e, offer: { ...offer("legacy"), feeBps: 0 }, owned: true, navigate() {} }).render();
+  assert.match(old.html, /После продажи: 420 монет/); assert.match(old.html, /без сбора/);
+});
+
+test("limits and reset countdown are available in collapsed market rules", () => {
+  const e = economy(); e.market.tradeBudget = { buysUsed: 900, salesUsed: 1200, limit: 2400, resetsAt: new Date(now + 3600000).toISOString(), feeBps: 500, homeBandMin: 2, homeBandMax: 3 };
+  const view = harness(Market, { economy: e, navigate() {} }).render();
+  const rules = view.nodes.find(node => node.type === "details" && renderToStaticMarkup(node).includes("Правила торговли"));
+  assert.equal(rules.props.open, undefined);
+  assert.match(renderToStaticMarkup(rules), /домами 2–3 и 4–5/);
+  assert.match(renderToStaticMarkup(rules), /Покупки: 900/);
+  assert.match(renderToStaticMarkup(rules), /Обновление через 1 ч/);
 });

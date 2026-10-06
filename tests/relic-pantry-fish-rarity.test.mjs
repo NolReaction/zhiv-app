@@ -42,7 +42,7 @@ test("supplies omit relic sale cards while their separate tab reports the actual
   const supplies = pantry(state);
   assert.match(supplies, /aria-label="Древесина: 5"/);
   assert.doesNotMatch(supplies, /aria-label="Древнее ядро: 2"|aria-label="Лунный кристалл: 1"|data-relic=/);
-  assert.match(supplies, /role="tab"[^>]*aria-selected="false"[^>]*>[\s\S]*?Реликвии<small>3<\/small>/);
+  assert.match(supplies, /role="tab"[^>]*aria-selected="false"[^>]*>[\s\S]*?<small>3<\/small><span>Реликвии<\/span>/);
   const relics = pantry(state, "relics");
   assert.equal((relics.match(/data-relic=/g) ?? []).length, 3);
   assert.match(relics, /Древнее ядро[\s\S]*?aria-label="В наличии: 2">×2</);
@@ -88,7 +88,7 @@ test("existing species remain in the expanded grades across shop book and invent
   assert.doesNotMatch(shop, /Мои снасти|Ваши снасти/);
   const book = fishPages(state);
   assert.match(book, /data-fish-rarity="uncommon"/); assert.match(book, /data-fish-rarity="rare"/);
-  assert.match(pantry(state), /data-fish-rarity="rare"/);
+  assert.match(pantry(state, "fridge"), /data-fish-rarity="rare"/);
   const entries = collectionBookEntries("fishing", [], state);
   assert.equal(entries.length, economyCatalog.fishing.fish.length); assert.equal(entries.find(entry => entry.id === "fish_mooncarp").rarity, "rare");
   assert.equal(entries.find(entry => entry.id === "fish_shark").rarity, "legendary");

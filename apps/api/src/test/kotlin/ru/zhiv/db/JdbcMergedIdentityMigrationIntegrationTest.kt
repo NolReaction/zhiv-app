@@ -47,7 +47,7 @@ class JdbcMergedIdentityMigrationIntegrationTest {
                 assertEquals(7L,readEconomyProfile(c,existing.id).revision)
                 assertEquals(EconomyWallet(1230,450),readEconomyProfile(c,existing.id).state.wallet)
                 assertEquals(mapOf("wood" to 3L),readEconomyProfile(c,existing.id).state.inventory)
-                assertEquals("42",c.economyRows("SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1") { it.getString(1) }.single())
+                assertEquals("43",c.economyRows("SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1") { it.getString(1) }.single())
             }
             val fresh=JdbcAuthRepository(source).finish(LoginFlow(tokens.issue().hash,tokens.issue().hash,"email","register",null,
                 "Новый профиль",oldIdentity,null,null,null),oldIdentity,tokens.issue().hash,365,"Fresh")

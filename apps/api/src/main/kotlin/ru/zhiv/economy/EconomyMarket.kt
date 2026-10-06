@@ -16,10 +16,17 @@ data class EconomyMarketListing(
     val createdAt: String,
     val closedAt: String? = null,
     val owned: Boolean,
+    val feeBps: Int = 0,
 )
 
 @Serializable
 data class EconomyMarketShowcase(val refreshAt: String, val slots: Int, val maxPerSeller: Int, val refreshSeconds: Long)
+
+@Serializable
+data class EconomyMarketTradeBudget(
+    val buysUsed: Long, val salesUsed: Long, val limit: Long, val resetsAt: String,
+    val feeBps: Int, val homeBandMin: Int, val homeBandMax: Int,
+)
 
 @Serializable
 data class EconomyMarketView(
@@ -28,6 +35,7 @@ data class EconomyMarketView(
     val nextCursor: String? = null,
     val serverTime: String,
     val showcase: EconomyMarketShowcase,
+    val tradeBudget: EconomyMarketTradeBudget? = null,
 )
 
 interface EconomyMarketRepository {
@@ -39,8 +47,32 @@ interface EconomyMarketRepository {
 object EconomyMarketRules {
     const val MAX_LISTINGS = 10
     const val MAX_QUANTITY = 99L
-    const val MAX_PRICE_MULTIPLIER = 5L
+    const val MAX_PRICE_MULTIPLIER = 2L
     const val MAX_PAGE_SIZE = 12
+
+    fun homeBand(homeLevel: Int): IntRange = when (homeLevel) {
+        2, 3 -> 2..3
+        4, 5 -> 4..5
+        else -> 1..1
+    }
+
+    fun sameHomeBand(buyerHome: Int, sellerHome: Int): Boolean =
+        buyerHome in 2..5 && sellerHome in homeBand(buyerHome)
+
+    fun dailyTradeLimit(homeLevel: Int, config: EconomyMarketConfig = EconomyRules.catalog.market): Long =
+        config.dailyTradeValueByHome.getOrNull(homeLevel - 1) ?: 0L
+
+    fun sellerFee(totalPrice: Long, feeBps: Int): Long {
+        require(totalPrice in 0L..ECONOMY_MAX_BALANCE && feeBps in 0..10000)
+        return (totalPrice * feeBps + 9999L) / 10000L
+    }
+
+    fun assertTradeBudget(used: Long, value: Long, limit: Long, seller: Boolean = false) {
+        if (used < 0L || value <= 0L || used > limit || value > limit - used)
+            throw AuthFailure(if (seller) "ECONOMY_MARKET_SELLER_DAILY_LIMIT" else "ECONOMY_MARKET_DAILY_LIMIT",
+                if (seller) "Продавец исчерпал дневной объём продаж. Выберите другую партию."
+                else "Дневной объём покупок исчерпан. Лимит обновится в 00:00 UTC.", 409)
+    }
 
     fun validate(command: EconomyCommand) {
         validateEconomyCommand(command)
@@ -67,7 +99,7 @@ object EconomyMarketRules {
         // Catalog prices are bounded independently; division avoids overflow even for a corrupt catalog.
         if (quantity !in 1L..MAX_QUANTITY || baseSellPrice <= 0L || multiplier !in 1L..MAX_PRICE_MULTIPLIER ||
             totalPrice !in quantity..ECONOMY_MAX_BALANCE || totalPrice % ECONOMY_CURRENCY_SCALE != 0L || totalPrice / quantity < baseSellPrice || (totalPrice - 1L) / quantity / multiplier >= baseSellPrice) {
-            throw AuthFailure("ECONOMY_MARKET_PRICE", "Цена партии должна быть от базовой до пятикратной стоимости", 400)
+            throw AuthFailure("ECONOMY_MARKET_PRICE", "Цена партии должна быть от базовой до двойной стоимости", 400)
         }
     }
 
@@ -105,6 +137,8 @@ object EconomyMarketRules {
 
     fun eligible(itemId: String, quantity: Long, totalPrice: Long, homeLevel: Int): Boolean {
         val item = EconomyRules.catalog.items.firstOrNull { it.id == itemId && it.tradable } ?: return false
-        return quantity > 0L && totalPrice / quantity >= item.baseSellPrice && homeLevel >= requiredHomeLevel(itemId)
+        return quantity in 1L..MAX_QUANTITY && totalPrice / quantity >= item.baseSellPrice &&
+            totalPrice <= item.baseSellPrice * quantity * EconomyRules.catalog.market.maxPriceMultiplier &&
+            homeLevel >= requiredHomeLevel(itemId)
     }
 }

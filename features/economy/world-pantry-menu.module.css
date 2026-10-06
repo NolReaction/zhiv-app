@@ -78,11 +78,20 @@
 .pantry .market { padding-inline: 8px; }
 @media (max-width: 360px) { .saleControls { grid-template-columns: minmax(0, 1fr) 68px; }.saleControls > button { grid-column: 1 / -1; justify-self: end; }.items { grid-template-columns: repeat(3, minmax(0, 1fr)); }.pantry .item { min-height: 73px; } }
 
-.pantry .pantryTabs { display:flex; gap:5px; padding:4px; border:1px solid #c5bc98; border-radius:11px; background:#ded6b6; }
-.pantry .pantryTabs button { flex:1; min-height:37px; padding:6px 8px; color:#617152; }
+.pantry .pantryTabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:4px; border:1px solid #c5bc98; border-radius:11px; background:#ded6b6; }
+.pantry .pantryTabs button { display:flex; flex-wrap:wrap; column-gap:5px; row-gap:3px; min-height:53px; padding:6px 3px; color:#617152; }
 .pantry .pantryTabs button[aria-selected='true'] { background:#f2e9cf; border-color:#a5b182; color:#435c40; box-shadow:0 1px 3px #72674a20; }
-.pantryTabs small { min-width:14px; margin-left:3px; font-size:10px; font-variant-numeric:tabular-nums; color:#758060; }
+.pantryTabs button > span { flex-basis:100%; font-size:11px; line-height:1.2; overflow-wrap:anywhere; }
+.pantryTabs small { min-width:14px; max-width:calc(100% - 25px); overflow-wrap:anywhere; font-size:10px; font-variant-numeric:tabular-nums; color:#758060; }
 .pantryPanel { display:grid; gap:11px; min-width:0; }
+.fridgeHeading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; padding:8px 10px; border:1px solid #aabdb0; border-radius:9px; background:#dfe8d9; color:#476455; }
+.fridgeHeading > span { display:inline-flex; align-items:center; gap:6px; font-size:11px; }
+.fridgeHeading > small { align-self:center; color:#607766; font-size:10px; }
+.fishItems { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.pantry .fishItems .item { min-height:100px; padding:9px 5px; border-color:#b6c1a6; background:linear-gradient(145deg,#f0ecd7,#e1e8d2); }
+.fishItems .item > svg { width:38px; height:38px; }
+.fishItems .item > span { font-size:11px; }
+@media (max-width:360px) { .fishItems { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .relics { display:grid; gap:10px; }
 .relicList { display:grid; gap:8px; }
 .relicCard { --relic-border:#b7ab78; --relic-glow:#c9b97930; border:1px solid var(--relic-border); border-radius:12px; padding:10px; background:linear-gradient(115deg,#f5ead1,#e7e3c7); box-shadow:0 0 12px var(--relic-glow),inset 0 1px #fff6dc; }

@@ -53,6 +53,55 @@ test("occupancy includes reserved market stock and full storage preserves item s
   assert.equal(disabled(button(html, "Древесина")), false);
 });
 
+test("refrigerator separates all fish from materials while sharing the exact warehouse capacity", () => {
+  const inventory = { wood: 20, fish: 84, fish_silverfin: 1, fish_shark: 2, ancient_core: 1, smoked_fish: 3, worm_bait: 2 };
+  const state = snapshot({ inventory });
+  const before = structuredClone(state), economy = controller({ snapshot: state });
+  const supplies = render(economy);
+  assert.match(supplies, /aria-label="Древесина: 20"/);
+  assert.match(supplies, /aria-label="Копчёная рыба: 3"/);
+  assert.match(supplies, /aria-label="Лесной червячок: 2"/);
+  assert.doesNotMatch(supplies, /aria-label="(?:Речная рыба|Серебринка|Теневая акула):/);
+  const fridge = render(economy, { initialTab: "fridge" });
+  assert.match(fridge, /aria-label="Рыба в холодильнике"/);
+  assert.match(fridge, /<small>87<\/small><span>Холодильник<\/span>/);
+  for (const [name, quantity, id] of [["Речная рыба", 84, "fish"], ["Серебринка", 1, "fish_silverfin"], ["Теневая акула", 2, "fish_shark"]]) {
+    assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
+    assert.ok(fridge.includes(`data-item-icon="${id}"`));
+  }
+  assert.doesNotMatch(fridge, /data-hidden-fish|aria-label="(?:Древесина|Копчёная рыба|Лесной червячок):/);
+  assert.match(fridge, /Места общие с кладовой/);
+  for (const html of [supplies, fridge, render(economy, { initialTab: "relics" })]) {
+    assert.ok(html.includes(`aria-label="Кладовая: занято ${state.storage.used} из ${state.storage.capacity} мест"`));
+    assert.equal((html.match(/<progress /g) ?? []).length, 1);
+  }
+  assert.deepEqual(state, before, "switching storage views does not move or duplicate items");
+});
+
+test("three pantry tabs wrap keyboard navigation and focus the matching section", () => {
+  let tree;
+  function Probe() { tree = WorldPantryMenu({ economy: controller(), onUpgrade() {}, onExplore() {} }); return tree; }
+  renderToStaticMarkup(createElement(Probe));
+  const tabs = [];
+  function walk(element) { if (!isValidElement(element)) return; if (element.props.role === "tab") tabs.push(element); Children.forEach(element.props.children, walk); }
+  walk(tree);
+  assert.equal(tabs.length, 3); assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1]);
+  let focused = -1;
+  tabs.forEach((tab, index) => tab.props.ref({ focus() { focused = index; } }));
+  for (const [start, key, expected] of [[0, "ArrowRight", 1], [1, "ArrowRight", 2], [2, "ArrowRight", 0], [0, "ArrowLeft", 2], [1, "Home", 0], [0, "End", 2]]) {
+    let prevented = false;
+    tabs[start].props.onKeyDown({ key, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true); assert.equal(focused, expected);
+  }
+});
+
+test("empty refrigerator invites a shoreline trip without suggesting a new storage purchase", () => {
+  const html = render(controller(), { initialTab: "fridge" });
+  assert.match(html, /Здесь будет рыба с берега и из лавки Плёски/);
+  assert.equal(disabled(button(html, "Выбрать вылазку")), false);
+  assert.doesNotMatch(html, /Купить холодильник|Улучшить холодильник|Древесина: 20/);
+});
+
 test("overflow reports actual occupancy while the capacity meter stays bounded", () => {
   const html = render(controller({ snapshot: snapshot({ inventory: { wood: 240 }, storage: { used: 240, reserved: 10, capacity: 200, available: 0, overflow: 50 } }) }));
   assert.match(html, /aria-label="Кладовая: занято 250 из 200 мест"/);

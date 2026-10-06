@@ -32,33 +32,38 @@ export function RewardRecovery({ controller, isOnline }: { controller: GameRewar
       <RefreshCw size={16} aria-hidden="true" />{controller.busy ? "Проверяем…" : "Проверить получение"}
     </button></aside>;
 }
-export function DailyRewardsPanel({ controller, isOnline, names = {} }: { controller: GameRewardsController; isOnline: boolean; names?: Record<string, string> }) {
+export function DailyRewardsPanel({ controller, isOnline, names = {}, storageAvailable }: { controller: GameRewardsController; isOnline: boolean; names?: Record<string, string>; storageAvailable?: number }) {
   const daily = controller.data?.daily, receipt = controller.result?.claim.kind === "daily" ? controller.result.claim : null;
+  const requiredSpace = daily ? Object.values(daily.reward.items).reduce((sum, quantity) => sum + quantity, 0) : 0;
+  const shortfall = storageAvailable === undefined ? 0 : Math.max(0, requiredSpace - storageAvailable);
   const locked = !isOnline || controller.busy || controller.uncertain || controller.pending !== null || controller.retryAt > controller.now;
   return <div className={styles.panel} aria-busy={controller.loading || controller.busy}>
-    <p className={styles.intro}>Припасы, монеты и жемчуг за возвращение в лес. Пропуск дня сохраняет ваш шаг.</p>
+    <p className={styles.intro}>Подарки растут вместе с домом. Пропуск дня сохраняет ваш шаг.</p>
+    {daily?.homeLevel && <span className={styles.homeTier}>Дом {daily.homeLevel} уровня · семь подарков</span>}
     {!isOnline && <p className={styles.status} role="status">Для получения нужен интернет.{daily && " Показаны последние загруженные подарки."}</p>}
     {!daily ? <div className={styles.empty}><Gift size={34} aria-hidden="true" /><p>{controller.loading ? "Открываем подарки…" : "Загрузите подарки, чтобы узнать, что приготовил лес."}</p>
       <button type="button" disabled={controller.loading || !isOnline} onClick={() => void controller.refresh()}><RefreshCw size={16} aria-hidden="true" />Обновить</button></div>
       : <>
+        <div className={styles.claimArea}>
+          {daily.claimable ? <><div><span className={styles.eyebrow}>ПОДАРОК ДНЯ {daily.step}</span><RewardContents reward={daily.reward} names={names} large /></div>
+            {shortfall > 0 && <p className={styles.spaceHint} role="status">Освободите {shortfall.toLocaleString("ru-RU")} мест в кладовой, чтобы забрать весь подарок.</p>}
+            <button type="button" className={styles.claim} disabled={locked} onClick={() => void controller.claimDaily()}><Gift size={18} aria-hidden="true" />{controller.busy && controller.pending?.kind === "daily" ? "Получаем…" : "Забрать подарок"}</button></>
+            : <p className={styles.wait} role="status"><Clock3 size={17} aria-hidden="true" />{dailyRewardWait(daily.nextClaimAt, controller.now)}</p>}
+        </div>
         <ol className={styles.cycle} aria-label="Семь подарков за вход">
           {daily.cycle.map(row => { const completed = row.step < daily.step, current = row.step === daily.step;
             return <li key={row.step} data-current={current || undefined} data-completed={completed || undefined} data-finale={row.step === 7 || undefined} aria-current={current ? "step" : undefined}>
               <div className={styles.day}><span>День {row.step}</span>{completed ? <Check size={14} aria-label="Пройден" /> : row.step === 7 ? <Gift size={15} aria-hidden="true" /> : null}</div>
-              <RewardContents reward={row.reward} names={names} />
+              {!completed && <RewardContents reward={row.reward} names={names} />}
               <span className={styles.stepStatus}>{completed ? "Получено" : current ? daily.claimable ? "Можно забрать" : "Следующий подарок" : "Впереди"}</span>
             </li>;
           })}
         </ol>
         {receipt && <div className={styles.received} role="status"><Check size={18} aria-hidden="true" /><div><strong>Подарок дня {receipt.step} получен</strong><small>{new Date(receipt.claimedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC</small><RewardContents reward={receipt.reward} names={names} />{receipt.step === 7 && <p>Все семь шагов пройдены. Следующий круг начнётся с первого подарка.</p>}</div></div>}
-        <div className={styles.claimArea}>
-          {daily.claimable ? <><div><span className={styles.eyebrow}>ПОДАРОК ДНЯ {daily.step}</span><RewardContents reward={daily.reward} names={names} large /></div>
-            <button type="button" className={styles.claim} disabled={locked} onClick={() => void controller.claimDaily()}><Gift size={18} aria-hidden="true" />{controller.busy && controller.pending?.kind === "daily" ? "Получаем…" : "Забрать подарок"}</button></>
-            : <p className={styles.wait} role="status"><Clock3 size={17} aria-hidden="true" />{dailyRewardWait(daily.nextClaimAt, controller.now)}</p>}
-        </div>
+
       </>}
     <RewardRecovery controller={controller} isOnline={isOnline} />
-    <details className={styles.rules}><summary>Как приходят подарки</summary><p>Один подарок в день по UTC, не раньше чем через 20 часов после предыдущего. Получайте их по очереди: пропуск не сбрасывает семь шагов. Награда попадает в кошелёк и кладовую только после нажатия и подтверждения сервера.</p></details>
+    <details className={styles.rules}><summary>Как приходят подарки</summary><p>Один подарок в день по UTC, не раньше чем через 20 часов после предыдущего. Получайте их по очереди: пропуск не сбрасывает семь шагов. Состав зависит от завершённого уровня дома в момент получения; покупка мест производства не увеличивает подарок. Награда попадает в кошелёк и кладовую только после нажатия и подтверждения сервера.</p></details>
   </div>;
 }
 export function DailyRewardsButton({ ownerPublicId, isOnline = true, onSessionLost, open, onRequestOpen, triggerRef }: {
@@ -89,7 +94,7 @@ export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, on
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus(); }}>
         <header className={styles.header}><DialogTitle><CalendarDays size={22} aria-hidden="true" />Подарки за вход</DialogTitle><DialogPrimitive.Close aria-label="Закрыть подарки"><X size={20} aria-hidden="true" /></DialogPrimitive.Close></header>
         <DialogDescription className={styles.sr}>Семь подарков за возвращение в лес. Каждый подарок нужно забрать вручную.</DialogDescription>
-        <DailyRewardsPanel controller={controller} isOnline={isOnline} names={names} />
+        <DailyRewardsPanel controller={controller} isOnline={isOnline} names={names} storageAvailable={economy.snapshot?.storage.available} />
       </DialogPrimitive.Content>
     </DialogPortal></Dialog>;
 }

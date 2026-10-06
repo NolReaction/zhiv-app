@@ -77,6 +77,16 @@
 .menu .stations button[aria-pressed="true"] { color: #f4ecd5; background: #466347; box-shadow: 0 1px 3px #091b1259; }
 
 .body { display: flex; flex: 1; flex-direction: column; gap: 9px; min-height: 0; padding: 0 12px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #8a9370 transparent; }
+.body > * { flex-shrink: 0; }
+.runningOrders { border: 1px solid #b3bb8c; border-radius: 9px; background: #e5e3c3; }
+.runningOrders summary { display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 40px; padding: 6px 8px; list-style: none; color: #466347; cursor: pointer; touch-action: manipulation; border-radius: inherit; }
+.runningOrders summary::-webkit-details-marker { display: none; }
+.runningOrders summary:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
+.runningOrders summary:hover { background: #edf0ce; }
+.runningOrders summary > strong { font-size: 11px; font-weight: 600; }
+.runningOrders summary > span { margin-left: auto; color: #59624d; font-size: 10px; font-variant-numeric: tabular-nums; }
+.runningOrders[open] summary > svg:last-child { transform: rotate(180deg); }
+.runningOrders > div { display: grid; gap: 6px; padding: 0 6px 6px; }
 .future, .loading { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0 3px; color: #59624d; }
 .loading { flex-wrap: wrap; }
 .loading p { flex: 1; }

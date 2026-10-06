@@ -3,6 +3,7 @@ import { economyCommandSchema, economyViewSchema, type EconomyView } from "./mod
 
 export const BARTER_HOME_LEVEL = 3;
 export const BARTER_MAX_OFFERS = 3;
+export const BARTER_DAILY_LIMIT = 1;
 const base = {
   requestId: economyCommandSchema.shape.requestId,
   ownerPublicId: economyCommandSchema.shape.ownerPublicId,
@@ -27,7 +28,7 @@ export const barterOfferSchema = z.object({
 });
 export const barterViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40), offers: z.array(barterOfferSchema).max(6), mine: z.array(barterOfferSchema).max(BARTER_MAX_OFFERS),
-  serverTime: z.string().datetime(), showcase: z.object({
+  serverTime: z.string().datetime(), dailyLimit: z.object({ used: z.number().int().nonnegative().safe(), limit: z.number().int().positive(), resetsAt: z.string().datetime() }).nullish(), showcase: z.object({
     refreshAt: z.string().datetime(), slots: z.literal(6), maxPerSeller: z.literal(1), refreshSeconds: z.literal(1800),
   }),
 });
