@@ -2878,6 +2878,79 @@ test("a still or busy scene keeps the merchant accessible without starting a cus
   }
 });
 
+test("stopping a shop walk with a hero greeting releases a free builder in a narrow passage", async () => {
+  const rectangle = (x, y, width, height) => [{ x, y }, { x: x + width, y },
+    { x: x + width, y: y + height }, { x, y: y + height }];
+  const customer = { x: 810, y: 690 }, start = { x: 630, y: 690 };
+  const authored = {
+    actor: { spawn: { x: 680, y: 690 }, size: 50 },
+    sites: [{ id: "plesk-shop", label: "Лавка Плёски", initialLevel: 1,
+      bounds: { x: 800, y: 630, width: 50, height: 40 }, anchor: { x: 825, y: 666 }, entry: customer,
+      hitArea: rectangle(800, 630, 50, 40), collision: rectangle(810, 640, 30, 20),
+      states: [{ level: 1, label: "Лавка", image: "/test-plesk-shop.webp" }] }],
+    destinations: [{ id: "plesk-fishing", position: { x: 550, y: 640 }, pauseSeconds: 15 },
+      { id: "plesk-trade", siteId: "plesk-shop", position: { x: 600, y: 640 }, pauseSeconds: 10 },
+      { id: "plesk-customer", siteId: "plesk-shop", position: customer, pauseSeconds: 10 }],
+    water: { surfaces: [], exclusions: [] },
+    navigation: { version: 1, cellSize: 5, areas: [
+      { id: "room", points: rectangle(500, 600, 105, 180) },
+      { id: "passage", points: rectangle(580, 670, 280, 40) }], obstacles: [], interests: [] },
+  };
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, forgetForestSession, canTraverse, canStartClearingLife } = await modules(authored);
+  const env = browser(), key = "shop-greeting-passage"; let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: key };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finishPath("/test-ground.webp"); env.finishPath("/test-plesk-shop.webp"); await flush();
+    probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const state = probe.state, builder = state.builderMind, clock = sceneClock(env);
+    // Restore an already walking free resident. The actual tap/visit paths and
+    // owner clock must handle his transient route, rather than a mock occupant.
+    builder.position = { ...start }; builder.action = "walk";
+    builder.target = { id: "idle-shopward", position: { ...customer }, lookAt: { x: 810, y: 680 } };
+    builder.route = { points: [{ ...start }, { ...customer }], distances: [0, 180], length: 180,
+      speedLimits: [1, 0], roundedCorners: 0, checks: 0 };
+    const step = () => {
+      const heroBefore = { ...state.clearing.position }, builderBefore = { ...builder.position };
+      clock.step();
+      assert.ok(distanceBetween(heroBefore, state.clearing.position) <= 50 * .36 * .05 + 1e-7, "a greeting cannot teleport the hero");
+      assert.ok(distanceBetween(builderBefore, builder.position) <= 34 * .05 + 1e-7, "yielding uses the real builder walking speed");
+      assert.ok(canTraverse(state.clearing.navigation, heroBefore, state.clearing.position));
+      assert.ok(canTraverse(state.clearing.navigation, builderBefore, builder.position));
+      assert.ok(distanceBetween(builder.position, state.clearing.position) >= (40 + 50) * .32 - 1e-7,
+        "the owner clock preserves visible personal space");
+    };
+    scene.visitTradingPlace("plesk");
+    assert.equal(state.director.tradeVisit?.phase, "outbound");
+    const heroStart = { ...state.clearing.position }; step();
+    assert.notDeepEqual(state.clearing.position, heroStart, "the shop walk begins before the player interrupts it");
+    scene.notice();
+    const stoppedHero = { ...state.clearing.position };
+    assert.equal(state.director.tradeVisit, null); assert.equal(state.clearing.requestedPoint, null);
+    assert.equal(state.social.current?.speaker, "mochlik");
+    for (let frame = 0; frame < 100 && !builder.trafficWaiting; frame++) step();
+    assert.equal(builder.trafficWaiting, true, "the cancelled shop walk now blocks the middle of the builder route");
+    assert.ok(distanceBetween(builder.target.position, stoppedHero) > (40 + 50) * .32,
+      "the idle goal is free, so giving up only occupied goals cannot release this pair");
+    const blockedFeet = { ...builder.position };
+    for (let frame = 0; frame < 160 && distanceBetween(builder.position, blockedFeet) < 8; frame++) {
+      step(); assert.deepEqual(state.clearing.position, stoppedHero, "the waiting player is never pushed aside");
+    }
+    assert.ok(distanceBetween(builder.position, blockedFeet) >= 8, "a free builder must step back from a blocked passage within eight seconds");
+    assert.equal(builder.job, null); assert.equal(state.social.meeting, null);
+    const resumedBuilder = { ...builder.position };
+    worldDevStore.patch({ autoLife: true });
+    for (let frame = 0; frame < 100 && !canStartClearingLife(state.clearing); frame++) step();
+    assert.ok(canStartClearingLife(state.clearing), "the bounded greeting releases the hero after its quiet interval");
+    scene.visitTradingPlace("plesk");
+    assert.equal(state.director.tradeVisit?.phase, "outbound", "a later public shop request can use the released hero");
+    for (let frame = 0; frame < 400 && distanceBetween(state.clearing.position, customer) > .5; frame++) step();
+    assert.ok(distanceBetween(state.clearing.position, customer) <= .5, "the hero resumes the requested shop route");
+    assert.ok(distanceBetween(builder.position, resumedBuilder) > 8, "the other resident completes his escape while the hero resumes walking");
+  } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
+});
+
 test("Plesk taps use world coordinates, respect foreground masks and never trigger the main hero", async () => {
   for (const mode of ["visible", "hidden", "equal-depth"]) {
     const hidden = mode === "hidden", overrides = residentFixture();

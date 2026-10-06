@@ -24,9 +24,10 @@ export type BuilderMind = {
   socialVisit: { targetId: string; anchor: WorldPoint } | null;
 };
 export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8.8, finish: 1.4,
-  greeting: 2, acceleration: BUILDER.size * 1.6 } as const;
+  greeting: 2, trafficPatience: 2.4, acceleration: BUILDER.size * 1.6 } as const;
 const length = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const idleYieldAfter = new WeakMap<BuilderMind, number>();
+const trafficStalls = new WeakMap<BuilderMind, { startedAt: number; position: WorldPoint }>();
 
 /** A single session owns the feet and cosmetic clock. No setInterval, job
  * commands, currency, reward generation or offline catch-up lives here. */
@@ -42,6 +43,7 @@ function action(mind: BuilderMind, value: BuilderAction) {
   if (mind.action !== value) { mind.action = value; mind.age = 0; }
 }
 function settle(mind: BuilderMind) {
+  trafficStalls.delete(mind);
   mind.route = null; mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false;
   if (mind.target) mind.direction = builderDirection(mind.target.lookAt.x - mind.position.x, mind.target.lookAt.y - mind.position.y);
   action(mind, mind.job && !mind.ready ? "work" : "idle");
@@ -49,6 +51,7 @@ function settle(mind: BuilderMind) {
 }
 
 function beginRoute(mind: BuilderMind, places: BuilderPlaces, candidates: readonly BuilderStop[]) {
+  trafficStalls.delete(mind);
   mind.decisions++;
   const selected = builderRoute(places, mind.position, candidates);
   mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false; mind.route = selected?.path ?? null; mind.target = selected?.target ?? null;
@@ -69,9 +72,10 @@ function sample(path: SteeringPath, at: number) {
 
 /** An idle destination has no gameplay ownership. Give up that destination
  * when two walkers need each other's space instead of waiting face to face.
- * Work shifts retain their exact goal; only a free builder may step aside. */
-function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[]): boolean {
-  if (mind.job || !mind.target || canTraverseResidents(mind.target.position, mind.target.position, BUILDER.size, occupants, BUILDER.id)
+ * A stalled free walk can also release an unreachable approach to a free goal.
+ * Work shifts and social reservations retain ownership of their destinations. */
+function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[], stalled = false): boolean {
+  if (mind.job || mind.socialVisit || !mind.target || !stalled && canTraverseResidents(mind.target.position, mind.target.position, BUILDER.size, occupants, BUILDER.id)
     || mind.elapsed < (idleYieldAfter.get(mind) ?? 0)) return false;
   idleYieldAfter.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const nearest = (occupants ?? []).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants)
@@ -85,7 +89,6 @@ function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupant
       y: mind.position.y + Math.sin(away + offset) * step };
     if (!canTraverse(places.navigation, mind.position, position)
       || !canTraverseResidents(mind.position, position, BUILDER.size, occupants, BUILDER.id)) continue;
-    mind.socialVisit = null;
     beginRoute(mind, places, [{ id: "builder-yield", position, lookAt: { ...nearest.position } }]);
     return !mind.blocked;
   }
@@ -109,9 +112,20 @@ function walk(mind: BuilderMind, places: BuilderPlaces, dt: number, occupants?: 
     }
   }
   if (!canTraverseResidents(mind.position, next.position, BUILDER.size, occupants, BUILDER.id)) {
+    let stall = trafficStalls.get(mind);
+    if (!stall) {
+      stall = { startedAt: mind.elapsed, position: { ...mind.position } };
+      trafficStalls.set(mind, stall);
+    }
     if (yieldIdleDestination(mind, places, occupants)) return;
     const detour = residentTrafficDetour({ owner: mind, navigation: places.navigation, from: mind.position,
       target: path.points.at(-1)!, size: BUILDER.size, occupants, selfId: BUILDER.id, time: mind.elapsed });
+    // A stopped neighbour can seal a narrow passage even when our final goal is
+    // empty. Try the usual detour first; a free builder eventually walks aside
+    // instead of retrying this cosmetic journey forever. Tiny braking steps at
+    // the clearance boundary do not restart the patience clock.
+    if (!detour && mind.elapsed - stall.startedAt >= BUILDER_MIND_LIMITS.trafficPatience
+      && yieldIdleDestination(mind, places, occupants, true)) return;
     mind.speed = 0; mind.trafficWaiting = true;
     if (detour && detour.length > 1) {
       const distances = [0];
@@ -127,6 +141,8 @@ function walk(mind: BuilderMind, places: BuilderPlaces, dt: number, occupants?: 
   mind.trafficWaiting = false;
   mind.walked += nextDistance - mind.distance; mind.distance = nextDistance;
   mind.position = next.position; mind.direction = next.direction;
+  const stall = trafficStalls.get(mind);
+  if (stall && length(mind.position, stall.position) > BUILDER.size * .1) trafficStalls.delete(mind);
   if (path.length - mind.distance < .001) settle(mind);
 }
 

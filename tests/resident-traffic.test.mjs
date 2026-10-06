@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { canTraverseResidents, residentTrafficDetour, residentClearance } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
 const { createWorldNavigation, canTraverse, withWorldNavigationObstacle } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { createBuilderMind, advanceBuilderMind, builderMindFrame } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
+const { createBuilderMind, advanceBuilderMind, builderMindFrame, requestBuilderVisit } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
 const { builderLocalPlaces, builderWorkStops } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
 const { createPleskMind, advancePleskMind, pleskMindFrame, requestPleskTrade } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
 const { pleskLocalPlaces } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
@@ -256,4 +256,79 @@ test("builder approaches around an occupied route, then keeps his work feet and 
   const crowded = createBuilderMind(world, { awaitConstruction: true }), startFeet = { ...crowded.position };
   advanceBuilderMind(crowded, world, 0, { now, construction, occupants: [occupant("mochlik", firstWork.position.x, firstWork.position.y, 50)] });
   assert.equal(crowded.action, "walk"); assert.deepEqual(crowded.position, startFeet, "if all work points are occupied, never restore on top of another hero");
+});
+
+function narrowPassage() {
+  return { ...scene(), destinations: [],
+    navigation: { version: 1, cellSize: 5,
+      areas: [{ id: "room", points: rect(0, 0, 105, 180) }, { id: "passage", points: rect(80, 70, 280, 40) }],
+      obstacles: [], interests: [{ id: "far-side", position: point(310, 90), activity: "look" }] } };
+}
+
+test("a stopped mid-route neighbour cannot hold a free builder in a narrow passage forever", () => {
+  for (const moving of [false, true]) {
+    const world = narrowPassage();
+    const builder = createBuilderMind(world), navigation = builderLocalPlaces(world).navigation;
+    builder.position = point(130, 90); builder.action = "walk";
+    builder.target = { id: "idle-shopward", position: point(310, 90), lookAt: point(310, 100) };
+    builder.route = { points: [point(130, 90), point(310, 90)], distances: [0, 180], length: 180,
+      speedLimits: [1, 0], roundedCorners: 0, checks: 0 };
+    const neighbour = occupant("mochlik", 180, 90, 50, moving), original = structuredClone(neighbour);
+    assert.equal(canTraverseResidents(builder.target.position, builder.target.position, 40, [neighbour], "builder"), true,
+      "the idle destination is free: only the middle of its approach is blocked");
+    let waited = false, yieldedAt = null;
+    for (let time = 0; time < 8; time += .05) {
+      const before = { ...builder.position };
+      advanceBuilderMind(builder, world, .05, { now: 1000, occupants: [neighbour] });
+      assert.ok(canTraverse(navigation, before, builder.position));
+      assert.ok(canTraverseResidents(before, builder.position, 40, [neighbour], "builder"));
+      assert.ok(distance(before, builder.position) <= 34 * .05 + 1e-7, "retreat is walked, never teleported");
+      waited ||= builder.trafficWaiting;
+      if (builder.target?.id === "builder-yield") yieldedAt ??= time;
+      if (yieldedAt !== null && !builder.route) break;
+    }
+    assert.ok(waited);
+    assert.ok(yieldedAt !== null && yieldedAt < 5, `moving=${moving}: a free route needs bounded recovery`);
+    assert.ok(builder.position.x < 130, "the free builder walks back into available space");
+    assert.equal(builder.route, null); assert.equal(builder.job, null);
+    assert.equal(builder.socialVisit, null); assert.deepEqual(neighbour, original);
+  }
+});
+
+
+test("waiting in a narrow passage cannot abandon a confirmed work order or a social reservation", () => {
+  for (const kind of ["construction", "social"]) {
+    const world = narrowPassage();
+    if (kind === "construction") world.sites = [{ id: "workshop", entry: point(310, 90), anchor: point(310, 50),
+      bounds: { x: 290, y: 10, width: 40, height: 40 }, initialLevel: 1, collision: [], hitArea: [], states: [] }];
+    const builder = createBuilderMind(world), navigation = builderLocalPlaces(world).navigation;
+    builder.position = point(130, 90);
+    const neighbour = occupant("mochlik", 180, 90, 50), occupants = [neighbour];
+    const order = { id: "blocked-work", stationId: "workshop", targetLevel: 2,
+      startedAt: new Date(1000).toISOString(), finishesAt: new Date(600_000).toISOString() };
+    const construction = kind === "construction" ? { ownerPublicId: "owner", revision: 1, jobs: [order] } : undefined;
+    if (construction) advanceBuilderMind(builder, world, 0, { now: 1000, construction, occupants });
+    else assert.equal(requestBuilderVisit(builder, world, { id: "friend", position: point(310, 90), size: 40 }, occupants), true);
+    assert.ok(builder.route); assert.ok(builder.target.position.x > neighbour.position.x);
+    const target = structuredClone(builder.target), visit = structuredClone(builder.socialVisit);
+    let waited = false;
+    for (let time = 0; time < 10; time += .05) {
+      const before = { ...builder.position };
+      advanceBuilderMind(builder, world, .05, { now: 1000, construction, occupants });
+      assert.ok(canTraverse(navigation, before, builder.position));
+      assert.ok(canTraverseResidents(before, builder.position, 40, occupants, "builder"));
+      assert.ok(distance(before, builder.position) <= 34 * .05 + 1e-7);
+      waited ||= builder.trafficWaiting;
+    }
+    assert.ok(waited); assert.deepEqual(builder.target, target);
+    assert.deepEqual(builder.socialVisit, visit); assert.deepEqual(builder.job, construction ? order : null);
+    assert.notEqual(builder.action, "finish"); assert.notEqual(builder.action, "work");
+    // The traffic wait remains live: releasing the obstructing feet resumes the
+    // very same reservation, without silently completing or replacing it.
+    for (let time = 0; time < 12 && builder.route; time += .05)
+      advanceBuilderMind(builder, world, .05, { now: 1000, construction, occupants: [] });
+    assert.equal(builder.route, null); assert.deepEqual(builder.position, target.position);
+    assert.deepEqual(builder.target, target); assert.deepEqual(builder.socialVisit, visit);
+    assert.equal(builder.action, construction ? "work" : "idle");
+  }
 });
