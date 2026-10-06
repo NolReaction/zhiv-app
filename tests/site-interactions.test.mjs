@@ -23,11 +23,11 @@ const issue = (state, action, targetId, now) => applyEconomyCommand(state, {
 const clickDestination = (id, state) => economyBuildingDestination(sitePlace(id), { ...state, catalog: economyCatalog });
 
 test("only implemented economic sites receive map shortcuts, including the forest shelter", () => {
-  const sites = ["home", "woodlot", "workshop", "quarry", "bridge", "lighthouse"].map(id => ({ id }));
+  const sites = ["home", "woodlot", "workshop", "quarry", "bridge", "lighthouse", "plesk-shop"].map(id => ({ id }));
   assert.deepEqual(interactiveSites({ sites }).map(({ site, place }) => [site.id, place]), [
     ["home", "house"], ["woodlot", "woodlot"], ["workshop", "workshop"], ["quarry", "quarry"],
   ]);
-  for (const id of ["bridge", "lighthouse", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
+  for (const id of ["bridge", "lighthouse", "plesk-shop", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
 });
 
 test("object menus use the existing authored polygons and anchors for every map station", () => {

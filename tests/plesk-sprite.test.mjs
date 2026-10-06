@@ -111,6 +111,31 @@ test("ordinary paws remain tucked against the belly in every direction, includin
   }
 });
 
+test("trading presents and straightens goods once, returns the small paws and waits with planted feet", () => {
+  for (const direction of ["front", "back", "left", "right"]) {
+    const poses = Array.from({ length: 13 }, (_, stage) => pleskSprite("trade", direction, 0, stage / 12));
+    const rigs = poses.map(pleskSpriteRig);
+    assert.ok(new Set(poses.map(signature)).size >= 5, "acknowledge, present, arrange, return and wait are distinct");
+    assert.equal(rigs[1].head.y, rigs[0].head.y + 1, "a restrained nod acknowledges the visitor");
+    assert.notDeepEqual(rigs[3].palms[1], rigs[0].palms[1], "near paw presents the counter goods");
+    assert.notDeepEqual(rigs[5].palms[0], rigs[0].palms[0], "the other paw briefly straightens the goods");
+    for (const stage of [8, 9, 10, 11, 12]) {
+      assert.deepEqual(rigs[stage].palms, rigs[0].palms, "after the gesture both paws settle for a pause");
+      assert.deepEqual(rigs[stage].head, rigs[0].head);
+    }
+    for (const rig of rigs) {
+      assert.deepEqual(rig.feet, rigs[0].feet, "trading never slides or lifts the feet");
+      for (const arm of rig.arms) assert.ok(Math.hypot(arm.palm.x - arm.shoulder.x, arm.palm.y - arm.shoulder.y) <= 5);
+    }
+    for (const frame of [1, 5, 16, 31]) {
+      const rig = pleskSpriteRig(pleskSprite("trade", direction, frame, .9));
+      assert.deepEqual(rig.palms, rigs[12].palms, "the frame clock does not replay the trade gesture during the pause");
+    }
+    assert.equal(pleskSprite("trade", direction, 0, 0, true), pleskSprite("trade", direction, 31, 1, true),
+      "reduced motion freezes a single trade pose");
+  }
+});
+
 test("source poses are normalized, stationary under reduced motion, reused and evicted from a bounded cache", () => {
   const resting = pleskSprite("fish", "right", 0, .5, true);
   for (const frame of [-1000, 8, 31, 100000, NaN, Infinity]) {
@@ -456,7 +481,7 @@ test("obsolete carrying flags cannot replace Pleska's tiny native paws with a ba
 });
 
 test("Pleska walks with an upward rod and a free tiny paw while stored fish never creates a carried basket", () => {
-  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet", "trade"])
+  for (const direction of ["front", "right", "back", "left"]) for (const action of ["walk", "idle", "greet"])
     for (const still of [false, true]) {
       const frame = { x: 100, y: 160, size: 36, direction, action, phase: .4, frame: 3,
         carryingFish: true, carryingBasket: true, basketFilled: true };
@@ -468,12 +493,32 @@ test("Pleska walks with an upward rod and a free tiny paw while stored fish neve
         "the actual painter emits no basket wall or handle on the route or at the trader");
       assert.equal(body.arms.length, 0);
       assert.ok(anchors.farArm.reachable && anchors.nearArm.reachable);
-      assert.equal(tackle.visible, action !== "trade");
+      assert.equal(tackle.visible, true);
       assert.ok(tackle.tip.y < tackle.grip.y - frame.size * .8, "the carried prop is upright rather than dragging a float below the feet");
       assert.ok(Math.hypot(anchors.farHand.x - frame.x, anchors.farHand.y - (frame.y - frame.size * .22)) < frame.size * .11,
         "the free paw rests beside the belly instead of reaching for a removed handle");
-      assert.equal(ctx.translations.some(point => Math.hypot(point.x - tackle.grip.x, point.y - tackle.grip.y) < .01), action !== "trade",
-        "the upward rod is painted at its true gripping paw, and stowed for trading");
+      assert.equal(ctx.translations.some(point => Math.hypot(point.x - tackle.grip.x, point.y - tackle.grip.y) < .01), true,
+        "the upward rod is painted at its true gripping paw");
+    }
+});
+
+test("the trader uses her native tiny paws with no rod, basket or duplicate fish even when stock is carried", () => {
+  for (const direction of ["front", "right", "back", "left"]) for (const carryingFish of [false, true])
+    for (const still of [false, true]) for (const phase of [0, .25, .5, .75, 1]) {
+      const frame = { x: 100, y: 160, size: 36, direction, action: "trade", phase, frame: 3,
+        carryingFish, carryingBasket: true, basketFilled: true, waterTarget: { x: 130, y: 185 } };
+      const ctx = context(); drawPleskResident(ctx, frame, still);
+      const sprite = ctx.draws[0].args[0], body = pleskSpriteRig(sprite);
+      assert.equal(body.arms.length, 2, "saved catch state cannot replace the native trade pose with travel arms");
+      const anchors = pleskFishingAnchors(frame, body, still);
+      assert.equal(anchors.drawBasket, false);
+      assert.equal(fishingTackleFrame(frame, still, anchors).visible, false);
+      assert.equal(fishingCatchFrame(frame, still, anchors).visible, false);
+      assert.equal(ctx.strokes.length, 0, "no rod, fishing line or wicker basket is drawn at the counter");
+      assert.equal(ctx.rectangles.length, 0, "external arms or foreground prop fingers cannot overwrite the tiny native tips");
+      assert.equal(ctx.translations.length, 0, "no prop sprite appears over the counter's own goods");
+      const { fish } = recordedFish(frame, still);
+      assert.equal(fish.length, 0, "the trader never duplicates the fish already painted in the counter artwork");
     }
 });
 

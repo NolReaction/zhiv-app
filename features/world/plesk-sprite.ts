@@ -39,7 +39,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const index = clockFrame % 8;
   const progress = Math.round(Math.max(0, Math.min(1, Number.isFinite(phase) ? phase : 0)) * 12);
   const variation = still || !["check", "nibble", "struggle", "escape"].includes(motion?.variation ?? "") ? "calm" : motion!.variation!;
-  const staged = ["cast", "bite", "reel", "catch", "pack", "greet"].includes(action) || variation !== "calm";
+  const staged = ["cast", "bite", "reel", "catch", "pack", "greet", "trade"].includes(action) || variation !== "calm";
   const stage = still ? 6 : staged ? progress : 0;
   const blink = !still && clockFrame === 30 && !["cast", "bite", "reel", "catch"].includes(action);
   const closedEyes = blink || action === "rest" && (still || clockFrame >= 4);
@@ -81,6 +81,13 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const step = walking ? [0, 1, 2, 1, 0, -1, -2, -1][index] : 0;
   const rise = walking ? [0, 0, -1, -1, 0, 0, -1, -1][index] : 0;
   const phasePart = stage / 12;
+  // One small presentation gesture per trade action: acknowledge the visitor,
+  // show the goods, straighten them, return the paws and wait. The frame clock
+  // must not loop this sequence while she remains behind the counter.
+  const trading = action === "trade";
+  const tradeShow = trading && phasePart >= 2 / 12 && phasePart <= 6 / 12;
+  const tradeArrange = trading && phasePart >= 5 / 12 && phasePart <= 7 / 12;
+  const tradeNod = trading && (phasePart === 1 / 12 || phasePart === 6 / 12) ? 1 : 0;
   const pulling = action === "bite" || action === "reel";
   const lean = externalArms ? shoreLean : variation === "struggle" ? -3 + (index > 3 ? 1 : 0) : variation === "escape" ? phasePart > .5 ? 1 : -2
     : variation === "check" ? 1 : action === "cast" ? Math.round(-2 + phasePart * 4)
@@ -91,7 +98,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   const body = point(24 + (sideView || externalArms ? lean : 0), 33 + rise + Math.min(2, crouch) + breath);
   const head = point((sideView ? 26 : 24) + (sideView || externalArms ? lean : 0), 18 + rise + crouch + breath
     + (variation === "check" ? 1 : variation === "nibble" ? -1 : 0)
-    + (action === "greet" && phasePart > .35 && phasePart < .7 ? 1 : 0));
+    + (action === "greet" && phasePart > .35 && phasePart < .7 ? 1 : 0) + tradeNod);
   const tail = point(back ? 24 + (walking ? step : index === 4 ? 1 : 0) : sideView ? 9 - step : 9 + (index > 3 ? 1 : 0),
     back ? 38 : resting ? 39 : 37 + (walking ? Math.abs(step) - 1 : 0));
   const feet = sideView
@@ -120,9 +127,6 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     grip = point(35, 31);
     const packed = fishingPackCenter(mirror(restingFish), mirror(basket), PLESK_SPRITE_SIZE, phasePart);
     heldFish = { x: direction === "left" ? PLESK_SPRITE_SIZE - packed.x : packed.x, y: packed.y };
-  } else if (action === "trade") {
-    grip = point(35 + (index > 3 ? 1 : 0), 32 + (index > 3 ? -1 : 1));
-    otherHand = point(16, 35);
   } else if (action === "greet") {
     // A small paw waves beside the cheek; lifting the whole forearm above the
     // head made her short otter limb look like a long human arm.
@@ -161,6 +165,13 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     const pawY = body.y + (resting ? 2 : 0);
     grip = point(body.x + (resting ? 6 : 7) + (lift > 0 && index > 3 ? 1 : 0), pawY - lift + sway);
     otherHand = point(body.x + (sideView ? 1 : resting ? -6 : -7), pawY + 1 - sway);
+    if (trading) {
+      // Keep both tips on the torso silhouette: no long arm reaching through
+      // the separate counter artwork, and no fish or basket duplication.
+      if (tradeShow) grip = point(body.x + 8, pawY - 2);
+      else if (phasePart === 7 / 12) grip.y -= 1;
+      if (tradeArrange) otherHand = point(otherHand.x + 1, pawY - 1);
+    }
   }
   const reachable = (from: WorldPoint, to: WorldPoint) => {
     const distance = Math.hypot(to.x - from.x, to.y - from.y);

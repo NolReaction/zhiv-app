@@ -21,10 +21,11 @@ export type PleskMind = {
   elapsed: number; position: WorldPoint; stopId: string; needs: PleskNeeds; catchCount: number;
   intent: PleskIntent; reason: string; decisions: number; recent: PleskIntent[]; seed: number;
   stage: MindStage; age: number; queue: MindStage[]; noticePending: boolean; greetAfter: number;
+  tradePending: boolean; tradeAfter: number;
   basketSpecies?: FishSpeciesId; castTarget?: WorldPoint;
   scene: FixedWorldScene; available: boolean; observation: PleskObservation;
 };
-export const PLESK_MIND_LIMITS = { maxDelta: 1, transitions: 8, recent: 6, basket: 3 } as const;
+export const PLESK_MIND_LIMITS = { maxDelta: 1, transitions: 8, recent: 6, basket: 3, tradeInterval: 180 } as const;
 const clamp = (n: number) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
 function random(mind: PleskMind) { mind.seed = (Math.imul(mind.seed, 1664525) + 1013904223) >>> 0; return mind.seed / 4294967296; }
 function observe(mind: PleskMind) {
@@ -40,6 +41,7 @@ export function createPleskMind(scene: FixedWorldScene, seed = 0x706c6573): Ples
     needs: { energy: .88, patience: .9, social: .25 }, catchCount: 0, intent: "look", reason: "Осматривает свой пирс перед рыбалкой.",
     decisions: 0, recent: [], seed: Number.isFinite(seed) ? seed >>> 0 : 0x706c6573,
     stage: { action: "idle", duration: 1, target: places.base }, age: 0, queue: [], noticePending: false, greetAfter: 0,
+    tradePending: false, tradeAfter: PLESK_MIND_LIMITS.tradeInterval,
     scene, available: true, observation: {} as PleskObservation };
   observe(mind); return mind;
 }
@@ -71,9 +73,11 @@ function selectIntent(mind: PleskMind, places: PleskPlaces, env: PleskEnvironmen
   if (places.waterTarget && energy > .18 && env.rain < .82 && mind.catchCount < PLESK_MIND_LIMITS.basket) candidates.push({ intent: "fish",
     score: .55 + energy * .6 + patience * .45 - env.rain * .5 - env.dusk * .55,
     reason: "Отдохнула, снасти готовы — можно попробовать поймать ещё рыбу." });
-  if (places.trade && mind.catchCount > 0) candidates.push({ intent: "trade",
-    score: mind.catchCount * .55 + social * .55 + (mind.catchCount >= PLESK_MIND_LIMITS.basket ? 2 : 0),
-    reason: mind.catchCount >= 2 ? "Набрался улов — несёт корзинку к своему торговому месту." : "Хочется пообщаться — покажет свежий улов у пирса." });
+  if (places.trade && (mind.tradePending || mind.catchCount > 0 || mind.elapsed >= mind.tradeAfter)) candidates.push({ intent: "trade",
+    score: mind.tradePending ? 9 : mind.catchCount * .55 + social * .55
+      + (mind.catchCount >= PLESK_MIND_LIMITS.basket ? 2 : 0) + (mind.elapsed >= mind.tradeAfter ? 2 : 0),
+    reason: mind.tradePending ? "Гость ждёт у лавки — заканчивает дела и идёт к прилавку."
+      : mind.catchCount >= 2 ? "Набрался улов — пора открыть лавку." : "Пора заглянуть в лавку, проверить товары и встретить гостей." });
   if ((mind.noticePending || env.playerNear) && mind.elapsed >= mind.greetAfter) candidates.push({ intent: "greet",
     score: mind.noticePending ? 8 : .3 + social * 1.6, reason: "Заметила гостя — здоровается." });
   for (const item of candidates) {
@@ -111,8 +115,10 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
     }
     else add("idle", 2, { ...motion, variation: "escape" });
   } else if (choice.intent === "trade") {
-    add("greet", 2.5, { direction: "front" }); add("trade", 12 + random(mind) * 10, { direction: "front", sell: true });
-    add("idle", 2, { direction: "front" });
+    mind.tradePending = false; mind.noticePending = false;
+    add("greet", 2.5, { direction: places.tradeDirection });
+    add("trade", 24 + random(mind) * 12, { direction: places.tradeDirection, sell: true });
+    add("idle", 2, { direction: places.tradeDirection });
   } else if (choice.intent === "rest") add("rest", 10 + (1 - mind.needs.energy) * 22 + random(mind) * 5, { direction: "front" });
   else if (choice.intent === "tackle") { add("idle", 3, { direction: "front", variation: "check" }); add("idle", 3 + random(mind) * 3, { direction: "left" }); }
   else if (choice.intent === "greet") {
@@ -126,7 +132,10 @@ function finishStage(mind: PleskMind) {
   const stage = mind.stage;
   if (stage.trail) { mind.position = { ...stage.target.position }; mind.stopId = stage.target.id; }
   if (stage.deposit) { mind.catchCount = Math.min(PLESK_MIND_LIMITS.basket, mind.catchCount + 1); mind.basketSpecies = stage.species; mind.needs.patience = clamp(mind.needs.patience + .25); }
-  if (stage.sell) { mind.catchCount = 0; mind.basketSpecies = undefined; mind.needs.social = clamp(mind.needs.social - .65); }
+  if (stage.sell) {
+    mind.catchCount = 0; mind.basketSpecies = undefined; mind.needs.social = clamp(mind.needs.social - .65);
+    mind.tradeAfter = mind.elapsed + PLESK_MIND_LIMITS.tradeInterval;
+  }
   if (stage.action === "greet") mind.needs.social = clamp(mind.needs.social - .5);
   if (stage.action === "idle" && stage.outcome === "miss") mind.needs.patience = clamp(mind.needs.patience - .15);
 }
@@ -148,12 +157,21 @@ function acceptScene(mind: PleskMind, scene: FixedWorldScene, places: PleskPlace
 
 export function noticePleskMind(mind: PleskMind | null): void { if (mind) mind.noticePending = true; }
 
+/** A visual invitation, never an economic operation. Finish the current walk or
+ * fishing cycle (including its deposit) before taking the prepared safe route.
+ * Reopening the shop cannot restart travel or extend a trading session. */
+export function requestPleskTrade(mind: PleskMind | null): void {
+  if (!mind || !mind.available || !pleskLocalPlaces(mind.scene)?.trade) return;
+  mind.noticePending = false;
+  if (mind.intent !== "trade") mind.tradePending = true;
+}
+
 export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene, dt: number, environment: PleskEnvironment): void {
   if (!mind || !Number.isFinite(dt) || dt <= 0) return;
   const places = pleskLocalPlaces(scene);
   if (!places) { mind.available = false; mind.reason = "Личный пирс недоступен — ждёт безопасной разметки."; observe(mind); return; }
   if (!acceptScene(mind, scene, places)) { observe(mind); return; }
-  if (environment.wildlife && !mind.noticePending) {
+  if (environment.wildlife && !mind.noticePending && !mind.tradePending) {
     const step = Math.min(PLESK_MIND_LIMITS.maxDelta, dt);
     mind.elapsed += step;
     mind.needs.patience = clamp(mind.needs.patience + step * .012);
@@ -167,9 +185,10 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
     mind.queue = [{ action: "reel", duration: 1.4, target: mind.stage.target, outcome: "miss", variation: "escape" },
       { action: "idle", duration: 1.5, target: mind.stage.target, variation: "check" }];
     startNext(mind);
-  } else if (mind.noticePending && mind.elapsed >= mind.greetAfter && ["idle", "rest", "trade"].includes(mind.stage.action)) {
+  } else if (mind.noticePending && mind.elapsed >= mind.greetAfter && ["idle", "rest"].includes(mind.stage.action)) {
     // Complete the paused harmless activity after greeting; catches and walking
-    // are never interrupted mid-transfer or between navigation points.
+    // and the finite trading gesture are never interrupted mid-transfer or
+    // between navigation points. A tap during trade waits for its completion.
     mind.queue.unshift({ ...mind.stage, duration: Math.max(.1, mind.stage.duration - mind.age) });
     mind.stage = { action: "greet", duration: 2.5, target: mind.stage.target, direction: "front" };
     mind.age = 0; mind.noticePending = false; mind.greetAfter = mind.elapsed + 25;

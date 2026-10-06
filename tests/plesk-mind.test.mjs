@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createPleskMind, advancePleskMind, pleskMindFrame, noticePleskMind, PLESK_MIND_LIMITS } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
+const { createPleskMind, advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade, PLESK_MIND_LIMITS } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
 const { pleskLocalPlaces, PLESK } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
 const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { TILED_WORLD: world } = await vite.ssrLoadModule("/features/world/presentation.ts");
@@ -43,14 +43,17 @@ test("the live resident chooses occupations from needs, stock and weather rather
 });
 
 test("long autonomous life stays on personal routes, reacts to fatigue and returns to fishing after rest", () => {
-  const mind = createPleskMind(world), nav = createWorldNavigation(world), base = pleskLocalPlaces(world).base;
+  const mind = createPleskMind(world), nav = createWorldNavigation(world), places = pleskLocalPlaces(world);
   const intents = new Set(), actions = new Set(); let previous = pleskMindFrame(mind, world, false), rested = false, fishedAfterRest = false;
   for (let t = 0; t < 1600; t += .25) {
     advancePleskMind(mind, world, .25, day);
     const frame = pleskMindFrame(mind, world, false);
     assert.ok(frame); assert.ok(isWalkable(nav, frame)); assert.ok(canTraverse(nav, previous, frame));
     assert.ok(Math.hypot(frame.x - previous.x, frame.y - previous.y) <= PLESK.speed * .25 + 1e-6);
-    assert.ok(Math.hypot(frame.x - base.position.x, frame.y - base.position.y) < 90);
+    if (frame.action !== "walk") {
+      const stop = [places.base, places.trade, places.rest].find(stop => stop?.id === frame.destinationId);
+      assert.deepEqual({ x: frame.x, y: frame.y }, stop.position, "stationary activities use their exact authored destination");
+    }
     assert.ok(frame.destinationId.startsWith("plesk-"));
     if (["cast", "fish", "bite", "reel", "catch"].includes(frame.action)) {
       assert.equal(frame.direction, "front", "live AI keeps her face visible at the personal pier");
@@ -66,6 +69,130 @@ test("long autonomous life stays on personal routes, reacts to fatigue and retur
   for (const intent of ["fish", "trade", "rest"]) assert.ok(intents.has(intent), intent);
   for (const action of ["walk", "cast", "fish", "bite", "reel", "catch", "pack", "trade", "rest"]) assert.ok(actions.has(action), action);
   assert.ok(fishedAfterRest); assert.ok(mind.decisions > 20);
+});
+
+test("opening the shop invites an empty-handed resident along a safe route and repeated openings cannot prolong trade", () => {
+  const mind = createPleskMind(world, 9), places = pleskLocalPlaces(world);
+  const before = { ...mind.position };
+  noticePleskMind(mind); requestPleskTrade(mind);
+  assert.deepEqual(mind.position, before); assert.equal(mind.noticePending, false);
+  advance(mind, 1);
+  assert.equal(mind.intent, "trade"); assert.equal(mind.stage.action, "walk");
+  assert.equal(mind.catchCount, 0, "the invitation does not invent fish");
+  let previous = pleskMindFrame(mind, world, false);
+  while (mind.stage.action === "walk") {
+    requestPleskTrade(mind); advance(mind, .1);
+    const frame = pleskMindFrame(mind, world, false);
+    assert.ok(canTraverse(places.nav, previous, frame));
+    assert.ok(Math.hypot(frame.x - previous.x, frame.y - previous.y) <= PLESK.speed * .1 + 1e-7);
+    previous = frame;
+  }
+  until(mind, item => item.stage.action === "trade", 5);
+  assert.deepEqual(mind.position, places.trade.position);
+  assert.equal(pleskMindFrame(mind, world, false).direction, places.tradeDirection);
+  assert.equal(mind.catchCount, 0);
+  const stage = mind.stage;
+  const deadline = mind.elapsed + stage.duration - mind.age;
+  while (mind.stage === stage) { requestPleskTrade(mind); advance(mind, .1); }
+  assert.ok(Math.abs(mind.elapsed - deadline) <= .11, "the original finite session completes despite repeat openings");
+  assert.equal(mind.tradePending, false);
+  assert.ok(mind.tradeAfter > mind.elapsed + PLESK_MIND_LIMITS.tradeInterval - .11);
+  until(mind, item => item.intent !== "trade", 5);
+  until(mind, item => item.stage.action === "fish", 180);
+  assert.equal(mind.stopId, places.base.id, "after trade she walks back and resumes fishing");
+});
+
+test("a shop invitation completes the cast and one deposit before leaving the pier", () => {
+  let mind;
+  for (let seed = 1; seed < 50; seed++) {
+    const candidate = createPleskMind(world, seed); advance(candidate, 1);
+    if (candidate.queue.find(stage => stage.action === "fish").outcome !== "miss") { mind = candidate; break; }
+  }
+  until(mind, item => item.stage.action === "fish" && item.age > 2);
+  const waiting = mind.stage, feet = { ...mind.position };
+  requestPleskTrade(mind); advance(mind, .1);
+  assert.strictEqual(mind.stage, waiting, "opening the stall does not turn a real catch into an interrupted cast");
+  until(mind, item => item.stage.action === "pack");
+  const packing = mind.stage;
+  requestPleskTrade(mind); advance(mind, .1);
+  assert.strictEqual(mind.stage, packing); assert.deepEqual(mind.position, feet);
+  assert.equal(mind.catchCount, 0);
+  until(mind, item => item.intent === "trade", 12);
+  assert.equal(mind.catchCount, 1, "exactly the completed catch is packed before travel");
+  assert.equal(mind.stage.action, "walk"); assert.equal(mind.stage.target.id, "plesk-trade");
+});
+
+test("tapping the trader defers greeting until the finite trading gesture is complete", () => {
+  const mind = createPleskMind(world, 9); mind.catchCount = 2;
+  requestPleskTrade(mind);
+  until(mind, item => item.stage.action === "trade", 60);
+  const trading = mind.stage, deadline = mind.elapsed + trading.duration - mind.age;
+  let phase = pleskMindFrame(mind, world, false).phase;
+  while (mind.stage === trading) {
+    noticePleskMind(mind); advance(mind, .1);
+    if (mind.stage === trading) {
+      const next = pleskMindFrame(mind, world, false).phase;
+      assert.ok(next >= phase, "repeated taps never restart the trading gesture");
+      assert.equal(mind.catchCount, 2, "decorative stock stays until the trade completes");
+      phase = next;
+    }
+  }
+  assert.ok(Math.abs(mind.elapsed - deadline) <= .11, "greetings do not extend the finite trade");
+  assert.equal(mind.catchCount, 0);
+  assert.equal(mind.noticePending, true);
+  advance(mind, .1);
+  assert.equal(mind.stage.action, "greet", "the visitor is acknowledged after the complete trade");
+  assert.equal(mind.noticePending, false);
+  assert.equal(mind.queue.some(stage => stage.action === "trade"), false, "the completed gesture cannot replay after greeting");
+});
+
+test("a request made during another walk reaches the current stop before going to trade", () => {
+  const mind = createPleskMind(world, 9); mind.needs.energy = .08;
+  advance(mind, 1);
+  assert.equal(mind.stage.action, "walk");
+  const walking = mind.stage, target = walking.target;
+  requestPleskTrade(mind); advance(mind, .1);
+  assert.strictEqual(mind.stage, walking);
+  until(mind, item => item.stage !== walking, 30);
+  assert.deepEqual(mind.position, target.position);
+  until(mind, item => item.intent === "trade", 60);
+  until(mind, item => item.stage.action === "trade", 60);
+  assert.deepEqual(mind.position, pleskLocalPlaces(world).trade.position);
+});
+
+test("the shop receives regular finite visits even without water or catches", () => {
+  const dry = { ...world, water: undefined }, mind = createPleskMind(dry, 9);
+  let trades = 0, previous = mind.stage;
+  for (let second = 0; second < 650; second++) {
+    advancePleskMind(mind, dry, 1, day);
+    if (mind.stage !== previous && mind.stage.action === "trade") trades++;
+    assert.equal(mind.catchCount, 0);
+    assert.ok(!["cast", "fish", "bite", "catch", "pack"].includes(mind.stage.action));
+    previous = mind.stage;
+  }
+  assert.ok(trades >= 2, "being a shopkeeper does not depend on catching decorative fish");
+});
+
+test("a missing or blocked shop ignores invitations and leaves normal activities available", () => {
+  const trade = world.destinations.find(marker => marker.id === "plesk-trade");
+  const blocked = { id: "closed-shop", points: [
+    { x: trade.position.x - 10, y: trade.position.y - 10 }, { x: trade.position.x + 10, y: trade.position.y - 10 },
+    { x: trade.position.x + 10, y: trade.position.y + 10 }, { x: trade.position.x - 10, y: trade.position.y + 10 },
+  ] };
+  for (const scene of [
+    { ...world, destinations: world.destinations.filter(marker => marker.id !== "plesk-trade") },
+    { ...world, navigation: { ...world.navigation, obstacles: [...world.navigation.obstacles, blocked] } },
+  ]) {
+    const mind = createPleskMind(scene, 9);
+    requestPleskTrade(mind);
+    assert.equal(mind.tradePending, false);
+    for (let second = 0; second < 240; second++) {
+      advancePleskMind(mind, scene, 1, day);
+      assert.notEqual(mind.intent, "trade");
+    }
+    assert.ok(mind.decisions > 1); assert.ok(mind.available);
+  }
+  assert.doesNotThrow(() => requestPleskTrade(null));
 });
 
 test("seeds vary fishing outcomes while identical needs and seeds remain reproducible", () => {

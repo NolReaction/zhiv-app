@@ -27,6 +27,7 @@ export type PleskResidentFrame = WorldPoint & FishingMotion & {
 export const PLESK = {
   id: "plesk", name: "Плёска", title: "Рыбачка и торговка", size: 36, speed: 16,
   fishingDestination: "plesk-fishing", tradingDestination: "plesk-trade", restingDestination: "plesk-rest",
+  customerDestination: "plesk-customer",
 } as const;
 export const PLESK_LIMITS = { pathSearches: 3, routineVariants: 3 } as const;
 
@@ -67,7 +68,7 @@ export function pleskTravelTime(trail: ForestTrail) { return trail.length / PLES
 
 export type PleskPlaces = {
   base: PleskStop; trade?: PleskStop; rest?: PleskStop; nav: WorldNavigation;
-  waterTarget?: WorldPoint; direction: PixelDirection;
+  waterTarget?: WorldPoint; direction: PixelDirection; tradeDirection: PixelDirection;
   toTrade?: ForestTrail; toRest?: ForestTrail; tradeToRest?: ForestTrail;
 };
 const placeCache = new WeakMap<FixedWorldScene, PleskPlaces | null>();
@@ -81,9 +82,12 @@ export function pleskLocalPlaces(scene: FixedWorldScene): PleskPlaces | null {
   // Cast down from the pier into verified water, with her face toward the viewer.
   const direction: PixelDirection = "front";
   const trade = authoredStop(scene, PLESK.tradingDestination), rest = authoredStop(scene, PLESK.restingDestination);
+  const customer = authoredStop(scene, PLESK.customerDestination);
+  const tradeDirection: PixelDirection = trade && customer
+    ? facing(customer.position.x - trade.position.x, customer.position.y - trade.position.y) : "front";
   const toTrade = connectingTrail(nav, base, trade), toRest = connectingTrail(nav, base, rest);
   const tradeToRest = toTrade && toRest && trade ? connectingTrail(nav, trade, rest) : undefined;
-  const result = { base, nav, waterTarget, direction, trade: toTrade ? trade : undefined,
+  const result = { base, nav, waterTarget, direction, tradeDirection, trade: toTrade ? trade : undefined,
     rest: toRest ? rest : undefined, toTrade, toRest, tradeToRest };
   placeCache.set(scene, result); return result;
 }
@@ -96,7 +100,7 @@ function routine(scene: FixedWorldScene): Routine | null {
   if (cache.has(scene)) return cache.get(scene)!;
   const places = pleskLocalPlaces(scene);
   if (!places) { cache.set(scene, null); return null; }
-  const { base, waterTarget, direction, trade, rest, toTrade, toRest, tradeToRest } = places;
+  const { base, waterTarget, direction, tradeDirection, trade, rest, toTrade, toRest, tradeToRest } = places;
   const stages: Stage[] = []; let time = 0, fishIndex = 0;
   let species: FishSpeciesId = "fish", basketSpecies: FishSpeciesId | undefined;
   const stay = (action: PleskAction, seconds: number, carryingFish = false, destination = base, look = direction, basketFilled?: boolean) => {
@@ -135,8 +139,8 @@ function routine(scene: FixedWorldScene): Routine | null {
     let atRest = false;
     if (trade && toTrade) {
       walk(toTrade, trade, loaded);
-      stay("greet", 3, loaded, trade, "front"); stay("trade", 18 + variant * 4, loaded, trade, "front");
-      stay("idle", 3, false, trade, "front"); stay("idle", 4, false, trade, variant === 1 ? "left" : "front");
+      stay("greet", 3, loaded, trade, tradeDirection); stay("trade", 24 + variant * 4, loaded, trade, tradeDirection);
+      stay("idle", 3, false, trade, tradeDirection); stay("idle", 4, false, trade, variant === 1 ? "left" : tradeDirection);
       if (rest && tradeToRest) { walk(tradeToRest, rest, false); atRest = true; }
       else walk(reversePleskTrail(toTrade), base, false);
     }

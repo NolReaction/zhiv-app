@@ -19,7 +19,7 @@ import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { drawForestGardenGround, drawForestGardenPlants, drawForestGardenProps, forestGardenVisualFrame } from "./forest-garden-painter";
 import { drawWaterDebug } from "./dev/water-debug";
 import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity } from "./clearing-activity";
-import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, requestForestGardenHarvest, type ForestDirectorOptions } from "./forest-director";
+import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, requestForestGardenHarvest, requestForestTradeVisit, forestTradeVisitFrame, type ForestDirectorOptions } from "./forest-director";
 import { syncForestGardenProduction } from "./forest-garden";
 import { faunaInteractionFrame, faunaRenderFrame, residentFaunaEncounter, type ForestFaunaState } from "./forest-fauna";
 import { pleskWildlifeHand } from "./plesk-painter";
@@ -42,7 +42,7 @@ import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from
 import { interactiveMapObjects } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
 
-import { advancePleskMind, pleskMindFrame, noticePleskMind } from "./plesk-mind";
+import { advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade } from "./plesk-mind";
 import { previewForestResidents } from "./dev/forest-resident-preview";
 import { drawForestFishingHero } from "./forest-fishing-painter";
 import type { ForestFishingFrame } from "./forest-fishing";
@@ -103,6 +103,7 @@ export type NewMapPaintPreview = {
   birdFrame?: ForestBird[];
   birdwatch?: ForestBirdwatch | null;
   campfireVisit?: CampfireVisit | null;
+  tradeVisit?: ReturnType<typeof forestTradeVisitFrame>;
   livingDebug?: LivingWorldDebugSnapshot;
   actorAway?: boolean;
   fishing?: ForestFishingFrame | null;
@@ -169,6 +170,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     ? forestLifeFrame(life, { ...actor, propSize: PET_SIZE }, elapsed) : null;
   const encounter = heroVisible && !fishing && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
     ? faunaInteractionFrame(preview.fauna) : null;
+  const trading = automatic ? preview?.tradeVisit : null;
   const birdwatch = automatic && !still && preview?.birdwatch ? forestBirdwatchFrame(preview.birdwatch, actor) : null;
   const fire = life?.campfires.find(item => item.id === preview?.campfireVisit?.id);
   const warming = automatic && fire && preview?.campfireVisit ? campfireVisitFrame(preview.campfireVisit, fire, actor, still) : null;
@@ -236,8 +238,8 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
         return;
       }
       drawForestGardenProps(actorContext, garden, "behind");
-      drawGroundedHero(actorContext, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
-        ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
+      drawGroundedHero(actorContext, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? trading?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
+        ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? trading ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
         appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
         rig: garden?.rig ?? routine?.rig });
       if (routine) drawForestLifePartner(actorContext, routine, elapsed);
@@ -425,7 +427,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" || state.journeyTravel?.mining)
+    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.director.tradeVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" || state.journeyTravel?.mining)
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -443,7 +445,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const cooking = state.cookingPreview;
     const resident = state.pleskMind ? pleskMindFrame(state.pleskMind, world, false) : null;
     const visitors = resident ? [{ ...resident, hand: pleskWildlifeHand(resident),
-      available: !dev?.residentPreview && !state.pleskMind?.noticePending && (!resident.carryingFish || resident.action === "rest")
+      available: !dev?.residentPreview && !state.pleskMind?.noticePending && !state.pleskMind?.tradePending && (!resident.carryingFish || resident.action === "rest")
         && ["idle", "rest", "greet"].includes(resident.action) }] : [];
     return { autoLife: !cooking && dev?.autoLife !== false, blocked: blocked || exploring() || forestJourneyWalking(state) || forestJourneyEnding(state)
       || Boolean(cooking && cooking.startedAt !== null), actorAway: actorAway(),
@@ -460,7 +462,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
-      fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit,
+      fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit, tradeVisit: forestTradeVisitFrame(state),
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,
         position: state.clearing.position, path: path?.path, target: path?.target, activity: path?.activity,
@@ -778,6 +780,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     noticeResident(id) {
       if (disposed || id !== "plesk" || !state.pleskMind || !session.isOwner()) return;
       noticePleskMind(state.pleskMind); updateObservation(true); session.publish();
+    },
+    visitTradingPlace(id) {
+      if (disposed || id !== "plesk" || !art || dev?.showBuildings === false || !session.isOwner()
+        || reducedMotion(options, dev) || !world.sites.some(site => site.id === "plesk-shop")) return;
+      requestPleskTrade(state.pleskMind);
+      if (dev?.showHero !== false) requestForestTradeVisit(state, world, directorOptions(Boolean(dev?.pose && dev.pose !== "auto")));
+      updateObservation(true); session.publish(); resume();
     },
     inspectPoint(target) {
       if (disposed || !art) return null;

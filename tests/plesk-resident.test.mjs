@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { PLESK, pleskResidentFrame, pleskRoutineDuration } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
+const { PLESK, pleskResidentFrame, pleskRoutineDuration, pleskLocalPlaces } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
 const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const { fishingWaterTarget } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
 const { isForestWater } = await vite.ssrLoadModule("/features/world/forest-water.ts");
@@ -172,7 +172,7 @@ test("reduced motion stays at the personal pier at every clock value", () => {
   assert.equal(pleskResidentFrame({ ...world, water: undefined }, 200, true).action, "rest");
 });
 
-test("the authored island keeps Плёск at the upper wooden pier, separate from the hero, at every building level", () => {
+test("the authored island connects Плёска's pier, stall and resting place at every building level", () => {
   const authoredBase = TILED_WORLD.destinations.find(marker => marker.id === PLESK.fishingDestination).position;
   const authoredHeroFishing = TILED_WORLD.destinations.find(marker => marker.id === "fishing").position;
   for (let level = 0; level <= 5; level++) {
@@ -187,7 +187,8 @@ test("the authored island keeps Плёск at the upper wooden pier, separate fr
     assert.ok(frames.some(frame => frame.action === "rest" && frame.destinationId === "plesk-rest"), `local rest at level ${level}`);
     assert.ok(frames.some(frame => frame.action === "fish" && isForestWater(world, frame.waterTarget)), `real water at level ${level}`);
     assert.ok(frames.every(frame => isWalkable(nav, frame)), `safe feet at level ${level}`);
-    assert.ok(frames.every(frame => Math.hypot(frame.x - base.x, frame.y - base.y) < 90), "all regular activities belong to the pier area");
+    const trade = world.destinations.find(marker => marker.id === "plesk-trade").position;
+    assert.ok(frames.some(frame => frame.action === "trade" && frame.x === trade.x && frame.y === trade.y), "trading happens at the authored stall even when it is far from the pier");
     assert.ok(frames.every(frame => Math.hypot(frame.x - heroFishing.x, frame.y - heroFishing.y) > 200), "the main hero keeps his lower fishing clearing");
     const bobber = frames.find(frame => frame.waterTarget).waterTarget;
     assert.deepEqual(bobber, fishingWaterTarget(world, base, PLESK.size, "down"));
@@ -201,5 +202,16 @@ test("the authored island keeps Плёск at the upper wooden pier, separate fr
       assert.ok(isForestWater(world, { x: bobber.x + Math.cos(angle) * PLESK.size * .225,
         y: bobber.y + PLESK.size * .025 + Math.sin(angle) * PLESK.size * .09 }), `the complete ripple stays in water at level ${level}`);
     }
+  }
+});
+
+test("the trader faces the customer marker and old scenes keep their forward-facing fallback", () => {
+  const original = scene();
+  assert.equal(pleskLocalPlaces(original).tradeDirection, "front");
+  for (const [direction, x, y] of [["front", 40, 170], ["back", 40, 110], ["left", 15, 145], ["right", 75, 145]]) {
+    const world = { ...original, destinations: [...original.destinations, destination("plesk-customer", x, y)] };
+    assert.equal(pleskLocalPlaces(world).tradeDirection, direction);
+    const frames = sample(world);
+    assert.ok(frames.filter(frame => frame.action === "trade").every(frame => frame.direction === direction));
   }
 });

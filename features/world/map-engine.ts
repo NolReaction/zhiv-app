@@ -125,6 +125,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       framing = "manual";
       camera = clampCamera({ ...camera, x: object.anchor.x, y: object.anchor.y }, view, bounds, cameraInsets);
     }
+    if (object.place === "plesk-shop") {
+      setSelectedObject(null);
+      habitat.visitTradingPlace?.("plesk");
+      draw();
+      if (interactions.onResident) interactions.onResident("plesk");
+      else onPlace("plesk-shop");
+      return true;
+    }
     selectedObjectId = objectId;
     const selection = updateSelection();
     if (!selection) return false;

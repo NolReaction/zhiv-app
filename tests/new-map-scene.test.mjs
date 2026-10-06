@@ -2771,6 +2771,87 @@ const residentFixture = () => ({
   occluders: [],
 });
 
+const tradingFixture = () => ({
+  ...residentFixture(),
+  sites: [{ id: "plesk-shop", label: "Лавка Плёски", initialLevel: 1,
+    bounds: { x: 575, y: 630, width: 50, height: 45 }, anchor: { x: 600, y: 665 }, entry: { x: 600, y: 690 },
+    hitArea: [{ x: 575, y: 632 }, { x: 625, y: 632 }, { x: 625, y: 672 }, { x: 575, y: 672 }],
+    collision: [{ x: 580, y: 655 }, { x: 619, y: 655 }, { x: 619, y: 669 }, { x: 580, y: 669 }],
+    states: [{ level: 1, label: "Лавка", image: "/test-plesk-shop.webp" }] }],
+  destinations: [{ id: "plesk-fishing", position: { x: 690, y: 700 }, pauseSeconds: 15 },
+    { id: "plesk-trade", siteId: "plesk-shop", position: { x: 635, y: 680 }, pauseSeconds: 10 },
+    { id: "plesk-customer", siteId: "plesk-shop", position: { x: 600, y: 690 }, pauseSeconds: 10 }],
+});
+
+test("stall taps open Plesk directly and queue one safe meeting, while camera gestures leave both actors alone", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(tradingFixture());
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "stall-meeting" };
+    const canvas = env.surface(400), residents = [], selections = [];
+    const loading = createMapEngine(canvas, initial, assert.fail, [], undefined, {}, {
+      onResident: id => residents.push(id), onSelectionChange: value => selections.push(value),
+    });
+    env.finish(); await flush(); env.finishPath("/test-plesk-shop.webp"); engine = await loading;
+    engine.control("overview");
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const mind = probe.state.pleskMind, original = structuredClone(mind), feet = { ...probe.state.clearing.position };
+    const touch = () => { const projection = mapProjection(canvas); return { pointerId: 1, pointerType: "touch", button: 0,
+      clientX: projection.left + 595 * projection.zoom, clientY: projection.top + 639 * projection.zoom }; };
+    const send = (name, point) => canvas.events.get(name)({ ...point, type: name });
+    let point = touch(); send("pointerdown", point); send("pointermove", { ...point, clientX: point.clientX + 30 });
+    send("pointerup", { ...point, clientX: point.clientX + 30 }); engine.control("overview");
+    point = touch(); send("pointerdown", point); send("pointercancel", point);
+    const second = { ...point, pointerId: 2, clientX: point.clientX + 35 };
+    send("pointerdown", point); send("pointerdown", second); send("pointermove", { ...second, clientX: second.clientX + 10 });
+    send("pointerup", point); send("pointerup", { ...second, clientX: second.clientX + 10 }); engine.control("overview");
+    assert.deepEqual(residents, []); assert.deepEqual(mind, original);
+    assert.equal(probe.state.director.tradeVisit, null);
+
+    point = touch(); send("pointerdown", point); send("pointerup", point);
+    assert.deepEqual(residents, ["plesk"], "the existing shop opens immediately, without waiting for either actor");
+    assert.ok(selections.every(value => value === null), "a merchant has no empty construction panel");
+    assert.equal(mind.tradePending, true);
+    assert.deepEqual(mind.position, original.position, "opening the shop never teleports the seller");
+    assert.deepEqual(probe.state.clearing.position, feet);
+    const visit = probe.state.director.tradeVisit;
+    assert.equal(visit?.phase, "outbound");
+    assert.equal(engine.activateObject("plesk-shop"), true, "keyboard activation uses the same shop interaction");
+    assert.equal(probe.state.director.tradeVisit, visit, "repeated opens preserve the existing walk");
+    assert.equal(probe.state.explorationId, null, "the visit is not an economic journey");
+    const clock = sceneClock(env); clock.advance(.3);
+    assert.notDeepEqual(probe.state.clearing.position, feet, "the free hero actually follows the requested route");
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("a still or busy scene keeps the merchant accessible without starting a customer walk", async () => {
+  for (const mode of ["reduced-motion", "busy"]) {
+    const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(tradingFixture());
+    const env = browser(); let engine, probe;
+    try {
+      worldDevStore.patch({ ...quietClearing, autoLife: false });
+      const initial = { ...options, reducedMotion: mode === "reduced-motion", serverNow: 100_000, presenceKey: `stall-${mode}`,
+        ...(mode === "busy" ? { economyJourney: { id: "cave-job", routeId: "cave", startedAt: new Date(100_000).toISOString(),
+          finishesAt: new Date(700_000).toISOString() } } : {}) };
+      const places = [], canvas = env.surface(320);
+      const loading = createMapEngine(canvas, initial, place => places.push(place), []);
+      env.finish(); await flush(); env.finishPath("/test-plesk-shop.webp"); engine = await loading;
+      probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+      const feet = { ...probe.state.clearing.position };
+      assert.equal(engine.activateObject("plesk-shop"), true);
+      assert.deepEqual(places, ["plesk-shop"], "engines without a resident callback use the merchant place fallback");
+      assert.equal(probe.state.director.tradeVisit, null);
+      assert.deepEqual(probe.state.clearing.position, feet);
+      if (mode === "reduced-motion") assert.equal(probe.state.pleskMind.tradePending, false);
+      else assert.equal(probe.state.explorationId, "cave-job", "opening the merchant preserves the server-owned job");
+      worldDevStore.patch({ showBuildings: false });
+      assert.equal(engine.activateObject("plesk-shop"), false);
+      assert.deepEqual(places, ["plesk-shop"], "hidden stall art cannot create an invisible click target");
+    } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+  }
+});
+
 test("Plesk taps use world coordinates, respect foreground masks and never trigger the main hero", async () => {
   for (const mode of ["visible", "hidden", "equal-depth"]) {
     const hidden = mode === "hidden", overrides = residentFixture();

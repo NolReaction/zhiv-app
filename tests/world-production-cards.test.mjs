@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { createElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { WorldObjectMenu, WorldRecipeDetail } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
+const { WorldExpeditionSector, ExpeditionRouteDetails } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 after(() => vite.close());
@@ -41,6 +42,38 @@ function startDisabled(html) {
   const match = html.match(/<button\b([^>]*)>Начать ·/);
   assert.ok(match, "Missing production action");
   return /\bdisabled=/.test(match[1]);
+}
+function prepareMineRoute(economy, routeId = "quarry_stone") {
+  let selectedRoute = null, tree;
+  const calls = [], elements = [];
+  const trackedEconomy = { ...economy, act: (...args) => calls.push(args) };
+  function Probe() {
+    tree = WorldExpeditionSector({ sectorId: "caves", selectedRoute, onSelectRoute: id => { selectedRoute = id; },
+      economy: trackedEconomy, state: economy.snapshot, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration"), onOpenPantry() {} });
+    return tree;
+  }
+  function walk(element) {
+    if (!isValidElement(element)) return;
+    elements.push(element);
+    if (element.type === ExpeditionRouteDetails) {
+      function DetailProbe() { const details = ExpeditionRouteDetails(element.props); walk(details); return details; }
+      renderToStaticMarkup(createElement(DetailProbe));
+    }
+    Children.forEach(element.props.children, walk);
+  }
+  const list = renderToStaticMarkup(createElement(Probe)); walk(tree);
+  assert.doesNotMatch(list, /aria-label="Отправиться:/, "route selection opens preparation before offering departure");
+  const card = elements.find(element => element.type === "button" && element.props["data-route"] === routeId);
+  assert.ok(card, "mine route must be selectable for reviewing its conditions");
+  assert.notEqual(card.props.disabled, true);
+  card.props.onClick();
+  assert.equal(selectedRoute, routeId);
+  assert.deepEqual(calls, [], "selecting a route does not start an expedition");
+  elements.length = 0;
+  const html = renderToStaticMarkup(createElement(Probe)); walk(tree);
+  assert.match(html, /data-route-preparation="true"/);
+  return { html, calls, departure: elements.find(element => element.type === "button"
+    && element.props["aria-label"] === "Отправиться: Добыть камень") };
 }
 
 test("workshop separates ordinary recipes, long batches and unmet unlocks", () => {
@@ -119,9 +152,11 @@ test("mine exposes actor routes instead of production and passive crafting remai
   const idle = renderMenu("quarry", free);
   assert.doesNotMatch(idle, /data-recipe=|Начать ·|data-quarry-tab=/);
   assert.match(idle, /data-route="quarry_stone"/);
-  const available = idle.match(/<button\b([^>]*)aria-label="Отправиться: Добыть камень"/);
-  assert.ok(available);
-  assert.doesNotMatch(available[1], /\bdisabled=/);
+  const available = prepareMineRoute(free);
+  assert.ok(available.departure);
+  assert.equal(available.departure.props.disabled, false);
+  available.departure.props.onClick();
+  assert.deepEqual(available.calls, [["start_exploration", "quarry_stone", 1, 0]]);
   const base = { id: "busy", startedAt: new Date(now - 1_000).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: {}, cost: { coins: 0, items: {} } };
   for (const occupied of [
     { ...base, kind: "exploration", targetId: "forest" },
@@ -132,15 +167,17 @@ test("mine exposes actor routes instead of production and passive crafting remai
     const mine = renderMenu("quarry", economy);
     assert.doesNotMatch(mine, /data-recipe=|Начать ·/);
     assert.match(mine, /data-route="quarry_stone"/);
-    const departure = mine.match(/<button\b([^>]*)aria-label="Отправиться: Добыть камень"/);
+    const preparation = prepareMineRoute(economy), departure = preparation.departure;
     if (occupied.kind === "exploration") {
-      assert.equal(departure, null, "a current or unclaimed trip has a claim/recall card instead of another departure");
-      assert.match(mine, /Сначала заберите находки или отмените текущую вылазку/);
+      assert.equal(departure, undefined, "a current or unclaimed trip has a claim/recall card instead of another departure");
+      assert.match(preparation.html, /Сначала заберите находки или отмените текущую вылазку/);
     } else {
       assert.ok(departure);
-      assert.match(departure[1], /\bdisabled=/);
-      assert.match(mine, /Сначала завершите сбор припасов/);
+      assert.equal(departure.props.disabled, true);
+      assert.match(preparation.html, /Сначала завершите сбор припасов/);
+      departure.props.onClick();
     }
+    assert.deepEqual(preparation.calls, [], "busy heroes cannot dispatch another departure from preparation");
     assert.equal(startDisabled(renderRecipe("make_planks", economy)), false);
   }
 });

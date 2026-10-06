@@ -196,6 +196,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     setEconomyTab(tab); setEconomyFocusId(focusId); openPanel("economy");
   }, [openPanel, openObject, openQuick]);
   const onPlace = useCallback((place: WorldPlace, object?: MapObjectSelection) => {
+    if (place === "plesk-shop") { openResident(); return; }
     if (object) {
       if (requestedObjectReturn.current) { objectReturn.current = requestedObjectReturn.current; requestedObjectReturn.current = null; }
       else if (!selectedId.current) objectReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -211,7 +212,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       const destination = economyBuildingDestination(place === "house" ? "home" : place, economy.snapshot);
       openEconomy(destination.tab, destination.focusId);
     }
-  }, [openPanel, openEconomy, openObject, economy.snapshot]);
+  }, [openPanel, openEconomy, openObject, openResident, economy.snapshot]);
   const openStation = (stationId: string) => {
     const place = worldPlaceForStation(stationId);
     if (place) openObject(place, stationId);
