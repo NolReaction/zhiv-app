@@ -158,7 +158,7 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     case "apply_settlement": {
       if (next.jobs.length) return fail("ECONOMY_BUILDING_BUSY", "Сначала завершите или отмените задания и заберите результаты");
       next.buildings = economyDevSettlement(command.quantity);
-      message = `DEV: дом ${command.quantity} и все доступные ему улучшения готовы`;
+      message = `DEV: дом ${command.quantity}, его улучшения и кладовая ${command.quantity} готовы`;
       break;
     }
     case "grant_currency": {

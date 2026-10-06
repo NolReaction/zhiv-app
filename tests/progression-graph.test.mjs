@@ -47,7 +47,7 @@ function reachableIds(currentGraph, accepts) {
 }
 
 test("progression contains every catalog building level, recipe and exploration exactly once", () => {
-  assert.equal(graph.nodes.filter(value => value.kind === "building").length, 40);
+  assert.equal(graph.nodes.filter(value => value.kind === "building").length, 45);
   assert.equal(graph.nodes.filter(value => value.kind === "recipe").length, catalog.recipes.length);
   assert.equal(graph.nodes.filter(value => value.kind === "exploration").length, catalog.explorations.length);
   for (const building of catalog.buildings) for (const level of building.levels) {
@@ -93,7 +93,7 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 151);
+  assert.equal(graph.nodes.length, 156);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
   assert.equal(graph.nodes.filter(value => value.status === "plan").length, 17);
@@ -269,6 +269,37 @@ test("display phases follow transitive catalog gates without moving unrelated pl
   assert.equal(find("b:home:2").phase, 2);
   assert.equal(find("b:woodlot:1").phase, 1);
   assert.equal(find("r:dry_berries").requirements.home, catalog.recipes.find(value => value.id === "dry_berries").requiredHomeLevel);
+});
+
+test("ten storage levels stay visible in economic sections with their true sequential gates and relic sources", () => {
+  const warehouse = catalog.buildings.find(value => value.id === "warehouse");
+  assert.equal(warehouse.levels.length, 10);
+  const layout = buildProgressionLayout(graph);
+  for (const level of warehouse.levels) {
+    const id = `b:warehouse:${level.level}`, storage = node(id), position = layout.positions.get(id);
+    assert.equal(storage.status, "active");
+    assert.equal(storage.locationId, "place:home");
+    assert.equal(storage.phase, Math.min(level.level, 3), "later storage shares the phase of its actual home-3 prerequisite");
+    assert.deepEqual(plain(storage.cost), level.cost);
+    assert.equal(storage.warehouseCapacity, level.warehouseCapacity);
+    assert(position, `storage ${level.level} must not disappear beyond the five home tiers`);
+    const group = layout.groups.find(value => value.phase === storage.phase && value.locationId === "place:home");
+    assert(position.x >= group.x && position.x + NODE_WIDTH <= group.x + group.width);
+    assert(position.y >= group.y && position.y + NODE_HEIGHT <= group.y + group.height);
+    if (level.level >= 4) {
+      assert.deepEqual(plain(storage.requirements), { home: 1, warehouse: level.level - 1 });
+      for (const relic of Object.keys(level.cost.items)) {
+        assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
+      }
+      assert(hasEdge("rare_materials", id, "cost"));
+      const gates = getPrerequisiteIds(graph, id, false);
+      assert(gates.has("b:home:3"), "the ordinary level-3 storage prerequisite remains required");
+      assert(!gates.has("b:home:4"));
+      assert(!gates.has("b:home:5"));
+      assert(!gates.has("b:workshop:3"));
+      assert(!gates.has("b:workshop:4"));
+    }
+  }
 });
 
 test("workbench layout places every node once and groups equipment in one map location without overlapping nodes", () => {

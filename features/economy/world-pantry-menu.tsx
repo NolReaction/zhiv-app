@@ -108,6 +108,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
   ] as const;
   const level = state.buildings.warehouse ?? 1;
   const target = state.catalog.buildings.find(building => building.id === "warehouse")?.levels.find(entry => entry.level === level + 1);
+  const expansionRelics = Object.entries(target?.cost.items ?? {}).filter(([id]) => relics.some(item => item.id === id));
   const job = state.jobs.find(entry => entry.kind === "construction" && entry.targetId === "warehouse");
   const progress = job ? worldJobProgress(state, job, economy.now) : null;
   const marketAvailable = onOpenMarket && (state.buildings.home ?? 1) >= state.catalog.market.requiredHomeLevel && state.completedExplorations >= state.catalog.market.requiredExplorations;
@@ -152,7 +153,13 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
 
     <div className={styles.footer}>
       {job && progress ? <button type="button" className={styles.expand} onClick={onUpgrade} aria-haspopup="dialog"><span className={styles.expandIcon}>{progress.ready ? <Check size={16} aria-hidden="true" /> : <Clock3 size={16} aria-hidden="true" />}</span><span><strong>{progress.ready ? "Расширение готово" : "Кладовая расширяется"}</strong><small>{progress.ready ? `Можно получить уровень ${job.targetLevel}` : `Ещё ${progress.seconds < 60 ? `${progress.seconds} с` : worldDuration(progress.seconds)}`}</small></span><ArrowRight size={15} aria-hidden="true" /></button>
-        : target ? <button type="button" className={styles.expand} onClick={onUpgrade} aria-haspopup="dialog"><span className={styles.expandIcon}><Hammer size={16} aria-hidden="true" /></span><span><strong>Расширить кладовую</strong><small>Ур. {level} → {target.level}{target.warehouseCapacity ? ` · ${number(target.warehouseCapacity)} мест` : ""}</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+        : target ? <div className={styles.expansion}><button type="button" className={styles.expand} onClick={onUpgrade} aria-haspopup="dialog"><span className={styles.expandIcon}><Hammer size={16} aria-hidden="true" /></span><span><strong>Расширить кладовую</strong><small>Ур. {level} → {target.level}{target.warehouseCapacity ? ` · ${number(capacity)} → ${number(target.warehouseCapacity)} мест` : ""}</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+          {expansionRelics.length > 0 && <ul className={styles.expansionRelics} aria-label="Реликвии для следующего расширения">{expansionRelics.map(([id, required]) => {
+            const stock = state.inventory[id] ?? 0;
+            const name = relics.find(item => item.id === id)!.name;
+            return <li key={id} data-relic={id} data-missing={stock < required || undefined} title={name} aria-label={`${name}: есть ${number(stock)}, нужно ${number(required)}`}><ItemIcon itemId={id} size={23} /><strong>{number(stock)}<span> / {number(required)}</span></strong></li>;
+          })}</ul>}
+        </div>
           : <p className={styles.maximum}><Check size={13} aria-hidden="true" />Ур. {level} · Максимальная вместимость</p>}
       {marketAvailable && <button type="button" className={styles.market} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Рынок игроков<ArrowRight size={13} aria-hidden="true" /></button>}
     </div>

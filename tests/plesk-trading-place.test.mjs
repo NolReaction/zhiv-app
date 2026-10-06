@@ -30,6 +30,14 @@ function assertPath(nav, start, end) {
   assert.deepEqual(route.at(-1), end);
   for (let i = 1; i < route.length; i++) assert.ok(canTraverse(nav, route[i - 1], route[i]), `unsafe route segment ${i}`);
 }
+function assertTranslatedPoints(actual, expected, label) {
+  assert.equal(actual.length, expected.length, `${label}: vertex count stays unchanged`);
+  actual.forEach((point, index) => {
+    assert.deepEqual(Object.keys(point).sort(), ["x", "y"], `${label}: vertex ${index} keeps its coordinate shape`);
+    for (const axis of ["x", "y"]) assert.ok(Number.isFinite(point[axis]) && Math.abs(point[axis] - expected[index][axis]) <= 1e-9,
+      `${label}: vertex ${index}.${axis} differs from its ordered translation`);
+  });
+}
 
 test("Tiled exports the placed stall as a clickable site with separate walkable ground", () => {
   const authored = shopLayer.objects.find(object => object.name === "plesk-shop");
@@ -83,16 +91,16 @@ test("moving the Pleska group keeps the bitmap, clearance, collision and both tr
   assert.equal(site.bounds.x, shop.bounds.x - 4);
   assert.equal(site.bounds.y, shop.bounds.y + 2);
   const shift = point => ({ x: point.x - 4, y: point.y + 2 });
-  assert.deepEqual(site.collision, shop.collision.map(shift));
-  assert.deepEqual(site.hitArea, shop.hitArea.map(shift));
+  assertTranslatedPoints(site.collision, shop.collision.map(shift), "stall collision");
+  assertTranslatedPoints(site.hitArea, shop.hitArea.map(shift), "stall hit area");
   const silhouette = TILED_WORLD.occluders.find(mask => mask.id === "plesk-shop-silhouette");
   const movedSilhouette = moved.occluders.find(mask => mask.id === silhouette.id);
-  assert.deepEqual(movedSilhouette.points, silhouette.points.map(shift));
+  assertTranslatedPoints(movedSilhouette.points, silhouette.points.map(shift), "stall silhouette");
   assert.equal(movedSilhouette.frontY, silhouette.frontY + 2);
   assert.deepEqual(site.entry, shift(shop.entry));
   for (const id of ["plesk-trade", "plesk-customer"]) assert.deepEqual(destination(moved, id), shift(destination(TILED_WORLD, id)));
   const currentArea = TILED_WORLD.navigation.areas.find(area => area.id === "pleska-cleaning");
-  assert.deepEqual(moved.navigation.areas.find(area => area.id === currentArea.id).points, currentArea.points.map(shift));
+  assertTranslatedPoints(moved.navigation.areas.find(area => area.id === currentArea.id).points, currentArea.points.map(shift), "trading clearing");
 });
 
 

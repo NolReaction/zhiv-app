@@ -73,6 +73,45 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
   }
 });
 
+test("HTTP builds and claims warehouse ten from earned low-home progress using only relics", async () => {
+  const p = player();
+  economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.buildings = { home: 1, warehouse: 9 };
+  const target = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.at(-1);
+  row.state.inventory = { ...target.cost.items };
+  row.state.wallet = { coins: 0, pearls: 0 };
+  const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
+  const response = await POST(post(order));
+  assert.equal(response.status, 200);
+  const started = await response.json();
+  assert.equal(model.economyResultSchema.safeParse(started).success, true);
+  assert.equal(started.state.jobs[0].targetLevel, 10);
+  assert.equal(started.state.storage.capacity, 8200);
+  assert.deepEqual(started.state.wallet, { coins: 0, pearls: 0 });
+  assert.deepEqual(started.state.inventory, {});
+  assert.equal((await (await POST(post(order))).json()).replayed, true);
+  // Advance only this fixture's valid saved interval; the client sends no time or capacity.
+  const finishedAt = Date.now() - 1000;
+  row.state.jobs[0].startedAt = new Date(finishedAt - target.seconds * 1000).toISOString();
+  row.state.jobs[0].finishesAt = new Date(finishedAt).toISOString();
+  const claim = { ...command(p), action: "claim_job", targetId: row.state.jobs[0].id };
+  const claimedResponse = await POST(post(claim));
+  assert.equal(claimedResponse.status, 200);
+  const claimed = await claimedResponse.json();
+  assert.equal(model.economyResultSchema.safeParse(claimed).success, true);
+  assert.equal(claimed.state.buildings.home, 1);
+  assert.equal(claimed.state.buildings.warehouse, 10);
+  assert.equal(claimed.state.storage.capacity, 10000);
+  assert.deepEqual(claimed.state.jobs, []);
+  const repeated = await (await POST(post(claim))).json();
+  assert.equal(repeated.replayed, true);
+  assert.equal(repeated.state.revision, claimed.state.revision);
+  const maximum = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+  assert.equal(maximum.status, 409);
+  assert.equal((await maximum.json()).code, "ECONOMY_MAX_LEVEL");
+});
+
 test("cross-site writes and wrong content types cannot change economy", async () => {
   const p = player(), cmd = command(p), before = economy.getDevEconomy(p.token);
   for (const headers of [{ Origin: "https://evil.example" }, { "Sec-Fetch-Site": "cross-site" }]) {

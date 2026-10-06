@@ -186,6 +186,31 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   assert.equal(read(p).storage.reserved, 2); assert.deepEqual(read(p).jobs, [production]);
 });
 
+test("DEV storage controls grant every relic upgrade through level 10 without changing home or other buildings", () => {
+  const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
+  assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 10);
+  const ordinaryBuildings = structuredClone(read(p).buildings);
+  for (const target of warehouse.levels.filter(level => level.level >= 4)) {
+    const previous = cheat(p, "set_building_level", "warehouse", target.level - 1).state;
+    const row = fixture(p); row.state.inventory = {};
+    const granted = cheat(p, "grant_upgrade_cost", "warehouse").state;
+    assert.deepEqual(granted.inventory, target.cost.items, `missing relic set for storage ${target.level}`);
+    assert.deepEqual(granted.wallet, previous.wallet, "relic-only expansion adds no coins or pearls");
+    assert.deepEqual(granted.buildings, { ...ordinaryBuildings, warehouse: target.level - 1 });
+    const repeated = cheat(p, "grant_upgrade_cost", "warehouse").state;
+    assert.deepEqual(repeated.inventory, granted.inventory, "cost grants are missing-only even for relic sets");
+    const construction = normal(p, "start_construction", "warehouse").state.jobs.find(job => job.kind === "construction");
+    assert.equal(construction.targetLevel, target.level);
+    cheat(p, "finish_jobs", "construction");
+    const finished = normal(p, "claim_job", construction.id).state;
+    assert.equal(finished.buildings.warehouse, target.level);
+    assert.equal(finished.storage.capacity, target.warehouseCapacity);
+    assert.deepEqual(finished.buildings, { ...ordinaryBuildings, warehouse: target.level });
+  }
+  assert.throws(() => cheat(p, "set_building_level", "warehouse", 11), { code: "INVALID_ECONOMY_COMMAND" });
+  assert.throws(() => cheat(p, "grant_upgrade_cost", "warehouse"), { code: "ECONOMY_MAX_LEVEL" });
+});
+
 test("finishing jobs preserves paid snapshots and requires ordinary claims for rewards and construction", () => {
   const p = player();
   const production = normal(p, "start_production", "grow_berries").state.jobs[0];
@@ -218,7 +243,7 @@ test("DEV command defaults still produce a strict, ordinary result-compatible re
   assert.deepEqual(economyDevCommandSchema.parse(input), { ...input, quantity: 1, totalPrice: 0 });
 });
 
-test("settlement scenarios reach all catalog-gated upgrades at each fixed home tier and preserve owned assets", async () => {
+test("settlement scenarios fill a home tier, cap independent storage at that tier and preserve owned assets", async () => {
   const { economyDevSettlement } = await vite.ssrLoadModule("/features/economy/dev-presets.ts");
   const p = player(), row = fixture(p);
   row.state.inventory = { ancient_core: 2, wood: 37 };
@@ -230,6 +255,7 @@ test("settlement scenarios reach all catalog-gated upgrades at each fixed home t
     assert.equal(model.economyCommandSchema.safeParse(input).success, false, "presets must never become player commands");
     const result = economy.commandDevEconomyCheat(p.token, input, now);
     assert.equal(result.state.buildings.home, tier);
+    assert.equal(result.state.buildings.warehouse, tier, "a home preset must not grant the whole independent storage ladder");
     assert.deepEqual(result.state.buildings, economyDevSettlement(tier));
     for (const building of model.economyCatalog.buildings.filter(building => building.id !== "home")) {
       const level = building.levels.find(level => level.level === result.state.buildings[building.id]);
@@ -238,7 +264,7 @@ test("settlement scenarios reach all catalog-gated upgrades at each fixed home t
         for (const [id, minimum] of Object.entries(level.requiredBuildings)) assert.ok(result.state.buildings[id] >= minimum);
       }
       const next = building.levels.find(level => level.level === result.state.buildings[building.id] + 1);
-      if (next) assert.ok(next.requiredHomeLevel > tier || Object.entries(next.requiredBuildings).some(([id, minimum]) => result.state.buildings[id] < minimum), "every reachable upgrade is included");
+      if (next) assert.ok((building.id === "warehouse" && next.level > tier) || next.requiredHomeLevel > tier || Object.entries(next.requiredBuildings).some(([id, minimum]) => result.state.buildings[id] < minimum), "every reachable non-storage upgrade is included");
     }
     assert.deepEqual({ inventory: result.state.inventory, wallet: result.state.wallet, fishing: result.state.fishing }, assets);
     const replay = economy.commandDevEconomyCheat(p.token, input, now);

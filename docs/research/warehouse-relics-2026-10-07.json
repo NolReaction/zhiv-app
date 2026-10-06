@@ -1,0 +1,392 @@
+{
+  "catalogVersion": 3,
+  "warehouseMaximumLevel": 10,
+  "totalWarehouseRelics": {
+    "ancient_core": 38,
+    "moon_crystal": 12,
+    "living_resin": 12
+  },
+  "totalWarehouseRelicCount": 62,
+  "totalWarehouseConstructionHours": 872,
+  "totalWarehouseConstructionDays": 36.333333333333336,
+  "method": {
+    "source": "Shared authenticated completed-exploration clock; independent uniform interval and relic type draws.",
+    "requiredHomeLevelForExplorationDrops": 3,
+    "minimumIntervalHours": 48,
+    "maximumIntervalHours": 144,
+    "meanIntervalHours": 96,
+    "typeProbability": 0.3333333333333333,
+    "expectation": "Finite-state recurrence for both cumulative moon_crystal and living_resin quotas. Counts cores and excess duplicate types as draws. Independent mean intervals multiply that expected draw count.",
+    "scope": "Only the warehouse's cumulative crystal and resin collection, starting with no relic stock at the exploration-drop unlock. This is a partial acquisition expectation, not a promised date or a complete-game simulation.",
+    "excludes": [
+      "Required ancient_core stock and timing of seven-claim daily gifts; no assumption that gifts cover the core requirement",
+      "Additional relics spent on homes or other buildings",
+      "Time before unlocking expedition drops",
+      "Construction, other prerequisites and materials",
+      "Completed-job boundary overshoot and time lost between visits",
+      "Player barter, future merchant and premium acceleration"
+    ],
+    "limitations": [
+      "The 16h and 8h day conversions assume that much eligible work is completed every day; they are illustrative divisions, not measured play schedules.",
+      "A specific relic type has no finite guaranteed completion time. Averages include duplicate draws.",
+      "Higher warehouse capacity leaves house-based market quotas and exchange limits unchanged."
+    ]
+  },
+  "levels": [
+    {
+      "level": 1,
+      "capacity": 200,
+      "capacityGain": 200,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 0,
+        "moon_crystal": 0,
+        "living_resin": 0
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 0,
+        "moon_crystal": 0,
+        "living_resin": 0
+      },
+      "constructionHours": 0,
+      "cumulativeConstructionHours": 0,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 0,
+        "cumulativeResin": 0,
+        "expectedDraws": 0,
+        "expectedWorkHours": 0,
+        "illustrativeDaysAt16WorkHoursPerDay": 0,
+        "illustrativeDaysAt8WorkHoursPerDay": 0
+      }
+    },
+    {
+      "level": 2,
+      "capacity": 500,
+      "capacityGain": 300,
+      "cost": {
+        "coins": 2500,
+        "items": {
+          "planks": 18,
+          "stone": 20,
+          "rope": 8
+        }
+      },
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "workshop": 1
+      },
+      "relicCost": {
+        "ancient_core": 0,
+        "moon_crystal": 0,
+        "living_resin": 0
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 0,
+        "moon_crystal": 0,
+        "living_resin": 0
+      },
+      "constructionHours": 8,
+      "cumulativeConstructionHours": 8,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 0,
+        "cumulativeResin": 0,
+        "expectedDraws": 0,
+        "expectedWorkHours": 0,
+        "illustrativeDaysAt16WorkHoursPerDay": 0,
+        "illustrativeDaysAt8WorkHoursPerDay": 0
+      }
+    },
+    {
+      "level": 3,
+      "capacity": 1000,
+      "capacityGain": 500,
+      "cost": {
+        "coins": 16000,
+        "items": {
+          "planks": 50,
+          "bricks": 45,
+          "iron_ingot": 12,
+          "cloth": 10
+        }
+      },
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 2
+      },
+      "relicCost": {
+        "ancient_core": 0,
+        "moon_crystal": 0,
+        "living_resin": 0
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 0,
+        "moon_crystal": 0,
+        "living_resin": 0
+      },
+      "constructionHours": 24,
+      "cumulativeConstructionHours": 32,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 0,
+        "cumulativeResin": 0,
+        "expectedDraws": 0,
+        "expectedWorkHours": 0,
+        "illustrativeDaysAt16WorkHoursPerDay": 0,
+        "illustrativeDaysAt8WorkHoursPerDay": 0
+      }
+    },
+    {
+      "level": 4,
+      "capacity": 1800,
+      "capacityGain": 800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ancient_core": 2,
+          "moon_crystal": 1,
+          "living_resin": 1
+        }
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 2,
+        "moon_crystal": 1,
+        "living_resin": 1
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 2,
+        "moon_crystal": 1,
+        "living_resin": 1
+      },
+      "constructionHours": 48,
+      "cumulativeConstructionHours": 80,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 1,
+        "cumulativeResin": 1,
+        "expectedDraws": 4.5,
+        "expectedWorkHours": 432,
+        "illustrativeDaysAt16WorkHoursPerDay": 27,
+        "illustrativeDaysAt8WorkHoursPerDay": 54
+      }
+    },
+    {
+      "level": 5,
+      "capacity": 3000,
+      "capacityGain": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ancient_core": 3,
+          "moon_crystal": 1,
+          "living_resin": 1
+        }
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 3,
+        "moon_crystal": 1,
+        "living_resin": 1
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 5,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "constructionHours": 72,
+      "cumulativeConstructionHours": 152,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 2,
+        "cumulativeResin": 2,
+        "expectedDraws": 8.25,
+        "expectedWorkHours": 792,
+        "illustrativeDaysAt16WorkHoursPerDay": 49.5,
+        "illustrativeDaysAt8WorkHoursPerDay": 99
+      }
+    },
+    {
+      "level": 6,
+      "capacity": 4000,
+      "capacityGain": 1000,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ancient_core": 4,
+          "moon_crystal": 1,
+          "living_resin": 1
+        }
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 4,
+        "moon_crystal": 1,
+        "living_resin": 1
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 9,
+        "moon_crystal": 3,
+        "living_resin": 3
+      },
+      "constructionHours": 96,
+      "cumulativeConstructionHours": 248,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 3,
+        "cumulativeResin": 3,
+        "expectedDraws": 11.8125,
+        "expectedWorkHours": 1134,
+        "illustrativeDaysAt16WorkHoursPerDay": 70.875,
+        "illustrativeDaysAt8WorkHoursPerDay": 141.75
+      }
+    },
+    {
+      "level": 7,
+      "capacity": 5200,
+      "capacityGain": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ancient_core": 5,
+          "moon_crystal": 2,
+          "living_resin": 2
+        }
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 5,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 14,
+        "moon_crystal": 5,
+        "living_resin": 5
+      },
+      "constructionHours": 120,
+      "cumulativeConstructionHours": 368,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 5,
+        "cumulativeResin": 5,
+        "expectedDraws": 18.69140625,
+        "expectedWorkHours": 1794.375,
+        "illustrativeDaysAt16WorkHoursPerDay": 112.1484375,
+        "illustrativeDaysAt8WorkHoursPerDay": 224.296875
+      }
+    },
+    {
+      "level": 8,
+      "capacity": 6600,
+      "capacityGain": 1400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ancient_core": 6,
+          "moon_crystal": 2,
+          "living_resin": 2
+        }
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 6,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 20,
+        "moon_crystal": 7,
+        "living_resin": 7
+      },
+      "constructionHours": 144,
+      "cumulativeConstructionHours": 512,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 7,
+        "cumulativeResin": 7,
+        "expectedDraws": 25.39892578125,
+        "expectedWorkHours": 2438.296875,
+        "illustrativeDaysAt16WorkHoursPerDay": 152.3935546875,
+        "illustrativeDaysAt8WorkHoursPerDay": 304.787109375
+      }
+    },
+    {
+      "level": 9,
+      "capacity": 8200,
+      "capacityGain": 1600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ancient_core": 8,
+          "moon_crystal": 2,
+          "living_resin": 2
+        }
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 8,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 28,
+        "moon_crystal": 9,
+        "living_resin": 9
+      },
+      "constructionHours": 168,
+      "cumulativeConstructionHours": 680,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 9,
+        "cumulativeResin": 9,
+        "expectedDraws": 32.00770568847656,
+        "expectedWorkHours": 3072.73974609375,
+        "illustrativeDaysAt16WorkHoursPerDay": 192.04623413085938,
+        "illustrativeDaysAt8WorkHoursPerDay": 384.09246826171875
+      }
+    },
+    {
+      "level": 10,
+      "capacity": 10000,
+      "capacityGain": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ancient_core": 10,
+          "moon_crystal": 3,
+          "living_resin": 3
+        }
+      },
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "relicCost": {
+        "ancient_core": 10,
+        "moon_crystal": 3,
+        "living_resin": 3
+      },
+      "cumulativeRelicCost": {
+        "ancient_core": 38,
+        "moon_crystal": 12,
+        "living_resin": 12
+      },
+      "constructionHours": 192,
+      "cumulativeConstructionHours": 872,
+      "partialNonCoreAcquisition": {
+        "cumulativeCrystals": 12,
+        "cumulativeResin": 12,
+        "expectedDraws": 41.802489280700684,
+        "expectedWorkHours": 4013.0389709472656,
+        "illustrativeDaysAt16WorkHoursPerDay": 250.8149356842041,
+        "illustrativeDaysAt8WorkHoursPerDay": 501.6298713684082
+      }
+    }
+  ],
+  "sourceHashes": {
+    "../apps/api/src/main/resources/world/economy-catalog.json": "fe1fc0a48dd5ddeed3ceded45f16bdeb3e5d1ce603c03e7061f76c6b0f0c57cc",
+    "./review-warehouse-relics.mjs": "0acbe8c0cbc07f6907f6fd666b3cb4f71982051aaca72214d19bb33d7dc2fbc1"
+  }
+}

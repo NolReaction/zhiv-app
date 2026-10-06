@@ -49,6 +49,28 @@ test("completed house and catalog buildings contribute separate additive percent
   assert.deepEqual(shop.currencyShopGoldOffers(full).map(pack => pack.coins), [80000, 240000, 600000]);
 });
 
+test("optional warehouse expansions preserve every original gold quote and never add a gold bonus", () => {
+  const originalCatalog = structuredClone(economyCatalog);
+  originalCatalog.buildings.find(building => building.id === "warehouse").levels =
+    originalCatalog.buildings.find(building => building.id === "warehouse").levels.filter(level => level.level <= 5);
+  for (const home of [1, 2, 3, 4, 5]) for (const warehouse of [0, 1, 2, 3, 4, 5]) for (const other of [0, 2, 5]) {
+    const buildings = Object.fromEntries(economyCatalog.buildings.map(building => [building.id, other]));
+    Object.assign(buildings, { home, warehouse });
+    const original = { catalog: originalCatalog, buildings };
+    assert.deepEqual(shop.currencyShopGoldOffers(state(buildings)), shop.currencyShopGoldOffers(original));
+    assert.deepEqual(shop.currencyShopDevelopment(state(buildings)), shop.currencyShopDevelopment(original));
+  }
+  for (const home of [1, 2, 3, 4, 5]) {
+    const buildings = { home, warehouse: 5, workshop: 3, kiln: 2, garden: 1 };
+    const baseline = shop.currencyShopGoldOffers(state(buildings));
+    const baselineDevelopment = shop.currencyShopDevelopment(state(buildings));
+    for (const warehouse of [6, 7, 8, 9, 10]) {
+      assert.deepEqual(shop.currencyShopGoldOffers(state({ ...buildings, warehouse })), baseline);
+      assert.deepEqual(shop.currencyShopDevelopment(state({ ...buildings, warehouse })), baselineDevelopment);
+    }
+  }
+});
+
 test("development is monotonic, finite and bounded for every current completed level", () => {
   const buildings = { home: 1 };
   let previous = 10000;

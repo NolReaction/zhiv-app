@@ -113,8 +113,20 @@ test("actual selected stops leave each of the eight hosts' interaction points fr
       if (destination) assertClear(point, [destination.position, site.entry], clearance, `${stationId} visitor`);
     } else {
       const interaction = stationId === "garden" ? scene.bushes[0] : scene.campfires[0];
-      const access = stationId === "garden" ? [interaction.entry, interaction.hide] : [interaction.seat, interaction.position];
-      assertClear(point, access, clearance, stationId);
+      if (stationId === "garden") assertClear(point, [interaction.entry, interaction.hide], clearance, stationId);
+      else {
+        assertClear(point, [interaction.seat], clearance, "dryer leaves Mochlik's cooking seat free");
+        assert.ok(distance(point, interaction.position) >= interaction.radius + BUILDER_NAVIGATION_LIMITS.radius,
+          "dryer work feet stay outside the physical fire");
+        const heroNavigation = createWorldNavigation(scene, scene.actor.size * .1);
+        const approach = findWorldPath(heroNavigation, scene.actor.spawn, interaction.seat);
+        assert.ok(approach, "Mochlik has a real route to his cooking seat");
+        for (let index = 1; index < approach.length; index++) {
+          assert.ok(canTraverse(heroNavigation, approach[index - 1], approach[index]), "cooking approach avoids static collisions");
+          assert.ok(canTraverseResidents(approach[index - 1], approach[index], scene.actor.size,
+            [{ id: "builder", position: point, size: 40 }], "mochlik"), "working builder leaves the actual cooking approach clear");
+        }
+      }
     }
   }
 });

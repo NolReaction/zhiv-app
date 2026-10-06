@@ -6,7 +6,9 @@ test("economy catalog has useful chains, reachable upgrades, sufficient storage 
   const report = auditEconomyProgression(readEconomyCatalog());
   assert.equal(report.itemCount, 42);
   assert.equal(report.buildingCount, 8);
-  assert.equal(report.constructionOrder.length, 37);
+  assert.equal(report.constructionOrder.length, 42);
+  assert.equal(report.completionLevels.warehouse, 10);
+  assert.ok(report.fullBaseMinimumSeconds > report.fiveTierBaseMinimumSeconds);
 });
 
 test("the quarry and workshop furnace follow home two without blocking the starter route", () => {
@@ -47,6 +49,32 @@ test("catalog audit rejects compression of the long-term construction floor", ()
   const catalog = readEconomyCatalog();
   for (const building of catalog.buildings) for (const level of building.levels) level.seconds = Math.floor(level.seconds / 10);
   assert.throws(() => auditEconomyProgression(catalog), /four weeks|seven weeks/);
+});
+
+test("warehouse has ten increasing tiers, ordinary early costs and independent relic expansions", () => {
+  const catalog = readEconomyCatalog();
+  const warehouse = catalog.buildings.find(building => building.id === "warehouse");
+  assert.deepEqual(warehouse.levels.map(level => level.level), Array.from({ length: 10 }, (_, index) => index + 1));
+  for (const mutate of [
+    c => c.buildings.find(building => building.id === "warehouse").levels[2].cost.items.living_resin = 1,
+    c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.coins = 10,
+    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredHomeLevel = 4,
+    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredBuildings.workshop = 3,
+    c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.items.planks = 1,
+    c => c.buildings.find(building => building.id === "warehouse").levels[9].warehouseCapacity = 8200,
+  ]) {
+    const invalid = structuredClone(catalog); mutate(invalid);
+    assert.throws(() => auditEconomyProgression(invalid), /early storage|relic storage|storage must grow/);
+  }
+});
+
+test("optional warehouse tiers cannot gate the final home or prop up a compressed five-tier base", () => {
+  const catalog = readEconomyCatalog();
+  catalog.buildings.find(building => building.id === "home").levels[4].requiredBuildings.warehouse = 6;
+  assert.throws(() => auditEconomyProgression(catalog), /Optional warehouse/);
+  const compressed = readEconomyCatalog();
+  for (const building of compressed.buildings) for (const level of building.levels) if (level.level <= 5) level.seconds = Math.floor(level.seconds / 10);
+  assert.throws(() => auditEconomyProgression(compressed), /four weeks|seven weeks/);
 });
 
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createJourneyRareRandom, DEFAULT_JOURNEY_RARE_SEED, loadJourneyRules, simulateJourney } from "../scripts/simulate-player-journey.mjs";
+import { createJourneyRareRandom, DEFAULT_JOURNEY_RARE_SEED, journeyConstructionOrder, journeyOrder, loadJourneyRules, simulateJourney } from "../scripts/simulate-player-journey.mjs";
+import { readEconomyCatalog } from "../scripts/audit-economy-progression.mjs";
 import { lookaheadPolicy } from "../scripts/simulate-player-lookahead.mjs";
 import { jointPlanningPolicy } from "../scripts/simulate-player-joint.mjs";
 
@@ -18,6 +19,53 @@ test("a simulated empty player reaches home two using actual commands without gr
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
     assert(report.actions.start_fishing > 0, "The current fishing UI path is exercised");
+    assert.equal(report.completionGoal, "base-tier-5");
+    assert.equal(report.targetBuildingLevels.warehouse, 5);
+  } finally { await loaded.close(); }
+});
+
+test("the comparison base, final home and all current upgrades are distinct reproducible goals", async () => {
+  const catalog = readEconomyCatalog();
+  assert.deepEqual(journeyConstructionOrder(catalog), journeyOrder);
+  const full = journeyConstructionOrder(catalog, "all-current-buildings");
+  assert.deepEqual(full.slice(journeyOrder.length), ["warehouse:6", "warehouse:7", "warehouse:8", "warehouse:9", "warehouse:10"]);
+  const home = journeyConstructionOrder(catalog, "home-5");
+  assert.equal(home.at(-1), "home:5");
+  assert(!home.some(key => key.startsWith("warehouse:") && Number(key.split(":")[1]) > 4));
+  assert.throws(() => journeyConstructionOrder(catalog, "everything"), /Invalid research completion goal/);
+  const loaded = await loadJourneyRules();
+  try {
+    const fullStart = simulateJourney(loaded, "active16h", 1, { completionGoal: "all-current-buildings" });
+    const comparisonStart = simulateJourney(loaded, "active16h", 1);
+    assert.equal(fullStart.completionGoal, "all-current-buildings");
+    assert.equal(fullStart.targetBuildingLevels.warehouse, 10);
+    assert.equal(fullStart.complete, false);
+    assert.deepEqual(fullStart.milestones, comparisonStart.milestones, "Optional expansion goals cannot change the opening route");
+    assert.deepEqual(fullStart.finalBuildingLevels, comparisonStart.finalBuildingLevels);
+  } finally { await loaded.close(); }
+});
+
+test("an automated player can complete all current buildings including storage ten with earned relics", async () => {
+  const loaded = await loadJourneyRules();
+  try {
+    const report = simulateJourney(loaded, "active16h", 1600,
+      { ...jointPlanningPolicy, dailyRewards: true, completionGoal: "all-current-buildings" });
+    assert.equal(report.complete, true);
+    assert.equal(report.stoppedAt, null);
+    assert.equal(report.finalBuildingLevels.warehouse, 10);
+    for (const building of loaded.catalog.buildings) assert.equal(report.finalBuildingLevels[building.id], building.levels.at(-1).level);
+    for (const id of loaded.catalog.rareDrops.itemIds) {
+      const required = loaded.catalog.buildings.reduce((sum, building) => sum + building.levels.reduce((total, level) => total + (level.cost.items[id] ?? 0), 0), 0);
+      assert.equal(report.rareMaterials.spentOnConstruction[id], required);
+      assert.equal(report.rareMaterials.received[id] + (report.dailyRewards.itemsReceived[id] ?? 0) - required, report.rareMaterials.inventory[id]);
+    }
+    assert(report.milestones.some(milestone => milestone.building === "warehouse:10"));
+    assert(report.dailyRewards.claims > 7);
+    assert.equal(report.actions.speedup_construction, undefined);
+    assert.equal(report.actions.cancel_exploration, undefined);
+    assert.equal(report.failures.ECONOMY_BUILDING_REQUIRED, undefined);
+    assert.equal(report.failures.ECONOMY_RESOURCES, undefined);
+    assert(report.excludedIncome.includes("player_market") && report.excludedIncome.includes("legacy_grants"));
   } finally { await loaded.close(); }
 });
 

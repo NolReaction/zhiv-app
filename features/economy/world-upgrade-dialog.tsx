@@ -37,15 +37,21 @@ export function worldUpgradeUnlocks(state: EconomyView, stationId: string, targe
 function UpgradeCost({ state, cost, navigation }: { state: EconomyView; cost: EconomyCost; navigation?: StationNavigation }) {
   const entries = [...(cost.coins ? [{ id: "coins", amount: cost.coins }] : []), ...Object.entries(cost.items).map(([id, amount]) => ({ id, amount }))];
   if (!entries.length) return <p className={styles.muted}>Без затрат</p>;
-  return <ul className={styles.costGrid} aria-label="Стоимость">{entries.map(({ id, amount }) => {
+  const relicOnly = entries.every(({ id }) => state.catalog.items.some(item => item.id === id && item.category === "special"));
+  const lockedFinds = state.catalog.rareDrops && (state.buildings.home ?? 1) < state.catalog.rareDrops.requiredHomeLevel
+    && entries.some(({ id, amount }) => state.catalog.rareDrops!.itemIds.includes(id) && (state.inventory[id] ?? 0) < amount);
+  return <><ul className={`${styles.costGrid} ${relicOnly ? styles.relicCostGrid : ""}`} aria-label="Стоимость">{entries.map(({ id, amount }) => {
     const available = id === "coins" ? state.wallet.coins : state.inventory[id] ?? 0;
     const name = id === "coins" ? "Монеты" : itemName(state, id);
     const missing = available < amount;
+    const relic = state.catalog.items.some(item => item.id === id && item.category === "special");
     const source = missing && id !== "coins" ? worldMaterialSource(state, id) : null;
-    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId) : source?.kind === "exploration" ? navigation?.explore : undefined;
-    const content = <><span className={styles.costIcon}><ProductIcon state={state} itemId={id} size={22} />{openSource && <ArrowRight size={10} className={styles.sourceArrow} aria-hidden="true" />}</span><span className={styles.costName}>{name}</span><strong><span>{number(available)}</span><span className={styles.costNeeded}> / {number(amount)}</span></strong></>;
-    return <li key={id} data-missing={missing || undefined}>{openSource ? <button type="button" className={styles.costTile} onClick={openSource} aria-label={`Где получить: ${name}${source?.kind === "exploration" ? ", В путь" : ""}. Есть ${number(available)}, нужно ${number(amount)}`}>{content}</button> : <div className={styles.costTile}>{content}</div>}</li>;
-  })}</ul>;
+    const chanceSource = missing && relic && state.catalog.rareDrops?.itemIds.includes(id)
+      && (state.buildings.home ?? 1) >= state.catalog.rareDrops.requiredHomeLevel;
+    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId) : source?.kind === "exploration" || chanceSource ? navigation?.explore : undefined;
+    const content = <><span className={styles.costIcon}><ProductIcon state={state} itemId={id} size={relic ? 34 : 22} />{openSource && <ArrowRight size={10} className={styles.sourceArrow} aria-hidden="true" />}{!missing && relic && <Check size={12} className={styles.costCheck} aria-hidden="true" />}</span><span className={styles.costName}>{name}</span><strong><span>{number(available)}</span><span className={styles.costNeeded}> / {number(amount)}</span></strong></>;
+    return <li key={id} data-relic={relic ? id : undefined} data-missing={missing || undefined}>{openSource ? <button type="button" className={styles.costTile} onClick={openSource} title={chanceSource ? "Находки из вылазок; конкретный предмет не гарантирован." : undefined} aria-label={`${chanceSource ? "Где искать" : "Где получить"}: ${name}${source?.kind === "exploration" || chanceSource ? ", В путь" : ""}. Есть ${number(available)}, нужно ${number(amount)}`}>{content}</button> : <div className={styles.costTile}>{content}</div>}</li>;
+  })}</ul>{lockedFinds && <p className={styles.muted}>Находки реликвий в вылазках — с домом ур. {state.catalog.rareDrops!.requiredHomeLevel}.</p>}</>;
 }
 
 function UpgradeUnlocks({ state, stationId, target, navigation }: { state: EconomyView; stationId: string; target: WorldBuildingLevel; navigation?: StationNavigation }) {

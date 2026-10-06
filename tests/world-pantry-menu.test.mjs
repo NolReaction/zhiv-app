@@ -173,6 +173,31 @@ test("maximum warehouse level has no further expansion action", () => {
   assert.doesNotMatch(html, /Расширить кладовую/);
 });
 
+test("late pantry footer previews only the next capacity and its three relic counters", () => {
+  const state = snapshot({ buildings: { home: 1, warehouse: 9 }, inventory: { ancient_core: 10, moon_crystal: 1, living_resin: 3 } });
+  const before = structuredClone(state);
+  const html = render(controller({ snapshot: state }));
+  assert.match(html, /Ур\. 9 → 10 · 8\s?200 → 10\s?000 мест/);
+  assert.match(html, /aria-label="Реликвии для следующего расширения"/);
+  assert.match(html, /aria-label="Древнее ядро: есть 10, нужно 10"/);
+  assert.match(html, /aria-label="Лунный кристалл: есть 1, нужно 3"/);
+  assert.match(html, /aria-label="Живая смола: есть 3, нужно 3"/);
+  assert.match(html, /data-relic="moon_crystal" data-missing="true"/);
+  assert.doesNotMatch(html, /data-relic="(?:ancient_core|living_resin)" data-missing="true"/);
+  assert.equal(disabled(button(html, "Расширить кладовую")), false, "the dialog must stay reachable to explain missing relics");
+  assert.doesNotMatch(html, /Купить.*жемч|Список улучшений|ур\. 4|ур\. 5/);
+  assert.deepEqual(state, before, "the preview must neither spend nor reserve relics");
+});
+
+test("the first ordinary pantry upgrade and paid expansion do not duplicate relic requirements", () => {
+  assert.doesNotMatch(render(), /aria-label="Реликвии для следующего расширения"/);
+  const nowJob = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 4,
+    startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 60_000).toISOString(), rewards: {}, cost: { coins: 0, items: { ancient_core: 2, moon_crystal: 1, living_resin: 1 } }, catalogVersion: 3 };
+  const html = render(controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 3 }, jobs: [nowJob] }) }));
+  assert.match(html, /Кладовая расширяется/);
+  assert.doesNotMatch(html, /aria-label="Реликвии для следующего расширения"/);
+});
+
 function inspectSale(state, props = {}, flags = {}) {
   const calls = [], economy = controller({ snapshot: state, act(...args) { calls.push(args); }, ...flags });
   let tree;

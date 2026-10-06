@@ -124,10 +124,44 @@ test("legacy and new berry orders retain gathering access and block upgrades unt
 });
 
 test("a maximum-level pantry reports real capacity and does not offer another upgrade", () => {
-  const html = render("warehouse", { snapshot: state({ buildings: { home: 5, warehouse: 5 } }) });
+  const maximum = Math.max(...economyCatalog.buildings.find(building => building.id === "warehouse").levels.map(level => level.level));
+  const html = render("warehouse", { snapshot: state({ buildings: { home: 1, warehouse: maximum } }) });
   assert.match(text(html), /Максимум.*Все улучшения получены/);
   assert.match(text(html), /Вместимость кладовой/);
   assert.ok(!buttons(html).some(button => /Улучшить|Начать обустройство/.test(button.text)));
+});
+
+test("late pantry expansion has three distinct relic counters and no house, building or coin gate", () => {
+  const snapshot = state({ buildings: { home: 1, warehouse: 9 }, wallet: { coins: 0, pearls: 0 }, inventory: { ancient_core: 10, moon_crystal: 3, living_resin: 3 } });
+  const html = render("warehouse", { snapshot });
+  assert.match(text(html), /Вместимость кладовой 8\s?200 10\s?000 \+1\s?800 мест/);
+  for (const id of ["ancient_core", "moon_crystal", "living_resin"]) assert.match(html, new RegExp(`data-relic="${id}"`));
+  assert.equal((html.match(/width="34" height="34"/g) ?? []).length, 3);
+  assert.match(text(html), /Древнее ядро 10 \/ 10/);
+  assert.match(text(html), /Лунный кристалл 3 \/ 3/);
+  assert.match(text(html), /Живая смола 3 \/ 3/);
+  assert.doesNotMatch(buttons(html).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
+  assert.doesNotMatch(html, /Нужны улучшения|data-item-icon="coins"|Купить.*жемч/);
+  snapshot.inventory.living_resin = 2;
+  const missing = render("warehouse", { snapshot });
+  assert.match(text(missing), /Живая смола 2 \/ 3/);
+  assert.match(missing, /data-relic="living_resin" data-missing="true"/);
+  assert.match(buttons(missing).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
+});
+
+test("relic cost navigation describes chance finds and respects their actual home unlock", () => {
+  const navigation = { canOpen() { return true; }, open() {}, explore() {} };
+  const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 3 }, inventory: {} });
+  const html = render("warehouse", { snapshot, navigation });
+  assert.equal(buttons(html).filter(button => /aria-label="Где искать:/.test(button.attributes)).length, 3);
+  assert.match(html, /конкретный предмет не гарантирован/);
+  assert.doesNotMatch(html, /Где получить: (Древнее ядро|Лунный кристалл|Живая смола)/);
+  snapshot.buildings.home = economyCatalog.rareDrops.requiredHomeLevel - 1;
+  const locked = render("warehouse", { snapshot, navigation });
+  assert.ok(!buttons(locked).some(button => /aria-label="Где искать:/.test(button.attributes)));
+  assert.ok(text(locked).includes(`Находки реликвий в вылазках — с домом ур. ${economyCatalog.rareDrops.requiredHomeLevel}.`));
+  snapshot.inventory = { ...economyCatalog.buildings.find(building => building.id === "warehouse").levels.find(level => level.level === 4).cost.items };
+  assert.doesNotMatch(render("warehouse", { snapshot, navigation }), /Находки реликвий в вылазках — с домом/);
 });
 
 

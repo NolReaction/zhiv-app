@@ -171,7 +171,10 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
       const node = add({
         id: buildingNodeId(building.id, level), title: `${buildingLabels[building.id] || building.name} · уровень ${level}`,
         label: `${buildingLabels[building.id] || building.name} ${level}`, icon: buildingIcons[building.id] || "🏗️",
-        kind: "building", status: "active", phase: level, buildingId: building.id, locationId: locationByBuilding.get(building.id)?.id, level,
+        // The storage ladder can exceed the five home tiers. Its display phase
+        // follows real home/previous-storage gates, not its own level number.
+        kind: "building", status: "active", phase: building.id === "warehouse" ? data.requiredHomeLevel : level,
+        buildingId: building.id, locationId: locationByBuilding.get(building.id)?.id, level,
         cost: cloneCost(data.cost), seconds: data.seconds, requirements, children: [],
         description: `${initialBuildings.has(building.id) && level === 1 ? "Есть на старте. " : ""}${building.description}${building.id === "warehouse" ? " Каждая единица товара занимает место; монеты, жемчуг и удочки не занимают. Товар в объявлениях рынка продолжает занимать место. Перед получением результата может понадобиться освободить склад." : " В хозяйстве идёт только одна стройка. Заказ этого оборудования нужно забрать перед его улучшением."}`,
         ...(data.warehouseCapacity != null ? { warehouseCapacity: data.warehouseCapacity } : {}),

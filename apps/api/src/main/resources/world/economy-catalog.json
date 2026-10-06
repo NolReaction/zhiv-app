@@ -1003,8 +1003,7 @@
               "planks": 50,
               "bricks": 45,
               "iron_ingot": 12,
-              "cloth": 10,
-              "living_resin": 1
+              "cloth": 10
             }
           },
           "requiredHomeLevel": 3,
@@ -1017,40 +1016,106 @@
           "level": 4,
           "seconds": 172800,
           "cost": {
-            "coins": 70000,
+            "coins": 0,
             "items": {
-              "beams": 60,
-              "cut_stone": 70,
-              "glass": 25,
-              "tools": 15,
-              "ancient_core": 1
+              "ancient_core": 2,
+              "moon_crystal": 1,
+              "living_resin": 1
             }
           },
-          "requiredHomeLevel": 4,
-          "requiredBuildings": {
-            "workshop": 3
-          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
           "warehouseCapacity": 1800
         },
         {
           "level": 5,
           "seconds": 259200,
           "cost": {
-            "coins": 220000,
+            "coins": 0,
             "items": {
-              "beams": 100,
-              "cut_stone": 140,
-              "reinforced_parts": 35,
-              "glass": 60,
-              "cloth": 45,
-              "moon_crystal": 1
+              "ancient_core": 3,
+              "moon_crystal": 1,
+              "living_resin": 1
             }
           },
-          "requiredHomeLevel": 5,
-          "requiredBuildings": {
-            "workshop": 4
-          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
           "warehouseCapacity": 3000
+        },
+        {
+          "level": 6,
+          "seconds": 345600,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 4,
+              "moon_crystal": 1,
+              "living_resin": 1
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 4000
+        },
+        {
+          "level": 7,
+          "seconds": 432000,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 5,
+              "moon_crystal": 2,
+              "living_resin": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 5200
+        },
+        {
+          "level": 8,
+          "seconds": 518400,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 6,
+              "moon_crystal": 2,
+              "living_resin": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 6600
+        },
+        {
+          "level": 9,
+          "seconds": 604800,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 8,
+              "moon_crystal": 2,
+              "living_resin": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 8200
+        },
+        {
+          "level": 10,
+          "seconds": 691200,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 10,
+              "moon_crystal": 3,
+              "living_resin": 3
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 10000
         }
       ]
     }

@@ -62,7 +62,8 @@ export function auditEconomyProgression(catalog) {
     }
   };
   for (const building of buildings.values()) {
-    assert.deepEqual(building.levels.map(level => level.level), [1, 2, 3, 4, 5], `${building.id}: sequential tiers expected`);
+    const maximum = building.id === "warehouse" ? 10 : 5;
+    assert.deepEqual(building.levels.map(level => level.level), Array.from({ length: maximum }, (_, index) => index + 1), `${building.id}: sequential tiers expected`);
     for (const level of building.levels) {
       const key = `${building.id}:${level.level}`;
       nodes.set(key, { buildingId: building.id, ...level });
@@ -73,6 +74,14 @@ export function auditEconomyProgression(catalog) {
       if (building.id === "warehouse") {
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         if (level.level > 1) assert(level.warehouseCapacity > building.levels[level.level - 2].warehouseCapacity, `${key}: storage must grow`);
+        if (level.level <= 3) assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: early storage must use ordinary materials`);
+        else {
+          assert(rare && level.cost.coins === 0 && level.requiredHomeLevel === 1 && !Object.keys(level.requiredBuildings ?? {}).length,
+            `${key}: relic storage must not require coins or developed buildings`);
+          assert.deepEqual(Object.keys(level.cost.items).sort(), [...rare.itemIds].sort(), `${key}: relic storage must use all three relic types only`);
+          if (level.level > 4) assert(rare.itemIds.every(id => level.cost.items[id] >= building.levels[level.level - 2].cost.items[id]),
+            `${key}: later storage must not reduce relic quantities`);
+        }
       } else if (building.id === "quarry") {
         assert(catalog.explorations.some(route => route.activity === "mining" && route.requiredBuildings?.quarry === level.level), `${key}: upgrade has no mining route benefit`);
       } else if (building.id !== "home") {
@@ -223,19 +232,26 @@ export function auditEconomyProgression(catalog) {
     }
   }
   assert.deepEqual([...items.keys()].filter(item => !obtainable.has(item)), [], "Resources cannot be produced from a free start");
-  assert.deepEqual(Object.fromEntries([...buildings.keys()].map(id => [id, completed[id] ?? 0])), Object.fromEntries([...buildings.keys()].map(id => [id, 5])), "A material/building dependency blocks progression without market purchases");
+  assert.deepEqual(Object.fromEntries([...buildings.keys()].map(id => [id, completed[id] ?? 0])), Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])), "A material/building dependency blocks progression without market purchases");
   assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 1 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.seconds >= 8 * 3600 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Starter needs a free overnight crop");
   assert(catalog.explorations.some(route => route.requiredHomeLevel === 1 && route.seconds >= 8 * 3600 && route.cost.coins === 0 && !Object.keys(route.cost.items).length), "Starter needs a free overnight exploration");
   const duration = targets => [...targets].reduce((sum, key) => sum + nodes.get(key).seconds, 0);
   const homeStages = buildings.get("home").levels.map(level => ({ level: level.level, minimumSeconds: duration(closure(`home:${level.level}`)) }));
   const allConstruction = new Set([...nodes.keys()].flatMap(key => [...closure(key)]));
+  // Optional storage beyond tier five must not disguise a compressed main-base
+  // progression floor, nor become a hidden prerequisite for the last home.
+  const fiveTierConstruction = new Set([...nodes.keys()].filter(key => nodes.get(key).level <= 5).flatMap(key => [...closure(key)]));
+  const fiveTierBaseMinimumSeconds = duration(fiveTierConstruction);
   const fullBaseMinimumSeconds = duration(allConstruction);
   assert(homeStages[4].minimumSeconds >= 28 * day, "Home 5 must retain at least four weeks of mandatory construction");
-  assert(fullBaseMinimumSeconds >= 49 * day, "Full base must retain at least seven weeks of mandatory construction");
+  assert([...closure("home:5")].every(key => nodes.get(key).buildingId !== "warehouse" || nodes.get(key).level <= 5),
+    "Optional warehouse expansions must not gate home five");
+  assert(fiveTierBaseMinimumSeconds >= 49 * day, "Five-tier base must retain at least seven weeks of mandatory construction");
   return {
     catalogVersion: catalog.version, itemCount: items.size, buildingCount: buildings.size,
     recipeCount: catalog.recipes.length, explorationCount: catalog.explorations.length,
-    homeStages, fullBaseMinimumSeconds,
+    homeStages, fiveTierBaseMinimumSeconds, fullBaseMinimumSeconds,
+    completionLevels: Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])),
     totalConstructionCoins: [...allConstruction].reduce((sum, key) => sum + nodes.get(key).cost.coins, 0),
     constructionOrder,
   };
@@ -247,6 +263,7 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   const report = auditEconomyProgression(readEconomyCatalog());
   console.log(JSON.stringify({ ...report, source: fileURLToPath(catalogPath),
     homeMinimumDays: report.homeStages.map(stage => ({ level: stage.level, days: Number((stage.minimumSeconds / day).toFixed(4)) })),
+    fiveTierBaseMinimumDays: Number((report.fiveTierBaseMinimumSeconds / day).toFixed(4)),
     fullBaseMinimumDays: Number((report.fullBaseMinimumSeconds / day).toFixed(4)),
   }, null, 2));
 }

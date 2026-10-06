@@ -57,6 +57,15 @@
 .expand strong { display: block; font-size: 11px; font-weight: 600; }
 .expand small { display: block; margin-top: 2px; color: #59624d; font-size: 10px; }
 .expandIcon { display: grid; place-items: center; width: 26px; color: #586f43; }
+.expansion { display: grid; gap: 5px; }
+.expansionRelics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 0; padding: 0; list-style: none; }
+.expansionRelics > li { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; padding: 5px 3px; border: 1px solid #acb38a; border-radius: 8px; background: #ebe6ca; }
+.expansionRelics > li[data-relic="moon_crystal"] { background: #e9e4dc; }
+.expansionRelics > li[data-relic="living_resin"] { background: #e2e7c9; }
+.expansionRelics > li[data-missing="true"] { border-color: #baa06f; }
+.expansionRelics strong { color: #426140; font-size: 11px; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.expansionRelics strong > span { color: #59624d; font-size: 10px; font-weight: 400; }
+.expansionRelics > li[data-missing="true"] strong { color: #80582d; }
 .maximum { display: flex; align-items: center; gap: 5px; padding: 7px 0; color: #59624d; font-size: 10px; }
 .pantry .market { justify-content: flex-start; min-height: 33px; padding: 4px 2px; color: #4b6642; font-size: 11px; }
 .market > svg:last-child { margin-left: auto; }

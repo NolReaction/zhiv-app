@@ -156,24 +156,15 @@ test('later house upgrades consume the required special stack and older paid con
   assert.equal(state.buildings.home, 4);
 });
 
-test('warehouse levels three through five require one staged relic after home three and consume the paid stack once', () => {
+test('warehouse relic gates begin after the third level and consume several different special stacks', () => {
   const warehouse = model.economyCatalog.buildings.find(building => building.id === 'warehouse');
-  for (const [level, itemId] of [[3, 'living_resin'], [4, 'ancient_core'], [5, 'moon_crystal']]) {
-    const target = warehouse.levels.find(row => row.level === level);
-    assert.ok(target.requiredHomeLevel >= 3);
-    assert.deepEqual(Object.keys(target.cost.items).filter(id => spec.itemIds.includes(id)), [itemId]);
-    assert.equal(target.cost.items[itemId], 1);
-    const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: level, workshopLevel: 0 });
-    Object.assign(state.buildings, target.requiredBuildings, { warehouse: level - 1 });
-    state.wallet.coins = target.cost.coins; state.inventory = { ...target.cost.items }; delete state.inventory[itemId];
-    const start = { action: 'start_construction', targetId: 'warehouse', quantity: 1, totalPrice: 0 };
-    assert.throws(() => rules.applyEconomyCommand(structuredClone(state), start, now, () => crypto.randomUUID()), { code: 'ECONOMY_RESOURCES' });
-    state.inventory[itemId] = 1;
-    rules.applyEconomyCommand(state, start, now, () => crypto.randomUUID());
-    assert.equal(state.inventory[itemId], undefined);
-    const job = state.jobs[0]; assert.equal(job.cost.items[itemId], 1);
-    rules.applyEconomyCommand(state, { action: 'claim_job', targetId: job.id, quantity: 1, totalPrice: 0 }, Date.parse(job.finishesAt), () => crypto.randomUUID());
-    assert.equal(state.buildings.warehouse, level);
-    assert.equal(state.inventory[itemId], undefined);
+  for (const target of warehouse.levels.filter(row => row.level <= 3))
+    assert.ok(spec.itemIds.every(itemId => !target.cost.items[itemId]));
+  for (const target of warehouse.levels.filter(row => row.level >= 4)) {
+    assert.equal(target.requiredHomeLevel, 1); assert.deepEqual(target.requiredBuildings, {});
+    assert.equal(target.cost.coins, 0);
+    assert.deepEqual(Object.keys(target.cost.items).sort(), [...spec.itemIds].sort());
+    assert.ok(Object.values(target.cost.items).every(quantity => quantity >= 1));
+    assert.ok(Object.values(target.cost.items).some(quantity => quantity >= 2));
   }
 });

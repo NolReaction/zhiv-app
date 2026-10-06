@@ -90,6 +90,15 @@
 .costTile strong > span { white-space: nowrap; }
 .costTile .costNeeded { color: var(--forest-muted, #59624d); font-size: 11px; font-weight: 450; }
 .costGrid > li[data-missing="true"] .costTile strong > span:first-child { color: var(--forest-accent, #765322); }
+.costGrid > li[data-relic] { background: linear-gradient(145deg, #f5edd4, #e7e5c7); border-color: #acb38a; }
+.costGrid > li[data-relic="moon_crystal"] { background: linear-gradient(145deg, #f6eee0, #e4e0e3); }
+.costGrid > li[data-relic="living_resin"] { background: linear-gradient(145deg, #f1ecd1, #dfe6c5); }
+.costGrid > li[data-relic][data-missing="true"] { border-color: #baa06f; }
+.costGrid > li[data-relic] .costIcon { padding: 3px; border-radius: 50%; background: radial-gradient(ellipse, #c5c78e55, transparent 75%); }
+.costCheck { position: absolute; top: 0; right: -9px; color: #436640; }
+.relicCostGrid .costTile, .dialog.dialog .relicCostGrid .costTile { min-height: 112px; }
+.relicCostGrid .costTile strong { font-size: 15px; font-weight: 650; }
+.relicCostGrid .costTile .costNeeded { font-size: 13px; }
 .conditions { padding-top: 5px; }
 .conditions h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 7px; color: var(--forest-accent, #765322); font-size: 11px; font-weight: 500; }
 .conditions > ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }

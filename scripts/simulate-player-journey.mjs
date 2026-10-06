@@ -14,6 +14,20 @@ const firstVisit = 7 * hour;
 export const journeyOrder = ["woodlot:1", "workshop:1", "home:2", "quarry:1", "kiln:1", "garden:2", "warehouse:2", "woodlot:2", "quarry:2", "kiln:2", "dryer:1", "dryer:2", "workshop:2", "home:3", "garden:3", "warehouse:3", "woodlot:3", "quarry:3", "kiln:3", "workshop:3", "dryer:3", "home:4", "woodlot:4", "quarry:4", "kiln:4", "workshop:4", "warehouse:4", "garden:4", "dryer:4", "home:5", "garden:5", "warehouse:5", "woodlot:5", "quarry:5", "kiln:5", "workshop:5", "dryer:5"];
 export const DEFAULT_JOURNEY_RARE_SEED = 0x0672026;
 
+/** Preserve the existing comparison policy; maximum storage is an explicit
+ * additional goal, rather than a prerequisite for home five. */
+export function journeyConstructionOrder(catalog, completionGoal = "base-tier-5") {
+  assert(["home-5", "base-tier-5", "all-current-buildings"].includes(completionGoal), "Invalid research completion goal");
+  const order = completionGoal === "home-5" ? journeyOrder.slice(0, journeyOrder.indexOf("home:5") + 1)
+    : completionGoal === "all-current-buildings" ? [...journeyOrder, ...catalog.buildings.flatMap(building => building.levels
+      .filter(level => level.level > 5).map(level => `${building.id}:${level.level}`))] : [...journeyOrder];
+  for (const key of order) {
+    const [id, level] = key.split(":");
+    assert(catalog.buildings.find(building => building.id === id)?.levels.some(entry => entry.level === Number(level)), `Unknown research goal ${key}`);
+  }
+  return order;
+}
+
 /** Research-only reproducible entropy, independent of commands and fish seeds. */
 export function createJourneyRareRandom(seed) {
   assert(Number.isSafeInteger(seed) && seed > 0 && seed <= 0xffffffff, "Invalid research relic seed");
@@ -50,10 +64,12 @@ export async function loadJourneyRules() {
 export function simulateJourney({ rules, actorAvailability, progressionRewards, catalog, walletLimits }, mode, maxDays = 1600, policy = {}) {
   const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false,
     pearlBudget = 0, constructionSpeedups = true, buyProductionSlots = false,
-    parallelProductionPlanning = buyProductionSlots, dailyPearlsOnly = false, dailyRewards = false, rareSeed = DEFAULT_JOURNEY_RARE_SEED } = policy;
+    parallelProductionPlanning = buyProductionSlots, dailyPearlsOnly = false, dailyRewards = false, rareSeed = DEFAULT_JOURNEY_RARE_SEED,
+    completionGoal = "base-tier-5" } = policy;
   assert(Number.isSafeInteger(pearlBudget) && pearlBudget >= 0 && pearlBudget <= 1_000_000_000 * (catalog.pearlScale ?? catalog.currencyScale ?? 1), "Invalid research pearl budget");
   assert(["active16h", "visits2", "visits3"].includes(mode), "Invalid visit policy");
   assert(!(dailyRewards && dailyPearlsOnly), "Choose complete gifts or pearl-only projection, not both");
+  const constructionOrder = journeyConstructionOrder(catalog, completionGoal);
   const rareRandom = createJourneyRareRandom(rareSeed);
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
@@ -177,10 +193,10 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       return rate(b) - rate(a) || Number(!b.buildingId) - Number(!a.buildingId);
     });
   function goal() {
-    while (targetIndex < journeyOrder.length) {
-      const [id, levelText] = journeyOrder[targetIndex].split(":");
+    while (targetIndex < constructionOrder.length) {
+      const [id, levelText] = constructionOrder[targetIndex].split(":");
       if (state.buildings[id] >= Number(levelText)) { targetIndex++; continue; }
-      return { id, key: journeyOrder[targetIndex], ...catalog.buildings.find(b => b.id === id).levels.find(l => l.level === Number(levelText)) };
+      return { id, key: constructionOrder[targetIndex], ...catalog.buildings.find(b => b.id === id).levels.find(l => l.level === Number(levelText)) };
     }
   }
   function demand(target) {
@@ -188,7 +204,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     // The paid current upgrade must never manufacture its cost twice.
     if (state.jobs.some(j => j.kind === "construction" && j.targetId === target.id)) {
       if (!prepareNextConstruction) return { needed, recipeWants, needsRelic };
-      const key = journeyOrder[targetIndex + 1];
+      const key = constructionOrder[targetIndex + 1];
       if (!key) return { needed, recipeWants, needsRelic };
       const [id, level] = key.split(":");
       target = { id, key, ...catalog.buildings.find(b => b.id === id).levels.find(l => l.level === Number(level)) };
@@ -242,7 +258,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     let sold = false;
     for (const [id, amount] of Object.entries(state.inventory)) {
       if (items.get(id)?.category === "special") continue;
-      const futureUses = preserveFutureCraftedStock && journeyOrder.slice(targetIndex).some(key => {
+      const futureUses = preserveFutureCraftedStock && constructionOrder.slice(targetIndex).some(key => {
         const [building, level] = key.split(":");
         return catalog.buildings.find(b => b.id === building).levels.find(l => l.level === Number(level)).cost.items[id] > 0;
       });
@@ -405,7 +421,12 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     if (isActive) clock = Math.floor(clock / day) * day + day + 7 * hour;
     else clock = nextVisit(sessionEnd);
   }
-  const report = { catalogVersion: catalog.version, currencyScale: catalog.currencyScale ?? 1, pearlScale: catalog.pearlScale ?? catalog.currencyScale ?? 1, mode, complete: !goal(), elapsedDays: Number(((clock - firstVisit) / day).toFixed(3)),
+  const targetBuildingLevels = {};
+  for (const key of constructionOrder) {
+    const [id, level] = key.split(":"); targetBuildingLevels[id] = Number(level);
+  }
+  const report = { catalogVersion: catalog.version, currencyScale: catalog.currencyScale ?? 1, pearlScale: catalog.pearlScale ?? catalog.currencyScale ?? 1, mode,
+    completionGoal, targetBuildingLevels, finalBuildingLevels: { ...state.buildings }, complete: !goal(), elapsedDays: Number(((clock - firstVisit) / day).toFixed(3)),
     homeDays: Object.fromEntries([2, 3, 4, 5].map(l => [l, milestones[`home:${l}`] == null ? null : Number(milestones[`home:${l}`].toFixed(3))])),
     commands, saleRevenue: revenue, coinFlow: { initial: initialCoins, sales: revenue, gifts: dailyCoins,
       spendingByAction: coinSpending, remaining: state.wallet.coins }, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
@@ -433,7 +454,10 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  const flags = process.argv.slice(2);
+  assert(flags.every(flag => flag === "--all-current-buildings" || flag === "--home-5") && flags.length <= 1, "Use --all-current-buildings or --home-5");
+  const completionGoal = flags[0] === "--all-current-buildings" ? "all-current-buildings" : flags[0] === "--home-5" ? "home-5" : "base-tier-5";
   const loaded = await loadJourneyRules();
-  try { console.log(JSON.stringify(["active16h", "visits2", "visits3"].map(mode => simulateJourney(loaded, mode)), null, 2)); }
+  try { console.log(JSON.stringify(["active16h", "visits2", "visits3"].map(mode => simulateJourney(loaded, mode, 1600, { completionGoal })), null, 2)); }
   finally { await loaded.close(); }
 }

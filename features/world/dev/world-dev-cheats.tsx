@@ -92,7 +92,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       onClick={() => { if (!economy.busy && !cooldown) void economy.retry(); }}>{economy.uncertain ? "Проверить результат" : "Загрузить хозяйство"}</button>}
 
     <section className={styles.presetSection} aria-label="Готовое поселение">
-      <div><h4>Готовое поселение</h4><p className={styles.hint}>Дом и все доступные ему улучшения на карте — одной командой.</p></div>
+      <div><h4>Готовое поселение</h4><p className={styles.hint}>Дом и доступные ему улучшения на карте. Кладовая — того же уровня; расширения до 10 проверяйте отдельно.</p></div>
       <div className={styles.presetLevels} role="group" aria-label="Уровень дома для сценария">
         {catalog.buildings.find(entry => entry.id === "home")!.levels.map(entry => <button type="button" key={entry.level}
           aria-pressed={presetLevel === entry.level} onClick={() => setPresetLevel(entry.level)}>Дом {entry.level}</button>)}

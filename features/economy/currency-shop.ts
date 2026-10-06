@@ -17,16 +17,21 @@ export const GOLD_SHOP_PACKAGES = [
 const HOME_BONUS_PERCENT = [0, 50, 150, 300, 600] as const;
 const BASE_COINS_PER_PEARL = 100;
 const MAX_BUILDING_BONUS_PERCENT = 100;
+// Storage expansions beyond the original five tiers add capacity, not gold yield.
+// Keep both sides of the development fraction stable for existing settlements.
+const WAREHOUSE_QUOTE_LEVEL_CAP = 5;
 type Development = Pick<EconomyView, "buildings" | "catalog">;
 
 function maxCatalogLevel(building: EconomyCatalog["buildings"][number]) {
-  return building.levels.reduce((max, entry) => Math.max(max, entry.level), 0);
+  return building.levels.reduce((max, entry) => building.id === "warehouse" && entry.level > WAREHOUSE_QUOTE_LEVEL_CAP
+    ? max : Math.max(max, entry.level), 0);
 }
 
 /** Only completed, known catalog levels count; an unclaimed construction is not a level. */
 function completedLevel(building: EconomyCatalog["buildings"][number], raw: number | undefined) {
   if (!Number.isSafeInteger(raw) || raw! < 1) return 0;
-  return building.levels.reduce((level, entry) => entry.level <= raw! ? Math.max(level, entry.level) : level, 0);
+  const completed = building.id === "warehouse" ? Math.min(raw!, WAREHOUSE_QUOTE_LEVEL_CAP) : raw!;
+  return building.levels.reduce((level, entry) => entry.level <= completed ? Math.max(level, entry.level) : level, 0);
 }
 
 export function currencyShopDevelopment({ buildings, catalog }: Development) {
