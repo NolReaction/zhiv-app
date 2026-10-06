@@ -6,11 +6,13 @@ const add = (into, values, scale = 1) => {
 const requireLevels = (into, values) => {
   for (const [id, level] of Object.entries(values)) into[id] = Math.max(into[id] ?? 0, level);
 };
+const productionStation = definition => definition.buildingId ?? (definition.activity === "mining" && definition.requiredBuildings?.quarry ? "quarry" : null);
 const recipeSlots = recipe => {
-  const slots = { [recipe.buildingId]: (recipe.seconds + (recipe.collection?.seconds ?? 0)) / 60 };
-  // Quarry production uses both the mine and Mochlik for the same interval.
+  const station = productionStation(recipe);
+  const slots = station ? { [station]: (recipe.seconds + (recipe.collection?.seconds ?? 0)) / 60 } : {};
+  // Focused mining reserves both the mine and Mochlik for the same interval.
   // This is resource occupancy, not two consecutive wall-clock intervals.
-  const actorSeconds = (recipe.buildingId === "quarry" ? recipe.seconds : 0) + (recipe.collection?.seconds ?? 0);
+  const actorSeconds = (!recipe.buildingId ? recipe.seconds : 0) + (recipe.collection?.seconds ?? 0);
   if (actorSeconds) slots.mochlik = actorSeconds / 60;
   return slots;
 };
@@ -47,7 +49,7 @@ export function economicMath(catalog) {
     ...(fish.has(itemId) ? [catalog.fishing.hooks.find(h => h.id === catalog.fishing.fish.find(f => f.itemId === itemId)?.requiredHookId)?.requiredHomeLevel ?? 1] : []),
     ...(catalog.fishing?.baits.filter(b => b.itemId === itemId).map(b => b.requiredHomeLevel ?? 1) ?? []));
   const primitive = new Map();
-  for (const r of catalog.recipes.filter(r => r.seconds < 14400 && Object.keys(r.rewards).length === 1)) {
+  for (const r of [...catalog.recipes, ...catalog.explorations.filter(r => r.activity === "mining")].filter(r => r.seconds < 14400 && Object.keys(r.rewards).length === 1)) {
     const id = Object.keys(r.rewards)[0], prior = primitive.get(id);
     if (!prior || r.seconds / r.rewards[id] < prior.seconds / prior.rewards[id]) primitive.set(id, r);
   }
@@ -55,11 +57,17 @@ export function economicMath(catalog) {
     const route = catalog.explorations.find(r => r.id === routeId); assert(route && route.rewards.fish > 0);
     const bonus = (catalog.fishing.rods.find(r => r.id === rodId)?.rareBonus ?? 0) + (catalog.fishing.baits.find(b => b.itemId === baitId)?.rareBonus ?? 0)
       + (catalog.fishing.hooks?.find(h => h.id === hookId)?.rareBonus ?? 0);
-    const weights = catalog.fishing.fish.map(f => ({ ...f, w: f.requiredHookId && f.requiredHookId !== hookId ? 0 : f.weight + f.affinity * bonus })), total = weights.reduce((sum, f) => sum + f.w, 0);
-    const output = { ...route.rewards, fish: route.rewards.fish - 1 };
-    for (const f of weights) output[f.itemId] = (output[f.itemId] ?? 0) + f.w / total;
+    const tackle = [catalog.fishing.rods.find(r => r.id === rodId), catalog.fishing.hooks.find(h => h.id === hookId), catalog.fishing.baits.find(b => b.itemId === baitId)];
+    const specialized = [...catalog.fishing.rods, ...catalog.fishing.hooks, ...catalog.fishing.baits].some(gear => gear.rarityWeights);
+    const weights = catalog.fishing.fish.map(f => ({ ...f, w: f.requiredHookId && f.requiredHookId !== hookId ? 0
+      : specialized ? Math.max(1, Math.floor(f.weight * tackle.reduce((weight, gear) => weight * (gear?.rarityWeights?.[f.rarity] ?? 100), 1) / 1_000_000))
+        : f.weight + f.affinity * bonus })), total = weights.reduce((sum, f) => sum + f.w, 0);
+    const draws = catalog.fishing.collectionDrawsByRoute?.[routeId] ?? 1;
+    assert(Number.isInteger(draws) && draws > 0 && draws <= route.rewards.fish, `${routeId}: invalid number of species draws`);
+    const output = { ...route.rewards, fish: route.rewards.fish - draws };
+    for (const f of weights) output[f.itemId] = (output[f.itemId] ?? 0) + draws * f.w / total;
     const baitCost = baitId ? catalog.fishing.baits.find(b => b.itemId === baitId).price : 0;
-    return { slotMinutes: { mochlik: route.seconds / 60 }, output, speciesDrawsPerJob: 1, probabilities: Object.fromEntries(weights.map(f => [f.itemId, f.w / total])),
+    return { slotMinutes: { mochlik: route.seconds / 60 }, output, speciesDrawsPerJob: draws, probabilities: Object.fromEntries(weights.map(f => [f.itemId, f.w / total])),
       routeCoins: route.cost.coins, routeInputs: { ...route.cost.items }, baitPurchaseCoins: baitCost, expectedFishRevenue: Object.entries(output).filter(([id]) => fish.has(id)).reduce((sum, [id, q]) => sum + items.get(id).baseSellPrice * q, 0) };
   }
   const profiles = new Map();
@@ -69,8 +77,8 @@ export function economicMath(catalog) {
     const r = primitive.get(id);
     const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {} };
     if (r) {
-      const output = r.rewards[id]; result.recipeId = r.id; result.referenceHome = definitionHome(r);
-      requireLevels(result.producerLevels, { ...r.requiredBuildings, [r.buildingId]: r.buildingLevel, home: r.requiredHomeLevel });
+      const output = r.rewards[id]; result[r.buildingId ? "recipeId" : "routeId"] = r.id; result.referenceHome = definitionHome(r);
+      requireLevels(result.producerLevels, { ...r.requiredBuildings, ...(r.buildingId ? { [r.buildingId]: r.buildingLevel } : {}), home: r.requiredHomeLevel });
       add(result.slotMinutes, recipeSlots(r), 1 / output); result.coins += r.cost.coins / output;
       if (!Object.keys(r.cost.items).length) result.rawInputs[id] = 1;
       for (const [input, quantity] of Object.entries(r.cost.items)) {
@@ -150,11 +158,11 @@ export function economicMath(catalog) {
       maxBatch: recipe.maxBatch, processMinutes: recipe.seconds / 60, stationMinutes };
   }
   const stationBenchmarks = {};
-  for (const r of catalog.recipes) {
+  for (const r of [...catalog.recipes, ...catalog.explorations.filter(r => productionStation(r))]) {
     const margin = liquidation(r.rewards) - liquidation(r.cost.items) - r.cost.coins;
     const stationMinutes = (r.seconds + (r.collection?.seconds ?? 0)) / 60;
-    const rate = margin / stationMinutes, prior = stationBenchmarks[r.buildingId];
-    if (!prior || rate > prior.coinsPerMinute) stationBenchmarks[r.buildingId] = { recipeId: r.id, coinsPerMinute: rate, marginPerBatch: margin, stationMinutes };
+    const rate = margin / stationMinutes, prior = stationBenchmarks[productionStation(r)];
+    if (!prior || rate > prior.coinsPerMinute) stationBenchmarks[productionStation(r)] = { recipeId: r.id, coinsPerMinute: rate, marginPerBatch: margin, stationMinutes };
   }
   const portfolio = catchPortfolio(); stationBenchmarks.mochlik = { recipeId: "shore with starter tackle, expectation", coinsPerMinute: (portfolio.expectedFishRevenue - portfolio.routeCoins - portfolio.baitPurchaseCoins - liquidation(portfolio.routeInputs)) / portfolio.slotMinutes.mochlik };
   function startup(producerLevels) {
@@ -182,9 +190,10 @@ export function auditEconomicMath(catalog) {
     oneUnitNpcRevenue: math.liquidation({ [i.id]: 1 }),
     slotOpportunityCoins: i.category === "special" ? null : Object.entries(math.profile(i.id).slotMinutes).reduce((sum, [slot, minutes]) => sum + minutes * math.stationBenchmarks[slot].coinsPerMinute, 0) }));
   const batches = catalog.recipes.map(math.batch);
+  const mining = catalog.explorations.filter(route => route.activity === "mining").map(math.batch);
   for (const p of profiles) assert(Object.values(p.slotMinutes).every(x => Number.isFinite(x) && x >= 0), `${p.itemId}: invalid minutes`);
   for (const r of batches) assert(r.incrementalMargin > 0, `${r.id}: nonpositive actual sale margin`);
-  return { units: "minimum intrinsic occupied named slot-minutes, excluding waits to claim; coins; item units", profiles, batches, stationBenchmarks: math.stationBenchmarks,
+  return { units: "minimum intrinsic occupied named slot-minutes, excluding waits to claim; coins; item units", profiles, batches, mining, stationBenchmarks: math.stationBenchmarks,
     fishing: catalog.fishing.rods.map(r => ({ rodId: r.id, ...math.catchPortfolio(r.id) })),
     fishingLoadouts: catalog.fishing.rods.flatMap(rod => (catalog.fishing.hooks ?? [{ id: "bare_hook" }]).flatMap(hook =>
       [null, ...catalog.fishing.baits.map(bait => bait.itemId)].map(baitId => ({ rodId: rod.id, hookId: hook.id, baitId,

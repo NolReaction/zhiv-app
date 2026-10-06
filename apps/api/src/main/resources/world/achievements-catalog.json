@@ -6,9 +6,10 @@
     "first_path": [1], "familiar_trails": [3], "explorer": [10, 50, 200], "master_recipes": [5, 10],
     "home_builder": [2, 3, 4, 5], "river_atlas": [12], "first_sale": [1], "lucky_find": [1]
   },
+  "legacyRecipeIds": ["quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply"],
   "biomes": {
     "forest": ["forest", "forest_camp", "old_woodland", "uplands"],
     "shore": ["shore", "shore_camp", "coastal_deposits"],
-    "caves": ["cave", "deep_cave", "abandoned_quarry"]
+    "caves": ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply"]
   }
 }

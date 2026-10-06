@@ -32,7 +32,11 @@ export function economySceneJourney(economy: EconomyView | null | undefined): Ec
 export function economySceneProduction(economy: EconomyView | null | undefined): EconomySceneProduction | null {
   if (!economy) return null;
   return { ownerPublicId: economy.ownerPublicId, revision: economy.revision, jobs: economy.jobs.flatMap(job => {
-    if (job.kind !== "production" || !job.recipeId) return [];
+    if (job.kind !== "production") return [];
+    // Retired mine jobs keep their saved walk/work animation until claimed.
+    // Their recipes are intentionally absent from the current production catalog.
+    if (job.targetId === "quarry") return [{ id: job.id, stationId: "quarry", stationLevel: economy.buildings.quarry ?? 0,
+      recipeId: job.recipeId ?? "quarry_legacy", startedAt: job.startedAt, finishesAt: job.finishesAt }];
     const recipe = economy.catalog.recipes.find(recipe => recipe.id === job.recipeId && recipe.buildingId === job.targetId);
     return recipe ? [{ id: job.id, stationId: recipe.buildingId, stationLevel: economy.buildings[recipe.buildingId] ?? 0,
       recipeId: recipe.id, startedAt: job.startedAt, finishesAt: job.finishesAt }] : [];
@@ -47,6 +51,6 @@ export function economySceneActivity(economy: EconomyView | null | undefined): E
     .sort((left, right) => Date.parse(left.finishesAt) - Date.parse(right.finishesAt))[0];
   if (!job) return null;
   return { id: job.id, kind: "production", startedAt: job.startedAt, finishesAt: job.finishesAt,
-    label: economy?.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Работа в мастерской",
+    label: economy?.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? (job.targetId === "quarry" ? "Работа в шахте" : "Работа в мастерской"),
     itemId: Object.keys(job.rewards)[0], collection: job.collection };
 }

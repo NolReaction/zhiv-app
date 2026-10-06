@@ -1,13 +1,12 @@
-import { economyCatalog, type EconomyCommand, type EconomyJob } from "./model";
+import type { EconomyCommand, EconomyJob } from "./model";
 
 export function isQuarryProduction(job: Pick<EconomyJob, "kind" | "targetId">) {
   return job.kind === "production" && job.targetId === "quarry";
 }
 
-/** Includes quarry recipes in the legacy-journey fence without blocking passive stations. */
+/** Mining uses exploration commands; retired production is rejected by the domain. */
 export function economyCommandUsesActor(command: Pick<EconomyCommand, "action" | "targetId">) {
-  return ["start_exploration", "start_fishing", "start_collection"].includes(command.action)
-    || command.action === "start_production" && economyCatalog.recipes.some(recipe => recipe.id === command.targetId && recipe.buildingId === "quarry");
+  return ["start_exploration", "start_fishing", "start_collection"].includes(command.action);
 }
 
 type ActorConflict = { code: "ECONOMY_EXPLORER_BUSY" | "ECONOMY_COLLECTOR_BUSY" | "ECONOMY_QUARRY_BUSY"; message: string; job: EconomyJob };

@@ -12,7 +12,8 @@ internal fun economyAchievementProgress(state: EconomyState?, confirmedSale: Boo
         "first_path" to (state?.completedExplorations ?: 0L),
         "familiar_trails" to GameRewards.biomes.values.count { ids -> ids.any { (routes[it] ?: 0L) > 0L } }.toLong(),
         "explorer" to (state?.completedExplorations ?: 0L),
-        "master_recipes" to EconomyRules.catalog.recipes.count { (state?.progression?.recipes?.get(it.id) ?: 0L) > 0L }.toLong(),
+        "master_recipes" to (EconomyRules.catalog.recipes.map { it.id }.toSet() + GameRewards.legacyRecipeIds)
+            .count { (state?.progression?.recipes?.get(it) ?: 0L) > 0L }.toLong(),
         "home_builder" to (state?.buildings?.get("home") ?: 1).toLong(),
         "river_atlas" to EconomyRules.catalog.fishing?.fish.orEmpty().count { (state?.fishing?.catches?.get(it.itemId) ?: 0L) > 0L }.toLong(),
         "first_sale" to if (confirmedSale) 1L else 0L,

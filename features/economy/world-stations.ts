@@ -1,6 +1,5 @@
 import type { MapObjectSelection, WorldPlace } from "@/features/world/map-engine";
 import type { EconomyCatalog, EconomyCost, EconomyJob, EconomyView } from "./model";
-import { economyActorConflict } from "./actor-availability";
 
 export type WorldStationDefinition = { label: string; stationIds: readonly string[]; future?: string };
 export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> = {
@@ -77,13 +76,10 @@ export function worldBatchLimit(state: EconomyView, recipe: WorldRecipe) {
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0);
   return Math.max(0, Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, output))));
 }
-export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, quantity = 1, now = Date.parse(state.serverTime)) {
+export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, quantity = 1) {
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
-  if (recipe.buildingId === "quarry") {
-    const conflict = economyActorConflict(state.jobs, "departure", now);
-    if (conflict) return conflict.message;
-  }
+  if (recipe.buildingId === "quarry") return "Добыча доступна в вылазках Мохлика";
   if (state.jobs.some(job => ["production", "construction"].includes(job.kind) && job.targetId === recipe.buildingId)) return "Место занято: сначала заберите результат";
   if (quantity > worldBatchLimit(state, recipe)) return "Уменьшите партию или расширьте кладовую";
   if (worldCostShortfalls(state, recipe.cost, quantity).length) return "Не хватает материалов или монет";
@@ -94,6 +90,7 @@ export function worldConstructionReason(state: EconomyView, stationId: string, t
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
   if (target.level !== (state.buildings[stationId] ?? 0) + 1) return "Сначала завершите предыдущее улучшение";
   if (state.jobs.some(job => job.kind === "construction")) return "Сначала завершите текущую стройку";
+  if (stationId === "quarry" && state.jobs.some(job => job.kind === "exploration" && state.catalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry))) return "Сначала дождитесь Мохлика и заберите добычу";
   if (state.jobs.some(job => job.kind === "production" && job.targetId === stationId)) return "Сначала заберите результат производства";
   if (worldCostShortfalls(state, target.cost).length) return "Не хватает материалов или монет";
   return null;

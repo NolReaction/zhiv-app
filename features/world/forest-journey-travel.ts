@@ -57,7 +57,7 @@ export function forestJourneyActorAway(state: ForestSessionState, journey: Econo
 /** Mine work is a local portal, not a new navigation corridor through rock. */
 function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, journey: EconomySceneJourney | null | undefined,
   now: number, still: boolean, cancelled: readonly string[]) {
-  const active = economyJourneyAway(journey, now), miningJob = active && mineRoutes.has(journey?.routeId ?? "");
+  const active = economyJourneyAway(journey, now), miningJob = active && (mineRoutes.has(journey?.routeId ?? "") || journey?.routeId?.startsWith("quarry_"));
   if (!miningJob && !state.journeyTravel?.mining) return false;
   const id = miningJob ? journey!.id : null;
   let travel = state.journeyTravel;
@@ -232,7 +232,7 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
   // is claimed/cancelled. Let its already visible catch, tackle and walk home
   // finish before the miner takes over the same physical actor.
   const previousTravel = state.journeyTravel;
-  if (!still && mineRoutes.has(journey?.routeId ?? "") && previousTravel && !previousTravel.mining && previousTravel.phase !== "away") journey = null;
+  if (!still && (mineRoutes.has(journey?.routeId ?? "") || journey?.routeId?.startsWith("quarry_")) && previousTravel && !previousTravel.mining && previousTravel.phase !== "away") journey = null;
   if (syncMiningTravel(state,scene,journey,now,still,cancelledExplorations)) return;
   const active = economyJourneyAway(journey, now), id = active ? journey!.id : null;
   const observed = state.explorationId !== undefined, previous = state.explorationId;

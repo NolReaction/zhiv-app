@@ -51,11 +51,12 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
   let clock = firstVisit, sequence = 0, castSequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null, pearlsSpent = 0;
-  const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, items = new Map(catalog.items.map(item => [item.id, item]));
+  const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, explorationRoutes = {}, itemFlow = {}, items = new Map(catalog.items.map(item => [item.id, item]));
   const relicIds = catalog.items.filter(item => item.category === "special").map(item => item.id);
   const relicReceived = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicSpent = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicFinds = []; let eligibleExplorationSeconds = 0;
+  const miningRoutes = new Set(catalog.explorations.filter(route => route.activity === "mining").map(route => route.id));
   const actorWorkSeconds = { quarry: 0, exploration: 0, collection: 0 };
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
@@ -96,7 +97,7 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
       }
       if (action === "claim_job" && previousJob) {
         const duration = (Date.parse(previousJob.finishesAt) - Date.parse(previousJob.startedAt)) / 1000;
-        if (previousJob.kind === "exploration") actorWorkSeconds.exploration += duration;
+        if (previousJob.kind === "exploration") actorWorkSeconds[miningRoutes.has(previousJob.targetId) ? "quarry" : "exploration"] += duration;
         if (actorAvailability.isQuarryProduction(previousJob)) actorWorkSeconds.quarry += duration;
         if (previousJob.collection?.startedAt) actorWorkSeconds.collection += previousJob.collection.seconds;
       }
@@ -107,8 +108,20 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
           relicSpent[id] += job.cost.items[id];
         }
       }
+      for (const id of new Set([...Object.keys(state.inventory), ...Object.keys(next.inventory)])) {
+        const difference = (next.inventory[id] ?? 0) - (state.inventory[id] ?? 0);
+        if (!difference) continue;
+        const flow = itemFlow[id] ??= { received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0 };
+        if (difference > 0) flow.received += difference;
+        else if (action === "sell" || action === "sell_fish") flow.sold -= difference;
+        else if (action === "start_production") flow.productionInputs -= difference;
+        else if (action === "start_exploration" || action === "start_fishing") flow.expeditionInputs -= difference;
+        else if (action === "start_construction") flow.constructionInputs -= difference;
+        else assert.fail(`Unaccounted inventory debit: ${action} ${id}`);
+      }
       Object.assign(state, next); commands++; actions[action] = (actions[action] ?? 0) + 1;
       if (action === "start_production") productionRecipes[targetId] = (productionRecipes[targetId] ?? 0) + quantity;
+      if (action === "start_exploration" || action === "start_fishing") explorationRoutes[targetId] = (explorationRoutes[targetId] ?? 0) + 1;
       lastFailure = null; return true;
     } catch (error) {
       rareRandom.restore(entropy); // A rejected transition cannot shift the sample path.
@@ -152,14 +165,25 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
       const [id, level] = key.split(":");
       target = { id, key, ...catalog.buildings.find(b => b.id === id).levels.find(l => l.level === Number(level)) };
     }
-    for (const job of state.jobs) for (const [id, quantity] of Object.entries(job.rewards)) planned[id] = (planned[id] ?? 0) + quantity;
+    for (const job of state.jobs) {
+      // Newly started research jobs use this catalog. Plan only publicly known
+      // guaranteed output: never inspect pending species or the private relic type.
+      const rewards = { ...job.rewards };
+      for (const id of relicIds) delete rewards[id];
+      if (job.fishing) {
+        for (const fish of catalog.fishing.fish) delete rewards[fish.itemId];
+        const route = catalog.explorations.find(route => route.id === job.targetId);
+        rewards.fish = route.rewards.fish - (catalog.fishing.collectionDrawsByRoute?.[route.id] ?? 1);
+      }
+      for (const [id, quantity] of Object.entries(rewards)) planned[id] = (planned[id] ?? 0) + quantity;
+    }
     const jointSources = new Map();
     if (jointBatchPlanning && !isActive) {
-      for (const r of catalog.recipes.filter(r => projectedEligible(r) && Object.keys(r.rewards).length > 1 && r.seconds <= gap)) {
+      for (const r of [...catalog.recipes, ...catalog.explorations.filter(route => route.activity === "mining")].filter(r => projectedEligible(r) && Object.keys(r.rewards).length > 1 && r.seconds <= gap)) {
         const covered = Object.entries(r.rewards).filter(([id]) => (target.cost.items[id] ?? 0) > (planned[id] ?? 0));
         const separateClaims = covered.reduce((sum, [id, amount]) => {
-          const basic = catalog.recipes.find(b => projectedEligible(b) && Object.keys(b.rewards).length === 1 && b.rewards[id] > 0 && b.seconds < 14400);
-          return sum + (basic ? Math.ceil(Math.min(amount, target.cost.items[id] - (planned[id] ?? 0)) / basic.rewards[id] / basic.maxBatch) : 0);
+          const basic = [...catalog.recipes, ...catalog.explorations.filter(route => route.activity === "mining")].find(b => projectedEligible(b) && Object.keys(b.rewards).length === 1 && b.rewards[id] > 0 && b.seconds < 14400);
+          return sum + (basic ? Math.ceil(Math.min(amount, target.cost.items[id] - (planned[id] ?? 0)) / basic.rewards[id] / (basic.maxBatch ?? 1)) : 0);
         }, 0);
         // The unit is completed orders/visits, not a dimensionless rarity score.
         // Inputs and every output are still processed by the ordinary recursion.
@@ -226,7 +250,9 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
     }
     target = goal(); if (!target) return;
     plan = demand(target); sellExcess(plan.needed);
-    if (eligible(target) && rules.canAffordEconomy(state, target.cost) && !state.jobs.some(j => j.kind === "construction" || j.kind === "production" && j.targetId === target.id)) command("start_construction", target.id);
+    const mineReserved = state.jobs.some(job => job.kind === "exploration" && catalog.explorations.find(route => route.id === job.targetId)?.requiredBuildings.quarry);
+    if (eligible(target) && rules.canAffordEconomy(state, target.cost) && !(target.id === "quarry" && mineReserved)
+      && !state.jobs.some(j => j.kind === "construction" || j.kind === "production" && j.targetId === target.id)) command("start_construction", target.id);
     const construction = state.jobs.find(j => j.kind === "construction");
     if (pearlBudget > 0 && construction) {
       const price = rules.constructionSpeedupPrice(construction, epoch + clock * 1000);
@@ -235,8 +261,9 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
     target = goal(); if (!target) return;
     plan = demand(target);
     const busy = new Set(state.jobs.filter(j => ["production", "construction"].includes(j.kind)).map(j => j.targetId));
-    const freeDefinitions = [...catalog.recipes, ...catalog.explorations].filter(d => eligible(d) && !Object.keys(d.cost.items).length && !d.cost.coins);
-    const candidates = [...catalog.recipes, ...catalog.explorations].filter(d => eligible(d)).sort((a, b) => (plan.recipeWants.get(b.id) ?? 0) - (plan.recipeWants.get(a.id) ?? 0));
+    const available = d => eligible(d) && !(d.requiredBuildings?.quarry && busy.has("quarry"));
+    const freeDefinitions = [...catalog.recipes, ...catalog.explorations].filter(d => available(d) && !Object.keys(d.cost.items).length && !d.cost.coins);
+    const candidates = [...catalog.recipes, ...catalog.explorations].filter(available).sort((a, b) => (plan.recipeWants.get(b.id) ?? 0) - (plan.recipeWants.get(a.id) ?? 0));
     const actorBusy = () => actorAvailability.economyActorConflict(state.jobs, "departure", epoch + clock * 1000);
     for (const d of candidates) {
       if (!plan.recipeWants.has(d.id)) continue;
@@ -247,8 +274,8 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
       if (!affordable) continue;
       if (command(d.buildingId ? "start_production" : "start_exploration", d.id, affordable)) { if (d.buildingId) busy.add(d.buildingId); }
     }
-    // Idle gathering earns sale money; quarry and routes compete for one actor.
-    // Do not let a quarry filler order permanently starve relic expeditions.
+    // Idle gathering earns sale money; mining and other routes use one actor.
+    // Every eligible completed route advances the same relic clock.
     // Costly processing is reserved for the next upgrade. This is not an optimum.
     const income = d => cash(d.rewards) / (isActive ? d.seconds : Math.max(1, Math.ceil(d.seconds / gap)));
     for (const id of ["garden", "woodlot", null]) {
@@ -296,6 +323,7 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
     commands, saleRevenue: revenue, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
     ...(pearlBudget > 0 ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
     ...(jointBatchPlanning ? { productionRecipes } : {}),
+    explorationRoutes, itemFlow: Object.fromEntries(Object.entries(itemFlow).map(([id, flow]) => [id, { ...flow, remaining: state.inventory[id] ?? 0 }])),
     actorWorkHours: Object.fromEntries(Object.entries(actorWorkSeconds).map(([kind, seconds]) => [kind, Number((seconds / hour).toFixed(4))])),
     excludedIncome: ["daily_rewards", "achievement_rewards", "taps", "player_market", "legacy_grants"],
     rareMaterials: { seed: rareSeed, generator: "xorshift32-rejection-v1", draws: rareRandom.draws,
@@ -303,6 +331,8 @@ export function simulateJourney({ rules, actorAvailability, catalog }, mode, max
       spentOnConstruction: relicSpent, inventory: Object.fromEntries(relicIds.map(id => [id, state.inventory[id] ?? 0])), finds: relicFinds } };
   assert.equal(state.wallet.pearls, pearlBudget - pearlsSpent); assert(state.wallet.coins >= 0);
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
+  for (const [id, flow] of Object.entries(itemFlow))
+    assert.equal(flow.received - flow.sold - flow.productionInputs - flow.expeditionInputs - flow.constructionInputs, state.inventory[id] ?? 0, `${id}: inventory flow must conserve every earned item`);
   for (const id of relicIds) assert.equal(relicReceived[id] - relicSpent[id], state.inventory[id] ?? 0, "Relics must be conserved from actual claims through construction");
   return report;
 }

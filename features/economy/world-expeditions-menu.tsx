@@ -8,7 +8,8 @@ import type { EconomyJob, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { ProductIcon, itemName, locked, number, stationName } from "./world-economy-parts";
 import { worldCostShortfalls, worldDuration, worldJobProgress, worldMissingRequirements, worldRequirements } from "./world-stations";
-import { fishingState, fishingTripCost } from "./fishing";
+import { fishingState, fishingTripCost, fishingCollectionDraws } from "./fishing";
+import { PleskCatchOdds } from "./plesk-fishing-shop";
 import { useFishingCommand } from "./use-fishing-command";
 import { economyActorConflict, isQuarryProduction } from "./actor-availability";
 import styles from "./world-expeditions-menu.module.css";
@@ -30,7 +31,7 @@ export type SectorId = "forest" | "shore" | "caves";
 export const expeditionSectors: ReadonlyArray<{ id: SectorId; name: string; icon: LucideIcon }> = [
   { id: "forest", name: "Лес", icon: Trees },
   { id: "shore", name: "Побережье", icon: Fish },
-  { id: "caves", name: "Пещеры", icon: Mountain },
+  { id: "caves", name: "Шахта", icon: Mountain },
 ];
 /** Presentation only: progression and rewards always come from the catalog. */
 export function expeditionSector(routeId: string): SectorId {
@@ -127,7 +128,8 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
   const hooks = catalog?.hooks.filter(hook => gear.ownedHooks.includes(hook.id)) ?? [];
   const invalidGear = fishing && (!rods.some(rod => rod.id === gear.equippedRodId) || !hooks.some(hook => hook.id === gear.equippedHookId)
     || Boolean(gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId)));
-  const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || exploring || Boolean(actorConflict) || invalidGear;
+  const mineUpgrading = Boolean(route.requiredBuildings.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"));
+  const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || exploring || Boolean(actorConflict) || invalidGear || mineUpgrading;
   return <div className={styles.detail}>
     {fishing && <div className={styles.fishingGear}>
       <strong>С собой на рыбалку</strong>
@@ -144,20 +146,27 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
         const owned = baitId === "none" || Boolean(catalog?.baits.some(bait => bait.itemId === baitId) && (state.inventory[baitId] ?? 0) > 0);
         command.send("equip_fishing_bait", baitId, 1, 0, baitId !== (gear.equippedBaitId ?? "none") && owned);
       }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0}>{itemName(state, bait.itemId)} · {(state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
-      <p>{gear.equippedBaitId ? "1 наживка на вылазку. " : ""}Удочка и крючок не расходуются. Снасти меняют шанс одного особого улова, остальные рыбы — обычная рыба.</p>
+      <p>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.description}</p>
+      <p>{catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.description}</p>
+      {gear.equippedBaitId && <p>{catalog?.baits.find(bait => bait.itemId === gear.equippedBaitId)?.description}</p>}
+      <p>{gear.equippedBaitId ? "1 наживка на вылазку. " : ""}Удочка и крючок не расходуются. Рыб в улове: {route.rewards.fish}; отдельных шансов на особый вид: {fishingCollectionDraws(route.id, catalog)}. Виды узнаем, когда заберём улов.</p>
+      {catalog && <PleskCatchOdds state={state} catalog={catalog} />}
       {invalidGear && <p className={styles.warning}>Выберите доступную удочку и крючок перед отправлением.</p>}
       {onOpenFishingShop && <button type="button" className={styles.link} onClick={onOpenFishingShop}>Купить снасти у Плёски<ArrowRight size={12} aria-hidden="true" /></button>}
     </div>}
     {missing.length > 0 && <ul className={styles.requirements} aria-label="Условия открытия">{missing.map(({ id, level }) => <li key={id}><LockKeyhole size={12} aria-hidden="true" />{onNavigateStation ? <button type="button" className={styles.link} onClick={() => onNavigateStation(id)}>{stationName(state, id)} · нужен ур. {level}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{stationName(state, id)} · нужен ур. {level}</span>}</li>)}</ul>}
     {cost.coins > 0 || Object.keys(cost.items).length > 0 ? <div className={styles.provisions}><span className={styles.caption}>С собой</span><ul aria-label="Припасы для вылазки">{cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins || undefined}><ItemIcon itemId="coins" size={16} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(cost.coins)}</strong></li>}{Object.entries(cost.items).map(([id, quantity]) => <li key={id} data-missing={(state.inventory[id] ?? 0) < quantity || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(quantity)}</strong></li>)}</ul></div> : <p className={styles.free}><Check size={12} aria-hidden="true" />Без затрат</p>}
     {tooLarge ? <div className={styles.warning}><p>Находки займут {number(findings)} мест, вместимость — {number(state.storage.capacity)}.</p><button type="button" className={styles.link} onClick={onNavigateStation ? () => onNavigateStation("warehouse") : onOpenPantry}>Расширить кладовую<ArrowRight size={12} aria-hidden="true" /></button></div> : state.storage.available < findings && <button type="button" className={styles.storageHint} onClick={onOpenPantry}><Package size={13} aria-hidden="true" /><span>К возвращению нужно {number(findings)} мест · свободно {number(state.storage.available)}</span><ArrowRight size={12} aria-hidden="true" /></button>}
+    {mineUpgrading && <p className={styles.caption}>Дождитесь улучшения шахты и заберите результат.</p>}
     {actorConflict && !exploring && <p className={styles.caption}>{actorConflict.message}</p>}
     {exploring ? <p className={styles.caption}>Сначала заберите находки или отмените текущую вылазку.</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || command.blocked} onClick={() => command.send(fishing ? "start_fishing" : "start_exploration", route.id, 1, 0, !blocked)} aria-label={`Отправиться: ${route.name}`}>Отправиться · {worldDuration(route.seconds)}<ArrowRight size={13} aria-hidden="true" /></button></div>}
   </div>;
 }
 
 export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, economy, state, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop }: WorldExpeditionsMenuProps & { sectorId: SectorId; selectedRoute: string | null; onSelectRoute: (id: string) => void; state: EconomyView; exploring: boolean }) {
-  const routes = state.catalog.explorations.filter(route => expeditionSector(route.id) === sectorId);
+  const mineLevel = state.buildings.quarry ?? 0;
+  const routes = state.catalog.explorations.filter(route => expeditionSector(route.id) === sectorId
+    && !(route.id === "quarry_shift" && mineLevel >= 4) && !(route.id === "quarry_deep_face" && mineLevel >= 5));
   const readyRoutes = routes.filter(route => canPrepare(state, route));
   const laterRoutes = routes.filter(route => !canPrepare(state, route));
   const sector = expeditionSectors.find(entry => entry.id === sectorId)!;

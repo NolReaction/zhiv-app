@@ -108,8 +108,15 @@ test("storage warning appears only when the selected result will not currently f
   assert.doesNotMatch(renderRecipe("grow_berries", controller()), /Для получения понадобится|Место понадобится/);
 });
 
-test("quarry recipe cannot start during a trip or collection but passive crafting remains available", () => {
-  const quarry = economyCatalog.recipes.find(recipe => recipe.buildingId === "quarry");
+test("mine exposes actor routes instead of production and passive crafting remains available while the hero is busy", () => {
+  assert.equal(economyCatalog.recipes.some(recipe => recipe.buildingId === "quarry"), false);
+  const free = controller({ buildings: { home: 2, quarry: 1, workshop: 1, warehouse: 1 } });
+  const idle = renderMenu("quarry", free);
+  assert.doesNotMatch(idle, /data-recipe=|Начать ·|data-quarry-tab=/);
+  assert.match(idle, /data-route="quarry_stone"/);
+  const available = idle.match(/<button\b([^>]*)aria-label="Отправиться: Добыть камень"/);
+  assert.ok(available);
+  assert.doesNotMatch(available[1], /\bdisabled=/);
   const base = { id: "busy", startedAt: new Date(now - 1_000).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: {}, cost: { coins: 0, items: {} } };
   for (const occupied of [
     { ...base, kind: "exploration", targetId: "forest" },
@@ -117,7 +124,18 @@ test("quarry recipe cannot start during a trip or collection but passive craftin
     { ...base, kind: "production", targetId: "garden", collection: { startedAt: new Date(now).toISOString() } },
   ]) {
     const economy = controller({ buildings: { home: 2, quarry: 1, workshop: 1, warehouse: 1 }, inventory: { wood: 2 }, jobs: [occupied] });
-    assert.equal(startDisabled(renderRecipe(quarry.id, economy)), true);
+    const mine = renderMenu("quarry", economy);
+    assert.doesNotMatch(mine, /data-recipe=|Начать ·/);
+    assert.match(mine, /data-route="quarry_stone"/);
+    const departure = mine.match(/<button\b([^>]*)aria-label="Отправиться: Добыть камень"/);
+    if (occupied.kind === "exploration") {
+      assert.equal(departure, null, "a current or unclaimed trip has a claim/recall card instead of another departure");
+      assert.match(mine, /Сначала заберите находки или отмените текущую вылазку/);
+    } else {
+      assert.ok(departure);
+      assert.match(departure[1], /\bdisabled=/);
+      assert.match(mine, /Сначала завершите сбор припасов/);
+    }
     assert.equal(startDisabled(renderRecipe("make_planks", economy)), false);
   }
 });

@@ -31,7 +31,8 @@ test("circle progress uses saved timestamps and keeps returned finds until the a
 });
 
 test("every route has a recognizable sector icon, including saved fishing journeys", () => {
-  const expected = { forest: "forest", forest_camp: "forest", old_woodland: "forest", uplands: "forest", shore: "fishing", shore_camp: "fishing", coastal_deposits: "fishing", cave: "cave", deep_cave: "cave", abandoned_quarry: "cave" };
+  const expected = { forest: "forest", forest_camp: "forest", old_woodland: "forest", uplands: "forest", shore: "fishing", shore_camp: "fishing", coastal_deposits: "fishing", cave: "cave", deep_cave: "cave", abandoned_quarry: "cave",
+    quarry_stone: "cave", quarry_stone_overnight: "cave", quarry_ore: "cave", quarry_clay: "cave", quarry_sand: "cave", quarry_shift: "cave", quarry_deep_face: "cave", quarry_supply: "cave" };
   for (const route of economyCatalog.explorations) assert.equal(activityRouteKind(route.id), expected[route.id]);
   for (const routeId of ["fishing_5", "fishing_15", "fishing_30", "fishing_60", "brook_path"]) {
     assert.equal(worldActivity(null, { journeys: [{ ...activity(), routeId }] }, now).kind, "fishing");

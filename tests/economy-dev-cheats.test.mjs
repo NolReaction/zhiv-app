@@ -286,3 +286,17 @@ test("individual DEV gear grants preserve paid trips and fish grants do not fake
   assert.deepEqual(state.fishing.catches, {});
   assert.equal(state.completedExplorations, 0);
 });
+
+
+test("DEV cannot remove or change an occupied mine until its actor delivery is claimed", () => {
+  const p = player();
+  cheat(p, "apply_settlement", "home", 2);
+  normal(p, "start_exploration", "quarry_stone");
+  const before = read(p);
+  assert.throws(() => cheat(p, "set_building_level", "quarry", 0), { code: "ECONOMY_BUILDING_BUSY" });
+  assert.deepEqual(read(p), before);
+  cheat(p, "finish_jobs", "exploration");
+  assert.throws(() => cheat(p, "set_building_level", "quarry", 0), { code: "ECONOMY_BUILDING_BUSY" });
+  normal(p, "claim_job", before.jobs[0].id);
+  assert.equal(cheat(p, "set_building_level", "quarry", 0).state.buildings.quarry, 0);
+});

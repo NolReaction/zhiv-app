@@ -33,11 +33,11 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 @Serializable data class EconomyFishSpec(val itemId: String, val description: String, val rarity: String,
     val weight: Int, val affinity: Int, val buyPrice: Long, val requiredHookId: String? = null)
 @Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int,
-    val rarity: String = "common", val requiredHomeLevel: Int = 1)
+    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
 @Serializable data class EconomyHookSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int,
-    val rarity: String = "common", val requiredHomeLevel: Int = 1)
+    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
 @Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int,
-    val rarity: String = "common", val requiredHomeLevel: Int = 1)
+    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
 @Serializable data class EconomyFishingOffer(val id: String, val kind: String, val itemId: String, val unitPrice: Long, val remaining: Long)
 @Serializable data class EconomyFishingShop(val id: String, val openedAt: String, val refreshAt: String, val refreshPricePearls: Long, val offers: List<EconomyFishingOffer>)
 @Serializable data class EconomyFishingShopConfig(val refreshSeconds: Long = 21600, val refreshPricePearls: Long = 100, val slots: Int = 4, val baitStock: Long = 5) {
@@ -45,7 +45,8 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 }
 @Serializable data class EconomyFishingCatalog(val routeIds: List<String>, val fish: List<EconomyFishSpec>,
     val rods: List<EconomyRodSpec>, val baits: List<EconomyBaitSpec>, val shop: EconomyFishingShopConfig = EconomyFishingShopConfig(),
-    val hooks: List<EconomyHookSpec> = listOf(EconomyHookSpec("bare_hook", "Простой крючок", "Начальная снасть без дополнительных усилений.", 0, 0)))
+    val hooks: List<EconomyHookSpec> = listOf(EconomyHookSpec("bare_hook", "Простой крючок", "Начальная снасть без дополнительных усилений.", 0, 0)),
+    val collectionDrawsByRoute: Map<String, Int> = emptyMap())
 @Serializable data class EconomyRareDropSpec(val version: Int = 1, val requiredHomeLevel: Int,
     val minSeconds: Long, val maxSeconds: Long, val itemIds: List<String>) {
     init { require(version == 1 && requiredHomeLevel in 1..5 && minSeconds in 1L..31_536_000L && maxSeconds in minSeconds..31_536_000L
@@ -98,8 +99,8 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 @Serializable data class EconomyExploration(
     val id: String, val name: String, val description: String, val requiredHomeLevel: Int = 1,
     val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
-    val requiredBuildings: Map<String, Int> = emptyMap(),
-)
+    val requiredBuildings: Map<String, Int> = emptyMap(), val activity: String? = null,
+) { init { require(activity == null || activity == "mining") } }
 @Serializable data class EconomyMarketConfig(val requiredHomeLevel: Int = 2, val requiredExplorations: Long = 1, val maxListings: Int = 10, val maxLotQuantity: Long = 99, val maxPriceMultiplier: Long = 5, val feeBps: Int = 0,
     val showcaseSlots: Int = 12, val showcasePerSeller: Int = 2, val showcaseRefreshSeconds: Long = 1800) {
     init { require(showcaseSlots in 1..12 && showcasePerSeller in 1..10 && showcaseRefreshSeconds in 1L..86400L) }

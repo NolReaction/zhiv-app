@@ -92,6 +92,32 @@ test("biomes cover exactly the menu directions and known recipe/catch IDs preven
   assert.equal(math.economyAchievementProgress(economy.getDevEconomy(player().token)).explorer, 0);
 });
 
+test("known retired quarry recipes retain historic achievement progress without counting new mining as crafting", () => {
+  const p = player(); let now = Date.now();
+  const initial = economy.getDevEconomy(p.token, now);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.buildings = { ...initial.buildings, home: 2, quarry: 2 };
+  const paid = { id: crypto.randomUUID(), kind: "production", targetId: "quarry", recipeId: "quarry_stone", targetLevel: null,
+    startedAt: new Date(now - 1_800_000).toISOString(), finishesAt: new Date(now).toISOString(),
+    rewards: { stone: 8 }, cost: { coins: 0, items: {} }, catalogVersion: 3 };
+  row.state.jobs.push(paid);
+  assert.equal(model.economyCatalog.recipes.some(recipe => recipe.id === paid.recipeId), false);
+  issue(p, "claim_job", paid.id, now);
+  assert.equal(card(p, "master_recipes", now).progress, 1, "an already-issued old production keeps its promised recipe progress");
+  const mining = issue(p, "start_exploration", "quarry_ore", now).state.jobs[0];
+  now = Date.parse(mining.finishesAt);
+  const claimed = issue(p, "claim_job", mining.id, now).state;
+  assert.equal(claimed.progression.routes.quarry_ore, 1);
+  assert.equal(claimed.progression.recipes.quarry_ore, undefined);
+  assert.equal(card(p, "master_recipes", now).progress, 1);
+  assert.equal(math.economyAchievementProgress(claimed).familiar_trails, 1, "mining discovers the same cave biome");
+  const historical = structuredClone(claimed);
+  historical.progression.recipes.quarry_sand = 4;
+  historical.progression.recipes.quarry_forged = 99;
+  historical.progression.recipes.cave = 99;
+  assert.equal(math.economyAchievementProgress(historical).master_recipes, 2, "only explicitly grandfathered recipe IDs count");
+});
+
 test("expanded river atlas requires twelve catches but preserves an earned former four-species tier and its date", () => {
   const p = player(), now = Date.now(), earnedAt = '2026-01-01T12:00:00.000Z';
   economy.getDevEconomy(p.token, now);

@@ -276,7 +276,7 @@ test("days are readable and higher tier recipes explain their actual prerequisit
   assert.ok(button(html, "К постройке"));
 });
 
-test("placed workshop and quarry open their own requirements and then their confirmed production", () => {
+test("placed workshop opens production while the mine keeps activity unlocks and upgrade details", () => {
   for (const id of ["workshop", "quarry"]) {
     let state = snapshot();
     const building = state.catalog.buildings.find(entry => entry.id === id);
@@ -290,11 +290,17 @@ test("placed workshop and quarry open their own requirements and then their conf
 
     state = snapshot({ buildings: { home: 2, workshop: 1, quarry: 1, garden: 1, warehouse: 1 } });
     destination = economyBuildingDestination(id, state);
-    assert.deepEqual(destination, { tab: "production", focusId: id });
+    assert.deepEqual(destination, { tab: id === "quarry" ? "buildings" : "production", focusId: id });
     html = render(destination.tab, controller({ snapshot: state }), destination.focusId);
-    assert.match(html, new RegExp(`<option value="${id}" selected="">`));
-    assert.ok(button(html, `Развитие: ${building.name}`));
-    assert.ok(button(render("buildings", controller({ snapshot: state }), id), "Открыть производство"));
+    if (id === "quarry") {
+      assert.ok(button(html, "Выбрать участок для добычи"));
+      assert.doesNotMatch(html, /Открыть производство/);
+      assert.match(html, /Что даёт этот уровень/);
+    } else {
+      assert.match(html, new RegExp(`<option value="${id}" selected="">`));
+      assert.ok(button(html, `Развитие: ${building.name}`));
+      assert.ok(button(render("buildings", controller({ snapshot: state }), id), "Открыть производство"));
+    }
 
     state.jobs = [job({ kind: "construction", targetId: id, targetLevel: 2, recipeId: null })];
     destination = economyBuildingDestination(id, state);
@@ -328,4 +334,29 @@ test("legacy inventory sale keeps full price; tiny stock cannot disappear for ze
   html = render("inventory", controller({ snapshot: state }), "crumb_bait");
   assert.doesNotMatch(html, /уценкой|округляется/);
   assert.equal(disabled(button(html, "Продать 1 шт. за 10 монет")), false);
+});
+
+
+test("generic economy keeps legacy quarry occupancy and mine construction behind departure guards", () => {
+  const legacy = job({ targetId: "quarry", recipeId: "quarry_stone", rewards: { stone: 8 } });
+  const state = snapshot({ buildings: { home: 5, quarry: 5, warehouse: 5 }, jobs: [legacy] });
+  let html = render("exploration", controller({ snapshot: state }));
+  assert.equal(disabled(button(html, "Отправиться: Лесная разведка")), true);
+  assert.match(html, /Мохлик работает в каменоломне/);
+  state.jobs = [job({ kind: "construction", targetId: "quarry", recipeId: null, rewards: {} })];
+  html = render("exploration", controller({ snapshot: state }));
+  const mine = economyCatalog.explorations.find(route => route.id === "quarry_stone");
+  assert.equal(disabled(button(html, `Отправиться: ${mine.name}`)), true);
+  assert.equal(disabled(button(html, "Отправиться: Лесная разведка")), false);
+  assert.match(html, /Дождитесь улучшения шахты/);
+});
+
+test("generic economy will not offer a mine upgrade during an unclaimed actor shift", () => {
+  const target = economyCatalog.buildings.find(building => building.id === "quarry").levels.find(level => level.level === 2);
+  const state = snapshot({ buildings: { home: 5, quarry: 1, warehouse: 5, ...target.requiredBuildings },
+    wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
+    jobs: [job({ kind: "exploration", targetId: "quarry_stone", recipeId: null, rewards: { stone: 8 } })] });
+  const html = render("buildings", controller({ snapshot: state }), "quarry");
+  assert.match(html, /Дождитесь Мохлика и заберите добычу/);
+  assert.equal(disabled(button(html, "Улучшить до ур. 2: Каменоломня")), true);
 });

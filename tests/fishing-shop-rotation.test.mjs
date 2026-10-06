@@ -8,7 +8,7 @@ after(() => vite.close());
 const identities = await vite.ssrLoadModule('/lib/dev/api-store.ts');
 const economy = await vite.ssrLoadModule('/lib/dev/economy-store.ts');
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule('/features/economy/model.ts');
-const { createFishingShop } = await vite.ssrLoadModule('/features/economy/fishing-shop.ts');
+const { createFishingShop, refreshFishingShop, canRefreshFishingShop } = await vite.ssrLoadModule('/features/economy/fishing-shop.ts');
 const now = Date.parse('2026-10-05T20:00:00Z');
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 const player = () => identities.createDevIdentity('Shopper', crypto.randomUUID());
@@ -77,7 +77,8 @@ test('only the stored offer can be bought, stock decrements once, replay and con
 });
 
 test('paid refresh uses a bounded accepted pearl price and one durable receipt, invalidating every old offer', () => {
-  const p = player(), before = fund(p), shop = before.fishingShop;
+  const p = player(); fund(p); persisted(p).buildings.home = 5;
+  const before = read(p), shop = before.fishingShop;
   const request = command(p, before, 'refresh_fishing_shop', shop.id, 1, shop.refreshPricePearls);
   const cheaper = { ...request, totalPrice: shop.refreshPricePearls - 1 };
   assert.throws(() => economy.commandDevEconomy(p.token, cheaper, now), { code: 'ECONOMY_FISHING_PRICE_CHANGED' });
@@ -85,6 +86,8 @@ test('paid refresh uses a bounded accepted pearl price and one durable receipt, 
   const next = economy.commandDevEconomy(p.token, request, now + 1000).state;
   assert.equal(next.wallet.pearls, 900); assert.equal(next.wallet.coins, before.wallet.coins);
   assert.notEqual(next.fishingShop.id, shop.id);
+  assert.ok(next.fishingShop.offers.every(offer => !shop.offers.some(old => old.itemId === offer.itemId)));
+  assert.equal(next.fishingShop.offers.length, shop.offers.length);
   assert.equal(Date.parse(next.fishingShop.refreshAt), now + 1000 + 6 * 3600000);
   const replay = economy.commandDevEconomy(p.token, request, now + 2000);
   assert.equal(replay.replayed, true); assert.deepEqual(replay.state.fishingShop, next.fishingShop);
@@ -130,4 +133,71 @@ test('a pre-rotation purchase receipt with the old catalog target replays withou
   assert.equal(replay.replayed, true); assert.deepEqual(replay.state.wallet, paid.wallet);
   assert.deepEqual(replay.state.fishingShop, paid.fishingShop);
   assert.deepEqual(replay.state.fishing.ownedRods, ['reed_rod', 'river_rod']);
+});
+
+
+test('paid replacement excludes every prior item including sold-out stock across repeated refreshes', () => {
+  const p = player(); fund(p);
+  const state = persisted(p); state.buildings.home = 5;
+  state.fishingShop = createFishingShop(state, now, () => 0);
+  let seed = 1729;
+  const random = max => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % max; };
+  for (let index = 0; index < 200; index++) {
+    const old = structuredClone(state.fishingShop);
+    state.fishingShop.offers[0].remaining = 0;
+    assert.equal(canRefreshFishingShop(state), true);
+    const next = refreshFishingShop(state, now + index, random);
+    assert.equal(next.offers.length, old.offers.length);
+    assert.equal(new Set(next.offers.map(offer => offer.itemId)).size, next.offers.length);
+    assert.ok(next.offers.every(offer => !old.offers.some(previous => previous.itemId === offer.itemId)));
+    state.fishingShop = next;
+  }
+});
+
+test('replacement shares weighted deterministic vectors with Kotlin without guaranteed rod or hook slots', () => {
+  const p = player(); fund(p);
+  const state = persisted(p); state.buildings.home = 5;
+  state.fishingShop = createFishingShop(state, now, () => 0);
+  assert.deepEqual(refreshFishingShop(state, now, () => 0).offers.map(offer => offer.itemId),
+    ['willow_rod', 'tide_rod', 'starfall_rod', 'silver_hook']);
+  assert.deepEqual(refreshFishingShop(state, now, max => max - 1).offers.map(offer => offer.itemId),
+    ['firefly_bait', 'glow_bait', 'leviathan_hook', 'tide_hook']);
+  // Every item remains selected by its original rarity weight, not a guaranteed category slot.
+  const totals = [];
+  refreshFishingShop(state, now, max => { totals.push(max); return max - 1; });
+  assert.deepEqual(totals, [113, 103, 78, 74]);
+});
+
+test('insufficient replacement stock never draws or charges and natural replenishment remains free', () => {
+  const p = player(), before = fund(p);
+  assert.equal(canRefreshFishingShop(persisted(p)), false);
+  assert.equal(refreshFishingShop(persisted(p), now, () => { throw Error('must not draw'); }), null);
+  assert.throws(() => economy.commandDevEconomy(p.token,
+    command(p, before, 'refresh_fishing_shop', before.fishingShop.id, 1, 100), now),
+    { code: 'ECONOMY_FISHING_SHOP_NO_REPLACEMENT' });
+  assert.deepEqual(read(p), before);
+  assert.equal(globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).receipts.size, 0);
+  const next = read(p, Date.parse(before.fishingShop.refreshAt));
+  assert.notEqual(next.fishingShop.id, before.fishingShop.id);
+  assert.deepEqual(next.wallet, before.wallet);
+  assert.equal(next.fishingShop.offers.length, 4);
+});
+
+test('owning tackle cannot exhaust the weighted choice to guarantee the remaining legendary stock', () => {
+  const p = player(); fund(p);
+  const state = persisted(p); state.buildings.home = 5;
+  state.fishingShop = createFishingShop(state, now, () => 0);
+  state.fishing.ownedRods.push('willow_rod', 'tide_rod');
+  state.fishing.ownedHooks.push('silver_hook');
+  // Five alternatives with two legendaries would force at least one in four slots.
+  assert.equal(canRefreshFishingShop(state), false);
+  assert.equal(refreshFishingShop(state, now, () => { throw Error('must not draw'); }), null);
+  state.fishing.ownedHooks.push('tide_hook');
+  // Exactly four alternatives remain, so charging would force all four, including both legendaries.
+  assert.equal(canRefreshFishingShop(state), false);
+  assert.equal(refreshFishingShop(state, now, () => { throw Error('must not draw'); }), null);
+  state.fishing.ownedRods = economyCatalog.fishing.rods.map(item => item.id);
+  state.fishing.ownedHooks = economyCatalog.fishing.hooks.map(item => item.id);
+  state.fishingShop = createFishingShop(state, now, () => 0);
+  assert.equal(canRefreshFishingShop(state), false, 'a bait-only counter has no new stock to sell for pearls');
 });

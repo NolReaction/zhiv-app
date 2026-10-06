@@ -11,7 +11,7 @@ import { wardrobeItems } from "../wardrobe";
 import styles from "./world-dev-panel.module.css";
 
 const format = (value: number) => value.toLocaleString("ru-RU");
-const JOB_FILTERS = [["all", "Все задания"], ["construction", "Только стройка"], ["production", "Только производство"], ["exploration", "Только разведка"]] as const;
+const JOB_FILTERS = [["all", "Все задания"], ["construction", "Только стройка"], ["production", "Только производство"], ["exploration", "Вылазки и шахта"]] as const;
 type JobFilter = typeof JOB_FILTERS[number][0];
 const ITEM_CATEGORIES = [["all", "Все предметы"], ["materials", "Материалы"], ["food", "Еда и урожай"], ["fish", "Рыба"],
   ["rods", "Удочки"], ["hooks", "Крючки"], ["bait", "Наживка"], ["relics", "Реликвии"], ["wardrobe", "Одежда"]] as const;
@@ -61,7 +61,8 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   const levelOptions = [0, ...building.levels.map(entry => entry.level)].filter(value => value > 0 || !["home", "warehouse"].includes(building.id));
   const requestedLevel = level === "" ? Math.min(currentLevel + 1, Math.max(...levelOptions)) : Number(level);
   const nextUpgrade = building.levels.find(entry => entry.level === currentLevel + 1);
-  const buildingJobs = snapshot?.jobs.filter(job => job.kind !== "exploration" && job.targetId === building.id) ?? [];
+  const buildingJobs = snapshot?.jobs.filter(job => job.kind !== "exploration" ? job.targetId === building.id
+    : building.id === "quarry" && !!catalog.explorations.find(route => route.id === job.targetId)?.requiredBuildings.quarry) ?? [];
   const validLevel = levelOptions.includes(requestedLevel) && requestedLevel !== currentLevel && !buildingJobs.length;
   const matchingJobs = snapshot?.jobs.filter(job => jobFilter === "all" || job.kind === jobFilter) ?? [];
   const unfinished = matchingJobs.filter(job => Date.parse(job.finishesAt) > (economy?.now ?? 0));

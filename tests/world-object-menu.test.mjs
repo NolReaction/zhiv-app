@@ -158,7 +158,7 @@ test("starter stone sources use an available forest exploration instead of the l
   const html = renderUpgrade("woodlot", controller({ snapshot: state }), { navigation: { open() {}, canOpen() { return true; }, explore() {} } });
   assert.match(html, /aria-label="Где получить: Камень, В путь\. Есть 0, нужно [0-9]+"/);
   state.buildings.home = 2; state.buildings.quarry = 1;
-  assert.equal(helpers.worldMaterialSource(state, "stone").stationId, "quarry");
+  assert.equal(helpers.worldMaterialSource(state, "stone").kind, "exploration");
 });
 
 test("berry collection uses the server clock and pantry space while construction can finish with a full pantry", () => {
@@ -194,34 +194,31 @@ test("map menu is compact and nonmodal with place-specific production rather tha
   assert.doesNotMatch(html, /Начать ·/);
 });
 
-test("the mine shares production and cave routes while preserving catalogue gates and upgrades", () => {
+test("the mine has one actor route picker without production tabs and keeps upgrade gates", () => {
   const initial = render("quarry");
-  assert.match(initial, /data-quarry-tab="production" aria-pressed="true"/);
-  assert.match(initial, /data-quarry-tab="caves" aria-pressed="false"/);
-  assert.doesNotMatch(initial, /data-route=/);
-  const locked = render("quarry", controller(), { initialQuarryTab: "caves" });
-  assert.match(locked, /data-sector="caves"/);
-  assert.doesNotMatch(locked, /Секторы вылазок|data-recipe=/);
-  assert.equal(disabled(button(locked, "Отправиться")), true);
-  assert.equal(disabled(button(locked, "Обустроить")), false);
-  const unbuilt = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } }) }), { initialQuarryTab: "caves" });
-  assert.equal(disabled(button(unbuilt, "Отправиться")), false, "the entry cave requires home level 2, not a quarry upgrade");
+  assert.match(initial, /data-sector="caves"/);
+  assert.doesNotMatch(initial, /data-quarry-tab|data-recipe=|Секторы вылазок/);
+  assert.equal(disabled(button(initial, "Отправиться")), true);
+  assert.equal(disabled(button(initial, "Обустроить")), false);
+  const unbuilt = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } }) }));
+  assert.equal(disabled(button(unbuilt, "Отправиться")), false, "entry cave keeps the free home-two resource path");
+  assert.match(unbuilt, /data-route="quarry_clay"[^>]*data-locked="true"/);
   assert.match(unbuilt, /data-route="abandoned_quarry"[^>]*data-locked="true"/);
+  const fullMine = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }) }));
+  assert.doesNotMatch(fullMine, /data-route="quarry_shift"|data-route="quarry_deep_face"/);
+  assert.match(fullMine, /data-route="quarry_supply"/);
 });
 
-test("legacy simultaneous quarry and expedition jobs remain claimable from both mine sections", () => {
-  const recipe = economyCatalog.recipes.find(recipe => recipe.buildingId === "quarry");
-  const quarry = job({ targetId: "quarry", recipeId: recipe.id, rewards: recipe.rewards, finishesAt: new Date(now).toISOString() });
+test("legacy simultaneous quarry and expedition jobs remain claimable in the unified mine", () => {
+  const quarry = job({ targetId: "quarry", recipeId: "quarry_stone", rewards: { stone: 8 }, finishesAt: new Date(now).toISOString() });
   const expedition = job({ id: "trip", kind: "exploration", targetId: "cave", recipeId: null, rewards: { stone: 8, ore: 4 }, finishesAt: new Date(now).toISOString() });
   const economy = controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, quarry: 1 }, jobs: [quarry, expedition] }) });
-  for (const initialQuarryTab of ["production", "caves"]) {
-    const html = render("quarry", economy, { initialQuarryTab });
-    assert.equal(disabled(button(html, "Забрать")), false);
-    assert.match(html, /aria-label="Забрать находки: Вход в пещеру"/);
-    assert.match(html, /Отказаться от находок/);
-  }
+  const html = render("quarry", economy);
+  assert.equal(disabled(button(html, "Забрать")), false);
+  assert.match(html, /aria-label="Забрать находки: Вход в пещеру"/);
+  assert.match(html, /Отказаться от находок/);
   economy.snapshot.storage = { capacity: 200, used: 200, reserved: 0, available: 0, overflow: 0 };
-  const full = render("quarry", economy, { initialQuarryTab: "caves", onOpenPantry() {} });
+  const full = render("quarry", economy, { onOpenPantry() {} });
   assert.equal(disabled(button(full, "Забрать")), true);
   assert.equal(disabled(button(full, "К кладовой")), false);
   assert.equal(disabled(button(full, "Открыть кладовую")), false);

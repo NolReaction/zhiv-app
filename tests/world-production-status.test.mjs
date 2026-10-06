@@ -18,6 +18,9 @@ const { createInventoryGainPlayback } = await vite.ssrLoadModule("/features/worl
 const start = Date.parse("2026-10-05T12:00:00Z"), finish = start + 3600_000, owner = "AAAA-0000-0001";
 const iso = value => new Date(value).toISOString();
 function job(stationId, extra = {}) {
+  // A paid pre-redesign order: no live recipe may recreate this job.
+  if (stationId === "quarry") return { id: "saved-quarry", kind: "production", targetId: "quarry", recipeId: "quarry_stone",
+    startedAt: iso(start), finishesAt: iso(finish), rewards: { stone: 8 }, cost: { coins: 0, items: {} }, catalogVersion: 3, ...extra };
   const recipe = catalog.recipes.find(entry => entry.buildingId === stationId);
   return { id: stationId, kind: "production", targetId: stationId, recipeId: recipe.id, startedAt: iso(start), finishesAt: iso(finish),
     rewards: { ...recipe.rewards }, ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}), ...extra };
@@ -161,4 +164,21 @@ test("map-local feedback stays under object menus and disables decorative motion
   assert.match(files[1], /prefers-reduced-motion: reduce[\s\S]*animation: none/);
   assert.match(files[2], /key=\{owner\}/);
   assert.match(files[2], /constructionAnchors.*anchors.filter/);
+});
+
+
+test("retired mine badges preserve saved quantities and deadlines, including unknown old recipes", () => {
+  assert.equal(catalog.recipes.some(recipe => recipe.buildingId === "quarry"), false);
+  const oldJob = job("quarry", { recipeId: "quarry_retired_v1", rewards: { stone: 17 }, catalogVersion: 1 });
+  const saved = state([oldJob], 16), before = structuredClone(saved);
+  const working = mapProductionGroups(saved, start + 30_000)[0].primary;
+  assert.equal(working.recipeName, "Сохранённая добыча");
+  assert.equal(working.remaining, 3570);
+  assert.equal(working.phase, "working");
+  assert.equal(mapProductionGroups(saved, finish)[0].primary.phase, "storage-blocked");
+  saved.storage.available = 17;
+  assert.equal(mapProductionGroups(saved, finish)[0].primary.phase, "ready");
+  assert.deepEqual(saved.jobs, before.jobs);
+  assert.deepEqual(mapProductionGroups(state([{ ...oldJob, kind: "exploration", targetId: "quarry_stone" }]), start), [],
+    "new mining is an actor activity and never duplicates a production badge");
 });

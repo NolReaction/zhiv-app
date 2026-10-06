@@ -104,7 +104,7 @@ test("an empty account reaches home two with bush and forest goods before openin
   complete("start_exploration", "forest_camp");
   const mined = complete("start_construction", "quarry");
   assert.equal(mined.buildings.quarry, 1); assert.equal(mined.buildings.kiln, 0);
-  complete("start_production", "quarry_stone");
+  complete("start_exploration", "quarry_stone");
   const equipped = complete("start_construction", "kiln");
   assert.equal(equipped.buildings.kiln, 1);
   assert.ok(equipped.wallet.coins >= 0);
@@ -119,10 +119,14 @@ test("home two furnace is workshop equipment and existing home one producers and
   assert.equal(issue(p, "start_construction", "kiln").state.jobs[0].targetLevel, 1);
 
   const legacy = player();
-  fixture(legacy, { home: 1, coins: 0, items: { wood: 2 }, buildings: { quarry: 1, kiln: 1 } });
+  const legacyRow = fixture(legacy, { home: 1, coins: 0, items: { wood: 2 }, buildings: { quarry: 1, kiln: 1 } });
   const reopening = read(legacy);
   assert.equal(reopening.buildings.quarry, 1); assert.equal(reopening.buildings.kiln, 1);
-  const stone = issue(legacy, "start_production", "quarry_stone").state.jobs.find(job => job.targetId === "quarry");
+  const stone = { id: crypto.randomUUID(), kind: "production", targetId: "quarry", recipeId: "quarry_stone", targetLevel: null,
+    startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 1800_000).toISOString(),
+    rewards: { stone: 8 }, cost: { coins: 0, items: {} }, catalogVersion: 3 };
+  legacyRow.state.jobs.push(stone);
+  assert.throws(() => issue(legacy, "start_production", "quarry_stone"), { code: "ECONOMY_MINING_ACTIVITY" });
   const charcoal = issue(legacy, "start_production", "make_charcoal").state.jobs.find(job => job.targetId === "kiln");
   const claimed = issue(legacy, "claim_job", charcoal.id, 1, Date.parse(charcoal.finishesAt)).state;
   assert.equal(claimed.inventory.charcoal, charcoal.rewards.charcoal);
@@ -167,6 +171,7 @@ test("the browser accepts explicit nullable Kotlin catalog fields and validates 
     level.requiredBuildings ??= {};
   }
   for (const definition of [...response.catalog.recipes, ...response.catalog.explorations]) definition.requiredBuildings ??= {};
+  for (const route of response.catalog.explorations) route.activity ??= null;
   assert.equal(model.economyViewSchema.safeParse(response).success, true, "Kotlin encodeDefaults/explicitNulls includes null capacity outside warehouses");
   const warehouseLevel = response.catalog.buildings.find(building => building.id === "warehouse").levels[0];
   for (const invalidCapacity of [-1, 0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {

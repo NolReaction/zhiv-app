@@ -2,18 +2,59 @@
   "version": 1,
   "travel": {
     "secondsPerFind": 7200,
-    "routes": ["forest", "forest_camp", "old_woodland", "uplands"],
-    "finds": ["acorn", "feather", "fern_leaf", "moon_moth", "river_stone", "winged_seed"]
+    "routes": [
+      "forest",
+      "forest_camp",
+      "old_woodland",
+      "uplands"
+    ],
+    "finds": [
+      "acorn",
+      "feather",
+      "fern_leaf",
+      "moon_moth",
+      "river_stone",
+      "winged_seed"
+    ]
   },
   "quarry": {
     "secondsPerFind": 14400,
-    "routes": ["cave", "deep_cave", "coastal_deposits", "abandoned_quarry"],
+    "routes": [
+      "cave",
+      "deep_cave",
+      "coastal_deposits",
+      "abandoned_quarry",
+      "quarry_stone",
+      "quarry_stone_overnight",
+      "quarry_ore",
+      "quarry_clay",
+      "quarry_sand",
+      "quarry_shift",
+      "quarry_deep_face",
+      "quarry_supply"
+    ],
     "productionBuilding": "quarry",
     "finds": [
-      { "id": "quartz_cluster", "name": "Кварцевая друза", "description": "Светлые кристаллы из тихой каменной полости." },
-      { "id": "striped_agate", "name": "Полосатый агат", "description": "Тонкие слои хранят рисунок древней породы." },
-      { "id": "pyrite_spark", "name": "Искристый пирит", "description": "Золотистый блеск на строгих гранях камня." },
-      { "id": "fern_fossil", "name": "Отпечаток папоротника", "description": "Лесная веточка оставила след задолго до наших путешествий." }
+      {
+        "id": "quartz_cluster",
+        "name": "Кварцевая друза",
+        "description": "Светлые кристаллы из тихой каменной полости."
+      },
+      {
+        "id": "striped_agate",
+        "name": "Полосатый агат",
+        "description": "Тонкие слои хранят рисунок древней породы."
+      },
+      {
+        "id": "pyrite_spark",
+        "name": "Искристый пирит",
+        "description": "Золотистый блеск на строгих гранях камня."
+      },
+      {
+        "id": "fern_fossil",
+        "name": "Отпечаток папоротника",
+        "description": "Лесная веточка оставила след задолго до наших путешествий."
+      }
     ]
   }
 }

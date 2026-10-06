@@ -28,6 +28,24 @@ class GameAchievementProgressTest {
         assertEquals(1L,economyAchievementProgress(state,true).getValue("first_sale"))
     }
 
+    @Test fun `retired quarry recipes keep promised progress while new mining is a route not a craft`() {
+        val paid = EconomyJob(id = "00000000-0000-4000-8000-000000000001", kind = "production", targetId = "quarry",
+            recipeId = "quarry_stone", startedAt = "2026-10-06T00:00:00Z", finishesAt = "2026-10-06T00:30:00Z",
+            rewards = mapOf("stone" to 8L), catalogVersion = 3)
+        assertFalse(EconomyRules.catalog.recipes.any { it.id == paid.recipeId })
+        val claimed = EconomyRules.initial().copy(progression = EconomyCollectionProgress.advance(EconomyProgression(), paid))
+        assertEquals(1L, economyAchievementProgress(claimed).getValue("master_recipes"))
+        val mining = paid.copy(kind = "exploration", targetId = "quarry_ore", recipeId = null)
+        val current = claimed.copy(progression = EconomyCollectionProgress.advance(claimed.progression, mining))
+        assertEquals(1L, current.progression.routes["quarry_ore"])
+        assertNull(current.progression.recipes["quarry_ore"])
+        assertEquals(1L, economyAchievementProgress(current).getValue("master_recipes"))
+        assertEquals(1L, economyAchievementProgress(current).getValue("familiar_trails"))
+        val historical = current.copy(progression = current.progression.copy(recipes = current.progression.recipes +
+            mapOf("quarry_sand" to 4L, "quarry_forged" to 99L, "cave" to 99L)))
+        assertEquals(2L, economyAchievementProgress(historical).getValue("master_recipes"))
+    }
+
     @Test fun `inherited ownership and wrong chapter time cannot become personal finds`() {
         val state = EconomyRules.initial().copy(progression=EconomyProgression(collections=EconomyBookCollection(listOf("acorn"),0,14400)))
         assertEquals(0L,economyAchievementProgress(state).getValue("lucky_find"))

@@ -8,6 +8,9 @@ import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import { canAffordEconomy } from "./rules";
+import { economyActorConflict } from "./actor-availability";
+import { fishingTripCost } from "./fishing";
+import { useFishingCommand } from "./use-fishing-command";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 import { ConstructionSpeedup } from "./construction-speedup";
 import { useGardenCollection } from "./garden-collection-context";
@@ -198,9 +201,11 @@ function BuildingCard({ economy, building, navigate }: { economy: ReadyEconomy; 
   const ownJob = state.jobs.find(job => job.kind === "construction" && job.targetId === building.id);
   const construction = state.jobs.some(job => job.kind === "construction");
   const production = state.jobs.some(job => job.kind === "production" && job.targetId === building.id);
+  const mining = building.id === "quarry" && state.jobs.some(job => job.kind === "exploration"
+    && !!state.catalog.explorations.find(route => route.id === job.targetId)?.requiredBuildings.quarry);
   const required = target ? requirements(target) : {};
   const reason = !target || target.level <= level ? "Этот уровень уже получен" : target.level !== level + 1 ? `Сначала получите уровень ${target.level - 1}`
-    : unmetRequirement(state, required) ?? (construction ? "Сначала завершите текущую стройку" : production ? "Сначала заберите готовую продукцию" : !canAffordEconomy(state, target.cost) ? "Не хватает монет или материалов" : null);
+    : unmetRequirement(state, required) ?? (construction ? "Сначала завершите текущую стройку" : production ? "Сначала заберите готовую продукцию" : mining ? "Дождитесь Мохлика и заберите добычу" : !canAffordEconomy(state, target.cost) ? "Не хватает монет или материалов" : null);
   const Icon = buildingIcons[building.id] ?? House;
   return <div className={styles.stack}>
     {ownJob && <JobCard economy={economy} job={ownJob} navigate={navigate} />}
@@ -217,6 +222,7 @@ function BuildingCard({ economy, building, navigate }: { economy: ReadyEconomy; 
       </>}
       {reason && <p className={styles.hint}>{target && target.level <= level ? <Check size={14} aria-hidden /> : <LockKeyhole size={14} aria-hidden />}{reason}</p>}
       {target && target.level > level + 1 && <button className={styles.textButton} onClick={() => setPreview(null)}>К ближайшему улучшению<ArrowRight size={15} aria-hidden /></button>}
+      {level > 0 && building.id === "quarry" && <button className={styles.textButton} onClick={() => navigate("exploration", "quarry_stone")}>Выбрать участок для добычи<ArrowRight size={15} aria-hidden /></button>}
       {level > 0 && state.catalog.recipes.some(recipe => recipe.buildingId === building.id) && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>{production ? "К текущему заказу" : "Открыть производство"}<ArrowRight size={15} aria-hidden /></button>}
       {target && target.level > level && Object.entries(target.cost.items).some(([id, amount]) => (state.inventory[id] ?? 0) < amount) && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(target.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount)?.[0])}>Где взять недостающие материалы?<ArrowRight size={15} aria-hidden /></button>}
     </article>
@@ -279,7 +285,9 @@ function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; nav
 }
 
 function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
-  const { snapshot: state, busy, uncertain } = economy;
+  const { snapshot: state } = economy;
+  const { blocked, send } = useFishingCommand({ economy, state });
+  const conflict = economyActorConflict(state.jobs, "departure", economy.now);
   const job = state.jobs.find(entry => entry.kind === "exploration");
   const routes = [...state.catalog.explorations].sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Мохлик-исследователь</h2><p className={styles.muted}>Выберите цель вылазки. Производство продолжится, пока Мохлик в пути.</p></div></div>
@@ -287,12 +295,16 @@ function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; na
     {routes.map(exploration => {
       const required = requirements(exploration), rewardCount = Object.values(exploration.rewards).reduce((sum, amount) => sum + amount, 0);
       const tooLarge = rewardCount > state.storage.capacity;
-      const reason = unmetRequirement(state, required) ?? (tooLarge ? "Для этих находок нужно расширить склад" : job ? "Сначала завершите текущую вылазку" : state.jobs.some(entry => entry.collection?.startedAt) ? "Сначала завершите сбор урожая" : !canAffordEconomy(state, exploration.cost) ? "Не хватает припасов" : null);
+      const fishing = !!state.catalog.fishing?.routeIds.includes(exploration.id);
+      const cost = fishing ? fishingTripCost(exploration.cost, state) : exploration.cost;
+      const mineConstruction = exploration.requiredBuildings.quarry && state.jobs.some(entry => entry.kind === "construction" && entry.targetId === "quarry");
+      const reason = unmetRequirement(state, required) ?? (tooLarge ? "Для этих находок нужно расширить склад"
+        : conflict?.message ?? (mineConstruction ? "Дождитесь улучшения шахты и заберите результат" : !canAffordEconomy(state, cost) ? "Не хватает припасов" : null));
       const Icon = exploration.id.includes("cave") ? Mountain : exploration.id === "shore" ? Fish : Compass;
       return <article key={exploration.id} className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{exploration.name}</h3><p className={styles.muted}>{exploration.description}</p></div></div>
-        <Rewards state={state} value={exploration.rewards} /><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={exploration.cost} />
+        <Rewards state={state} value={exploration.rewards} /><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={cost} />
         <p className={styles.muted}>Находки займут {number(rewardCount)} мест на складе.</p>
-        <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(exploration.seconds)}</span><button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_exploration", exploration.id)}>Отправиться<span className={styles.sr}>: {exploration.name}</span></button></div>
+        <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(exploration.seconds)}</span><button className={styles.primary} disabled={Boolean(reason) || blocked} onClick={() => send(fishing ? "start_fishing" : "start_exploration", exploration.id, 1, 0, !reason)}>Отправиться<span className={styles.sr}>: {exploration.name}</span></button></div>
         {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
         {tooLarge && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
       </article>;

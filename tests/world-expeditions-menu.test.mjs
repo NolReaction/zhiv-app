@@ -31,9 +31,14 @@ function renderSector(sectorId, economy = controller(), props = {}) {
   return renderToStaticMarkup(createElement(WorldExpeditionSector, { sectorId, economy, state: economy.snapshot, selectedRoute: null, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration"), onSelectRoute() {}, onOpenPantry() {}, ...props }));
 }
 function route(html, id) {
-  const found = html.match(new RegExp(`<details\\b[^>]*data-route="${id}"[^>]*>[\\s\\S]*?<\\/details>`));
-  assert.ok(found, `Missing route: ${id}`);
-  return found[0];
+  const start = html.search(new RegExp(`<details\\b[^>]*data-route="${id}"[^>]*>`));
+  assert.ok(start >= 0, `Missing route: ${id}`);
+  let depth = 0;
+  for (const match of html.slice(start).matchAll(/<\/?details\b[^>]*>/g)) {
+    depth += match[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) return html.slice(start, start + match.index + match[0].length);
+  }
+  assert.fail(`Unclosed route: ${id}`);
 }
 function button(html, label) {
   const found = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: match[2].replace(/<[^>]*>/g, "") })).find(entry => entry.attributes.includes(`aria-label="${label}"`) || entry.text.includes(label));
@@ -58,7 +63,7 @@ test("expeditions open one sector with accessible controls instead of all ten ro
 });
 
 test("every catalog route belongs to exactly one sector and keeps its actual findings", () => {
-  const expected = { forest: ["forest", "forest_camp", "old_woodland", "uplands"], shore: ["shore", "shore_camp", "coastal_deposits"], caves: ["cave", "deep_cave", "abandoned_quarry"] };
+  const expected = { forest: ["forest", "forest_camp", "old_woodland", "uplands"], shore: ["shore", "shore_camp", "coastal_deposits"], caves: ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply"] };
   const seen = [];
   for (const sector of expeditionSectors) {
     const html = renderSector(sector.id);
