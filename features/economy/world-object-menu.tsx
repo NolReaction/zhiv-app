@@ -24,8 +24,9 @@ export type WorldObjectMenuProps = {
   onReturnFocus?: () => void;
   /** Safe insets in CSS pixels, in the same map viewport as selection.x/y. */
   bounds?: WorldMenuBounds;
-  onNavigate?: (place: WorldPlace, stationId?: string) => void;
+  onNavigate?: (place: WorldPlace, stationId?: string, recipeId?: string) => void;
   initialStationId?: string;
+  initialRecipeId?: string;
   onExplore?: () => void;
   onOpenPantry?: () => void;
   constructionGoal?: ConstructionGoalController;
@@ -110,7 +111,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, constructionGoal, onOpenGoal }: WorldObjectMenuProps) {
+function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -121,7 +122,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   const definition = worldStations[selection.place] ?? { label: selection.objectId, stationIds: [] };
   const initialStation = initialStationId && definition.stationIds.includes(initialStationId) ? initialStationId : definition.stationIds[0] ?? "";
   const [stationId, setStationId] = useState(initialStation);
-  const [recipeId, setRecipeId] = useState<string | null>(null);
+  const [recipeId, setRecipeId] = useState<string | null>(initialRecipeId ?? null);
   const [saleItem, setSaleItem] = useState<string | null>(null);
   const [upgradeStation, setUpgradeStation] = useState<string | null>(initialStation === "home" ? "home" : null);
   const upgradeTrigger = useRef<HTMLElement | null>(null);
@@ -178,10 +179,15 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   function chooseStation(id: string) { setStationId(id); setRecipeId(null); setSaleItem(null); setUpgradeStation(id === "home" ? "home" : null); }
   function openUpgrade() { upgradeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setUpgradeStation(stationId); }
   function closeUpgrade() { if (stationId === "home") onClose(); else setUpgradeStation(null); }
-  function openStation(id: string) {
+  function openStation(id: string, targetRecipeId?: string) {
+    if (id === stationId && targetRecipeId && targetRecipeId === recipeId) {
+      const back = menuBody.current?.querySelector<HTMLButtonElement>(`.${styles.recipeBack}`);
+      back?.focus({ preventScroll: true }); back?.scrollIntoView({ block: "start" });
+      return;
+    }
     if (id === "warehouse" && onOpenPantry) { navigating.current = true; setUpgradeStation(null); onOpenPantry(); }
-    else if (definition.stationIds.includes(id)) chooseStation(id);
-    else { const place = worldPlaceForStation(id); if (place && onNavigate) { navigating.current = true; setUpgradeStation(null); onNavigate(place, id); } }
+    else if (definition.stationIds.includes(id)) { chooseStation(id); if (targetRecipeId) setRecipeId(targetRecipeId); }
+    else { const place = worldPlaceForStation(id); if (place && onNavigate) { navigating.current = true; setUpgradeStation(null); onNavigate(place, id, targetRecipeId); } }
   }
   function chooseRecipe(id: string) {
     recipeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -190,7 +196,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   }
   function closeRecipe() {
     setRecipeId(null);
-    requestAnimationFrame(() => recipeTrigger.current?.focus());
+    requestAnimationFrame(() => { if (recipeTrigger.current?.isConnected) recipeTrigger.current.focus(); else panel.current?.focus({ preventScroll: true }); });
   }
   const navigation: StationNavigation = { open: openStation, canOpen: id => definition.stationIds.includes(id) || Boolean(onNavigate && worldPlaceForStation(id)), explore: onExplore ? () => { navigating.current = true; setUpgradeStation(null); onExplore(); } : undefined };
   const readyEconomy = state ? { ...economy, snapshot: state } : null;
@@ -235,5 +241,5 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   </>;
 }
 
-export function WorldObjectMenu(props: WorldObjectMenuProps) { return <ObjectMenuBody key={props.selection.objectId} {...props} />; }
+export function WorldObjectMenu(props: WorldObjectMenuProps) { return <ObjectMenuBody key={`${props.selection.objectId}:${props.initialStationId ?? ""}:${props.initialRecipeId ?? ""}`} {...props} />; }
 export const ObjectMenu = WorldObjectMenu;

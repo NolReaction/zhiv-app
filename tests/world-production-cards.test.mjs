@@ -21,8 +21,8 @@ function controller(overrides = {}, flags = {}) {
   return { snapshot: { ...state, storage: overrides.storage ?? economyStorage(state) }, market: null, marketError: null, busy: false, uncertain: false, error: null, notice: "", now, retryAt: 0,
     act() {}, actMarket() {}, refresh() {}, refreshMarket() {}, retry() {}, ...flags };
 }
-function renderMenu(place, economy = controller()) {
-  return renderToStaticMarkup(createElement(WorldObjectMenu, { selection: { place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 }, economy, onClose() {} }));
+function renderMenu(place, economy = controller(), extra = {}) {
+  return renderToStaticMarkup(createElement(WorldObjectMenu, { selection: { place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 }, economy, onClose() {}, ...extra }));
 }
 function renderRecipe(id, economy = controller(), extra = {}) {
   return renderToStaticMarkup(createElement(WorldRecipeDetail, { economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === id), onCollapse() {}, ...extra }));
@@ -138,6 +138,33 @@ test("locked recipe explains its prerequisites once and remains unavailable", ()
   assert.match(html, /aria-label="Недостающие условия"/);
   assert.match(html, /Печь · нужен ур. 2/);
   assert.doesNotMatch(html, /Печь: нужен уровень 2/);
+});
+
+test("direct material navigation opens recipe preparation even before the workshop is unlocked", () => {
+  for (const workshopLevel of [0, 1]) {
+    const economy = controller({ buildings: { home: 2, workshop: workshopLevel, warehouse: 1 }, inventory: { wood: 2 } },
+      { act() { assert.fail("opening recipe preparation cannot start production"); } });
+    const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "make_planks");
+    const html = renderMenu("workshop", economy, { initialStationId: "workshop", initialRecipeId: recipe.id });
+    const preparation = section(html, recipe.name);
+    assert.match(preparation, /Все рецепты/);
+    assert.match(preparation, /2 \/ 2/);
+    assert.equal(startDisabled(preparation), workshopLevel === 0);
+    assert.match(html, /<div[^>]*hidden=""[^>]*aria-label="Продукция: Мастерская"/);
+    if (!workshopLevel) {
+      assert.match(preparation, /aria-label="Недостающие условия"/);
+      assert.match(preparation, /Мастерская <span>0\/1<\/span>/);
+    }
+  }
+});
+
+test("a direct recipe from another station or an unknown recipe leaves the ordinary catalog visible", () => {
+  const economy = controller({}, { act() { assert.fail("an invalid recipe cannot start production"); } });
+  for (const initialRecipeId of ["grow_berries", "missing_recipe"]) {
+    const html = renderMenu("workshop", economy, { initialStationId: "workshop", initialRecipeId });
+    assert.match(section(html, "Обычные заказы"), /data-recipe="make_planks"/);
+    assert.doesNotMatch(html, /Начать ·|Все рецепты|<div[^>]*hidden=""[^>]*aria-label="Продукция:/);
+  }
 });
 
 test("storage warning appears only when the selected result will not currently fit", () => {

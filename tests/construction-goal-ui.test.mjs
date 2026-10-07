@@ -64,16 +64,41 @@ test("goal summary shows the current shortfall and routes material taps without 
   const calls = [];
   const details = { goal: { buildingId: "home", targetLevel: 2 }, name: "Дом Мохлика", missing: { coins: 600, items: { wood: 7, stone: 0 } } };
   const controller = { goal: details.goal, details, clear: () => calls.push("clear"), pin() { throw Error("No goal change"); } };
-  const tree = ConstructionGoalSummary({ state: state(), constructionGoal: controller, onOpenGoal: () => calls.push("goal"), navigation: { canOpen: () => true, open: id => calls.push(id) }, compact: true });
+  const tree = ConstructionGoalSummary({ state: state(), constructionGoal: controller, onOpenGoal: () => calls.push("goal"), navigation: { canOpen: () => true, open: (...args) => calls.push(args) }, compact: true });
   const nodes = elements(tree);
   const html = renderToStaticMarkup(tree);
   assert.match(html, /Монеты: не хватает 600/);
   assert.match(html, /не хватает 7/);
-  assert.doesNotMatch(html, /Камень|Материалы собраны/);
+  assert.doesNotMatch(html, /Камень|Материалы собраны|Собираю на улучшение|Ещё нужно/);
+  assert.equal(nodes.find(element => element.props["aria-label"] === "Монеты: не хватает 600").type, "span");
   nodes.find(element => element.props["aria-label"]?.startsWith("Где получить:")).props.onClick();
   nodes.find(element => element.props["aria-label"]?.startsWith("Открыть цель:")).props.onClick();
   nodes.find(element => element.props["aria-label"]?.startsWith("Снять цель:")).props.onClick();
-  assert.deepEqual(calls, ["woodlot", "goal", "clear"]);
+  assert.deepEqual(calls, [["woodlot", "gather_wood"], "goal", "clear"]);
+});
+
+test("a missing crafted material opens its exact recipe even before the workshop is built", () => {
+  const snapshot = state();
+  snapshot.buildings.workshop = 0;
+  const calls = [];
+  const details = { goal: { buildingId: "home", targetLevel: 2 }, name: "Дом Мохлика", missing: { coins: 0, items: { planks: 6 } } };
+  const tree = ConstructionGoalSummary({ state: snapshot, constructionGoal: { goal: details.goal, details, clear() {} }, onOpenGoal() {}, navigation: { canOpen: id => id === "workshop", open: (...args) => calls.push(args) } });
+  const material = elements(tree).find(element => element.props["aria-label"]?.startsWith("Где получить:"));
+  assert.match(material.props.title, /не хватает 6/);
+  material.props.onClick();
+  assert.deepEqual(calls, [["workshop", "make_planks"]]);
+});
+
+test("gathered materials route to expeditions and unavailable navigation is rendered as text", () => {
+  const calls = [];
+  const details = { goal: { buildingId: "home", targetLevel: 2 }, name: "Дом Мохлика", missing: { coins: 0, items: { stone: 7, planks: 6 } } };
+  const tree = ConstructionGoalSummary({ state: state(), constructionGoal: { goal: details.goal, details, clear() {} }, onOpenGoal() {}, navigation: { canOpen: () => false, open() { throw Error("No map destination"); }, explore: () => calls.push("explore") } });
+  const nodes = elements(tree);
+  const material = nodes.find(element => element.props["aria-label"]?.startsWith("Где получить:"));
+  assert.match(material.props.title, /Камень: не хватает 7/);
+  material.props.onClick();
+  assert.deepEqual(calls, ["explore"]);
+  assert.equal(nodes.find(element => element.props["aria-label"] === "Доски: не хватает 6").type, "span");
 });
 
 test("fully collected materials do not promise construction readiness while the builder is busy", () => {

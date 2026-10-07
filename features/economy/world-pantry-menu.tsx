@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronUp, Clock3, Compass, Fish, Gift, Hammer, Package, RefreshCw, Snowflake, Store, Sparkles } from "lucide-react";
+import { Check, ChevronUp, Clock3, Compass, Fish, Gift, Hammer, Package, RefreshCw, Snowflake, Store, Sparkles } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/fish-species";
 import { FishRarityBadge } from "./fish-rarity";
@@ -60,7 +60,7 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop, constr
     </div>
     <p className={styles.muted}>В запасе {number(stock)} · {discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%` : `${number(item.baseSellPrice)} монет за штуку`}</p>
     {discount > 0 && <p className={styles.muted}>Сумма за всё количество округляется вниз до целой монеты.</p>}
-    {betterFishPrice && <p className={styles.fishBuyer}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку.{onOpenFishingShop && <button type="button" className={styles.textButton} onClick={onOpenFishingShop}>К Плёске<ArrowRight size={13} aria-hidden="true" /></button>}</p>}
+    {betterFishPrice && <p className={styles.fishBuyer}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку.{onOpenFishingShop && <button type="button" className={styles.textButton} onClick={onOpenFishingShop}>К Плёске</button>}</p>}
     {goal && needed > 0 && <p className={styles.goalNote}>Для цели «{goal.name}» нужно оставить {number(Math.min(stock, needed))} шт., включая сырьё для изготовления.</p>}
     {item.tradable ? <>
       <div className={styles.saleControls}>
@@ -87,7 +87,7 @@ export function RelicPantrySection({ state, onExplore, onOpenMarket }: { state: 
         <div className={styles.relicHeading}><span className={styles.relicArt}><ItemIcon itemId={item.id} size={48} /></span><div><h3>{item.name}</h3></div><strong aria-label={`В наличии: ${number(stock)}`}>×{number(stock)}</strong></div>
       </article>;
     })}</div>
-    {items.length === 0 ? <p className={styles.muted}>Реликвии появятся вместе с новыми маршрутами.</p> : <><p className={styles.muted}>{requiredHome ? `Находки в вылазках с домом ур. ${requiredHome}. ` : "Находки из вылазок. "}Их также можно получить по обмену с другими игроками.</p><div className={styles.relicActions}><button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />В путь<ArrowRight size={13} aria-hidden="true" /></button>{onOpenMarket && <button type="button" className={styles.textButton} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Лавки игроков<ArrowRight size={13} aria-hidden="true" /></button>}</div></>}
+    {items.length === 0 ? <p className={styles.muted}>Реликвии появятся вместе с новыми маршрутами.</p> : <><p className={styles.muted}>{requiredHome ? `Находки в вылазках с домом ур. ${requiredHome}. ` : "Находки из вылазок. "}Их также можно получить по обмену с другими игроками.</p><div className={styles.relicActions}><button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />В путь</button>{onOpenMarket && <button type="button" className={styles.textButton} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Лавки игроков</button>}</div></>}
   </section>;
 }
 
@@ -128,12 +128,12 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
   const readyEconomy = { ...economy, snapshot: state };
   return <div className={styles.pantry} aria-busy={economy.busy || undefined}>
     {recovery}
-    {onReturnToGift && <button type="button" className={styles.giftReturn} onClick={onReturnToGift}><ArrowLeft size={15} aria-hidden="true" /><Gift size={17} aria-hidden="true" />Вернуться к подарку</button>}
+    {onReturnToGift && <button type="button" className={styles.giftReturn} onClick={onReturnToGift}><Gift size={17} aria-hidden="true" />Вернуться к подарку</button>}
     {constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} />}
     <div className={styles.capacity} data-full={available === 0 || undefined}>
-      <div><span className={styles.capacityLabel}><Package size={17} aria-hidden="true" />Занято мест</span><strong>{number(occupied)} <span>/ {number(capacity)}</span></strong></div>
+      <div><span className={styles.capacityLabel}><Package size={14} aria-hidden="true" />Занято <strong>{number(occupied)} <span>/ {number(capacity)}</span></strong></span><span>{available > 0 ? `Свободно ${number(available)}` : "Все места заняты"}</span></div>
       <progress value={Math.min(capacity, occupied)} max={Math.max(1, capacity)} aria-label={`Кладовая: занято ${occupied} из ${capacity} мест`} />
-      <p className={styles.muted}>{available > 0 ? `Свободно ${number(available)}` : "Все места заняты"}{reserved > 0 && ` · На рынке ${number(reserved)}`}</p>
+      {reserved > 0 && <p className={styles.muted}>На рынке {number(reserved)}</p>}
     </div>
     {overflow > 0 && <p className={styles.hint}>Сверх вместимости: {number(overflow)}. Запасы сохранены. Продайте или используйте часть вещей, чтобы получать новые.</p>}
     {reserved > 0 && <p className={styles.muted}>Товары на рынке тоже занимают место до продажи.</p>}
@@ -144,7 +144,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
         const next = event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length : event.key === "ArrowRight" ? (index + 1) % sections.length : -1;
         if (next < 0) return;
         event.preventDefault(); setTab(sections[next].id); setSelectedItemId(null); tabs.current[next]?.focus();
-      }}><entry.icon size={16} aria-hidden="true" /><small>{number(entry.count)}</small><span>{entry.name}</span></button>)}</div>
+      }}><entry.icon size={14} aria-hidden="true" /><small>{number(entry.count)}</small><span>{entry.name}</span></button>)}</div>
     <div role="tabpanel" className={styles.pantryPanel} id={`${tabId}-panel`} aria-labelledby={`${tabId}-${tab}`}>
       {tab === "relics" ? <RelicPantrySection state={state} onExplore={onExplore} onOpenMarket={marketAvailable ? onOpenMarket : undefined} /> : <>
     {tab === "fridge" && <div className={styles.fridgeHeading}><span><Snowflake size={16} aria-hidden="true" />Улов и рыба для готовки</span><small>Места общие с кладовой</small></div>}
@@ -156,20 +156,20 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
           return <button key={item.id} type="button" className={styles.item} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id} onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
           <ProductIcon state={state} itemId={item.id} size={20} />
           <span>{item.name}</span>
-          <strong>×{number(state.inventory[item.id])}</strong>
-          {(constructionGoal?.details?.keepItems[item.id] ?? 0) > 0 && <small className={styles.goalItem}>Для цели: {number(Math.min(state.inventory[item.id], constructionGoal!.details!.keepItems[item.id]))}</small>}
+          <span className={styles.itemStock}><strong>×{number(state.inventory[item.id])}</strong>
+          {(constructionGoal?.details?.keepItems[item.id] ?? 0) > 0 && <small className={styles.goalItem}>Для цели: {number(Math.min(state.inventory[item.id], constructionGoal!.details!.keepItems[item.id]))}</small>}</span>
           {fish && <FishRarityBadge className={styles.itemRarity} rarity={fish.rarity} />}
         </button>; })}
       </div>
       {!selectedItemId && <p className={styles.muted}>Выберите предмет, чтобы продать торговцу.</p>}
-    </> : <div className={styles.empty}>{tab === "fridge" ? <Fish size={25} aria-hidden="true" /> : <Package size={23} aria-hidden="true" />}<p>{tab === "fridge" ? "Здесь будет рыба с берега и из лавки Плёски." : reserved > 0 && !ownedItems.length ? "Все запасы сейчас на рынке." : "Здесь будут урожай, материалы и находки."}</p>{(tab === "fridge" || reserved === 0) && <button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />{tab === "fridge" ? "Выбрать вылазку" : "Отправиться за находками"}<ArrowRight size={13} aria-hidden="true" /></button>}</div>}
+    </> : <div className={styles.empty}>{tab === "fridge" ? <Fish size={25} aria-hidden="true" /> : <Package size={23} aria-hidden="true" />}<p>{tab === "fridge" ? "Здесь будет рыба с берега и из лавки Плёски." : reserved > 0 && !ownedItems.length ? "Все запасы сейчас на рынке." : "Здесь будут урожай, материалы и находки."}</p>{(tab === "fridge" || reserved === 0) && <button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />{tab === "fridge" ? "Выбрать вылазку" : "Отправиться за находками"}</button>}</div>}
 
       </>}
     </div>
 
     <div className={styles.footer}>
-      {job && progress ? <button type="button" className={styles.expand} onClick={onUpgrade} aria-haspopup="dialog"><span className={styles.expandIcon}>{progress.ready ? <Check size={16} aria-hidden="true" /> : <Clock3 size={16} aria-hidden="true" />}</span><span><strong>{progress.ready ? "Расширение готово" : "Кладовая расширяется"}</strong><small>{progress.ready ? `Можно получить уровень ${job.targetLevel}` : `Ещё ${progress.seconds < 60 ? `${progress.seconds} с` : worldDuration(progress.seconds)}`}</small></span><ArrowRight size={15} aria-hidden="true" /></button>
-        : target ? <div className={styles.expansion}><button type="button" className={styles.expand} onClick={onUpgrade} aria-haspopup="dialog"><span className={styles.expandIcon}><Hammer size={16} aria-hidden="true" /></span><span><strong>Расширить кладовую</strong><small>Ур. {level} → {target.level}{target.warehouseCapacity ? ` · ${number(capacity)} → ${number(target.warehouseCapacity)} мест` : ""}</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+      {job && progress ? <button type="button" className={styles.expand} onClick={onUpgrade} aria-haspopup="dialog"><span className={styles.expandIcon}>{progress.ready ? <Check size={16} aria-hidden="true" /> : <Clock3 size={16} aria-hidden="true" />}</span><span><strong>{progress.ready ? "Расширение готово" : "Кладовая расширяется"}</strong><small>{progress.ready ? `Можно получить уровень ${job.targetLevel}` : `Ещё ${progress.seconds < 60 ? `${progress.seconds} с` : worldDuration(progress.seconds)}`}</small></span></button>
+        : target ? <div className={styles.expansion}><button type="button" className={styles.expand} onClick={onUpgrade} aria-haspopup="dialog"><span className={styles.expandIcon}><Hammer size={16} aria-hidden="true" /></span><span><strong>Расширить кладовую</strong><small>Ур. {level} → {target.level}{target.warehouseCapacity ? ` · ${number(capacity)} → ${number(target.warehouseCapacity)} мест` : ""}</small></span></button>
           {expansionRelics.length > 0 && <ul className={styles.expansionRelics} aria-label="Реликвии для следующего расширения">{expansionRelics.map(([id, required]) => {
             const stock = state.inventory[id] ?? 0;
             const name = relics.find(item => item.id === id)!.name;
@@ -177,7 +177,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
           })}</ul>}
         </div>
           : <p className={styles.maximum}><Check size={13} aria-hidden="true" />Ур. {level} · Максимальная вместимость</p>}
-      {marketAvailable && <button type="button" className={styles.market} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Рынок игроков<ArrowRight size={13} aria-hidden="true" /></button>}
+      {marketAvailable && <button type="button" className={styles.market} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Рынок игроков</button>}
     </div>
   </div>;
 }

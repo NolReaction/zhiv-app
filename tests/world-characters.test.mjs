@@ -308,3 +308,26 @@ test("opening gifts from the profile clears an abandoned pantry return", () => {
     assert.equal(nav.refreshes, 0, "reopening from the profile does not follow the old pantry return");
   } finally { nav.restore(); }
 });
+
+test("a pantry material opens its exact recipe and a later map visit does not inherit that recipe", () => {
+  const nav = navigation();
+  const selection = place => ({ place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
+  try {
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    nav.component("WorldPantryMenu").props.navigation.open("workshop", "make_planks");
+    assert.equal(nav.component("WorldPantryMenu"), undefined, "the pantry yields its space to production");
+    const scene = nav.component("WorldScene");
+    assert.equal(scene.props.openObjectRequest.place, "workshop");
+    scene.props.onPlace("workshop", selection("workshop"));
+    const workshop = nav.component("WorldObjectMenu");
+    assert.equal(workshop.props.initialStationId, "workshop");
+    assert.equal(workshop.props.initialRecipeId, "make_planks");
+    workshop.props.onClose();
+    nav.component("WorldScene").props.onPlace("garden", selection("garden"));
+    const garden = nav.component("WorldObjectMenu");
+    assert.equal(garden.props.selection.place, "garden");
+    assert.equal(garden.props.initialRecipeId, undefined);
+    assert.equal(garden.props.initialStationId, undefined);
+    assert.equal(nav.refreshes, 0, "opening a recipe does not issue an economy action or refresh");
+  } finally { nav.restore(); }
+});

@@ -12,7 +12,7 @@ import { ProductionActivity, productionIsActive } from "./production-activity";
 import styles from "./world-object-menu.module.css";
 
 export type ReadyEconomy = EconomyController & { snapshot: EconomyView };
-export type StationNavigation = { open: (id: string) => void; canOpen: (id: string) => boolean; explore?: () => void };
+export type StationNavigation = { open: (id: string, recipeId?: string) => void; canOpen: (id: string) => boolean; explore?: () => void };
 export const number = (value: number) => value.toLocaleString("ru-RU");
 export const stationIcons: Record<string, LucideIcon> = { home: House, warehouse: Package, garden: Sprout, dryer: CookingPot, workshop: Hammer, kiln: Flame, quarry: Pickaxe, woodlot: Trees };
 export const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? id;
