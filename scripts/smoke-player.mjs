@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { checkNextDevDependencies, nextDevArguments } from "./next-dev.mjs";
 
 // Starts an isolated local memory API. Never accepts a remote/production URL.
 const root = fileURLToPath(new URL("..", import.meta.url));
 const port = Number(process.env.PLAYER_SMOKE_PORT ?? 3217);
 assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535, "Invalid local test port");
 const origin = `http://127.0.0.1:${port}`;
-const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", String(port)], {
+const { nextBin } = checkNextDevDependencies(root);
+const server = spawn(process.execPath, [nextBin, ...nextDevArguments(["--hostname", "127.0.0.1", "--port", String(port)])], {
   cwd: root, env: { ...process.env, NODE_ENV: "development", NEXT_TELEMETRY_DISABLED: "1" }, stdio: ["ignore", "pipe", "pipe"],
 });
 let serverLog = "", cookie = "", checked = 0;
@@ -78,13 +80,28 @@ try {
   for (const path of ["/", "/branch", "/prototype/tiled-world"]) {
     const response = await fetch(`${origin}${path}`, { headers: { Cookie: cookie }, redirect: "error", signal: AbortSignal.timeout(30_000) });
     assert.equal(response.status, 200, `${path} must render`);
-    assert.match(await response.text(), /<html/); checked++;
+    const html = await response.text();
+    assert.match(html, /<html/); checked++;
+    if (path === "/") {
+      const scripts = [...new Set([...html.matchAll(/<script[^>]*\bsrc="([^"<>]+)"/g)]
+        .map(match => match[1].replaceAll("&amp;", "&")).filter(src => src.startsWith("/_next/static/")))];
+      assert.ok(scripts.length, "The entry page must include its real Next client chunks");
+      for (const src of scripts) {
+        const chunk = await fetch(new URL(src, origin), { signal: AbortSignal.timeout(30_000) });
+        assert.equal(chunk.status, 200, `Client chunk must exist: ${src}`);
+        assert.match(chunk.headers.get("cache-control") ?? "", /(?:no-cache|no-store)/i, "Development chunks must revalidate");
+        assert.doesNotMatch(chunk.headers.get("cache-control") ?? "", /immutable/i);
+        assert.ok((await chunk.text()).length > 0, "Client chunk must not be empty");
+      }
+      checked++;
+    }
   }
   console.log(JSON.stringify({ passed: checked, environment: "local Next memory API", initialCoins: initial.wallet.coins,
     storageCapacity: initial.storage.capacity, firstCrop: planted.state.jobs[0].rewards,
     firstCropSeconds: (Date.parse(planted.state.jobs[0].finishesAt) - Date.parse(planted.state.jobs[0].startedAt)) / 1000,
     registration: "ok", checkInReplay: "ok", orderReplay: "ok", revisionRecovery: "ok", earlyClaim: "rejected",
     cancellation: "no rewards; crop preserved", market: "locked", admin: "unavailable in local API",
+    clientChunks: "entry scripts exist and cannot be served as immutable DEV assets",
     limitations: "HTTP and server-rendered pages only; no browser layout, real OAuth, PostgreSQL or elapsed crop completion" }, null, 2));
 } catch (error) {
   console.error(serverLog);

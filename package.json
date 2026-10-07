@@ -8,10 +8,10 @@
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
-    "dev:local": "next dev --hostname localhost",
+    "dev:local": "node scripts/next-dev.mjs --hostname localhost",
     "dev:mochlik": "npm run dev:local --",
-    "dev:lan": "next dev --hostname 0.0.0.0",
-    "dev:vps": "next dev --hostname 0.0.0.0",
+    "dev:lan": "node scripts/next-dev.mjs --hostname 0.0.0.0",
+    "dev:vps": "node scripts/next-dev.mjs --hostname 0.0.0.0",
     "build": "node scripts/app-build.mjs -- bash scripts/build-verified.sh",
     "build:vps": "node scripts/app-build.mjs -- next build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",

@@ -32,6 +32,10 @@
 .root .toolbar .trigger { padding: 8px 13px; border-radius: 999px; background: #172a20f5; border-color: #84976a; box-shadow: 0 3px 15px #08120e45; font-size: 12px; letter-spacing: .025em; }
 .root .toolbar .repeat { border-radius: 999px; background: #172a20f5; font-size: 12px; }
 .closedFeedback { max-width: 250px; margin: 0; padding: 5px 8px; border-radius: 7px; background: #172a20f2; color: var(--dev-muted); font-size: 11px; line-height: 1.35; }
+.recovery { pointer-events: auto; width: min(320px, calc(100vw - 24px)); padding: 12px; border: 1px solid var(--dev-line); border-radius: 12px; background: var(--dev-bg); box-shadow: 0 8px 24px #050e0a55; }
+.recovery p { margin: 0 0 10px; }
+.recovery > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.recovery button { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 8px 10px; border: 1px solid var(--dev-line); border-radius: 9px; background: #283b2d; color: var(--dev-ink); cursor: pointer; }
 .count { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; background: #dce99a; border-radius: 100px; color: #1a2c1c; font-weight: 750; }
 .drawer { display: flex; flex-direction: column; width: min(420px, calc(100vw - 24px)); height: min(700px, calc(100dvh - 157px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); border: 1px solid #708564; border-radius: 17px; overflow: hidden; background: var(--dev-bg); box-shadow: 0 12px 40px #050e0a55; }
 .header { display: flex; flex-shrink: 0; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--dev-line); }

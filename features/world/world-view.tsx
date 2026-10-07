@@ -1,5 +1,5 @@
 "use client";
-import dynamic from "next/dynamic";
+import { WorldDevEntry } from "./dev/world-dev-entry";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, MoreHorizontal, Package, PawPrint, Shirt, ShoppingBag, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
@@ -39,7 +39,7 @@ import { CurrencyShopPanel } from "@/features/economy/currency-shop-panel";
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "help" | "shop";
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
-  ? dynamic(() => import("./dev/world-dev-panel"), { ssr: false }) : null;
+  ? WorldDevEntry : null;
 export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");

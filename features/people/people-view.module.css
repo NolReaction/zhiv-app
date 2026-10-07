@@ -621,7 +621,9 @@
   color: white !important;
 }
 
-button:disabled {
+.view button:disabled,
+.dialog button:disabled,
+.confirmDialog button:disabled {
   cursor: wait;
   opacity: 0.5;
 }

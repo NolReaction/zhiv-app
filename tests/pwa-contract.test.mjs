@@ -214,7 +214,10 @@ test("downloaded world artwork and lazy modules survive offline navigation and s
   setShellResponses(harness, "world-a"); await harness.dispatchExtendable("install");
   const assets = ["/world/runtime/map-0123456789ab.webp", "/world/runtime/homePreview-0123456789ab.webp", "/_next/static/chunks/world-123.js"];
   for (const asset of assets) {
-    harness.responses.set(origin + asset, new Response("asset-bytes", { headers: { "content-type": asset.endsWith("webp") ? "image/webp" : "application/javascript" } }));
+    harness.responses.set(origin + asset, new Response("asset-bytes", { headers: {
+      "content-type": asset.endsWith("webp") ? "image/webp" : "application/javascript",
+      ...(asset.startsWith("/_next/static/") ? { "cache-control": "public, max-age=31536000, immutable" } : {}),
+    } }));
     assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "asset-bytes");
     harness.responses.set(origin + asset, new Error("Offline"));
   }
@@ -224,6 +227,133 @@ test("downloaded world artwork and lazy modules survive offline navigation and s
   const newer = "/world/runtime/map-abcdef012345.webp";
   harness.responses.set(origin + newer, new Response("new-artwork", { headers: { "content-type": "image/webp" } }));
   assert.equal(await (await harness.dispatchFetch(newer, "cors")).text(), "new-artwork");
+});
+
+test("mutable Next chunks and asset responses requiring revalidation always reach the network", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "mutable-assets");
+  await harness.dispatchExtendable("install");
+  const cache = await harness.caches.open("zhiv-assets-v1");
+  const policies = [
+    "no-cache, must-revalidate",
+    "public, immutable, no-cache",
+    "public, immutable, must-revalidate",
+    "public, immutable, no-store",
+    'private="Set-Cookie", immutable',
+    "public, max-age=600",
+    "",
+  ];
+  for (const [index, policy] of policies.entries()) {
+    const path = `/_next/static/chunks/mutable-${index}.js`;
+    for (const version of [1, 2]) {
+      harness.responses.set(origin + path, new Response(`module-v${version}`, {
+        headers: { "content-type": "application/javascript", "cache-control": policy },
+      }));
+      assert.equal(await (await harness.dispatchFetch(path, "cors")).text(), `module-v${version}`, policy);
+      assert.equal(await cache.match(path), undefined, "mutable modules are not saved for later replay");
+    }
+  }
+  for (const policy of ["no-cache", "must-revalidate", "no-store", "private"]) {
+    const path = `/assets/mutable-${policy}.js`;
+    for (const version of [1, 2]) {
+      harness.responses.set(origin + path, new Response(`asset-v${version}`, {
+        headers: { "content-type": "application/javascript", "cache-control": policy },
+      }));
+      assert.equal(await (await harness.dispatchFetch(path, "cors")).text(), `asset-v${version}`);
+      assert.equal(await cache.match(path), undefined);
+    }
+  }
+});
+
+test("a previous worker's mutable entries cannot bypass revalidation through either asset cache", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "old-mutable-cache");
+  await harness.dispatchExtendable("install");
+  const shell = await harness.caches.open(await harness.currentCacheName());
+  const assets = await harness.caches.open("zhiv-assets-v1");
+  const policies = ["no-cache", "must-revalidate", "no-store", "private"];
+  const previousEntries = [
+    ...policies.map((policy, index) => ({ path: `/_next/static/chunks/previous-${index}.js`, policy: `${policy}, immutable` })),
+    ...policies.map((policy, index) => ({ path: `/assets/previous-${index}.js`, policy })),
+    { path: "/_next/static/chunks/previous-unversioned.js", policy: "" },
+  ];
+  for (const { path, policy } of previousEntries) {
+    const stale = new Response("stale-module", {
+      headers: { "content-type": "application/javascript", "cache-control": policy },
+    });
+    await shell.put(path, stale.clone());
+    await assets.put(path, stale.clone());
+    harness.responses.set(origin + path, new Response("fresh-module", {
+      headers: { "content-type": "application/javascript", "cache-control": "no-cache, must-revalidate" },
+    }));
+    assert.equal(await (await harness.dispatchFetch(path, "cors")).text(), "fresh-module", policy);
+    assert.equal(await shell.match(path), undefined);
+    assert.equal(await assets.match(path), undefined);
+    harness.responses.set(origin + path, new Error("Offline"));
+    await assert.rejects(harness.dispatchFetch(path, "cors"), /Offline/, "offline failure must not replay a mutable factory");
+  }
+});
+
+test("shell staging refuses mutable assets without replacing the production offline shell", async () => {
+  const harness = await createServiceWorkerHarness();
+  const production = setShellResponses(harness, "production-shell");
+  await harness.dispatchExtendable("install");
+  const productionCacheName = await harness.currentCacheName();
+  const mutablePolicies = ["no-cache, must-revalidate", "no-store", "private", "must-revalidate", ""];
+  for (const [index, policy] of mutablePolicies.entries()) {
+    const path = `/_next/static/chunks/dev-${index}.js`;
+    const html = `<html><head><script src="${path}"></script></head></html>`;
+    harness.responses.set(origin + "/", new Response(html, { headers: { "content-type": "text/html" } }));
+    harness.responses.set(origin + path, new Response("dev-module", {
+      headers: { "content-type": "application/javascript", "cache-control": policy },
+    }));
+    assert.equal(await (await harness.dispatchFetch("/")).text(), html, "online navigation still uses the network document");
+    assert.equal(await harness.currentCacheName(), productionCacheName, "mutable bundles cannot become the active offline shell");
+    const productionCache = await harness.caches.open(productionCacheName);
+    assert.equal(await productionCache.match(path), undefined);
+    assert.equal(await (await productionCache.match("/")).text(), production.html);
+  }
+  harness.responses.set(origin + "/", new Error("Offline"));
+  assert.equal(await (await harness.dispatchFetch("/")).text(), production.html);
+});
+
+test("shell staging cannot persist private or revalidation-only static resources", async () => {
+  const harness = await createServiceWorkerHarness();
+  const production = setShellResponses(harness, "static-production");
+  await harness.dispatchExtendable("install");
+  const cacheName = await harness.currentCacheName();
+  for (const [index, policy] of ["no-cache", "must-revalidate", "no-store", "private"].entries()) {
+    const candidate = setShellResponses(harness, `static-candidate-${index}`);
+    harness.responses.set(origin + "/manifest.webmanifest", new Response('{"name":"mutable"}', {
+      headers: { "content-type": "application/manifest+json", "cache-control": policy },
+    }));
+    assert.equal(await (await harness.dispatchFetch("/")).text(), candidate.html);
+    assert.equal(await harness.currentCacheName(), cacheName);
+    const oldShell = await harness.caches.open(cacheName);
+    assert.equal(await (await oldShell.match("/")).text(), production.html);
+    assert.equal(await oldShell.match(candidate.assetPath), undefined);
+  }
+});
+
+test("Next production shells preserve immutable eager and lazy chunks offline across updates", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "next-production-a");
+  const eager = "/_next/static/chunks/app-0123456789ab.js";
+  const lazy = "/_next/static/chunks/world-abcdef012345.js";
+  const html = `<html><head><script src="${eager}"></script></head></html>`;
+  harness.responses.set(origin + "/", new Response(html, { headers: { "content-type": "text/html" } }));
+  for (const path of [eager, lazy]) {
+    harness.responses.set(origin + path, new Response(`production:${path}`, {
+      headers: { "content-type": "application/javascript", "cache-control": "public, max-age=31536000, immutable" },
+    }));
+  }
+  await harness.dispatchExtendable("install");
+  assert.equal(await (await harness.dispatchFetch(eager, "cors")).text(), `production:${eager}`);
+  assert.equal(await (await harness.dispatchFetch(lazy, "cors")).text(), `production:${lazy}`);
+  harness.responses.set(origin + lazy, new Error("Offline"));
+  setShellResponses(harness, "next-production-b");
+  await harness.dispatchFetch("/");
+  assert.equal(await (await harness.dispatchFetch(lazy, "cors")).text(), `production:${lazy}`);
 });
 
 test("named world assets remain available offline across shell updates and isolate content revisions", async () => {

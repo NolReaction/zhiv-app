@@ -27,6 +27,7 @@ export type WorldDevPanelProps = {
   world: WorldController;
   economy?: EconomyController;
   active?: boolean;
+  initiallyOpen?: boolean;
   worldView?: boolean;
   presenceKey?: string;
   onOpenWorld?: () => void;
@@ -177,10 +178,10 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, economy, active = true, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [tab, setTab] = useState<DevTab>("cheats");
   const [mochlikTab, setMochlikTab] = useState<MochlikTab>("scenes");
   const [sceneTab, setSceneTab] = useState<SceneTab>("scenarios");

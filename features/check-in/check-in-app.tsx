@@ -2,6 +2,7 @@
 
 import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
+import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
 import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 
@@ -95,7 +96,7 @@ type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
 const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
 const WorldDevPanel = process.env.NODE_ENV === "development"
-  ? dynamic(() => import("@/features/world/dev/world-dev-panel"), { ssr: false }) : null;
+  ? WorldDevEntry : null;
 
 type PendingBootstrap = {
   version: 1;
