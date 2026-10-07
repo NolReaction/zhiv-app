@@ -90,3 +90,18 @@ test("administrator account changes clear retained analytics and stop before a n
   assert.equal(app.errors[0].status, 403);
   assert.equal(view.elements.some(node => node.type.name === "AdminAnalyticsContent"), false);
 });
+test("a progression player drilldown opens existing operations with the chosen period and exact player ID", async () => {
+  const app = setup(); app.render(); await tick(); app.requests[0].resolve(); await tick();
+  const first = new URL(app.requests[0].url, "https://test.invalid").searchParams;
+  let view = app.render();
+  view.elements.find(node => node.type.name === "AdminAnalyticsContent").props.onPlayer({ publicId, displayName: "Игрок" });
+  app.render(); await tick();
+  const next = new URL(app.requests[1].url, "https://test.invalid");
+  assert.equal(next.pathname, "/api/v1/admin/analytics/events");
+  for (const key of ["from", "to"]) assert.equal(next.searchParams.get(key), first.get(key));
+  assert.equal(next.searchParams.get("q"), publicId);
+  assert.equal(next.searchParams.get("scope"), "all");
+  assert.equal(next.searchParams.get("kind"), ""); assert.equal(next.searchParams.get("offset"), "0");
+  app.requests[1].resolve(); await tick(); view = app.render();
+  assert.ok(view.elements.find(node => node.type.name === "AdminAnalyticsEventList"));
+});

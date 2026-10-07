@@ -28,6 +28,7 @@ import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
 import java.sql.SQLException
 import java.time.LocalDate
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -273,6 +274,143 @@ class JdbcAdminRepositoryIntegrationTest {
         for (privateValue in listOf("never-expose-this-seed","Private command receipt","signature","expectedRevision"))
             assertFalse(serialized.contains(privateValue))
         assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e"))
+    }
+
+    @Test fun `progression follows registered cohorts beyond their registration window without inventing missing milestones`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val active = user("Развивается"); val unknown = user("Старая история")
+        val never = user("Только отметки"); val old = user("Ранее зарегистрирован"); val deleted = user("Удалённый")
+        for (who in listOf(admin,active,unknown,never,deleted)) created(who,LocalDate.parse("2020-01-02"))
+        created(old,LocalDate.parse("2020-01-01"))
+        execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",deleted.id)
+        analyticsEntry(active,"sell","2020-01-02T11:00:00Z",target="wood") // Before registration is not elapsed gameplay.
+        analyticsEntry(active,"sell","2020-01-02T12:10:00Z",target="wood")
+        val work = analyticsEntry(active,"start_production","2020-01-02T12:20:00Z",target="grow_berries")
+        analyticsEntry(active,"claim_job","2020-01-03T13:20:00Z",target=work.toString()) // Outside registration dates.
+        val build = analyticsEntry(active,"start_construction","2020-01-03T14:00:00Z",target="home")
+        analyticsEntry(active,"claim_job","2020-01-03T15:00:00Z",target=build.toString())
+        analyticsEntry(unknown,"claim_job","2020-01-02T12:30:00Z",target="missing-old-receipt")
+        analyticsEntry(never,"market_sell","2020-01-02T13:00:00Z")
+        analyticsEntry(never,"dev_grant_item","2020-01-02T13:00:00Z")
+        analyticsEntry(old,"start_production","2020-01-02T14:00:00Z",target="grow_berries")
+        analyticsEntry(admin,"start_production","2020-01-02T14:00:00Z",target="grow_berries")
+        analyticsEntry(deleted,"start_production","2020-01-02T14:00:00Z",target="grow_berries")
+        analyticsEntry(active,"start_exploration","2099-01-01T00:00:00Z",target="forest_short")
+        for ((who,level) in listOf(active to 2,unknown to 5)) {
+            val state = EconomyRules.initial().copy(buildings=mapOf("home" to level),fishingCastSeed="private-roll")
+            execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",who.id,economyJson.encodeToString(state))
+        }
+        val before = scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e")
+        val repo = repository(admin)
+        val query = AdminAnalyticsQuery(from="2020-01-02",to="2020-01-02")
+        val report = repo.analytics(admin.hash,query)
+        val p = assertNotNull(report.progression)
+        assertEquals(report.serverTime,p.observedUntil)
+        assertEquals(3L,p.cohort.players); assertEquals(2L,p.cohort.initializedPlayers); assertEquals(2L,p.cohort.home2Players)
+        assertEquals(2L,p.cohort.playersWithEvents); assertEquals("2020-01-02T12:10:00.000Z",p.cohort.firstRecordedAt)
+        val stages = p.cohort.stages.associateBy { it.id }
+        assertEquals(2L,stages.getValue("first_action").players); assertEquals(1_200L,stages.getValue("first_action").medianSeconds)
+        assertEquals(1L,stages.getValue("first_work_started").players); assertEquals(1_200L,stages.getValue("first_work_started").medianSeconds)
+        assertEquals(1L,stages.getValue("first_work_claimed").players); assertEquals(91_200L,stages.getValue("first_work_claimed").medianSeconds)
+        assertEquals(93_600L,stages.getValue("first_construction_started").medianSeconds)
+        assertEquals(97_200L,stages.getValue("first_construction_claimed").medianSeconds)
+        assertEquals(4L,p.snapshot.matchingPlayers) // Old registrations remain in the current snapshot.
+        assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e"))
+        assertFalse(Json.encodeToString(p).contains("private-roll"))
+        val personal = assertNotNull(repo.analytics(admin.hash,query.copy(q=unknown.publicId)).progression)
+        assertEquals(1L,personal.cohort.players); assertEquals(1L,personal.cohort.home2Players)
+        assertEquals(0L,personal.cohort.stages.single { it.id=="first_work_claimed" }.players)
+        assertNull(personal.cohort.stages.single { it.id=="first_work_claimed" }.medianSeconds)
+        assertEquals(4L,assertNotNull(repo.analytics(admin.hash,query.copy(scope="all")).progression).cohort.players)
+        val empty = assertNotNull(repo.analytics(admin.hash,query.copy(q="Несуществующий")).progression)
+        assertEquals(0L,empty.cohort.players); assertEquals(5,empty.cohort.stages.size)
+        assertTrue(empty.cohort.stages.all { it.players==0L && it.medianSeconds==null })
+        assertNull(empty.cohort.firstRecordedAt); assertTrue(empty.snapshot.review.isEmpty())
+    }
+
+    @Test fun `progression signals distinguish ready jobs unstarted collection and absent economic history`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val ready = user("Готово"); val berries = user("Ягоды"); val quiet = user("Нет операций")
+        val unknown = user("История неизвестна"); val running = user("Ещё работает"); val recent = user("Недавно готово")
+        val at = Instant.parse("2026-10-07T12:00:00Z")
+        for (who in listOf(admin,ready,berries,quiet,unknown,running,recent)) created(who,LocalDate.parse("2026-09-01"))
+        fun job(kind: String="production",target: String="workshop",finish: Instant=at.minusSeconds(86_401),collection: EconomyCollection?=null) =
+            EconomyJob(UUID.randomUUID().toString(),kind,target,startedAt=at.minusSeconds(172_800).toString(),finishesAt=finish.toString(),
+                rewards=if (collection==null) emptyMap() else mapOf("berries" to 1L),collection=collection)
+        fun profile(who: User,jobs: List<EconomyJob>) {
+            val state = EconomyRules.initial().copy(jobs=jobs,buildings=mapOf("home" to 2))
+            execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",who.id,economyJson.encodeToString(state))
+        }
+        profile(ready,listOf(job(kind="construction",target="home")))
+        profile(berries,listOf(job(target="garden",collection=EconomyCollection("berry_harvest",30,null,null))))
+        profile(quiet,emptyList()); profile(unknown,emptyList())
+        profile(running,listOf(job(finish=at.plusSeconds(60)),job(target="garden",finish=at.minusSeconds(100_000),
+            collection=EconomyCollection("berry_harvest",30,at.minusSeconds(10).toString(),at.plusSeconds(20).toString()))))
+        profile(recent,listOf(job(finish=at.minusSeconds(86_400)),job(target="garden",finish=at.minusSeconds(86_400),
+            collection=EconomyCollection("berry_harvest",30,null,null)))) // Exactly 24h is not more than 24h.
+        profile(admin,listOf(job()))
+        analyticsEntry(quiet,"sell",at.minusSeconds(259_200).toString(),target="wood") // Exact 72h threshold.
+        analyticsEntry(quiet,"market_sell",at.minusSeconds(1).toString()) // Passive receipts cannot imply a return.
+        analyticsEntry(unknown,"dev_grant_currency",at.minusSeconds(1).toString())
+        analyticsEntry(unknown,"account_merge",at.minusSeconds(1).toString())
+        for (who in listOf(ready,berries,running,recent)) analyticsEntry(who,"sell",at.minusSeconds(60).toString(),target="wood")
+        analyticsEntry(quiet,"sell",at.plusSeconds(1).toString(),target="wood") // A malformed future receipt cannot clear the signal.
+        val query = AdminAnalyticsQuery(from="2026-09-01",to="2026-09-01")
+        val before = scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e")
+        val p = source.connection.use { c -> assertNotNull(readAdminAnalytics(c,query.resolve(at),setOf(admin.publicId),at).progression) }
+        assertEquals(6L,p.snapshot.matchingPlayers); assertEquals(6L,p.snapshot.initializedPlayers)
+        assertEquals(1L,p.snapshot.unknownHistoryPlayers); assertEquals(1L,p.snapshot.noAction72hPlayers)
+        assertEquals(1L,p.snapshot.ready24hPlayers); assertEquals(1L,p.snapshot.awaitingCollection24hPlayers)
+        assertFalse(p.snapshot.reviewTruncated); assertEquals(3,p.snapshot.review.size)
+        val readySignal = p.snapshot.review.single { it.publicId==ready.publicId }
+        assertEquals(listOf("ready_24h"),readySignal.signals); assertEquals(at.minusSeconds(86_401).toString(),Instant.parse(readySignal.readySince).toString())
+        assertNull(readySignal.awaitingCollectionSince)
+        val berrySignal = p.snapshot.review.single { it.publicId==berries.publicId }
+        assertEquals(listOf("awaiting_collection_24h"),berrySignal.signals); assertNull(berrySignal.readySince)
+        assertEquals(listOf("no_action_72h"),p.snapshot.review.single { it.publicId==quiet.publicId }.signals)
+        assertFalse(p.snapshot.review.any { it.publicId in setOf(unknown.publicId,running.publicId,recent.publicId,admin.publicId) })
+        assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e"))
+        val filtered = source.connection.use { c -> assertNotNull(readAdminAnalytics(c,query.copy(q=berries.publicId.lowercase()).resolve(at),setOf(admin.publicId),at).progression) }
+        assertEquals(1L,filtered.snapshot.matchingPlayers); assertEquals(0L,filtered.snapshot.ready24hPlayers)
+        assertEquals(1L,filtered.snapshot.awaitingCollection24hPlayers)
+    }
+
+    @Test fun `progression leaves partial old snapshots unknown without breaking existing analytics`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val old = user("Частичное старое сохранение")
+        created(old,LocalDate.parse("2026-09-01"))
+        val state = EconomyRules.initial()
+        execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",old.id,economyJson.encodeToString(state))
+        execute("""UPDATE economy_profiles SET state=jsonb_set(jsonb_set(state,'{buildings,home}','"old-unknown"'::jsonb),'{jobs}',
+          '[null,42,{"finishesAt":"not-a-date"},{"finishesAt":"-infinity"},
+            {"finishesAt":"2020-01-01T00:00:00Z","collection":{"startedAt":"bad-date","finishesAt":"2020-01-02T00:00:00Z"}}]'::jsonb) WHERE user_id=?""",old.id)
+        val at = Instant.parse("2026-10-07T12:00:00Z")
+        val query = AdminAnalyticsQuery(from="2026-09-01",to="2026-09-01")
+        val report = source.connection.use { c -> readAdminAnalytics(c,query.resolve(at),setOf(admin.publicId),at) }
+        assertEquals(1L,report.coverage.initializedPlayers)
+        assertFalse(report.buildingLevels.any { it.buildingId=="home" })
+        val p = assertNotNull(report.progression)
+        assertEquals(1L,p.cohort.initializedPlayers); assertEquals(0L,p.cohort.home2Players)
+        assertNull(p.cohort.firstRecordedAt); assertTrue(p.cohort.stages.all { it.players==0L && it.medianSeconds==null })
+        assertEquals(1L,p.snapshot.unknownHistoryPlayers); assertEquals(0L,p.snapshot.noAction72hPlayers)
+        assertEquals(0L,p.snapshot.ready24hPlayers); assertEquals(0L,p.snapshot.awaitingCollection24hPlayers)
+        assertTrue(p.snapshot.review.isEmpty())
+        assertEquals("old-unknown",scalar("SELECT state->'buildings'->>'home' FROM economy_profiles WHERE user_id=?",old.id))
+    }
+
+    @Test fun `progression review is bounded while population totals remain complete`() = runBlocking<Unit> {
+        val admin = user("Администратор")
+        val at = Instant.parse("2026-10-07T12:00:00Z")
+        repeat(101) { n ->
+            val who = user("Давно не забрал $n"); created(who,LocalDate.parse("2026-09-01"))
+            val job = EconomyJob(UUID.randomUUID().toString(),"construction","home",startedAt=at.minusSeconds(172_800).toString(),
+                finishesAt=at.minusSeconds(86_401L+n).toString())
+            val state = EconomyRules.initial().copy(jobs=listOf(job))
+            execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",who.id,economyJson.encodeToString(state))
+        }
+        val query = AdminAnalyticsQuery(from="2026-09-01",to="2026-09-01")
+        val p = source.connection.use { c -> assertNotNull(readAdminAnalytics(c,query.resolve(at),setOf(admin.publicId),at).progression) }
+        assertEquals(101L,p.snapshot.ready24hPlayers); assertEquals(101L,p.snapshot.unknownHistoryPlayers)
+        assertEquals(0L,p.snapshot.noAction72hPlayers); assertEquals(100,p.snapshot.review.size); assertTrue(p.snapshot.reviewTruncated)
+        assertEquals(100,p.snapshot.review.map { it.publicId }.toSet().size)
+        assertTrue(p.snapshot.review.all { it.lastActionAt==null && it.signals==listOf("ready_24h") })
     }
 
     @Test fun `analytics journal filters the selected resource leg and keeps anchored pages stable`() = runBlocking<Unit> {

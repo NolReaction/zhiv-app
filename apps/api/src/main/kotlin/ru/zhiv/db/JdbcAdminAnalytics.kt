@@ -23,7 +23,7 @@ private fun Instant.sqlTime(): OffsetDateTime = atOffset(ZoneOffset.UTC)
  * parameter excludes every administrator, not merely the current session. */
 private const val scopedUsers = """
     WITH scoped_users AS (
-        SELECT u.id,u.public_id,u.display_name FROM app_users u
+        SELECT u.id,u.public_id,u.display_name,u.created_at FROM app_users u
         WHERE u.deleted_at IS NULL
           AND CASE WHEN ?::text IS NOT NULL THEN u.public_id=? ELSE
             (?='' OR position(lower(?) in lower(u.display_name))>0 OR position(upper(?) in u.public_id)>0) END
@@ -34,10 +34,11 @@ private const val scopedUsers = """
 /** Context comes from committed receipts, never from today's building levels.
  * Indexed text comparisons are safe for both UUID jobs and ordinary catalog IDs.
  * JSON guards also keep a malformed old receipt from hiding the whole dashboard. */
-private fun periodEvents(materialize: Boolean = false) = """
+private fun periodEvents(materialize: Boolean = false, cohort: Boolean = false) = """
+    ${if (cohort) ", cohort_users AS (SELECT * FROM scoped_users WHERE created_at>=? AND created_at<?)" else ""}
     , period_ledger AS (
-        SELECT l.*,u.public_id,u.display_name FROM economy_ledger l JOIN scoped_users u ON u.id=l.user_id
-        WHERE l.created_at>=? AND l.created_at<? AND l.kind NOT IN ($technicalKinds)
+        SELECT l.*,u.public_id,u.display_name FROM economy_ledger l JOIN ${if (cohort) "cohort_users" else "scoped_users"} u ON u.id=l.user_id
+        WHERE ${if (cohort) "l.created_at>=u.created_at AND l.created_at<?" else "l.created_at>=? AND l.created_at<?"} AND l.kind NOT IN ($technicalKinds)
     ), command_context AS (
         SELECT l.*,CASE WHEN cmd.signature IS JSON OBJECT THEN cmd.signature::jsonb END AS command
         FROM period_ledger l LEFT JOIN economy_commands cmd
@@ -59,6 +60,7 @@ private fun periodEvents(materialize: Boolean = false) = """
         FROM job_context l
     ), events AS ${if (materialize) "MATERIALIZED " else ""}(
         SELECT user_id,public_id,display_name,source_key,kind,created_at,items,category,construction_claim,active,needs_context,
+          coalesce(context->>'originAction',original->>'action') AS origin_action,
           coins*(10/currency_scale) AS coins,pearls*(50/pearl_scale) AS pearls,
           CASE WHEN kind IN ('buy_fishing_item','buy_wardrobe_item') THEN regexp_replace(raw_target,'^.*:','')
                WHEN kind='start_production' THEN split_part(raw_target,'@',1)
@@ -76,7 +78,7 @@ private fun periodEvents(materialize: Boolean = false) = """
     )
 """.trimIndent()
 
-private class AnalyticsReads(private val c: Connection, val window: AdminAnalyticsWindow, admins: Set<String>) : AutoCloseable {
+internal class AnalyticsReads(private val c: Connection, val window: AdminAnalyticsWindow, admins: Set<String>) : AutoCloseable {
     private val adminIds = c.createArrayOf("text", admins.toTypedArray())
     private val exactPublicId = parsePublicId(window.q)
     private val scopeValues = arrayOf<Any?>(exactPublicId, exactPublicId, window.q, window.q, window.q, window.scope, adminIds)
@@ -85,6 +87,9 @@ private class AnalyticsReads(private val c: Connection, val window: AdminAnalyti
         c.economyRows(scopedUsers + sql, *arrayOf(*scopeValues, *values), read = read)
     fun <T> period(sql: String, vararg values: Any?, materialize: Boolean = false, read: (ResultSet) -> T): List<T> =
         c.economyRows(scopedUsers + periodEvents(materialize) + sql, *arrayOf(*periodValues, *values), read = read)
+    fun <T> cohort(sql: String, now: Instant, read: (ResultSet) -> T): List<T> =
+        c.economyRows(scopedUsers + periodEvents(materialize = true, cohort = true) + sql,
+            *arrayOf(*scopeValues, window.startAt.sqlTime(), window.endAt.sqlTime(), now.sqlTime()), read = read)
     override fun close() { adminIds.free() }
 }
 
@@ -191,10 +196,11 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
         """, now.sqlTime(),window.startAt.sqlTime(),window.endAt.sqlTime()) { r ->
             AdminAnalyticsFirstConstruction(r.getString("building_id"),r.getLong("players")) }
         val buildingLevels = reads.scoped("""
-            SELECT levels.key AS building_id,levels.value::integer AS level,count(*) AS players
+            SELECT levels.key AS building_id,parsed.level,count(*) AS players
             FROM scoped_users u JOIN economy_profiles p ON p.user_id=u.id
-            CROSS JOIN LATERAL jsonb_each_text(p.state->'buildings') levels
-            GROUP BY levels.key,levels.value::integer ORDER BY levels.key,level
+            CROSS JOIN LATERAL jsonb_each_text(CASE WHEN jsonb_typeof(p.state->'buildings')='object' THEN p.state->'buildings' ELSE '{}'::jsonb END) levels
+            CROSS JOIN LATERAL (SELECT CASE WHEN pg_input_is_valid(levels.value,'integer') THEN levels.value::integer END AS level) parsed
+            WHERE parsed.level>=0 GROUP BY levels.key,parsed.level ORDER BY levels.key,parsed.level
         """) { r -> AdminAnalyticsBuildingLevel(r.getString("building_id"),r.getInt("level"),r.getLong("players")) }
         data class Counts(val first: String?, val matching: Long, val initialized: Long)
         val counts = reads.scoped("""
@@ -206,7 +212,7 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
         AdminAnalytics(now.toString(),window.from.toString(),window.to.toString(),window.startAt.toString(),window.endAt.toString(),window.q,window.scope,
             period.summary,period.daily,period.resources,period.flows.take(maxAnalyticsGroups),period.actions.take(maxAnalyticsGroups),period.construction,firstConstructions,buildingLevels,
             AdminAnalyticsCoverage(counts.first,period.unattributedEvents,counts.matching,counts.initialized,
-                period.flows.size>maxAnalyticsGroups,period.actions.size>maxAnalyticsGroups,period.orders.size>maxAnalyticsGroups), period.gameplay,period.meals,period.orders.take(maxAnalyticsGroups),readPresence(reads,window))
+                period.flows.size>maxAnalyticsGroups,period.actions.size>maxAnalyticsGroups,period.orders.size>maxAnalyticsGroups), period.gameplay,period.meals,period.orders.take(maxAnalyticsGroups),readPresence(reads,window),readAdminProgression(reads,now))
     }
 
 internal fun readAdminAnalyticsEvents(c: Connection, window: AdminAnalyticsWindow, query: AdminAnalyticsEventsQuery,

@@ -70,6 +70,16 @@ data class AdminAnalyticsEventsQuery(
     val flaggedPlayers: Long, val daily: List<AdminAnalyticsPresenceDay>, val reviewDays: List<AdminAnalyticsPresenceReview>, val reviewDaysTruncated: Boolean)
 @Serializable data class AdminAnalyticsCoverage(val firstRecordedAt: String?, val unattributedEvents: Long,
     val matchingPlayers: Long, val initializedPlayers: Long, val flowsTruncated: Boolean, val actionsTruncated: Boolean, val ordersTruncated: Boolean)
+@Serializable data class AdminAnalyticsProgressionStage(val id: String, val players: Long, val medianSeconds: Long?)
+@Serializable data class AdminAnalyticsProgressionCohort(val players: Long, val initializedPlayers: Long,
+    val home2Players: Long, val playersWithEvents: Long, val firstRecordedAt: String?, val stages: List<AdminAnalyticsProgressionStage>)
+@Serializable data class AdminAnalyticsProgressionReview(val publicId: String, val displayName: String, val homeLevel: Int?,
+    val lastActionAt: String?, val readySince: String?, val awaitingCollectionSince: String?, val signals: List<String>)
+@Serializable data class AdminAnalyticsProgressionSnapshot(val matchingPlayers: Long, val initializedPlayers: Long,
+    val unknownHistoryPlayers: Long, val noAction72hPlayers: Long, val ready24hPlayers: Long, val awaitingCollection24hPlayers: Long,
+    val review: List<AdminAnalyticsProgressionReview>, val reviewTruncated: Boolean)
+@Serializable data class AdminAnalyticsProgression(val observedUntil: String, val cohort: AdminAnalyticsProgressionCohort,
+    val snapshot: AdminAnalyticsProgressionSnapshot)
 @Serializable data class AdminAnalytics(
     val serverTime: String, val from: String, val to: String, val startAt: String, val endAt: String, val q: String, val scope: String,
     val summary: AdminAnalyticsSummary, val daily: List<AdminAnalyticsDaily>, val resources: List<AdminAnalyticsResource>,
@@ -77,6 +87,7 @@ data class AdminAnalyticsEventsQuery(
     val firstConstructions: List<AdminAnalyticsFirstConstruction>, val buildingLevels: List<AdminAnalyticsBuildingLevel>,
     val coverage: AdminAnalyticsCoverage, val gameplay: AdminAnalyticsGameplay, val meals: List<AdminAnalyticsMeal>,
     val orders: List<AdminAnalyticsOrder>, val presence: AdminAnalyticsPresence,
+    val progression: AdminAnalyticsProgression? = null,
 )
 @Serializable data class AdminAnalyticsEvent(
     val id: String, val publicId: String, val displayName: String, val createdAt: String, val kind: String, val targetId: String?,

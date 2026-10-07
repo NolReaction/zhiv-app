@@ -11,6 +11,7 @@ import { loadAdminAnalytics, loadAdminAnalyticsEvents, type AdminAnalytics, type
 import { analyticsAction, analyticsActions, analyticsAmount, analyticsCategory, analyticsCount, analyticsDate,
   analyticsPeriod, analyticsPeriodError, analyticsResource, analyticsResources, analyticsTarget, downloadAnalyticsCsv } from "./admin-analytics-utils";
 import { AdminGameplayAnalytics, AdminPresenceAnalytics } from "./admin-gameplay-analytics";
+import { AdminProgressionAnalytics } from "./admin-progression-analytics";
 import styles from "./admin-analytics.module.css";
 
 type View = "analytics" | "players" | "events";
@@ -35,8 +36,9 @@ function Truncated({ visible }: { visible: boolean }) {
   return visible ? <p className={styles.warning}>Ответ ограничен 1 000 группами. Сузьте период или выберите игрока, чтобы увидеть полную разбивку.</p> : null;
 }
 
-export function AdminAnalyticsContent({ data, resource, building, onResource, onBuilding, onEvents, onOpen }: {
+export function AdminAnalyticsContent({ data, resource, building, onResource, onBuilding, onEvents, onOpen, onPlayer }: {
   onOpen?: (target: AdminEconomyTarget) => void;
+  onPlayer?: (target: AdminEconomyTarget) => void;
   data: AdminAnalytics; resource: string; building: string; onResource: (id: string) => void;
   onBuilding: (id: string) => void; onEvents: (options: { kind?: string; resource?: string; direction?: "all" | "in" | "out" }) => void;
 }) {
@@ -57,6 +59,7 @@ export function AdminAnalyticsContent({ data, resource, building, onResource, on
       <Metric title="Игроки с расходами" value={data.summary.spendingPlayers} note="Потратили валюту или припасы" />
       <Metric title="Игроки со стройкой" value={data.summary.constructionPlayers} note={`${analyticsCount(data.summary.constructionStarts)} начато · ${analyticsCount(data.summary.constructionClaims)} завершено`} />
     </section>
+    <AdminProgressionAnalytics data={data} onOpen={onOpen} onPlayer={onPlayer} />
     <section className={styles.panel}>
       <div className={styles.sectionRow}><Heading title="Действия по дням">Подтверждённые операции хозяйства. Посещения и время в приложении здесь не измеряются.</Heading>
         <ExportButton label="CSV по дням" onClick={() => downloadAnalyticsCsv(`activity-${data.from}-${data.to}.csv`, [
@@ -255,7 +258,7 @@ export function AdminEconomyWorkspace({ actorPublicId, refreshVersion, onAccessL
       <div className={styles.refresh}><span>{data ? `Снимок: ${economyTime(data.serverTime)}` : "Ожидаем данные"} · {view === "analytics" ? "обновление раз в минуту" : "обновление вручную"}</span><button className={styles.button} type="button" disabled={loading} onClick={refresh}><RefreshCw size={17} aria-hidden="true" />Обновить</button></div>
       {error?.key === key && <div className={styles.error} role="alert"><CircleAlert size={18} aria-hidden="true" /><span>{error.message}{data ? " Показан последний успешный снимок; данные могли измениться." : ""}</span></div>}
     </>}
-    <TabsContent value="analytics" className={styles.content}><div aria-busy={loading}>{analyticsData ? <AdminAnalyticsContent data={analyticsData} resource={resource} building={building} onResource={setResource} onBuilding={setBuilding} onEvents={openEvents} onOpen={onOpen} /> : <p className={styles.empty} role="status">{loading ? "Считаем активность и движение ресурсов…" : "Аналитика пока не загружена."}</p>}</div></TabsContent>
+    <TabsContent value="analytics" className={styles.content}><div aria-busy={loading}>{analyticsData ? <AdminAnalyticsContent data={analyticsData} resource={resource} building={building} onResource={setResource} onBuilding={setBuilding} onEvents={openEvents} onOpen={onOpen} onPlayer={target => openEvents({}, target)} /> : <p className={styles.empty} role="status">{loading ? "Считаем активность и движение ресурсов…" : "Аналитика пока не загружена."}</p>}</div></TabsContent>
     <TabsContent value="players" className={styles.content}>{view === "players" && <AdminEconomyPanel actorPublicId={actorPublicId} refreshVersion={refreshVersion} onAccessLost={onAccessLost} onOpen={onOpen} onHistory={target => openEvents({}, target)} />}</TabsContent>
     <TabsContent value="events" className={styles.content}>{eventsData ? <AdminAnalyticsEventList data={eventsData} loading={loading} onPage={offset => setEventOptions(current => ({ ...current, offset, at: current.at ?? eventsData.endAt }))} onOpen={onOpen} onPlayer={target => openEvents({}, target)} /> : <p className={styles.empty} role="status">{loading ? "Загружаем журнал операций…" : "Журнал пока не загружен."}</p>}</TabsContent>
   </Tabs>;

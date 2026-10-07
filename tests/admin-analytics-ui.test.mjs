@@ -11,6 +11,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { AdminAnalyticsContent, AdminAnalyticsEventList } = await vite.ssrLoadModule("/features/admin/admin-analytics-panel.tsx");
 const { AdminGameplayAnalytics, AdminPresenceAnalytics } = await vite.ssrLoadModule("/features/admin/admin-gameplay-analytics.tsx");
+const { AdminProgressionAnalytics, progressionShare, progressionDuration, progressionCohortCsvRows, progressionReviewCsvRows } = await vite.ssrLoadModule("/features/admin/admin-progression-analytics.tsx");
 const { analyticsCsv, analyticsAmount, analyticsPeriod, analyticsPeriodError } = await vite.ssrLoadModule("/features/admin/admin-analytics-utils.ts");
 
 const serverTime = "2026-10-07T12:00:00Z", publicId = "7K3P-2Q9M-W8ZR";
@@ -128,4 +129,62 @@ test("presence distinguishes historic daily signals from current observation and
   assert.match(view.markup, /&lt;Игрок&gt;/);
   view.elements.find(node => node.type === "button" && node.props.children === "<Игрок>").props.onClick();
   assert.deepEqual(calls, [publicId]);
+});
+
+function progression() {
+  return { observedUntil: serverTime,
+    cohort: { players: 3, initializedPlayers: 2, home2Players: 1, playersWithEvents: 2, firstRecordedAt: "2026-10-02T10:00:00Z",
+      stages: [{ id: "first_action", players: 2, medianSeconds: 60 }, { id: "first_work_started", players: 1, medianSeconds: 0 },
+        { id: "first_work_claimed", players: 1, medianSeconds: 90061 }, { id: "first_construction_started", players: 1, medianSeconds: 3600 },
+        { id: "first_construction_claimed", players: 0, medianSeconds: null }] },
+    snapshot: { matchingPlayers: 5, initializedPlayers: 4, unknownHistoryPlayers: 1, noAction72hPlayers: 1, ready24hPlayers: 1, awaitingCollection24hPlayers: 1,
+      review: [{ publicId, displayName: "<Игрок>", homeLevel: null, lastActionAt: null, readySince: "2026-10-02T12:00:00Z", awaitingCollectionSince: null,
+        signals: ["ready_24h"] }, { publicId: "7K3P-2Q9M-W8ZS", displayName: "=Игрок", homeLevel: 2, lastActionAt: "2026-10-01T12:00:00Z", readySince: null,
+        awaitingCollectionSince: "2026-10-02T10:00:00Z", signals: ["awaiting_collection_24h", "no_action_72h"] }], reviewTruncated: true } };
+}
+test("new-player steps use all registrations, distinguish independent choices and current levels, and keep unknown timing honest", () => {
+  const data = analytics(); data.progression = progression(); const before = structuredClone(data);
+  const { markup } = inspect(AdminProgressionAnalytics({ data }));
+  for (const text of ["Шаги независимы", "включая ещё не заведшие хозяйство", "Дом ≥2 — уровень сейчас", "2 из 3 · 66,7%", "1 из 3 · 33,3%", "Медиана от регистрации: 0 с", "Медиана от регистрации: 1 д 1 ч", "Медиана от регистрации: Нет измерения", "Время игроков без подтверждённого шага не подставляется как ноль", "включая действия после выбранного периода"]) assert.ok(markup.includes(text), text);
+  assert.equal(progressionShare(1, 3), "33,3%"); assert.equal(progressionShare(0, 0), "—");
+  assert.equal(progressionDuration(60), "1 мин"); assert.equal(progressionDuration(3660), "1 ч 1 мин");
+  assert.deepEqual(data, before);
+});
+test("current progression review shows economic signals with context, escaped names and explicit player drilldowns", () => {
+  const data = analytics(); data.progression = progression(); const calls = { open: [], player: [] };
+  const view = inspect(AdminProgressionAnalytics({ data, onOpen: value => calls.open.push(value.publicId), onPlayer: value => calls.player.push(value.publicId) }));
+  for (const text of ["независимо от дат регистрации", "Поиск и аудитория применяются", "не доказательство тупика", "Неизвестная история не считается бездействием", "История неизвестна", "уровень неизвестен", "72 ч без операций в хозяйстве", "Урожай ждёт начала сбора более 24 ч", "первые 100 игроков", "В журнале откроется выбранный выше период"]) assert.ok(view.markup.includes(text), text);
+  assert.match(view.markup, /&lt;Игрок&gt;/); assert.doesNotMatch(view.markup, /<Игрок>/);
+  view.elements.find(node => node.props["aria-label"] === "Открыть хозяйство игрока <Игрок>").props.onClick();
+  view.elements.find(node => node.props["aria-label"] === "Открыть операции игрока =Игрок").props.onClick();
+  assert.deepEqual(calls, { open: [publicId], player: ["7K3P-2Q9M-W8ZS"] });
+});
+test("progression is additive for old servers and an empty cohort does not hide current players", () => {
+  const old = analytics();
+  assert.equal(AdminProgressionAnalytics({ data: old }), null);
+  assert.equal(AdminProgressionAnalytics({ data: { ...old, progression: null } }), null);
+  assert.doesNotMatch(content(old).markup, /Как начинают новые игроки|Что стоит проверить у игроков/);
+  old.progression = progression(); old.progression.cohort = { players: 0, initializedPlayers: 0, home2Players: 0, playersWithEvents: 0, firstRecordedAt: null, stages: [] };
+  const view = inspect(AdminProgressionAnalytics({ data: old }));
+  assert.match(view.markup, /Новых аккаунтов с такими фильтрами нет/);
+  assert.match(view.markup, /&lt;Игрок&gt;/);
+  assert.doesNotMatch(view.markup, /NaN|Infinity|undefined/);
+  old.progression.snapshot.review = [];
+  const empty = inspect(AdminProgressionAnalytics({ data: old }));
+  assert.match(empty.markup, /Игроков с известными причинами проверки сейчас нет/);
+  assert.equal(empty.elements.find(node => node.props.children === "CSV списка игроков").props.disabled, true);
+});
+test("progression CSV preserves null timing, exact population and snapshot context without inventing historic home2 dates", () => {
+  const data = analytics(); data.q = "=Имя"; data.progression = progression();
+  const cohort = progressionCohortCsvRows(data, data.progression);
+  const home = cohort.find(row => row[0] === "Дом уровня 2 или выше"), claimed = cohort.find(row => row[0] === "Первая стройка завершена и получена");
+  assert.deepEqual(home.slice(1, 6), ["Текущее состояние", 1, 3, 33.3, null]);
+  assert.deepEqual(claimed.slice(2, 6), [0, 3, 0, null]);
+  assert.deepEqual(home.slice(6), [data.from, data.to, "=Имя", "Без администраторов", serverTime]);
+  const review = progressionReviewCsvRows(data, data.progression);
+  assert.equal(review[1][2], null); assert.equal(review[1][3], null);
+  assert.equal(review[2][6], "Урожай ждёт начала сбора более 24 ч; 72 ч без операций в хозяйстве");
+  assert.equal(review[2][10], "Да, первые 100 игроков");
+  assert.ok(analyticsCsv(review).includes('"\'=Игрок"'));
+  assert.ok(analyticsCsv(cohort).includes('"\'=Имя"'));
 });

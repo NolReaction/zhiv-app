@@ -10,6 +10,30 @@ const identifier = z.string().min(1).max(100);
 const shared = { serverTime: instant, from: date, to: date, startAt: instant, endAt: instant,
   q: z.string().max(100), scope: z.enum(["players", "all"]) };
 const category = z.enum(["gameplay", "trade", "escrow"]);
+const progressionStage = z.enum(["first_action", "first_work_started", "first_work_claimed",
+  "first_construction_started", "first_construction_claimed"]);
+const progressionSignal = z.enum(["no_action_72h", "ready_24h", "awaiting_collection_24h"]);
+const progressionSchema = z.object({ observedUntil: instant,
+  cohort: z.object({ players: count, initializedPlayers: count, home2Players: count, playersWithEvents: count,
+    firstRecordedAt: instant.nullable(),
+    stages: z.array(z.object({ id: progressionStage, players: count, medianSeconds: count.nullable() })).max(5),
+  }).refine(value => value.initializedPlayers <= value.players && value.home2Players <= value.initializedPlayers
+    && value.playersWithEvents <= value.players && value.stages.every(stage => stage.players <= value.players)
+    && new Set(value.stages.map(stage => stage.id)).size === value.stages.length,
+  "Progression steps must use the same cohort denominator"),
+  snapshot: z.object({ matchingPlayers: count, initializedPlayers: count, unknownHistoryPlayers: count,
+    noAction72hPlayers: count, ready24hPlayers: count, awaitingCollection24hPlayers: count,
+    review: z.array(z.object({ publicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
+      displayName: z.string(), homeLevel: count.nullable(), lastActionAt: instant.nullable(),
+      readySince: instant.nullable(), awaitingCollectionSince: instant.nullable(),
+      signals: z.array(progressionSignal).min(1).max(3),
+    })).max(100), reviewTruncated: z.boolean(),
+  }).refine(value => value.initializedPlayers <= value.matchingPlayers && value.unknownHistoryPlayers <= value.initializedPlayers
+    && [value.noAction72hPlayers, value.ready24hPlayers, value.awaitingCollection24hPlayers].every(count => count <= value.matchingPlayers)
+    && new Set(value.review.map(player => player.publicId)).size === value.review.length
+    && value.review.every(player => new Set(player.signals).size === player.signals.length),
+  "Progression signals must match the selected players"),
+});
 const analyticsSchema = z.object({ ...shared,
   summary: z.object({ activePlayers: count, events: count, spendingPlayers: count,
     constructionStarts: count, constructionClaims: count, constructionPlayers: count }),
@@ -37,6 +61,7 @@ const analyticsSchema = z.object({ ...shared,
     reviewDaysTruncated: z.boolean() }),
   coverage: z.object({ firstRecordedAt: instant.nullable(), unattributedEvents: count,
     matchingPlayers: count, initializedPlayers: count, flowsTruncated: z.boolean(), actionsTruncated: z.boolean(), ordersTruncated: z.boolean() }),
+  progression: progressionSchema.nullish(),
 });
 const eventsSchema = z.object({ ...shared, kind: z.string().max(100), resource: z.string().max(100),
   direction: z.enum(["all", "in", "out"]), at: instant.nullable(), offset: count,
@@ -49,6 +74,7 @@ const eventsSchema = z.object({ ...shared, kind: z.string().max(100), resource: 
 });
 
 export type AdminAnalytics = z.infer<typeof analyticsSchema>;
+export type AdminProgression = z.infer<typeof progressionSchema>;
 export type AdminAnalyticsEvents = z.infer<typeof eventsSchema>;
 export type AdminAnalyticsFilters = { from: string; to: string; q: string; scope: "players" | "all" };
 export type AdminAnalyticsEventFilters = AdminAnalyticsFilters & {
@@ -60,7 +86,9 @@ function matchesFilters(value: z.infer<z.ZodObject<typeof shared>>, filters: Adm
 }
 export function getAdminAnalytics(filters: AdminAnalyticsFilters, signal?: AbortSignal) {
   return adminRequest(`analytics?${new URLSearchParams(filters)}`,
-    analyticsSchema.refine(value => matchesFilters(value, filters), "Analytics response must match filters"), signal);
+    analyticsSchema.refine(value => matchesFilters(value, filters)
+      && (!value.progression || Date.parse(value.progression.observedUntil) <= Date.parse(value.serverTime)
+        && Date.parse(value.progression.observedUntil) >= Date.parse(value.endAt)), "Analytics response must match filters"), signal);
 }
 export function getAdminAnalyticsEvents(filters: AdminAnalyticsEventFilters, signal?: AbortSignal) {
   const { at, offset, limit, ...rest } = filters;

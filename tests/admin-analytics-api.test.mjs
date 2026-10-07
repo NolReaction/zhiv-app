@@ -122,3 +122,34 @@ test("authorization failures stay distinguishable and cancellation reaches the u
   controller.abort();
   await assert.rejects(pending, error => error.name === "AbortError");
 });
+
+function progression() {
+  return { observedUntil: serverTime,
+    cohort: { players: 2, initializedPlayers: 1, home2Players: 1, playersWithEvents: 1, firstRecordedAt: null,
+      stages: [{ id: "first_action", players: 1, medianSeconds: 0 }, { id: "first_work_started", players: 0, medianSeconds: null }] },
+    snapshot: { matchingPlayers: 2, initializedPlayers: 1, unknownHistoryPlayers: 1, noAction72hPlayers: 0, ready24hPlayers: 1, awaitingCollection24hPlayers: 0,
+      review: [{ publicId: target, displayName: "Игрок", homeLevel: null, lastActionAt: null, readySince: "2026-10-01T12:00:00Z", awaitingCollectionSince: null, signals: ["ready_24h"] }], reviewTruncated: false } };
+}
+test("optional progression accepts old and nullable responses while preserving unknown history and null medians", async () => {
+  for (const extra of [{}, { progression: null }, { progression: progression() }]) {
+    reply({ ...snapshot, ...extra });
+    assert.deepEqual(await api.getAdminAnalytics(filters), { ...snapshot, ...extra });
+  }
+});
+test("progression rejects misleading denominators, unknown signals, duplicate steps or players and a future snapshot", async () => {
+  const invalid = [];
+  for (const change of [
+    p => { p.cohort.initializedPlayers = 3; }, p => { p.cohort.home2Players = 2; },
+    p => { p.cohort.playersWithEvents = 3; }, p => { p.cohort.stages[0].players = 3; },
+    p => { p.cohort.stages[0].medianSeconds = -1; }, p => { p.cohort.stages[0].medianSeconds = 0.5; },
+    p => { p.cohort.stages.push({ ...p.cohort.stages[0] }); },
+    p => { p.snapshot.unknownHistoryPlayers = 2; }, p => { p.snapshot.ready24hPlayers = 3; },
+    p => { p.snapshot.review[0].signals = ["offline"]; }, p => { p.snapshot.review[0].signals = ["ready_24h", "ready_24h"]; },
+    p => { p.snapshot.review.push({ ...p.snapshot.review[0] }); },
+    p => { p.observedUntil = "2026-10-08T12:00:00Z"; },
+  ]) { const p = progression(); change(p); invalid.push(p); }
+  for (const p of invalid) {
+    reply({ ...snapshot, progression: p });
+    await assert.rejects(api.getAdminAnalytics(filters), error => error.status === 502);
+  }
+});
