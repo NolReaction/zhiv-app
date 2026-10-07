@@ -31,6 +31,6 @@ export function forestResidentOccupants(state: ForestSessionState, scene: FixedW
   const plesk = pleskMindFrame(state.pleskMind, scene, false);
   if (plesk) occupants.push({ id: "plesk", position: { x: plesk.x, y: plesk.y }, size: plesk.size, moving: state.pleskMind?.stage.action === "walk" });
   const builder = builderMindFrame(state.builderMind, scene, false);
-  if (builder) occupants.push({ id: "builder", position: { x: builder.x, y: builder.y }, size: builder.size, moving: state.builderMind?.action === "walk" });
+  if (builder && (builder.opacity ?? 1) > .05) occupants.push({ id: "builder", position: { x: builder.x, y: builder.y }, size: builder.size, moving: state.builderMind?.action === "walk" });
   return occupants;
 }

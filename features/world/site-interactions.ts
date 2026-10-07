@@ -17,7 +17,7 @@ export function interactiveSites(scene: FixedWorldScene) {
   });
 }
 
-export type MapObjectPlace = BuildingPlace | "garden" | "campfire" | "bridge" | "lighthouse" | "plesk-shop";
+export type MapObjectPlace = BuildingPlace | "garden" | "campfire" | "bridge" | "lighthouse" | "plesk-shop" | "builder-home";
 export type MapInteractiveObject = {
   id: string;
   place: MapObjectPlace;
@@ -26,7 +26,7 @@ export type MapInteractiveObject = {
   anchor: WorldPoint;
   hitArea: readonly WorldPoint[];
 };
-const objectPlaces = { ...places, bridge: "bridge", lighthouse: "lighthouse", "plesk-shop": "plesk-shop" } as const;
+const objectPlaces = { ...places, bridge: "bridge", lighthouse: "lighthouse", "plesk-shop": "plesk-shop", "builder-home": "builder-home" } as const;
 const objectCache = new WeakMap<FixedWorldScene, readonly MapInteractiveObject[]>();
 
 /** Existing world geometry supplies every shortcut, including planned landmarks. */

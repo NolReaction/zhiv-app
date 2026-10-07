@@ -631,7 +631,7 @@ test("visible hero taps take priority over overlapping garden and house menu geo
 
 test("foreground contours let hidden hero taps reach buildings while visible portions keep their response", async () => {
   for (const partial of [false, true]) {
-    const mask = { id: "roof", frontY: 670, points: [
+    const mask = { id: "roof", frontY: 670, when: { siteId: "home", level: 1 }, points: [
       { x: 610, y: 600 }, { x: partial ? 630 : 650, y: 600 },
       { x: partial ? 630 : 650, y: 670 }, { x: 610, y: 670 },
     ] };
@@ -662,6 +662,42 @@ test("foreground contours let hidden hero taps reach buildings while visible por
       }
     } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
   }
+});
+
+test("builder-home canopy blocks hidden artwork taps while exposed walls and explicit status controls remain clickable", async () => {
+  const site = { ...builderHomeFixture(), anchor: { x: 675, y: 655 } };
+  const canopy = { id: "builder-home-tree", frontY: 670, points: [
+    { x: 660, y: 610 }, { x: 680, y: 610 }, { x: 680, y: 665 }, { x: 660, y: 665 },
+  ] };
+  const { createMapEngine, worldDevStore } = await modules({ sites: [site], occluders: [canopy] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(400), places = [], selections = [];
+    const marker = Object.assign(env.surface(), { dataset: { objectId: site.id, kind: "builder-home" }, style: {} });
+    const loading = createMapEngine(canvas, options, place => places.push(place), [marker], undefined, {},
+      { onSelectionChange: selection => selections.push(selection) });
+    env.finish(); await flush(); env.finishPath("/test-builder-home.webp"); engine = await loading;
+    engine.control("overview");
+    const tap = (point, target = canvas) => {
+      const projection = mapProjection(canvas), event = { pointerId: 1, pointerType: "touch", button: 0,
+        clientX: projection.left + point.x * projection.zoom, clientY: projection.top + point.y * projection.zoom };
+      target.events.get("pointerdown")({ ...event, type: "pointerdown" });
+      target.events.get("pointerup")({ ...event, type: "pointerup" });
+    };
+    tap({ x: 675, y: 635 });
+    assert.deepEqual(places, [], "the map engine must apply scene occlusion before opening an authored building hit area");
+    assert.deepEqual(selections, []);
+    tap({ x: 700, y: 645 });
+    assert.deepEqual(places, ["builder-home"], "the exposed part of the same house keeps its menu");
+    assert.equal(selections.at(-1).objectId, site.id);
+    tap(site.anchor);
+    assert.deepEqual(places, ["builder-home"], "a canopy-covered anchor cannot bypass visual hit masking");
+    assert.equal(selections.at(-1), null, "a hidden artwork tap closes the previous selection");
+    tap(site.anchor, marker);
+    assert.deepEqual(places, ["builder-home", "builder-home"], "the separately visible status control still activates its explicit object ID");
+    assert.equal(selections.at(-1).objectId, site.id);
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
 test("object marker native touch capture opens once and preserves marker-origin drag pinch and cancellation", async () => {
@@ -3670,9 +3706,69 @@ const builderFixture = () => ({
     collision: [{ x: 602, y: 633 }, { x: 638, y: 633 }, { x: 638, y: 650 }, { x: 602, y: 650 }],
     states: [{ level: 1, label: "Мастерская", image: "/test-builder-workshop.webp" }] }],
 });
+const builderHomeFixture = () => ({ id: "builder-home", label: "Дом Шишколапа", initialLevel: 1,
+  bounds: { x: 660, y: 615, width: 50, height: 45 }, anchor: { x: 685, y: 655 },
+  entry: { x: 685, y: 680 }, doorway: { x: 685, y: 648 },
+  hitArea: [{ x: 660, y: 615 }, { x: 710, y: 615 }, { x: 710, y: 660 }, { x: 660, y: 660 }],
+  collision: [{ x: 665, y: 627 }, { x: 705, y: 627 }, { x: 705, y: 657 }, { x: 665, y: 657 }],
+  states: [{ level: 1, label: "Дом Шишколапа", image: "/test-builder-home.webp" }],
+});
 const confirmedConstruction = (ownerPublicId, revision = 1, jobs) => ({ ownerPublicId, revision,
   jobs: jobs ?? [{ id: "confirmed-workshop", stationId: "workshop", targetLevel: 2,
     startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() }],
+});
+
+test("main scene sends the builder home at night, paints shared sleep cues, and wakes him for daylight or construction", async () => {
+  const authored = builderFixture(), home = builderHomeFixture(); authored.sites.push(home);
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, builderSleepIndicator, builderMindFrame,
+    builderSpriteRig, builderLocalPlaces } = await modules(authored);
+  const env = browser(), views = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, timeOfDay: "auto", autoLife: false });
+    const owner = "builder-home-runtime", initial = { ...options, reducedMotion: false, serverNow: 100_000,
+      presenceKey: `zhiv:mochlik:presence:${owner}`, economyConstruction: confirmedConstruction(owner, 0, []) };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); views.push(circle);
+    env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); env.finishPath("/test-builder-home.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const mind = probe.state.builderMind, clock = sceneClock(env);
+    assert.ok(builderLocalPlaces(TILED_WORLD).home, "the runtime uses a valid authored private doorway");
+    assert.equal(mind.sleepPhase, "awake"); assert.equal(builderSleepIndicator(mind, TILED_WORLD), null);
+    circle.configure({ ...initial, dusk: true });
+    clock.until(() => mind.sleepPhase === "sleep", "the actual night transition walks the builder through his own door", 600);
+    assert.deepEqual(mind.position, home.doorway);
+    assert.equal(builderMindFrame(mind, TILED_WORLD, false), null, "the indoor builder has no exterior resident sprite");
+    assert.ok(builderSleepIndicator(mind, TILED_WORLD));
+    const sleeping = structuredClone(mind);
+    const world = mountHabitat(env.surface(), { ...initial, dusk: true, view: "world" }, callbacks); views.push(world); await flush();
+    assert.deepEqual(mind, sleeping, "opening the main map cannot replay the doorway crossing");
+    assert.equal(env.frames.size, 1, "both cameras share the builder clock");
+    const sampleSleep = view => {
+      const target = env.surface(); view.paintWorld(target.context);
+      assert.equal(target.calls.some(call => call.method === "drawImage" && builderSpriteRig(call.args[0])), false);
+      assert.notEqual(view.hitResident(home.doorway.x, home.doorway.y - 20), "builder", "an indoor resident cannot intercept taps through his house");
+      return target.calls.filter(call => call.method === "fillRect" && call.args[0] === home.doorway.x - 4
+        && call.args[2] === 4 && call.args[3] === 1);
+    };
+    const circleCue = sampleSleep(circle), worldCue = sampleSleep(world);
+    assert.ok(circleCue.length >= 2, "the shared painter draws a doorway sleep cue even without a resident sprite");
+    assert.deepEqual(worldCue, circleCue, "circle and main map show the same sleep phase");
+    assert.deepEqual(mind, sleeping, "painting and hit tests cannot progress indoor time");
+    const configure = next => views.forEach((view, index) => view.configure({ ...next, view: index ? "world" : "circle" }));
+    configure(initial);
+    clock.until(() => mind.sleepPhase === "awake", "daylight lets the builder leave through the same doorway", 600);
+    assert.equal(builderSleepIndicator(mind, TILED_WORLD), null);
+    assert.ok(builderMindFrame(mind, TILED_WORLD, false));
+    configure({ ...initial, dusk: true });
+    clock.until(() => mind.sleepPhase === "sleep", "an idle builder returns home on the next night", 600);
+    const feet = { ...mind.position }, construction = confirmedConstruction(owner, 1), original = structuredClone(construction);
+    configure({ ...initial, dusk: true, economyConstruction: construction });
+    assert.deepEqual(mind.position, feet, "a newly confirmed job wakes the builder without relocating indoor feet");
+    assert.equal(mind.sleepPhase, "exit"); assert.equal(builderSleepIndicator(mind, TILED_WORLD), null);
+    clock.until(() => mind.action === "work", "night construction leaves the house and reaches the assigned workshop", 800);
+    assert.equal(mind.target.id, "workshop"); assert.equal(mind.sleepPhase, "awake");
+    assert.deepEqual(construction, original, "the night visual cannot change construction dates or rewards");
+  } finally { views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
 test("builder work shares one route and clock across cameras; painting and hit tests cannot progress it", async () => {

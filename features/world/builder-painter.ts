@@ -16,6 +16,7 @@ export function drawBuilderResident(ctx: CanvasRenderingContext2D, frame: Builde
   const sprite = builderSprite(frame.action, frame.direction, frame.frame, frame.phase, still);
   const contact = builderSpriteRig(sprite)?.contact.bottom ?? 45;
   ctx.save();
+  ctx.globalAlpha *= Math.max(0, Math.min(1, frame.opacity ?? 1));
   ctx.fillStyle = "rgba(28,43,35,.1)"; ctx.beginPath();
   ctx.ellipse(frame.x, frame.y, frame.size * .3, frame.size * .055, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(28,43,35,.17)"; ctx.beginPath();

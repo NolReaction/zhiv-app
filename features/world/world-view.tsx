@@ -216,6 +216,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   }, [openPanel, openObject, openQuick]);
   const onPlace = useCallback((place: WorldPlace, object?: MapObjectSelection) => {
     if (place === "plesk-shop") { openResident(); return; }
+    if (place === "builder-home") { openResident("builder"); return; }
     if (place === "quarry" || place === "cave") {
       requestedStation.current = undefined; requestedRecipe.current = undefined; requestedObjectReturn.current = null;
       openQuick("expeditions", "caves"); return;

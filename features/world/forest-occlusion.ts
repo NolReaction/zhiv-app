@@ -1,10 +1,11 @@
-import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
+import type { FixedSite, FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import { forestOcclusionTexture, type ForestOcclusionContour } from "./forest-occlusion-mask";
 
 type Actor = WorldPoint & { size: number };
 type Mask = ForestOcclusionContour & {
   frontY: number;
+  siteId?: string;
   path?: Path2D;
 };
 type Geometry = { masks: Mask[]; margin: number; width: number; height: number };
@@ -22,7 +23,7 @@ function compiled(scene: FixedWorldScene): Geometry {
       left = Math.min(left, point.x); top = Math.min(top, point.y);
       right = Math.max(right, point.x); bottom = Math.max(bottom, point.y);
     }
-    masks.push({ points: mask.points, frontY: mask.frontY, left, top, right, bottom });
+    masks.push({ points: mask.points, frontY: mask.frontY, siteId: mask.when?.siteId, left, top, right, bottom });
   }
   // Include sprite overhang at the map edges without an unbounded canvas path.
   const width = scene.width, height = scene.height, margin = Math.max(width, height, 1);
@@ -41,7 +42,7 @@ function traceInverse(target: CanvasRenderingContext2D | Path2D, mask: Mask, are
 type Layer = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; busy: boolean };
 const layers = new WeakMap<CanvasRenderingContext2D, Layer>();
 
-/** Composite just the actor, at physical screen resolution. Its original pixels
+/** Composite just the subject, at physical screen resolution. Its original pixels
  * never pass through a blur or a resized texture. One scratch surface is reused
  * per camera; even long fishing props are clipped to the visible viewport. */
 function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBounds,
@@ -103,10 +104,29 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
 
 /** Match visual masking when deciding whether a tap can reach the hero. */
 export function forestPointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint): boolean {
+  return pointOccluded(scene, feetY, point);
+}
+
+function pointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint, excludeSiteId?: string): boolean {
   if (!scene.occluders?.length || !Number.isFinite(feetY) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
   return compiled(scene).masks.some(mask => feetY < mask.frontY
+    && (excludeSiteId === undefined || mask.siteId !== excludeSiteId)
     && point.x >= mask.left && point.x <= mask.right && point.y >= mask.top && point.y <= mask.bottom
     && previewPointInPolygon(point, mask.points));
+}
+
+/** Use the same depth and ownership as building rendering, retaining authoring
+ * order when a hidden foreground building reveals another touch target. */
+export function forestVisibleSiteAt(scene: FixedWorldScene, point: WorldPoint): FixedSite | null {
+  for (let index = scene.sites.length - 1; index >= 0; index--) {
+    const site = scene.sites[index];
+    if (previewPointInPolygon(point, site.hitArea) && !pointOccluded(scene, site.anchor.y, point, site.id)) return site;
+  }
+  return null;
+}
+
+function validBounds(bounds: WorldBounds | undefined): bounds is WorldBounds {
+  return !!bounds && Object.values(bounds).every(Number.isFinite) && bounds.width > 0 && bounds.height > 0;
 }
 
 /**
@@ -120,17 +140,33 @@ export function withForestOcclusion(ctx: CanvasRenderingContext2D, scene: FixedW
   renderBounds?: WorldBounds): void {
   if (!scene.occluders?.length || !Number.isFinite(actor.x) || !Number.isFinite(actor.y)
     || !Number.isFinite(actor.size) || actor.size <= 0) { draw(ctx); return; }
-  const area = compiled(scene);
   // Conservative envelope also covers held props, extended arms and a lifted
   // sprite. Only nearby masks reach the canvas; geometry is shared by cameras.
-  const bounds = renderBounds && Object.values(renderBounds).every(Number.isFinite)
-    && renderBounds.width > 0 && renderBounds.height > 0 ? renderBounds : null;
-  const left = bounds?.x ?? actor.x - actor.size * 2, right = bounds ? bounds.x + bounds.width : actor.x + actor.size * 2;
-  const top = bounds?.y ?? actor.y - actor.size * 2.5, bottom = bounds ? bounds.y + bounds.height : actor.y + actor.size;
-  const masks = area.masks.filter(mask => actor.y < mask.frontY && right >= mask.left
+  const bounds = validBounds(renderBounds) ? renderBounds : { x: actor.x - actor.size * 2,
+    y: actor.y - actor.size * 2.5, width: actor.size * 4, height: actor.size * 3.5 };
+  withOcclusion(ctx, scene, actor.y, bounds, draw);
+}
+
+/** Paint one building using its effective level geometry. The authored anchor
+ * determines depth; bounds already include the image's Tiled rotation. A mask
+ * owned by this site's visual state must never erase the artwork it represents.
+ * Grounding and unrelated objects belong outside the callback. */
+export function withForestSiteOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, site: FixedSite,
+  draw: (target: CanvasRenderingContext2D) => void, renderBounds?: WorldBounds): void {
+  const bounds = validBounds(renderBounds) ? renderBounds : site.bounds;
+  if (!scene.occluders?.length || !Number.isFinite(site.anchor.y) || !validBounds(bounds)) { draw(ctx); return; }
+  withOcclusion(ctx, scene, site.anchor.y, bounds, draw, site.id);
+}
+
+function withOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, feetY: number, bounds: WorldBounds,
+  draw: (target: CanvasRenderingContext2D) => void, excludeSiteId?: string): void {
+  const area = compiled(scene);
+  const { x: left, y: top } = bounds, right = left + bounds.width, bottom = top + bounds.height;
+  const masks = area.masks.filter(mask => feetY < mask.frontY
+    && (excludeSiteId === undefined || mask.siteId !== excludeSiteId) && right >= mask.left
     && left <= mask.right && bottom >= mask.top && top <= mask.bottom);
   if (!masks.length) { draw(ctx); return; }
-  if (feathered(ctx, masks, { x: left, y: top, width: right - left, height: bottom - top }, draw)) return;
+  if (feathered(ctx, masks, bounds, draw)) return;
   let saved = false;
   try {
     for (const mask of masks) {

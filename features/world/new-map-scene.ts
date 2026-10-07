@@ -3,7 +3,7 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/mochlik/scene";
 import { NEW_MAP_FOCUS, NEW_MAP_PET_SIZE as PET_SIZE, NEW_MAP_SPAWN, TILED_WORLD } from "./presentation";
 import { paintFixedWorld } from "./tiled/renderer";
-import { initialPreviewLevels, previewSiteAt, previewSiteVisual, previewWorldScene } from "./tiled/preview-state";
+import { initialPreviewLevels, previewSiteVisual, previewWorldScene } from "./tiled/preview-state";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldPoint } from "./tiled/types";
 import { drawGroundedHero } from "./grounding";
 import { drawBuildingDetails } from "./building-details";
@@ -30,7 +30,7 @@ import { forestBirdwatchFrame, type ForestBirdwatch } from "./forest-birdwatchin
 import { advanceBirdReactions, applyBirdReactions } from "./forest-bird-reactions";
 import { drawForestBird, type ForestBird } from "./forest-wildlife";
 import { drawForestResidents, forestResidentAt, forestResidentFrames } from "./forest-residents";
-import { forestPointOccluded, withForestOcclusion } from "./forest-occlusion";
+import { forestPointOccluded, forestVisibleSiteAt, withForestOcclusion } from "./forest-occlusion";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "./living-world-debug";
 import { connectForestSession } from "./forest-session";
 import { publishForestObservation } from "./forest-observer";
@@ -43,7 +43,7 @@ import { interactiveMapObjects } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "./forest-journey-travel";
 
 import { advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade } from "./plesk-mind";
-import { advanceBuilderMind, builderMindFrame, noticeBuilderMind } from "./builder-mind";
+import { advanceBuilderMind, builderMindFrame, builderSleepIndicator, noticeBuilderMind } from "./builder-mind";
 import { syncForestConstruction } from "./economy-construction-state";
 import { previewForestResidents } from "./dev/forest-resident-preview";
 import { builderPreviewActive, previewForestBuilder } from "./dev/forest-builder-preview";
@@ -120,6 +120,7 @@ export type NewMapPaintPreview = {
   cooking?: ForestCookingFrame | null;
   productions?: readonly ForestProductionFrame[];
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
+  builderSleeping?: ReturnType<typeof builderSleepIndicator>;
 };
 
 function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
@@ -264,6 +265,9 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   if (walking?.homeSleeping && home && heroVisible && dev?.showBuildings !== false) {
     drawHomeSleep(context, home.doorway ?? home.entry, elapsed, still);
   }
+  if (preview?.builderSleeping && dev?.showBuildings !== false) {
+    drawHomeSleep(context, preview.builderSleeping, preview.builderSleeping.phase, still);
+  }
   drawForestCampfires(context, frontFires, elapsed, still);
   paintProduction(true);
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
@@ -337,7 +341,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (TILED_WORLD.sites.some(site => previewSiteVisual(site, selected)?.level !== visuals[site.id]?.level)) return;
     }
     advanceBuilderMind(state.builderMind, world, dt, { now: explorationNow(), construction: state.economyConstruction,
-      occupants: residentOccupants() });
+      occupants: residentOccupants(), night: Number(atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }).dusk) >= .65 });
   }
   // DEV rehearsals use the same travel/animation controller with a local clock.
   // A confirmed account job always owns the hero and its economic deadline.
@@ -406,8 +410,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           context: fishing ? "fish" : cooking ? "cook" : body.pose === "sleep" ? "sleep"
             : state.fauna.encounter || state.director.birdwatch ? "animal" : occupant.moving ? "walk" : available ? "idle" : "busy" };
       }
-      if (occupant.id === "builder") return { ...occupant, id: "builder", visible: true, canSpeak: !builderRehearsal,
-        available: !state.builderMind?.job && !state.builderMind?.constructionPending && !state.builderMind?.blocked
+      if (occupant.id === "builder") return { ...occupant, id: "builder", visible: true,
+        canSpeak: !builderRehearsal && state.builderMind?.sleepPhase === "awake",
+        available: state.builderMind?.sleepPhase === "awake" && !state.builderMind?.job && !state.builderMind?.constructionPending && !state.builderMind?.blocked
           && !state.builderMind?.noticePending && state.builderMind?.action !== "finish",
         context: occupant.moving ? "walk" : state.builderMind?.job ? state.builderMind.ready ? "ready" : state.builderMind.blocked ? "busy" : "build" : "idle" };
       const action = state.pleskMind?.stage.action;
@@ -567,6 +572,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     return { scene: world, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       residents: residentFrames(), fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
+      builderSleeping: builderSleepIndicator(state.builderMind, world),
       mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
@@ -969,12 +975,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (disposed || !art) return null;
       const resident = residentFrames().find(resident => resident.id === target);
       if (resident) return { x: resident.x, y: resident.y - resident.size / 2 };
+      const builderHome = target === "builder" ? world.sites.find(site => site.id === "builder-home") : null;
+      if (builderHome) return builderHome.anchor;
       const shore = target === "fishing" ? forestTrailDestination(world, "fishing") : null;
       return shore ? { x: shore.x, y: shore.y - PET_SIZE / 2 } : null;
     },
     hitSite(point) {
       if (disposed || !art || dev?.showBuildings === false) return null;
-      return previewSiteAt(world, point)?.id ?? null;
+      return forestVisibleSiteAt(world, point)?.id ?? null;
     },
     siteAnchor(siteId) {
       if (disposed || !art || dev?.showBuildings === false) return null;

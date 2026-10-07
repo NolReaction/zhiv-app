@@ -1,14 +1,14 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
-import { BUILDER, type BuilderAction, type BuilderResidentFrame } from "./builder-types";
+import { BUILDER, type BuilderAction, type BuilderResidentFrame, type BuilderSleepPhase } from "./builder-types";
 import { builderDirection, builderLocalPlaces, builderRoute, builderWorkStops,
-  type BuilderPlaces, type BuilderStop } from "./builder-navigation";
+  type BuilderHome, type BuilderPlaces, type BuilderStop } from "./builder-navigation";
 import { forestConstructionJob, type EconomySceneConstruction, type SceneConstructionJob } from "./economy-construction-state";
 import { canTraverse, isWalkable } from "./navigation";
 import { desiredSteeringSpeed, type SteeringPath } from "./steering";
 import { canTraverseResidents, residentTrafficDetour, RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "./resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
-export type BuilderEnvironment = { now: number; construction?: EconomySceneConstruction | null; occupants?: readonly ResidentOccupant[] };
+export type BuilderEnvironment = { now: number; construction?: EconomySceneConstruction | null; occupants?: readonly ResidentOccupant[]; night?: boolean };
 export type BuilderMind = {
   scene: FixedWorldScene; available: boolean; position: WorldPoint; direction: PixelDirection;
   elapsed: number; age: number; action: BuilderAction; ready: boolean;
@@ -22,9 +22,13 @@ export type BuilderMind = {
   trafficWaiting: boolean;
   /** A short local visit, never an economic assignment or persisted route. */
   socialVisit: { targetId: string; anchor: WorldPoint } | null;
+  sleepPhase: BuilderSleepPhase;
+  /** Position on the authored entry -> doorway segment, also used by its fade. */
+  sleepProgress: number;
+  sleepHome: BuilderHome | null;
 };
 export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8.8, finish: 1.4,
-  greeting: 2, trafficPatience: 2.4, acceleration: BUILDER.size * 1.6 } as const;
+  greeting: 2, trafficPatience: 2.4, doorSeconds: 1.2, acceleration: BUILDER.size * 1.6 } as const;
 const length = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const idleYieldAfter = new WeakMap<BuilderMind, number>();
 const trafficStalls = new WeakMap<BuilderMind, { startedAt: number; position: WorldPoint }>();
@@ -36,7 +40,8 @@ export function createBuilderMind(scene: FixedWorldScene, options: { awaitConstr
   return { scene, available: true, position: { ...places.rest.position }, direction: "front", elapsed: 0, age: 0,
     action: "idle", ready: false, job: null, jobKey: "", target: places.rest,
     route: null, distance: 0, speed: 0, walked: 0, wait: 8, wanderIndex: 0, decisions: 0, blocked: false,
-    noticePending: false, greetAfter: 0, constructionPending: options.awaitConstruction === true, trafficWaiting: false, socialVisit: null };
+    noticePending: false, greetAfter: 0, constructionPending: options.awaitConstruction === true, trafficWaiting: false, socialVisit: null,
+    sleepPhase: "awake", sleepProgress: 0, sleepHome: null };
 }
 
 function action(mind: BuilderMind, value: BuilderAction) {
@@ -48,6 +53,10 @@ function settle(mind: BuilderMind) {
   if (mind.target) mind.direction = builderDirection(mind.target.lookAt.x - mind.position.x, mind.target.lookAt.y - mind.position.y);
   action(mind, mind.job && !mind.ready ? "work" : "idle");
   mind.wait = 8 + mind.wanderIndex % 3 * 3;
+  if (mind.sleepPhase === "approach" && mind.sleepHome && mind.target?.id === "builder-home"
+    && length(mind.position, mind.sleepHome.entry) < .001) {
+    mind.sleepPhase = "enter"; mind.sleepProgress = 0; action(mind, "walk");
+  }
 }
 
 function beginRoute(mind: BuilderMind, places: BuilderPlaces, candidates: readonly BuilderStop[]) {
@@ -75,7 +84,7 @@ function sample(path: SteeringPath, at: number) {
  * A stalled free walk can also release an unreachable approach to a free goal.
  * Work shifts and social reservations retain ownership of their destinations. */
 function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[], stalled = false): boolean {
-  if (mind.job || mind.socialVisit || !mind.target || !stalled && canTraverseResidents(mind.target.position, mind.target.position, BUILDER.size, occupants, BUILDER.id)
+  if (mind.job || mind.socialVisit || mind.sleepPhase !== "awake" || !mind.target || !stalled && canTraverseResidents(mind.target.position, mind.target.position, BUILDER.size, occupants, BUILDER.id)
     || mind.elapsed < (idleYieldAfter.get(mind) ?? 0)) return false;
   idleYieldAfter.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const nearest = (occupants ?? []).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants)
@@ -146,6 +155,72 @@ function walk(mind: BuilderMind, places: BuilderPlaces, dt: number, occupants?: 
   if (path.length - mind.distance < .001) settle(mind);
 }
 
+const indoors = (mind: BuilderMind) => ["enter", "sleep", "exit"].includes(mind.sleepPhase);
+function sameHome(a: BuilderHome | null, b: BuilderHome | null): boolean {
+  return !!a && !!b && length(a.entry, b.entry) < 1e-7 && length(a.doorway, b.doorway) < 1e-7;
+}
+function doorPosition(home: BuilderHome, progress: number): WorldPoint {
+  return { x: home.entry.x + (home.doorway.x - home.entry.x) * progress,
+    y: home.entry.y + (home.doorway.y - home.entry.y) * progress };
+}
+function validDoorState(mind: BuilderMind, home: BuilderHome | null): boolean {
+  return sameHome(mind.sleepHome, home) && Number.isFinite(mind.sleepProgress)
+    && mind.sleepProgress >= 0 && mind.sleepProgress <= 1
+    && length(mind.position, doorPosition(home!, mind.sleepProgress)) < .001;
+}
+function wake(mind: BuilderMind) {
+  mind.sleepPhase = "awake"; mind.sleepProgress = 0; mind.sleepHome = null;
+}
+function approachHome(mind: BuilderMind, places: BuilderPlaces) {
+  if (!places.home) return;
+  mind.sleepHome = places.home; mind.sleepPhase = "approach"; mind.sleepProgress = 0;
+  mind.noticePending = false; mind.socialVisit = null;
+  beginRoute(mind, places, [places.home.approach]);
+}
+function departHome(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[]) {
+  wake(mind);
+  const candidates = mind.job ? builderWorkStops(mind.scene, mind.job) : [places.rest];
+  const vacant = candidates.filter(stop => canTraverseResidents(stop.position, stop.position, BUILDER.size, occupants, BUILDER.id));
+  beginRoute(mind, places, vacant.length ? vacant : candidates);
+}
+function advanceDoor(mind: BuilderMind, places: BuilderPlaces, step: number, occupants?: readonly ResidentOccupant[]) {
+  const home = places.home;
+  if (!home || mind.sleepPhase === "sleep") return;
+  const entering = mind.sleepPhase === "enter", direction = entering ? 1 : -1;
+  const seconds = Math.max(BUILDER_MIND_LIMITS.doorSeconds, length(home.entry, home.doorway) / BUILDER.speed);
+  const progress = Math.max(0, Math.min(1, mind.sleepProgress + direction * step / seconds));
+  const position = doorPosition(home, progress);
+  // Check the complete exit before revealing an indoor resident. Entering and
+  // partly visible reversals also retain the usual swept resident clearance.
+  if (!canTraverseResidents(mind.position, position, BUILDER.size, occupants, BUILDER.id)
+    || !entering && mind.sleepProgress >= 1 && !canTraverseResidents(home.doorway, home.entry, BUILDER.size, occupants, BUILDER.id)) {
+    mind.trafficWaiting = true; return;
+  }
+  mind.trafficWaiting = false;
+  mind.walked += length(mind.position, position); mind.position = position; mind.sleepProgress = progress;
+  mind.direction = builderDirection((home.doorway.x - home.entry.x) * direction, (home.doorway.y - home.entry.y) * direction);
+  if (entering && progress >= 1) { mind.sleepPhase = "sleep"; action(mind, "idle"); }
+  else if (!entering && progress <= 0) departHome(mind, places, occupants);
+}
+
+/** Server memory owns no builder coordinates. Preserve local door continuity
+ * only while the new geometry validates that same private crossing. */
+export function rehydrateBuilderMind(scene: FixedWorldScene, previous: BuilderMind | null): BuilderMind | null {
+  const next = createBuilderMind(scene, { awaitConstruction: previous?.constructionPending }), places = builderLocalPlaces(scene);
+  if (!next || !previous || !places) return next;
+  if (indoors(previous)) {
+    next.position = { ...previous.position }; next.direction = previous.direction;
+    next.sleepPhase = previous.sleepPhase; next.sleepProgress = previous.sleepProgress; next.sleepHome = previous.sleepHome;
+    next.action = previous.action; next.age = previous.age; next.elapsed = previous.elapsed; next.walked = previous.walked;
+    next.available = false;
+    return next;
+  }
+  if (!isWalkable(places.navigation, previous.position)) return next;
+  next.position = { ...previous.position }; next.direction = previous.direction; next.available = false;
+  if (previous.action === "finish") { next.action = "finish"; next.age = previous.age; }
+  return next;
+}
+
 function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvironment): BuilderPlaces | null {
   // Loading is not an empty confirmed snapshot. In particular a slow economy
   // response must not first show an idle builder in the clearing, then move him.
@@ -166,12 +241,22 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
   const finishingAge = !job && mind.action === "finish" ? mind.age : null;
   const workDirection = mind.direction;
   mind.job = job; mind.jobKey = key; mind.ready = !!job && env.now >= Date.parse(job.finishesAt);
-  if (!places || (changedScene || !mind.available) && !isWalkable(places.navigation, mind.position)) {
+  const atDoor = indoors(mind);
+  if (!places || atDoor && !validDoorState(mind, places.home)
+    || !atDoor && (changedScene || !mind.available) && !isWalkable(places.navigation, mind.position)) {
     mind.available = false; mind.route = null; mind.speed = 0; mind.blocked = true; mind.socialVisit = null; action(mind, "idle"); return null;
   }
   const recovered = !mind.available;
   mind.available = true;
-  if (changedJob || changedScene || recovered) {
+  if (atDoor) {
+    mind.sleepHome = places.home; mind.blocked = false; mind.socialVisit = null; mind.noticePending = false;
+    if ((job || !env.night) && mind.sleepPhase !== "exit") mind.sleepPhase = "exit";
+    action(mind, mind.sleepPhase === "sleep" ? "idle" : "walk");
+    return places;
+  }
+  const cancelApproach = mind.sleepPhase === "approach" && (!!job || !env.night || !places.home);
+  if (cancelApproach) wake(mind);
+  if (changedJob || changedScene || recovered || cancelApproach) {
     mind.socialVisit = null;
     mind.noticePending = false;
     // Each new job or immutable geometry snapshot gets one bounded attempt.
@@ -193,6 +278,8 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
       action(mind, "finish"); mind.age = finishingAge ?? 0; mind.direction = workDirection;
     }
   } else if (job && !mind.route && !mind.blocked) action(mind, mind.ready ? "idle" : "work");
+  if (!job && env.night && places.home && mind.action !== "finish"
+    && (mind.sleepPhase === "awake" || changedScene || recovered)) approachHome(mind, places);
   return places;
 }
 
@@ -205,6 +292,7 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   if (!places || !Number.isFinite(dt) || dt <= 0) return;
   const step = Math.min(BUILDER_MIND_LIMITS.maxDelta, dt);
   mind.elapsed += step; mind.age += step;
+  if (indoors(mind)) { advanceDoor(mind, places, step, environment.occupants); return; }
   if (mind.action === "finish") {
     if (mind.age >= BUILDER_MIND_LIMITS.finish) {
       action(mind, mind.route ? "walk" : "idle");
@@ -213,6 +301,11 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
     return;
   }
   if (mind.route) { walk(mind, places, step, environment.occupants); return; }
+  if (mind.sleepPhase === "approach") {
+    mind.wait -= step;
+    if (mind.wait <= 0) approachHome(mind, places);
+    return;
+  }
   if (mind.job) return; // Including a finished order awaiting confirmed collection.
   if (mind.socialVisit) return; // The social director releases this finite visit.
   if (mind.action === "greet") {
@@ -233,14 +326,14 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
 }
 
 export function noticeBuilderMind(mind: BuilderMind | null): void {
-  if (mind?.available && !mind.job) mind.noticePending = true;
+  if (mind?.available && !mind.job && mind.sleepPhase === "awake") mind.noticePending = true;
 }
 
 /** Reserve a nearby exterior conversation spot through the usual bounded path
  * finder. Feet still advance only in advanceBuilderMind and use resident traffic. */
 export function requestBuilderVisit(mind: BuilderMind | null, scene: FixedWorldScene,
   target: { id: string; position: WorldPoint; size: number }, occupants?: readonly ResidentOccupant[]): boolean {
-  if (!mind?.available || mind.scene !== scene || mind.constructionPending || mind.job || mind.socialVisit
+  if (!mind?.available || mind.scene !== scene || mind.constructionPending || mind.job || mind.socialVisit || mind.sleepPhase !== "awake"
     || mind.action === "finish" || !Number.isFinite(target.position.x) || !Number.isFinite(target.position.y)
     || !Number.isFinite(target.size) || target.size <= 0) return false;
   const places = builderLocalPlaces(scene); if (!places) return false;
@@ -274,7 +367,8 @@ export function cancelBuilderVisit(mind: BuilderMind | null): void {
 
 /** Circle, map and hit testing all read this frame; none advances the resident. */
 export function builderMindFrame(mind: BuilderMind | null, scene: FixedWorldScene, still: boolean): BuilderResidentFrame | null {
-  if (!mind?.available || mind.constructionPending || mind.scene !== scene) return null;
+  if (!mind?.available || mind.constructionPending || mind.scene !== scene || mind.sleepPhase === "sleep"
+    || indoors(mind) && mind.sleepProgress >= 1) return null;
   let displayAction = mind.action;
   if (mind.trafficWaiting && displayAction === "walk") displayAction = "idle";
   let phase = mind.action === "finish" ? Math.min(1, mind.age / BUILDER_MIND_LIMITS.finish)
@@ -292,5 +386,13 @@ export function builderMindFrame(mind: BuilderMind | null, scene: FixedWorldScen
   return { id: "builder", ...mind.position, size: BUILDER.size, direction: mind.direction,
     action: displayAction,
     frame: still ? 0 : mind.action === "walk" ? Math.floor(mind.walked / (BUILDER.size * .06)) % 8 : Math.floor(mind.age * 8) % 32,
-    phase, ...(mind.job ? { targetId: mind.job.stationId } : {}) };
+    phase, ...(mind.job ? { targetId: mind.job.stationId } : {}), sleepPhase: mind.sleepPhase,
+    ...(indoors(mind) ? { opacity: 1 - mind.sleepProgress } : {}) };
+}
+
+/** The common scene painter owns the Zzz; no hidden sprite or occupied feet. */
+export function builderSleepIndicator(mind: BuilderMind | null, scene: FixedWorldScene):
+  { x: number; y: number; size: number; phase: number } | null {
+  if (!mind?.available || mind.constructionPending || mind.scene !== scene || mind.sleepPhase !== "sleep" || !mind.sleepHome) return null;
+  return { ...mind.sleepHome.doorway, size: BUILDER.size, phase: mind.age };
 }

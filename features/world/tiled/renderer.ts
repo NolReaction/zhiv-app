@@ -3,7 +3,8 @@ import { forestObjectArtwork, forestSiteMaterial } from "../forest-object-appear
 import { drawForestBushGrounding, drawForestBushLeafShade } from "../forest-bush-grounding";
 import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
 import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "../forest-lighting";
-import { previewSiteAt, previewSiteVisual, previewWorldScene } from "./preview-state";
+import { previewSiteVisual, previewWorldScene } from "./preview-state";
+import { forestVisibleSiteAt, withForestSiteOcclusion } from "../forest-occlusion";
 import { drawSiteImage } from "./site-image";
 import { boundsInCanvas, canvasWorldViewport } from "../canvas-viewport";
 import { worldArtworkMipCache } from "../artwork-mip-cache";
@@ -96,7 +97,8 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {
       if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image, frame.dusk ?? Number(frame.options.night));
-      drawSiteImage(ctx, site, worldArtworkMipCache.image(ctx, site, forestObjectArtwork(image, forestSiteMaterial(site))));
+      const artwork = worldArtworkMipCache.image(ctx, site, forestObjectArtwork(image, forestSiteMaterial(site)));
+      withForestSiteOcclusion(ctx, scene, site, target => drawSiteImage(target, site, artwork));
     }
   }
   drawForestLightFixtures(ctx, scene, frame.options.showBuildings);
@@ -368,7 +370,7 @@ export async function createFixedWorldRenderer(
     travelled = Math.max(travelled, Math.hypot(point.x - pointer.initial.x, point.y - pointer.initial.y));
     cancelled ||= event.type !== "pointerup"; pointers.delete(event.pointerId);
     if (!pointers.size && !cancelled && !multitouch && travelled < 8) {
-      const site = previewSiteAt(scene, toWorld(point)); if (site) callbacks.onSelect?.(site.id);
+      const site = forestVisibleSiteAt(scene, toWorld(point)); if (site) callbacks.onSelect?.(site.id);
     }
     if (worldCanvas.hasPointerCapture(event.pointerId)) worldCanvas.releasePointerCapture(event.pointerId);
   }

@@ -21,6 +21,7 @@ export function forestResidentAt(scene: FixedWorldScene, elapsed: number, still:
   if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
   // Resolve the visible frontmost body, rather than the first resident in the registry.
   for (const resident of [...frames].sort((a, b) => b.y - a.y)) {
+    if (resident.id === "builder" && (resident.opacity ?? 1) <= .05) continue;
     if (forestPointOccluded(scene, resident.y, point)) continue;
     const bounds = resident.id === "builder" ? builderHitBounds(resident) : pleskHitBounds(resident);
     if (point.x >= bounds.x && point.x <= bounds.x + bounds.width

@@ -2,13 +2,15 @@ import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import { BUILDER } from "./builder-types";
 import { constructionMapPlace } from "./construction-map-anchor";
 import type { SceneConstructionJob } from "./economy-construction-state";
-import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
+import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath, type SteeringPath } from "./steering";
 import { residentClearance } from "./resident-traffic";
 import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 
 export type BuilderStop = { id: string; position: WorldPoint; lookAt: WorldPoint };
+/** Only this short validated corridor may cross the builder's own collider. */
+export type BuilderHome = { id: "builder-home"; entry: WorldPoint; doorway: WorldPoint; approach: BuilderStop };
 export type BuilderWorkMarkerIssue = "invalid-position" | "missing-navigation" | "missing-host" | "far-from-building"
   | "doorway" | "bush-access" | "activity" | "blocked-ground" | "blocked-future";
 export type BuilderWorkMarkerConflict = { issue: "far-from-building" | "doorway" | "bush-access" | "activity";
@@ -18,8 +20,8 @@ export type BuilderWorkMarkerCheck = { id: string; position: WorldPoint; issues:
 type WorkGeometry = { id: string; points: WorldPoint[] };
 type BuilderWorkPlan = { stops: readonly BuilderStop[]; markers: readonly BuilderWorkMarkerCheck[] };
 export const BUILDER_NAVIGATION_LIMITS = { radius: BUILDER.size * .1, workReach: BUILDER.size * .8,
-  contourEdges: 24, workCandidates: 16, searches: 3, wanderStops: 8 } as const;
-export type BuilderPlaces = { navigation: WorldNavigation; rest: BuilderStop; wander: readonly BuilderStop[] };
+  contourEdges: 24, workCandidates: 16, searches: 3, wanderStops: 8, doorwayLength: 52 } as const;
+export type BuilderPlaces = { navigation: WorldNavigation; rest: BuilderStop; wander: readonly BuilderStop[]; home: BuilderHome | null };
 const cache = new WeakMap<FixedWorldScene, BuilderPlaces | null>();
 const workCache = new WeakMap<FixedWorldScene, Map<string, BuilderWorkPlan>>();
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -101,8 +103,32 @@ function besideContour(contour: readonly WorldPoint[], entry: WorldPoint): World
   });
 }
 
-/** Optional personal rest marker can be authored later. The fallback is a safe
- * clearing position, never an invented house or the hero's occupied spawn. */
+function inside(point: WorldPoint, polygon: readonly WorldPoint[]): boolean {
+  let result = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const a = polygon[index], b = polygon[previous];
+    if ((a.y > point.y) !== (b.y > point.y)
+      && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) result = !result;
+  }
+  return result;
+}
+
+function personalHome(scene: FixedWorldScene, navigation: WorldNavigation): BuilderHome | null {
+  const home = scene.sites.find(site => site.id === "builder-home");
+  if (!home || !finite(home.entry) || !finite(home.doorway) || home.collision.length < 3
+    || !home.collision.every(finite) || !isWalkable(navigation, home.entry)
+    || !inside(home.doorway, home.collision) || distance(home.entry, home.doorway) < 1
+    || distance(home.entry, home.doorway) > BUILDER_NAVIGATION_LIMITS.doorwayLength) return null;
+  // Removing this collider applies only to validation of this exact segment;
+  // ordinary paths and every other resident still see the complete house.
+  const corridor = createWorldNavigation({ ...scene, sites: scene.sites.filter(site => site !== home) }, navigation.radius);
+  if (!corridor || !canTraverse(corridor, home.entry, home.doorway)) return null;
+  return { id: "builder-home", entry: { ...home.entry }, doorway: { ...home.doorway },
+    approach: { id: "builder-home", position: { ...home.entry }, lookAt: { ...home.doorway } } };
+}
+
+/** The personal outdoor marker and validated house are optional for old scenes.
+ * Their fallback is a safe clearing position outside the hero's occupied spawn. */
 export function builderLocalPlaces(scene: FixedWorldScene): BuilderPlaces | null {
   if (cache.has(scene)) return cache.get(scene)!;
   const nav = createWorldNavigation(scene, BUILDER_NAVIGATION_LIMITS.radius), spawn = scene.actor?.spawn;
@@ -128,7 +154,7 @@ export function builderLocalPlaces(scene: FixedWorldScene): BuilderPlaces | null
       .find(point => isWalkable(nav, point));
     if (position) wander.push({ id: `builder-look-${site.id}`, position, lookAt: { ...site.anchor } });
   }
-  const result = { navigation: nav, rest, wander: wander.slice(0, BUILDER_NAVIGATION_LIMITS.wanderStops) };
+  const result = { navigation: nav, rest, wander: wander.slice(0, BUILDER_NAVIGATION_LIMITS.wanderStops), home: personalHome(scene, nav) };
   cache.set(scene, result); return result;
 }
 

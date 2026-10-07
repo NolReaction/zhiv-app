@@ -301,7 +301,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
           y: (world.y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height };
         const objects = habitat.mapObjects?.() ?? [];
         const markerObject = touch.objectId ? objects.find(object => object.id === touch.objectId) : null;
-        const object = mapObjectAt(objects, world);
+        // Artwork hidden by a foreground canopy is not a building touch target.
+        // Explicit production/status markers remain their own visible controls.
+        const visibleSite = habitat.hitSite?.(world);
+        const object = mapObjectAt(habitat.hitSite ? objects.filter(object => object.kind !== "site" || object.id === visibleSite) : objects, world);
         const resident = interactions.onResident ? habitat.hitResident?.(world.x, world.y) : null;
         if (resident) { setSelectedObject(null); habitat.noticeResident?.(resident); interactions.onResident?.(resident); }
         else if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); habitat.notice(); }

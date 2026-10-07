@@ -11,9 +11,7 @@ import { createForestMemory, forestSceneFingerprint, type ForestMemoryEnvironmen
 import { forgetForestObservation } from "./forest-observer";
 import { createForestMemorySync, type ForestMemorySyncEnvironment, type ForestMemoryTransport } from "./forest-memory-sync";
 import { createPleskMind, type PleskMind } from "./plesk-mind";
-import { createBuilderMind, type BuilderMind } from "./builder-mind";
-import { builderLocalPlaces } from "./builder-navigation";
-import { isWalkable } from "./navigation";
+import { createBuilderMind, rehydrateBuilderMind, type BuilderMind } from "./builder-mind";
 import type { EconomySceneConstruction } from "./economy-construction-state";
 import type { ForestJourneyTravel } from "./forest-journey-travel";
 import type { EconomySceneProduction } from "./economy-production-state";
@@ -53,18 +51,6 @@ type Session = { state: ForestSessionState; memory: ReturnType<typeof createFore
   key: string | undefined; sync?: ReturnType<typeof createForestMemorySync>; removeLifecycle?: () => void;
   members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object; visibleHandoff?: boolean; retained?: boolean; retentionBlocked?: boolean };
 const sessions = new Map<string, Session>();
-
-function rehydrateBuilder(scene: FixedWorldScene, previous: BuilderMind | null): BuilderMind | null {
-  const next = createBuilderMind(scene, { awaitConstruction: previous?.constructionPending }), places = builderLocalPlaces(scene);
-  if (!next || !previous || !places || !isWalkable(places.navigation, previous.position)) return next;
-  // Server memory contains no NPC coordinates. Keep only this account's safe
-  // visible feet; old routes, targets and jobs cannot survive authoritative
-  // hydration. The next construction sync plans afresh from its fenced job.
-  next.position = { ...previous.position }; next.direction = previous.direction;
-  next.available = false;
-  if (previous.action === "finish") { next.action = "finish"; next.age = previous.age; }
-  return next;
-}
 
 function discardSession(identity: string | undefined, session: Session) {
   session.sync?.release(); session.removeLifecycle?.(); session.memory.release();
@@ -124,7 +110,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
         apply(payload) {
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
           Object.assign(state, { elapsed: 0, wetness: 0, clearing: createClearingActivity(scene), life: createForestLife(scene),
-            social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: rehydrateBuilder(scene, state.builderMind), director: createForestDirector(), birdReactions: createBirdReactions(),
+            social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: rehydrateBuilderMind(scene, state.builderMind), director: createForestDirector(), birdReactions: createBirdReactions(),
             lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));

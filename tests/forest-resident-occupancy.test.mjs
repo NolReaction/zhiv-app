@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { createClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { createBuilderMind } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
+const { createBuilderMind, advanceBuilderMind } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
 const { createPleskMind } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
 const { forestResidentOccupants } = await vite.ssrLoadModule("/features/world/forest-resident-occupancy.ts");
 function state() {
@@ -45,6 +45,20 @@ test("fixed fishing, cooking and doorway crossings reserve their actual visible 
   }
   current.clearing.stage = "entering"; current.clearing.doorProgress = .5;
   assert.equal(occupants(current).find(person => person.id === "mochlik").moving, false);
+});
+
+test("a sleeping builder releases the path and reserves it again as he leaves the doorway", () => {
+  const current = state(); current.builderMind.constructionPending = false;
+  const mind = current.builderMind, environment = { now: 1, night: true };
+  for (let frame = 0; frame < 1000 && mind.sleepPhase !== "sleep"; frame++) advanceBuilderMind(mind, scene, .1, environment);
+  assert.equal(mind.sleepPhase, "sleep");
+  assert.equal(occupants(current).some(person => person.id === "builder"), false);
+  advanceBuilderMind(mind, scene, 0, { ...environment, night: false });
+  assert.equal(occupants(current).some(person => person.id === "builder"), false, "still fully indoors at exit start");
+  advanceBuilderMind(mind, scene, .2, { ...environment, night: false });
+  const visible = occupants(current).find(person => person.id === "builder");
+  assert.ok(visible, "visible doorway crossing has a ground reservation");
+  assert.deepEqual(visible.position, mind.position);
 });
 
 test("occupancy is detached and resampled from committed feet without becoming a second simulation owner", () => {
