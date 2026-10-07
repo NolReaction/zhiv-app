@@ -3,6 +3,7 @@ package ru.zhiv.economy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import java.math.BigInteger
 import java.time.Duration
 import java.time.Instant
 
@@ -14,7 +15,7 @@ import java.time.Instant
     init { require(heroSpeedBps in 0..10000 && builderSpeedBps in 0..10000) }
 }
 @Serializable data class EconomyRecipeFishInput(val itemIds: List<String>)
-@Serializable data class EconomyResidentOrderSlot(val sequence: Long = 0, val readyAt: String, val templateId: String? = null)
+@Serializable data class EconomyResidentOrderSlot(val sequence: Long = 0, val readyAt: String, val templateId: String? = null, val terms: EconomyResidentOrderTemplate? = null)
 @Serializable data class EconomyResidentOrders(
     val cycle: Long = -1, val slots: List<EconomyResidentOrderSlot> = emptyList(),
     val completed: Long = 0, val earnedCoins: Long = 0,
@@ -26,11 +27,15 @@ import java.time.Instant
     val requiredBuildings: Map<String, Int> = emptyMap(), val items: Map<String, Long>, val coins: Long,
     val description: String? = null,
 )
+@Serializable data class EconomyResidentOrderProgression(
+    val rawBpsByHome: List<Int>, val fishBpsByHome: List<Int>, val craftedBpsByHome: List<Int>,
+)
 @Serializable data class EconomyResidentOrdersConfig(
     val slots: Int = 3, val refreshSeconds: Long = 21600, val replacementSeconds: Long = 1800,
     val completionSeconds: Long = 3600, val templates: List<EconomyResidentOrderTemplate>,
     val freeReplacements: Int = 3, val replacementWindowSeconds: Long = 43200,
     val replacementPricePearls: Long = 10, val recentLimit: Int = 6,
+    val progression: EconomyResidentOrderProgression? = null,
 )
 @Serializable data class EconomyFoodCatalog(val meals: List<EconomyMealSpec>, val orders: EconomyResidentOrdersConfig)
 data class EconomyResidentOrderOffer(
@@ -61,6 +66,11 @@ object EconomyFood {
             require(orders.replacementSeconds in 0L..86400L && orders.completionSeconds in 0L..86400L)
             require(orders.freeReplacements in 0..100 && orders.replacementWindowSeconds in 3600L..86400L
                 && orders.replacementPricePearls in 0L..ECONOMY_MAX_BALANCE && orders.recentLimit in 0..100)
+            orders.progression?.let { progression ->
+                require(progression.rawBpsByHome.size == 5 && progression.rawBpsByHome.all { it in 10000..100000 })
+                require(progression.fishBpsByHome.size == 5 && progression.fishBpsByHome.all { it in 10000..20000 })
+                require(progression.craftedBpsByHome.size == 5 && progression.craftedBpsByHome.all { it in 10000..20000 })
+            }
             require(orders.templates.isNotEmpty() && orders.templates.map { it.id }.distinct().size == orders.templates.size)
             require(orders.templates.map(::composition).distinct().size == orders.templates.size)
             require(orders.templates.all { template ->
@@ -138,9 +148,68 @@ object EconomyFood {
     )).toString()).toString()
 
     private fun resident(slot: Int): String? = when (slot) { 0 -> "plesk"; 1 -> "builder"; else -> null }
-    private fun eligible(state: EconomyState, catalog: EconomyCatalog): List<EconomyResidentOrderTemplate> =
-        catalog.food?.orders?.templates?.filter { template -> (state.buildings["home"] ?: 1) >= template.requiredHomeLevel &&
-            template.requiredBuildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level } }?.sortedBy { it.id } ?: emptyList()
+    /** Resolve full input chains, not just the final station. Held inventory and
+     * unfinished construction do not make a resource sustainably obtainable. */
+    fun obtainableOrderItems(state: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog): Set<String> {
+        val reachable = mutableSetOf<String>()
+        fun unlocked(home: Int, buildings: Map<String, Int>) = (state.buildings["home"] ?: 1) >= home &&
+            buildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
+        do {
+            val before = reachable.size
+            catalog.explorations.forEach { route ->
+                if (unlocked(route.requiredHomeLevel, route.requiredBuildings) && route.cost.items.keys.all { it in reachable }) {
+                    reachable += route.rewards.filterValues { it > 0 }.keys
+                    if (route.id in (catalog.fishing?.routeIds ?: emptyList())) catalog.fishing?.fish?.forEach { fish ->
+                        val hookAvailable = catalog.fishing.hooks.any { hook -> hook.id in state.fishing.ownedHooks &&
+                            (fish.requiredHookId == null || hook.id == fish.requiredHookId) && (fish.rarity != "legendary" || hook.rarity == "legendary") }
+                        val rodAvailable = catalog.fishing.rods.any { rod -> rod.id in state.fishing.ownedRods &&
+                            (fish.rarity != "legendary" || rod.rarity == "legendary") }
+                        if (hookAvailable && rodAvailable) reachable += fish.itemId
+                    }
+                }
+            }
+            catalog.recipes.forEach { recipe ->
+                val options = recipe.fishInput?.itemIds
+                if (unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && (state.buildings[recipe.buildingId] ?: 0) >= recipe.buildingLevel &&
+                    recipe.cost.items.keys.all { it in reachable || it in (options ?: emptyList()) } &&
+                    (options == null || options.any { it in reachable })) reachable += recipe.rewards.filterValues { it > 0 }.keys
+            }
+        } while (reachable.size > before)
+        return reachable
+    }
+
+    fun progressedTemplate(template: EconomyResidentOrderTemplate, homeLevel: Int,
+        catalog: EconomyCatalog = EconomyRules.catalog): EconomyResidentOrderTemplate {
+        val progression = catalog.food?.orders?.progression ?: return template
+        val level = (homeLevel - 1).coerceIn(0, 4)
+        val byId = catalog.items.associateBy { it.id }
+        val fishIds = catalog.fishing?.fish?.map { it.itemId }?.toSet() ?: emptySet()
+        val items = template.items.mapValues { (id, quantity) ->
+            val bps = when {
+                id in fishIds -> progression.fishBpsByHome[level]
+                byId[id]?.category in setOf("crafted", "provisions") -> progression.craftedBpsByHome[level]
+                else -> progression.rawBpsByHome[level]
+            }
+            maxOf(quantity, quantity * bps / 10000)
+        }
+        fun value(goods: Map<String, Long>) = goods.entries.fold(BigInteger.ZERO) { sum, (id, count) ->
+            sum + count.toBigInteger() * (byId[id]?.baseSellPrice ?: 0L).toBigInteger()
+        }
+        val originalValue = value(template.items)
+        val divisor = originalValue * BigInteger.TEN
+        val payment = if (originalValue == BigInteger.ZERO) template.coins.toBigInteger()
+            else (template.coins.toBigInteger() * value(items) + divisor - BigInteger.ONE) / divisor * BigInteger.TEN
+        require(payment <= ECONOMY_MAX_BALANCE.toBigInteger()) { "Order payout exceeds wallet capacity" }
+        val coins = payment.longValueExact()
+        return template.copy(items = items, coins = coins)
+    }
+
+    fun eligibleOrderTemplates(state: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog): List<EconomyResidentOrderTemplate> {
+        val reachable = obtainableOrderItems(state, catalog)
+        return catalog.food?.orders?.templates?.filter { template -> (state.buildings["home"] ?: 1) >= template.requiredHomeLevel &&
+            template.requiredBuildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level } && template.items.keys.all { it in reachable } }
+            ?.map { progressedTemplate(it, state.buildings["home"] ?: 1, catalog) }?.sortedBy { it.id } ?: emptyList()
+    }
     private fun history(values: List<String>, limit: Int): List<String> =
         values.asReversed().distinct().asReversed().takeLast(limit)
     private fun retire(values: List<String>, id: String, limit: Int): List<String> = history(values + id, limit)
@@ -167,8 +236,8 @@ object EconomyFood {
         val cycle = Math.floorDiv(now.epochSecond, config.refreshSeconds)
         val replacementCycle = Math.floorDiv(now.epochSecond, config.replacementWindowSeconds)
         val start = Instant.ofEpochSecond(cycle * config.refreshSeconds).toString()
-        val eligible = eligible(state, catalog)
-        val byId = eligible.associateBy { it.id }
+        val eligible = eligibleOrderTemplates(state, catalog)
+        val byId = config.templates.associateBy { it.id }
         var recent = history(previous.recentTemplateIds, config.recentLimit)
         val keepingSlots = previous.version == 2 && previous.cycle == cycle
         if (previous.version == 2 && previous.cycle != cycle) previous.slots.forEach { slot ->
@@ -177,17 +246,17 @@ object EconomyFood {
         val occupied = mutableListOf<EconomyResidentOrderTemplate>()
         val slots = MutableList(config.slots) { index ->
             val old = previous.slots.getOrNull(index)?.takeIf { keepingSlots }
-            val template = old?.templateId?.let(byId::get)
-            val keep = template != null && (resident(index) == null || template.residentId == resident(index)) &&
+            val template = old?.terms ?: old?.templateId?.let(byId::get)
+            val keep = template != null && template.id == old?.templateId && (resident(index) == null || template.residentId == resident(index)) &&
                 occupied.none { it.id == template.id || composition(it) == composition(template) }
             if (keep) occupied += checkNotNull(template)
             else old?.templateId?.let { recent = retire(recent, it, config.recentLimit) }
-            EconomyResidentOrderSlot(old?.sequence ?: 0, start, template?.id?.takeIf { keep })
+            EconomyResidentOrderSlot(old?.sequence ?: 0, start, template?.id?.takeIf { keep }, template?.takeIf { keep })
         }
         slots.indices.forEach { index ->
             if (slots[index].templateId != null) return@forEach
             val template = chooseTemplate(index, slots[index].sequence, cycle, eligible, occupied, recent)
-            slots[index] = slots[index].copy(templateId = template?.id)
+            slots[index] = slots[index].copy(templateId = template?.id, terms = template)
             if (template != null) occupied += template
         }
         return previous.copy(version = 2, cycle = cycle, slots = slots, recentTemplateIds = recent,
@@ -216,9 +285,8 @@ object EconomyFood {
     fun residentOrderBoard(state: EconomyState, now: Instant, catalog: EconomyCatalog = EconomyRules.catalog): EconomyResidentOrderBoard {
         val orders = normalizedOrders(state, now, catalog)
         val config = catalog.food?.orders ?: return EconomyResidentOrderBoard(now.toString(), emptyList(), orders.completed, orders.earnedCoins)
-        val templates = eligible(state, catalog).associateBy { it.id }
         val offers = orders.slots.mapIndexedNotNull { index, slot ->
-            val template = slot.templateId?.let(templates::get) ?: return@mapIndexedNotNull null
+            val template = slot.terms ?: return@mapIndexedNotNull null
             EconomyResidentOrderOffer("order2_${orders.cycle}_${index}_${slot.sequence}_${fingerprint(template)}", index, template.id,
                 template.residentId, template.name, template.items, template.coins, slot.readyAt, template.description)
         }
@@ -237,12 +305,12 @@ object EconomyFood {
             ?: economyFailure("ECONOMY_ORDER_CHANGED", "Заказ больше недоступен")
         if (outgoing.sequence >= ECONOMY_MAX_REVISION) economyFailure("ECONOMY_CAPACITY", "Дождитесь обновления заказов")
         val recent = outgoing.templateId?.let { retire(board.recentTemplateIds, it, config.recentLimit) } ?: board.recentTemplateIds
-        val eligible = eligible(state, catalog)
-        val occupied = board.slots.filterIndexed { index, _ -> index != slot }.mapNotNull { current -> eligible.find { it.id == current.templateId } }
+        val eligible = eligibleOrderTemplates(state, catalog)
+        val occupied = board.slots.filterIndexed { index, _ -> index != slot }.mapNotNull { current -> current.terms }
         val sequence = outgoing.sequence + 1
         val next = chooseTemplate(slot, sequence, board.cycle, eligible, occupied, recent, outgoing.templateId)
         return board.copy(recentTemplateIds = recent, slots = board.slots.mapIndexed { index, current ->
-            if (index == slot) current.copy(sequence = sequence, templateId = next?.id) else current
+            if (index == slot) current.copy(sequence = sequence, templateId = next?.id, terms = next) else current
         })
     }
 
@@ -262,8 +330,7 @@ object EconomyFood {
         if (replace && state.wallet.pearls < price) economyFailure("ECONOMY_PEARLS", "Не хватает жемчужин для замены заказа")
         val nextBoard = advanceResidentOrder(state, offer.slot, now, catalog)
         if (replace) {
-            val nextId = nextBoard.slots.getOrNull(offer.slot)?.templateId
-            val replacement = config.templates.find { it.id == nextId }
+            val replacement = nextBoard.slots.getOrNull(offer.slot)?.terms
             if (replacement == null || replacement.id == offer.templateId || replacement.items == offer.items)
                 economyFailure("ECONOMY_ORDER_NO_ALTERNATIVE", "Других подходящих заказов пока нет. Замена не потрачена")
         }

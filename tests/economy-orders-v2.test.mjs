@@ -179,7 +179,7 @@ test("unlocking a building does not reroll initial cards even before the first o
   assert.deepEqual(board(state).offers, before.offers);
 });
 
-test("fingerprints reject changed goods or payout but remain stable across map ordering and lore edits", () => {
+test("fingerprints cover goods and payout while pinned cards survive catalog edits", () => {
   const fixture = synthetic(), state = { ...fresh(), catalog: fixture };
   state.residentOrders = food.normalizedResidentOrders(state, now, fixture);
   const before = food.residentOrderBoard(state, now, fixture), template = fixture.food.orders.templates.find(template => template.id === before.offers[0].templateId);
@@ -188,7 +188,7 @@ test("fingerprints reject changed goods or payout but remain stable across map o
   assert.notEqual(food.residentOrderFingerprint({ ...template, coins: template.coins + 1 }), fingerprint);
   template.items.fish++;
   const changed = food.residentOrderBoard(state, now, fixture);
-  assert.notEqual(changed.offers[0].id, before.offers[0].id);
+  assert.deepEqual(changed.offers[0], before.offers[0], "issued terms survive catalog edits");
   assert.deepEqual(changed.offers.slice(1), before.offers.slice(1));
   const duplicate = structuredClone(catalog); duplicate.food.orders.templates.push({ ...duplicate.food.orders.templates[0], id: "disguised_duplicate", name: "Чужая подпись" });
   assert.equal(model.economyCatalogSchema.safeParse(duplicate).success, false);

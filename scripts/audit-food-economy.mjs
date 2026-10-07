@@ -33,6 +33,49 @@ export function auditFoodEconomy(catalog) {
   const hasRequirements = (definition, buildings) => (buildings.home ?? 1) >= definition.requiredHomeLevel
     && Object.entries(definition.requiredBuildings ?? {}).every(([id, level]) => (buildings[id] ?? 0) >= level)
     && (!definition.buildingId || (buildings[definition.buildingId] ?? 0) >= definition.buildingLevel);
+  // Independent fixed-point audit of prerequisites, including ingredient chains.
+  const obtainable = buildings => {
+    const reachable = new Set(); let changed = true;
+    while (changed) {
+      const before = reachable.size;
+      for (const source of [...catalog.explorations, ...catalog.recipes]) {
+        if (!hasRequirements(source, buildings)) continue;
+        const options = source.fishInput?.itemIds;
+        if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !options?.includes(id)) || options && !options.some(id => reachable.has(id))) continue;
+        for (const [id, count] of Object.entries(source.rewards)) if (count > 0) reachable.add(id);
+        if (catalog.fishing.routeIds.includes(source.id)) for (const spec of catalog.fishing.fish) {
+          const rods = catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= buildings.home && (spec.rarity !== "legendary" || rod.rarity === "legendary"));
+          const hooks = catalog.fishing.hooks.filter(hook => hook.requiredHomeLevel <= buildings.home && (!spec.requiredHookId || hook.id === spec.requiredHookId)
+            && (spec.rarity !== "legendary" || hook.rarity === "legendary"));
+          if (rods.length && hooks.length) reachable.add(spec.itemId);
+        }
+      }
+      changed = before !== reachable.size;
+    }
+    return reachable;
+  };
+  const progression = orders.progression;
+  assert(progression, "Order progression must be configured");
+  for (const [key, ceiling] of [["rawBpsByHome", 50000], ["fishBpsByHome", 20000], ["craftedBpsByHome", 15000]]) {
+    const values = progression[key];
+    assert(values?.length === 5 && values[0] === 10000 && values.every((value, index) => positiveInt(value)
+      && value <= ceiling && (!index || value >= values[index - 1])), `Invalid ${key} progression`);
+  }
+  const progressedOrder = (order, home) => {
+    const quantities = Object.fromEntries(Object.entries(order.items).map(([id, count]) => {
+      const category = items.get(id).category;
+      const bps = fish.has(id) ? progression.fishBpsByHome[home - 1]
+        : ["crafted", "provisions"].includes(category) ? progression.craftedBpsByHome[home - 1] : progression.rawBpsByHome[home - 1];
+      return [id, Number(BigInt(count) * BigInt(bps) / 10000n)];
+    }));
+    const baseValue = BigInt(valueOf(items, order.items)), scaledValue = BigInt(valueOf(items, quantities));
+    const coins = Number((BigInt(order.coins) * scaledValue + baseValue * 10n - 1n) / (baseValue * 10n) * 10n);
+    const slotMinutes = {};
+    for (const [id, count] of Object.entries(quantities)) add(slotMinutes, math.profile(id).slotMinutes, count);
+    return { homeLevel: home, items: quantities, rewardCoins: coins,
+      itemReferenceCoins: Number(scaledValue), directSaleCoins: math.liquidation(quantities),
+      inputSourceSlotMinutes: Object.fromEntries(Object.entries(slotMinutes).map(([id, minutes]) => [id, rounded(minutes)])) };
+  };
   const fishRecipes = catalog.recipes.filter(recipe => recipe.fishInput);
   const recipes = fishRecipes.map(recipe => {
     const options = recipe.fishInput.itemIds, original = Object.keys(recipe.cost.items).filter(id => options.includes(id));
@@ -104,9 +147,11 @@ export function auditFoodEconomy(catalog) {
     assert(positiveInt(order.coins) && order.coins % scale === 0, `${order.id}: invalid coin reward`);
     assert(Object.keys(order.items).length > 0, `${order.id}: empty order`);
     const guaranteedBuildings = { home: order.requiredHomeLevel, garden: 1, warehouse: 1, ...order.requiredBuildings };
+    const reachable = obtainable(guaranteedBuildings);
     for (const [id, count] of Object.entries(order.items)) {
       assert(items.has(id) && positiveInt(count), `${order.id}: invalid ingredient`);
       assert(math.sourceHome(id) <= order.requiredHomeLevel, `${order.id}: home gate cannot source ${id}`);
+      assert(reachable.has(id), `${order.id}: unavailable production chain for ${id}`);
       const directSources = [...catalog.recipes, ...catalog.explorations].filter(source => source.rewards[id] > 0);
       if (!fish.has(id)) assert(directSources.some(source => hasRequirements(source, guaranteedBuildings)),
         `${order.id}: unavailable production for ${id}`);
@@ -119,7 +164,8 @@ export function auditFoodEconomy(catalog) {
     return { id: order.id, residentId: order.residentId, homeLevel: order.requiredHomeLevel, items: order.items, rewardCoins: order.coins,
       itemReferenceCoins: referenceValue, basePremiumPercent: rounded((order.coins / referenceValue - 1) * 100),
       directSaleCoins: saleValue, extraOverDirectSaleCoins: order.coins - saleValue,
-      actualDiscountedPurchaseCoins: directBuyCost, boughtFishOrderProfitCoins: directBuyCost === null ? null : order.coins - directBuyCost };
+      actualDiscountedPurchaseCoins: directBuyCost, boughtFishOrderProfitCoins: directBuyCost === null ? null : order.coins - directBuyCost,
+      byHome: Array.from({ length: 6 - order.requiredHomeLevel }, (_, index) => progressedOrder(order, index + order.requiredHomeLevel)) };
   });
   const earlyOrders = orders.templates.filter(order => hasRequirements(order, { home: 1, garden: 1, warehouse: 1 }));
   assert(earlyOrders.length >= 10, "Starter board needs at least ten eligible distinct templates");
@@ -188,9 +234,9 @@ export function auditFoodEconomy(catalog) {
 
   // This is one feasible topological build ordering with stocked ingredients and
   // meals from ALREADY opened kitchens, not a promise of elapsed player progress.
-  const progression = auditEconomyProgression(catalog), levels = { home: 1, garden: 1, warehouse: 1 }, fedCounts = {};
+  const buildProgression = auditEconomyProgression(catalog), levels = { home: 1, garden: 1, warehouse: 1 }, fedCounts = {};
   let baseBuildSeconds = 0, stockedFoodBuildSeconds = 0, mealPreparationMinutes = 0;
-  for (const key of progression.constructionOrder) {
+  for (const key of buildProgression.constructionOrder) {
     const [id, levelText] = key.split(":"), level = Number(levelText);
     if (level > 5) continue;
     const target = catalog.buildings.find(building => building.id === id).levels.find(row => row.level === level);
@@ -206,6 +252,8 @@ export function auditFoodEconomy(catalog) {
       "Actual merchant purchase is ceil(buyPrice*fishPriceBps/10000), not nominal buyPrice; only common species are stocked",
       "Direct purchase-resale loses money; positive buy-to-order turnover is intentional and limited by six fish per delivery, stock, other goods and manual confirmed orders",
       "Four natural deliveries per steady day is not a strict rolling-day cap; old stock may straddle the interval, and paid merchant refresh buys more stock with pearls",
+      "Order template/shop ceilings below are base-quantity comparisons; templates.byHome reports issued scaled quantities and corresponding rewards",
+      "Production input-source minutes include independent station occupancy and expected fish acquisition; they are not a wall-clock guarantee",
       "There is no hourly board earnings cap or completed-card cooldown. Every reward consumes actual inventory; order replacements never restock the merchant",
       "Delivery optimizations relax offer availability and repeat-history restrictions; auxiliary goods must already exist and their aggregate sale value is deducted",
       "Food speed bonuses divide duration and do not stack; meal opportunity is its ordinary sale price, not a free ingredient",
@@ -213,7 +261,7 @@ export function auditFoodEconomy(catalog) {
       "Construction projection assumes stocked meals and build inputs in one topological order; it excludes gathering, rarity, claim waits and cooking elapsed time"],
     boardPolicy: { slots: orders.slots, refreshHours: orders.refreshSeconds / 3600, freeReplacements: orders.freeReplacements,
       replacementWindowHours: orders.replacementWindowSeconds / 3600, paidReplacementStoredPearls: orders.replacementPricePearls,
-      recentLimit: orders.recentLimit, starterTemplates: earlyOrders.length, completionCooldownSeconds: 0 },
+      recentLimit: orders.recentLimit, progression, starterTemplates: earlyOrders.length, completionCooldownSeconds: 0 },
     meals, recipes, templates, shopDeliveryBudgets,
     construction: { baseBuildSeconds, stockedFoodBuildSeconds, savedPercent: rounded((1 - stockedFoodBuildSeconds / baseBuildSeconds) * 100),
       mealCounts: fedCounts, mealPreparationMinutes, absoluteAllLegendaryTheoreticalSeconds: duration(baseBuildSeconds, food.meals.at(-1).builderSpeedBps) } };

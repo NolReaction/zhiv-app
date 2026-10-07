@@ -1,7 +1,9 @@
-import { economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState } from "./model";
+import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState } from "./model";
+
+import { fishingIneligibility, fishingState } from "./fishing";
 
 type FoodSource = Pick<EconomyState, "food"> & { catalog?: EconomyCatalog };
-type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & { catalog?: EconomyCatalog };
+type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing">> & { catalog?: EconomyCatalog };
 type Recipe = EconomyCatalog["recipes"][number];
 export type ResidentOrderOffer = {
   id: string; slot: number; templateId: string; residentId: "plesk" | "builder"; name: string; description?: string;
@@ -57,13 +59,67 @@ function hash(value: string): number {
 }
 
 type OrderTemplate = NonNullable<EconomyCatalog["food"]>["orders"]["templates"][number];
-type OrderConfig = NonNullable<EconomyCatalog["food"]>["orders"];
 const compareIds = (first: string, second: string) => first < second ? -1 : first > second ? 1 : 0;
 const itemEntries = (items: Record<string, number>) => Object.entries(items).sort(([first], [second]) => compareIds(first, second));
-const composition = (template: OrderTemplate) => JSON.stringify(itemEntries(template.items));
-const acceptsResident = (slot: number, template: OrderTemplate) => slot === 0 ? template.residentId === "plesk" : slot === 1 ? template.residentId === "builder" : true;
-const eligibleTemplates = (state: OrderSource, config: OrderConfig) => config.templates.filter(template => (state.buildings.home ?? 1) >= template.requiredHomeLevel
-  && Object.entries(template.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level)).sort((first, second) => compareIds(first.id, second.id));
+const composition = (template: Pick<OrderTemplate, "items">) => JSON.stringify(itemEntries(template.items));
+const acceptsResident = (slot: number, template: Pick<OrderTemplate, "residentId">) => slot === 0 ? template.residentId === "plesk" : slot === 1 ? template.residentId === "builder" : true;
+type OrderTerms = NonNullable<EconomyResidentOrders["slots"][number]["terms"]>;
+const terms = (template: OrderTerms): OrderTerms => ({ id: template.id, residentId: template.residentId, name: template.name,
+  ...(template.description ? { description: template.description } : {}), items: { ...template.items }, coins: template.coins });
+
+/** Reachability is a fixed point over all unlocked production and expedition
+ * inputs. Inventory and unfinished buildings cannot unlock an unsustainable chain. */
+export function obtainableResidentOrderItems(state: OrderSource, catalog = state.catalog ?? economyCatalog): Set<string> {
+  const reachable = new Set<string>();
+  const tackle = fishingState(state);
+  const unlocked = (source: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }) =>
+    (state.buildings.home ?? 1) >= source.requiredHomeLevel && Object.entries(source.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
+  let changed = true;
+  while (changed) {
+    const before = reachable.size;
+    for (const source of [...catalog.explorations, ...catalog.recipes]) {
+      if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < source.buildingLevel) continue;
+      const fishInput = "fishInput" in source ? source.fishInput?.itemIds : undefined;
+      if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !fishInput?.includes(id))) continue;
+      if (fishInput && !fishInput.some(id => reachable.has(id))) continue;
+      for (const [id, quantity] of Object.entries(source.rewards)) if (quantity > 0) reachable.add(id);
+      if (catalog.fishing?.routeIds.includes(source.id)) for (const fish of catalog.fishing.fish)
+        if (tackle.ownedRods.some(rodId => tackle.ownedHooks.some(hookId => !fishingIneligibility(fish, rodId, hookId, catalog.fishing)))) reachable.add(fish.itemId);
+    }
+    changed = reachable.size > before;
+  }
+  return reachable;
+}
+
+/** Payout retains the template's premium over ingredient value. Complex goods
+ * grow gently; a higher home never turns one legendary meal into a large batch. */
+export function progressedResidentOrderTemplate(template: OrderTemplate, homeLevel: number, catalog = economyCatalog): OrderTemplate {
+  const progression = catalog.food?.orders.progression;
+  if (!progression) return template;
+  const level = Math.max(0, Math.min(4, homeLevel - 1));
+  const items = Object.fromEntries(Object.entries(template.items).map(([id, count]) => {
+    const spec = catalog.items.find(item => item.id === id);
+    const bps = catalog.fishing?.fish.some(fish => fish.itemId === id) ? progression.fishBpsByHome[level]
+      : spec?.category === "crafted" || spec?.category === "provisions" ? progression.craftedBpsByHome[level] : progression.rawBpsByHome[level];
+    return [id, Math.max(count, Math.floor(count * bps / 10000))];
+  }));
+  const value = (goods: Record<string, number>) => Object.entries(goods).reduce((sum, [id, count]) =>
+    sum + BigInt(count) * BigInt(catalog.items.find(item => item.id === id)?.baseSellPrice ?? 0), BigInt(0));
+  const originalValue = value(template.items), nextValue = value(items);
+  const payment = originalValue ? (BigInt(template.coins) * nextValue + originalValue * BigInt(10) - BigInt(1)) / (originalValue * BigInt(10)) * BigInt(10) : BigInt(template.coins);
+  if (payment > BigInt(ECONOMY_MAX_BALANCE)) throw new RangeError("Order payout exceeds wallet capacity");
+  const coins = Number(payment);
+  return { ...template, items, coins };
+}
+
+export const eligibleResidentOrderTemplates = (state: OrderSource, catalog = state.catalog ?? economyCatalog): OrderTemplate[] => {
+  const reachable = obtainableResidentOrderItems(state, catalog);
+  return (catalog.food?.orders.templates ?? []).filter(template => (state.buildings.home ?? 1) >= template.requiredHomeLevel
+    && Object.entries(template.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
+    && Object.keys(template.items).every(id => reachable.has(id)))
+    .map(template => progressedResidentOrderTemplate(template, state.buildings.home ?? 1, catalog))
+    .sort((first, second) => compareIds(first.id, second.id));
+};
 const retire = (history: readonly string[], id: string | null | undefined, limit: number): string[] =>
   !id ? [...history] : limit === 0 ? [] : [...history.filter(previous => previous !== id), id].slice(-limit);
 const cleanHistory = (history: readonly string[], limit: number) => history.reduce<string[]>((current, id) => retire(current, id, limit), []);
@@ -72,14 +128,14 @@ export const initialResidentOrders = (): EconomyResidentOrders => economyResiden
 
 /** Including the exact debit and payment prevents a stale catalogue card from
  * silently spending a changed ingredient set. JSON encoding is shared with Kotlin. */
-export function residentOrderFingerprint(template: OrderTemplate): string {
+export function residentOrderFingerprint(template: OrderTerms): string {
   return String(hash(JSON.stringify([template.id, template.residentId, itemEntries(template.items), template.coins])));
 }
 
 function selectTemplate(eligible: OrderTemplate[], slots: EconomyResidentOrders["slots"], slot: number, cycle: number,
   history: readonly string[], outgoing?: string | null): OrderTemplate | null {
   const occupiedIds = new Set(slots.flatMap((value, index) => index !== slot && value.templateId ? [value.templateId] : []));
-  const occupiedCompositions = new Set(eligible.filter(template => occupiedIds.has(template.id)).map(composition));
+  const occupiedCompositions = new Set(slots.flatMap((value, index) => index !== slot && value.terms ? [composition(value.terms)] : []));
   let pool = eligible.filter(template => acceptsResident(slot, template) && !occupiedIds.has(template.id) && !occupiedCompositions.has(composition(template)));
   // Tiny/retired catalogues may have no alternative for a resident. Never copy
   // another active card, and never return the outgoing one while an alternative exists.
@@ -100,21 +156,26 @@ export function normalizedResidentOrders(state: OrderSource, now: number, catalo
   const cycle = Math.floor(now / (config.refreshSeconds * 1000));
   const replacementCycle = Math.floor(now / (config.replacementWindowSeconds * 1000));
   const resetAt = new Date(cycle * config.refreshSeconds * 1000).toISOString();
-  const eligible = eligibleTemplates(state, config);
+  const eligible = eligibleResidentOrderTemplates(state, catalog);
   let recentTemplateIds = cleanHistory(previous.recentTemplateIds ?? [], config.recentLimit);
   const keep = previous.version === 2 && previous.cycle === cycle;
   if (previous.version === 2 && !keep) for (const slot of previous.slots) recentTemplateIds = retire(recentTemplateIds, slot.templateId, config.recentLimit);
   const usedIds = new Set<string>(), usedCompositions = new Set<string>();
   const slots = Array.from({ length: config.slots }, (_, index): EconomyResidentOrders["slots"][number] => {
     const saved = keep ? previous.slots[index] : undefined;
-    const template = saved?.templateId ? eligible.find(template => template.id === saved.templateId) : undefined;
-    const valid = template && acceptsResident(index, template) && !usedIds.has(template.id) && !usedCompositions.has(composition(template));
+    // Legacy v2 cards used fixed catalog quantities; retain those exact terms.
+    const template = saved?.templateId ? saved.terms ?? config.templates.find(template => template.id === saved.templateId) : undefined;
+    const valid = template && template.id === saved?.templateId && acceptsResident(index, template) && !usedIds.has(template.id) && !usedCompositions.has(composition(template));
     if (valid) { usedIds.add(template.id); usedCompositions.add(composition(template)); }
     else if (saved?.templateId) recentTemplateIds = retire(recentTemplateIds, saved.templateId, config.recentLimit);
-    return { sequence: saved?.sequence ?? 0, readyAt: resetAt, templateId: valid ? template.id : null };
+    return { sequence: saved?.sequence ?? 0, readyAt: resetAt, templateId: valid ? template.id : null, ...(valid ? { terms: terms(template) } : {}) };
   });
   for (let index = 0; index < slots.length; index++) {
-    if (!slots[index].templateId) slots[index].templateId = selectTemplate(eligible, slots, index, cycle, recentTemplateIds)?.id ?? null;
+    if (!slots[index].templateId) {
+      const next = selectTemplate(eligible, slots, index, cycle, recentTemplateIds);
+      slots[index].templateId = next?.id ?? null;
+      if (next) slots[index].terms = terms(next);
+    }
   }
   return { version: 2, cycle, slots, completed: previous.completed, earnedCoins: previous.earnedCoins, recentTemplateIds, replacementCycle,
     freeReplacementsUsed: previous.replacementCycle === replacementCycle ? Math.max(0, Math.min(config.freeReplacements, previous.freeReplacementsUsed ?? 0)) : 0 };
@@ -132,7 +193,10 @@ export function advanceResidentOrder(state: OrderSource, slot: number, now: numb
   current.recentTemplateIds = retire(current.recentTemplateIds, outgoing, config.recentLimit);
   selected.sequence++;
   selected.templateId = null;
-  selected.templateId = selectTemplate(eligibleTemplates(state, config), current.slots, slot, current.cycle, current.recentTemplateIds, outgoing)?.id ?? null;
+  delete selected.terms;
+  const next = selectTemplate(eligibleResidentOrderTemplates(state, catalog), current.slots, slot, current.cycle, current.recentTemplateIds, outgoing);
+  selected.templateId = next?.id ?? null;
+  if (next) selected.terms = terms(next);
   return current;
 }
 
@@ -145,7 +209,7 @@ export function residentOrderBoard(state: OrderSource, now: number, catalog = st
   if (!config) return { refreshAt: new Date(now).toISOString(), offers: [], completed: current.completed, earnedCoins: current.earnedCoins,
     freeReplacementsRemaining: 0, replacementPricePearls: 0, replacementsResetAt: new Date(now).toISOString() };
   const offers = current.slots.flatMap((slot, index): ResidentOrderOffer[] => {
-    const template = config.templates.find(template => template.id === slot.templateId);
+    const template = slot.terms;
     return template ? [{ id: `order2_${current.cycle}_${index}_${slot.sequence}_${residentOrderFingerprint(template)}`, slot: index, templateId: template.id,
       residentId: template.residentId, name: template.name, ...(template.description ? { description: template.description } : {}),
       items: { ...template.items }, coins: template.coins, availableAt: slot.readyAt }] : [];

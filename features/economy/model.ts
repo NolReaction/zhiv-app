@@ -62,10 +62,14 @@ export const economyRareDropDeliverySchema = z.object({ version: z.literal(1), s
 export type EconomyRareDropClock = { version: 1; remainingSeconds: number; itemId: string };
 export const economyFoodSchema = z.object({ heroMeal: id.nullable().default(null), builderMeal: id.nullable().default(null) })
   .default({ heroMeal: null, builderMeal: null });
+export const economyResidentOrderTermsSchema = z.object({
+  id, residentId: z.enum(["plesk", "builder"]), name: z.string().min(1), description: z.string().max(280).nullish(),
+  items: z.record(id, count.positive().max(ECONOMY_MAX_ITEMS)), coins: balance.positive(),
+});
 export const economyResidentOrdersSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]).default(1),
   cycle: z.number().int().min(-1).safe().default(-1),
-  slots: z.array(z.object({ sequence: count, readyAt: z.string().datetime(), templateId: id.nullable().default(null) })).max(3).default([]),
+  slots: z.array(z.object({ sequence: count, readyAt: z.string().datetime(), templateId: id.nullable().default(null), terms: economyResidentOrderTermsSchema.nullish() })).max(3).default([]),
   completed: count.default(0), earnedCoins: count.default(0),
   recentTemplateIds: z.array(id).max(100).default([]),
   replacementCycle: z.number().int().min(-1).safe().default(-1), freeReplacementsUsed: count.max(100).default(0),
@@ -76,6 +80,11 @@ export const economyFoodCatalogSchema = z.object({
     replacementSeconds: count.max(86400), completionSeconds: count.max(86400),
     freeReplacements: count.max(100).default(3), replacementWindowSeconds: count.min(3600).max(86400).default(43200),
     replacementPricePearls: count.positive().max(ECONOMY_MAX_BALANCE).default(10), recentLimit: count.max(100).default(6),
+    progression: z.object({
+      rawBpsByHome: z.array(count.min(10000).max(100000)).length(5),
+      fishBpsByHome: z.array(count.min(10000).max(20000)).length(5),
+      craftedBpsByHome: z.array(count.min(10000).max(20000)).length(5),
+    }).nullish(),
     templates: z.array(z.object({ id: z.string().regex(/^[a-z0-9_]{1,40}$/), residentId: z.enum(["plesk", "builder"]), name: z.string().min(1), description: z.string().min(1).max(280).nullish(),
       requiredHomeLevel: count.positive().max(5), requiredBuildings,
       items: z.record(id, count.positive().max(100)).refine(items => Object.keys(items).length > 0),

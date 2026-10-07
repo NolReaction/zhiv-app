@@ -97,3 +97,22 @@ test("build projection distinguishes unlock-feasible stocked meals from an impos
   assert(report.construction.mealPreparationMinutes > 0);
   assert(report.construction.mealCounts.grilled_fish > 0);
 });
+
+
+test("independent audit agrees with shared progression quotes and exposes source occupancy", async () => {
+  const vectors = JSON.parse(readFileSync(new URL("../apps/api/src/test/resources/world/orders-progression-vectors.json", import.meta.url), "utf8"));
+  for (const expected of vectors.scaling) {
+    const row = report.templates.find(row => row.id === expected.templateId).byHome.find(row => row.homeLevel === expected.home);
+    assert.deepEqual(row.items, expected.items); assert.equal(row.rewardCoins, expected.coins);
+  }
+  const final = report.templates.find(row => row.id === "builder_final_fittings").byHome.at(-1);
+  assert(final.inputSourceSlotMinutes.kiln < 24 * 60, "late order must not multiply furnace work into several days");
+  assert(final.inputSourceSlotMinutes.workshop < 24 * 60);
+  const data = catalog(); data.food.orders.progression.craftedBpsByHome[4] = 50000;
+  assert.throws(() => auditFoodEconomy(data), /Invalid craftedBpsByHome progression/);
+});
+
+test("audit rejects hidden upstream gaps even when the final recipe is unlocked", () => {
+  const data = catalog(); delete data.food.orders.templates.find(order => order.id === "builder_tools").requiredBuildings.kiln;
+  assert.throws(() => auditFoodEconomy(data), /unavailable production chain for tools/);
+});

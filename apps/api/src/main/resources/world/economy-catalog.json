@@ -3116,7 +3116,7 @@
           "id": "plesk_net_patch",
           "residentId": "plesk",
           "name": "Подлатать рыбацкую сеть",
-          "description": "Сеть зацепилась за корягу. Нужны крепкие волокна и пара деревянных распорок.",
+          "description": "Сеть зацепилась за корягу. Нужны крепкие волокна и деревянные распорки.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
@@ -3206,7 +3206,7 @@
           "id": "builder_grilled_lunch",
           "residentId": "builder",
           "name": "Горячий обед на площадку",
-          "description": "Закажу пару порций для обеденного перерыва. Это обычная доставка за монеты.",
+          "description": "Закажу горячую рыбу для обеденного перерыва. Это обычная доставка за монеты.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
             "dryer": 1
@@ -3259,7 +3259,7 @@
           "id": "plesk_bream_catch",
           "residentId": "plesk",
           "name": "Бронзовые бока",
-          "description": "Пара лещей разнообразит привоз. Их любят готовить к ужину.",
+          "description": "Свежие лещи разнообразят привоз. Их любят готовить к ужину.",
           "requiredHomeLevel": 2,
           "requiredBuildings": {},
           "items": {
@@ -3305,7 +3305,8 @@
           "requiredHomeLevel": 2,
           "requiredBuildings": {
             "workshop": 2,
-            "kiln": 2
+            "kiln": 2,
+            "quarry": 1
           },
           "items": {
             "metal_parts": 2,
@@ -3321,7 +3322,8 @@
           "requiredHomeLevel": 2,
           "requiredBuildings": {
             "kiln": 2,
-            "workshop": 1
+            "workshop": 1,
+            "quarry": 2
           },
           "items": {
             "bricks": 8,
@@ -3336,7 +3338,8 @@
           "description": "Подготовлю крепления из слитков, пока есть свободное место у верстака.",
           "requiredHomeLevel": 2,
           "requiredBuildings": {
-            "kiln": 2
+            "kiln": 2,
+            "quarry": 1
           },
           "items": {
             "iron_ingot": 3
@@ -3347,7 +3350,7 @@
           "id": "plesk_mooncatch",
           "residentId": "plesk",
           "name": "Лунный улов",
-          "description": "Лунные карасики редко задерживаются на прилавке. Принесёшь пару?",
+          "description": "Лунные карасики редко задерживаются на прилавке. Принесёшь немного?",
           "requiredHomeLevel": 3,
           "requiredBuildings": {},
           "items": {
@@ -3371,7 +3374,7 @@
           "id": "plesk_eel_catch",
           "residentId": "plesk",
           "name": "Тёмный житель заводи",
-          "description": "Угорь пригодится для сытного ужина. Прикуплю один экземпляр.",
+          "description": "Угорь пригодится для сытного ужина. Пополню запас для соседей.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {},
           "items": {
@@ -3417,7 +3420,8 @@
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 2,
-            "kiln": 3
+            "kiln": 3,
+            "quarry": 2
           },
           "items": {
             "cloth": 4,
@@ -3473,7 +3477,9 @@
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "workshop": 4,
-            "woodlot": 3
+            "woodlot": 3,
+            "kiln": 2,
+            "quarry": 1
           },
           "items": {
             "tools": 2,
@@ -3489,7 +3495,9 @@
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "workshop": 4,
-            "woodlot": 4
+            "woodlot": 4,
+            "kiln": 2,
+            "quarry": 1
           },
           "items": {
             "reinforced_parts": 2,
@@ -3534,15 +3542,137 @@
           "requiredBuildings": {
             "workshop": 4,
             "woodlot": 4,
-            "kiln": 3
+            "kiln": 3,
+            "quarry": 2
           },
           "items": {
             "reinforced_parts": 4,
             "glass": 6
           },
           "coins": 10800
+        },
+        {
+          "id": "builder_ore_delivery",
+          "residentId": "builder",
+          "name": "Руда для новых креплений",
+          "description": "Подготовлю запас руды для прочных металлических креплений.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "quarry": 1
+          },
+          "items": {
+            "ore": 8
+          },
+          "coins": 620
+        },
+        {
+          "id": "builder_clay_delivery",
+          "residentId": "builder",
+          "name": "Глина для кладки",
+          "description": "Хорошая глина пригодится для аккуратной кладки.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "quarry": 2
+          },
+          "items": {
+            "clay": 10
+          },
+          "coins": 520
+        },
+        {
+          "id": "builder_sand_delivery",
+          "residentId": "builder",
+          "name": "Песок для ровной площадки",
+          "description": "Разровняю песчаную подушку под будущую постройку.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "quarry": 2
+          },
+          "items": {
+            "sand": 12
+          },
+          "coins": 470
+        },
+        {
+          "id": "builder_charcoal_delivery",
+          "residentId": "builder",
+          "name": "Топливо для печи",
+          "description": "Запас угля поможет не прерывать работу у печи.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 1
+          },
+          "items": {
+            "charcoal": 4
+          },
+          "coins": 520
+        },
+        {
+          "id": "builder_hardwood_delivery",
+          "residentId": "builder",
+          "name": "Крепкое дерево для опор",
+          "description": "Для тяжёлых опор нужна древесина покрепче.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "woodlot": 3
+          },
+          "items": {
+            "hardwood": 8
+          },
+          "coins": 1040
+        },
+        {
+          "id": "builder_resin_delivery",
+          "residentId": "builder",
+          "name": "Смола для защиты дерева",
+          "description": "Обработаю деревянные соединения, чтобы не боялись сырости.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "woodlot": 4
+          },
+          "items": {
+            "resin": 8
+          },
+          "coins": 630
+        },
+        {
+          "id": "plesk_berry_basket",
+          "residentId": "plesk",
+          "name": "Ягоды к береговому столу",
+          "description": "Соберу свежие ягоды для тех, кто вернулся с рыбалки.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "garden": 1
+          },
+          "items": {
+            "berries": 10
+          },
+          "coins": 390
         }
-      ]
+      ],
+      "progression": {
+        "rawBpsByHome": [
+          10000,
+          16000,
+          24000,
+          36000,
+          50000
+        ],
+        "fishBpsByHome": [
+          10000,
+          12500,
+          15000,
+          17500,
+          20000
+        ],
+        "craftedBpsByHome": [
+          10000,
+          11000,
+          12000,
+          13500,
+          15000
+        ]
+      }
     }
   }
 }

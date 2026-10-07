@@ -285,7 +285,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (complete && (state.wallet.coins + offer.coins > ECONOMY_MAX_BALANCE || !Number.isSafeInteger(current.earnedCoins + offer.coins)
         || current.completed >= Number.MAX_SAFE_INTEGER)) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
       const orders = advanceResidentOrder(state, offer.slot, now);
-      const nextTemplate = config.templates.find(template => template.id === orders.slots[offer.slot].templateId);
+      const nextTemplate = orders.slots[offer.slot].terms;
       if (!complete && (!nextTemplate || nextTemplate.id === offer.templateId
         || Object.keys(nextTemplate.items).length === Object.keys(offer.items).length
           && Object.entries(nextTemplate.items).every(([id, quantity]) => offer.items[id] === quantity)))
