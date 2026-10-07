@@ -18,6 +18,7 @@ import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @Testcontainers(disabledWithoutDocker = true)
 class JdbcMergedIdentityMigrationIntegrationTest {
@@ -40,6 +41,8 @@ class JdbcMergedIdentityMigrationIntegrationTest {
                 c.commit();row
             }
             DatabaseFactory.migrate(source);DatabaseFactory.migrate(source)
+            assertTrue(Flyway.configure().dataSource(source).locations("classpath:db/migration").load().info().pending().isEmpty(),
+                "Repeated startup must apply every available migration")
             source.connection.use { c ->
                 assertEquals(before,c.economyRows("SELECT provider,encode(subject_hash,'hex'),retired_at FROM account_identity_retirements") {
                     Triple(it.getString(1),it.getString(2),it.getObject(3,OffsetDateTime::class.java)) }.single())
@@ -47,7 +50,6 @@ class JdbcMergedIdentityMigrationIntegrationTest {
                 assertEquals(7L,readEconomyProfile(c,existing.id).revision)
                 assertEquals(EconomyWallet(1230,450),readEconomyProfile(c,existing.id).state.wallet)
                 assertEquals(mapOf("wood" to 3L),readEconomyProfile(c,existing.id).state.inventory)
-                assertEquals("43",c.economyRows("SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1") { it.getString(1) }.single())
             }
             val fresh=JdbcAuthRepository(source).finish(LoginFlow(tokens.issue().hash,tokens.issue().hash,"email","register",null,
                 "Новый профиль",oldIdentity,null,null,null),oldIdentity,tokens.issue().hash,365,"Fresh")
