@@ -13,6 +13,31 @@ const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/fishing.ts");
 after(() => vite.close());
+const merchantHookModule = "virtual:merchant-selection-hooks";
+const merchantVite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
+  server: { middlewareMode: true, hmr: false, ws: false }, plugins: [{ name: "merchant-selection-handlers", enforce: "pre",
+    resolveId(id) { if (id === merchantHookModule) return `\0${id}`; },
+    load(id) { if (id === `\0${merchantHookModule}`) return `
+      export { useEffect, useId } from 'react';
+      let slots = [], cursor = 0, effects = [];
+      export function reset() { slots = []; cursor = 0; effects = []; }
+      export function render() { cursor = 0; }
+      export function useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }]; }
+      export function useRef(initial) { const index = cursor++; return slots[index] ??= { current: initial }; }
+      export function useLayoutEffect(callback, dependencies) {
+        const index = cursor++, previous = slots[index];
+        if (!previous || dependencies.some((value, i) => !Object.is(value, previous[i]))) {
+          slots[index] = dependencies; effects.push(callback);
+        }
+      }
+      export function flushEffects() { const pending = effects; effects = []; pending.forEach(callback => callback()); }
+    `; },
+    transform(source, id) { if (id.endsWith("/features/economy/plesk-fishing-shop.tsx")) return source.replace('from "react";', `from "${merchantHookModule}";`); },
+  }],
+});
+after(() => merchantVite.close());
+const { PleskTackleCounter: MerchantCounter } = await merchantVite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
+const merchantHooks = await merchantVite.ssrLoadModule(merchantHookModule);
 const now = Date.parse("2026-10-04T20:00:00Z");
 function merchant() {
   const catalog = economyCatalog.fishing;
@@ -50,6 +75,20 @@ function inspect(Component, props) {
 function trade(overrides = {}, itemId = "fish_silverfin", flags = {}) {
   const state = snapshot(overrides), calls = [], economy = controller(state, { act(...args) { calls.push(args); }, ...flags });
   return { ...inspect(PleskFishTrade, { economy, state, itemId }), state, economy, calls };
+}
+function merchantSelection(state = snapshot()) {
+  merchantHooks.reset();
+  const calls = [], focus = [], body = { scrollTop: 380, isConnected: true };
+  const economy = controller(state, { act(...args) { calls.push(args); } });
+  const target = { closest(selector) { assert.equal(selector, "[data-slot='dialog-content']"); return body; }, focus(options) { focus.push(options); } };
+  function render() {
+    merchantHooks.render(); const tree = MerchantCounter({ state, economy, catalog: state.catalog.fishing }), nodes = [];
+    function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }
+    visit(tree);
+    return { buttons: nodes.filter(element => element.type === "button" && element.props["aria-pressed"] !== undefined),
+      detail: nodes.find(element => element.type.name === "GearDetail") };
+  }
+  return { state, economy, calls, focus, body, target, render, flush: merchantHooks.flushEffects };
 }
 
 test("selling a species uses its exact id, stock and catalog value, with no optimistic debit", () => {
@@ -261,8 +300,37 @@ test("merchant displays four current offers without personal gear or the remaini
   assert.doesNotMatch(view.html, /Звёздная удочка|Крючок Левиафана|Искристая мушка/);
   const offers = view.elements.filter(element => element.type === "button" && element.props["data-gear-rarity"]);
   assert.equal(offers.length, 4);
-  offers[1].props.onClick(); assert.deepEqual(calls, [], "looking at an offer never buys it");
+  offers[1].props.onClick({ currentTarget: { closest() { return null; }, focus() {} } }); assert.deepEqual(calls, [], "looking at an offer never buys it");
 
+});
+
+test("merchant pointer keyboard and previous-stock selection preserves description scroll without scrolling focus", () => {
+  const state = snapshot();
+  state.fishingShop.offers.push({ ...state.fishingShop.offers[0], id: "old-rod", itemId: "willow_rod" });
+  const h = merchantSelection(state), before = structuredClone(h.state);
+  let view = h.render(); h.flush();
+  const hook = view.buttons[1];
+  hook.props.onPointerDown({ button: 0, currentTarget: h.target });
+  hook.props.onClick({ currentTarget: h.target });
+  view = h.render(); h.body.scrollTop = 0; h.flush();
+  assert.equal(view.detail.props.itemId, "silver_hook");
+  assert.equal(h.body.scrollTop, 380);
+  assert.deepEqual(h.focus, [{ preventScroll: true }, { preventScroll: true }]);
+  assert.deepEqual(h.calls, []); assert.deepEqual(h.state, before);
+  h.body.scrollTop = 440; h.state.revision++; h.render(); h.flush();
+  assert.equal(h.body.scrollTop, 440, "later snapshots do not restore an old scroll position");
+  view = h.render(); h.flush();
+  view.buttons[2].props.onClick({ currentTarget: h.target });
+  view = h.render(); h.body.scrollTop = 12; h.flush();
+  assert.equal(h.body.scrollTop, 440); assert.equal(view.detail.props.itemId, "worm_bait");
+  h.body.scrollTop = 520;
+  view.buttons.at(-1).props.onPointerDown({ button: 0, currentTarget: h.target });
+  view.buttons.at(-1).props.onClick({ currentTarget: h.target });
+  view = h.render(); h.body.scrollTop = 0; h.flush();
+  assert.equal(h.body.scrollTop, 520); assert.equal(view.detail.props.itemId, "willow_rod");
+  h.body.scrollTop = 560; h.render(); h.flush();
+  assert.equal(h.body.scrollTop, 560);
+  assert.ok(h.focus.every(options => options.preventScroll === true)); assert.deepEqual(h.calls, []);
 });
 
 test("merchant hook purchase is guarded and never equips owned gear", () => {

@@ -38,7 +38,7 @@ type Props = { hideJourneyStatus?: boolean; economyJourney?: EconomySceneJourney
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
 export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onOpenConstruction, onOpenProduction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
   const garden = useGardenCollection();
-  const canvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null), speechCanvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
   const time = useRef(now);
   useEffect(() => { time.current = now; engine.current?.setTime(now); }, [now]);
@@ -102,7 +102,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
           onResident: id => latest.current.onResident?.(id),
           objectAnchorsEnabled: anchorTracking.current.enabled,
           onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
-        });
+        }, speechCanvas.current);
     }).then(value => {
       if (!value) return;
       if (disposed) { value.dispose(); return; }
@@ -129,6 +129,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
   const objects = interactiveMapObjects(TILED_WORLD);
   return <div ref={root} className={styles.scene} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
+    <canvas ref={speechCanvas} className={styles.speechCanvas} aria-hidden="true" />
     <ForestSpeechAnnouncements key={`speech:${owner}`} owner={owner} />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
     {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Объекты на карте">

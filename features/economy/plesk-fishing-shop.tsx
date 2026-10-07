@@ -218,6 +218,19 @@ export function PleskTackleCounter({ economy, state, catalog }: ReadyProps & { c
   const previousStock = offers.filter(offer => offers.find(entry => entry.kind === offer.kind)?.id !== offer.id);
   const [selectedId, setSelectedId] = useState(() => offers[0]?.id);
   const selected = offers.find(offer => offer.id === selectedId) ?? offers[0];
+  const scrollPosition = useRef<{ body: HTMLElement; top: number } | null>(null);
+  useLayoutEffect(() => {
+    // Keyed descriptions replace their scroll anchors; keep the reader's position.
+    const position = scrollPosition.current;
+    scrollPosition.current = null;
+    if (position?.body.isConnected) position.body.scrollTop = position.top;
+  }, [selected?.id]);
+  const selectOffer = (offerId: string, button: HTMLButtonElement) => {
+    const body = button.closest<HTMLElement>("[data-slot='dialog-content']");
+    scrollPosition.current = body && offerId !== selected?.id ? { body, top: body.scrollTop } : null;
+    button.focus({ preventScroll: true });
+    setSelectedId(offerId);
+  };
   return <>
     <PleskMerchantHeader economy={economy} state={state} />
     <div className={styles.offerGrid} aria-label="Предложения Плёски">{merchantSlots.map(slot => {
@@ -227,14 +240,14 @@ export function PleskTackleCounter({ economy, state, catalog }: ReadyProps & { c
       if (!entry) return null;
       const name = "name" in entry ? entry.name : itemName(state, offer.itemId);
       const discount = "buyPrice" in entry ? Math.max(0, Math.round((1 - offer.unitPrice / entry.buyPrice) * 100)) : 0;
-      return <button type="button" key={offer.id} className={styles.offerTile} data-gear-rarity={entry.rarity} aria-pressed={selected?.id === offer.id} onClick={() => setSelectedId(offer.id)}>
+      return <button type="button" key={offer.id} className={styles.offerTile} data-gear-rarity={entry.rarity} aria-pressed={selected?.id === offer.id} onPointerDown={event => { if (event.button === 0) event.currentTarget.focus({ preventScroll: true }); }} onClick={event => selectOffer(offer.id, event.currentTarget)}>
         <small className={styles.offerKind}>{slot.name}{discount > 0 && <span>−{discount}%</span>}</small>
-        <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={54} /> : <ItemIcon itemId={offer.itemId} size={44} />}</span>
+        <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={44} /> : <ItemIcon itemId={offer.itemId} size={36} />}</span>
         <strong>{name}</strong><FishRarityBadge rarity={entry.rarity} />
         <span className={styles.offerBottom}>{offer.remaining > 0 ? <><Price value={offer.unitPrice} /><small>×{offer.remaining}</small></> : <small><Check size={12} aria-hidden="true" />Раскуплено</small>}</span>
       </button>;
     })}</div>
-    {previousStock.length > 0 && <details className={styles.previousStock}><summary>Остатки прежней поставки · {previousStock.length}</summary><div>{previousStock.map(offer => <button key={offer.id} type="button" aria-pressed={selected?.id === offer.id} onClick={() => setSelectedId(offer.id)}>
+    {previousStock.length > 0 && <details className={styles.previousStock}><summary>Остатки прежней поставки · {previousStock.length}</summary><div>{previousStock.map(offer => <button key={offer.id} type="button" aria-pressed={selected?.id === offer.id} onPointerDown={event => { if (event.button === 0) event.currentTarget.focus({ preventScroll: true }); }} onClick={event => selectOffer(offer.id, event.currentTarget)}>
       <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? itemName(state, offer.itemId)}</span>
       {offer.remaining > 0 ? <Price value={offer.unitPrice} /> : <span>Раскуплено</span>}
     </button>)}</div></details>}

@@ -25,7 +25,7 @@ export type MapInteractionCallbacks = {
 };
 export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "builder" | "fishing";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
-export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}) {
+export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}, speechCanvas?: HTMLCanvasElement | null) {
   let ground: HTMLImageElement;
   const rebuilding = WORLD_PRESENTATION.rebuilding;
   const bounds = rebuilding ? NEW_MAP_BOUNDS : { width: MAP_SIZE, height: MAP_SIZE };
@@ -37,6 +37,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   signal?.throwIfAborted();
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
+  const speechContext = speechCanvas?.getContext("2d") ?? ctx;
   let options = initial, disposed = false, raf = 0, last = 0, redrawPending = false;
   let viewportRect: DOMRect | null = null;
   let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
@@ -172,8 +173,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       habitat.paintVisitors(ctx, "air");
       habitat.paintWeather(ctx);
     }
-    ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
-    drawForestSpeech(ctx, (habitat.speechFrames?.() ?? []).map(frame => ({ ...frame,
+    speechContext.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
+    if (speechContext !== ctx) speechContext.clearRect(0, 0, view.width, view.height);
+    drawForestSpeech(speechContext, (habitat.speechFrames?.() ?? []).map(frame => ({ ...frame,
       anchor: worldToScreen(frame.anchor, camera, view) })), { ...view, insets: cameraInsets,
       reducedMotion: motionReduced(), night: options.dusk });
     const objects = habitat.mapObjects?.() ?? [];
@@ -231,6 +233,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     cameraInsets = { top: cameraHud.top?.offsetHeight ?? 0, bottom: cameraHud.bottom?.offsetHeight ?? 0 };
     const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
+    if (speechCanvas) { speechCanvas.width = canvas.width; speechCanvas.height = canvas.height; }
     camera = framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds, cameraInsets); draw();
   }
   const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas);
@@ -389,6 +392,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
       disposed = true; cancelAnimationFrame(raf); unsubscribeDev(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      if (speechCanvas && speechContext !== ctx) {
+        speechContext.setTransform(1, 0, 0, 1, 0, 0); speechContext.clearRect(0, 0, speechCanvas.width, speechCanvas.height);
+      }
       markerListeners.forEach(remove => remove());
       for (const [id, touch] of pointers) if (touch.capture.hasPointerCapture(id)) touch.capture.releasePointerCapture(id);
       pointers.clear();

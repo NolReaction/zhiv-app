@@ -27,6 +27,7 @@ export default function WorldPortal(props: WorldPortalProps) {
       onOpenAutoFocus={event => { event.preventDefault(); document.getElementById("world-exit")?.focus(); }}>
       <DialogTitle className={styles.sr}>Лес Мохлика</DialogTitle>
       <DialogDescription className={styles.sr}>Исследуйте карту, улучшайте домик и собирайте лесные находки.</DialogDescription>
+      <div className={styles.browserEdge} aria-hidden="true" />
       <WorldView {...props} escapeHandlerRef={escapeHandlerRef} />
     </DialogPrimitive.Content>
     </DialogPortal>

@@ -4276,6 +4276,38 @@ test("delayed first economy and upgraded artwork restore builder to the actual d
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); env.restore(); }
 });
 
+test("map speech uses a transparent surface that follows DPR resizing and clears after expiry", async () => {
+  const { createMapEngine } = await modules();
+  const env = browser(); let engine;
+  try {
+    const canvas = env.surface(400), speech = env.surface(400);
+    const loading = createMapEngine(canvas, options, () => {}, [], undefined, {}, {}, speech);
+    env.finish(); engine = await loading;
+    assert.deepEqual([speech.width, speech.height], [800, 800]);
+    assert.ok(speech.calls.some(call => call.method === "clearRect" && call.args[2] === 400));
+    assert.equal(speech.calls.some(call => call.method === "drawImage"), false, "the speech surface stays transparent outside bubbles");
+    canvas.calls.length = 0; speech.calls.length = 0;
+    engine.notice();
+    assert.ok(speech.calls.some(call => call.method === "fillText" && call.args[0] === "Мохлик"));
+    assert.equal(canvas.calls.some(call => call.method === "fillText" && call.args[0] === "Мохлик"), false,
+      "the world canvas cannot leave the speech underneath DOM building hints");
+    canvas.clientWidth = 360; canvas.clientHeight = 640; window.devicePixelRatio = 1.5;
+    speech.calls.length = 0;
+    env.resize(canvas);
+    assert.deepEqual([speech.width, speech.height], [540, 960]);
+    assert.deepEqual(speech.calls.findLast(call => call.method === "setTransform").args, [1.5, 0, 0, 1.5, 0, 0]);
+    assert.ok(speech.calls.some(call => call.method === "clearRect" && call.args[2] === 360 && call.args[3] === 640));
+    assert.ok(speech.calls.some(call => call.method === "fillText" && call.args[0] === "Мохлик"), "resizing preserves the active reply");
+    for (const id of [...env.timers.keys()]) env.fireTimer(id);
+    speech.calls.length = 0; engine.update(options);
+    assert.ok(speech.calls.some(call => call.method === "clearRect" && call.args[2] === 360 && call.args[3] === 640));
+    assert.equal(speech.calls.some(call => call.method === "fillText"), false, "expired bubbles leave no stale glyphs above hints");
+    assert.equal(env.frames.size, 0, "reduced motion still uses finite expiry timers");
+    engine.dispose();
+    assert.deepEqual(speech.calls.at(-1), { method: "clearRect", args: [0, 0, 540, 960] });
+  } finally { engine?.dispose(); env.restore(); }
+});
+
 test("resident speech is shared across cameras, bounded under taps and read-only during paint and hit sampling", async () => {
   const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
   const env = browser(), views = []; let probe;

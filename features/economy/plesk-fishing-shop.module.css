@@ -82,13 +82,13 @@
 .refreshConfirm p { margin: 0 0 8px; font-size: .75rem; }
 .refreshConfirm > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .offerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.offerTile { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 10px 8px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 13px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); cursor: pointer; }
+.offerTile { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 8px 7px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 13px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); cursor: pointer; }
 .offerTile[aria-pressed='true'] { outline: 2px solid var(--forest-primary, #466347); outline-offset: 1px; }
 .offerTile > strong { flex: 1; text-align: center; font-size: .75rem; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .offerTile > [data-fish-rarity] { font-size: .625rem; }
 .offerKind { display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%; color: var(--forest-muted, #59624d); font-size: .5625rem; }
 .offerKind > span { padding: 2px 4px; border-radius: 5px; background: var(--forest-primary, #466347); color: var(--forest-paper-light, #f0e6ca); font-variant-numeric: tabular-nums; }
-.emptyOffer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; min-width: 0; min-height: 156px; padding: 10px 7px; border: 1px dashed var(--forest-border, #c8bd98); border-radius: 13px; color: var(--forest-muted, #59624d); text-align: center; }
+.emptyOffer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 132px; padding: 8px 7px; border: 1px dashed var(--forest-border, #c8bd98); border-radius: 13px; color: var(--forest-muted, #59624d); text-align: center; }
 .emptyOffer > svg { opacity: .45; }
 .emptyOffer strong { font-size: .75rem; font-weight: 550; }
 .emptyOffer span { font-size: .625rem; }
@@ -101,12 +101,12 @@
 .previousStock button { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; padding: 8px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 8px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); text-align: left; cursor: pointer; }
 .previousStock button[aria-pressed='true'] { border-color: var(--forest-primary, #466347); }
 .previousStock summary:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
-.offerArt { display: flex; align-items: center; justify-content: center; width: 62px; height: 57px; background: radial-gradient(ellipse, var(--gear-glow, #d9dbb955), transparent 72%); }
+.offerArt { display: flex; align-items: center; justify-content: center; width: 52px; height: 44px; background: radial-gradient(ellipse, var(--gear-glow, #d9dbb955), transparent 72%); }
 .shop [data-gear-rarity='uncommon'] { --gear-glow: #96b28b99; }
 .shop [data-gear-rarity='rare'] { --gear-glow: #91bccc99; }
 .shop [data-gear-rarity='epic'] { --gear-glow: #bc9ec799; }
 .shop [data-gear-rarity='legendary'] { --gear-glow: #e1b965bb; }
-.offerBottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; width: 100%; margin-top: 3px; padding-top: 7px; border-top: 1px solid var(--forest-border, #c8bd98); font-size: .75rem; }
+.offerBottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; width: 100%; margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--forest-border, #c8bd98); font-size: .75rem; }
 .offerBottom > small { display: inline-flex; align-items: center; gap: 4px; color: var(--forest-muted, #59624d); font-size: .625rem; }
 .emptyCatch { display: grid; justify-items: center; gap: 9px; padding: 22px 16px; border: 1px dashed var(--forest-border, #c8bd98); border-radius: 15px; text-align: center; color: var(--forest-muted, #59624d); }
 .emptyCatch strong { font-size: .875rem; color: var(--forest-ink, #394d3e); }

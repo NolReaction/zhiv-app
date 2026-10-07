@@ -50,5 +50,5 @@
   .hud { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; gap: 4px; }
   .headerRow { align-items: flex-start; }
   .quickMenu { max-height: calc(100% - var(--quick-top, 65px) - var(--quick-bottom, 65px) - 2px); }
-  .bottomHud { padding-top: 5px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+  .bottomHud { padding-top: 5px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
