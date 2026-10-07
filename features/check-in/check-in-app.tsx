@@ -80,6 +80,7 @@ import { StatusEditor } from "./status-editor";
 import { CheckInReceipt } from "./check-in-receipt";
 import { useSimpleView } from "@/features/check-in/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
+import { ForestSessionNotice } from "@/features/world/forest-session-notice";
 import { useWorld } from "@/features/world/use-world";
 import { useEconomy } from "@/features/economy/use-economy";
 import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/garden-collection-context";
@@ -1766,6 +1767,8 @@ function CheckInContent() {
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
+      {me && mochlikVisible && activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen &&
+        <ForestSessionNotice presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`} />}
       {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world} economy={economy}
         presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`}
         active={activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}

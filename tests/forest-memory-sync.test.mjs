@@ -24,6 +24,7 @@ function clock() {
   return { now: () => now, randomUUID: uuid,
     setTimeout(callback, delay) { const id = ++serial; timers.set(id, { at: now + delay, callback }); return id; },
     clearTimeout: id => timers.delete(id),
+    elapseWithoutTimers(ms) { now += ms; },
     async advance(ms = 0) {
       const end = now + ms;
       for (let loops = 0; ; loops++) {
@@ -31,7 +32,7 @@ function clock() {
         await settle();
         const next = [...timers.entries()].filter(([, value]) => value.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
         if (!next) break;
-        now = next[1].at; timers.delete(next[0]); next[1].callback();
+        now = Math.max(now, next[1].at); timers.delete(next[0]); next[1].callback();
       }
       now = end; await settle();
     },
@@ -335,6 +336,87 @@ for (const action of ["save", "release"]) test(`resume during retiring ${action}
   assert.equal(a.sync.getStatus().mode, "synced"); assert.equal(a.sync.isSimulationAllowed(), true);
   assert.equal(a.value.mind.needs.energy, .52); assert.ok(remote.reads.length >= 2);
   a.sync.release(); await settle();
+});
+
+test("background retirement releases the writer without waiting for another browser timer", async () => {
+  const env = clock(), remote = server(env), a = client(env, remote, .52);
+  try {
+    a.sync.setActive(true); await env.advance();
+    a.sync.setActive(false);
+    // A hidden/pagehide document can stop servicing timers immediately. Only
+    // the already running requests and their promise continuations can finish.
+    await settle();
+    assert.equal(remote.snapshot.mind.needs.energy, .52);
+    assert.equal(remote.holder, null, "pagehide must not strand a 90-second lease after its save");
+  } finally { a.sync.release(); await settle(); }
+});
+
+test("disposal during acquire releases its late accepted lease before a new scene starts", async () => {
+  const env = clock(), remote = server(env), resolve = deferCommand(remote, "acquire"), a = client(env, remote, .52);
+  let next;
+  try {
+    a.sync.setActive(true); await env.advance();
+    assert.ok(remote.holder, "the server accepted acquire before the response reached the old scene");
+    a.sync.release(); resolve(); await settle();
+    assert.equal(remote.holder, null, "an unmounted scene cannot abandon its accepted acquisition");
+    next = client(env, remote, .31); next.sync.setActive(true); await env.advance();
+    assert.equal(next.sync.getStatus().mode, "synced");
+    assert.equal(next.sync.isSimulationAllowed(), true);
+    assert.ok(remote.calls.every(command => !command.takeover), "a new scene does not take over a foreign writer");
+  } finally { a.sync.release(); next?.sync.release(); await settle(); }
+});
+
+test("lease-lost response checks authority before claiming that another device is active", async () => {
+  const env = clock(), remote = server(env), original = remote.transport.command, modes = [];
+  let offline = true;
+  remote.transport.command = async command => {
+    if (command.action === "save" && offline) throw Error("network unavailable");
+    return original(command);
+  };
+  const a = client(env, remote, .52, { onStatus: status => modes.push(status.mode) });
+  try {
+    a.sync.setActive(true); await env.advance(); a.sync.flush(); await env.advance();
+    assert.equal(a.sync.getStatus().mode, "offline");
+    env.elapseWithoutTimers(91_000); offline = false;
+    await env.advance(250);
+    assert.equal(remote.calls.filter(command => command.action === "save").length, 1, "uncertain save retried after its lease expired");
+    assert.equal(a.sync.getStatus().mode, "synced");
+    assert.ok(!modes.includes("other-device"), "lease loss alone does not prove a foreign active writer");
+  } finally { a.sync.release(); await settle(); }
+});
+
+for (const action of ["acquire", "save"]) test(`a delayed ${action} acknowledgement with an expired own lease rechecks authority without a foreign-device warning`, async () => {
+  const env = clock(), remote = server(env), modes = [], a = client(env, remote, .52, { onStatus: status => modes.push(status.mode) });
+  try {
+    let resolve;
+    if (action === "acquire") resolve = deferCommand(remote, action);
+    a.sync.setActive(true); await env.advance();
+    if (action === "save") { resolve = deferCommand(remote, action); a.sync.flush(); await env.advance(); }
+    env.elapseWithoutTimers(91_000); resolve(); await settle();
+    assert.equal(a.sync.getStatus().mode, "loading", "a stale own acknowledgement is not proof of another writer");
+    assert.equal(a.sync.isSimulationAllowed(), false);
+    await env.advance(250);
+    assert.equal(a.sync.getStatus().mode, "synced", "expired own lease is reacquired after a prompt fresh read");
+    assert.equal(a.sync.isSimulationAllowed(), true);
+    assert.ok(!modes.includes("other-device"));
+    assert.ok(remote.calls.every(command => !command.takeover));
+  } finally { a.sync.release(); await settle(); }
+});
+
+test("late retired acquire cleanup cannot release a newer foreign writer", async () => {
+  const env = clock(), remote = server(env), resolve = deferCommand(remote, "acquire"), a = client(env, remote, .52), b = client(env, remote, .31);
+  try {
+    a.sync.setActive(true); await env.advance(); a.sync.release();
+    b.sync.setActive(true); await env.advance();
+    assert.equal(b.sync.getStatus().mode, "other-device");
+    b.sync.takeOver(); await env.advance();
+    const holder = remote.holder;
+    resolve(); await settle();
+    assert.equal(remote.holder, holder, "stale cleanup cannot revoke the replacement lease");
+    b.sync.flush(); await env.advance();
+    assert.equal(b.sync.getStatus().mode, "synced");
+    assert.equal(remote.snapshot.mind.needs.energy, .31);
+  } finally { a.sync.release(); b.sync.release(); await settle(); }
 });
 
 test("DEV suspension during an uncertain save only retries the clean body, never a mutated live reference", async () => {

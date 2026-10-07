@@ -22,6 +22,7 @@ import { WORLD_PRESENTATION } from "./presentation";
 import { WorldHelp } from "./world-help";
 import type { WorldHelpContext, WorldHelpTarget } from "./world-help-types";
 import { WorldProfileMenu } from "./world-profile-menu";
+import { ForestSessionNotice } from "./forest-session-notice";
 import { WorldFoodMenu } from "@/features/economy/world-food-menu";
 import { WorldPantryMenu } from "@/features/economy/world-pantry-menu";
 import { WorldExpeditionsMenu, type SectorId } from "@/features/economy/world-expeditions-menu";
@@ -483,5 +484,6 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
+    <ForestSessionNotice presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onExit={onClose} />
   </section>;
 }

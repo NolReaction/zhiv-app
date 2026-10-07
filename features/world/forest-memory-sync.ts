@@ -157,7 +157,9 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
       pending = null; needsRead = true; finalSnapshot = null;
       // A new authoritative read precedes every attempt after CAS/lease failure.
       lastAppliedRevision = null;
-      publish(code === "FOREST_MEMORY_ACTIVE_ELSEWHERE" || code === "FOREST_MEMORY_LEASE_LOST" ? "other-device" : "loading");
+      // LEASE_LOST also means our own lease expired. Only a confirmed foreign
+      // writer (or ACTIVE_ELSEWHERE) warrants the other-device warning.
+      publish(code === "FOREST_MEMORY_ACTIVE_ELSEWHERE" ? "other-device" : "loading");
       retiring = false; schedule(250); return;
     }
     failures++; publish("offline");
@@ -193,7 +195,12 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
       }
       const sent = pending, requestStarted = env.now();
       const result = await timed(signal => transport.command(sent, signal, retiring));
-      if (!isLive()) return;
+      if (!isLive()) {
+        // Unmount can race a server-accepted acquire. Its late acknowledgement
+        // still needs cleanup, otherwise the next scene sees our orphan lease.
+        if (sent.action === "acquire") retireAcquiredLease(result.state);
+        return;
+      }
       pending = null; failures = 0;
       // A replay may describe a later owner. Never treat its old receipt as permission to write.
       const currentReceipt = result.acceptedRevision === result.state.revision;
@@ -215,15 +222,36 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
       if (sent.action === "release") { retiring = false; finalSnapshot = null; needsRead = true; if (active) schedule(0); return; }
       due = env.now() + SAVE_MS;
       if (retiring || needsRead || takeOverRequested) { schedule(0); return; }
-      if (!ownsLease()) { needsRead = true; publish("other-device"); schedule(POLL_MS); return; }
+      if (!ownsLease()) {
+        // An acknowledgement can arrive after our own lease expired while
+        // browser timers were frozen. Confirm the current writer before warning.
+        const foreign = otherWriter();
+        needsRead = true; publish(foreign ? "other-device" : "loading"); schedule(foreign ? POLL_MS : 250); return;
+      }
       publish("synced"); schedule(SAVE_MS);
     } catch (error) { handleError(error); }
-    finally { busy = false; }
+    finally {
+      busy = false;
+      // A hidden document may freeze timers after the save acknowledgement.
+      // Complete save -> release in this promise chain instead of a new timer.
+      if (isLive() && retiring) { clearTimer(); void pump(); }
+    }
+  }
+  function retireAcquiredLease(state: ForestMemoryView) {
+    if (state.ownerPublicId !== options.ownerPublicId || !state.lease.owned || !state.lease.token) return;
+    const controller = new AbortController(), timeout = env.setTimeout(() => controller.abort(), TIMEOUT_MS);
+    void transport.command({ ownerPublicId: options.ownerPublicId, clientId, requestId: env.randomUUID(),
+      expectedRevision: state.revision, action: "release", leaseToken: state.lease.token }, controller.signal, true)
+      .catch(() => { /* The lease expires if the page has already gone away. */ })
+      .finally(() => env.clearTimeout(timeout));
   }
   function leave() {
     // Snapshot synchronously: a DEV button may mutate the live state immediately after suspend().
     const prepared = pending ?? (ownsLease() ? command("save", options.capture()) : null);
-    clearTimer(); requestController?.abort();
+    clearTimer();
+    // Let an in-flight acquire acknowledge so pump can release it. Aborting
+    // the response cannot undo a lease the server has already granted.
+    if (prepared?.action !== "acquire") requestController?.abort();
     if (!prepared || prepared.action === "acquire") return;
     const controller = new AbortController(), timeout = env.setTimeout(() => controller.abort(), TIMEOUT_MS);
     void transport.command(prepared, controller.signal, true).then(result => {
